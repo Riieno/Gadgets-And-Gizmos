@@ -1,9 +1,0 @@
-{
-  "parent": "minecraft:block/cube_bottom_top",
-	"render_type": "cutout_mipped",
-  "textures": {
-    "bottom": "createthrusters:block/ct/machine_base_top",
-    "side": "createthrusters:block/ct/machine_base_top",
-    "top": "createthrusters:block/ct/machine_base_top"
-  }
-}

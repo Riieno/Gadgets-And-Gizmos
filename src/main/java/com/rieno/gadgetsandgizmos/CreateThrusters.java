@@ -19,6 +19,7 @@ import com.rieno.gadgetsandgizmos.registry.CTCreativeTabs;
 import com.rieno.gadgetsandgizmos.registry.CTDataComponents;
 import com.rieno.gadgetsandgizmos.registry.CTDisplaySources;
 import com.rieno.gadgetsandgizmos.registry.CTDisplayTargets;
+import com.rieno.gadgetsandgizmos.registry.CTUniversalDisplayAdapterConnections;
 import com.rieno.gadgetsandgizmos.registry.CTEntityTypes;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
 import com.rieno.gadgetsandgizmos.registry.CTLootModifiers;
@@ -61,6 +62,7 @@ public final class CreateThrusters {
                 CreateThrusters::isThrusterBearingExtraCog);
         ShippingScheduleInstructions.register();
         DiagnosticTabletApps.register();
+        CTUniversalDisplayAdapterConnections.register();
         CTDataComponents.register(modEventBus);
         CTBlocks.REGISTRAR.register(modEventBus);
         CTItems.REGISTRAR.register(modEventBus);

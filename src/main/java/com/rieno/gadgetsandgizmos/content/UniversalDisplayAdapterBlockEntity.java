@@ -518,6 +518,12 @@ public final class UniversalDisplayAdapterBlockEntity extends SmartBlockEntity {
         }
     }
 
+    // Check if the block provides a terminal source
+    public static boolean supportsTerminalSource(BlockEntity src) {
+        return src != null && findTerminal(src, 0,
+                Collections.newSetFromMap(new IdentityHashMap<>())) != null;
+    }
+
     // Handle source interaction
     static boolean interactSource(BlockEntity src, double horizontal, double vertical,
                                   String attachmentName, int mouseButton) {

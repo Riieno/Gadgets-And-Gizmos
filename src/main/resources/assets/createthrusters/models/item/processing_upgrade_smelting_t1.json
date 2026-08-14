@@ -1,6 +1,6 @@
 {
   "parent": "minecraft:item/generated",
   "textures": {
-    "layer0": "createthrusters:item/upgrade_smelting_1"
+    "layer0": "createthrusters:item/processing_upgrade_smelting_t1"
   }
 }

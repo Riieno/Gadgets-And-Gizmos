@@ -35,7 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-// Use kinetic speed to oxidize fluid fuel between either pair of axial connections
+// Use kinetic speed to pull fuel through the front and pump oxidized fuel from the back
 public class FuelOxidizerBlockEntity extends KineticBlockEntity {
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -47,8 +47,6 @@ public class FuelOxidizerBlockEntity extends KineticBlockEntity {
 
     private static final int TANK_CAPACITY = 4000;
     private static final int MAX_TRANSFER_PER_TICK = 1000;
-    private static final String HAS_FLOW_DIRECTION_KEY = "HasFlowDirection";
-    private static final String INPUT_FROM_FRONT_KEY = "InputFromFront";
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -70,10 +68,6 @@ public class FuelOxidizerBlockEntity extends KineticBlockEntity {
     private final Map<Direction, IFluidHandler> sideHandlers = new EnumMap<>(Direction.class);
     // Tracked open pipe outputs
     private final Map<OpenEnd, OpenEndedPipe> openPipeOutputs = new HashMap<>();
-    // Active end used for raw fuel input
-    private boolean hasFlowDirection;
-    // Whether raw fuel currently enters through the front
-    private boolean isInputFromFront;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -121,12 +115,12 @@ public class FuelOxidizerBlockEntity extends KineticBlockEntity {
             return;
         }
 
-        pullFuel();
-        if (getSpeed() != 0.0F) {
-            oxidizeFuel();
+        if (getSpeed() == 0.0F) {
+            return;
         }
+        pullFuel();
+        oxidizeFuel();
         pushFuel();
-        clearFlowDirectionIfEmpty();
     }
 
     // Get the fluid handler
@@ -179,19 +173,19 @@ public class FuelOxidizerBlockEntity extends KineticBlockEntity {
                 outputTank.fill(OxidizedFuel.oxidize(drained), IFluidHandler.FluidAction.EXECUTE));
     }
 
-    // Pull fuel from either end
+    // Pull raw fuel through the front input
     private void pullFuel() {
-        if (hasFlowDirection) {
-            pullFuelFrom(getInputSide());
+        if (inputTank.getSpace() <= 0) {
             return;
         }
-
-        Direction front = getBlockState().getValue(FuelOxidizerBlock.FACING);
-        if (!pullFuelFrom(front.getOpposite())) {
-            pullFuelFrom(front);
+        Direction inputSide = getInputSide();
+        if (pullFuelFrom(inputSide)) {
+            return;
         }
-        if (!hasFlowDirection && (!inputTank.isEmpty() || !outputTank.isEmpty())) {
-            setInputSide(front.getOpposite());
+        BlockPos inputPos = worldPosition.relative(inputSide);
+        FluidTransportBehaviour pipe = FluidPropagator.getPipe(level, inputPos);
+        if (pipe != null && pipe.canHaveFlowToward(level.getBlockState(inputPos), inputSide.getOpposite())) {
+            pullThroughPipeNetwork(inputPos, transferRate());
         }
     }
 
@@ -199,39 +193,15 @@ public class FuelOxidizerBlockEntity extends KineticBlockEntity {
     private boolean pullFuelFrom(Direction side) {
         IFluidHandler src = level.getCapability(
                 Capabilities.FluidHandler.BLOCK, worldPosition.relative(side), side.getOpposite());
-        if (src == null) {
-            return false;
-        }
-
-        FluidStack preview = src.drain(transferRate(), IFluidHandler.FluidAction.SIMULATE);
-        if (!OxidizedFuel.canOxidize(preview)) {
-            return false;
-        }
-        int accepted = inputTank.fill(preview, IFluidHandler.FluidAction.SIMULATE);
-        if (accepted <= 0) {
-            return false;
-        }
-
-        FluidStack drained = src.drain(accepted, IFluidHandler.FluidAction.EXECUTE);
-        int filled = inputTank.fill(drained, IFluidHandler.FluidAction.EXECUTE);
-        if (filled <= 0) {
-            return false;
-        }
-        setInputSide(side);
-        return true;
+        return transferFrom(src, transferRate()) > 0;
     }
 
-    // Push oxidized fuel through the opposite end
+    // Pump oxidized fuel through the back output
     private void pushFuel() {
         if (outputTank.isEmpty()) {
             return;
         }
-        if (!hasFlowDirection) {
-            Direction front = getBlockState().getValue(FuelOxidizerBlock.FACING);
-            setInputSide(front.getOpposite());
-        }
-
-        Direction outputSide = getInputSide().getOpposite();
+        Direction outputSide = getOutputSide();
         BlockPos outputPos = worldPosition.relative(outputSide);
         IFluidHandler target = level.getCapability(
                 Capabilities.FluidHandler.BLOCK, outputPos, outputSide.getOpposite());
@@ -251,83 +221,83 @@ public class FuelOxidizerBlockEntity extends KineticBlockEntity {
         }
     }
 
-    // Get the active raw fuel input side
+    // Get the raw fuel input side
     private Direction getInputSide() {
-        Direction front = getBlockState().getValue(FuelOxidizerBlock.FACING);
-        return isInputFromFront ? front : front.getOpposite();
+        return getBlockState().getValue(FuelOxidizerBlock.FACING);
     }
 
-    // Select the active raw fuel input side
-    private void setInputSide(Direction side) {
-        Direction front = getBlockState().getValue(FuelOxidizerBlock.FACING);
-        if (side != front && side != front.getOpposite()) {
-            return;
-        }
-        boolean inputFromFront = side == front;
-        if (hasFlowDirection && isInputFromFront == inputFromFront) {
-            return;
-        }
-        hasFlowDirection = true;
-        isInputFromFront = inputFromFront;
-        setChanged();
-    }
-
-    // Clear the route once both buffers are empty
-    private void clearFlowDirectionIfEmpty() {
-        if (!hasFlowDirection || !inputTank.isEmpty() || !outputTank.isEmpty()) {
-            return;
-        }
-        hasFlowDirection = false;
-        setChanged();
+    // Get the oxidized fuel output side
+    private Direction getOutputSide() {
+        return getInputSide().getOpposite();
     }
 
     // Fill the raw fuel buffer from one side
     private int fillInput(Direction side, FluidStack resource, IFluidHandler.FluidAction action) {
-        if (side != null && hasFlowDirection && side != getInputSide()) {
+        if (side != null && side != getInputSide()) {
             return 0;
         }
-        int filled = inputTank.fill(resource, action);
-        if (filled > 0 && action == IFluidHandler.FluidAction.EXECUTE) {
-            Direction inputSide = side == null
-                    ? getBlockState().getValue(FuelOxidizerBlock.FACING).getOpposite()
-                    : side;
-            setInputSide(inputSide);
-        }
-        return filled;
+        return inputTank.fill(resource, action);
     }
 
     // Drain oxidized fuel through one side
     private FluidStack drainOutput(Direction side, FluidStack resource, IFluidHandler.FluidAction action) {
-        if (side != null && hasFlowDirection && side == getInputSide()) {
+        if (side != null && side != getOutputSide()) {
             return FluidStack.EMPTY;
         }
-        FluidStack drained = outputTank.drain(resource, action);
-        updateFlowAfterDrain(side, drained, action);
-        return drained;
+        return outputTank.drain(resource, action);
     }
 
     // Drain an amount of oxidized fuel through one side
     private FluidStack drainOutput(Direction side, int maxDrain, IFluidHandler.FluidAction action) {
-        if (side != null && hasFlowDirection && side == getInputSide()) {
+        if (side != null && side != getOutputSide()) {
             return FluidStack.EMPTY;
         }
-        FluidStack drained = outputTank.drain(maxDrain, action);
-        updateFlowAfterDrain(side, drained, action);
-        return drained;
+        return outputTank.drain(maxDrain, action);
     }
 
-    // Track the inferred input after output extraction
-    private void updateFlowAfterDrain(Direction side, FluidStack drained, IFluidHandler.FluidAction action) {
-        if (drained.isEmpty() || action != IFluidHandler.FluidAction.EXECUTE) {
-            return;
+    // Pull fuel through the input pipe network
+    private void pullThroughPipeNetwork(BlockPos start, int maxAmount) {
+        ArrayDeque<BlockPos> frontier = new ArrayDeque<>();
+        Set<BlockPos> visitedPipes = new HashSet<>();
+        frontier.add(start);
+        int remaining = maxAmount;
+
+        while (!frontier.isEmpty() && remaining > 0) {
+            BlockPos pipePos = frontier.removeFirst();
+            if (!visitedPipes.add(pipePos)) {
+                continue;
+            }
+
+            FluidTransportBehaviour pipe = FluidPropagator.getPipe(level, pipePos);
+            if (pipe == null) {
+                continue;
+            }
+
+            BlockState pipeState = level.getBlockState(pipePos);
+            for (Direction side : FluidPropagator.getPipeConnections(pipeState, pipe)) {
+                if (remaining <= 0) {
+                    break;
+                }
+
+                BlockPos connectedPos = pipePos.relative(side);
+                if (connectedPos.equals(worldPosition)) {
+                    continue;
+                }
+
+                FluidTransportBehaviour connectedPipe = FluidPropagator.getPipe(level, connectedPos);
+                if (connectedPipe != null
+                        && connectedPipe.canHaveFlowToward(level.getBlockState(connectedPos), side.getOpposite())) {
+                    frontier.addLast(connectedPos);
+                    continue;
+                }
+
+                IFluidHandler source = level.getCapability(
+                        Capabilities.FluidHandler.BLOCK, connectedPos, side.getOpposite());
+                if (source != null) {
+                    remaining -= transferFrom(source, remaining);
+                }
+            }
         }
-        if (!hasFlowDirection) {
-            Direction inputSide = side == null
-                    ? getBlockState().getValue(FuelOxidizerBlock.FACING).getOpposite()
-                    : side.getOpposite();
-            setInputSide(inputSide);
-        }
-        clearFlowDirectionIfEmpty();
     }
 
     // Push fuel through the pipe network
@@ -402,6 +372,27 @@ public class FuelOxidizerBlockEntity extends KineticBlockEntity {
         return filled;
     }
 
+    // Transfer raw fuel from one source tank
+    private int transferFrom(IFluidHandler source, int maxAmount) {
+        if (source == null || maxAmount <= 0 || inputTank.getSpace() <= 0) {
+            return 0;
+        }
+
+        FluidStack offered = source.drain(Math.min(maxAmount, inputTank.getSpace()),
+                IFluidHandler.FluidAction.SIMULATE);
+        if (!OxidizedFuel.canOxidize(offered)) {
+            return 0;
+        }
+
+        int accepted = inputTank.fill(offered, IFluidHandler.FluidAction.SIMULATE);
+        if (accepted <= 0) {
+            return 0;
+        }
+
+        FluidStack drained = source.drain(accepted, IFluidHandler.FluidAction.EXECUTE);
+        return inputTank.fill(drained, IFluidHandler.FluidAction.EXECUTE);
+    }
+
     // Transfer fuel to an open pipe end
     private int transferToOpenEnd(OpenEnd end, int maxAmount) {
         OpenEndedPipe openPipe = openPipeOutputs.computeIfAbsent(end,
@@ -417,8 +408,6 @@ public class FuelOxidizerBlockEntity extends KineticBlockEntity {
         super.read(tag, provider, clientPacket);
         inputTank.readFromNBT(provider, tag.getCompound("InputTank"));
         outputTank.readFromNBT(provider, tag.getCompound("OutputTank"));
-        hasFlowDirection = tag.getBoolean(HAS_FLOW_DIRECTION_KEY);
-        isInputFromFront = tag.getBoolean(INPUT_FROM_FRONT_KEY);
     }
 
     // Write the fuel oxidizer
@@ -427,8 +416,6 @@ public class FuelOxidizerBlockEntity extends KineticBlockEntity {
         super.write(tag, provider, clientPacket);
         tag.put("InputTank", inputTank.writeToNBT(provider, new CompoundTag()));
         tag.put("OutputTank", outputTank.writeToNBT(provider, new CompoundTag()));
-        tag.putBoolean(HAS_FLOW_DIRECTION_KEY, hasFlowDirection);
-        tag.putBoolean(INPUT_FROM_FRONT_KEY, isInputFromFront);
     }
 
     // Route fluid through one axial side
@@ -442,13 +429,18 @@ public class FuelOxidizerBlockEntity extends KineticBlockEntity {
         }
 
         // Get the tanks
-        @Override public int getTanks() { return 2; }
+        @Override public int getTanks() { return 1; }
         // Get the fluid in tank
-        @Override public FluidStack getFluidInTank(int tank) { return tank == 0 ? inputTank.getFluid() : outputTank.getFluid(); }
+        @Override public FluidStack getFluidInTank(int tank) {
+            return tank == 0 ? (side == getInputSide() ? inputTank.getFluid() : outputTank.getFluid())
+                    : FluidStack.EMPTY;
+        }
         // Get the tank capacity
         @Override public int getTankCapacity(int tank) { return TANK_CAPACITY; }
         // Check if the fluid is valid
-        @Override public boolean isFluidValid(int tank, FluidStack stack) { return tank == 0 && inputTank.isFluidValid(stack); }
+        @Override public boolean isFluidValid(int tank, FluidStack stack) {
+            return tank == 0 && side == getInputSide() && inputTank.isFluidValid(stack);
+        }
         // Fill raw fuel through this side
         @Override public int fill(FluidStack resource, FluidAction action) { return fillInput(side, resource, action); }
         // Drain matching oxidized fuel through this side

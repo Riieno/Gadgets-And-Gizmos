@@ -248,6 +248,8 @@ public final class ShippingScheduleRuntime {
     private long routeCacheRevision = Long.MIN_VALUE;
     // Cached pilot
     private @Nullable LivingEntity cachedPilot;
+    // Tracks whether the blaze burner is the pilot
+    private boolean blazeBurnerPilot;
     // Tracks whether runtime is validated
     private boolean runtimeValidated;
     // Tracks whether shutdown snapshot is pending
@@ -426,6 +428,12 @@ public final class ShippingScheduleRuntime {
         }
         PilotState pilotState = pilotState();
         if (pilotState != PilotState.VALID) {
+            if (pilotState == PilotState.INVALID && !pilotValidationGraceActive()) {
+                controller.releaseShipControlAfterLoad();
+                clearRuntimeState("Shipping schedule removed: its pilot is no longer available");
+                runtimeValidated = false;
+                return false;
+            }
             if (pilotId == null) {
                 status = "Waiting for a shipping pilot assignment";
                 runtimeValidated = false;
@@ -712,6 +720,12 @@ public final class ShippingScheduleRuntime {
     // Install the shipping schedule
     public boolean install(Schedule incoming, @Nullable UUID pilot,
                            ShippingAutoRefuelSettings autoRefuel) {
+        return install(incoming, pilot, autoRefuel, false);
+    }
+
+    // Install the shipping schedule
+    public boolean install(Schedule incoming, @Nullable UUID pilot,
+                           ShippingAutoRefuelSettings autoRefuel, boolean blazeBurnerPilot) {
         if (shutdownSnapshotPending || incoming == null || incoming.entries.isEmpty()
                 || controller.getLevel() == null) {
             return false;
@@ -723,12 +737,15 @@ public final class ShippingScheduleRuntime {
         HolderLookup.Provider registries = controller.getLevel().registryAccess();
         schedule = Schedule.fromTag(registries, incoming.write(registries));
         pilotId = pilot;
+        this.blazeBurnerPilot = blazeBurnerPilot;
         ShippingAutoRefuelSettings manifestPolicy = ShippingAutoRefuelSettings.fromSchedule(schedule);
         this.autoRefuel = manifestPolicy.enabled() ? manifestPolicy : ShippingAutoRefuelSettings.DEFAULT;
         cachedPilot = null;
         int firstEntry = firstOperationalEntry();
         if (firstEntry >= schedule.entries.size()) {
             schedule = null;
+            pilotId = null;
+            this.blazeBurnerPilot = false;
             return false;
         }
         currentEntry = Math.max(firstEntry,
@@ -781,7 +798,12 @@ public final class ShippingScheduleRuntime {
 
     // Check if this has schedule
     public boolean hasSchedule() {
-        return schedule != null;
+        return schedule != null && !schedule.entries.isEmpty();
+    }
+
+    // Check if this has blaze burner pilot
+    public boolean hasBlazeBurnerPilot() {
+        return hasSchedule() && blazeBurnerPilot;
     }
 
     // Check if this requires control after load
@@ -799,12 +821,14 @@ public final class ShippingScheduleRuntime {
         }
         CompoundTag runtime = controllerData.getCompound("ShippingScheduleRuntime");
         runtime.remove("Pilot");
+        runtime.remove("BlazeBurnerPilot");
         runtime.putBoolean("ShutdownSnapshot", false);
     }
 
     // Detach the pilot for schematic import
     void detachPilotForSchematicImport() {
         pilotId = null;
+        blazeBurnerPilot = false;
         cachedPilot = null;
         invalidPilotSinceTick = Long.MIN_VALUE;
         runtimeValidated = false;
@@ -1286,6 +1310,10 @@ public final class ShippingScheduleRuntime {
 
     // Get the pilot state
     private PilotState pilotState() {
+        if (blazeBurnerPilot) {
+            return ShippingSchedulePilot.isBlazeBurnerPilot(controller)
+                    ? PilotState.VALID : PilotState.INVALID;
+        }
         LivingEntity pilot = assignedPilot();
         if (pilot == null) {
             return PilotState.UNAVAILABLE;
@@ -1341,6 +1369,7 @@ public final class ShippingScheduleRuntime {
         schedule = null;
         autoRefuel = ShippingAutoRefuelSettings.DEFAULT;
         pilotId = null;
+        blazeBurnerPilot = false;
         cachedPilot = null;
         currentDockId = null;
         attachedDockId = null;
@@ -4164,6 +4193,7 @@ public final class ShippingScheduleRuntime {
         if (pilotId != null) {
             tag.putUUID("Pilot", pilotId);
         }
+        tag.putBoolean("BlazeBurnerPilot", blazeBurnerPilot);
         if (currentDockId != null) {
             tag.putUUID("CurrentDock", currentDockId);
         }
@@ -4218,6 +4248,7 @@ public final class ShippingScheduleRuntime {
         // -----------------------------------------------------DEFAULT STATE-----------------------------------------------------
         if (!parent.contains("ShippingScheduleRuntime", Tag.TAG_COMPOUND)) {
             schedule = null;
+            blazeBurnerPilot = false;
             autoRefuel = ShippingAutoRefuelSettings.DEFAULT;
             clearAutoRefuelInterruption();
             phase = Phase.IDLE;
@@ -4257,6 +4288,7 @@ public final class ShippingScheduleRuntime {
         autoRefuelStartedTick = tag.getLong("AutoRefuelStartedTick");
         // -----------------------------------------------------ROUTE STATE-----------------------------------------------------
         pilotId = tag.hasUUID("Pilot") ? tag.getUUID("Pilot") : null;
+        blazeBurnerPilot = tag.getBoolean("BlazeBurnerPilot");
         currentDockId = tag.hasUUID("CurrentDock") ? tag.getUUID("CurrentDock") : null;
         attachedDockId = tag.hasUUID("AttachedDock") ? tag.getUUID("AttachedDock") : null;
         divertedTargetId = tag.hasUUID("DivertedTarget") ? tag.getUUID("DivertedTarget") : null;

@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.simibubi.create.content.processing.burner.BlazeBurnerBlock;
 import com.simibubi.create.content.contraptions.actors.seat.SeatBlock;
 import com.simibubi.create.content.contraptions.actors.seat.SeatEntity;
 import com.simibubi.create.content.trains.schedule.Schedule;
@@ -27,6 +28,7 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.AABB;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
@@ -34,6 +36,7 @@ import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 
 // Resolve the seated pilot assigned to a shipping schedule without scanning unrelated entities
 public final class ShippingSchedulePilot {
@@ -82,13 +85,17 @@ public final class ShippingSchedulePilot {
 
     // Try to interact
     public static boolean tryInteract(PlayerInteractEvent.RightClickBlock evt) {
-        if (evt.getHand() != InteractionHand.MAIN_HAND
-                || !(evt.getLevel().getBlockState(evt.getPos()).getBlock()
-                instanceof SeatBlock)) {
+        if (evt.getHand() != InteractionHand.MAIN_HAND) {
             return false;
         }
         ItemStack held = evt.getItemStack();
         if (!held.isEmpty() && !(held.getItem() instanceof ShippingScheduleItem)) {
+            return false;
+        }
+        if (evt.getLevel().getBlockState(evt.getPos()).getBlock() instanceof BlazeBurnerBlock) {
+            return tryBlazeBurnerInteraction(evt);
+        }
+        if (!(evt.getLevel().getBlockState(evt.getPos()).getBlock() instanceof SeatBlock)) {
             return false;
         }
         for (SeatEntity seat : evt.getLevel().getEntitiesOfClass(
@@ -179,7 +186,7 @@ public final class ShippingSchedulePilot {
             finish(evt, InteractionResult.FAIL);
             return;
         }
-        if (controller.hasShippingSchedule()) {
+        if (controller.hasShippingSchedule() && controller.hasActiveShippingSchedulePilot()) {
             player.displayClientMessage(Component.translatable(
                     "createthrusters.shipping_schedule.pilot.already_running").withStyle(ChatFormatting.RED), true);
             finish(evt, InteractionResult.FAIL);
@@ -235,6 +242,94 @@ public final class ShippingSchedulePilot {
         finish(evt, InteractionResult.SUCCESS);
     }
 
+    // Try to interact with a blaze burner pilot
+    private static boolean tryBlazeBurnerInteraction(PlayerInteractEvent.RightClickBlock evt) {
+        AdvancedContraptionControllerBlockEntity controller = findBlazeBurnerController(
+                evt.getLevel(), evt.getPos());
+        if (controller == null) {
+            return false;
+        }
+        if (evt.getLevel().isClientSide) {
+            finish(evt, InteractionResult.SUCCESS);
+            return true;
+        }
+        if (!(evt.getEntity() instanceof ServerPlayer player)) {
+            finish(evt, InteractionResult.FAIL);
+            return true;
+        }
+        if (!controller.hasShipControlModule()) {
+            player.displayClientMessage(Component.translatable(
+                    "createthrusters.shipping_schedule.pilot.no_module").withStyle(ChatFormatting.RED), true);
+            finish(evt, InteractionResult.FAIL);
+            return true;
+        }
+        ItemStack held = evt.getItemStack();
+        if (!held.isEmpty()) {
+            assignBlazeBurner(evt, player, controller, held);
+            return true;
+        }
+        if (!controller.hasBlazeBurnerShippingPilot()) {
+            return false;
+        }
+        removeBlazeBurner(evt, player, controller);
+        return true;
+    }
+
+    // Assign the blaze burner shipping pilot
+    private static void assignBlazeBurner(PlayerInteractEvent evt, ServerPlayer player,
+                                          AdvancedContraptionControllerBlockEntity controller,
+                                          ItemStack held) {
+        Schedule schedule = ScheduleItem.getSchedule(player.registryAccess(), held);
+        if (schedule == null || schedule.entries.isEmpty()) {
+            player.displayClientMessage(Component.translatable(
+                    "createthrusters.shipping_schedule.pilot.no_stops").withStyle(ChatFormatting.RED), true);
+            finish(evt, InteractionResult.FAIL);
+            return;
+        }
+        if (controller.hasShippingSchedule() && controller.hasActiveShippingSchedulePilot()) {
+            player.displayClientMessage(Component.translatable(
+                    "createthrusters.shipping_schedule.pilot.already_running").withStyle(ChatFormatting.RED), true);
+            finish(evt, InteractionResult.FAIL);
+            return;
+        }
+        if (!controller.getShipControlGraphValue("ready").asBoolean()) {
+            player.displayClientMessage(Component.translatable(
+                    "createthrusters.shipping_schedule.pilot.needs_initialization")
+                    .withStyle(ChatFormatting.RED), true);
+            finish(evt, InteractionResult.FAIL);
+            return;
+        }
+        if (!controller.installShippingSchedule(schedule, UUID.randomUUID(),
+                ShippingAutoRefuelSettings.fromSchedule(schedule), true)) {
+            finish(evt, InteractionResult.FAIL);
+            return;
+        }
+        if (!player.hasInfiniteMaterials()) {
+            held.shrink(1);
+        }
+        player.displayClientMessage(Component.translatable(
+                "createthrusters.shipping_schedule.pilot.assigned",
+                evt.getLevel().getBlockState(evt.getPos()).getBlock().getName())
+                .withStyle(ChatFormatting.GREEN), true);
+        player.level().playSound(null, player.blockPosition(), SoundEvents.EXPERIENCE_ORB_PICKUP,
+                SoundSource.PLAYERS, 0.6F, 1.2F);
+        finish(evt, InteractionResult.SUCCESS);
+    }
+
+    // Remove the blaze burner shipping pilot
+    private static void removeBlazeBurner(PlayerInteractEvent evt, ServerPlayer player,
+                                          AdvancedContraptionControllerBlockEntity controller) {
+        ItemStack returned = controller.removeShippingSchedule();
+        if (!returned.isEmpty() && !player.getInventory().add(returned)) {
+            player.drop(returned, false);
+        }
+        player.displayClientMessage(Component.translatable(
+                "createthrusters.shipping_schedule.pilot.removed").withStyle(ChatFormatting.YELLOW), true);
+        player.level().playSound(null, player.blockPosition(), SoundEvents.ITEM_FRAME_REMOVE_ITEM,
+                SoundSource.PLAYERS, 0.6F, 1.0F);
+        finish(evt, InteractionResult.SUCCESS);
+    }
+
     // Find the controller
     private static AdvancedContraptionControllerBlockEntity findController(LivingEntity pilot, SeatEntity seat) {
         Object subLevel = SimulatedHelper.getEntityTrackingSubLevel(pilot);
@@ -270,6 +365,57 @@ public final class ShippingSchedulePilot {
             }
         }
         return closest;
+    }
+
+    // Find the blaze burner controller
+    private static @org.jetbrains.annotations.Nullable AdvancedContraptionControllerBlockEntity
+    findBlazeBurnerController(Level level, BlockPos burnerPos) {
+        BlockEntity burner = level.getBlockEntity(burnerPos);
+        UUID subLevelId = burner == null ? null : SimulatedHelper.getContainingSubLevelId(burner);
+        Object subLevel = subLevelId == null ? null
+                : SubLevelBlockEntityCollector.getSubLevel(level, subLevelId);
+        if (subLevel != null) {
+            for (BlockEntity candidate : SubLevelBlockEntityCollector.getBlockEntities(subLevel)) {
+                if (candidate instanceof AdvancedContraptionControllerBlockEntity controller
+                        && isBlazeBurnerPilotAt(controller, burnerPos)) {
+                    return controller;
+                }
+            }
+            return null;
+        }
+        for (BlockPos pos : BlockPos.betweenClosed(
+                burnerPos.offset(-1, -1, -1), burnerPos.offset(1, 1, 1))) {
+            BlockEntity candidate = level.getBlockEntity(pos);
+            if (candidate instanceof AdvancedContraptionControllerBlockEntity controller
+                    && isBlazeBurnerPilotAt(controller, burnerPos)) {
+                return controller;
+            }
+        }
+        return null;
+    }
+
+    // Check if the blaze burner is the pilot
+    public static boolean isBlazeBurnerPilot(AdvancedContraptionControllerBlockEntity controller) {
+        if (controller == null || controller.getLevel() == null) {
+            return false;
+        }
+        BlockPos burnerPos = controller.getBlockPos().relative(controllerFacing(controller));
+        return controller.getLevel().getBlockState(burnerPos).getBlock() instanceof BlazeBurnerBlock;
+    }
+
+    // Check if this burner belongs to the controller
+    private static boolean isBlazeBurnerPilotAt(AdvancedContraptionControllerBlockEntity controller,
+                                                BlockPos burnerPos) {
+        return isBlazeBurnerPilot(controller)
+                && controller.getBlockPos().relative(controllerFacing(controller)).equals(burnerPos);
+    }
+
+    // Get the controller facing
+    private static Direction controllerFacing(AdvancedContraptionControllerBlockEntity controller) {
+        return controller.getBlockState().hasProperty(
+                AnalogueContraptionControllerBlock.HORIZONTAL_FACING)
+                ? controller.getBlockState().getValue(
+                AnalogueContraptionControllerBlock.HORIZONTAL_FACING) : Direction.NORTH;
     }
 
     // Check if this is ship controller seat

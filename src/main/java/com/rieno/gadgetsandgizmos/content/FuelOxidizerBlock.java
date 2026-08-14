@@ -20,7 +20,7 @@ import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 
-// Orient the kinetic machine which converts fuel through its front connection
+// Orient the kinetic machine which pulls fuel through its front connection
 public class FuelOxidizerBlock extends DirectionalKineticBlock implements IBE<FuelOxidizerBlockEntity>, ICogWheel {
     /*--------------------------------------------------------##---------------------------------------------------------
 

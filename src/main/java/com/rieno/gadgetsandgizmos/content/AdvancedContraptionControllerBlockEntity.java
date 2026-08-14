@@ -700,6 +700,14 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return shippingScheduleRuntime.install(schedule, pilotId, autoRefuel);
     }
 
+    // Install the blaze burner shipping schedule
+    public boolean installShippingSchedule(com.simibubi.create.content.trains.schedule.Schedule schedule,
+                                           UUID pilotId,
+                                           ShippingAutoRefuelSettings autoRefuel,
+                                           boolean blazeBurnerPilot) {
+        return shippingScheduleRuntime.install(schedule, pilotId, autoRefuel, blazeBurnerPilot);
+    }
+
     // Remove the shipping schedule
     public ItemStack removeShippingSchedule() {
         return shippingScheduleRuntime.remove();
@@ -708,6 +716,16 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Check if this has shipping schedule
     public boolean hasShippingSchedule() {
         return shippingScheduleRuntime.hasSchedule();
+    }
+
+    // Check if this has an active shipping pilot
+    public boolean hasActiveShippingSchedulePilot() {
+        return shippingScheduleRuntime.hasPresentPilot();
+    }
+
+    // Check if this has a blaze burner shipping pilot
+    public boolean hasBlazeBurnerShippingPilot() {
+        return shippingScheduleRuntime.hasBlazeBurnerPilot();
     }
 
     // Copy the shipping schedule

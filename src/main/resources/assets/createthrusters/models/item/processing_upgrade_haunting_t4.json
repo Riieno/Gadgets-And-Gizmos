@@ -1,6 +1,6 @@
 {
   "parent": "minecraft:item/generated",
   "textures": {
-    "layer0": "createthrusters:item/upgrade_haunting_4"
+    "layer0": "createthrusters:item/processing_upgrade_haunting_t4"
   }
 }

@@ -1,0 +1,24 @@
+{
+	"format_version": "1.9.0",
+	"render_type":"cutout_mipped",
+	"credit": "Made with Blockbench",
+	"textures": {
+		"0": "createthrusters:block/universal_display_adaptor/universal_display_adapter_core",
+		"particle": "createthrusters:block/universal_display_adaptor/universal_display_adapter_core"
+	},
+	"elements": [
+		{
+			"from": [2, 2, 2],
+			"to": [14, 14, 14],
+			"rotation": {"angle": 0, "axis": "y", "origin": [7, 2, 7]},
+			"faces": {
+				"north": {"uv": [0, 0, 12, 12], "texture": "#0"},
+				"east": {"uv": [0, 0, 12, 12], "texture": "#0"},
+				"south": {"uv": [0, 0, 12, 12], "texture": "#0"},
+				"west": {"uv": [0, 0, 12, 12], "texture": "#0"},
+				"up": {"uv": [0, 0, 12, 12], "texture": "#0"},
+				"down": {"uv": [0, 0, 12, 12], "texture": "#0"}
+			}
+		}
+	]
+}

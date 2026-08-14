@@ -1,10 +1,11 @@
 {
-  "variants": {
-    "facing=down": { "model": "createthrusters:block/universal_display_adapter", "x": 180 },
-    "facing=up": { "model": "createthrusters:block/universal_display_adapter" },
-    "facing=north": { "model": "createthrusters:block/universal_display_adapter", "x": 90 },
-    "facing=south": { "model": "createthrusters:block/universal_display_adapter", "x": 90, "y": 180 },
-    "facing=west": { "model": "createthrusters:block/universal_display_adapter", "x": 90, "y": 270 },
-    "facing=east": { "model": "createthrusters:block/universal_display_adapter", "x": 90, "y": 90 }
-  }
+  "multipart": [
+    { "apply": { "model": "createthrusters:block/universal_display_adaptor/core" } },
+    { "when": { "down": "true" }, "apply": { "model": "createthrusters:block/universal_display_adaptor/arm_down" } },
+    { "when": { "up": "true" }, "apply": { "model": "createthrusters:block/universal_display_adaptor/arm_up" } },
+    { "when": { "north": "true" }, "apply": { "model": "createthrusters:block/universal_display_adaptor/arm_north" } },
+    { "when": { "south": "true" }, "apply": { "model": "createthrusters:block/universal_display_adaptor/arm_south" } },
+    { "when": { "west": "true" }, "apply": { "model": "createthrusters:block/universal_display_adaptor/arm_west" } },
+    { "when": { "east": "true" }, "apply": { "model": "createthrusters:block/universal_display_adaptor/arm_east" } }
+  ]
 }

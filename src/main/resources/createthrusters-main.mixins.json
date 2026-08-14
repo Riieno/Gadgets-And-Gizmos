@@ -16,6 +16,7 @@
     "ComputedPendingLuaInvocationMixin",
     "ComputerCraftRemoteDesktopMenuMixin",
     "CreateAdditionEnergyThresholdConditionMixin",
+    "CreateContraptionEmptyAssemblyMixin",
     "CreateSeatPassengerPersistenceMixin",
     "CreateSchematicSafeNbtMixin",
     "ContraptionDiagramLinkerMixin",

@@ -1,6 +1,6 @@
 {
   "parent": "minecraft:item/generated",
   "textures": {
-    "layer0": "createthrusters:item/upgrade_smoking_2"
+    "layer0": "createthrusters:item/processing_upgrade_smoking_t2"
   }
 }
