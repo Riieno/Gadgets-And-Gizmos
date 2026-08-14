@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    { "item": "simulated:swivel_bearing" },
+    { "item": "create:precision_mechanism" }
+  ],
+  "result": {
+    "id": "createthrusters:thruster_bearing",
+    "count": 1
+  }
+}

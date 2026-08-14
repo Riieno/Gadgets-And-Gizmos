@@ -1,0 +1,6 @@
+{
+  "parent": "createthrusters:block/bidirectional_gearbox/block",
+  "textures": {
+    "particle": "createthrusters:block/bidirectional_gearbox/bidirectional_gearbox_casing"
+  }
+}

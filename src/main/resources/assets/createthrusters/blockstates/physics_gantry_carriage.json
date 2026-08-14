@@ -1,0 +1,52 @@
+{
+  "variants": {
+    "axis_along_first=false,facing=down": {
+      "model": "createthrusters:block/gantry_carriage/horizontal",
+      "x": 270,
+      "y": 90
+    },
+    "axis_along_first=false,facing=east": {
+      "model": "createthrusters:block/gantry_carriage/horizontal",
+      "y": 270
+    },
+    "axis_along_first=false,facing=north": {
+      "model": "createthrusters:block/gantry_carriage/vertical",
+      "y": 180
+    },
+    "axis_along_first=false,facing=south": {
+      "model": "createthrusters:block/gantry_carriage/vertical"
+    },
+    "axis_along_first=false,facing=up": {
+      "model": "createthrusters:block/gantry_carriage/horizontal",
+      "x": 90,
+      "y": 90
+    },
+    "axis_along_first=false,facing=west": {
+      "model": "createthrusters:block/gantry_carriage/horizontal",
+      "y": 90
+    },
+    "axis_along_first=true,facing=down": {
+      "model": "createthrusters:block/gantry_carriage/horizontal",
+      "x": 270
+    },
+    "axis_along_first=true,facing=east": {
+      "model": "createthrusters:block/gantry_carriage/vertical",
+      "y": 270
+    },
+    "axis_along_first=true,facing=north": {
+      "model": "createthrusters:block/gantry_carriage/horizontal",
+      "y": 180
+    },
+    "axis_along_first=true,facing=south": {
+      "model": "createthrusters:block/gantry_carriage/horizontal"
+    },
+    "axis_along_first=true,facing=up": {
+      "model": "createthrusters:block/gantry_carriage/horizontal",
+      "x": 90
+    },
+    "axis_along_first=true,facing=west": {
+      "model": "createthrusters:block/gantry_carriage/vertical",
+      "y": 90
+    }
+  }
+}

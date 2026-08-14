@@ -1,0 +1,7 @@
+{
+  "parent": "createthrusters:block/shipping_manifest_base",
+  "textures": {
+    "0": "createthrusters:block/shipping_manifest_model_blue",
+    "particle": "createthrusters:block/shipping_manifest_model_blue"
+  }
+}

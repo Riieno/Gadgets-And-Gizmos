@@ -1,0 +1,31 @@
+{
+  "multipart": [
+    {
+      "apply": { "model": "createthrusters:block/andesite_cable/core" }
+    },
+    {
+      "when": { "up": "true" },
+      "apply": { "model": "createthrusters:block/andesite_cable/arm_up" }
+    },
+    {
+      "when": { "down": "true" },
+      "apply": { "model": "createthrusters:block/andesite_cable/arm_down" }
+    },
+    {
+      "when": { "north": "true" },
+      "apply": { "model": "createthrusters:block/andesite_cable/arm_north" }
+    },
+    {
+      "when": { "south": "true" },
+      "apply": { "model": "createthrusters:block/andesite_cable/arm_south" }
+    },
+    {
+      "when": { "west": "true" },
+      "apply": { "model": "createthrusters:block/andesite_cable/arm_west" }
+    },
+    {
+      "when": { "east": "true" },
+      "apply": { "model": "createthrusters:block/andesite_cable/arm_east" }
+    }
+  ]
+}

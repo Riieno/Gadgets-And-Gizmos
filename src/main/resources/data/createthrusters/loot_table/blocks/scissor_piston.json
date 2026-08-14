@@ -1,0 +1,21 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "bonus_rolls": 0.0,
+      "conditions": [
+        {
+          "condition": "minecraft:survives_explosion"
+        }
+      ],
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "createthrusters:scissor_piston"
+        }
+      ],
+      "rolls": 1.0
+    }
+  ],
+  "random_sequence": "createthrusters:blocks/scissor_piston"
+}

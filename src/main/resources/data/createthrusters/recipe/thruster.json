@@ -1,0 +1,36 @@
+{
+  "type": "create:mechanical_crafting",
+  "accept_mirrored": false,
+  "category": "misc",
+  "key": {
+    "C": {
+      "tag": "c:ingots/copper"
+    },
+    "P": {
+      "item": "create:fluid_pipe"
+    },
+    "I": {
+      "item": "create:industrial_iron_block"
+    },
+    "T": {
+      "item": "create:fluid_tank"
+    },
+    "S": {
+      "tag": "c:plates/iron"
+    },
+    "B": {
+      "item": "create:empty_blaze_burner"
+    }
+  },
+  "pattern": [
+    "CPC",
+    "ITI",
+    "SBS",
+    "SSS"
+  ],
+  "result": {
+    "count": 1,
+    "id": "createthrusters:thruster"
+  },
+  "show_notification": false
+}

@@ -1,0 +1,52 @@
+{
+	"format_version": "1.9.0",
+	"credit": "Create Gadgets & Gizmos alternator internal rotor partial; rendered by AlternatorVisual/AlternatorRenderer",
+	"textures": {
+		"0": "createthrusters:block/thruster/thruster_fluid_powered",
+		"particle": "createthrusters:block/thruster/thruster_fluid_powered"
+	},
+	"elements": [
+		{
+			"name": "rotor_core_barrel",
+			"from": [5.45, 5.45, 3.05],
+			"to": [10.55, 10.55, 11.25],
+			"shade": false,
+			"faces": {
+				"north": {"uv": [5, 5.75, 7, 7.75], "texture": "#0"},
+				"east": {"uv": [5, 5.75, 7, 7.75], "texture": "#0"},
+				"south": {"uv": [5, 5.75, 7, 7.75], "texture": "#0"},
+				"west": {"uv": [5, 5.75, 7, 7.75], "texture": "#0"},
+				"up": {"uv": [5, 5.75, 7, 7.75], "texture": "#0"},
+				"down": {"uv": [5, 5.75, 7, 7.75], "texture": "#0"}
+			}
+		},
+		{
+			"name": "rotor_copper_band_front",
+			"from": [4.75, 4.75, 8.5],
+			"to": [11.25, 11.25, 10.05],
+			"shade": false,
+			"faces": {
+				"north": {"uv": [13.5, 3.25, 14.5, 4.25], "texture": "#0"},
+				"east": {"uv": [13.5, 3.25, 14.5, 4.25], "texture": "#0"},
+				"south": {"uv": [13.5, 3.25, 14.5, 4.25], "texture": "#0"},
+				"west": {"uv": [13.5, 3.25, 14.5, 4.25], "texture": "#0"},
+				"up": {"uv": [13.5, 3.25, 14.5, 4.25], "texture": "#0"},
+				"down": {"uv": [13.5, 3.25, 14.5, 4.25], "texture": "#0"}
+			}
+		},
+		{
+			"name": "rotor_copper_band_rear",
+			"from": [4.9, 4.9, 4.2],
+			"to": [11.1, 11.1, 5.65],
+			"shade": false,
+			"faces": {
+				"north": {"uv": [13.5, 3.25, 14.5, 4.25], "texture": "#0"},
+				"east": {"uv": [13.5, 3.25, 14.5, 4.25], "texture": "#0"},
+				"south": {"uv": [13.5, 3.25, 14.5, 4.25], "texture": "#0"},
+				"west": {"uv": [13.5, 3.25, 14.5, 4.25], "texture": "#0"},
+				"up": {"uv": [13.5, 3.25, 14.5, 4.25], "texture": "#0"},
+				"down": {"uv": [13.5, 3.25, 14.5, 4.25], "texture": "#0"}
+			}
+		}
+	]
+}

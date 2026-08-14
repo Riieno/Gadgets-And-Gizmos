@@ -1,0 +1,6 @@
+{
+  "parent": "createthrusters:block/claw/block",
+  "textures": {
+    "1": "createthrusters:block/claw/claw_base_powered"
+  }
+}

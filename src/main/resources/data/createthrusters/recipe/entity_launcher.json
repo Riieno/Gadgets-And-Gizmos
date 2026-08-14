@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " SC",
+    "PBA",
+    " S "
+  ],
+  "key": {
+    "S": { "item": "create:shaft" },
+    "C": { "item": "createthrusters:claw" },
+    "P": { "item": "create:precision_mechanism" },
+    "B": { "item": "create:brass_casing" },
+    "A": { "item": "create:andesite_alloy" }
+  },
+  "result": {
+    "id": "createthrusters:entity_launcher",
+    "count": 1
+  }
+}

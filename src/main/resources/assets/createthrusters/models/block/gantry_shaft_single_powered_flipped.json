@@ -1,0 +1,6 @@
+{
+  "parent": "createthrusters:block/gantry_shaft/block_single",
+  "textures": {
+    "2": "createthrusters:block/gantry/gantry_shaft_powered_flipped"
+  }
+}

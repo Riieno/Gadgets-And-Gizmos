@@ -1,0 +1,21 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "redstone",
+  "key": {
+    "A": {
+      "item": "create:andesite_alloy"
+    },
+    "I": {
+      "item": "create:iron_sheet"
+    }
+  },
+  "pattern": [
+    "AAA",
+    "III",
+    "AAA"
+  ],
+  "result": {
+    "count": 6,
+    "id": "createthrusters:andesite_cable"
+  }
+}

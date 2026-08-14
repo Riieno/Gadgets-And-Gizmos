@@ -1,0 +1,25 @@
+modLoader="lowcodefml"
+loaderVersion="[4,)"
+license="Read attached LICENSE.md"
+
+[[mods]]
+modId="${bundled_mod_id}"
+version="${mod_version}"
+displayName="${bundled_mod_name}"
+logoFile="createthrusters_bundled.png"
+authors="${mod_authors}"
+description="${bundled_mod_description}"
+
+[[dependencies.${bundled_mod_id}]]
+modId="neoforge"
+type="required"
+versionRange="[${neoforge_version},)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.${bundled_mod_id}]]
+modId="minecraft"
+type="required"
+versionRange="[${minecraft_version}]"
+ordering="NONE"
+side="BOTH"

@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:industrial_motor",
+  "properties": {
+    "sable:mass": 2.0
+  }
+}

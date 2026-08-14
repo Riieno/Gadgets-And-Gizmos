@@ -1,0 +1,22 @@
+{
+    "credit": "Made with Blockbench",
+    "textures": {
+        "heads": "createthrusters:block/aileron_bearing/heads",
+        "particle": "createthrusters:block/aileron_bearing/heads"
+    },
+    "elements": [
+        {
+            "name": "orangehead",
+            "from": [0, 0, 0],
+            "to": [4, 16, 16],
+            "faces": {
+                "north": {"uv": [0, 8, 8, 10], "rotation": 90, "texture": "#heads"},
+                "east":  {"uv": [0, 0, 8, 8], "texture": "#heads"},
+                "south": {"uv": [0, 10, 8, 8], "rotation": 90, "texture": "#heads"},
+                "west":  {"uv": [0, 0, 8, 8], "texture": "#heads"},
+                "up":    {"uv": [0, 10, 8, 8], "rotation": 90, "texture": "#heads"},
+                "down":  {"uv": [0, 10, 8, 8], "rotation": 90, "texture": "#heads"}
+            }
+        }
+    ]
+}

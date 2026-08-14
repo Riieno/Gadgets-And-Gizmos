@@ -1,0 +1,177 @@
+{
+  "format_version": "1.21.6",
+  "credit": "Create Gadgets & Gizmos entity launcher heavy Create-style mount",
+  "render_type": "minecraft:cutout_mipped",
+  "texture_size": [32, 32],
+  "textures": {
+    "iron": "createthrusters:block/ct/industrial_iron_block",
+    "iron_top": "createthrusters:block/ct/industrial_iron_block_top",
+    "andesite": "create:block/andesite_casing",
+    "brass": "create:block/brass_casing",
+    "copper": "minecraft:block/copper_block",
+    "dark": "minecraft:block/deepslate_tiles",
+    "axis": "create:block/axis",
+    "axis_top": "create:block/axis_top",
+    "bearing": "createthrusters:block/thruster_bearing/metal_bearing_plate",
+    "thruster": "createthrusters:block/thruster/thruster_base",
+    "particle": "createthrusters:block/ct/industrial_iron_block"
+  },
+  "elements": [
+    {
+      "name": "wide_black_mounting_foot",
+      "from": [0, 0, 0],
+      "to": [16, 2, 16],
+      "faces": {
+        "north": {"uv": [0, 14, 16, 16], "texture": "#dark"},
+        "east": {"uv": [0, 14, 16, 16], "texture": "#dark"},
+        "south": {"uv": [0, 14, 16, 16], "texture": "#dark"},
+        "west": {"uv": [0, 14, 16, 16], "texture": "#dark"},
+        "up": {"uv": [0, 0, 16, 16], "texture": "#iron_top"},
+        "down": {"uv": [0, 0, 16, 16], "texture": "#dark"}
+      }
+    },
+    {
+      "name": "thick_andesite_base",
+      "from": [1.5, 2, 1.5],
+      "to": [14.5, 6, 14.5],
+      "faces": {
+        "north": {"uv": [1, 10, 15, 14], "texture": "#andesite"},
+        "east": {"uv": [1, 10, 15, 14], "texture": "#andesite"},
+        "south": {"uv": [1, 10, 15, 14], "texture": "#andesite"},
+        "west": {"uv": [1, 10, 15, 14], "texture": "#andesite"},
+        "up": {"uv": [1, 1, 15, 15], "texture": "#bearing"},
+        "down": {"uv": [1, 1, 15, 15], "texture": "#iron"}
+      }
+    },
+    {
+      "name": "industrial_center_socket",
+      "from": [4, 6, 4],
+      "to": [12, 8, 12],
+      "faces": {
+        "north": {"uv": [4, 8, 12, 10], "texture": "#iron"},
+        "east": {"uv": [4, 8, 12, 10], "texture": "#iron"},
+        "south": {"uv": [4, 8, 12, 10], "texture": "#iron"},
+        "west": {"uv": [4, 8, 12, 10], "texture": "#iron"},
+        "up": {"uv": [4, 4, 12, 12], "texture": "#axis_top"},
+        "down": {"uv": [4, 4, 12, 12], "texture": "#dark"}
+      }
+    },
+    {
+      "name": "left_copper_field_coil",
+      "from": [1.2, 5, 4],
+      "to": [3.2, 13, 12],
+      "faces": {
+        "north": {"uv": [12, 0, 14, 8], "texture": "#copper"},
+        "east": {"uv": [0, 0, 8, 8], "texture": "#copper"},
+        "south": {"uv": [14, 0, 16, 8], "texture": "#copper"},
+        "west": {"uv": [0, 8, 8, 16], "texture": "#copper"},
+        "up": {"uv": [8, 0, 10, 8], "texture": "#copper"},
+        "down": {"uv": [10, 0, 12, 8], "texture": "#dark"}
+      }
+    },
+    {
+      "name": "right_copper_field_coil",
+      "from": [12.8, 5, 4],
+      "to": [14.8, 13, 12],
+      "faces": {
+        "north": {"uv": [12, 0, 14, 8], "texture": "#copper"},
+        "east": {"uv": [0, 8, 8, 16], "texture": "#copper"},
+        "south": {"uv": [14, 0, 16, 8], "texture": "#copper"},
+        "west": {"uv": [0, 0, 8, 8], "texture": "#copper"},
+        "up": {"uv": [8, 0, 10, 8], "texture": "#copper"},
+        "down": {"uv": [10, 0, 12, 8], "texture": "#dark"}
+      }
+    },
+    {
+      "name": "left_front_yoke_leg",
+      "from": [2.5, 8, 1.5],
+      "to": [5, 16, 4],
+      "faces": {
+        "north": {"uv": [0, 0, 3, 8], "texture": "#iron"},
+        "east": {"uv": [3, 0, 6, 8], "texture": "#andesite"},
+        "south": {"uv": [6, 0, 9, 8], "texture": "#iron"},
+        "west": {"uv": [9, 0, 12, 8], "texture": "#dark"},
+        "up": {"uv": [0, 8, 3, 11], "texture": "#brass"},
+        "down": {"uv": [3, 8, 6, 11], "texture": "#dark"}
+      }
+    },
+    {
+      "name": "right_front_yoke_leg",
+      "from": [11, 8, 1.5],
+      "to": [13.5, 16, 4],
+      "faces": {
+        "north": {"uv": [0, 0, 3, 8], "texture": "#iron"},
+        "east": {"uv": [9, 0, 12, 8], "texture": "#dark"},
+        "south": {"uv": [6, 0, 9, 8], "texture": "#iron"},
+        "west": {"uv": [3, 0, 6, 8], "texture": "#andesite"},
+        "up": {"uv": [0, 8, 3, 11], "texture": "#brass"},
+        "down": {"uv": [3, 8, 6, 11], "texture": "#dark"}
+      }
+    },
+    {
+      "name": "front_yoke_bridge",
+      "from": [3.2, 15, 1.2],
+      "to": [12.8, 18, 4.2],
+      "faces": {
+        "north": {"uv": [3, 0, 13, 3], "texture": "#iron"},
+        "east": {"uv": [13, 0, 16, 3], "texture": "#andesite"},
+        "south": {"uv": [3, 3, 13, 6], "texture": "#iron"},
+        "west": {"uv": [0, 0, 3, 3], "texture": "#andesite"},
+        "up": {"uv": [3, 6, 13, 9], "texture": "#brass"},
+        "down": {"uv": [3, 9, 13, 12], "texture": "#dark"}
+      }
+    },
+    {
+      "name": "rear_machine_housing",
+      "from": [3.5, 7, 11],
+      "to": [12.5, 13.5, 15.5],
+      "faces": {
+        "north": {"uv": [0, 0, 9, 6], "texture": "#thruster"},
+        "east": {"uv": [9, 0, 13, 6], "texture": "#iron"},
+        "south": {"uv": [0, 6, 9, 12], "texture": "#thruster"},
+        "west": {"uv": [13, 0, 16, 6], "texture": "#iron"},
+        "up": {"uv": [0, 12, 9, 16], "texture": "#iron_top"},
+        "down": {"uv": [9, 12, 16, 16], "texture": "#dark"}
+      }
+    },
+    {
+      "name": "left_long_tie_rod",
+      "from": [2.4, 9.6, 4],
+      "to": [3.4, 11.2, 13.5],
+      "faces": {
+        "north": {"uv": [0, 0, 1, 2], "texture": "#axis"},
+        "east": {"uv": [1, 0, 10, 2], "texture": "#axis"},
+        "south": {"uv": [10, 0, 11, 2], "texture": "#axis"},
+        "west": {"uv": [1, 2, 10, 4], "texture": "#axis"},
+        "up": {"uv": [1, 4, 10, 5], "texture": "#axis"},
+        "down": {"uv": [1, 5, 10, 6], "texture": "#axis"}
+      }
+    },
+    {
+      "name": "right_long_tie_rod",
+      "from": [12.6, 9.6, 4],
+      "to": [13.6, 11.2, 13.5],
+      "faces": {
+        "north": {"uv": [0, 0, 1, 2], "texture": "#axis"},
+        "east": {"uv": [1, 2, 10, 4], "texture": "#axis"},
+        "south": {"uv": [10, 0, 11, 2], "texture": "#axis"},
+        "west": {"uv": [1, 0, 10, 2], "texture": "#axis"},
+        "up": {"uv": [1, 4, 10, 5], "texture": "#axis"},
+        "down": {"uv": [1, 5, 10, 6], "texture": "#axis"}
+      }
+    },
+    {
+      "name": "front_brass_cap",
+      "from": [5, 10.5, 0.4],
+      "to": [11, 13.5, 2],
+      "faces": {
+        "north": {"uv": [5, 5, 11, 8], "texture": "#brass"},
+        "east": {"uv": [11, 5, 13, 8], "texture": "#brass"},
+        "south": {"uv": [5, 8, 11, 11], "texture": "#brass"},
+        "west": {"uv": [13, 5, 15, 8], "texture": "#brass"},
+        "up": {"uv": [5, 11, 11, 13], "texture": "#brass"},
+        "down": {"uv": [5, 13, 11, 15], "texture": "#dark"}
+      }
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "variants": {
+    "facing=up": {
+      "model": "createthrusters:block/entity_launcher_anchor",
+      "x": 270,
+      "uvlock": true
+    },
+    "facing=down": {
+      "model": "createthrusters:block/entity_launcher_anchor",
+      "x": 90,
+      "uvlock": true
+    },
+    "facing=north": {
+      "model": "createthrusters:block/entity_launcher_anchor",
+      "uvlock": true
+    },
+    "facing=south": {
+      "model": "createthrusters:block/entity_launcher_anchor",
+      "y": 180,
+      "uvlock": true
+    },
+    "facing=east": {
+      "model": "createthrusters:block/entity_launcher_anchor",
+      "y": 90,
+      "uvlock": true
+    },
+    "facing=west": {
+      "model": "createthrusters:block/entity_launcher_anchor",
+      "y": 270,
+      "uvlock": true
+    }
+  }
+}

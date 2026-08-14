@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "IBI",
+    "ACA",
+    "ISI"
+  ],
+  "key": {
+    "I": { "item": "create:industrial_iron_block" },
+    "B": { "item": "create:brass_casing" },
+    "A": { "item": "create:andesite_alloy" },
+    "C": { "item": "createthrusters:andesite_cable" },
+    "S": { "item": "create:shaft" }
+  },
+  "result": {
+    "id": "createthrusters:industrial_motor",
+    "count": 1
+  }
+}

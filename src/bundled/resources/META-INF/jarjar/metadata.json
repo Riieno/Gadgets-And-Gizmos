@@ -1,0 +1,28 @@
+{
+  "jars": [
+    {
+      "identifier": {
+        "group": "${mod_group_id}",
+        "artifact": "${mod_id}"
+      },
+      "version": {
+        "range": "[${mod_version},)",
+        "artifactVersion": "${mod_version}"
+      },
+      "path": "${addon_nested_jar_path}",
+      "isObfuscated": false
+    },
+    {
+      "identifier": {
+        "group": "${mod_group_id}",
+        "artifact": "${library_mod_id}"
+      },
+      "version": {
+        "range": "[${mod_version},)",
+        "artifactVersion": "${mod_version}"
+      },
+      "path": "${library_nested_jar_path}",
+      "isObfuscated": false
+    }
+  ]
+}

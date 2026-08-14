@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " M ",
+    "PBP",
+    " X "
+  ],
+  "key": {
+    "M": { "item": "minecraft:fire_charge" },
+    "P": { "item": "createthrusters:processing_upgrade_smoking_t3" },
+    "B": { "item": "create:brass_sheet" },
+    "X": { "item": "create:blaze_cake" }
+  },
+  "result": {
+    "id": "createthrusters:processing_upgrade_smoking_t4",
+    "count": 1
+  }
+}

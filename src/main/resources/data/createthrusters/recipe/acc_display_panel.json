@@ -1,0 +1,6 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": ["BB", "BB"],
+  "key": { "B": { "item": "createthrusters:acc_display" } },
+  "result": { "id": "createthrusters:acc_display_panel", "count": 8 }
+}

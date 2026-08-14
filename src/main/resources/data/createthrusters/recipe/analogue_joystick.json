@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "redstone",
+  "ingredients": [
+    { "item": "simulated:throttle_lever" },
+    { "item": "simulated:throttle_lever" }
+  ],
+  "result": {
+    "id": "createthrusters:analogue_joystick",
+    "count": 1
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "type": "minecraft:block",
+  "pools": [{
+    "rolls": 1,
+    "conditions": [{ "condition": "minecraft:survives_explosion" }],
+    "entries": [{ "type": "minecraft:item", "name": "createthrusters:acc_display_panel" }]
+  }],
+  "random_sequence": "createthrusters:blocks/acc_display_panel"
+}

@@ -1,0 +1,152 @@
+{
+  "format_version": "1.21.11",
+  "credit": "Made with Blockbench",
+  "textures": {
+    "0": "createthrusters:block/ct/industrial_iron_block",
+    "1": "createthrusters:block/ct/industrial_iron_block_top",
+    "2": "createthrusters:block/ct/link_details",
+    "particle": "createthrusters:block/ct/industrial_iron_block"
+  },
+  "elements": [
+    {
+      "from": [
+        2,
+        0,
+        2
+      ],
+      "to": [
+        14,
+        5,
+        14
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            2,
+            11,
+            14,
+            16
+          ],
+          "texture": "#0"
+        },
+        "east": {
+          "uv": [
+            2,
+            11,
+            14,
+            16
+          ],
+          "texture": "#0"
+        },
+        "south": {
+          "uv": [
+            2,
+            11,
+            14,
+            16
+          ],
+          "texture": "#0"
+        },
+        "west": {
+          "uv": [
+            2,
+            11,
+            14,
+            16
+          ],
+          "texture": "#0"
+        },
+        "up": {
+          "uv": [
+            2,
+            2,
+            14,
+            14
+          ],
+          "texture": "#1"
+        },
+        "down": {
+          "uv": [
+            2,
+            2,
+            14,
+            14
+          ],
+          "texture": "#0"
+        }
+      }
+    },
+    {
+      "from": [
+        3,
+        5,
+        3
+      ],
+      "to": [
+        13,
+        7,
+        13
+      ],
+      "faces": {
+        "north": {
+          "uv": [
+            8.5,
+            8.5,
+            11.5,
+            15.5
+          ],
+          "rotation": 270,
+          "texture": "#2"
+        },
+        "east": {
+          "uv": [
+            8.5,
+            8.5,
+            11.5,
+            15.5
+          ],
+          "rotation": 270,
+          "texture": "#2"
+        },
+        "south": {
+          "uv": [
+            8.5,
+            8.5,
+            11.5,
+            15.5
+          ],
+          "rotation": 270,
+          "texture": "#2"
+        },
+        "west": {
+          "uv": [
+            8.5,
+            8.5,
+            11.5,
+            15.5
+          ],
+          "rotation": 270,
+          "texture": "#2"
+        },
+        "up": {
+          "uv": [
+            0.5,
+            8.5,
+            7.5,
+            15.5
+          ],
+          "texture": "#2"
+        },
+        "down": {
+          "uv": [
+            0.5,
+            8.5,
+            7.5,
+            15.5
+          ],
+          "texture": "#2"
+        }
+      }
+    }
+  ]
+}

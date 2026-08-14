@@ -1,0 +1,38 @@
+{
+  "multipart": [
+    { "when": { "facing": "down", "show_links": "true" }, "apply": { "model": "createthrusters:block/double_button/links", "x": 180, "y": 180 } },
+    { "when": { "facing": "east", "show_links": "true" }, "apply": { "model": "createthrusters:block/double_button/links", "x": 270, "y": 270 } },
+    { "when": { "facing": "north", "show_links": "true" }, "apply": { "model": "createthrusters:block/double_button/links", "x": 270, "y": 180 } },
+    { "when": { "facing": "south", "show_links": "true" }, "apply": { "model": "createthrusters:block/double_button/links", "x": 270 } },
+    { "when": { "facing": "up", "show_links": "true" }, "apply": { "model": "createthrusters:block/double_button/links", "y": 180 } },
+    { "when": { "facing": "west", "show_links": "true" }, "apply": { "model": "createthrusters:block/double_button/links", "x": 270, "y": 90 } },
+
+    { "when": { "facing": "down", "top_powered": "false" }, "apply": { "model": "createthrusters:block/double_button/button_top", "x": 180, "y": 180 } },
+    { "when": { "facing": "east", "top_powered": "false" }, "apply": { "model": "createthrusters:block/double_button/button_top", "x": 270, "y": 270 } },
+    { "when": { "facing": "north", "top_powered": "false" }, "apply": { "model": "createthrusters:block/double_button/button_top", "x": 270, "y": 180 } },
+    { "when": { "facing": "south", "top_powered": "false" }, "apply": { "model": "createthrusters:block/double_button/button_top", "x": 270 } },
+    { "when": { "facing": "up", "top_powered": "false" }, "apply": { "model": "createthrusters:block/double_button/button_top", "y": 180 } },
+    { "when": { "facing": "west", "top_powered": "false" }, "apply": { "model": "createthrusters:block/double_button/button_top", "x": 270, "y": 90 } },
+
+    { "when": { "facing": "down", "top_powered": "true" }, "apply": { "model": "createthrusters:block/double_button/button_top_pressed", "x": 180, "y": 180 } },
+    { "when": { "facing": "east", "top_powered": "true" }, "apply": { "model": "createthrusters:block/double_button/button_top_pressed", "x": 270, "y": 270 } },
+    { "when": { "facing": "north", "top_powered": "true" }, "apply": { "model": "createthrusters:block/double_button/button_top_pressed", "x": 270, "y": 180 } },
+    { "when": { "facing": "south", "top_powered": "true" }, "apply": { "model": "createthrusters:block/double_button/button_top_pressed", "x": 270 } },
+    { "when": { "facing": "up", "top_powered": "true" }, "apply": { "model": "createthrusters:block/double_button/button_top_pressed", "y": 180 } },
+    { "when": { "facing": "west", "top_powered": "true" }, "apply": { "model": "createthrusters:block/double_button/button_top_pressed", "x": 270, "y": 90 } },
+
+    { "when": { "facing": "down", "bottom_powered": "false" }, "apply": { "model": "createthrusters:block/double_button/button_bottom", "x": 180, "y": 180 } },
+    { "when": { "facing": "east", "bottom_powered": "false" }, "apply": { "model": "createthrusters:block/double_button/button_bottom", "x": 270, "y": 270 } },
+    { "when": { "facing": "north", "bottom_powered": "false" }, "apply": { "model": "createthrusters:block/double_button/button_bottom", "x": 270, "y": 180 } },
+    { "when": { "facing": "south", "bottom_powered": "false" }, "apply": { "model": "createthrusters:block/double_button/button_bottom", "x": 270 } },
+    { "when": { "facing": "up", "bottom_powered": "false" }, "apply": { "model": "createthrusters:block/double_button/button_bottom", "y": 180 } },
+    { "when": { "facing": "west", "bottom_powered": "false" }, "apply": { "model": "createthrusters:block/double_button/button_bottom", "x": 270, "y": 90 } },
+
+    { "when": { "facing": "down", "bottom_powered": "true" }, "apply": { "model": "createthrusters:block/double_button/button_bottom_pressed", "x": 180, "y": 180 } },
+    { "when": { "facing": "east", "bottom_powered": "true" }, "apply": { "model": "createthrusters:block/double_button/button_bottom_pressed", "x": 270, "y": 270 } },
+    { "when": { "facing": "north", "bottom_powered": "true" }, "apply": { "model": "createthrusters:block/double_button/button_bottom_pressed", "x": 270, "y": 180 } },
+    { "when": { "facing": "south", "bottom_powered": "true" }, "apply": { "model": "createthrusters:block/double_button/button_bottom_pressed", "x": 270 } },
+    { "when": { "facing": "up", "bottom_powered": "true" }, "apply": { "model": "createthrusters:block/double_button/button_bottom_pressed", "y": 180 } },
+    { "when": { "facing": "west", "bottom_powered": "true" }, "apply": { "model": "createthrusters:block/double_button/button_bottom_pressed", "x": 270, "y": 90 } }
+  ]
+}

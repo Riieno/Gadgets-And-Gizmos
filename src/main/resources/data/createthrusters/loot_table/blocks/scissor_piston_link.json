@@ -1,0 +1,5 @@
+{
+  "type": "minecraft:block",
+  "pools": [],
+  "random_sequence": "createthrusters:blocks/scissor_piston_link"
+}

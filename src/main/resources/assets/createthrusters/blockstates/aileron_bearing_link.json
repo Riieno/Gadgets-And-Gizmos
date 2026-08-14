@@ -1,0 +1,46 @@
+{
+  "variants": {
+    "facing=down,head=cyan": {
+      "model": "createthrusters:block/aileron_bearing/cyanhead_down"
+    },
+    "facing=down,head=orange": {
+      "model": "createthrusters:block/aileron_bearing/orangehead_down"
+    },
+    "facing=east,head=cyan": {
+      "model": "createthrusters:block/aileron_bearing/cyanhead",
+      "y": 180
+    },
+    "facing=east,head=orange": {
+      "model": "createthrusters:block/aileron_bearing/orangehead",
+      "y": 180
+    },
+    "facing=north,head=cyan": {
+      "model": "createthrusters:block/aileron_bearing/cyanhead",
+      "y": 90
+    },
+    "facing=north,head=orange": {
+      "model": "createthrusters:block/aileron_bearing/orangehead",
+      "y": 90
+    },
+    "facing=south,head=cyan": {
+      "model": "createthrusters:block/aileron_bearing/cyanhead",
+      "y": 270
+    },
+    "facing=south,head=orange": {
+      "model": "createthrusters:block/aileron_bearing/orangehead",
+      "y": 270
+    },
+    "facing=up,head=cyan": {
+      "model": "createthrusters:block/aileron_bearing/cyanhead_up"
+    },
+    "facing=up,head=orange": {
+      "model": "createthrusters:block/aileron_bearing/orangehead_up"
+    },
+    "facing=west,head=cyan": {
+      "model": "createthrusters:block/aileron_bearing/cyanhead"
+    },
+    "facing=west,head=orange": {
+      "model": "createthrusters:block/aileron_bearing/orangehead"
+    }
+  }
+}

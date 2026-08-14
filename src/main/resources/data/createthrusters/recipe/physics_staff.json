@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    { "item": "create:wrench" },
+    { "item": "simulated:honey_glue" },
+    { "item": "minecraft:slime_ball" }
+  ],
+  "result": {
+    "id": "createthrusters:physics_staff",
+    "count": 1
+  }
+}

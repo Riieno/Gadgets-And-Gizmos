@@ -1,0 +1,9 @@
+{
+  "replace": false,
+  "values": [
+    "createthrusters:blackstone_alloy_block",
+    "createthrusters:rcs_thruster",
+    "createthrusters:ship_dock",
+    "createthrusters:ship_coupler"
+  ]
+}

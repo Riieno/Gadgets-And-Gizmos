@@ -1,0 +1,5 @@
+{
+  "type": "createthrusters:player_mannequin_chests",
+  "conditions": [],
+  "chance": 0.05
+}

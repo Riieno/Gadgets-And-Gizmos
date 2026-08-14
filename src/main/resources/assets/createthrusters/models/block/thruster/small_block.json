@@ -1,0 +1,8 @@
+{
+  "parent": "createthrusters:block/thruster/truncated_thruster",
+  "render_type": "minecraft:cutout_mipped",
+  "textures": {
+    "0": "createthrusters:block/thruster/thruster_fluid_unpowered",
+    "particle": "createthrusters:block/thruster/thruster_solid_unpowered"
+  }
+}

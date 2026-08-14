@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "facing=up":    { "model": "createthrusters:block/advanced_data_link" },
+    "facing=down":  { "model": "createthrusters:block/advanced_data_link", "x": 180 },
+    "facing=north": { "model": "createthrusters:block/advanced_data_link", "x": 90 },
+    "facing=south": { "model": "createthrusters:block/advanced_data_link", "x": 90, "y": 180 },
+    "facing=west":  { "model": "createthrusters:block/advanced_data_link", "x": 90, "y": 270 },
+    "facing=east":  { "model": "createthrusters:block/advanced_data_link", "x": 90, "y": 90 }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "comparator_output": 14,
+  "description": {
+    "translate": "jukebox_song.createthrusters.twisted_alive"
+  },
+  "length_in_seconds": 311.09,
+  "sound_event": {
+    "sound_id": "createthrusters:music_disc.twisted_alive"
+  }
+}

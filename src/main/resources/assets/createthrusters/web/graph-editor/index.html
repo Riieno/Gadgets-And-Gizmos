@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Contraption Graph Workshop</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <div class="workshop-shell">
+    <!-- ======================================================##=========================================================
+
+    =======================================================================================================================
+                                                    HEADER / CONTROLS
+    =======================================================================================================================
+
+    ============================================================##===================================================== -->
+
+    <header class="topbar">
+      <img class="brand-logo" src="/gag_logo.png" alt="">
+      <div class="brand-copy">
+        <p>Create: Gadgets &amp; Gizmos</p>
+        <h1>Advanced Contraption Controller Graph Workshop</h1>
+      </div>
+      <div class="server-state">
+        <span class="signal-lamp" id="serverLamp"></span>
+        <div>
+          <small>LOCAL WORKBENCH</small>
+          <strong id="serverState">Connecting</strong>
+        </div>
+      </div>
+    </header>
+
+    <div class="toolrail">
+      <button class="tool-button primary" id="newButton">New manifest</button>
+      <button class="tool-button" id="openButton">Open file</button>
+      <button class="tool-button" id="downloadButton">Download</button>
+      <span class="rail-divider"></span>
+      <button class="tool-button" id="uploadButton">Upload file to server</button>
+      <button class="tool-button primary" id="saveServerButton">Save to server</button>
+      <button class="tool-button primary" id="shareButton" hidden>Upload and Share</button>
+      <button class="tool-button" id="installGameButton" hidden>Download into Game</button>
+      <input id="fileInput" type="file" accept=".json,application/json" hidden>
+    </div>
+
+    <!-- ======================================================##=========================================================
+
+    =======================================================================================================================
+                                                         WORKSPACE
+    =======================================================================================================================
+
+    ============================================================##===================================================== -->
+
+    <main class="workspace">
+      <aside class="library-panel">
+        <div class="panel-heading">
+          <div>
+            <small>INSTANCE STORAGE</small>
+            <h2>Shared graphs</h2>
+          </div>
+          <button class="icon-button" id="refreshButton" title="Refresh server manifests">↻</button>
+        </div>
+        <label class="filter-field">
+          <span>FILTER</span>
+          <input id="manifestFilter" type="search" placeholder="Graph name or id">
+        </label>
+        <div class="manifest-list" id="manifestList">
+          <p class="empty-message">No manifests loaded.</p>
+        </div>
+        <div class="manifest-meta">
+          <label for="graphSelect">GRAPH IN MANIFEST</label>
+          <select id="graphSelect"></select>
+          <label for="manifestName">MANIFEST NAME</label>
+          <input id="manifestName" maxlength="96" value="New Contraption Graph">
+          <p id="manifestOrigin">Unsaved local document</p>
+        </div>
+      </aside>
+
+      <!-- ======================================================##=========================================================
+
+      =======================================================================================================================
+                                                           EDITOR
+      =======================================================================================================================
+
+      ============================================================##===================================================== -->
+
+      <section class="editor-panel">
+        <div class="function-bar">
+          <div class="function-label">
+            <small>GRAPH SCOPE</small>
+            <strong>Functions</strong>
+          </div>
+          <div class="function-tabs" id="functionTabs"></div>
+          <button class="add-function" id="addFunctionButton">+ Function</button>
+        </div>
+        <div class="editor-mount" id="graphEditor">
+          <div class="editor-loading">
+            <div class="loading-cog"></div>
+            <span>Preparing node workshop…</span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ======================================================##=========================================================
+
+    =======================================================================================================================
+                                                           STATUS
+    =======================================================================================================================
+
+    ============================================================##===================================================== -->
+
+    <footer class="statusbar">
+      <div><span class="status-bolt">◆</span><span id="statusText">Starting workshop</span></div>
+      <div class="document-stats">
+        <span id="graphName">Main graph</span>
+        <span id="graphStats">0 nodes · 0 wires</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- ======================================================##=========================================================
+
+  =======================================================================================================================
+                                                          SCRIPTS
+  =======================================================================================================================
+
+  ============================================================##===================================================== -->
+
+  <script src="/vendor/riestat-plugin-studio.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

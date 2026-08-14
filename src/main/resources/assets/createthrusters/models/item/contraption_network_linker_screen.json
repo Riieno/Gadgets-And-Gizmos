@@ -1,0 +1,25 @@
+{
+  "textures": {
+    "screen": "createthrusters:item/contraption_network_linker_screen",
+    "particle": "createthrusters:item/contraption_network_linker_screen"
+  },
+  "elements": [
+    {
+      "from": [5.5, 10.5, 8.54],
+      "to": [11.5, 13.0, 8.56],
+      "shade": false,
+      "faces": {
+        "south": {
+          "uv": [5.5, 3.0, 11.5, 5.5],
+          "texture": "#screen",
+          "tintindex": 1
+        },
+        "north": {
+          "uv": [11.5, 3.0, 5.5, 5.5],
+          "texture": "#screen",
+          "tintindex": 1
+        }
+      }
+    }
+  ]
+}

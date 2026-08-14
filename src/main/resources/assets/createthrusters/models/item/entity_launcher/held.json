@@ -1,0 +1,40 @@
+{
+  "parent": "createthrusters:item/entity_launcher/body",
+  "display": {
+    "thirdperson_righthand": {
+      "rotation": [0, 0, -24],
+      "translation": [0.0, 2.7, 0.2],
+      "scale": [0.68, 0.68, 0.68]
+    },
+    "thirdperson_lefthand": {
+      "rotation": [0, 0, 24],
+      "translation": [0.0, 2.7, 0.2],
+      "scale": [0.68, 0.68, 0.68]
+    },
+    "firstperson_righthand": {
+      "rotation": [0, 0, 6],
+      "translation": [1.1, 2.2, -0.6],
+      "scale": [0.56, 0.56, 0.56]
+    },
+    "firstperson_lefthand": {
+      "rotation": [0, 0, -6],
+      "translation": [-1.1, 2.2, -0.6],
+      "scale": [0.56, 0.56, 0.56]
+    },
+    "gui": {
+      "rotation": [25, -52, 8],
+      "translation": [0.0, 0.25, 0.0],
+      "scale": [0.84, 0.84, 0.84]
+    },
+    "ground": {
+      "rotation": [0, 0, 0],
+      "translation": [0, 2, 0],
+      "scale": [0.5, 0.5, 0.5]
+    },
+    "fixed": {
+      "rotation": [0, 180, 0],
+      "translation": [0, 0, -2],
+      "scale": [0.9, 0.9, 0.9]
+    }
+  }
+}

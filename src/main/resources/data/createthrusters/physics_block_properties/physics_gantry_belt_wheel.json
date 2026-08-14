@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:physics_gantry_belt_wheel",
+  "properties": {
+    "sable:mass": 0.6
+  }
+}

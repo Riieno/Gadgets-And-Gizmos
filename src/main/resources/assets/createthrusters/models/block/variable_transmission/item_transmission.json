@@ -1,0 +1,7 @@
+{
+  "parent": "createthrusters:block/variable_transmission/item",
+  "textures": {
+    "casing": "createthrusters:block/variable_transmission/transmission_casing",
+    "opening": "createthrusters:block/variable_transmission/transmission_opening"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "type": "create:mechanical_crafting",
+  "accept_mirrored": false,
+  "category": "misc",
+  "key": {
+    "W": {
+      "item": "create:transmitter"
+    },
+    "B": {
+      "tag": "minecraft:buttons"
+    },
+    "E": {
+      "item": "create:electron_tube"
+    },
+    "A": {
+      "item": "create:andesite_alloy"
+    },
+    "P": {
+      "item": "createthrusters:computation_mechanism"
+    }
+  },
+  "pattern": [
+    "WWW ",
+    "BBBE",
+    "BBBE",
+    "APA "
+  ],
+  "result": {
+    "count": 1,
+    "id": "createthrusters:analogue_contraption_controller"
+  },
+  "show_notification": false
+}

@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    { "item": "create:cogwheel" },
+    { "item": "create:cogwheel" },
+    { "item": "create:belt_connector" }
+  ],
+  "result": {
+    "id": "createthrusters:physics_gantry_belt_wheel",
+    "count": 2
+  }
+}

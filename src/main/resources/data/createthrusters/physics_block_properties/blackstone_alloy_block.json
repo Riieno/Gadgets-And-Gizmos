@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:blackstone_alloy_block",
+  "properties": {
+    "sable:mass": 8.0
+  }
+}

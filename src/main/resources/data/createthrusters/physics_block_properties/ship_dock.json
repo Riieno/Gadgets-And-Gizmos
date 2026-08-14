@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:ship_dock",
+  "properties": {
+    "sable:mass": 1.0
+  }
+}

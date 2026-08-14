@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " M ",
+    "PBP",
+    " X "
+  ],
+  "key": {
+    "M": { "item": "minecraft:smoker" },
+    "P": { "item": "createthrusters:processing_upgrade_smoking_t1" },
+    "B": { "item": "create:brass_sheet" },
+    "X": { "item": "create:brass_sheet" }
+  },
+  "result": {
+    "id": "createthrusters:processing_upgrade_smoking_t2",
+    "count": 1
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "render_type": "minecraft:cutout_mipped",
+  "parent": "create:block/encased_cogwheel/block_top",
+  "textures": {
+    "1": "minecraft:block/stripped_spruce_log_top",
+    "4": "create:block/gearbox",
+    "casing": "createthrusters:block/andesite_casing",
+    "particle": "createthrusters:block/andesite_casing",
+    "side": "create:block/andesite_encased_cogwheel_side"
+  }
+}

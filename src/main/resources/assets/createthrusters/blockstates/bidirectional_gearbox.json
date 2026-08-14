@@ -1,0 +1,16 @@
+{
+  "multipart": [
+    {
+      "when": { "axis": "y" },
+      "apply": { "model": "createthrusters:block/bidirectional_gearbox", "uvlock": true }
+    },
+    {
+      "when": { "axis": "x" },
+      "apply": { "model": "createthrusters:block/bidirectional_gearbox", "x": 90, "y": 90, "uvlock": true }
+    },
+    {
+      "when": { "axis": "z" },
+      "apply": { "model": "createthrusters:block/bidirectional_gearbox", "x": 90, "y": 180, "uvlock": true }
+    }
+  ]
+}

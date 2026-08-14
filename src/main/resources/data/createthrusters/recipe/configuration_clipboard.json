@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "tools",
+  "ingredients": [
+    { "item": "create:clipboard" },
+    { "item": "create:brass_sheet" }
+  ],
+  "result": {
+    "id": "createthrusters:configuration_clipboard",
+    "count": 1
+  }
+}

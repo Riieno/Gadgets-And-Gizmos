@@ -1,0 +1,35 @@
+{
+  "multipart": [
+    {
+      "when": {
+        "axis": "x"
+      },
+      "apply": {
+        "model": "createthrusters:block/variable_transmission/block_transmission",
+        "x": 90,
+        "y": 90,
+        "uvlock": true
+      }
+    },
+    {
+      "when": {
+        "axis": "y"
+      },
+      "apply": {
+        "model": "createthrusters:block/variable_transmission/block_transmission",
+        "uvlock": true
+      }
+    },
+    {
+      "when": {
+        "axis": "z"
+      },
+      "apply": {
+        "model": "createthrusters:block/variable_transmission/block_transmission",
+        "x": 90,
+        "y": 180,
+        "uvlock": true
+      }
+    }
+  ]
+}

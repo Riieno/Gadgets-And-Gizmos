@@ -1,0 +1,20 @@
+{
+  "textures": [
+    "createthrusters:plume/plume1",
+    "createthrusters:plume/plume2",
+    "createthrusters:plume/plume3",
+    "createthrusters:plume/plume4",
+    "createthrusters:plume/plume5",
+    "createthrusters:plume/plume6",
+    "createthrusters:smoke/big_smoke_2",
+    "createthrusters:smoke/big_smoke_3",
+    "createthrusters:smoke/big_smoke_4",
+    "createthrusters:smoke/big_smoke_5",
+    "createthrusters:smoke/big_smoke_6",
+    "createthrusters:smoke/big_smoke_7",
+    "createthrusters:smoke/big_smoke_8",
+    "createthrusters:smoke/big_smoke_9",
+    "createthrusters:smoke/big_smoke_10",
+    "createthrusters:smoke/big_smoke_11"
+  ]
+}

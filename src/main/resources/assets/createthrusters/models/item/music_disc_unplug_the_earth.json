@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "createthrusters:item/music_disc_unplug_the_earth"
+  }
+}

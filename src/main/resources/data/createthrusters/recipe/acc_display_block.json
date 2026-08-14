@@ -1,0 +1,9 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": ["BBB", "BZB", "BBB"],
+  "key": {
+    "B": { "item": "createthrusters:acc_display" },
+    "Z": { "tag": "c:ingots/zinc" }
+  },
+  "result": { "id": "createthrusters:acc_display_block", "count": 6 }
+}

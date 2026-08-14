@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:physics_gantry_carriage",
+  "properties": {
+    "sable:mass": 1.0
+  }
+}

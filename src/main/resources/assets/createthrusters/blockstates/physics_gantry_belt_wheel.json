@@ -1,0 +1,17 @@
+{
+  "variants": {
+    "axis=x": {
+      "model": "createthrusters:block/physics_gantry_belt_wheel/block_top_bottom",
+      "x": 90,
+      "y": 90
+    },
+    "axis=y": {
+      "model": "createthrusters:block/physics_gantry_belt_wheel/block_top_bottom"
+    },
+    "axis=z": {
+      "model": "createthrusters:block/physics_gantry_belt_wheel/block_top_bottom",
+      "x": 90,
+      "y": 180
+    }
+  }
+}

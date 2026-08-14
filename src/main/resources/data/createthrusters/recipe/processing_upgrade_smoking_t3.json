@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " M ",
+    "PBP",
+    " X "
+  ],
+  "key": {
+    "M": { "item": "minecraft:blaze_powder" },
+    "P": { "item": "createthrusters:processing_upgrade_smoking_t2" },
+    "B": { "item": "create:brass_sheet" },
+    "X": { "item": "create:precision_mechanism" }
+  },
+  "result": {
+    "id": "createthrusters:processing_upgrade_smoking_t3",
+    "count": 1
+  }
+}

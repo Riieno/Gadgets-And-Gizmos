@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "tools",
+  "ingredients": [
+    { "item": "create:clipboard" },
+    { "item": "minecraft:chest" }
+  ],
+  "result": {
+    "id": "createthrusters:shipping_manifest",
+    "count": 1
+  }
+}

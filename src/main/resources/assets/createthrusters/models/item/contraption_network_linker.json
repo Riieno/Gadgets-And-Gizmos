@@ -1,0 +1,6 @@
+{
+  "parent": "item/generated",
+  "textures": {
+    "layer0": "createthrusters:item/contraption_network_linker_unlinked"
+  }
+}

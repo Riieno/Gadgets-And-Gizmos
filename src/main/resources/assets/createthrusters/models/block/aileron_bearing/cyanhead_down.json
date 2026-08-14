@@ -1,0 +1,22 @@
+{
+  "credit": "Made with Blockbench",
+  "textures": {
+    "heads": "createthrusters:block/aileron_bearing/heads",
+    "particle": "createthrusters:block/aileron_bearing/heads"
+  },
+  "elements": [
+    {
+      "name": "cyanhead_down",
+      "from": [0, 0, 0],
+      "to": [16, 4, 16],
+      "faces": {
+        "north": {"uv": [8, 8, 16, 10], "texture": "#heads"},
+        "east": {"uv": [8, 8, 16, 10], "texture": "#heads"},
+        "south": {"uv": [8, 8, 16, 10], "texture": "#heads"},
+        "west": {"uv": [8, 8, 16, 10], "texture": "#heads"},
+        "up": {"uv": [8, 0, 16, 8], "texture": "#heads"},
+        "down": {"uv": [8, 0, 16, 8], "texture": "#heads"}
+      }
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " P ",
+    "BFB",
+    " A "
+  ],
+  "key": {
+    "P": { "item": "create:fluid_pipe" },
+    "B": { "item": "create:brass_sheet" },
+    "F": { "item": "create:encased_fan" },
+    "A": { "item": "create:andesite_alloy" }
+  },
+  "result": {
+    "id": "createthrusters:fuel_oxidizer",
+    "count": 1
+  }
+}

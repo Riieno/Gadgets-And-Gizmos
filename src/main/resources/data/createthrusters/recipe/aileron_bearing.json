@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    { "item": "createthrusters:thruster_bearing" },
+    { "item": "create:gearbox" },
+    { "item": "createthrusters:thruster_bearing" }
+  ],
+  "result": {
+    "id": "createthrusters:aileron_bearing",
+    "count": 1
+  }
+}

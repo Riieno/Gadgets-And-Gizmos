@@ -1,0 +1,56 @@
+{
+  "variants": {
+    "facing=up,powered=false": {
+      "model": "createthrusters:block/claw/block"
+    },
+    "facing=up,powered=true": {
+      "model": "createthrusters:block/claw/block_powered"
+    },
+    "facing=down,powered=false": {
+      "model": "createthrusters:block/claw/block",
+      "x": 180
+    },
+    "facing=down,powered=true": {
+      "model": "createthrusters:block/claw/block_powered",
+      "x": 180
+    },
+    "facing=north,powered=false": {
+      "model": "createthrusters:block/claw/block",
+      "x": 90
+    },
+    "facing=north,powered=true": {
+      "model": "createthrusters:block/claw/block_powered",
+      "x": 90
+    },
+    "facing=south,powered=false": {
+      "model": "createthrusters:block/claw/block",
+      "x": 90,
+      "y": 180
+    },
+    "facing=south,powered=true": {
+      "model": "createthrusters:block/claw/block_powered",
+      "x": 90,
+      "y": 180
+    },
+    "facing=east,powered=false": {
+      "model": "createthrusters:block/claw/block",
+      "x": 90,
+      "y": 90
+    },
+    "facing=east,powered=true": {
+      "model": "createthrusters:block/claw/block_powered",
+      "x": 90,
+      "y": 90
+    },
+    "facing=west,powered=false": {
+      "model": "createthrusters:block/claw/block",
+      "x": 90,
+      "y": 270
+    },
+    "facing=west,powered=true": {
+      "model": "createthrusters:block/claw/block_powered",
+      "x": 90,
+      "y": 270
+    }
+  }
+}

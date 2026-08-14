@@ -1,0 +1,149 @@
+{
+	"parent": "minecraft:block/block",
+	"textures": {
+		"particle": "createthrusters:block/alternator/alternator_vu_needle",
+		"needle": "createthrusters:block/alternator/alternator_vu_needle"
+	},
+	"elements": [
+		{
+			"name": "industrial_motor_stress_needle",
+			"from": [
+				15.36,
+				5.74,
+				7.14
+			],
+			"to": [
+				15.42,
+				9.72,
+				7.46
+			],
+			"shade": false,
+			"faces": {
+				"north": {
+					"uv": [
+						7,
+						1,
+						9,
+						15
+					],
+					"texture": "#needle"
+				},
+				"east": {
+					"uv": [
+						7,
+						1,
+						9,
+						15
+					],
+					"texture": "#needle"
+				},
+				"south": {
+					"uv": [
+						7,
+						1,
+						9,
+						15
+					],
+					"texture": "#needle"
+				},
+				"west": {
+					"uv": [
+						7,
+						1,
+						9,
+						15
+					],
+					"texture": "#needle"
+				},
+				"up": {
+					"uv": [
+						7,
+						1,
+						9,
+						15
+					],
+					"texture": "#needle"
+				},
+				"down": {
+					"uv": [
+						7,
+						1,
+						9,
+						15
+					],
+					"texture": "#needle"
+				}
+			}
+		},
+		{
+			"name": "industrial_motor_stress_needle_hub",
+			"from": [
+				15.35,
+				5.36,
+				6.88
+			],
+			"to": [
+				15.43,
+				6.18,
+				7.72
+			],
+			"shade": false,
+			"faces": {
+				"north": {
+					"uv": [
+						5,
+						5,
+						11,
+						11
+					],
+					"texture": "#needle"
+				},
+				"east": {
+					"uv": [
+						5,
+						5,
+						11,
+						11
+					],
+					"texture": "#needle"
+				},
+				"south": {
+					"uv": [
+						5,
+						5,
+						11,
+						11
+					],
+					"texture": "#needle"
+				},
+				"west": {
+					"uv": [
+						5,
+						5,
+						11,
+						11
+					],
+					"texture": "#needle"
+				},
+				"up": {
+					"uv": [
+						5,
+						5,
+						11,
+						11
+					],
+					"texture": "#needle"
+				},
+				"down": {
+					"uv": [
+						5,
+						5,
+						11,
+						11
+					],
+					"texture": "#needle"
+				}
+			}
+		}
+	]
+}

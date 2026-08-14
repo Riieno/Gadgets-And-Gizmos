@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "BPB",
+    "S S",
+    "BRB"
+  ],
+  "key": {
+    "B": { "item": "create:brass_ingot" },
+    "P": { "item": "create:precision_mechanism" },
+    "S": { "item": "create:shaft" },
+    "R": { "item": "minecraft:redstone" }
+  },
+  "result": {
+    "id": "createthrusters:bidirectional_gearbox",
+    "count": 1
+  }
+}

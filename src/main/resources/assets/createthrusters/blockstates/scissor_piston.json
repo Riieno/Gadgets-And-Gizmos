@@ -1,0 +1,60 @@
+{
+  "variants": {
+    "assembled=false,facing=down": {
+      "model": "createthrusters:block/scissor_piston/block",
+      "x": 180,
+      "y": 90
+    },
+    "assembled=false,facing=east": {
+      "model": "createthrusters:block/scissor_piston/block",
+      "x": 90,
+      "y": 90
+    },
+    "assembled=false,facing=north": {
+      "model": "createthrusters:block/scissor_piston/block",
+      "x": 90
+    },
+    "assembled=false,facing=south": {
+      "model": "createthrusters:block/scissor_piston/block",
+      "x": 90,
+      "y": 180
+    },
+    "assembled=false,facing=up": {
+      "model": "createthrusters:block/scissor_piston/block",
+      "y": 90
+    },
+    "assembled=false,facing=west": {
+      "model": "createthrusters:block/scissor_piston/block",
+      "x": 90,
+      "y": 270
+    },
+    "assembled=true,facing=down": {
+      "model": "createthrusters:block/scissor_piston/block",
+      "x": 180,
+      "y": 90
+    },
+    "assembled=true,facing=east": {
+      "model": "createthrusters:block/scissor_piston/block",
+      "x": 90,
+      "y": 90
+    },
+    "assembled=true,facing=north": {
+      "model": "createthrusters:block/scissor_piston/block",
+      "x": 90
+    },
+    "assembled=true,facing=south": {
+      "model": "createthrusters:block/scissor_piston/block",
+      "x": 90,
+      "y": 180
+    },
+    "assembled=true,facing=up": {
+      "model": "createthrusters:block/scissor_piston/block",
+      "y": 90
+    },
+    "assembled=true,facing=west": {
+      "model": "createthrusters:block/scissor_piston/block",
+      "x": 90,
+      "y": 270
+    }
+  }
+}

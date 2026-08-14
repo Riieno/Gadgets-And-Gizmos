@@ -1,0 +1,32 @@
+{
+  "type": "create:mixing",
+  "ingredients": [
+    {
+      "item": "minecraft:glass_pane"
+    },
+    {
+      "item": "minecraft:redstone"
+    },
+    {
+      "type": "neoforge:compound",
+      "children": [
+        {
+          "tag": "c:dusts/ender_pearl"
+        },
+        {
+          "tag": "c:dusts/flux"
+        },
+        {
+          "tag": "c:dusts/amethyst"
+        }
+      ]
+    }
+  ],
+  "results": [
+    {
+      "id": "createthrusters:thruster_lense",
+      "count": 1
+    }
+  ],
+  "heatRequirement": "heated"
+}

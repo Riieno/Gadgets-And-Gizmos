@@ -1,0 +1,9 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "tools",
+  "ingredients": [
+    {"item": "create:schedule"},
+    {"item": "minecraft:compass"}
+  ],
+  "result": {"id": "createthrusters:shipping_schedule", "count": 1}
+}

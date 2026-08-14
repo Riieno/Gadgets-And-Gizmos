@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    { "item": "create:display_link" },
+    { "item": "createthrusters:computation_mechanism" }
+  ],
+  "result": {
+    "id": "createthrusters:gyroscope_link",
+    "count": 1
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": ["MMM", "BBB", "MMM"],
+  "key": {
+    "M": { "item": "createthrusters:ship_control_module" },
+    "B": { "item": "createthrusters:acc_display_block" }
+  },
+  "result": { "id": "createthrusters:acc_display_slab", "count": 6 }
+}

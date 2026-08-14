@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "redstone",
+  "ingredients": [
+    { "item": "createthrusters:double_button" },
+    { "item": "create:copycat_panel" }
+  ],
+  "result": {
+    "id": "createthrusters:copycat_double_button",
+    "count": 1
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "textures": {
+    "particle": "createthrusters:block/advanced_contraption_controller/advanced_contraption_controller_base"
+  },
+  "elements": []
+}

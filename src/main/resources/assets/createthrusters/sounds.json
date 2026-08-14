@@ -1,0 +1,47 @@
+{
+  "block.thruster.idle": {
+    "sounds": [
+      {
+        "attenuation_distance": 24,
+        "name": "createthrusters:block/thruster/idle_loop"
+      }
+    ],
+    "subtitle": "createthrusters.subtitle.block.thruster.idle"
+  },
+  "block.thruster.heat": {
+    "sounds": [
+      {
+        "attenuation_distance": 20,
+        "name": "createthrusters:block/thruster/heat_start"
+      }
+    ],
+    "subtitle": "createthrusters.subtitle.block.thruster.heat"
+  },
+  "music_disc.kinetic_currency": {
+    "sounds": [
+      {
+        "attenuation_distance": 7,
+        "name": "createthrusters:music_disc/kinetic_currency",
+        "stream": true
+      }
+    ]
+  },
+  "music_disc.twisted_alive": {
+    "sounds": [
+      {
+        "attenuation_distance": 7,
+        "name": "createthrusters:music_disc/twisted_alive",
+        "stream": true
+      }
+    ]
+  },
+  "music_disc.unplug_the_earth": {
+    "sounds": [
+      {
+        "attenuation_distance": 7,
+        "name": "createthrusters:music_disc/unplug_the_earth",
+        "stream": true
+      }
+    ]
+  }
+}

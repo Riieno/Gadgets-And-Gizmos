@@ -1,0 +1,10 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": ["AZA", "BBB", "AZA"],
+  "key": {
+    "A": { "item": "createthrusters:blackstone_alloy" },
+    "Z": { "tag": "c:plates/obsidian" },
+    "B": { "item": "create:display_board" }
+  },
+  "result": { "id": "createthrusters:acc_display", "count": 6 }
+}

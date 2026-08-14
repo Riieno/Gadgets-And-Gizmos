@@ -1,0 +1,20 @@
+{
+  "variants": {
+    "attached=false,facing=north,powered=false": { "model": "createthrusters:block/ship_coupler/block" },
+    "attached=false,facing=east,powered=false": { "model": "createthrusters:block/ship_coupler/block", "y": 90 },
+    "attached=false,facing=south,powered=false": { "model": "createthrusters:block/ship_coupler/block", "y": 180 },
+    "attached=false,facing=west,powered=false": { "model": "createthrusters:block/ship_coupler/block", "y": 270 },
+    "attached=false,facing=north,powered=true": { "model": "createthrusters:block/ship_coupler/block_powered" },
+    "attached=false,facing=east,powered=true": { "model": "createthrusters:block/ship_coupler/block_powered", "y": 90 },
+    "attached=false,facing=south,powered=true": { "model": "createthrusters:block/ship_coupler/block_powered", "y": 180 },
+    "attached=false,facing=west,powered=true": { "model": "createthrusters:block/ship_coupler/block_powered", "y": 270 },
+    "attached=true,facing=north,powered=false": { "model": "createthrusters:block/ship_coupler/block_attached" },
+    "attached=true,facing=east,powered=false": { "model": "createthrusters:block/ship_coupler/block_attached", "y": 90 },
+    "attached=true,facing=south,powered=false": { "model": "createthrusters:block/ship_coupler/block_attached", "y": 180 },
+    "attached=true,facing=west,powered=false": { "model": "createthrusters:block/ship_coupler/block_attached", "y": 270 },
+    "attached=true,facing=north,powered=true": { "model": "createthrusters:block/ship_coupler/block_powered_attached" },
+    "attached=true,facing=east,powered=true": { "model": "createthrusters:block/ship_coupler/block_powered_attached", "y": 90 },
+    "attached=true,facing=south,powered=true": { "model": "createthrusters:block/ship_coupler/block_powered_attached", "y": 180 },
+    "attached=true,facing=west,powered=true": { "model": "createthrusters:block/ship_coupler/block_powered_attached", "y": 270 }
+  }
+}

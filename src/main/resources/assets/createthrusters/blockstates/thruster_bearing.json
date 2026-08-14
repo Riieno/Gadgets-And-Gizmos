@@ -1,0 +1,108 @@
+{
+  "variants": {
+    "assembled=false,axis_along_first=false,facing=down": {
+      "model": "createthrusters:block/thruster_bearing/block",
+      "x": 180
+    },
+    "assembled=false,axis_along_first=false,facing=east": {
+      "model": "createthrusters:block/thruster_bearing/block",
+      "x": 90,
+      "y": 90
+    },
+    "assembled=false,axis_along_first=false,facing=north": {
+      "model": "createthrusters:block/thruster_bearing/block",
+      "x": 90
+    },
+    "assembled=false,axis_along_first=false,facing=south": {
+      "model": "createthrusters:block/thruster_bearing/block",
+      "x": 90,
+      "y": 180
+    },
+    "assembled=false,axis_along_first=false,facing=up": {
+      "model": "createthrusters:block/thruster_bearing/block"
+    },
+    "assembled=false,axis_along_first=false,facing=west": {
+      "model": "createthrusters:block/thruster_bearing/block",
+      "x": 90,
+      "y": 270
+    },
+    "assembled=false,axis_along_first=true,facing=down": {
+      "model": "createthrusters:block/thruster_bearing/block_axis",
+      "x": 180
+    },
+    "assembled=false,axis_along_first=true,facing=east": {
+      "model": "createthrusters:block/thruster_bearing/block_axis",
+      "x": 90,
+      "y": 90
+    },
+    "assembled=false,axis_along_first=true,facing=north": {
+      "model": "createthrusters:block/thruster_bearing/block_axis",
+      "x": 90
+    },
+    "assembled=false,axis_along_first=true,facing=south": {
+      "model": "createthrusters:block/thruster_bearing/block_axis",
+      "x": 90,
+      "y": 180
+    },
+    "assembled=false,axis_along_first=true,facing=up": {
+      "model": "createthrusters:block/thruster_bearing/block_axis"
+    },
+    "assembled=false,axis_along_first=true,facing=west": {
+      "model": "createthrusters:block/thruster_bearing/block_axis",
+      "x": 90,
+      "y": 270
+    },
+    "assembled=true,axis_along_first=false,facing=down": {
+      "model": "createthrusters:block/thruster_bearing/block_assembled",
+      "x": 180
+    },
+    "assembled=true,axis_along_first=false,facing=east": {
+      "model": "createthrusters:block/thruster_bearing/block_assembled",
+      "x": 90,
+      "y": 90
+    },
+    "assembled=true,axis_along_first=false,facing=north": {
+      "model": "createthrusters:block/thruster_bearing/block_assembled",
+      "x": 90
+    },
+    "assembled=true,axis_along_first=false,facing=south": {
+      "model": "createthrusters:block/thruster_bearing/block_assembled",
+      "x": 90,
+      "y": 180
+    },
+    "assembled=true,axis_along_first=false,facing=up": {
+      "model": "createthrusters:block/thruster_bearing/block_assembled"
+    },
+    "assembled=true,axis_along_first=false,facing=west": {
+      "model": "createthrusters:block/thruster_bearing/block_assembled",
+      "x": 90,
+      "y": 270
+    },
+    "assembled=true,axis_along_first=true,facing=down": {
+      "model": "createthrusters:block/thruster_bearing/block_assembled_axis",
+      "x": 180
+    },
+    "assembled=true,axis_along_first=true,facing=east": {
+      "model": "createthrusters:block/thruster_bearing/block_assembled_axis",
+      "x": 90,
+      "y": 90
+    },
+    "assembled=true,axis_along_first=true,facing=north": {
+      "model": "createthrusters:block/thruster_bearing/block_assembled_axis",
+      "x": 90
+    },
+    "assembled=true,axis_along_first=true,facing=south": {
+      "model": "createthrusters:block/thruster_bearing/block_assembled_axis",
+      "x": 90,
+      "y": 180
+    },
+    "assembled=true,axis_along_first=true,facing=up": {
+      "model": "createthrusters:block/thruster_bearing/block_assembled_axis"
+    },
+    "assembled=true,axis_along_first=true,facing=west": {
+      "model": "createthrusters:block/thruster_bearing/block_assembled_axis",
+      "x": 90,
+      "y": 270
+    }
+  }
+}

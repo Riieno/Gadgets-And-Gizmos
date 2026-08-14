@@ -1,0 +1,29 @@
+{
+  "variants": {
+    "facing=down": {
+      "model": "createthrusters:block/alternator/block",
+      "x": 270,
+      "y": 90
+    },
+    "facing=east": {
+      "model": "createthrusters:block/alternator/block",
+      "y": 270
+    },
+    "facing=north": {
+      "model": "createthrusters:block/alternator/block",
+      "y": 180
+    },
+    "facing=south": {
+      "model": "createthrusters:block/alternator/block"
+    },
+    "facing=up": {
+      "model": "createthrusters:block/alternator/block",
+      "x": 90,
+      "y": 90
+    },
+    "facing=west": {
+      "model": "createthrusters:block/alternator/block",
+      "y": 90
+    }
+  }
+}

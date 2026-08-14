@@ -1,0 +1,19 @@
+{
+  "variants": {
+    "facing=north": {
+      "model": "createthrusters:block/ship_control_module"
+    },
+    "facing=east": {
+      "model": "createthrusters:block/ship_control_module",
+      "y": 90
+    },
+    "facing=south": {
+      "model": "createthrusters:block/ship_control_module",
+      "y": 180
+    },
+    "facing=west": {
+      "model": "createthrusters:block/ship_control_module",
+      "y": 270
+    }
+  }
+}

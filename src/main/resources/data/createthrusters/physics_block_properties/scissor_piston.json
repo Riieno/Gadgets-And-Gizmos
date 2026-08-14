@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:scissor_piston",
+  "properties": {
+    "sable:mass": 2.0
+  }
+}

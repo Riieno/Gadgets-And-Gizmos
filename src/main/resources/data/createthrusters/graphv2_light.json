@@ -1,0 +1,25 @@
+{
+  "replace": false,
+  "color_format": "#RRGGBB or #AARRGGBB",
+  "colors": {
+    "canvas_background": "#0D1215",
+    "canvas_dot": "#1B2429",
+    "title_background": "#192126",
+    "panel_background": "#11181B",
+    "panel_raised": "#202A2F",
+    "panel_hovered": "#2B353A",
+    "panel_selected": "#28271F",
+    "border": "#39464C",
+    "border_strong": "#59666B",
+    "border_soft": "#2C373D",
+    "primary": "#E8E0CD",
+    "secondary": "#C7C0B2",
+    "muted": "#918C82",
+    "accent": "#C6873F",
+    "accent_light": "#E2AA63",
+    "accent_dark": "#704723",
+    "accent_overlay": "#66704723",
+    "primary_action_text": "#FFF3DD",
+    "danger": "#BD6559"
+  }
+}

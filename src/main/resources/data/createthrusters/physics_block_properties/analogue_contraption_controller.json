@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:analogue_contraption_controller",
+  "properties": {
+    "sable:mass": 0.5
+  }
+}

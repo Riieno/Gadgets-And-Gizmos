@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "ASA",
+    "RGR",
+    "ASA"
+  ],
+  "key": {
+    "A": { "item": "create:andesite_alloy" },
+    "S": { "item": "create:shaft" },
+    "R": { "item": "minecraft:redstone" },
+    "G": { "item": "create:gearbox" }
+  },
+  "result": {
+    "id": "createthrusters:variable_transmission",
+    "count": 1
+  }
+}

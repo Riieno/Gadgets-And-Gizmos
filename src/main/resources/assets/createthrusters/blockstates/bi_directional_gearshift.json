@@ -1,0 +1,28 @@
+{
+  "multipart": [
+    {
+      "when": { "axis": "y", "facing": "north" },
+      "apply": { "model": "createthrusters:block/bidirectional_gearshift/block_veritcal" }
+    },
+    {
+      "when": { "axis": "y", "facing": "east" },
+      "apply": { "model": "createthrusters:block/bidirectional_gearshift/block_veritcal", "y": 90 }
+    },
+    {
+      "when": { "axis": "y", "facing": "south" },
+      "apply": { "model": "createthrusters:block/bidirectional_gearshift/block_veritcal", "y": 180 }
+    },
+    {
+      "when": { "axis": "y", "facing": "west" },
+      "apply": { "model": "createthrusters:block/bidirectional_gearshift/block_veritcal", "y": 270 }
+    },
+    {
+      "when": { "axis": "x" },
+      "apply": { "model": "createthrusters:block/bidirectional_gearshift/block", "uvlock": true }
+    },
+    {
+      "when": { "axis": "z" },
+      "apply": { "model": "createthrusters:block/bidirectional_gearshift/block", "uvlock": true }
+    }
+  ]
+}

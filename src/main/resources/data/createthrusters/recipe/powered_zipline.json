@@ -1,0 +1,22 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " C ",
+    "BAB",
+    " O "
+  ],
+  "key": {
+    "C": { "item": "simulated:rope_connector" },
+    "B": { "item": "create:brass_sheet" },
+    "A": { "item": "create:brass_casing" },
+    "O": [
+      { "item": "create:cogwheel" },
+      { "item": "create:large_cogwheel" }
+    ]
+  },
+  "result": {
+    "id": "createthrusters:powered_zipline",
+    "count": 1
+  }
+}

@@ -1,0 +1,78 @@
+{
+	"format_version": "1.9.0",
+	"credit": "Made with Blockbench",
+	"textures": {
+		"particle": "create:block/redstone_bridge",
+		"redstone_bridge": "create:block/redstone_bridge"
+	},
+	"elements": [
+		{
+			"name": "top_blue",
+			"from": [12, 0, 3],
+			"to": [16, 1, 7],
+			"rotation": {"angle": 0, "axis": "y", "origin": [6, -2.5, -5.5]},
+			"faces": {
+				"north": {"uv": [11, 2, 13, 2.5], "texture": "#redstone_bridge"},
+				"east": {"uv": [11, 2, 13, 2.5], "texture": "#redstone_bridge"},
+				"south": {"uv": [11, 2, 13, 2.5], "texture": "#redstone_bridge"},
+				"west": {"uv": [11, 2, 13, 2.5], "texture": "#redstone_bridge"},
+				"up": {"uv": [13, 0, 15, 2], "texture": "#redstone_bridge"}
+			}
+		},
+		{
+			"name": "top_red",
+			"from": [0, 0, 2.9],
+			"to": [4, 1, 6.9],
+			"rotation": {"angle": 0, "axis": "y", "origin": [-6, -2.5, -0.6]},
+			"faces": {
+				"north": {"uv": [11, 2, 13, 2.5], "texture": "#redstone_bridge"},
+				"east": {"uv": [11, 2, 13, 2.5], "texture": "#redstone_bridge"},
+				"south": {"uv": [11, 2, 13, 2.5], "texture": "#redstone_bridge"},
+				"west": {"uv": [11, 2, 13, 2.5], "texture": "#redstone_bridge"},
+				"up": {"uv": [11, 0, 13, 2], "texture": "#redstone_bridge"}
+			}
+		},
+		{
+			"name": "bottom_blue",
+			"from": [12, 0, 9],
+			"to": [16, 1, 13],
+			"rotation": {"angle": 0, "axis": "y", "origin": [6, -2.5, 0.5]},
+			"faces": {
+				"north": {"uv": [11, 2, 13, 2.5], "texture": "#redstone_bridge"},
+				"east": {"uv": [11, 2, 13, 2.5], "texture": "#redstone_bridge"},
+				"south": {"uv": [11, 2, 13, 2.5], "texture": "#redstone_bridge"},
+				"west": {"uv": [11, 2, 13, 2.5], "texture": "#redstone_bridge"},
+				"up": {"uv": [13, 0, 15, 2], "texture": "#redstone_bridge"}
+			}
+		},
+		{
+			"name": "bottom_red",
+			"from": [0, 0, 9],
+			"to": [4, 1, 13],
+			"rotation": {"angle": 0, "axis": "y", "origin": [-6, -2.5, 5.5]},
+			"faces": {
+				"north": {"uv": [11, 2, 13, 2.5], "texture": "#redstone_bridge"},
+				"east": {"uv": [11, 2, 13, 2.5], "texture": "#redstone_bridge"},
+				"south": {"uv": [11, 2, 13, 2.5], "texture": "#redstone_bridge"},
+				"west": {"uv": [11, 2, 13, 2.5], "texture": "#redstone_bridge"},
+				"up": {"uv": [11, 0, 13, 2], "texture": "#redstone_bridge"}
+			}
+		}
+	],
+	"groups": [
+		{
+			"name": "group",
+			"origin": [6, -2.5, 0],
+			"scope": 0,
+			"color": 0,
+			"children": [0, 1]
+		},
+		{
+			"name": "group",
+			"origin": [6, -2.5, 0],
+			"scope": 0,
+			"color": 0,
+			"children": [2, 3]
+		}
+	]
+}

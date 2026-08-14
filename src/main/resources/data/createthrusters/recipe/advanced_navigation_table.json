@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " P ",
+    "ENE",
+    " B "
+  ],
+  "key": {
+    "P": { "item": "create:precision_mechanism" },
+    "E": { "item": "create:electron_tube" },
+    "N": { "item": "simulated:navigation_table" },
+    "B": { "item": "create:brass_casing" }
+  },
+  "result": {
+    "id": "createthrusters:advanced_navigation_table",
+    "count": 1
+  }
+}

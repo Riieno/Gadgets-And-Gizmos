@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    { "item": "simulated:swivel_bearing" },
+    { "item": "create:precision_mechanism" },
+    { "item": "minecraft:redstone" }
+  ],
+  "result": {
+    "id": "createthrusters:vector_bearing",
+    "count": 1
+  }
+}

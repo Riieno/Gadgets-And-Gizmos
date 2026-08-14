@@ -1,0 +1,10 @@
+{
+  "multipart": [
+    { "when": { "facing": "down", "show_links": "true" }, "apply": { "model": "createthrusters:block/double_button/links", "x": 180, "y": 180 } },
+    { "when": { "facing": "east", "show_links": "true" }, "apply": { "model": "createthrusters:block/double_button/links", "x": 270, "y": 270 } },
+    { "when": { "facing": "north", "show_links": "true" }, "apply": { "model": "createthrusters:block/double_button/links", "x": 270, "y": 180 } },
+    { "when": { "facing": "south", "show_links": "true" }, "apply": { "model": "createthrusters:block/double_button/links", "x": 270 } },
+    { "when": { "facing": "up", "show_links": "true" }, "apply": { "model": "createthrusters:block/double_button/links", "y": 180 } },
+    { "when": { "facing": "west", "show_links": "true" }, "apply": { "model": "createthrusters:block/double_button/links", "x": 270, "y": 90 } }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "createthrusters:vertical_bidirectional_gearbox"
+    }
+  ],
+  "result": {
+    "id": "createthrusters:bidirectional_gearbox",
+    "count": 1
+  }
+}

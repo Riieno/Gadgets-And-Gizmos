@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "redstone",
+  "ingredients": [
+    { "item": "minecraft:stone_button" },
+    { "item": "minecraft:oak_button" },
+    { "item": "create:redstone_link" }
+  ],
+  "result": {
+    "id": "createthrusters:double_button",
+    "count": 1
+  }
+}

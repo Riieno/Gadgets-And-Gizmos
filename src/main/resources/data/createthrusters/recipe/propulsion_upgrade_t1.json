@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " B ",
+    "TET",
+    " A "
+  ],
+  "key": {
+    "B": { "item": "create:blaze_burner" },
+    "T": { "item": "createthrusters:thruster" },
+    "E": { "item": "simulated:red_portable_engine" },
+    "A": { "item": "create:andesite_alloy" }
+  },
+  "result": {
+    "id": "createthrusters:propulsion_upgrade_t1",
+    "count": 1
+  }
+}

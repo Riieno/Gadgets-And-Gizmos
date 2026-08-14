@@ -1,0 +1,35 @@
+{
+  "parent": "block/block",
+  "ambientocclusion": true,
+  "textures": {
+    "side": "createthrusters:block/ct/industrial_iron_block",
+    "end": "createthrusters:block/ct/industrial_iron_block_top",
+    "particle": "createthrusters:block/ct/industrial_iron_block_top"
+  },
+  "elements": [
+    {
+      "from": [4, 4, 11],
+      "to": [12, 12, 13],
+      "faces": {
+        "north": { "uv": [4, 4, 12, 12], "texture": "#end" },
+        "east": { "uv": [11, 4, 13, 12], "texture": "#side" },
+        "south": { "uv": [4, 4, 12, 12], "texture": "#end" },
+        "west": { "uv": [11, 4, 13, 12], "texture": "#side" },
+        "up": { "uv": [4, 11, 12, 13], "texture": "#side" },
+        "down": { "uv": [4, 11, 12, 13], "texture": "#side" }
+      }
+    },
+    {
+      "from": [5, 5, 13],
+      "to": [11, 11, 16],
+      "faces": {
+        "north": { "uv": [5, 5, 11, 11], "texture": "#end" },
+        "east": { "uv": [13, 5, 16, 11], "texture": "#side" },
+        "south": { "uv": [5, 5, 11, 11], "texture": "#end" },
+        "west": { "uv": [13, 5, 16, 11], "texture": "#side" },
+        "up": { "uv": [5, 13, 11, 16], "texture": "#side" },
+        "down": { "uv": [5, 13, 11, 16], "texture": "#side" }
+      }
+    }
+  ]
+}

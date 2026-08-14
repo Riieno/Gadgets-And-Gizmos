@@ -1,0 +1,16 @@
+{
+	"format_version": "1.21.11",
+	"credit": "Made with Blockbench",
+	"textures": {
+		"particle": "createthrusters:item/physics_staff"
+	},
+	"display": {
+		"thirdperson_righthand": {
+			"translation": [0, 3, 1.75]
+		},
+		"firstperson_righthand": {
+			"rotation": [-5, 104, -68],
+			"translation": [2.75, 0, 0]
+		}
+	}
+}

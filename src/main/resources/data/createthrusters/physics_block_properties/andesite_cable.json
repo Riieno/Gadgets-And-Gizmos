@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:andesite_cable",
+  "properties": {
+    "sable:mass": 0.3
+  }
+}

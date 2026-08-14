@@ -1,0 +1,25 @@
+{
+	"format_version": "1.9.0",
+	"credit": "Made with Blockbench",
+	"texture_size": [64, 64],
+	"textures": {
+		"0": "createthrusters:block/scissor_piston/base",
+		"particle": "createthrusters:block/scissor_piston/base"
+	},
+	"elements": [
+		{
+			"name": "Head",
+			"from": [0, 12, 0],
+			"to": [16, 16, 16],
+			"rotation": {"angle": 0, "axis": "y", "origin": [0, 12, 0]},
+			"faces": {
+				"north": {"uv": [0, 6.5, 8, 8.5], "texture": "#0"},
+				"east": {"uv": [0, 6.5, 8, 8.5], "texture": "#0"},
+				"south": {"uv": [0, 6.5, 8, 8.5], "texture": "#0"},
+				"west": {"uv": [0, 6.5, 8, 8.5], "texture": "#0"},
+				"up": {"uv": [0, 0, 8, 8], "texture": "#0"},
+				"down": {"uv": [8, 8, 16, 16], "texture": "#0"}
+			}
+		}
+	]
+}

@@ -1,0 +1,30 @@
+{
+  "variants": {
+    "facing=up": {
+      "model": "createthrusters:block/powered_zipline/block"
+    },
+    "facing=down": {
+      "model": "createthrusters:block/powered_zipline/block",
+      "x": 180
+    },
+    "facing=north": {
+      "model": "createthrusters:block/powered_zipline/block",
+      "x": 90
+    },
+    "facing=south": {
+      "model": "createthrusters:block/powered_zipline/block",
+      "x": 90,
+      "y": 180
+    },
+    "facing=east": {
+      "model": "createthrusters:block/powered_zipline/block",
+      "x": 90,
+      "y": 90
+    },
+    "facing=west": {
+      "model": "createthrusters:block/powered_zipline/block",
+      "x": 90,
+      "y": 270
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "packageName": "@riestat/cdn-plugin-studio",
+  "generatedAt": "2026-05-12T02:04:16.142Z",
+  "sourceFile": "index.iife.js",
+  "packagedFile": "riestat-plugin-studio.js",
+  "integration": "Create: Thrusters & Things Contraption Graph Workshop",
+  "localChanges": [
+    "Replace the built-in node registry with the Advanced Contraption Controller catalog",
+    "Remove the Debugger view selector",
+    "Remove the Logic Performance Profiler control"
+  ]
+}

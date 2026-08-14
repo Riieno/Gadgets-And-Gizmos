@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "facing=down": { "model": "createthrusters:block/fuel_oxidizer/block", "x": 90 },
+    "facing=east": { "model": "createthrusters:block/fuel_oxidizer/block", "y": 90 },
+    "facing=north": { "model": "createthrusters:block/fuel_oxidizer/block" },
+    "facing=south": { "model": "createthrusters:block/fuel_oxidizer/block", "y": 180 },
+    "facing=up": { "model": "createthrusters:block/fuel_oxidizer/block", "x": 270 },
+    "facing=west": { "model": "createthrusters:block/fuel_oxidizer/block", "y": 270 }
+  }
+}

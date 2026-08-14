@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "XBX",
+    "TRT",
+    "XGX"
+  ],
+  "key": {
+    "X": { "item": "minecraft:ghast_tear" },
+    "B": { "item": "minecraft:beacon" },
+    "T": { "item": "createthrusters:propulsion_upgrade_t3" },
+    "R": { "item": "createthrusters:thruster" },
+    "G": { "item": "minecraft:emerald_block" }
+  },
+  "result": {
+    "id": "createthrusters:propulsion_upgrade_t4",
+    "count": 1
+  }
+}

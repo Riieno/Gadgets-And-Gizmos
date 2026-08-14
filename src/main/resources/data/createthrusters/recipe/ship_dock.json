@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "redstone",
+  "pattern": [" B ", "SCS", "AAA"],
+  "key": {
+    "A": {"item": "create:andesite_alloy"},
+    "B": {"item": "minecraft:bell"},
+    "C": {"item": "minecraft:compass"},
+    "S": {"item": "minecraft:smooth_stone"}
+  },
+  "result": {"id": "createthrusters:ship_dock", "count": 1}
+}

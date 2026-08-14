@@ -1,0 +1,54 @@
+{
+  "variants": {
+    "facing=down,powered=false": {
+      "model": "createthrusters:block/industrial_motor/block",
+      "x": 270,
+      "y": 90
+    },
+    "facing=down,powered=true": {
+      "model": "createthrusters:block/industrial_motor/block_powered",
+      "x": 270,
+      "y": 90
+    },
+    "facing=east,powered=false": {
+      "model": "createthrusters:block/industrial_motor/block",
+      "y": 270
+    },
+    "facing=east,powered=true": {
+      "model": "createthrusters:block/industrial_motor/block_powered",
+      "y": 270
+    },
+    "facing=north,powered=false": {
+      "model": "createthrusters:block/industrial_motor/block",
+      "y": 180
+    },
+    "facing=north,powered=true": {
+      "model": "createthrusters:block/industrial_motor/block_powered",
+      "y": 180
+    },
+    "facing=south,powered=false": {
+      "model": "createthrusters:block/industrial_motor/block"
+    },
+    "facing=south,powered=true": {
+      "model": "createthrusters:block/industrial_motor/block_powered"
+    },
+    "facing=up,powered=false": {
+      "model": "createthrusters:block/industrial_motor/block",
+      "x": 90,
+      "y": 90
+    },
+    "facing=up,powered=true": {
+      "model": "createthrusters:block/industrial_motor/block_powered",
+      "x": 90,
+      "y": 90
+    },
+    "facing=west,powered=false": {
+      "model": "createthrusters:block/industrial_motor/block",
+      "y": 90
+    },
+    "facing=west,powered=true": {
+      "model": "createthrusters:block/industrial_motor/block_powered",
+      "y": 90
+    }
+  }
+}

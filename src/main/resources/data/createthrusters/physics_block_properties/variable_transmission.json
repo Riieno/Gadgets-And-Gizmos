@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:variable_transmission",
+  "properties": {
+    "sable:mass": 1.0
+  }
+}

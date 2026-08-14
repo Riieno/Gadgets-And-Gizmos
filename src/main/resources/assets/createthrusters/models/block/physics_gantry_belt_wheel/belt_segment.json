@@ -1,0 +1,21 @@
+{
+  "parent": "block/block",
+  "textures": {
+    "particle": "create:block/belt",
+    "belt": "create:block/belt"
+  },
+  "elements": [
+    {
+      "from": [-2, 6, 6],
+      "to": [2, 10, 10],
+      "faces": {
+        "down": { "texture": "#belt" },
+        "up": { "texture": "#belt" },
+        "north": { "texture": "#belt" },
+        "south": { "texture": "#belt" },
+        "west": { "texture": "#belt" },
+        "east": { "texture": "#belt" }
+      }
+    }
+  ]
+}

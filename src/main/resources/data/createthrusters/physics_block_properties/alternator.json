@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:alternator",
+  "properties": {
+    "sable:mass": 2.0
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "PLP",
+    "IAI",
+    "IHI"
+  ],
+  "key": {
+    "P": { "tag": "minecraft:planks" },
+    "L": { "item": "minecraft:slime_ball" },
+    "I": { "item": "create:industrial_iron_block" },
+    "A": { "item": "createthrusters:scissor_arms" },
+    "H": { "item": "create:shaft" }
+  },
+  "result": {
+    "id": "createthrusters:scissor_piston",
+    "count": 1
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "variants": {
+    "facing=up": { "model": "createthrusters:block/diagnostic_tablet" },
+    "facing=down": { "model": "createthrusters:block/diagnostic_tablet", "x": 180 },
+    "facing=north": { "model": "createthrusters:block/diagnostic_tablet", "x": 90 },
+    "facing=south": { "model": "createthrusters:block/diagnostic_tablet", "x": 90, "y": 180 },
+    "facing=west": { "model": "createthrusters:block/diagnostic_tablet", "x": 90, "y": 270 },
+    "facing=east": { "model": "createthrusters:block/diagnostic_tablet", "x": 90, "y": 90 }
+  }
+}

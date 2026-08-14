@@ -1,0 +1,30 @@
+{
+  "type": "create:mechanical_crafting",
+  "accept_mirrored": false,
+  "category": "misc",
+  "key": {
+    "B": {
+      "item": "createthrusters:blackstone_alloy"
+    },
+    "C": {
+      "item": "createthrusters:computation_mechanism"
+    },
+    "Q": {
+      "item": "createthrusters:analogue_contraption_controller"
+    },
+    "A": {
+      "item": "create:andesite_alloy"
+    }
+  },
+  "pattern": [
+    "BB  ",
+    "CC  ",
+    "CCAA",
+    "BBQA"
+  ],
+  "result": {
+    "count": 1,
+    "id": "createthrusters:advanced_contraption_controller"
+  },
+  "show_notification": false
+}

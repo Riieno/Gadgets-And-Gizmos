@@ -1,0 +1,45 @@
+{
+	"format_version": "1.9.0",
+	"credit": "Made with Blockbench",
+	"textures": {
+		"0": "createthrusters:block/advanced_controller/contraption_controller",
+		"particle": "createthrusters:block/advanced_controller/contraption_controller"
+	},
+	"elements": [
+		{
+			"from": [-0.01, 6, 6],
+			"to": [3.99, 10, 8],
+			"rotation": {"angle": 45, "axis": "x", "origin": [8, 3, 8]},
+			"faces": {
+				"north": {"uv": [13, 0, 14, 0.96954], "texture": "#0"},
+				"east": {"uv": [15, 0, 16, 0.5], "rotation": 90, "texture": "#0"},
+				"south": {"uv": [4, 0, 8, 2.21954], "texture": "#0"},
+				"west": {"uv": [15, 0.5, 16, 0], "rotation": 90, "texture": "#0"},
+				"up": {"uv": [15, 0, 16, 0.5], "texture": "#0"},
+				"down": {"uv": [15, 0.5, 16, 0], "texture": "#0"}
+			}
+		},
+		{
+			"from": [-0.01, 6, 7],
+			"to": [3.99, 10, 7],
+			"rotation": {"angle": 45, "axis": "x", "origin": [8, 3, 8]},
+			"faces": {
+				"north": {"uv": [14, 0, 15, 0.96954], "texture": "#0"},
+				"east": {"uv": [15, 0, 16, 0.5], "rotation": 90, "texture": "#0"},
+				"south": {"uv": [15.25, 15.28046, 16, 16], "texture": "#0"},
+				"west": {"uv": [15, 0.5, 16, 0], "rotation": 90, "texture": "#0"},
+				"up": {"uv": [15, 0, 16, 0.5], "texture": "#0"},
+				"down": {"uv": [15, 0.5, 16, 0], "texture": "#0"}
+			}
+		}
+	],
+	"groups": [
+		{
+			"name": "ometer",
+			"origin": [8, 3, 8],
+			"scope": 0,
+			"color": 0,
+			"children": [0, 1]
+		}
+	]
+}

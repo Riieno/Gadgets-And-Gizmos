@@ -1,0 +1,30 @@
+{
+  "variants": {
+    "facing=down": {
+      "model": "createthrusters:block/scissor_piston/head",
+      "x": 180
+    },
+    "facing=east": {
+      "model": "createthrusters:block/scissor_piston/head",
+      "x": 90,
+      "y": 90
+    },
+    "facing=north": {
+      "model": "createthrusters:block/scissor_piston/head",
+      "x": 90
+    },
+    "facing=south": {
+      "model": "createthrusters:block/scissor_piston/head",
+      "x": 90,
+      "y": 180
+    },
+    "facing=up": {
+      "model": "createthrusters:block/scissor_piston/head"
+    },
+    "facing=west": {
+      "model": "createthrusters:block/scissor_piston/head",
+      "x": 90,
+      "y": 270
+    }
+  }
+}

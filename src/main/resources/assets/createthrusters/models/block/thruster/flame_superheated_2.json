@@ -1,0 +1,36 @@
+{
+  "format_version": "1.21.11",
+  "credit": "Made with Blockbench",
+  "textures": {
+    "0": "createthrusters:block/thruster/thruster_flame_superheated_2",
+    "particle": "createthrusters:block/thruster/thruster_flame_superheated_2"
+  },
+  "elements": [
+    {
+      "from": [8, 0, -10],
+      "to": [8, 16, 6],
+      "rotation": {"angle": 45, "axis": "z", "origin": [8, 8, -9]},
+      "faces": {
+        "north": {"uv": [0, 0, 0, 16], "texture": "#0"},
+        "east": {"uv": [0, 0, 16, 16], "rotation": 90, "texture": "#0"},
+        "south": {"uv": [2, 0, 2, 16], "texture": "#0"},
+        "west": {"uv": [0, 0, 16, 16], "rotation": 270, "texture": "#0"},
+        "up": {"uv": [2, 0, 2, 16], "texture": "#0"},
+        "down": {"uv": [2, 0, 2, 16], "texture": "#0"}
+      }
+    },
+    {
+      "from": [8, 0, -10],
+      "to": [8, 16, 6],
+      "rotation": {"angle": -45, "axis": "z", "origin": [8, 8, -9]},
+      "faces": {
+        "north": {"uv": [0, 0, 0, 16], "texture": "#0"},
+        "east": {"uv": [0, 0, 16, 16], "rotation": 90, "texture": "#0"},
+        "south": {"uv": [2, 0, 2, 16], "texture": "#0"},
+        "west": {"uv": [0, 0, 16, 16], "rotation": 270, "texture": "#0"},
+        "up": {"uv": [2, 0, 2, 16], "texture": "#0"},
+        "down": {"uv": [2, 0, 2, 16], "texture": "#0"}
+      }
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "multipart": [
+    {
+      "apply": {
+        "model": "createthrusters:block/scissor_piston/arm_empty"
+      }
+    }
+  ]
+}

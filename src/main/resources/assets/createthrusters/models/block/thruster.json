@@ -1,0 +1,6 @@
+{
+  "parent": "createthrusters:block/thruster/block",
+  "textures": {
+    "particle": "createthrusters:block/thruster/thruster_solid_unpowered"
+  }
+}

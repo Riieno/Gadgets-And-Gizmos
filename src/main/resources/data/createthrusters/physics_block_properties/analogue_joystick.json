@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:analogue_joystick",
+  "properties": {
+    "sable:mass": 0.5
+  }
+}

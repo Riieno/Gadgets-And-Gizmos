@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    {
+      "item": "createthrusters:vertical_variable_transmission"
+    }
+  ],
+  "result": {
+    "id": "createthrusters:variable_transmission",
+    "count": 1
+  }
+}

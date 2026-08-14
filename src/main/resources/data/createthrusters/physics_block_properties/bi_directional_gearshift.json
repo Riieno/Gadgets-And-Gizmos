@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:bi_directional_gearshift",
+  "properties": {
+    "sable:mass": 1.0
+  }
+}

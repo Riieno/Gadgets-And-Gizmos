@@ -1,0 +1,1700 @@
+{
+  "variants": {
+    "face=ceiling,facing=east,manifest_color=white,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_white",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=white,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_white",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=white,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_white",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=white,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_white",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=white,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_white",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=white,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_white"
+    },
+    "face=floor,facing=south,manifest_color=white,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_white",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=white,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_white",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=white,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_white",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=white,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_white",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=white,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_white",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=white,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_white",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=orange,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_orange",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=orange,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_orange",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=orange,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_orange",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=orange,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_orange",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=orange,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_orange",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=orange,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_orange"
+    },
+    "face=floor,facing=south,manifest_color=orange,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_orange",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=orange,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_orange",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=orange,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_orange",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=orange,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_orange",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=orange,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_orange",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=orange,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_orange",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=magenta,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_magenta",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=magenta,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_magenta",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=magenta,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_magenta",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=magenta,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_magenta",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=magenta,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_magenta",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=magenta,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_magenta"
+    },
+    "face=floor,facing=south,manifest_color=magenta,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_magenta",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=magenta,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_magenta",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=magenta,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_magenta",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=magenta,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_magenta",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=magenta,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_magenta",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=magenta,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_magenta",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=light_blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_blue",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=light_blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_blue",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=light_blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_blue",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=light_blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_blue",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=light_blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_blue",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=light_blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_blue"
+    },
+    "face=floor,facing=south,manifest_color=light_blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_blue",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=light_blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_blue",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=light_blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_blue",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=light_blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_blue",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=light_blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_blue",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=light_blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_blue",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=yellow,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_yellow",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=yellow,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_yellow",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=yellow,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_yellow",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=yellow,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_yellow",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=yellow,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_yellow",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=yellow,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_yellow"
+    },
+    "face=floor,facing=south,manifest_color=yellow,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_yellow",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=yellow,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_yellow",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=yellow,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_yellow",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=yellow,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_yellow",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=yellow,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_yellow",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=yellow,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_yellow",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=lime,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_lime",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=lime,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_lime",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=lime,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_lime",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=lime,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_lime",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=lime,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_lime",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=lime,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_lime"
+    },
+    "face=floor,facing=south,manifest_color=lime,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_lime",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=lime,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_lime",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=lime,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_lime",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=lime,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_lime",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=lime,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_lime",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=lime,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_lime",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=pink,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_pink",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=pink,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_pink",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=pink,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_pink",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=pink,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_pink",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=pink,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_pink",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=pink,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_pink"
+    },
+    "face=floor,facing=south,manifest_color=pink,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_pink",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=pink,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_pink",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=pink,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_pink",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=pink,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_pink",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=pink,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_pink",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=pink,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_pink",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_gray",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_gray",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_gray",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_gray",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_gray",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_gray"
+    },
+    "face=floor,facing=south,manifest_color=gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_gray",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_gray",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_gray",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_gray",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_gray",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_gray",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=light_gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_gray",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=light_gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_gray",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=light_gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_gray",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=light_gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_gray",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=light_gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_gray",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=light_gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_gray"
+    },
+    "face=floor,facing=south,manifest_color=light_gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_gray",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=light_gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_gray",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=light_gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_gray",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=light_gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_gray",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=light_gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_gray",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=light_gray,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_light_gray",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=cyan,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_cyan",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=cyan,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_cyan",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=cyan,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_cyan",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=cyan,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_cyan",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=cyan,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_cyan",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=cyan,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_cyan"
+    },
+    "face=floor,facing=south,manifest_color=cyan,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_cyan",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=cyan,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_cyan",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=cyan,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_cyan",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=cyan,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_cyan",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=cyan,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_cyan",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=cyan,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_cyan",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=purple,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_purple",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=purple,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_purple",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=purple,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_purple",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=purple,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_purple",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=purple,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_purple",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=purple,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_purple"
+    },
+    "face=floor,facing=south,manifest_color=purple,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_purple",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=purple,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_purple",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=purple,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_purple",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=purple,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_purple",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=purple,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_purple",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=purple,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_purple",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_blue",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_blue",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_blue",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_blue",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_blue",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_blue"
+    },
+    "face=floor,facing=south,manifest_color=blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_blue",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_blue",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_blue",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_blue",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_blue",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=blue,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_blue",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=brown,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_brown",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=brown,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_brown",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=brown,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_brown",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=brown,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_brown",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=brown,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_brown",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=brown,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_brown"
+    },
+    "face=floor,facing=south,manifest_color=brown,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_brown",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=brown,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_brown",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=brown,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_brown",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=brown,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_brown",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=brown,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_brown",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=brown,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_brown",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=green,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_green",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=green,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_green",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=green,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_green",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=green,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_green",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=green,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_green",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=green,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_green"
+    },
+    "face=floor,facing=south,manifest_color=green,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_green",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=green,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_green",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=green,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_green",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=green,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_green",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=green,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_green",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=green,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_green",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=red,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_red",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=red,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_red",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=red,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_red",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=red,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_red",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=red,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_red",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=red,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_red"
+    },
+    "face=floor,facing=south,manifest_color=red,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_red",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=red,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_red",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=red,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_red",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=red,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_red",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=red,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_red",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=red,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_red",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=black,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_black",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=black,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_black",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=black,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_black",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=black,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_black",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=black,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_black",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=black,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_black"
+    },
+    "face=floor,facing=south,manifest_color=black,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_black",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=black,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_black",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=black,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_black",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=black,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_black",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=black,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_black",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=black,show_blank=false": {
+      "model": "createthrusters:block/shipping_manifest_filled_black",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=white,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_white",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=white,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_white",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=white,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_white",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=white,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_white",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=white,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_white",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=white,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_white"
+    },
+    "face=floor,facing=south,manifest_color=white,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_white",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=white,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_white",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=white,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_white",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=white,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_white",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=white,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_white",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=white,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_white",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=orange,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_orange",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=orange,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_orange",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=orange,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_orange",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=orange,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_orange",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=orange,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_orange",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=orange,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_orange"
+    },
+    "face=floor,facing=south,manifest_color=orange,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_orange",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=orange,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_orange",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=orange,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_orange",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=orange,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_orange",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=orange,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_orange",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=orange,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_orange",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=magenta,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_magenta",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=magenta,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_magenta",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=magenta,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_magenta",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=magenta,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_magenta",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=magenta,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_magenta",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=magenta,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_magenta"
+    },
+    "face=floor,facing=south,manifest_color=magenta,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_magenta",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=magenta,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_magenta",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=magenta,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_magenta",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=magenta,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_magenta",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=magenta,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_magenta",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=magenta,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_magenta",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=light_blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_blue",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=light_blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_blue",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=light_blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_blue",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=light_blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_blue",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=light_blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_blue",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=light_blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_blue"
+    },
+    "face=floor,facing=south,manifest_color=light_blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_blue",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=light_blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_blue",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=light_blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_blue",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=light_blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_blue",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=light_blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_blue",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=light_blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_blue",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=yellow,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_yellow",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=yellow,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_yellow",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=yellow,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_yellow",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=yellow,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_yellow",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=yellow,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_yellow",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=yellow,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_yellow"
+    },
+    "face=floor,facing=south,manifest_color=yellow,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_yellow",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=yellow,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_yellow",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=yellow,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_yellow",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=yellow,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_yellow",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=yellow,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_yellow",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=yellow,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_yellow",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=lime,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_lime",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=lime,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_lime",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=lime,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_lime",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=lime,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_lime",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=lime,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_lime",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=lime,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_lime"
+    },
+    "face=floor,facing=south,manifest_color=lime,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_lime",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=lime,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_lime",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=lime,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_lime",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=lime,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_lime",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=lime,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_lime",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=lime,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_lime",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=pink,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_pink",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=pink,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_pink",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=pink,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_pink",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=pink,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_pink",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=pink,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_pink",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=pink,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_pink"
+    },
+    "face=floor,facing=south,manifest_color=pink,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_pink",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=pink,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_pink",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=pink,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_pink",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=pink,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_pink",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=pink,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_pink",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=pink,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_pink",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_gray",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_gray",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_gray",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_gray",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_gray",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_gray"
+    },
+    "face=floor,facing=south,manifest_color=gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_gray",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_gray",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_gray",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_gray",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_gray",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_gray",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=light_gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_gray",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=light_gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_gray",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=light_gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_gray",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=light_gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_gray",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=light_gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_gray",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=light_gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_gray"
+    },
+    "face=floor,facing=south,manifest_color=light_gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_gray",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=light_gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_gray",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=light_gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_gray",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=light_gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_gray",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=light_gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_gray",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=light_gray,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_light_gray",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=cyan,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_cyan",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=cyan,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_cyan",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=cyan,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_cyan",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=cyan,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_cyan",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=cyan,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_cyan",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=cyan,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_cyan"
+    },
+    "face=floor,facing=south,manifest_color=cyan,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_cyan",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=cyan,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_cyan",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=cyan,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_cyan",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=cyan,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_cyan",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=cyan,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_cyan",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=cyan,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_cyan",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=purple,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_purple",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=purple,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_purple",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=purple,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_purple",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=purple,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_purple",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=purple,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_purple",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=purple,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_purple"
+    },
+    "face=floor,facing=south,manifest_color=purple,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_purple",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=purple,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_purple",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=purple,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_purple",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=purple,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_purple",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=purple,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_purple",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=purple,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_purple",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_blue",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_blue",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_blue",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_blue",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_blue",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_blue"
+    },
+    "face=floor,facing=south,manifest_color=blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_blue",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_blue",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_blue",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_blue",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_blue",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=blue,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_blue",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=brown,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_brown",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=brown,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_brown",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=brown,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_brown",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=brown,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_brown",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=brown,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_brown",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=brown,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_brown"
+    },
+    "face=floor,facing=south,manifest_color=brown,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_brown",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=brown,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_brown",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=brown,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_brown",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=brown,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_brown",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=brown,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_brown",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=brown,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_brown",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=green,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_green",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=green,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_green",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=green,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_green",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=green,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_green",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=green,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_green",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=green,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_green"
+    },
+    "face=floor,facing=south,manifest_color=green,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_green",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=green,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_green",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=green,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_green",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=green,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_green",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=green,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_green",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=green,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_green",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=red,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_red",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=red,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_red",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=red,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_red",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=red,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_red",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=red,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_red",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=red,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_red"
+    },
+    "face=floor,facing=south,manifest_color=red,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_red",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=red,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_red",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=red,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_red",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=red,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_red",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=red,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_red",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=red,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_red",
+      "x": 90,
+      "y": 270
+    },
+    "face=ceiling,facing=east,manifest_color=black,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_black",
+      "x": 180,
+      "y": 270
+    },
+    "face=ceiling,facing=north,manifest_color=black,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_black",
+      "x": 180,
+      "y": 180
+    },
+    "face=ceiling,facing=south,manifest_color=black,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_black",
+      "x": 180
+    },
+    "face=ceiling,facing=west,manifest_color=black,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_black",
+      "x": 180,
+      "y": 90
+    },
+    "face=floor,facing=east,manifest_color=black,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_black",
+      "y": 90
+    },
+    "face=floor,facing=north,manifest_color=black,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_black"
+    },
+    "face=floor,facing=south,manifest_color=black,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_black",
+      "y": 180
+    },
+    "face=floor,facing=west,manifest_color=black,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_black",
+      "y": 270
+    },
+    "face=wall,facing=east,manifest_color=black,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_black",
+      "x": 90,
+      "y": 90
+    },
+    "face=wall,facing=north,manifest_color=black,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_black",
+      "x": 90
+    },
+    "face=wall,facing=south,manifest_color=black,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_black",
+      "x": 90,
+      "y": 180
+    },
+    "face=wall,facing=west,manifest_color=black,show_blank=true": {
+      "model": "createthrusters:block/shipping_manifest_blank_black",
+      "x": 90,
+      "y": 270
+    }
+  }
+}

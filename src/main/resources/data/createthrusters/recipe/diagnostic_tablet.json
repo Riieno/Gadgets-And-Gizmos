@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": ["BBB", "GCG", " I "],
+  "key": {
+    "B": {"item": "createthrusters:acc_display_panel"},
+    "G": {"tag": "c:glass"},
+    "C": {"item": "createthrusters:computation_mechanism"},
+    "I": {"item": "createthrusters:blackstone_sheet"}
+  },
+  "result": {"id": "createthrusters:diagnostic_tablet", "count": 1}
+}

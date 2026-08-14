@@ -1,0 +1,17 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "A",
+    "R",
+    "A"
+  ],
+  "key": {
+    "A": { "item": "create:brass_ingot" },
+    "R": { "item": "minecraft:redstone" }
+  },
+  "result": {
+    "id": "createthrusters:physics_gantry_shaft",
+    "count": 8
+  }
+}

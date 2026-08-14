@@ -1,0 +1,6 @@
+{
+  "parent": "createthrusters:block/aileron_bearing/block",
+  "textures": {
+    "particle": "createthrusters:block/aileron_bearing/swivel_bearing"
+  }
+}

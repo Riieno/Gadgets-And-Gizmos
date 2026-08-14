@@ -1,0 +1,21 @@
+{
+  "parent": "minecraft:block/block",
+  "textures": {
+    "particle": "createthrusters:block/rope_knot",
+    "knot": "createthrusters:block/rope_knot"
+  },
+  "elements": [
+    {
+      "from": [7, 7, 7],
+      "to": [9, 9, 9],
+      "faces": {
+        "down": { "texture": "#knot" },
+        "up": { "texture": "#knot" },
+        "north": { "texture": "#knot" },
+        "south": { "texture": "#knot" },
+        "west": { "texture": "#knot" },
+        "east": { "texture": "#knot" }
+      }
+    }
+  ]
+}

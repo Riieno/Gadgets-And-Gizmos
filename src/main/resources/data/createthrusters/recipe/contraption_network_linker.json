@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " P ",
+    "RPR",
+    "AAA"
+  ],
+  "key": {
+    "P": { "item": "create:precision_mechanism" },
+    "R": { "item": "minecraft:redstone" },
+    "A": { "item": "create:andesite_alloy" }
+  },
+  "result": {
+    "id": "createthrusters:contraption_network_linker",
+    "count": 1
+  }
+}

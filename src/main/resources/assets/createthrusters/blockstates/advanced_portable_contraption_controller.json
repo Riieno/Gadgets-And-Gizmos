@@ -1,0 +1,29 @@
+{
+  "variants": {
+    "facing=up,horizontal_facing=north": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" },
+    "facing=up,horizontal_facing=east": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" },
+    "facing=up,horizontal_facing=south": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" },
+    "facing=up,horizontal_facing=west": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" },
+    "facing=down,horizontal_facing=north": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" },
+    "facing=down,horizontal_facing=east": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" },
+    "facing=down,horizontal_facing=south": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" },
+    "facing=down,horizontal_facing=west": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" },
+    "facing=north,horizontal_facing=north": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" },
+    "facing=north,horizontal_facing=east": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" },
+    "facing=north,horizontal_facing=south": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" },
+    "facing=north,horizontal_facing=west": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" },
+    "facing=east,horizontal_facing=north": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" },
+    "facing=east,horizontal_facing=east": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" },
+    "facing=east,horizontal_facing=south": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" },
+    "facing=east,horizontal_facing=west": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" },
+    "facing=south,horizontal_facing=north": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" },
+    "facing=south,horizontal_facing=east": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" },
+    "facing=south,horizontal_facing=south": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" },
+    "facing=south,horizontal_facing=west": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" },
+    "facing=west,horizontal_facing=north": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" },
+    "facing=west,horizontal_facing=east": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" },
+    "facing=west,horizontal_facing=south": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" },
+    "facing=west,horizontal_facing=west": { "model": "createthrusters:block/advanced_portable_contraption_controller/item" }
+  }
+}
+

@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " M ",
+    "BTB",
+    " A "
+  ],
+  "key": {
+    "M": { "item": "minecraft:campfire" },
+    "B": { "item": "create:brass_sheet" },
+    "T": { "item": "createthrusters:thruster" },
+    "A": { "item": "create:andesite_alloy" }
+  },
+  "result": {
+    "id": "createthrusters:processing_upgrade_smoking_t1",
+    "count": 1
+  }
+}

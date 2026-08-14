@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "ICI",
+    "RGR",
+    "ISI"
+  ],
+  "key": {
+    "I": { "item": "create:industrial_iron_block" },
+    "C": { "item": "create:copper_casing" },
+    "R": { "item": "minecraft:redstone" },
+    "G": { "item": "minecraft:gold_ingot" },
+    "S": { "item": "create:shaft" }
+  },
+  "result": {
+    "id": "createthrusters:alternator",
+    "count": 1
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parent": "createthrusters:block/alternator/block",
+  "textures": {
+    "particle": "create:block/axis"
+  }
+}

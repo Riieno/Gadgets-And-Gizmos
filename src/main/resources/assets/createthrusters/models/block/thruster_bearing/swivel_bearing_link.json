@@ -1,0 +1,7 @@
+{
+	"format_version": "1.9.0",
+	"credit": "Adapted from simulated pedal_shaft/shaft_sixteenth",
+	"textures": {
+		"particle": "createthrusters:block/thruster_bearing/swivel_bearing"
+	}
+}

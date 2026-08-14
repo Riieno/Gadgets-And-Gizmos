@@ -1,0 +1,14 @@
+{
+  "type": "create:pressing",
+  "ingredients": [
+    {
+      "item": "createthrusters:blackstone_alloy"
+    }
+  ],
+  "results": [
+    {
+      "id": "createthrusters:blackstone_sheet",
+      "amount": 1
+    }
+  ]
+}
