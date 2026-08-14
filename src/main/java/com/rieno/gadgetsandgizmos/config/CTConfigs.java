@@ -342,8 +342,8 @@ public final class CTConfigs {
             builder.comment("Gameplay values shared between client and server").push("common");
             builder.comment("Thruster propulsion, fuel, beam mode, and upgrade scaling").push("thruster");
             thrusterBaseThrust = builder
-                    .comment("Base thrust at 100% throttle for normal (non-beam, non-soul) thrusters. Default 640 gives ~2.94 kpN at full throttle in standard atmosphere.")
-                    .defineInRange("thrusterBaseThrust", 640.0D, 1.0D, 100000.0D);
+                    .comment("Base thrust at 100% throttle for normal thrusters. Default 900.")
+                    .defineInRange("thrusterBaseThrust", 900.0D, 1.0D, 100000.0D);
             thrusterBaseAirflow = builder
                     .comment("Base airflow at 100% throttle")
                     .defineInRange("thrusterBaseAirflow", 80.0D, 0.0D, 100000.0D);
@@ -360,7 +360,7 @@ public final class CTConfigs {
                     .comment("Allow haunting-upgraded thrusters to convert supported mobs instead of dropping loot on death")
                     .define("enableThrusterMobHaunting", true);
             beamThrustMultiplier = builder
-                    .comment("Thrust multiplier for beam (focused/lense) thruster mode. Default 1.5 gives ~4.41 kpN at full throttle, above normal thrusters at ~2.94 kpN.")
+                    .comment("Thrust multiplier for beam (focused/lense) thruster mode. Default 1.5")
                     .defineInRange("beamThrustMultiplier", 1.5D, 0.0D, 100.0D);
             oxidizedFuelThrustMultiplier = builder
                     .comment("Thrust multiplier applied to oxidized thruster fuels")
@@ -370,16 +370,16 @@ public final class CTConfigs {
                     .defineInRange("denseFuelEfficiencyMultiplier", 1.45D, 0.01D, 100.0D);
             lightFuelEfficiencyMultiplier = builder
                     .comment("Fuel efficiency multiplier for fluids tagged as light thruster fuels")
-                    .defineInRange("lightFuelEfficiencyMultiplier", 0.70D, 0.01D, 100.0D);
+                    .defineInRange("lightFuelEfficiencyMultiplier", 1.0D, 0.01D, 100.0D);
             focusedModeFePerTick = builder
                     .comment("FE consumed per tick at 100% throttle when a thruster is in focused/beam mode. Scales linearly with throttle.")
-                    .defineInRange("focusedModeFePerTick", 90.0D, 1.0D, 100000.0D);
+                    .defineInRange("focusedModeFePerTick", 50.0D, 1.0D, 100000.0D);
             focusedModeFeCapacity = builder
                     .comment("Maximum FE a beam thruster can store internally")
                     .defineInRange("focusedModeFeCapacity", 100000, 1000, 10000000);
             propulsionUpgradeMaxMultiplier = builder
                     .comment("Maximum multiplier allowed from propulsion upgrades. Tiers apply 2x, 4x, 8x, and 16x before this cap.")
-                    .defineInRange("propulsionUpgradeMaxMultiplier", 16.0D, 1.0D, 64.0D);
+                    .defineInRange("propulsionUpgradeMaxMultiplier", 32.0D, 1.0D, 64.0D);
             builder.pop();
 
             // ------------------------------------BEARINGS / GEARBOXES------------------------------------

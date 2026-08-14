@@ -46,6 +46,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
     private static final AtomicBoolean CT_LOGGED_BASIC_NAVIGATION_CC = new AtomicBoolean(false);
     private static final AtomicBoolean CT_LOGGED_COMPUTED_EVENTS = new AtomicBoolean(false);
     private static final AtomicBoolean CT_LOGGED_DOCKING_ENERGY_SKIP = new AtomicBoolean(false);
+    private static final AtomicBoolean CT_LOGGED_PROPULSION_PLATINUM_TANK = new AtomicBoolean(false);
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -238,6 +239,14 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
             return loaded;
         }
 
+        if (isPropulsionPlatinumTankMixin(mixinClassName)) {
+            boolean loaded = isModLoadedDuringMixinSelection("createpropulsion");
+            if (loaded && CT_LOGGED_PROPULSION_PLATINUM_TANK.compareAndSet(false, true)) {
+                CT_LOGGER.info("[CT][Compat] Enabled Create Propulsion Platinum Tank oxidized fuel storage");
+            }
+            return loaded;
+        }
+
         // --------------------------------------------------COMPUTERS / EVENTS--------------------------------------------------
         if (isBasicNavTableComputerCraftMixin(mixinClassName)) {
             boolean loaded = isModLoadedDuringMixinSelection("simulated")
@@ -305,6 +314,12 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
     private static boolean isPropulsionGraphThrottleMixin(String mixinClassName) {
         return "com.rieno.gadgetsandgizmos.mixin.PropulsionThrusterGraphDataMixin".equals(mixinClassName)
                 || "com.rieno.gadgetsandgizmos.mixin.PropulsionSpecializedThrusterDirectPowerMixin"
+                .equals(mixinClassName);
+    }
+
+    // Check if this is the propulsion Platinum Tank storage mixin
+    private static boolean isPropulsionPlatinumTankMixin(String mixinClassName) {
+        return "com.rieno.gadgetsandgizmos.mixin.PropulsionPlatinumTankOxidizedFuelStorageMixin"
                 .equals(mixinClassName);
     }
 

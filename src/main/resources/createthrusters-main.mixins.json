@@ -37,6 +37,7 @@
     "PropulsionSpecializedThrusterDirectPowerMixin",
     "PropulsionVectorThrusterAngleMixin",
     "PropulsionVectorThrusterPeripheralMixin",
+    "PropulsionPlatinumTankOxidizedFuelStorageMixin",
     "BasicNavigationTablePeripheralMixin",
     "RopeWinchPeripheralBridgeMixin",
     "SableServerLevelPlotContraptionsBridgeMixin",
