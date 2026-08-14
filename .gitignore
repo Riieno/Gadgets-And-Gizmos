@@ -22,8 +22,6 @@
 !/libs/**
 !/src/
 !/src/**
-!/website/
-!/website/**
 
 /jar_src/
 /reference_assets/
