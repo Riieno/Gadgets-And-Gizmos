@@ -14,7 +14,7 @@ import com.rieno.gadgetsandgizmos.util.OxidizedFuelStorageAccess;
 import com.simibubi.create.content.fluids.FluidPropagator;
 import com.simibubi.create.content.fluids.FluidTransportBehaviour;
 import com.simibubi.create.content.fluids.OpenEndedPipe;
-import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
+import com.simibubi.create.content.fluids.pump.PumpBlockEntity;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
 import net.createmod.catnip.math.BlockFace;
 import net.minecraft.core.BlockPos;
@@ -36,7 +36,7 @@ import java.util.Map;
 import java.util.Set;
 
 // Use kinetic speed to pull fuel through the front and pump oxidized fuel from the back
-public class FuelOxidizerBlockEntity extends KineticBlockEntity {
+public class FuelOxidizerBlockEntity extends PumpBlockEntity {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -93,7 +93,7 @@ public class FuelOxidizerBlockEntity extends KineticBlockEntity {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Add the behaviours
+    // Add the native pump behaviour
     @Override
     public void addBehaviours(List<BlockEntityBehaviour> behaviours) {
         super.addBehaviours(behaviours);
@@ -121,6 +121,32 @@ public class FuelOxidizerBlockEntity extends KineticBlockEntity {
         pullFuel();
         oxidizeFuel();
         pushFuel();
+    }
+
+    // Expose the oxidized storage as the native pump output
+    @Override
+    protected Direction getFront() {
+        return getOutputSide();
+    }
+
+    // Treat the oxidized output as the pump front
+    @Override
+    protected boolean isFront(Direction side) {
+        return side == getOutputSide();
+    }
+
+    // Mark only the oxidized output side as a native pump connection
+    @Override
+    public boolean isSideAccessible(Direction side) {
+        return side == getOutputSide();
+    }
+
+    // Keep native pressure on the oxidized output side
+    @Override
+    protected void distributePressureTo(Direction side) {
+        if (side == getOutputSide()) {
+            super.distributePressureTo(side);
+        }
     }
 
     // Get the fluid handler
@@ -300,7 +326,7 @@ public class FuelOxidizerBlockEntity extends KineticBlockEntity {
         }
     }
 
-    // Push fuel through the pipe network
+    // Push oxidized fuel through the output pipe network
     private void pushThroughPipeNetwork(BlockPos start, int maxAmount) {
         ArrayDeque<BlockPos> frontier = new ArrayDeque<>();
         Set<BlockPos> visitedPipes = new HashSet<>();
@@ -337,7 +363,8 @@ public class FuelOxidizerBlockEntity extends KineticBlockEntity {
                     continue;
                 }
 
-                IFluidHandler target = level.getCapability(Capabilities.FluidHandler.BLOCK, connectedPos, side.getOpposite());
+                IFluidHandler target = level.getCapability(
+                        Capabilities.FluidHandler.BLOCK, connectedPos, side.getOpposite());
                 if (target != null) {
                     remaining -= transferTo(target, remaining);
                     continue;
@@ -353,19 +380,21 @@ public class FuelOxidizerBlockEntity extends KineticBlockEntity {
         }
     }
 
-    // Transfer fuel to the target tank
+    // Transfer fuel to a direct output target
     private int transferTo(IFluidHandler target, int maxAmount) {
         if (maxAmount <= 0 || outputTank.isEmpty()) {
             return 0;
         }
 
         FluidStack offered = outputTank.getFluid().copyWithAmount(Math.min(maxAmount, outputTank.getFluidAmount()));
-        int accepted = target.fill(offered, IFluidHandler.FluidAction.SIMULATE);
+        int accepted = OxidizedFuelStorageAccess.allow(() ->
+                target.fill(offered, IFluidHandler.FluidAction.SIMULATE));
         if (accepted <= 0) {
             return 0;
         }
 
-        int filled = target.fill(offered.copyWithAmount(accepted), IFluidHandler.FluidAction.EXECUTE);
+        int filled = OxidizedFuelStorageAccess.allow(() ->
+                target.fill(offered.copyWithAmount(accepted), IFluidHandler.FluidAction.EXECUTE));
         if (filled > 0) {
             outputTank.drain(filled, IFluidHandler.FluidAction.EXECUTE);
         }

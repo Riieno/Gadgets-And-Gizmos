@@ -39,7 +39,7 @@ public class AnalogueJoystickMenu extends GhostItemMenu<AnalogueJoystickBlockEnt
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     public static final int PLAYER_SLOTS_X = 82;
-    public static final int PLAYER_SLOTS_Y = 242;
+    public static final int PLAYER_SLOTS_Y = 264;
     public static final int GHOST_SLOT_START_INDEX = 36;
     private static final int CHANNEL_ROW_Y = 34;
     private static final int CHANNEL_ROW_SPACING = 24;
@@ -69,6 +69,8 @@ public class AnalogueJoystickMenu extends GhostItemMenu<AnalogueJoystickBlockEnt
     private float initialMaxTiltDegrees;
     // Initial release mode
     private AnalogueJoystickBlockEntity.ReleaseMode initialReleaseMode;
+    // Initial player input mode
+    private AnalogueJoystickBlockEntity.InputMode initialInputMode;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -145,6 +147,7 @@ public class AnalogueJoystickMenu extends GhostItemMenu<AnalogueJoystickBlockEnt
         initialDeadzone = buf.readFloat();
         initialMaxTiltDegrees = buf.readFloat();
         initialReleaseMode = AnalogueJoystickBlockEntity.ReleaseMode.read(buf.readUtf());
+        initialInputMode = AnalogueJoystickBlockEntity.InputMode.read(buf.readUtf());
     }
 
     // Get the content pos
@@ -178,6 +181,11 @@ public class AnalogueJoystickMenu extends GhostItemMenu<AnalogueJoystickBlockEnt
     // Get the initial release mode
     public AnalogueJoystickBlockEntity.ReleaseMode getInitialReleaseMode() {
         return initialReleaseMode;
+    }
+
+    // Get the initial player input mode
+    public AnalogueJoystickBlockEntity.InputMode getInitialInputMode() {
+        return initialInputMode;
     }
 
     // Get the menu config target pos
@@ -261,6 +269,7 @@ public class AnalogueJoystickMenu extends GhostItemMenu<AnalogueJoystickBlockEnt
         initialDeadzone = joystick.getDeadzone();
         initialMaxTiltDegrees = joystick.getMaxTiltDegrees();
         initialReleaseMode = joystick.getReleaseMode();
+        initialInputMode = joystick.getInputMode();
     }
 
     // Copy one item

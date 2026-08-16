@@ -25,7 +25,8 @@ public record AnalogueJoystickConfigSnapshot(ItemStack forwardFirst,
                                              boolean momentary,
                                              float sensitivity,
                                              float deadzone,
-                                             float maxTiltDegrees) {
+                                             float maxTiltDegrees,
+                                             boolean gamepadInput) {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -58,6 +59,9 @@ public record AnalogueJoystickConfigSnapshot(ItemStack forwardFirst,
         joystick.setDragSensitivity(sensitivity);
         joystick.setDeadzone(deadzone);
         joystick.setMaxTiltDegrees(maxTiltDegrees);
+        joystick.setInputMode(gamepadInput
+                ? AnalogueJoystickBlockEntity.InputMode.GAMEPAD
+                : AnalogueJoystickBlockEntity.InputMode.MOUSE);
     }
 
     // Encode the analogue joystick config snapshot
@@ -74,6 +78,7 @@ public record AnalogueJoystickConfigSnapshot(ItemStack forwardFirst,
         ByteBufCodecs.FLOAT.encode(buffer, snapshot.sensitivity());
         ByteBufCodecs.FLOAT.encode(buffer, snapshot.deadzone());
         ByteBufCodecs.FLOAT.encode(buffer, snapshot.maxTiltDegrees());
+        ByteBufCodecs.BOOL.encode(buffer, snapshot.gamepadInput());
     }
 
     // Decode the analogue joystick config snapshot
@@ -90,6 +95,7 @@ public record AnalogueJoystickConfigSnapshot(ItemStack forwardFirst,
                 ByteBufCodecs.BOOL.decode(buffer),
                 ByteBufCodecs.FLOAT.decode(buffer),
                 ByteBufCodecs.FLOAT.decode(buffer),
-                ByteBufCodecs.FLOAT.decode(buffer));
+                ByteBufCodecs.FLOAT.decode(buffer),
+                ByteBufCodecs.BOOL.decode(buffer));
     }
 }

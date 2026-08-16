@@ -9,18 +9,19 @@ package com.rieno.gadgetsandgizmos.mixin;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.util.OxidizedFuel;
-import com.rieno.gadgetsandgizmos.util.OxidizedFuelStorageAccess;
+import com.simibubi.create.content.fluids.tank.FluidTankBlockEntity;
+import com.simibubi.create.foundation.fluid.SmartFluidTank;
 import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
-import net.neoforged.neoforge.fluids.capability.templates.FluidTank;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import org.spongepowered.asm.mixin.injection.Redirect;
 
-// Stop oxidized fuel from entering unsupported tanks
-@Mixin(value = FluidTank.class, remap = false)
-public abstract class OxidizedFluidTankStorageMixin {
+import java.util.function.Consumer;
+
+// Keep oxidized fuel out of normal Create Fluid Tanks
+@Mixin(FluidTankBlockEntity.class)
+public abstract class OxidizedCreateFluidTankStorageMixin {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -29,12 +30,22 @@ public abstract class OxidizedFluidTankStorageMixin {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Handle the prevent generic oxidized storage
-    @Inject(method = "fill", at = @At("HEAD"), cancellable = true, remap = false)
-    private void createthrusters$preventGenericOxidizedStorage(FluidStack resource,
-            IFluidHandler.FluidAction action, CallbackInfoReturnable<Integer> callback) {
-        if (OxidizedFuel.isOxidized(resource) && !OxidizedFuelStorageAccess.isAllowed()) {
-            callback.setReturnValue(0);
-        }
+    // Replace only the normal Create tank inventory
+    @Redirect(
+            method = "createInventory",
+            at = @At(value = "NEW", target = "com/simibubi/create/foundation/fluid/SmartFluidTank")
+    )
+    private SmartFluidTank createthrusters$createRestrictedTank(int capacity,
+                                                                 Consumer<FluidStack> updateCallback) {
+        return new SmartFluidTank(capacity, updateCallback) {
+            // Reject oxidized stacks from normal Create Fluid Tanks
+            @Override
+            public int fill(FluidStack resource, IFluidHandler.FluidAction action) {
+                if (OxidizedFuel.isOxidized(resource)) {
+                    return 0;
+                }
+                return super.fill(resource, action);
+            }
+        };
     }
 }

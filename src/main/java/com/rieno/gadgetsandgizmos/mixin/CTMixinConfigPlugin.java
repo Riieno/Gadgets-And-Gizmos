@@ -47,6 +47,8 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
     private static final AtomicBoolean CT_LOGGED_COMPUTED_EVENTS = new AtomicBoolean(false);
     private static final AtomicBoolean CT_LOGGED_DOCKING_ENERGY_SKIP = new AtomicBoolean(false);
     private static final AtomicBoolean CT_LOGGED_PROPULSION_PLATINUM_TANK = new AtomicBoolean(false);
+    private static final AtomicBoolean CT_LOGGED_PROPULSION_OXIDIZED_FUEL = new AtomicBoolean(false);
+    private static final AtomicBoolean CT_LOGGED_PROPULSION_THRUSTER_WIDTH_ACCESSOR = new AtomicBoolean(false);
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -92,7 +94,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
         if (isDockingConnectorEnergyMixin(mixinClassName)) {
             boolean apply = supportsDockingConnectorEnergyTransfer();
             if (!apply && CT_LOGGED_DOCKING_ENERGY_SKIP.compareAndSet(false, true)) {
-                CT_LOGGER.info("[CT][Compat] Disabled docking-connector FE transfer for the legacy Sable/Simulated API");
+                CT_LOGGER.info("[G&G][Compat] Disabled docking-connector FE transfer for the legacy Sable/Simulated API");
             }
             return apply;
         }
@@ -113,7 +115,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
             boolean apply = isModLoadedDuringMixinSelection("dimensional_sable")
                     && needsSablePlotContraptionsBridge();
             if (apply && CT_LOGGED_DIMENSIONAL_SABLE_BRIDGE.compareAndSet(false, true)) {
-                CT_LOGGER.info("[CT][Compat] Enabled Dimensional Sable ServerLevelPlot#getContraptions bridge");
+                CT_LOGGER.info("[G&G][Compat] Enabled Dimensional Sable ServerLevelPlot#getContraptions bridge");
             }
             return apply;
         }
@@ -123,7 +125,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
                 || "com.rieno.gadgetsandgizmos.mixin.AeroworksStepperServoRedstoneMixin".equals(mixinClassName)) {
             boolean loaded = isModLoadedDuringMixinSelection("aeroworks");
             if (loaded && CT_LOGGED_AEROWORKS_COMPAT.compareAndSet(false, true)) {
-                CT_LOGGER.info("[CT][Compat] Enabled Aeroworks controller redstone compatibility");
+                CT_LOGGER.info("[G&G][Compat] Enabled Aeroworks controller redstone compatibility");
             }
             return loaded;
         }
@@ -135,13 +137,13 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
                 if ("com.rieno.gadgetsandgizmos.mixin.WheelMountDirectControlMixin".equals(mixinClassName)) {
 
                     if (CT_LOGGED_WHEEL_MOUNT_SKIP.compareAndSet(false, true)) {
-                        CT_LOGGER.warn("[CT][Compat] Skipped WheelMountDirectControlMixin during early bootstrap because ModList is not ready");
+                        CT_LOGGER.warn("[G&G][Compat] Skipped WheelMountDirectControlMixin during early bootstrap because ModList is not ready");
                     }
                     return false;
                 }
 
                 if (CT_LOGGED_WHEEL_MOUNT_DBW_COMPAT.compareAndSet(false, true)) {
-                    CT_LOGGER.warn("[CT][Compat] Applied WheelMountDirectControlDbwCompatMixin during early bootstrap fallback");
+                    CT_LOGGER.warn("[G&G][Compat] Applied WheelMountDirectControlDbwCompatMixin during early bootstrap fallback");
                 }
                 return true;
             }
@@ -153,7 +155,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
                 }
 
                 if (CT_LOGGED_WHEEL_MOUNT_SKIP.compareAndSet(false, true)) {
-                    CT_LOGGER.warn("[CT][Compat] Disabled WheelMountDirectControlMixin because drivebywire is loaded");
+                    CT_LOGGER.warn("[G&G][Compat] Disabled WheelMountDirectControlMixin because drivebywire is loaded");
                 }
                 return false;
             }
@@ -162,7 +164,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
                 return false;
             }
             if (CT_LOGGED_WHEEL_MOUNT_DBW_COMPAT.compareAndSet(false, true)) {
-                CT_LOGGER.info("[CT][Compat] Enabled WheelMountDirectControlDbwCompatMixin because drivebywire is loaded");
+                CT_LOGGER.info("[G&G][Compat] Enabled WheelMountDirectControlDbwCompatMixin because drivebywire is loaded");
             }
             return true;
         }
@@ -175,7 +177,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
             boolean loaded = modList.isLoaded("toms_storage");
 
             if (loaded && CT_LOGGED_TOMS_RANGE_COMPAT.compareAndSet(false, true)) {
-                CT_LOGGER.info("[CT][Compat] Enabled Tom's Storage terminal range shim");
+                CT_LOGGER.info("[G&G][Compat] Enabled Tom's Storage terminal range shim");
             }
             return loaded;
         }
@@ -187,7 +189,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
                     && compareVersions(version, "1.3.0") >= 0
                     && compareVersions(version, "1.4.0") < 0;
             if (apply && CT_LOGGED_AEROWORKS_COMPAT.compareAndSet(false, true)) {
-                CT_LOGGER.info("[CT][Compat] Enabled Aeroworks controller compatibility");
+                CT_LOGGER.info("[G&G][Compat] Enabled Aeroworks controller compatibility");
             }
             return apply;
         }
@@ -199,7 +201,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
         if ("com.rieno.gadgetsandgizmos.mixin.BitsNBobsCogwheelChainPlacementInteractionMixin".equals(mixinClassName)) {
             boolean loaded = isModLoadedDuringMixinSelection("bits_n_bobs");
             if (loaded && CT_LOGGED_BITS_N_BOBS_GANTRY_BELT.compareAndSet(false, true)) {
-                CT_LOGGER.info("[CT][Compat] Enabled Bits'n'Bobs gantry belt wheel interaction compatibility");
+                CT_LOGGER.info("[G&G][Compat] Enabled Bits'n'Bobs gantry belt wheel interaction compatibility");
             }
             return loaded;
         }
@@ -208,7 +210,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
         if (isPropulsionVectorAngleMixin(mixinClassName)) {
             boolean loaded = isModLoadedDuringMixinSelection("createpropulsion");
             if (loaded && CT_LOGGED_PROPULSION_VECTOR_ANGLES.compareAndSet(false, true)) {
-                CT_LOGGER.info("[CT][Compat] Enabled Create Propulsion vector angle controls");
+                CT_LOGGER.info("[G&G][Compat] Enabled Create Propulsion vector angle controls");
             }
             return loaded;
         }
@@ -217,7 +219,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
             boolean loaded = isModLoadedDuringMixinSelection("createpropulsion")
                     && isModLoadedDuringMixinSelection("computercraft");
             if (loaded && CT_LOGGED_PROPULSION_CC_ANGLES.compareAndSet(false, true)) {
-                CT_LOGGER.info("[CT][Compat] Enabled Create Propulsion ComputerCraft vector angle controls");
+                CT_LOGGER.info("[G&G][Compat] Enabled Create Propulsion ComputerCraft vector angle controls");
             }
             return loaded;
         }
@@ -226,7 +228,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
             boolean loaded = isModLoadedDuringMixinSelection("createpropulsion")
                     && isModLoadedDuringMixinSelection("computercraft");
             if (loaded && CT_LOGGED_PROPULSION_PRECISE_THROTTLE.compareAndSet(false, true)) {
-                CT_LOGGER.info("[CT][Compat] Enabled precise Create Propulsion ComputerCraft throttle control");
+                CT_LOGGER.info("[G&G][Compat] Enabled precise Create Propulsion ComputerCraft throttle control");
             }
             return loaded;
         }
@@ -234,7 +236,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
         if (isPropulsionGraphThrottleMixin(mixinClassName)) {
             boolean loaded = isModLoadedDuringMixinSelection("createpropulsion");
             if (loaded && CT_LOGGED_PROPULSION_PRECISE_THROTTLE.compareAndSet(false, true)) {
-                CT_LOGGER.info("[CT][Compat] Enabled Create Propulsion direct graph and ship throttle control");
+                CT_LOGGER.info("[G&G][Compat] Enabled Create Propulsion direct graph and ship throttle control");
             }
             return loaded;
         }
@@ -242,7 +244,23 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
         if (isPropulsionPlatinumTankMixin(mixinClassName)) {
             boolean loaded = isModLoadedDuringMixinSelection("createpropulsion");
             if (loaded && CT_LOGGED_PROPULSION_PLATINUM_TANK.compareAndSet(false, true)) {
-                CT_LOGGER.info("[CT][Compat] Enabled Create Propulsion Platinum Tank oxidized fuel storage");
+                CT_LOGGER.info("[G&G][Compat] Enabled Create Propulsion Platinum Tank oxidized fuel storage");
+            }
+            return loaded;
+        }
+
+        if (isPropulsionSimulatedThrusterWidthAccessor(mixinClassName)) {
+            boolean loaded = isModLoadedDuringMixinSelection("createpropulsion");
+            if (loaded && CT_LOGGED_PROPULSION_THRUSTER_WIDTH_ACCESSOR.compareAndSet(false, true)) {
+                CT_LOGGER.info("[G&G][Compat] Enabled Create Propulsion Simulated Thruster Width Accessor");
+            }
+            return loaded;
+        }
+
+        if (isPropulsionSimulatedOxidizedFuelThrusterSupportMixin(mixinClassName)) {
+            boolean loaded = isModLoadedDuringMixinSelection("createpropulsion");
+            if (loaded && CT_LOGGED_PROPULSION_OXIDIZED_FUEL.compareAndSet(false, true)) {
+                CT_LOGGER.info("[G&G][Compat] Enabled Create Propulsion Simulated oxidized fuel Thruster bonus");
             }
             return loaded;
         }
@@ -252,7 +270,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
             boolean loaded = isModLoadedDuringMixinSelection("simulated")
                     && isModLoadedDuringMixinSelection("computercraft");
             if (loaded && CT_LOGGED_BASIC_NAVIGATION_CC.compareAndSet(false, true)) {
-                CT_LOGGER.info("[CT][Compat] Enabled basic navigation table ComputerCraft position methods");
+                CT_LOGGER.info("[G&G][Compat] Enabled basic navigation table ComputerCraft position methods");
             }
             return loaded;
         }
@@ -260,7 +278,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
         if (isComputedEventMixin(mixinClassName)) {
             boolean loaded = isModLoadedDuringMixinSelection("computed");
             if (loaded && CT_LOGGED_COMPUTED_EVENTS.compareAndSet(false, true)) {
-                CT_LOGGER.info("[CT][Compat] Enabled Computed named event compatibility");
+                CT_LOGGER.info("[G&G][Compat] Enabled Computed named event compatibility");
             }
             return loaded;
         }
@@ -308,6 +326,16 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
     // Check if this is propulsion ComputerCraft throttle mixin
     private static boolean isPropulsionComputerCraftThrottleMixin(String mixinClassName) {
         return "com.rieno.gadgetsandgizmos.mixin.PropulsionPreciseThrottleMixin".equals(mixinClassName);
+    }
+
+    // Check if this is the Propulsion Simulated Thruster Width Accessor
+    private static boolean isPropulsionSimulatedThrusterWidthAccessor(String mixinClassName){
+        return "com.rieno.gadgetsandgizmos.mixin.PropulsionSimulatedThrusterWidthAccessor".equals(mixinClassName);
+    }
+
+    // Check if this is the propulsion OxidizedFuel Thruster Mixin
+    private static boolean isPropulsionSimulatedOxidizedFuelThrusterSupportMixin(String mixinClassName){
+        return "com.rieno.gadgetsandgizmos.mixin.PropulsionSimulatedOxidizedFuelThrusterSupportMixin".equals(mixinClassName);
     }
 
     // Check if this is propulsion graph throttle mixin
@@ -448,12 +476,12 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
     private static void logSimulatedRopeApi(boolean currentApi) {
         if (currentApi) {
             if (CT_LOGGED_SIMULATED_ROPE_CURRENT.compareAndSet(false, true)) {
-                CT_LOGGER.info("[CT][Compat] Detected Simulated rope API with boolean create/destroy parameters");
+                CT_LOGGER.info("[G&G][Compat] Detected Simulated rope API with boolean create/destroy parameters");
             }
             return;
         }
         if (CT_LOGGED_SIMULATED_ROPE_LEGACY.compareAndSet(false, true)) {
-            CT_LOGGER.info("[CT][Compat] Detected legacy Simulated rope API without boolean create/destroy parameters");
+            CT_LOGGER.info("[G&G][Compat] Detected legacy Simulated rope API without boolean create/destroy parameters");
         }
     }
 

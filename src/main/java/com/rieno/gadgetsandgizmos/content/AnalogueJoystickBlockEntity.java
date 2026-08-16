@@ -102,6 +102,8 @@ public class AnalogueJoystickBlockEntity extends SmartBlockEntity implements IHa
     private double maxTiltDegrees = DEFAULT_MAX_TILT;
     // Current release mode
     private ReleaseMode releaseMode = ReleaseMode.LATCHED;
+    // Selected player input mode
+    private InputMode inputMode = InputMode.MOUSE;
     // Tracks whether analogue joystick is held
     private boolean held;
     // Active drag player
@@ -370,6 +372,31 @@ public class AnalogueJoystickBlockEntity extends SmartBlockEntity implements IHa
         return getReleaseMode() == ReleaseMode.MOMENTARY;
     }
 
+    // Get the selected player input mode
+    public InputMode getInputMode() {
+        return inputMode == null ? InputMode.MOUSE : inputMode;
+    }
+
+    // Check if mouse dragging is enabled
+    public boolean acceptsMouseInput() {
+        return getInputMode() == InputMode.MOUSE;
+    }
+
+    // Check if gamepad dragging is enabled
+    public boolean acceptsGamepadInput() {
+        return getInputMode() == InputMode.GAMEPAD;
+    }
+
+    // Set the selected player input mode
+    public void setInputMode(InputMode inputMode) {
+        InputMode nextMode = inputMode == null ? InputMode.MOUSE : inputMode;
+        if (this.inputMode == nextMode) {
+            return;
+        }
+        this.inputMode = nextMode;
+        syncPersistentConfigChange();
+    }
+
     // Set the release mode
     public void setReleaseMode(ReleaseMode releaseMode) {
         ReleaseMode nextMode = releaseMode == null ? ReleaseMode.LATCHED : releaseMode;
@@ -590,6 +617,7 @@ public class AnalogueJoystickBlockEntity extends SmartBlockEntity implements IHa
         buffer.writeFloat(getDeadzone());
         buffer.writeFloat(getMaxTiltDegrees());
         buffer.writeUtf(getReleaseMode().name());
+        buffer.writeUtf(getInputMode().name());
     }
 
     // Write the analogue joystick safely
@@ -600,6 +628,7 @@ public class AnalogueJoystickBlockEntity extends SmartBlockEntity implements IHa
         tag.putFloat("Deadzone", (float) deadzone);
         tag.putFloat("MaxTiltDegrees", (float) maxTiltDegrees);
         tag.putString("ReleaseMode", getReleaseMode().name());
+        tag.putString("InputMode", getInputMode().name());
         if (customName != null) {
             tag.putString("CustomName", customName);
         }
@@ -622,6 +651,7 @@ public class AnalogueJoystickBlockEntity extends SmartBlockEntity implements IHa
         tag.putFloat("Deadzone", (float) deadzone);
         tag.putFloat("MaxTiltDegrees", (float) maxTiltDegrees);
         tag.putString("ReleaseMode", getReleaseMode().name());
+        tag.putString("InputMode", getInputMode().name());
         if (customName != null) {
             tag.putString("CustomName", customName);
         }
@@ -645,6 +675,7 @@ public class AnalogueJoystickBlockEntity extends SmartBlockEntity implements IHa
         deadzone = tag.contains("Deadzone") ? tag.getFloat("Deadzone") : DEFAULT_DEADZONE;
         maxTiltDegrees = tag.contains("MaxTiltDegrees") ? tag.getFloat("MaxTiltDegrees") : DEFAULT_MAX_TILT;
         releaseMode = tag.contains("ReleaseMode") ? ReleaseMode.read(tag.getString("ReleaseMode")) : ReleaseMode.LATCHED;
+        inputMode = tag.contains("InputMode") ? InputMode.read(tag.getString("InputMode")) : InputMode.MOUSE;
         customName = tag.contains("CustomName") ? tag.getString("CustomName") : null;
 
         snapshot = DirectionalAnalogMath.fromSquareLocal(localX, localZ, deadzone);
@@ -823,6 +854,37 @@ public class AnalogueJoystickBlockEntity extends SmartBlockEntity implements IHa
                 return ReleaseMode.valueOf(name.trim().toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException ignored) {
                 return LATCHED;
+            }
+        }
+    }
+
+    // Define the player input mode values
+    public enum InputMode {
+        MOUSE("createthrusters.analogue_joystick.input_mode.mouse"),
+        GAMEPAD("createthrusters.analogue_joystick.input_mode.gamepad");
+
+        // Translation key
+        private final String translationKey;
+
+        // Initialize the player input mode
+        InputMode(String translationKey) {
+            this.translationKey = translationKey;
+        }
+
+        // Get the translation key
+        public String translationKey() {
+            return translationKey;
+        }
+
+        // Read the player input mode
+        public static InputMode read(String name) {
+            if (name == null || name.isBlank()) {
+                return MOUSE;
+            }
+            try {
+                return InputMode.valueOf(name.trim().toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException ignored) {
+                return MOUSE;
             }
         }
     }

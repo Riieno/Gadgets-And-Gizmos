@@ -9,9 +9,9 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
-import com.simibubi.create.content.kinetics.base.DirectionalKineticBlock;
+import com.simibubi.create.content.fluids.pump.PumpBlock;
+import com.simibubi.create.content.fluids.pump.PumpBlockEntity;
 import com.simibubi.create.content.kinetics.simpleRelays.ICogWheel;
-import com.simibubi.create.foundation.block.IBE;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.item.context.BlockPlaceContext;
@@ -21,7 +21,7 @@ import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
 
 // Orient the kinetic machine which pulls fuel through its front connection
-public class FuelOxidizerBlock extends DirectionalKineticBlock implements IBE<FuelOxidizerBlockEntity>, ICogWheel {
+public class FuelOxidizerBlock extends PumpBlock implements ICogWheel {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -82,13 +82,14 @@ public class FuelOxidizerBlock extends DirectionalKineticBlock implements IBE<Fu
 
     // Get the block entity class
     @Override
-    public Class<FuelOxidizerBlockEntity> getBlockEntityClass() {
-        return FuelOxidizerBlockEntity.class;
+    @SuppressWarnings("unchecked")
+    public Class<PumpBlockEntity> getBlockEntityClass() {
+        return (Class<PumpBlockEntity>) (Class<?>) FuelOxidizerBlockEntity.class;
     }
 
     // Get the block entity type
     @Override
-    public BlockEntityType<? extends FuelOxidizerBlockEntity> getBlockEntityType() {
+    public BlockEntityType<? extends PumpBlockEntity> getBlockEntityType() {
         return CTBlockEntities.FUEL_OXIDIZER.get();
     }
 }

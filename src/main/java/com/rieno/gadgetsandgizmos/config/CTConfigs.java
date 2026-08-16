@@ -275,6 +275,8 @@ public final class CTConfigs {
         public final ModConfigSpec.DoubleValue beamThrustMultiplier;
         // Oxidized fuel thrust multiplier
         public final ModConfigSpec.DoubleValue oxidizedFuelThrustMultiplier;
+        // Oxidized Fuel Propulsion Simulated share
+        public final ModConfigSpec.DoubleValue propulsionSimulatedOxidizedFuelBonusShare;
         // Dense fuel efficiency multiplier
         public final ModConfigSpec.DoubleValue denseFuelEfficiencyMultiplier;
         // Light fuel efficiency multiplier
@@ -365,6 +367,9 @@ public final class CTConfigs {
             oxidizedFuelThrustMultiplier = builder
                     .comment("Thrust multiplier applied to oxidized thruster fuels")
                     .defineInRange("oxidizedFuelThrustMultiplier", 1.5D, 0.0D, 100.0D);
+            propulsionSimulatedOxidizedFuelBonusShare = builder
+                    .comment("Propulsion Simulated Oxidized Fuel Bonus Offset")
+                    .defineInRange("propulsionSimulatedOxidizedFuelBonusShare", 0.45D, 0.0D, 1.0D);
             denseFuelEfficiencyMultiplier = builder
                     .comment("Fuel efficiency multiplier for fluids tagged as dense thruster fuels")
                     .defineInRange("denseFuelEfficiencyMultiplier", 1.45D, 0.01D, 100.0D);
@@ -373,7 +378,7 @@ public final class CTConfigs {
                     .defineInRange("lightFuelEfficiencyMultiplier", 1.0D, 0.01D, 100.0D);
             focusedModeFePerTick = builder
                     .comment("FE consumed per tick at 100% throttle when a thruster is in focused/beam mode. Scales linearly with throttle.")
-                    .defineInRange("focusedModeFePerTick", 50.0D, 1.0D, 100000.0D);
+                    .defineInRange("focusedModeFePerTick", 30.0D, 1.0D, 100000.0D);
             focusedModeFeCapacity = builder
                     .comment("Maximum FE a beam thruster can store internally")
                     .defineInRange("focusedModeFeCapacity", 100000, 1000, 10000000);

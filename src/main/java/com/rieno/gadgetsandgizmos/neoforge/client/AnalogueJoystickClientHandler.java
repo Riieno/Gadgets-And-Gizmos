@@ -126,6 +126,9 @@ public final class AnalogueJoystickClientHandler {
             stopDragging(false);
             return false;
         }
+        if (!joystick.acceptsMouseInput()) {
+            return false;
+        }
         if (isOutOfRange(minecraft, player)) {
             stopDragging(true);
             return false;
@@ -235,6 +238,10 @@ public final class AnalogueJoystickClientHandler {
         if (minecraft.level == null || !(findActiveJoystick(minecraft) instanceof AnalogueJoystickBlockEntity joystick)) {
             return;
         }
+        if (!joystick.acceptsGamepadInput()) {
+            hardwareInputActive = false;
+            return;
+        }
         if (values == null || values.isEmpty()) {
             if (!hardwareInputActive) {
                 return;
@@ -251,15 +258,17 @@ public final class AnalogueJoystickClientHandler {
                 values.getOrDefault("hardware:axis_0", 0.0D));
         double hardwareY = values.getOrDefault("hardware:left_y",
                 values.getOrDefault("hardware:axis_1", 0.0D));
-        localX = Mth.clamp((float) hardwareX, -1.0F, 1.0F);
-        localZ = Mth.clamp((float) -hardwareY, -1.0F, 1.0F);
+        localX = Mth.clamp((float) -hardwareX, -1.0F, 1.0F);
+        localZ = Mth.clamp((float) hardwareY, -1.0F, 1.0F);
         joystick.applyClientPreview(localX, localZ, true);
         sendUpdateIfNeeded();
     }
 
     // Check if this accepts hardware controller input
     public static boolean acceptsHardwareControllerInput() {
-        return activePos != null;
+        Minecraft minecraft = Minecraft.getInstance();
+        return activePos != null && findActiveJoystick(minecraft) instanceof AnalogueJoystickBlockEntity joystick
+                && joystick.acceptsGamepadInput();
     }
 
     // Stop the dragging

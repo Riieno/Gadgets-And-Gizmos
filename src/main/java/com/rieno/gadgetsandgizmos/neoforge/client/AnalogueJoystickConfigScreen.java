@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 import com.rieno.gadgetsandgizmos.content.AnalogueJoystickBlockEntity;
 import com.rieno.gadgetsandgizmos.content.AnalogueJoystickBlockEntity.JoystickChannel;
+import com.rieno.gadgetsandgizmos.content.AnalogueJoystickBlockEntity.InputMode;
 import com.rieno.gadgetsandgizmos.content.AnalogueJoystickBlockEntity.ReleaseMode;
 import com.rieno.gadgetsandgizmos.content.AnalogueJoystickConfigSnapshot;
 import com.rieno.gadgetsandgizmos.content.AnalogueJoystickMenu;
@@ -42,7 +43,7 @@ public class AnalogueJoystickConfigScreen extends AbstractSimiContainerScreen<An
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     private static final int WIDTH = 296;
-    private static final int HEIGHT = 320;
+    private static final int HEIGHT = 344;
     private static final int CONTENT_SHIFT_X = 15;
     private static final int CHANNEL_ROW_X = 10 + CONTENT_SHIFT_X;
     private static final int CHANNEL_ROW_Y = 34;
@@ -61,7 +62,8 @@ public class AnalogueJoystickConfigScreen extends AbstractSimiContainerScreen<An
     private static final int DEADZONE_Y = 158;
     private static final int MAX_TILT_Y = 180;
     private static final int RELEASE_MODE_Y = 202;
-    private static final int SETTINGS_SEPARATOR_Y = 224;
+    private static final int INPUT_MODE_Y = 224;
+    private static final int SETTINGS_SEPARATOR_Y = 246;
     private static final int SETTING_BUTTON_X = 135;
     private static final int SETTING_VALUE_X = 155;
     private static final int SETTING_VALUE_WIDTH = 62;
@@ -91,6 +93,8 @@ public class AnalogueJoystickConfigScreen extends AbstractSimiContainerScreen<An
     private float maxTiltDegrees;
     // Current release mode
     private ReleaseMode releaseMode;
+    // Current player input mode
+    private InputMode inputMode;
     // Tracks whether analogue joystick is dirty
     private boolean dirty;
 
@@ -113,6 +117,7 @@ public class AnalogueJoystickConfigScreen extends AbstractSimiContainerScreen<An
         this.deadzone = menu.getInitialDeadzone();
         this.maxTiltDegrees = menu.getInitialMaxTiltDegrees();
         this.releaseMode = menu.getInitialReleaseMode();
+        this.inputMode = menu.getInitialInputMode();
 
         if (blockEntity != null) {
             for (JoystickChannel channel : JoystickChannel.values()) {
@@ -209,6 +214,9 @@ public class AnalogueJoystickConfigScreen extends AbstractSimiContainerScreen<An
         renderCycleSettingRow(guiGraphics,
             Component.translatable("createthrusters.analogue_joystick.release_mode"),
             Component.translatable(releaseMode.translationKey()), x + SETTINGS_X, y + RELEASE_MODE_Y);
+        renderCycleSettingRow(guiGraphics,
+                Component.translatable("createthrusters.analogue_joystick.input_mode"),
+                Component.translatable(inputMode.translationKey()), x + SETTINGS_X, y + INPUT_MODE_Y);
         } finally {
             scalableGui.pop(guiGraphics);
         }
@@ -291,6 +299,13 @@ public class AnalogueJoystickConfigScreen extends AbstractSimiContainerScreen<An
             if (clickSetting(mouseX, mouseY, leftPos + SETTINGS_X + SETTING_BUTTON_X, topPos + RELEASE_MODE_Y, true)
                     || clickSetting(mouseX, mouseY, leftPos + SETTINGS_X + SETTING_BUTTON_X, topPos + RELEASE_MODE_Y, false)) {
                 releaseMode = releaseMode == ReleaseMode.MOMENTARY ? ReleaseMode.LATCHED : ReleaseMode.MOMENTARY;
+                dirty = true;
+                sendUpdate();
+                return true;
+            }
+            if (clickSetting(mouseX, mouseY, leftPos + SETTINGS_X + SETTING_BUTTON_X, topPos + INPUT_MODE_Y, true)
+                    || clickSetting(mouseX, mouseY, leftPos + SETTINGS_X + SETTING_BUTTON_X, topPos + INPUT_MODE_Y, false)) {
+                inputMode = inputMode == InputMode.MOUSE ? InputMode.GAMEPAD : InputMode.MOUSE;
                 dirty = true;
                 sendUpdate();
                 return true;
@@ -389,7 +404,8 @@ public class AnalogueJoystickConfigScreen extends AbstractSimiContainerScreen<An
                         releaseMode == ReleaseMode.MOMENTARY,
                         sensitivity,
                         deadzone,
-                        maxTiltDegrees)));
+                        maxTiltDegrees,
+                        inputMode == InputMode.GAMEPAD)));
     }
 
     // Handle the setting click
