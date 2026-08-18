@@ -13,6 +13,7 @@ import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.navigation.NavigationTableExtensionAccess;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
 import com.rieno.gadgetsandgizmos.lib.control.DirectionalAnalogSnapshot;
+import com.rieno.gadgetsandgizmos.lib.control.DirectionalAnalogComponent;
 import com.rieno.gadgetsandgizmos.lib.control.DirectionalAnalogSource;
 import com.rieno.gadgetsandgizmos.lib.control.LinkedOrientationSource;
 import com.rieno.gadgetsandgizmos.compat.controller.OrientationAdapters;
@@ -545,7 +546,9 @@ public class GyroscopeLinkBlockEntity extends SmartBlockEntity
     // Get the cardinal output config
     public CardinalOutputConfig getCardinalOutputConfig(Direction dir) {
         CardinalOutputConfig config = cardinalOutputConfigs.get(dir);
-        return config == null ? new CardinalOutputConfig() : config.copy();
+        return config == null
+                ? new CardinalOutputConfig(defaultSourceComponent(dir))
+                : config.copy();
     }
 
     // Set the cardinal output config
@@ -1211,11 +1214,17 @@ public class GyroscopeLinkBlockEntity extends SmartBlockEntity
                 && player.distanceToSqr(Vec3.atCenterOf(worldPosition)) <= 64.0D;
     }
 
+    // Check if the linked source is an analogue joystick
+    public boolean hasAnalogueJoystickSource() {
+        return resolveLiveTargetSensor() instanceof AnalogueJoystickBlockEntity;
+    }
+
     // Send the menu data
     public void sendToMenu(RegistryFriendlyByteBuf buffer) {
 
         MenuOpenHeader.encode(buffer, worldPosition, SimulatedHelper.getContainingSubLevelId(this));
         buffer.writeUtf(getTrackingMode().name());
+        buffer.writeBoolean(hasAnalogueJoystickSource());
     }
 
     // Get the raw cardinal angle deg
@@ -1225,7 +1234,15 @@ public class GyroscopeLinkBlockEntity extends SmartBlockEntity
 
     // Get the raw cardinal source value
     private double getRawCardinalSourceValue(Direction dir, @Nullable SourceSignalAxes sourceAxes) {
-        if (dir == null || sourceAxes == null) {
+        if (dir == null) {
+            return 0.0D;
+        }
+
+        Double joystickValue = getJoystickSourceValue(dir);
+        if (joystickValue != null) {
+            return joystickValue;
+        }
+        if (sourceAxes == null) {
             return 0.0D;
         }
         double signedAxis = getSignedSourceAxis(dir, sourceAxes);
@@ -1234,6 +1251,22 @@ public class GyroscopeLinkBlockEntity extends SmartBlockEntity
             case SOUTH, EAST -> Math.max(0.0D, signedAxis);
             default -> 0.0D;
         };
+    }
+
+    // Get the selected analogue joystick component
+    private @Nullable Double getJoystickSourceValue(Direction dir) {
+        BlockEntity targetSensor = resolveLiveTargetSensor();
+        if (!(targetSensor instanceof AnalogueJoystickBlockEntity joystick)) {
+            return null;
+        }
+
+        DirectionalAnalogSnapshot snapshot = joystick.getDirectionalAnalogSnapshot();
+        CardinalOutputConfig config = cardinalOutputConfigs.get(dir);
+        DirectionalAnalogComponent component = config == null || config.sourceComponent == null
+                ? defaultSourceComponent(dir) : config.sourceComponent;
+        double sampled = component.sample(snapshot);
+        return isNormalizedSourceRange(config)
+                ? sampled : sampled * joystick.getMaxTiltDegrees();
     }
 
     // Get the signed source axis
@@ -1517,11 +1550,24 @@ public class GyroscopeLinkBlockEntity extends SmartBlockEntity
     // Create the default cardinal configs
     private static EnumMap<Direction, CardinalOutputConfig> createDefaultCardinalConfigs() {
         EnumMap<Direction, CardinalOutputConfig> defaults = new EnumMap<>(Direction.class);
-        defaults.put(Direction.NORTH, new CardinalOutputConfig());
-        defaults.put(Direction.SOUTH, new CardinalOutputConfig());
-        defaults.put(Direction.EAST, new CardinalOutputConfig());
-        defaults.put(Direction.WEST, new CardinalOutputConfig());
+        for (Direction dir : Direction.Plane.HORIZONTAL) {
+            defaults.put(dir, new CardinalOutputConfig(defaultSourceComponent(dir)));
+        }
         return defaults;
+    }
+
+    // Get the legacy source component for one output face
+    public static DirectionalAnalogComponent defaultSourceComponent(Direction dir) {
+        if (dir == null) {
+            return DirectionalAnalogComponent.FORWARD;
+        }
+        return switch (dir) {
+            case NORTH -> DirectionalAnalogComponent.FORWARD;
+            case SOUTH -> DirectionalAnalogComponent.BACKWARD;
+            case EAST -> DirectionalAnalogComponent.RIGHT;
+            case WEST -> DirectionalAnalogComponent.LEFT;
+            default -> DirectionalAnalogComponent.FORWARD;
+        };
     }
 
     // Get the cardinal config key
@@ -1544,7 +1590,8 @@ public class GyroscopeLinkBlockEntity extends SmartBlockEntity
         if (!tag.contains(key)) {
             return;
         }
-        cardinalOutputConfigs.put(dir, CardinalOutputConfig.fromTag(tag.getCompound(key)));
+        cardinalOutputConfigs.put(dir,
+                CardinalOutputConfig.fromTag(tag.getCompound(key), defaultSourceComponent(dir)));
     }
 
     // Check if this has any cardinal config
@@ -1759,6 +1806,8 @@ public class GyroscopeLinkBlockEntity extends SmartBlockEntity
         public boolean enabled = true;
         // Tracks whether redstone is enabled
         public boolean redstoneEnabled = true;
+        // Selected analogue joystick component
+        public DirectionalAnalogComponent sourceComponent;
         // Source min in degrees
         public double sourceMinDegrees = -90.0D;
         // Source max in degrees
@@ -1772,11 +1821,23 @@ public class GyroscopeLinkBlockEntity extends SmartBlockEntity
         // Current clamp max
         public double clampMax = 90.0D;
 
+        // Initialize the cardinal output config
+        public CardinalOutputConfig() {
+            this(DirectionalAnalogComponent.FORWARD);
+        }
+
+        // Initialize the cardinal output config
+        public CardinalOutputConfig(DirectionalAnalogComponent sourceComponent) {
+            this.sourceComponent = sourceComponent == null
+                    ? DirectionalAnalogComponent.FORWARD : sourceComponent;
+        }
+
         // Write the cardinal output config data
         public CompoundTag toTag() {
             CompoundTag tag = new CompoundTag();
             tag.putBoolean("Enabled", enabled);
             tag.putBoolean("RedstoneEnabled", redstoneEnabled);
+            tag.putString("SourceComponent", sourceComponent.id());
             tag.putDouble("SourceMinDegrees", sourceMinDegrees);
             tag.putDouble("SourceMaxDegrees", sourceMaxDegrees);
             tag.putDouble("OutputMin", outputMin);
@@ -1787,10 +1848,14 @@ public class GyroscopeLinkBlockEntity extends SmartBlockEntity
         }
 
         // Read the cardinal output config data
-        public static CardinalOutputConfig fromTag(CompoundTag tag) {
-            CardinalOutputConfig config = new CardinalOutputConfig();
+        public static CardinalOutputConfig fromTag(
+                CompoundTag tag,
+                DirectionalAnalogComponent fallbackComponent) {
+            CardinalOutputConfig config = new CardinalOutputConfig(fallbackComponent);
             config.enabled = !tag.contains("Enabled") || tag.getBoolean("Enabled");
             config.redstoneEnabled = !tag.contains("RedstoneEnabled") || tag.getBoolean("RedstoneEnabled");
+            config.sourceComponent = DirectionalAnalogComponent.fromId(
+                    tag.getString("SourceComponent"), fallbackComponent);
             config.sourceMinDegrees = tag.contains("SourceMinDegrees") ? tag.getDouble("SourceMinDegrees") : config.sourceMinDegrees;
             config.sourceMaxDegrees = tag.contains("SourceMaxDegrees") ? tag.getDouble("SourceMaxDegrees") : config.sourceMaxDegrees;
             config.outputMin = tag.contains("OutputMin") ? tag.getDouble("OutputMin") : config.outputMin;
@@ -1820,7 +1885,7 @@ public class GyroscopeLinkBlockEntity extends SmartBlockEntity
 
         // Copy the cardinal output config
         public CardinalOutputConfig copy() {
-            CardinalOutputConfig copy = new CardinalOutputConfig();
+            CardinalOutputConfig copy = new CardinalOutputConfig(sourceComponent);
             copy.enabled = enabled;
             copy.redstoneEnabled = redstoneEnabled;
             copy.sourceMinDegrees = sourceMinDegrees;

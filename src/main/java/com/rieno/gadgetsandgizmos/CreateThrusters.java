@@ -14,6 +14,7 @@ import com.rieno.gadgetsandgizmos.content.ShippingScheduleInstructions;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletApps;
 import com.rieno.gadgetsandgizmos.lib.kinetics.GadgetsNGizmosKineticGuard;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
+import com.rieno.gadgetsandgizmos.registry.CTBlockEntityDataAdapters;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.rieno.gadgetsandgizmos.registry.CTCreativeTabs;
 import com.rieno.gadgetsandgizmos.registry.CTDataComponents;
@@ -62,6 +63,7 @@ public final class CreateThrusters {
                 CreateThrusters::isThrusterBearingExtraCog);
         ShippingScheduleInstructions.register();
         DiagnosticTabletApps.register();
+        CTBlockEntityDataAdapters.register();
         CTUniversalDisplayAdapterConnections.register();
         CTDataComponents.register(modEventBus);
         CTBlocks.REGISTRAR.register(modEventBus);

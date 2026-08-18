@@ -62,6 +62,8 @@ public class GyroscopeLinkMenu extends GhostItemMenu<GyroscopeLinkBlockEntity>
     private UUID contentSubLevelId;
     // Initial tracking mode
     private GyroscopeLinkBlockEntity.TrackingMode initialTrackingMode = GyroscopeLinkBlockEntity.TrackingMode.LIVE;
+    // Tracks whether the linked source is an analogue joystick
+    private boolean analogueJoystickSource;
     // Tracks whether frequency slots are active
     private boolean frequencySlotsActive;
 
@@ -98,6 +100,7 @@ public class GyroscopeLinkMenu extends GhostItemMenu<GyroscopeLinkBlockEntity>
             contentPos = contentHolder.getBlockPos();
             contentSubLevelId = SimulatedHelper.getContainingSubLevelId(contentHolder);
             initialTrackingMode = contentHolder.getTrackingMode();
+            analogueJoystickSource = contentHolder.hasAnalogueJoystickSource();
         }
     }
 
@@ -140,6 +143,7 @@ public class GyroscopeLinkMenu extends GhostItemMenu<GyroscopeLinkBlockEntity>
         } catch (IllegalArgumentException ignored) {
             initialTrackingMode = GyroscopeLinkBlockEntity.TrackingMode.LIVE;
         }
+        analogueJoystickSource = buf.readBoolean();
     }
 
     // Get the content pos
@@ -158,6 +162,11 @@ public class GyroscopeLinkMenu extends GhostItemMenu<GyroscopeLinkBlockEntity>
     // Get the initial tracking mode
     public GyroscopeLinkBlockEntity.TrackingMode getInitialTrackingMode() {
         return initialTrackingMode == null ? GyroscopeLinkBlockEntity.TrackingMode.LIVE : initialTrackingMode;
+    }
+
+    // Check if the linked source is an analogue joystick
+    public boolean hasAnalogueJoystickSource() {
+        return analogueJoystickSource;
     }
 
     // Set the player slots active

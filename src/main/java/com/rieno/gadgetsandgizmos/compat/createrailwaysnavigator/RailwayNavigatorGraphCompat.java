@@ -11,7 +11,6 @@ package com.rieno.gadgetsandgizmos.compat.createrailwaysnavigator;
 import com.rieno.gadgetsandgizmos.content.ShipDockBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ShipDockRegistry;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
-import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphReflectiveData;
 import com.simibubi.create.content.redstone.displayLink.DisplayLinkContext;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -183,7 +182,6 @@ public final class RailwayNavigatorGraphCompat {
         ports.put("display_text", "string");
         ports.put("display_lines", "list");
         ports.put("display_settings", "map");
-        prefix(ports, "setting_", AdvancedGraphReflectiveData.readableData(settings(display)));
         return ports;
     }
 
@@ -571,7 +569,6 @@ public final class RailwayNavigatorGraphCompat {
         if ("display_settings".equals(port)) return AdvancedGraphDocument.Value.map(serialize(settings));
         if ("display_text".equals(port)) return AdvancedGraphDocument.Value.string(text(settings));
         if ("display_lines".equals(port)) return AdvancedGraphDocument.Value.list(lines(settings));
-        if (port.startsWith("setting_")) return AdvancedGraphReflectiveData.read(settings, port.substring("setting_".length()));
         return null;
     }
 

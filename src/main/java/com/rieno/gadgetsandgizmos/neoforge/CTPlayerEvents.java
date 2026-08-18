@@ -24,12 +24,13 @@ import com.rieno.gadgetsandgizmos.content.PhysicsGantryCarriageBlockEntity;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryShaftBlock;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryShaftBlockEntity;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinEntity;
-import com.rieno.gadgetsandgizmos.content.PlayerMannequinItem;
 import com.rieno.gadgetsandgizmos.content.PortableContraptionControllerRuntime;
 import com.rieno.gadgetsandgizmos.content.RopeWinchUnstickWindow;
 import com.rieno.gadgetsandgizmos.content.ThrusterBlock;
 import com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ShippingSchedulePilot;
+import com.rieno.gadgetsandgizmos.content.SupporterHeads;
+import com.rieno.gadgetsandgizmos.content.SupporterMannequinPlacement;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryKind;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryService;
@@ -64,7 +65,6 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
-import com.simibubi.create.content.contraptions.actors.seat.SeatBlock;
 import com.simibubi.create.foundation.utility.RaycastHelper;
 import dev.simulated_team.simulated.content.blocks.rope.rope_winch.RopeWinchBlock;
 import dev.simulated_team.simulated.index.SimTags;
@@ -212,7 +212,7 @@ public final class CTPlayerEvents {
             return;
         }
 
-        if (tryHandlePlayerMannequinSeatSpawn(event)) {
+        if (tryHandleSupporterMannequinSpawn(event)) {
             return;
         }
 
@@ -391,22 +391,15 @@ public final class CTPlayerEvents {
         return true;
     }
 
-    // Try to handle player mannequin seat spawn
-    private static boolean tryHandlePlayerMannequinSeatSpawn(PlayerInteractEvent.RightClickBlock evt) {
-        if (evt.getEntity() == null) {
-            return false;
-        }
-        ItemStack held = evt.getItemStack();
-        if (!(held.getItem() instanceof PlayerMannequinItem mannequinItem)) {
-            return false;
-        }
-        if (!(evt.getLevel().getBlockState(evt.getPos()).getBlock() instanceof SeatBlock)) {
+    // Try to spawn a supporter mannequin from its marked player head
+    private static boolean tryHandleSupporterMannequinSpawn(PlayerInteractEvent.RightClickBlock evt) {
+        if (evt.getEntity() == null || SupporterHeads.getVariant(evt.getItemStack()) == null) {
             return false;
         }
 
         UseOnContext useContext = new UseOnContext(evt.getEntity(), evt.getHand(), evt.getHitVec());
-        InteractionResult res = mannequinItem.placeOnSeat(useContext);
-        if (!res.consumesAction()) {
+        InteractionResult res = SupporterMannequinPlacement.useOn(useContext);
+        if (res == InteractionResult.PASS) {
             return false;
         }
         evt.setCancellationResult(res);
@@ -747,6 +740,9 @@ public final class CTPlayerEvents {
 
     // Check if this is a disabled mod item
     private static boolean isDisabledModItem(ItemStack stack) {
+        if (SupporterHeads.isSupporterHead(stack)) {
+            return !CTFeatureToggles.isItemEnabled("player_mannequin");
+        }
         ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
         return itemId != null
                 && com.rieno.gadgetsandgizmos.CreateThrusters.MOD_ID.equals(itemId.getNamespace())

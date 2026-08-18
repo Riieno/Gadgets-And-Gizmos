@@ -16,7 +16,6 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphPortState;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphProfilerMath;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphRuntime;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDataProvider;
-import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphReflectiveData;
 import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphTemplates;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphValidator;
@@ -35,7 +34,8 @@ import com.rieno.gadgetsandgizmos.compat.controller.ExternalBlockEntityDirectCon
 import com.rieno.gadgetsandgizmos.compat.createrailwaysnavigator.RailwayNavigatorGraphCompat;
 import com.rieno.gadgetsandgizmos.lib.control.AnalogueControlChannel;
 import com.rieno.gadgetsandgizmos.lib.control.IDirectControlReceiver;
-import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataProvider;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
+import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataAdapterRegistry;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyBoundsApi;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.rieno.gadgetsandgizmos.lib.control.DirectionalAnalogSnapshot;
@@ -45,6 +45,7 @@ import com.rieno.gadgetsandgizmos.lib.control.OrientationPayload;
 import com.rieno.gadgetsandgizmos.lib.control.OrientationTarget;
 import com.rieno.gadgetsandgizmos.lib.control.OrientationMath;
 import com.rieno.gadgetsandgizmos.lib.control.CustomKeyEntry;
+import com.rieno.gadgetsandgizmos.lib.control.ControllerBindingOwner;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryKind;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmFlightBehavior;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlMode;
@@ -59,7 +60,6 @@ import com.simibubi.create.content.equipment.clipboard.ClipboardContent;
 import com.simibubi.create.content.equipment.clipboard.ClipboardEntry;
 import com.simibubi.create.content.equipment.clipboard.ClipboardOverrides;
 import com.simibubi.create.content.redstone.displayLink.DisplayLinkBlockEntity;
-import com.simibubi.create.content.trains.display.FlapDisplayBlockEntity;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.api.schematic.SubLevelSchematicSerializationContext;
 import dev.simulated_team.simulated.content.blocks.nav_table.NavTableBlockEntity;
@@ -1808,7 +1808,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                     route.localSide,
                     route.first, route.second,
                     route.inputFirst, route.inputSecond,
-                    route.directTarget, route.inputTarget, "none");
+                    route.directTarget, route.inputTarget, "none",
+                    ControllerBindingOwner.GRAPH);
         }
     }
 
@@ -2016,6 +2017,12 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Clear the graph routed state
     private void clearGraphRoutedState(AdvancedGraphDocument graph) {
         Set<String> graphOwnedCustomBindings = new HashSet<>();
+        for (CustomKeyEntry entry : getCustomKeyEntries()) {
+            if (entry != null && (entry.owner == ControllerBindingOwner.GRAPH
+                    || entry.id().startsWith("graph_"))) {
+                graphOwnedCustomBindings.add(entry.id());
+            }
+        }
         for (AdvancedGraphDocument.Node node : graph.nodes()) {
             String binding = node.data().getString("BindingId");
             if (binding.isBlank()) binding = node.data().getString("RouteBindingId");
@@ -2023,18 +2030,21 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             if (binding.isBlank()) {
                 continue;
             }
-            if (getChannel(binding) != null) {
-                switch (node.type()) {
-                    case "discovered_target_input", "linker_face_input" -> setChannelInputTarget(binding, null);
-                    case "direct_target_output", "linker_face_output" -> setChannelDirectTarget(binding, null);
-                    case "wireless_frequency_input" -> setChannelInputFrequency(binding, ItemStack.EMPTY, ItemStack.EMPTY);
-                    case "wireless_frequency_output" -> setChannelFrequency(binding, ItemStack.EMPTY, ItemStack.EMPTY);
-                    case "local_redstone_output" -> setLocalOutputSide(binding, null);
-                    default -> {
-                    }
-                }
-            } else if (isGraphOwnedBinding(node, binding)) {
+            if (isGraphOwnedBinding(node, binding)) {
                 graphOwnedCustomBindings.add(binding);
+                continue;
+            }
+            if (getChannel(binding) == null) {
+                continue;
+            }
+            switch (node.type()) {
+                case "discovered_target_input", "linker_face_input" -> setChannelInputTarget(binding, null);
+                case "direct_target_output", "linker_face_output" -> setChannelDirectTarget(binding, null);
+                case "wireless_frequency_input" -> setChannelInputFrequency(binding, ItemStack.EMPTY, ItemStack.EMPTY);
+                case "wireless_frequency_output" -> setChannelFrequency(binding, ItemStack.EMPTY, ItemStack.EMPTY);
+                case "local_redstone_output" -> setLocalOutputSide(binding, null);
+                default -> {
+                }
             }
         }
         for (String binding : graphOwnedCustomBindings) {
@@ -3150,8 +3160,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         // Read native and provider backed values
         AdvancedGraphDocument.Value navigationTableValue = NavigationTableGraphCompat.read(blockEntity, port);
         if (navigationTableValue != null) return navigationTableValue;
-        if (blockEntity instanceof BlockEntityDataProvider provider && provider.graphReadableData().containsKey(port)) {
-            return GraphRuntime.fromLibraryValue(provider.readGraphValue(port));
+        GraphValue registeredValue = BlockEntityDataAdapterRegistry.read(blockEntity, port);
+        if (registeredValue != null) {
+            return GraphRuntime.fromLibraryValue(registeredValue);
         }
         AdvancedGraphDocument.Value externalValue = ExternalBlockEntityDirectControlCompat.readData(blockEntity, port);
         if (externalValue != null) return externalValue;
@@ -3198,14 +3209,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                         clipboardLineMap(ClipboardEntry.readAll(clipboard.components())));
             }
         }
-        FlapDisplayBlockEntity displayBoard = displayBoard(blockEntity);
-        if (displayBoard != null) {
-            if ("display_lines".equals(port)) return AdvancedGraphDocument.Value.list(displayBoardLines(displayBoard));
-            if (port.startsWith("display_line_")) {
-                int line = parseSuffix(port, "display_line_");
-                return AdvancedGraphDocument.Value.string(displayBoardLine(displayBoard, line));
-            }
-        }
         if (port.startsWith("item_slot_")) {
             IItemHandler itemHandler = findItemHandler(target.level(), target.pos(), state, blockEntity);
             int slot = parseSuffix(port, "item_slot_");
@@ -3239,8 +3242,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (aeroworks != null) return aeroworks;
         AdvancedGraphDocument.Value linkedTypewriter = LinkedTypewriterGraphCompat.read(blockEntity, port);
         if (linkedTypewriter != null) return linkedTypewriter;
-        AdvancedGraphDocument.Value reflected = AdvancedGraphReflectiveData.read(blockEntity, port);
-        if (reflected != null) return reflected;
         AdvancedGraphDocument.Value railwayNavigator = RailwayNavigatorGraphCompat.read(blockEntity, port);
         if (railwayNavigator != null) return railwayNavigator;
         // Read block state and common capability data
@@ -3381,11 +3382,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         // Write block state and specialized integrations
         BlockState state = target.level().getBlockState(target.pos());
         BlockEntity blockEntity = target.level().getBlockEntity(target.pos());
-        boolean changed = writeGraphState(target, state, activePorts, values);
-        if (changed) {
-            state = target.level().getBlockState(target.pos());
-            blockEntity = target.level().getBlockEntity(target.pos());
-        }
+        boolean changed = false;
         TargetAccess attachedTarget = resolveAttachedLinkerTarget(node, target);
         boolean nixieTarget = CreateNixieTubeGraphCompat.isTarget(attachedTarget.level(), attachedTarget.pos());
         boolean nixieStringHandled = nixieTarget && activePorts.contains(CreateNixieTubeGraphCompat.STRING_PORT);
@@ -3425,11 +3422,12 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 changed = true;
             }
         }
-        if (blockEntity instanceof BlockEntityDataProvider provider) {
-            for (String port : activePorts) {
-                if (provider.graphWritableData().containsKey(port)) {
-                    changed |= provider.writeGraphValue(port, GraphRuntime.toLibraryValue(values.apply(port)));
-                }
+        Map<String, String> registeredWritableData =
+                BlockEntityDataAdapterRegistry.writableData(blockEntity);
+        for (String port : activePorts) {
+            if (registeredWritableData.containsKey(port)) {
+                changed |= BlockEntityDataAdapterRegistry.write(
+                        blockEntity, port, GraphRuntime.toLibraryValue(values.apply(port)));
             }
         }
         for (String port : activePorts) {
@@ -3458,27 +3456,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             }
             if (activePorts.contains("clipboard_lines")) {
                 changed |= writeClipboardLines(clipboard, values.apply("clipboard_lines").payload());
-            }
-        }
-        FlapDisplayBlockEntity displayBoard = displayBoard(blockEntity);
-        if (displayBoard != null) {
-            if (activePorts.contains("display_lines")) {
-                CompoundTag lines = values.apply("display_lines").payload();
-                for (String key : lines.getAllKeys()) {
-                    int line = parseSuffix(key, "");
-                    if (line >= 0 && line < displayBoard.getLines().size()) {
-                        displayBoard.applyTextManually(line, Component.literal(graphListString(lines, key)));
-                        changed = true;
-                    }
-                }
-            }
-            for (String port : activePorts) {
-                if (!port.startsWith("display_line_")) continue;
-                int line = parseSuffix(port, "display_line_");
-                if (line >= 0 && line < displayBoard.getLines().size()) {
-                    displayBoard.applyTextManually(line, Component.literal(valueText(values.apply(port))));
-                    changed = true;
-                }
             }
         }
         // Write direct controls and remaining integrations
@@ -3511,27 +3488,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             changed |= AeroworksControllerCompat.write(blockEntity, port, values.apply(port),
                     graphDirectSignalSourceId(node));
             changed |= RailwayNavigatorGraphCompat.write(blockEntity, port, values.apply(port));
-            if (!hasSpecializedGraphWriter(blockEntity, port)) {
-                changed |= AdvancedGraphReflectiveData.write(blockEntity, port, values.apply(port));
-            }
         }
         if (changed && blockEntity != null) blockEntity.setChanged();
         return changed;
-    }
-
-    // Check if this has specialized graph writer
-    private static boolean hasSpecializedGraphWriter(BlockEntity blockEntity, String port) {
-        if (blockEntity instanceof BlockEntityDataProvider provider
-                && provider.graphWritableData().containsKey(port)) {
-            return true;
-        }
-        return ExternalBlockEntityDirectControlCompat.writableData(blockEntity).containsKey(port)
-                || CreateRotationSpeedControllerGraphCompat.handles(blockEntity, port)
-                || CreateFantasizingGraphCompat.handles(blockEntity, port)
-                || NavigationTableGraphCompat.handles(blockEntity, port)
-                || CreateNixieTubeGraphCompat.writableData(blockEntity).containsKey(port)
-                || AeroworksControllerCompat.writableData(blockEntity).containsKey(port)
-                || RailwayNavigatorGraphCompat.writableData(blockEntity).containsKey(port);
     }
 
     // Check if this is a safe graph write value
@@ -3541,135 +3500,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         return !value.payload().contains("Value", Tag.TAG_ANY_NUMERIC)
                 || Double.isFinite(value.payload().getDouble("Value"));
-    }
-
-    // Write the graph state
-    private static boolean writeGraphState(
-            TargetAccess target,
-            BlockState state,
-            Set<String> activePorts,
-            Function<String, AdvancedGraphDocument.Value> values
-    ) {
-        BlockState updated = state;
-        for (String port : activePorts) {
-            if (port == null || !port.startsWith("state_") || "state_waterlogged".equals(port)) {
-                continue;
-            }
-            Property<?> property = graphStateProperty(updated, port.substring("state_".length()));
-            if (property == null) {
-                continue;
-            }
-            BlockState candidate = graphStateWithValue(updated, property, values.apply(port));
-            if (candidate != null) {
-                updated = candidate;
-            }
-        }
-        if (updated == state) {
-            return false;
-        }
-        target.level().setBlock(target.pos(), updated, 3);
-        target.level().updateNeighborsAt(target.pos(), updated.getBlock());
-        for (Direction dir : Direction.values()) {
-            target.level().updateNeighborsAt(target.pos().relative(dir), updated.getBlock());
-        }
-        return true;
-    }
-
-    // Get the graph state property
-    @Nullable
-    private static Property<?> graphStateProperty(BlockState state, String name) {
-        if (name == null || name.isBlank()) {
-            return null;
-        }
-        for (Property<?> property : state.getProperties()) {
-            if (property.getName().equals(name)) {
-                return property;
-            }
-        }
-        return null;
-    }
-
-    // Get the graph state with value
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    private static @Nullable BlockState graphStateWithValue(BlockState state, Property<?> property,
-                                                            AdvancedGraphDocument.Value val) {
-        return graphStateWithTypedValue(state, (Property) property, val);
-    }
-
-    // Get the graph state with typed value
-    private static <T extends Comparable<T>> @Nullable BlockState graphStateWithTypedValue(
-            BlockState state,
-            Property<T> property,
-            AdvancedGraphDocument.Value val
-    ) {
-        if (val == null) {
-            return null;
-        }
-        if (property instanceof BooleanProperty booleanProperty) {
-            Boolean requested = graphBoolean(val);
-            if (requested == null) {
-                return null;
-            }
-            return state.getValue(booleanProperty) == requested
-                    ? state : state.setValue(booleanProperty, requested);
-        }
-        if (property instanceof IntegerProperty integerProperty) {
-            Double requested = graphNumber(val);
-            if (requested == null) {
-                return null;
-            }
-            int minimum = integerProperty.getPossibleValues().stream()
-                    .min(Integer::compareTo).orElse(0);
-            int maximum = integerProperty.getPossibleValues().stream()
-                    .max(Integer::compareTo).orElse(minimum);
-            int rounded = (int) Math.round(Mth.clamp(requested, minimum, maximum));
-            return state.getValue(integerProperty) == rounded
-                    ? state : state.setValue(integerProperty, rounded);
-        }
-        String requested = val.asString().trim();
-        if (requested.isEmpty()) {
-            return null;
-        }
-        for (T candidate : property.getPossibleValues()) {
-            if (property.getName(candidate).equalsIgnoreCase(requested)) {
-                return state.getValue(property).equals(candidate)
-                        ? state : state.setValue(property, candidate);
-            }
-        }
-        return null;
-    }
-
-    // Get the graph boolean
-    private static @Nullable Boolean graphBoolean(AdvancedGraphDocument.Value val) {
-        if ("boolean".equals(val.type())) {
-            return val.asBoolean();
-        }
-        Double numeric = graphNumber(val);
-        if (numeric != null) {
-            return numeric != 0.0D;
-        }
-        return switch (val.asString().trim().toLowerCase(Locale.ROOT)) {
-            case "true", "on", "yes" -> true;
-            case "false", "off", "no" -> false;
-            default -> null;
-        };
-    }
-
-    // Get the graph number
-    private static @Nullable Double graphNumber(AdvancedGraphDocument.Value val) {
-        if ("boolean".equals(val.type())) {
-            return val.asBoolean() ? 1.0D : 0.0D;
-        }
-        if ("number".equals(val.type())) {
-            double numeric = val.asNumber();
-            return Double.isFinite(numeric) ? numeric : null;
-        }
-        try {
-            double numeric = Double.parseDouble(val.asString().trim());
-            return Double.isFinite(numeric) ? numeric : null;
-        } catch (NumberFormatException ignored) {
-            return null;
-        }
     }
 
     // Get the direct signal channel
@@ -3860,10 +3690,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 ? AeroworksControllerCompat.writableData(blockEntity)
                 : AeroworksControllerCompat.readableData(blockEntity);
         aeroworksPorts.forEach(ports::putString);
-        if (blockEntity instanceof BlockEntityDataProvider provider) {
-            Map<String, String> providerPorts = writable ? provider.graphWritableData() : provider.graphReadableData();
-            providerPorts.forEach(ports::putString);
-        }
+        Map<String, String> registeredPorts = writable
+                ? BlockEntityDataAdapterRegistry.writableData(blockEntity)
+                : BlockEntityDataAdapterRegistry.readableData(blockEntity);
+        registeredPorts.forEach(ports::putString);
         Map<String, String> externalPorts = writable
                 ? ExternalBlockEntityDirectControlCompat.writableData(blockEntity)
                 : ExternalBlockEntityDirectControlCompat.readableData(blockEntity);
@@ -3884,9 +3714,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 ? RailwayNavigatorGraphCompat.writableData(blockEntity)
                 : RailwayNavigatorGraphCompat.readableData(blockEntity);
         railwayPorts.forEach(ports::putString);
-        if (!writable && ports.isEmpty()) {
-            AdvancedGraphReflectiveData.readableData(blockEntity).forEach(ports::putString);
-        }
         return addDirectPortFallbacks(ports, writable,
                 blockEntity instanceof DirectionalAnalogSource,
                 blockEntity instanceof LinkedOrientationSource || SimulatedHelper.isGimbalSensor(blockEntity),
@@ -3948,9 +3775,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (level == null || pos == null || !level.isLoaded(pos)) return ports;
         BlockState state = level.getBlockState(pos);
         BlockEntity blockEntity = level.getBlockEntity(pos);
-        if (writable) {
-            addGraphStatePorts(ports, state, true);
-        }
         AeroworksControllerCompat.ConsoleSection aeroworksSection =
                 AeroworksControllerCompat.resolveConsoleSection(blockEntity, aeroworksSectionId);
         // Limit Aeroworks console sections to their own schema
@@ -3961,17 +3785,16 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             sectionPorts.forEach(ports::putString);
             return ports;
         }
+        Map<String, String> registeredPorts = writable
+                ? BlockEntityDataAdapterRegistry.writableData(blockEntity)
+                : BlockEntityDataAdapterRegistry.readableData(blockEntity);
+        registeredPorts.forEach(ports::putString);
         if (!writable) {
             addGraphStatePorts(ports, state, false);
         }
         // Build writable ports from specialized controls
         if (writable) {
-            boolean hasSpecificControlSchema = false;
-            if (blockEntity instanceof BlockEntityDataProvider provider) {
-                Map<String, String> providerPorts = provider.graphWritableData();
-                providerPorts.forEach(ports::putString);
-                hasSpecificControlSchema |= !providerPorts.isEmpty();
-            }
+            boolean hasSpecificControlSchema = !registeredPorts.isEmpty();
             Map<String, String> externalPorts = ExternalBlockEntityDirectControlCompat.writableData(blockEntity);
             externalPorts.forEach(ports::putString);
             hasSpecificControlSchema |= !externalPorts.isEmpty();
@@ -3982,13 +3805,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             if (blockEntity instanceof ClipboardBlockEntity) {
                 ports.putString("clipboard_text", "string");
                 ports.putString("clipboard_lines", "map");
-            }
-            FlapDisplayBlockEntity displayBoard = displayBoard(blockEntity);
-            if (displayBoard != null) {
-                ports.putString("display_lines", "list");
-                for (int line = 0; line < displayBoard.getLines().size(); line++) {
-                    ports.putString("display_line_" + line, "string");
-                }
             }
             if (!hasSpecificControlSchema
                     && !CreateRotationSpeedControllerGraphCompat.isTarget(blockEntity)
@@ -4014,13 +3830,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             Map<String, String> railwayPorts = RailwayNavigatorGraphCompat.writableData(blockEntity);
             railwayPorts.forEach(ports::putString);
             hasSpecificControlSchema |= !railwayPorts.isEmpty();
-            Map<String, String> reflectivePorts = AdvancedGraphReflectiveData.writableData(blockEntity);
-            for (Map.Entry<String, String> entry : reflectivePorts.entrySet()) {
-                if (!ports.contains(entry.getKey())) {
-                    ports.putString(entry.getKey(), entry.getValue());
-                }
-            }
-            hasSpecificControlSchema |= !reflectivePorts.isEmpty();
             if (!hasSpecificControlSchema && blockEntity instanceof OrientationTarget) {
                 ports.putString("angle_x", "number");
                 ports.putString("angle_z", "number");
@@ -4056,7 +3865,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             ports.putString("energy_capacity", "number");
             ports.putString("energy_fill", "number");
         }
-        if (blockEntity instanceof BlockEntityDataProvider provider) provider.graphReadableData().forEach(ports::putString);
         if (blockEntity instanceof NavTableBlockEntity) {
             ports.putString("distance_to_target", "number");
             ports.putString("target_coordinates", "map");
@@ -4069,13 +3877,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (blockEntity instanceof ClipboardBlockEntity) {
             ports.putString("clipboard_text", "string");
             ports.putString("clipboard_lines", "map");
-        }
-        FlapDisplayBlockEntity displayBoard = displayBoard(blockEntity);
-        if (displayBoard != null) {
-            ports.putString("display_lines", "list");
-            for (int line = 0; line < displayBoard.getLines().size(); line++) {
-                ports.putString("display_line_" + line, "string");
-            }
         }
         if (!CreateRotationSpeedControllerGraphCompat.isTarget(blockEntity)
                 && (blockEntity instanceof IDirectControlReceiver
@@ -4103,7 +3904,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 ports.putString(port, "number");
             }
         }
-        AdvancedGraphReflectiveData.readableData(blockEntity).forEach(ports::putString);
         CreateRotationSpeedControllerGraphCompat.readableData(blockEntity).forEach(ports::putString);
         CreateFantasizingGraphCompat.readableData(blockEntity).forEach(ports::putString);
         NavigationTableGraphCompat.readableData(blockEntity).forEach(ports::putString);
@@ -4117,8 +3917,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (level == null || pos == null || !level.isLoaded(pos)) return false;
         BlockState state = level.getBlockState(pos);
         BlockEntity blockEntity = level.getBlockEntity(pos);
-        if (blockEntity instanceof BlockEntityDataProvider provider
-                && (!provider.graphReadableData().isEmpty() || !provider.graphWritableData().isEmpty())) {
+        if (!BlockEntityDataAdapterRegistry.readableData(blockEntity).isEmpty()
+                || !BlockEntityDataAdapterRegistry.writableData(blockEntity).isEmpty()) {
             return true;
         }
         if (blockEntity instanceof OrientationTarget || blockEntity instanceof IDirectControlReceiver) {
@@ -4135,12 +3935,11 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (level == null || pos == null || !level.isLoaded(pos)) return opts;
         BlockState state = level.getBlockState(pos);
         BlockEntity blockEntity = level.getBlockEntity(pos);
-        addGraphStatePortOptions(opts, state, writable);
+        if (!writable) {
+            addGraphStatePortOptions(opts, state, false);
+        }
         if (writable) {
-            if (blockEntity instanceof BlockEntityDataProvider provider) {
-                mergeOptions(opts, graphDataProviderOptions(provider));
-            }
-            mergeOptions(opts, AdvancedGraphReflectiveData.writableOptions(blockEntity));
+            mergeOptions(opts, registeredDataOptions(blockEntity));
             mergeOptions(opts, CreateRotationSpeedControllerGraphCompat.writableOptions(blockEntity));
             mergeOptions(opts, NavigationTableGraphCompat.writableOptions(blockEntity));
             mergeOptions(opts, AeroworksControllerCompat.writableOptions(blockEntity));
@@ -4149,21 +3948,20 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return opts;
     }
 
-    // Get the graph data provider options
-    static CompoundTag graphDataProviderOptions(@Nullable BlockEntityDataProvider provider) {
+    // Get the registered graph data options
+    private static CompoundTag registeredDataOptions(BlockEntity blockEntity) {
         CompoundTag opts = new CompoundTag();
-        if (provider == null) return opts;
-        Map<String, String> writable = provider.graphWritableData();
-        provider.graphWritableOptions().forEach((port, entries) -> {
-            if (!writable.containsKey(port) || entries == null || entries.isEmpty()) return;
+        BlockEntityDataAdapterRegistry.writableOptions(blockEntity).forEach((port, entries) -> {
             ListTag values = new ListTag();
             entries.stream()
                     .filter(Objects::nonNull)
                     .map(String::trim)
-                    .filter(val -> !val.isEmpty())
+                    .filter(value -> !value.isEmpty())
                     .distinct()
-                    .forEach(val -> values.add(StringTag.valueOf(val)));
-            if (!values.isEmpty()) opts.put(port, values);
+                    .forEach(value -> values.add(StringTag.valueOf(value)));
+            if (!values.isEmpty()) {
+                opts.put(port, values);
+            }
         });
         return opts;
     }
@@ -4378,35 +4176,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             page.set(offset, replacement);
             return;
         }
-    }
-
-    // Get the display board
-    private static FlapDisplayBlockEntity displayBoard(BlockEntity blockEntity) {
-        if (!(blockEntity instanceof FlapDisplayBlockEntity display)) return null;
-        FlapDisplayBlockEntity controller = display.getController();
-        return controller == null ? display : controller;
-    }
-
-    // Get the display board lines
-    private static CompoundTag displayBoardLines(FlapDisplayBlockEntity displayBoard) {
-        CompoundTag lines = new CompoundTag();
-        for (int line = 0; line < displayBoard.getLines().size(); line++) {
-            CompoundTag val = new CompoundTag();
-            CompoundTag payload = new CompoundTag();
-            val.putString("Type", "string");
-            payload.putString("Value", displayBoardLine(displayBoard, line));
-            val.put("Payload", payload);
-            lines.put(Integer.toString(line), val);
-        }
-        return lines;
-    }
-
-    // Get the display board line
-    private static String displayBoardLine(FlapDisplayBlockEntity displayBoard, int line) {
-        if (line < 0 || line >= displayBoard.getLines().size()) return "";
-        StringBuilder text = new StringBuilder();
-        displayBoard.getLines().get(line).getSections().forEach(section -> text.append(section.getText().getString()));
-        return text.toString().stripTrailing();
     }
 
     // Get the graph list string
@@ -5407,17 +5176,14 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             data.putDouble("energy_capacity", energy[1]);
             data.putDouble("energy_fill", energy[0] / energy[1]);
         }
-        if (blockEntity instanceof BlockEntityDataProvider provider) {
-            for (String field : provider.graphReadableData().keySet()) {
-                putGraphValue(data, field, GraphRuntime.fromLibraryValue(provider.readGraphValue(field)));
+        for (String field : BlockEntityDataAdapterRegistry.readableData(blockEntity).keySet()) {
+            GraphValue value = BlockEntityDataAdapterRegistry.read(blockEntity, field);
+            if (value != null) {
+                putGraphValue(data, field, GraphRuntime.fromLibraryValue(value));
             }
         }
         for (String field : ExternalBlockEntityDirectControlCompat.readableData(blockEntity).keySet()) {
             AdvancedGraphDocument.Value val = ExternalBlockEntityDirectControlCompat.readData(blockEntity, field);
-            if (val != null) putGraphValue(data, field, val);
-        }
-        for (String field : AdvancedGraphReflectiveData.readableData(blockEntity).keySet()) {
-            AdvancedGraphDocument.Value val = AdvancedGraphReflectiveData.read(blockEntity, field);
             if (val != null) putGraphValue(data, field, val);
         }
         for (String field : AeroworksControllerCompat.readableData(blockEntity).keySet()) {
@@ -5768,6 +5534,24 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
     }
 
+    // Remove graph-owned custom entries from schematic controller data
+    private static void removeGraphOwnedCustomEntries(CompoundTag controllerData) {
+        if (controllerData == null || !controllerData.contains("CustomKeyEntries", Tag.TAG_LIST)) {
+            return;
+        }
+        ListTag stored = controllerData.getList("CustomKeyEntries", Tag.TAG_COMPOUND);
+        ListTag retained = new ListTag();
+        for (int idx = 0; idx < stored.size(); idx++) {
+            CompoundTag entry = stored.getCompound(idx);
+            String id = entry.getString("Id");
+            ControllerBindingOwner owner = ControllerBindingOwner.fromId(entry.getString("Owner"));
+            if (owner != ControllerBindingOwner.GRAPH && !id.startsWith("graph_")) {
+                retained.add(entry.copy());
+            }
+        }
+        controllerData.put("CustomKeyEntries", retained);
+    }
+
     // Write the additional controller schematic payload
     @Override
     protected void writeAdditionalControllerSchematicPayload(
@@ -5775,6 +5559,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             HolderLookup.Provider provider) {
         CompoundTag controllerData = payload.getCompound(
                 ControllerSchematicPayload.CONTROLLER_DATA_TAG);
+        removeGraphOwnedCustomEntries(controllerData);
         controllerData.remove(SHIP_CONTROL_MAP_ID_TAG);
         controllerData.remove(SERVER_SHUTDOWN_SNAPSHOT_TAG);
         ShippingScheduleRuntime.sanitizeSchematicPayload(controllerData);

@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.control.FaceBoundSignalRoute;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import net.minecraft.core.BlockPos;
@@ -403,14 +404,12 @@ public final class ContraptionNetworkLinkerSignalBus {
         if (level == null || planePos == null || planeFace == null) {
             return;
         }
-        BlockPos attachedPos = planePos.relative(planeFace.getOpposite());
+        FaceBoundSignalRoute route = new FaceBoundSignalRoute(planePos, planeFace);
+        BlockPos attachedPos = route.attachedPos();
         if (!isSignalTargetLoaded(level, subLevelId, attachedPos)) {
             return;
         }
         BlockState attachedState = level.getBlockState(attachedPos);
-        if (level.isLoaded(planePos)) {
-            level.updateNeighborsAt(planePos, sourceBlock);
-        }
         level.neighborChanged(attachedPos, sourceBlock, planePos);
         if (!isSignalTargetLoaded(level, subLevelId, attachedPos)) {
             return;

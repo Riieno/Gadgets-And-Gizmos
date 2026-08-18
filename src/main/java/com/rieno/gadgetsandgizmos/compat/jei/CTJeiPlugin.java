@@ -10,9 +10,9 @@ package com.rieno.gadgetsandgizmos.compat.jei;
 
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinCrafting;
-import com.rieno.gadgetsandgizmos.content.PlayerMannequinItem;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariant;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariants;
+import com.rieno.gadgetsandgizmos.content.SupporterHeads;
 import com.rieno.gadgetsandgizmos.neoforge.client.AnalogueContraptionControllerConfigScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.AdvancedContraptionControllerScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.AnalogueJoystickConfigScreen;
@@ -251,8 +251,8 @@ public class CTJeiPlugin implements IModPlugin {
     private static void captureKnownItemStacks(IJeiRuntime runtime) {
         KNOWN_ITEM_STACKS.clear();
         for (ItemStack stack : runtime.getIngredientManager().getAllItemStacks()) {
-            ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
-            if (isModItem(id)) {
+            ResourceLocation id = featureId(stack);
+            if (id != null) {
                 KNOWN_ITEM_STACKS.computeIfAbsent(id, ignored -> new ArrayList<>()).add(stack.copy());
             }
         }
@@ -262,6 +262,15 @@ public class CTJeiPlugin implements IModPlugin {
                 KNOWN_ITEM_STACKS.computeIfAbsent(id, ignored -> List.of(new ItemStack(item)));
             }
         });
+    }
+
+    // Get the feature id for an item stack
+    private static ResourceLocation featureId(ItemStack stack) {
+        if (SupporterHeads.isSupporterHead(stack)) {
+            return ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID, "player_mannequin");
+        }
+        ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        return isModItem(id) ? id : null;
     }
 
     // Refresh the item ingredients
@@ -350,6 +359,9 @@ public class CTJeiPlugin implements IModPlugin {
 
     // Check if this is a disabled mod item
     private static boolean isDisabledModItem(ItemStack stack) {
+        if (SupporterHeads.isSupporterHead(stack)) {
+            return !CTFeatureToggles.isItemEnabled("player_mannequin");
+        }
         ResourceLocation id = BuiltInRegistries.ITEM.getKey(stack.getItem());
         return isModItem(id) && !CTFeatureToggles.isItemEnabled(id.getPath());
     }
@@ -370,7 +382,7 @@ public class CTJeiPlugin implements IModPlugin {
             CraftingRecipe recipe = new ShapelessRecipe(
                     "player_mannequin",
                     CraftingBookCategory.MISC,
-                    PlayerMannequinItem.createStack(variant),
+                    SupporterHeads.createStack(variant),
                     ingredients);
             ResourceLocation id = ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID,
                     "jei/player_mannequin/crafting/" + variant.id());
@@ -388,7 +400,7 @@ public class CTJeiPlugin implements IModPlugin {
             recipes.add(registration.getVanillaRecipeFactory().createAnvilRecipe(
                     PlayerMannequinCrafting.namedSampleSkulls(variant),
                     emptyInputs(PlayerMannequinCrafting.sampleSkulls().size()),
-                    List.of(PlayerMannequinItem.createStack(variant)),
+                    List.of(SupporterHeads.createStack(variant)),
                     id));
         }
         return recipes;

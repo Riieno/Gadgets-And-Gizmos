@@ -88,6 +88,7 @@
     "ArchitecturyEventBusesWhenAvailableGuardMixin"
   ],
   "client": [
+    "BundledSupporterHeadMixin",
     "AeroCamSyncGameRendererPickGuardMixin",
     "AileronBearingCameraCollisionMixin",
     "AnalogueControllerMouseScrollMixin",

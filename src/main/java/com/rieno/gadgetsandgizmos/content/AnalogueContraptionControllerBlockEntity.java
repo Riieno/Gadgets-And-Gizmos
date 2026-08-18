@@ -18,6 +18,7 @@ import com.rieno.gadgetsandgizmos.lib.control.AnalogueChannelMode;
 import com.rieno.gadgetsandgizmos.lib.control.AnalogueSignalPacket;
 import com.rieno.gadgetsandgizmos.lib.control.AnalogueTransmissionTarget;
 import com.rieno.gadgetsandgizmos.lib.control.ControllerDirectTargetReference;
+import com.rieno.gadgetsandgizmos.lib.control.ControllerBindingOwner;
 import com.rieno.gadgetsandgizmos.lib.control.ControllerMechanic;
 import com.rieno.gadgetsandgizmos.lib.control.ControllerMechanicBinding;
 import com.rieno.gadgetsandgizmos.lib.control.CustomKeyEntry;
@@ -1672,6 +1673,22 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
                                     ControllerDirectTargetReference directTarget,
                                     ControllerDirectTargetReference inputTarget,
                                     String bindingPreset) {
+        applyCustomKeyEntry(id, keyCode, stepDownKeyCode, label, mode,
+                riseRate, fallRate, stepAmount, stepDownAmount, deadzone, smoothing,
+                localOutputSide, first, second, inputFirst, inputSecond,
+                directTarget, inputTarget, bindingPreset, ControllerBindingOwner.USER);
+    }
+
+    // Apply the owned custom key entry
+    public void applyCustomKeyEntry(String id, int keyCode, int stepDownKeyCode, String label,
+                                    AnalogueChannelMode mode, double riseRate, double fallRate,
+                                    double stepAmount, double stepDownAmount, double deadzone, double smoothing,
+                                    Direction localOutputSide, ItemStack first, ItemStack second,
+                                    ItemStack inputFirst, ItemStack inputSecond,
+                                    ControllerDirectTargetReference directTarget,
+                                    ControllerDirectTargetReference inputTarget,
+                                    String bindingPreset,
+                                    ControllerBindingOwner owner) {
         CustomKeyEntry entry = findCustomEntry(id);
         if (entry == null) {
             entry = new CustomKeyEntry(id);
@@ -1684,6 +1701,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
             customInputFrequencyBindings.put(id, inputBinding);
             customInputLinkTargets.put(id, new ControllerLinkInputTarget(id, inputBinding));
         }
+        entry.owner = owner == null ? ControllerBindingOwner.USER : owner;
         entry.keyCode = keyCode < 0 ? -1 : keyCode;
         entry.stepDownKeyCode = stepDownKeyCode < 0 ? -1 : stepDownKeyCode;
         entry.label = (label == null || label.isBlank()) ? "Custom" : label;

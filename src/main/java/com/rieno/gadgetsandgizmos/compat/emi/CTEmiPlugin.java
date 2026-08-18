@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.compat.emi;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.CreateThrusters;
+import com.rieno.gadgetsandgizmos.content.SupporterHeads;
 import com.rieno.gadgetsandgizmos.neoforge.client.AnalogueContraptionControllerConfigScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.AdvancedContraptionControllerScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.AnalogueJoystickConfigScreen;
@@ -136,6 +137,9 @@ public class CTEmiPlugin implements EmiPlugin {
         ItemStack itemStack = stack.getItemStack();
         if (itemStack.isEmpty()) {
             return false;
+        }
+        if (SupporterHeads.isSupporterHead(itemStack)) {
+            return !CTFeatureToggles.isItemEnabled("player_mannequin");
         }
         ResourceLocation id = BuiltInRegistries.ITEM.getKey(itemStack.getItem());
         return id != null

@@ -8,19 +8,12 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
-import com.rieno.gadgetsandgizmos.content.PlayerMannequinItem;
-import com.simibubi.create.foundation.item.render.SimpleCustomRenderer;
+import com.rieno.gadgetsandgizmos.content.SupporterHeads;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.network.chat.Component;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.TooltipFlag;
-import net.neoforged.neoforge.client.extensions.common.IClientItemExtensions;
+import net.neoforged.neoforge.event.entity.player.ItemTooltipEvent;
 
-import java.util.List;
-import java.util.function.Consumer;
-
-// Draw the client Player Mannequin item
-public class ClientPlayerMannequinItem extends PlayerMannequinItem {
+// Add supporter details to marked vanilla player heads
+public final class SupporterHeadClientEvents {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -29,28 +22,23 @@ public class ClientPlayerMannequinItem extends PlayerMannequinItem {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Initialize the client player mannequin item
-    public ClientPlayerMannequinItem(Properties properties) {
-        super(properties);
+    // Initialize the supporter head client events
+    private SupporterHeadClientEvents() {
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
-                                                           Functions
+                                                              MAIN
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Add the hover text
-    @Override
-    public void appendHoverText(ItemStack stack, TooltipContext ctx, List<Component> tooltip, TooltipFlag flag) {
-        appendMannequinTooltip(stack, tooltip, Screen.hasShiftDown());
-    }
-
-    // Initialize the client
-    @Override
-    public void initializeClient(Consumer<IClientItemExtensions> consumer) {
-        consumer.accept(SimpleCustomRenderer.create(this, new PlayerMannequinItemRenderer()));
+    // Add the supporter head tooltip
+    public static void onItemTooltip(ItemTooltipEvent evt) {
+        SupporterHeads.appendTooltip(
+                evt.getItemStack(),
+                evt.getToolTip(),
+                Screen.hasShiftDown());
     }
 }

@@ -9,9 +9,9 @@ package com.rieno.gadgetsandgizmos.registry;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.CreateThrusters;
-import com.rieno.gadgetsandgizmos.content.PlayerMannequinItem;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariant;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariants;
+import com.rieno.gadgetsandgizmos.content.SupporterHeads;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -195,7 +195,7 @@ public final class CTCreativeTabs {
         row = addSectionBanner(displayItems, SPECIAL_THANKS_SECTION, row);
         int specialThanksCount = 0;
         for (PlayerMannequinVariant variant : PlayerMannequinVariants.all()) {
-            specialThanksCount += acceptStack(displayItems, searchItems, PlayerMannequinItem.createStack(variant));
+            specialThanksCount += acceptSupporterHead(displayItems, searchItems, variant);
         }
         padSection(displayItems, row, specialThanksCount);
     }
@@ -264,6 +264,22 @@ public final class CTCreativeTabs {
             return 0;
         }
         if (!CTFeatureToggles.isItemEnabled(itemId.getPath())) {
+            return 0;
+        }
+        displayItems.accept(stack);
+        searchItems.accept(stack.copy());
+        return 1;
+    }
+
+    // Accept a marked vanilla player head for one supporter mannequin variant
+    private static int acceptSupporterHead(Consumer<ItemStack> displayItems,
+                                           Consumer<ItemStack> searchItems,
+                                           PlayerMannequinVariant variant) {
+        if (!CTFeatureToggles.isItemEnabled("player_mannequin")) {
+            return 0;
+        }
+        ItemStack stack = SupporterHeads.createStack(variant);
+        if (stack.isEmpty()) {
             return 0;
         }
         displayItems.accept(stack);

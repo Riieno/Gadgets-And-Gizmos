@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.registry.CTFeatureToggles;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.tags.ItemTags;
@@ -111,7 +112,9 @@ public final class PlayerMannequinCrafting {
 
     // Handle the anvil update event
     public static void onAnvilUpdate(AnvilUpdateEvent evt) {
-        if (!evt.getRight().isEmpty() || !isMobHead(evt.getLeft())) {
+        if (!CTFeatureToggles.isItemEnabled("player_mannequin")
+                || !evt.getRight().isEmpty()
+                || !isMobHead(evt.getLeft())) {
             return;
         }
 
@@ -120,7 +123,7 @@ public final class PlayerMannequinCrafting {
             return;
         }
 
-        evt.setOutput(PlayerMannequinItem.createStack(variant));
+        evt.setOutput(SupporterHeads.createStack(variant));
         evt.setCost(1);
         evt.setMaterialCost(0);
     }

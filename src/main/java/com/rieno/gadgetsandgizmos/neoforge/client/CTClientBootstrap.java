@@ -148,6 +148,7 @@ public final class CTClientBootstrap {
         NeoForge.EVENT_BUS.addListener(CTClientCommands::registerClientCommands);
         NeoForge.EVENT_BUS.addListener(CTPhysicsStaffOverlayRenderer::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(PortableContraptionControllerItemRenderer::onRenderHand);
+        NeoForge.EVENT_BUS.addListener(SupporterHeadClientEvents::onItemTooltip);
 
         NeoForge.EVENT_BUS.addListener(CTGantryAnchorDebugRenderer::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(ShippingManifestRenderer::onRenderWorld);

@@ -10,7 +10,6 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 import com.rieno.gadgetsandgizmos.content.EntityLauncherItem;
 import com.rieno.gadgetsandgizmos.content.PhysicsStaffItem;
-import com.rieno.gadgetsandgizmos.content.PlayerMannequinItem;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerItem;
 import com.rieno.gadgetsandgizmos.registry.ClientAwareItemFactory;
 import net.minecraft.world.item.Item;
@@ -35,12 +34,6 @@ public class ClientAwareItemFactoryImpl implements ClientAwareItemFactory {
 	@Override
 	public EntityLauncherItem createEntityLauncherItem(Item.Properties properties) {
 		return new ClientEntityLauncherItem(properties);
-	}
-
- // Create the player mannequin item
-	@Override
-	public PlayerMannequinItem createPlayerMannequinItem(Item.Properties properties) {
-		return new ClientPlayerMannequinItem(properties);
 	}
 
  // Create the contraption network linker item

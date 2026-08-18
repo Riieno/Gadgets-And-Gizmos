@@ -390,6 +390,22 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
         root.requestDisplayRefresh();
     }
 
+    // Clear the mapped ship information
+    public void clearMappedShipInformation() {
+        if (level == null || level.isClientSide) {
+            return;
+        }
+        AccDisplayBlockEntity root = networkRoot();
+        if (root == null) {
+            root = this;
+        }
+        if (root.mappedShipInformationFrame.isEmpty()) {
+            return;
+        }
+        root.mappedShipInformationFrame = new CompoundTag();
+        root.requestDisplayRefresh();
+    }
+
     // Get the graph
     public AdvancedGraphDocument graph() {
         CompoundTag graphTag = displayFrame.getCompound("Graph");

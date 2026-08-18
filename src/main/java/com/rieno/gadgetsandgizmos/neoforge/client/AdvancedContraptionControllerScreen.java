@@ -14570,13 +14570,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (!shouldSaveDraftOnClose(saveOnClose, closeSaveSent, hasUnsavedDraft())) {
             return;
         }
-        closeSaveSent = true;
-        if (saveOnCloseReqId != 0L || !pendingGraphSaves.isEmpty()) {
-            return;
-        }
         long requestId = GRAPH_ACTION_REQ_IDS.incrementAndGet();
         saveOnCloseReqId = requestId;
-        saveAndApplyDraft("save_apply", requestId);
+        saveAndApplyDraft("save_apply_close", requestId);
+        closeSaveSent = true;
     }
 
     // Check if this should save draft on close
@@ -14628,7 +14625,6 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     public void removed() {
         AnalogueContraptionControllerClientHandler.clearOpenMenuHardwareControllerInput(menu);
         ControllerGraphWebServer.clearOpenGraph();
-        clearGraphActionToast();
         for (Set<String> bindings : activeGraphKeyBindings.values()) {
             for (String binding : bindings) {
                 PacketDistributor.sendToServer(new AnalogueContraptionControllerKeyPayload(
@@ -14642,6 +14638,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         } else {
             saveDraftOnClose();
         }
+        clearGraphActionToast();
         if (initialEmiVisibility != null) RecipeViewerVisibility.setEmiVisible(initialEmiVisibility);
         setLinkerOpen(false, false);
         super.removed();

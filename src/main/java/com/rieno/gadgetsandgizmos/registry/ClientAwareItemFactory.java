@@ -10,7 +10,6 @@ package com.rieno.gadgetsandgizmos.registry;
 
 import com.rieno.gadgetsandgizmos.content.EntityLauncherItem;
 import com.rieno.gadgetsandgizmos.content.PhysicsStaffItem;
-import com.rieno.gadgetsandgizmos.content.PlayerMannequinItem;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerItem;
 import net.minecraft.world.item.Item;
 import net.neoforged.fml.loading.FMLEnvironment;
@@ -32,9 +31,6 @@ public interface ClientAwareItemFactory {
 
  // Create the entity launcher item
 	EntityLauncherItem createEntityLauncherItem(Item.Properties properties);
-
- // Create the player mannequin item
-	PlayerMannequinItem createPlayerMannequinItem(Item.Properties properties);
 
  // Create the contraption network linker item
 	ContraptionNetworkLinkerItem createContraptionNetworkLinkerItem(Item.Properties properties);

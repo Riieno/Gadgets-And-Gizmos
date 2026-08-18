@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.mixin;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.CreateThrusters;
+import com.rieno.gadgetsandgizmos.content.SupporterHeads;
 import com.rieno.gadgetsandgizmos.registry.CTFeatureToggles;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -83,6 +84,9 @@ public class RecipeManagerFeatureToggleMixin {
         ItemStack res = recipe.value().getResultItem(level.registryAccess());
         if (res.isEmpty()) {
             return false;
+        }
+        if (SupporterHeads.isSupporterHead(res)) {
+            return !CTFeatureToggles.isItemEnabled("player_mannequin");
         }
         ResourceLocation id = BuiltInRegistries.ITEM.getKey(res.getItem());
         return id != null

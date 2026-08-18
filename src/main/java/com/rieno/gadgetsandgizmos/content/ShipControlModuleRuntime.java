@@ -25,6 +25,7 @@ import com.rieno.gadgetsandgizmos.lib.control.IDirectControlReceiver;
 import com.rieno.gadgetsandgizmos.lib.compat.PhysicsStaffInteractionGuard;
 import com.rieno.gadgetsandgizmos.lib.discovery.SableSubLevelResidency;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.display.ShipInformationDisplayModes;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyBoundsApi;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyDynamicsApi;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyConnection;
@@ -5535,14 +5536,24 @@ public final class ShipControlModuleRuntime {
         lastCrnDisplayPublishTick = gameTime;
         RailwayNavigatorGraphCompat.ShipDisplayData displayData =
                 controller.getCrnShipDisplayData(currentMap.id());
+        boolean serviceAvailable = displayData.scheduleActive() && displayData.pilotPresent();
         for (ShipControlMap.AccDisplay display : currentMap.accDisplays()) {
             BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
                     level, display.subLevelId(), display.blockPosition());
-            if (blockEntity instanceof AccDisplayBlockEntity accDisplay) {
+            if (!(blockEntity instanceof AccDisplayBlockEntity accDisplay)) {
+                continue;
+            }
+            boolean displayAvailable = ShipInformationDisplayModes.isAvailable(
+                    accDisplay.displayMode(),
+                    displayData.scheduleActive(),
+                    displayData.pilotPresent());
+            if (displayAvailable) {
                 accDisplay.acceptMappedShipInformation(displayData);
+            } else {
+                accDisplay.clearMappedShipInformation();
             }
         }
-        if (!displayData.scheduleActive() || !displayData.pilotPresent()) {
+        if (!serviceAvailable) {
             return;
         }
         Set<ShipControlMap.CrnDisplay> published = new HashSet<>();

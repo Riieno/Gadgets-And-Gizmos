@@ -74,7 +74,12 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
     public static void handle(AdvancedContraptionControllerGraphPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             // ------------------------------------TARGET RESOLUTION------------------------------------
-            AnalogueContraptionControllerBlockEntity resolved = MenuBackedBlockEntityResolver.resolve(
+            boolean closingSave = "save_apply_close".equals(payload.action());
+            AnalogueContraptionControllerBlockEntity resolved = closingSave
+                    ? MenuBackedBlockEntityResolver.resolveOpenMenu(
+                    context, payload.target(), AdvancedContraptionControllerMenu.class,
+                    AnalogueContraptionControllerBlockEntity.class)
+                    : MenuBackedBlockEntityResolver.resolve(
                     context, payload.target(), AdvancedContraptionControllerMenu.class,
                     AnalogueContraptionControllerBlockEntity.class);
             if (!(resolved instanceof AdvancedContraptionControllerBlockEntity controller)) {
@@ -119,6 +124,19 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                             : applied ? "Graph Saved" : "Graph Saved but Failed to Apply";
                     sendGraphActionResult(context, payload.target(), payload.requestId(), saved && applied, msg,
                             controller.getDraftGraph().revision(), true, saved,
+                            saved && !applied ? controller.getGraphDiagnostics() : List.of());
+                }
+                case "save_apply_close" -> {
+                    AdvancedGraphDocument closingGraph = AdvancedGraphDocument.fromTag(payload.graph());
+                    int currentRevision = controller.getDraftGraph().revision();
+                    boolean saved = controller.saveDraft(closingGraph, currentRevision);
+                    boolean applied = saved && controller.applyDraft();
+                    persistPortable = saved;
+                    String msg = !saved ? "Failed to Save Graph"
+                            : applied ? "Graph Saved" : "Graph Saved but Failed to Apply";
+                    sendGraphActionResult(context, payload.target(), payload.requestId(),
+                            saved && applied, msg, controller.getDraftGraph().revision(),
+                            true, saved,
                             saved && !applied ? controller.getGraphDiagnostics() : List.of());
                 }
                 case "apply_save" -> {
@@ -321,7 +339,10 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
 
     // Check if this is a save action
     private static boolean isSaveAction(String action) {
-        return "save".equals(action) || "save_apply".equals(action) || "apply_save".equals(action);
+        return "save".equals(action)
+                || "save_apply".equals(action)
+                || "save_apply_close".equals(action)
+                || "apply_save".equals(action);
     }
 
     // Encode the advanced contraption controller graph

@@ -11,6 +11,7 @@ package com.rieno.gadgetsandgizmos.neoforge.network;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.content.GyroscopeLinkBlockEntity;
 import com.rieno.gadgetsandgizmos.content.GyroscopeLinkMenu;
+import com.rieno.gadgetsandgizmos.lib.control.DirectionalAnalogComponent;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuBackedBlockEntityResolver;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget;
 import net.minecraft.core.Direction;
@@ -28,7 +29,7 @@ import java.util.Locale;
 public record GyroscopeLinkConfigPayload(MenuConfigTarget target, String trackingMode,
     ItemStack northFirst, ItemStack northSecond, ItemStack southFirst, ItemStack southSecond,
     ItemStack eastFirst, ItemStack eastSecond, ItemStack westFirst, ItemStack westSecond,
-    String configDirection, boolean enabled, boolean redstoneEnabled,
+    String configDirection, String sourceComponent, boolean enabled, boolean redstoneEnabled,
     double sourceMinDegrees, double sourceMaxDegrees,
     double outputMin, double outputMax,
     double clampMin, double clampMax)
@@ -60,6 +61,7 @@ public record GyroscopeLinkConfigPayload(MenuConfigTarget target, String trackin
                     ItemStack westFirst = ItemStack.OPTIONAL_STREAM_CODEC.decode(buf);
                     ItemStack westSecond = ItemStack.OPTIONAL_STREAM_CODEC.decode(buf);
                     String configDirection = ByteBufCodecs.STRING_UTF8.decode(buf);
+                    String sourceComponent = ByteBufCodecs.STRING_UTF8.decode(buf);
                     boolean enabled = buf.readBoolean();
                     boolean redstoneEnabled = buf.readBoolean();
                     double sourceMinDegrees = buf.readDouble();
@@ -70,7 +72,7 @@ public record GyroscopeLinkConfigPayload(MenuConfigTarget target, String trackin
                     double clampMax = buf.readDouble();
                     return new GyroscopeLinkConfigPayload(target, trackingMode,
                             northFirst, northSecond, southFirst, southSecond, eastFirst, eastSecond, westFirst, westSecond,
-                            configDirection, enabled, redstoneEnabled,
+                            configDirection, sourceComponent, enabled, redstoneEnabled,
                             sourceMinDegrees, sourceMaxDegrees, outputMin, outputMax, clampMin, clampMax);
                 }
 
@@ -88,6 +90,7 @@ public record GyroscopeLinkConfigPayload(MenuConfigTarget target, String trackin
                     ItemStack.OPTIONAL_STREAM_CODEC.encode(buf, payload.westFirst());
                     ItemStack.OPTIONAL_STREAM_CODEC.encode(buf, payload.westSecond());
                     ByteBufCodecs.STRING_UTF8.encode(buf, payload.configDirection());
+                    ByteBufCodecs.STRING_UTF8.encode(buf, payload.sourceComponent());
                     buf.writeBoolean(payload.enabled());
                     buf.writeBoolean(payload.redstoneEnabled());
                     buf.writeDouble(payload.sourceMinDegrees());
@@ -151,7 +154,11 @@ public record GyroscopeLinkConfigPayload(MenuConfigTarget target, String trackin
             } catch (IllegalArgumentException ignored) {
                 dir = Direction.NORTH;
             }
-            GyroscopeLinkBlockEntity.CardinalOutputConfig config = new GyroscopeLinkBlockEntity.CardinalOutputConfig();
+            DirectionalAnalogComponent fallback = GyroscopeLinkBlockEntity.defaultSourceComponent(dir);
+            GyroscopeLinkBlockEntity.CardinalOutputConfig config =
+                    new GyroscopeLinkBlockEntity.CardinalOutputConfig(fallback);
+            config.sourceComponent = DirectionalAnalogComponent.fromId(
+                    payload.sourceComponent(), fallback);
             config.enabled = payload.enabled();
             config.redstoneEnabled = payload.redstoneEnabled();
             config.sourceMinDegrees = payload.sourceMinDegrees();

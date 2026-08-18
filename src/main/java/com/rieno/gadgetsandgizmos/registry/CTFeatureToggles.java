@@ -20,6 +20,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -38,6 +39,18 @@ public final class CTFeatureToggles {
     private static final Pattern BOOLEAN_ENTRY = Pattern.compile("^\\s*([A-Za-z0-9_]+)\\s*=\\s*(true|false)\\s*(?:#.*)?$",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern SECTION = Pattern.compile("^\\s*\\[([^]]+)]\\s*(?:#.*)?$");
+    private static final String ACC_DISPLAY_FEATURE = "acc_display";
+    private static final String MUSIC_DISCS_FEATURE = "music_discs";
+    private static final Set<String> ACC_DISPLAY_IDS = Set.of(
+            "acc_display",
+            "acc_display_block",
+            "acc_display_panel",
+            "acc_display_half_panel",
+            "acc_display_slab");
+    private static final Set<String> MUSIC_DISC_IDS = Set.of(
+            "music_disc_kinetic_currency",
+            "music_disc_twisted_alive",
+            "music_disc_unplug_the_earth");
     private static final Map<String, Boolean> BLOCK_DEFAULTS;
     private static final Map<String, Boolean> ITEM_DEFAULTS;
     private static final Map<String, Boolean> ENTITY_DEFAULTS;
@@ -100,6 +113,9 @@ public final class CTFeatureToggles {
         define(blocks, "advanced_contraption_controller", true);
         define(blocks, "ship_control_module", true);
         define(blocks, "ship_coupler", true);
+        define(blocks, ACC_DISPLAY_FEATURE, true);
+        define(blocks, "universal_display_adapter", true);
+        define(blocks, "ship_dock", true);
         define(blocks, "advanced_navigation_table", true);
         define(blocks, "diagnostic_tablet", true);
         define(blocks, "shipping_manifest", true);
@@ -121,6 +137,9 @@ public final class CTFeatureToggles {
         define(items, "thruster", true);
         define(items, "rcs_thruster", true);
         define(items, "blackstone_alloy", true);
+        define(items, "blackstone_sheet", true);
+        define(items, "computation_mechanism", true);
+        define(items, "incomplete_computation_mechanism", true);
         define(items, "blackstone_alloy_block", true);
         define(items, "small_thruster", true);
         define(items, "fuel_oxidizer", true);
@@ -142,6 +161,8 @@ public final class CTFeatureToggles {
         define(items, "advanced_contraption_controller", true);
         define(items, "ship_control_module", true);
         define(items, "ship_coupler", true);
+        define(items, "universal_display_adapter", true);
+        define(items, "ship_dock", true);
         define(items, "advanced_navigation_table", true);
         define(items, "diagnostic_tablet", true);
         define(items, "portable_contraption_controller", true);
@@ -178,10 +199,12 @@ public final class CTFeatureToggles {
         define(items, "contraption_network_linker", true);
         define(items, "configuration_clipboard", true);
         define(items, "shipping_manifest", true);
+        define(items, "shipping_schedule", true);
         define(items, "entity_launcher", true);
         define(items, "player_mannequin", true);
         define(items, "physics_goggles", true);
         define(items, "oxidized_creative_blaze_cake", true);
+        define(items, MUSIC_DISCS_FEATURE, true);
         define(items, "music_disc_kinetic_currency", true);
         define(items, "music_disc_twisted_alive", true);
         define(items, "music_disc_unplug_the_earth", true);
@@ -198,6 +221,7 @@ public final class CTFeatureToggles {
         blockDependencies.put("vector_bearing_link", "vector_bearing");
         blockDependencies.put("scissor_piston_link", "scissor_piston");
         blockDependencies.put("scissor_piston_arm", "scissor_piston");
+        blockDependencies.put("universal_display_adapter", ACC_DISPLAY_FEATURE);
         BLOCK_DEPENDENCIES = immutableCopy(blockDependencies);
 
         LinkedHashMap<String, String> itemBlockDependencies = new LinkedHashMap<>();
@@ -225,6 +249,13 @@ public final class CTFeatureToggles {
         itemBlockDependencies.put("ship_control_module", "ship_control_module");
         itemBlockDependencies.put("ship_coupler", "ship_coupler");
         itemBlockDependencies.put("advanced_navigation_table", "advanced_navigation_table");
+        itemBlockDependencies.put("acc_display", ACC_DISPLAY_FEATURE);
+        itemBlockDependencies.put("acc_display_block", ACC_DISPLAY_FEATURE);
+        itemBlockDependencies.put("acc_display_panel", ACC_DISPLAY_FEATURE);
+        itemBlockDependencies.put("acc_display_half_panel", ACC_DISPLAY_FEATURE);
+        itemBlockDependencies.put("acc_display_slab", ACC_DISPLAY_FEATURE);
+        itemBlockDependencies.put("universal_display_adapter", "universal_display_adapter");
+        itemBlockDependencies.put("ship_dock", "ship_dock");
         itemBlockDependencies.put("diagnostic_tablet", "diagnostic_tablet");
         itemBlockDependencies.put("alternator", "alternator");
         itemBlockDependencies.put("claw", "claw");
@@ -272,7 +303,7 @@ public final class CTFeatureToggles {
     // Check if this is enabled
     public static boolean isEnabled(String id) {
         String key = normalize(id);
-        if (BLOCK_DEFAULTS.containsKey(key)) {
+        if (BLOCK_DEFAULTS.containsKey(key) || ACC_DISPLAY_IDS.contains(key)) {
             return isBlockEnabled(key);
         }
         if (ITEM_DEFAULTS.containsKey(key)) {
@@ -284,6 +315,10 @@ public final class CTFeatureToggles {
     // Check if the block is enabled
     public static boolean isBlockEnabled(String id) {
         String key = normalize(id);
+        if (ACC_DISPLAY_IDS.contains(key)
+                && !currentBlockValues().getOrDefault(ACC_DISPLAY_FEATURE, true)) {
+            return false;
+        }
         if (!currentBlockValues().getOrDefault(key, true)) {
             return false;
         }
@@ -305,6 +340,9 @@ public final class CTFeatureToggles {
     public static boolean isItemEnabled(String id) {
         String key = normalize(id);
         if (!currentItemValues().getOrDefault(key, true)) {
+            return false;
+        }
+        if (MUSIC_DISC_IDS.contains(key) && !rawItemEnabled(MUSIC_DISCS_FEATURE)) {
             return false;
         }
 
@@ -390,7 +428,13 @@ public final class CTFeatureToggles {
 
     // Get the feature label
     public static String featureLabel(String key) {
-        return normalize(key).replace('_', ' ');
+        String normalized = normalize(key);
+        return switch (normalized) {
+            case ACC_DISPLAY_FEATURE -> "ACC Displays";
+            case MUSIC_DISCS_FEATURE -> "Music Discs";
+            case "player_mannequin" -> "Supporter Mannequins";
+            default -> normalized.replace('_', ' ');
+        };
     }
 
     // Check if the raw item is enabled

@@ -11,6 +11,7 @@ package com.rieno.gadgetsandgizmos.content;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import com.rieno.gadgetsandgizmos.registry.CTFeatureToggles;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
 import com.rieno.gadgetsandgizmos.registry.CTLootModifiers;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -23,6 +24,7 @@ import net.minecraft.world.level.storage.loot.predicates.LootItemCondition;
 import net.neoforged.neoforge.common.loot.IGlobalLootModifier;
 import net.neoforged.neoforge.common.loot.LootModifier;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -54,12 +56,6 @@ public class LomensMusicDiscLootModifier extends LootModifier {
     );
     private static final String SOPHISTICATED_BACKPACK_WRAPPER =
             "net.p3pp3rf1y.sophisticatedbackpacks.backpack.wrapper.BackpackWrapper";
-
-    private static final List<Supplier<? extends Item>> DISCS = List.of(
-            CTItems.MUSIC_DISC_KINETIC_CURRENCY,
-            CTItems.MUSIC_DISC_TWISTED_ALIVE,
-            CTItems.MUSIC_DISC_UNPLUG_THE_EARTH
-    );
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -99,15 +95,38 @@ public class LomensMusicDiscLootModifier extends LootModifier {
     // Apply the music disc loot
     @Override
     protected ObjectArrayList<ItemStack> doApply(ObjectArrayList<ItemStack> generatedLoot, LootContext ctx) {
-        if (!MUSIC_DISC_LOOT_TABLES.contains(ctx.getQueriedLootTableId())
+        if (!CTFeatureToggles.isItemEnabled("music_discs")
+                || !MUSIC_DISC_LOOT_TABLES.contains(ctx.getQueriedLootTableId())
                 || isSophisticatedBackpackLootGeneration()
                 || ctx.getRandom().nextFloat() >= chance) {
             return generatedLoot;
         }
 
-        Supplier<? extends Item> disc = DISCS.get(ctx.getRandom().nextInt(DISCS.size()));
-        generatedLoot.add(new ItemStack(disc.get()));
+        List<Item> discs = enabledDiscs();
+        if (discs.isEmpty()) {
+            return generatedLoot;
+        }
+        Item disc = discs.get(ctx.getRandom().nextInt(discs.size()));
+        generatedLoot.add(new ItemStack(disc));
         return generatedLoot;
+    }
+
+    // Get the enabled music discs
+    private static List<Item> enabledDiscs() {
+        List<Item> discs = new ArrayList<>(3);
+        addEnabledDisc(discs, "music_disc_kinetic_currency", CTItems.MUSIC_DISC_KINETIC_CURRENCY);
+        addEnabledDisc(discs, "music_disc_twisted_alive", CTItems.MUSIC_DISC_TWISTED_ALIVE);
+        addEnabledDisc(discs, "music_disc_unplug_the_earth", CTItems.MUSIC_DISC_UNPLUG_THE_EARTH);
+        return discs;
+    }
+
+    // Add an enabled music disc
+    private static void addEnabledDisc(List<Item> discs,
+                                       String id,
+                                       Supplier<? extends Item> disc) {
+        if (disc != null && CTFeatureToggles.isItemEnabled(id)) {
+            discs.add(disc.get());
+        }
     }
 
     // Check if this is sophisticated backpack loot generation

@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 import com.rieno.gadgetsandgizmos.content.GyroscopeLinkBlockEntity;
 import com.rieno.gadgetsandgizmos.content.GyroscopeLinkMenu;
+import com.rieno.gadgetsandgizmos.lib.control.DirectionalAnalogComponent;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget;
 import com.rieno.gadgetsandgizmos.neoforge.network.GyroscopeLinkConfigPayload;
 import com.simibubi.create.foundation.gui.menu.AbstractSimiContainerScreen;
@@ -38,7 +39,7 @@ public class GyroscopeLinkConfigScreen extends AbstractSimiContainerScreen<Gyros
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     private static final int WIDTH = 244;
-    private static final int HEIGHT = 372;
+    private static final int HEIGHT = 414;
     private static final int TAB_Y = 24;
     private static final int TAB_W = 72;
     private static final int TAB_H = 18;
@@ -53,9 +54,17 @@ public class GyroscopeLinkConfigScreen extends AbstractSimiContainerScreen<Gyros
     private static final int RANGE_WIDTH = WIDTH - 32;
     private static final int RANGE_INPUT_WIDTH = 78;
     private static final int RANGE_INPUT_HEIGHT = 16;
-    private static final int RANGE_SOURCE_Y = 218;
-    private static final int RANGE_OUTPUT_Y = 264;
-    private static final int RANGE_CLAMP_Y = 310;
+    private static final int SOURCE_COMPONENT_X = 16;
+    private static final int SOURCE_COMPONENT_Y = 188;
+    private static final int SOURCE_COMPONENT_WIDTH = 190;
+    private static final int SOURCE_COMPONENT_HEIGHT = 18;
+    private static final int STATE_LABEL_Y = 218;
+    private static final int STATE_BUTTON_Y = 232;
+    private static final int RANGE_SOURCE_Y = 260;
+    private static final int RANGE_OUTPUT_Y = 306;
+    private static final int RANGE_CLAMP_Y = 352;
+    private static final List<DirectionalAnalogComponent> SOURCE_COMPONENTS =
+            List.of(DirectionalAnalogComponent.values());
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -91,6 +100,8 @@ public class GyroscopeLinkConfigScreen extends AbstractSimiContainerScreen<Gyros
     private int activeRangeWidth;
     // Tracks whether range inputs are being synced
     private boolean syncingRangeInputs;
+    // Tracks whether the joystick component dropdown is open
+    private boolean sourceComponentDropdownOpen;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -111,10 +122,10 @@ public class GyroscopeLinkConfigScreen extends AbstractSimiContainerScreen<Gyros
             cardinalConfigs.put(Direction.EAST, blockEntity.getCardinalOutputConfig(Direction.EAST));
             cardinalConfigs.put(Direction.WEST, blockEntity.getCardinalOutputConfig(Direction.WEST));
         } else {
-            cardinalConfigs.put(Direction.NORTH, new GyroscopeLinkBlockEntity.CardinalOutputConfig());
-            cardinalConfigs.put(Direction.SOUTH, new GyroscopeLinkBlockEntity.CardinalOutputConfig());
-            cardinalConfigs.put(Direction.EAST, new GyroscopeLinkBlockEntity.CardinalOutputConfig());
-            cardinalConfigs.put(Direction.WEST, new GyroscopeLinkBlockEntity.CardinalOutputConfig());
+            for (Direction dir : Direction.Plane.HORIZONTAL) {
+                cardinalConfigs.put(dir, new GyroscopeLinkBlockEntity.CardinalOutputConfig(
+                        GyroscopeLinkBlockEntity.defaultSourceComponent(dir)));
+            }
         }
         setWindowSize(WIDTH, HEIGHT);
     }
@@ -181,6 +192,18 @@ public class GyroscopeLinkConfigScreen extends AbstractSimiContainerScreen<Gyros
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTicks) {
         updateScalableGuiBounds();
         super.render(guiGraphics, mouseX, mouseY, partialTicks);
+        if (currentTab != Tab.TRACKING || !menu.hasAnalogueJoystickSource()) {
+            return;
+        }
+
+        int guiMouseX = scalableGui.mouseX(mouseX);
+        int guiMouseY = scalableGui.mouseY(mouseY);
+        scalableGui.push(guiGraphics);
+        try {
+            renderSourceComponentDropdown(guiGraphics, leftPos, topPos, guiMouseX, guiMouseY);
+        } finally {
+            scalableGui.pop(guiGraphics);
+        }
     }
 
     // Draw the bg
@@ -240,13 +263,13 @@ public class GyroscopeLinkConfigScreen extends AbstractSimiContainerScreen<Gyros
         renderFaceButtonRow(guiGraphics, x + 16, y + 150, mouseX, mouseY);
 
         guiGraphics.drawString(font, Component.translatable("createthrusters.gyroscope_link.config.state"),
-            x + 16, y + 176, CTCreateScreenHelper.LABEL_COLOR, false);
-        renderToggleButton(guiGraphics, x + 16, y + 190, 92,
+            x + 16, y + STATE_LABEL_Y, CTCreateScreenHelper.LABEL_COLOR, false);
+        renderToggleButton(guiGraphics, x + 16, y + STATE_BUTTON_Y, 92,
             Component.translatable(config.enabled
                 ? "createthrusters.gyroscope_link.config.enabled"
                 : "createthrusters.gyroscope_link.config.disabled"),
             config.enabled, mouseX, mouseY);
-        renderToggleButton(guiGraphics, x + 114, y + 190, 92,
+        renderToggleButton(guiGraphics, x + 114, y + STATE_BUTTON_Y, 92,
             Component.translatable(config.redstoneEnabled
                 ? "createthrusters.gyroscope_link.config.redstone_on"
                 : "createthrusters.gyroscope_link.config.redstone_off"),
@@ -261,6 +284,87 @@ public class GyroscopeLinkConfigScreen extends AbstractSimiContainerScreen<Gyros
         renderRangeGroup(guiGraphics, x + RANGE_X, y + RANGE_CLAMP_Y, mouseX, mouseY,
             Component.translatable("createthrusters.gyroscope_link.config.clamp_range"),
             config.clampMin, config.clampMax, -180.0D, 180.0D, RangeField.CLAMP);
+    }
+
+    // Draw the joystick component dropdown
+    private void renderSourceComponentDropdown(
+            GuiGraphics graphics, int x, int y, int mouseX, int mouseY) {
+        if (!menu.hasAnalogueJoystickSource()) {
+            return;
+        }
+
+        graphics.drawString(font,
+                Component.translatable("createthrusters.gyroscope_link.config.joystick_axis"),
+                x + SOURCE_COMPONENT_X, y + SOURCE_COMPONENT_Y - 12,
+                CTCreateScreenHelper.LABEL_COLOR, false);
+        DirectionalAnalogComponent selected = getSelectedConfig().sourceComponent;
+        Component selectedLabel = Component.translatable(sourceComponentTranslationKey(selected));
+        CTCreateScreenHelper.renderTextButton(graphics, font,
+                x + SOURCE_COMPONENT_X, y + SOURCE_COMPONENT_Y,
+                SOURCE_COMPONENT_WIDTH, SOURCE_COMPONENT_HEIGHT,
+                selectedLabel,
+                inside(mouseX, mouseY,
+                        x + SOURCE_COMPONENT_X, y + SOURCE_COMPONENT_Y,
+                        SOURCE_COMPONENT_WIDTH, SOURCE_COMPONENT_HEIGHT),
+                sourceComponentDropdownOpen, false,
+                CTCreateScreenHelper.BANNER_TITLE_COLOR, 0x6A6A6A, true);
+
+        if (!sourceComponentDropdownOpen) {
+            return;
+        }
+        for (int idx = 0; idx < SOURCE_COMPONENTS.size(); idx++) {
+            DirectionalAnalogComponent component = SOURCE_COMPONENTS.get(idx);
+            int optionY = y + SOURCE_COMPONENT_Y + SOURCE_COMPONENT_HEIGHT * (idx + 1);
+            boolean active = component == selected;
+            CTCreateScreenHelper.renderTextButton(graphics, font,
+                    x + SOURCE_COMPONENT_X, optionY,
+                    SOURCE_COMPONENT_WIDTH, SOURCE_COMPONENT_HEIGHT,
+                    Component.translatable(sourceComponentTranslationKey(component)),
+                    inside(mouseX, mouseY,
+                            x + SOURCE_COMPONENT_X, optionY,
+                            SOURCE_COMPONENT_WIDTH, SOURCE_COMPONENT_HEIGHT),
+                    active, active,
+                    CTCreateScreenHelper.BANNER_TITLE_COLOR, 0x6A6A6A, true);
+        }
+    }
+
+    // Handle the joystick component dropdown
+    private boolean clickSourceComponentDropdown(double mouseX, double mouseY) {
+        if (!menu.hasAnalogueJoystickSource()) {
+            sourceComponentDropdownOpen = false;
+            return false;
+        }
+
+        int x = leftPos + SOURCE_COMPONENT_X;
+        int y = topPos + SOURCE_COMPONENT_Y;
+        if (inside(mouseX, mouseY, x, y, SOURCE_COMPONENT_WIDTH, SOURCE_COMPONENT_HEIGHT)) {
+            sourceComponentDropdownOpen = !sourceComponentDropdownOpen;
+            return true;
+        }
+        if (!sourceComponentDropdownOpen) {
+            return false;
+        }
+
+        for (int idx = 0; idx < SOURCE_COMPONENTS.size(); idx++) {
+            int optionY = y + SOURCE_COMPONENT_HEIGHT * (idx + 1);
+            if (!inside(mouseX, mouseY, x, optionY,
+                    SOURCE_COMPONENT_WIDTH, SOURCE_COMPONENT_HEIGHT)) {
+                continue;
+            }
+            DirectionalAnalogComponent selected = SOURCE_COMPONENTS.get(idx);
+            sourceComponentDropdownOpen = false;
+            updateSelectedConfig(config -> config.sourceComponent = selected);
+            return true;
+        }
+        sourceComponentDropdownOpen = false;
+        return false;
+    }
+
+    // Get the addon translation key for a joystick component
+    private static String sourceComponentTranslationKey(DirectionalAnalogComponent component) {
+        DirectionalAnalogComponent resolved = component == null
+                ? DirectionalAnalogComponent.FORWARD : component;
+        return "createthrusters.directional_analog." + resolved.id();
     }
 
         // Draw the face button row
@@ -338,7 +442,8 @@ public class GyroscopeLinkConfigScreen extends AbstractSimiContainerScreen<Gyros
             ignored -> {
                 GyroscopeLinkBlockEntity blockEntity = menu.getMenuConfigTargetBlockEntity();
                 return blockEntity == null
-                    ? new GyroscopeLinkBlockEntity.CardinalOutputConfig()
+                    ? new GyroscopeLinkBlockEntity.CardinalOutputConfig(
+                            GyroscopeLinkBlockEntity.defaultSourceComponent(selectedDirection))
                     : blockEntity.getCardinalOutputConfig(selectedDirection);
             });
         }
@@ -411,6 +516,10 @@ public class GyroscopeLinkConfigScreen extends AbstractSimiContainerScreen<Gyros
     public boolean mouseClicked(double mouseX, double mouseY, int btn) {
         double guiMouseX = scalableGui.mouseX(mouseX);
         double guiMouseY = scalableGui.mouseY(mouseY);
+        if (currentTab == Tab.TRACKING && btn == 0
+                && clickSourceComponentDropdown(guiMouseX, guiMouseY)) {
+            return true;
+        }
         EditBox clickedRangeInput = currentTab == Tab.TRACKING && btn == 0
                 ? findRangeInputAt(guiMouseX, guiMouseY)
                 : null;
@@ -421,12 +530,14 @@ public class GyroscopeLinkConfigScreen extends AbstractSimiContainerScreen<Gyros
         }
         if (inside(guiMouseX, guiMouseY, leftPos + TRACKING_TAB_X, topPos + TAB_Y, TAB_W, TAB_H)) {
             currentTab = Tab.TRACKING;
+            sourceComponentDropdownOpen = false;
             menu.setFrequencySlotsActive(false);
             updateRangeInputVisibility();
             return true;
         }
         if (inside(guiMouseX, guiMouseY, leftPos + FREQUENCY_TAB_X, topPos + TAB_Y, TAB_W, TAB_H)) {
             currentTab = Tab.FREQUENCY;
+            sourceComponentDropdownOpen = false;
             menu.setFrequencySlotsActive(true);
             updateRangeInputVisibility();
             return true;
@@ -449,10 +560,12 @@ public class GyroscopeLinkConfigScreen extends AbstractSimiContainerScreen<Gyros
                 syncRangeInputs();
                 return true;
             }
-            if (clickToggle(guiMouseX, guiMouseY, leftPos + 16, topPos + 190, 92, true)) {
+            if (clickToggle(guiMouseX, guiMouseY,
+                    leftPos + 16, topPos + STATE_BUTTON_Y, 92, true)) {
                 return true;
             }
-            if (clickToggle(guiMouseX, guiMouseY, leftPos + 114, topPos + 190, 92, false)) {
+            if (clickToggle(guiMouseX, guiMouseY,
+                    leftPos + 114, topPos + STATE_BUTTON_Y, 92, false)) {
                 return true;
             }
             if (beginRangeDrag(guiMouseX, guiMouseY, leftPos + RANGE_X, topPos + RANGE_SOURCE_Y + 32, RANGE_WIDTH, 10, RangeField.SOURCE)
@@ -573,6 +686,7 @@ public class GyroscopeLinkConfigScreen extends AbstractSimiContainerScreen<Gyros
                 copySingle(menu.ghostInventory.getStackInSlot(6)),
                 copySingle(menu.ghostInventory.getStackInSlot(7)),
                 selectedDirection.getSerializedName(),
+                config.sourceComponent.id(),
                 config.enabled,
                 config.redstoneEnabled,
                 config.sourceMinDegrees,
@@ -587,18 +701,22 @@ public class GyroscopeLinkConfigScreen extends AbstractSimiContainerScreen<Gyros
     private boolean clickFaceButton(double mouseX, double mouseY, int x, int y, int width) {
         if (inside(mouseX, mouseY, x, y, width, 18)) {
             selectedDirection = Direction.NORTH;
+            sourceComponentDropdownOpen = false;
             return true;
         }
         if (inside(mouseX, mouseY, x + 46, y, width, 18)) {
             selectedDirection = Direction.SOUTH;
+            sourceComponentDropdownOpen = false;
             return true;
         }
         if (inside(mouseX, mouseY, x + 92, y, width, 18)) {
             selectedDirection = Direction.EAST;
+            sourceComponentDropdownOpen = false;
             return true;
         }
         if (inside(mouseX, mouseY, x + 138, y, width, 18)) {
             selectedDirection = Direction.WEST;
+            sourceComponentDropdownOpen = false;
             return true;
         }
         return false;

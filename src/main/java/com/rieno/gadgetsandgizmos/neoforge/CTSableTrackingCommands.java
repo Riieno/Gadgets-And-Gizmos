@@ -18,7 +18,7 @@ import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.ControllerManifestStore;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerData;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerTracker;
-import com.rieno.gadgetsandgizmos.content.PlayerMannequinItem;
+import com.rieno.gadgetsandgizmos.content.SupporterMannequinPlacement;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.neoforge.network.GizmosLinkHighlightPayload;
 import dev.ryanhcode.sable.sublevel.storage.holding.GlobalSavedSubLevelPointer;
@@ -295,7 +295,7 @@ public final class CTSableTrackingCommands {
                 continue;
             }
             playerCount++;
-            if (PlayerMannequinItem.resetKineticCurrencyRewardClaim(player)) {
+            if (SupporterMannequinPlacement.resetKineticCurrencyRewardClaim(player)) {
                 resetCount++;
             }
         }

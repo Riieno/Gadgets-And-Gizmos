@@ -25,7 +25,6 @@ import com.rieno.gadgetsandgizmos.content.ShipDockBlockItem;
 import com.rieno.gadgetsandgizmos.content.SmallThrusterBlockItem;
 import com.rieno.gadgetsandgizmos.content.PhysicsGogglesItem;
 import com.rieno.gadgetsandgizmos.content.PhysicsStaffItem;
-import com.rieno.gadgetsandgizmos.content.PlayerMannequinItem;
 import com.rieno.gadgetsandgizmos.content.PoweredZiplineBlockItem;
 import com.rieno.gadgetsandgizmos.content.PropulsionUpgradeItem;
 import com.rieno.gadgetsandgizmos.content.PortableContraptionControllerItem;
@@ -275,9 +274,6 @@ public final class CTItems {
     public static final DeferredItem<EntityLauncherItem> ENTITY_LAUNCHER = register("entity_launcher",
             CTItems::createEntityLauncherItem);
     @Nullable
-    public static final DeferredItem<PlayerMannequinItem> PLAYER_MANNEQUIN = register("player_mannequin",
-            CTItems::createPlayerMannequinItem);
-    @Nullable
     public static final DeferredItem<PhysicsGogglesItem> PHYSICS_GOGGLES = register("physics_goggles",
             () -> new PhysicsGogglesItem(new Item.Properties().stacksTo(1).rarity(Rarity.UNCOMMON)));
     @Nullable
@@ -338,16 +334,6 @@ public final class CTItems {
             return factory.createEntityLauncherItem(properties);
         }
         return new EntityLauncherItem(properties);
-    }
-
-    // Create the player mannequin item
-    private static PlayerMannequinItem createPlayerMannequinItem() {
-        Item.Properties properties = new Item.Properties().stacksTo(16).rarity(Rarity.UNCOMMON);
-        ClientAwareItemFactory factory = ClientAwareItemFactory.getInstance();
-        if (factory != null) {
-            return factory.createPlayerMannequinItem(properties);
-        }
-        return new PlayerMannequinItem(properties);
     }
 
     // Create the contraption network linker item

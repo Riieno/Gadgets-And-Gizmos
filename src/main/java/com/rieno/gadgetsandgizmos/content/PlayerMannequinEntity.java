@@ -244,7 +244,7 @@ public class PlayerMannequinEntity extends ArmorStand {
     // Get the pick result
     @Override
     public ItemStack getPickResult() {
-        return PlayerMannequinItem.createStack(getVariant());
+        return SupporterHeads.createStack(getVariant());
     }
 
     // Damage the mannequin
@@ -267,7 +267,7 @@ public class PlayerMannequinEntity extends ArmorStand {
 
     // Create the break stack
     private ItemStack createBreakStack() {
-        ItemStack stack = PlayerMannequinItem.createStack(getVariant());
+        ItemStack stack = SupporterHeads.createStack(getVariant());
         Component customName = getCustomName();
         if (customName != null && !customName.getString().equals(getVariant().displayName().getString())) {
             stack.set(DataComponents.CUSTOM_NAME, customName);

@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.registry.CTRecipeSerializers;
+import com.rieno.gadgetsandgizmos.registry.CTFeatureToggles;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -44,14 +45,14 @@ public class PlayerMannequinRecipe extends CustomRecipe {
     // Check if this matches the value
     @Override
     public boolean matches(CraftingInput input, Level level) {
-        return findVariant(input) != null;
+        return CTFeatureToggles.isItemEnabled("player_mannequin") && findVariant(input) != null;
     }
 
     // Assemble the player mannequin recipe
     @Override
     public ItemStack assemble(CraftingInput input, HolderLookup.Provider registries) {
         PlayerMannequinVariant variant = findVariant(input);
-        return variant == null ? ItemStack.EMPTY : PlayerMannequinItem.createStack(variant);
+        return variant == null ? ItemStack.EMPTY : SupporterHeads.createStack(variant);
     }
 
     // Check if this can craft in dimensions
@@ -63,7 +64,7 @@ public class PlayerMannequinRecipe extends CustomRecipe {
     // Get the result item
     @Override
     public ItemStack getResultItem(HolderLookup.Provider registries) {
-        return PlayerMannequinItem.createStack(PlayerMannequinVariants.byIdOrDefault(PlayerMannequinVariants.DEFAULT_ID));
+        return SupporterHeads.createStack(PlayerMannequinVariants.byIdOrDefault(PlayerMannequinVariants.DEFAULT_ID));
     }
 
     // Get the serializer

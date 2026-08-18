@@ -13,7 +13,6 @@ import com.rieno.gadgetsandgizmos.content.AlternatorBlock;
 import com.rieno.gadgetsandgizmos.content.AdvancedNavigationTableBlock;
 import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlock;
 import com.rieno.gadgetsandgizmos.content.AccDisplayBlock;
-import com.rieno.gadgetsandgizmos.content.AccDisplayStartupGate;
 import com.rieno.gadgetsandgizmos.content.AileronBearingBlock;
 import com.rieno.gadgetsandgizmos.content.AileronBearingLinkBlock;
 import com.rieno.gadgetsandgizmos.content.AnalogueContraptionControllerBlock;
@@ -190,26 +189,25 @@ public final class CTBlocks {
                     .requiresCorrectToolForDrops().noOcclusion()));
 
     @Nullable
-    public static final DeferredBlock<AccDisplayBlock> ACC_DISPLAY = AccDisplayStartupGate.enabled()
-            ? register("acc_display", () -> accDisplay(AccDisplayBlock.DisplayType.BOARD)) : null;
+    public static final DeferredBlock<AccDisplayBlock> ACC_DISPLAY = register("acc_display",
+            () -> accDisplay(AccDisplayBlock.DisplayType.BOARD));
     @Nullable
-    public static final DeferredBlock<AccDisplayBlock> ACC_DISPLAY_BLOCK = AccDisplayStartupGate.enabled()
-            ? register("acc_display_block", () -> accDisplay(AccDisplayBlock.DisplayType.BLOCK)) : null;
+    public static final DeferredBlock<AccDisplayBlock> ACC_DISPLAY_BLOCK = register("acc_display_block",
+            () -> accDisplay(AccDisplayBlock.DisplayType.BLOCK));
     @Nullable
-    public static final DeferredBlock<AccDisplayBlock> ACC_DISPLAY_PANEL = AccDisplayStartupGate.enabled()
-            ? register("acc_display_panel", () -> accDisplay(AccDisplayBlock.DisplayType.PANEL)) : null;
+    public static final DeferredBlock<AccDisplayBlock> ACC_DISPLAY_PANEL = register("acc_display_panel",
+            () -> accDisplay(AccDisplayBlock.DisplayType.PANEL));
     @Nullable
-    public static final DeferredBlock<AccDisplayBlock> ACC_DISPLAY_HALF_PANEL = AccDisplayStartupGate.enabled()
-            ? register("acc_display_half_panel", () -> accDisplay(AccDisplayBlock.DisplayType.HALF_PANEL)) : null;
+    public static final DeferredBlock<AccDisplayBlock> ACC_DISPLAY_HALF_PANEL = register("acc_display_half_panel",
+            () -> accDisplay(AccDisplayBlock.DisplayType.HALF_PANEL));
     @Nullable
-    public static final DeferredBlock<AccDisplayBlock> ACC_DISPLAY_SLAB = AccDisplayStartupGate.enabled()
-            ? register("acc_display_slab", () -> accDisplay(AccDisplayBlock.DisplayType.SLAB)) : null;
+    public static final DeferredBlock<AccDisplayBlock> ACC_DISPLAY_SLAB = register("acc_display_slab",
+            () -> accDisplay(AccDisplayBlock.DisplayType.SLAB));
     @Nullable
     public static final DeferredBlock<UniversalDisplayAdapterBlock> UNIVERSAL_DISPLAY_ADAPTER =
-            AccDisplayStartupGate.enabled()
-                    ? register("universal_display_adapter", () -> new UniversalDisplayAdapterBlock(
+            register("universal_display_adapter", () -> new UniversalDisplayAdapterBlock(
                     BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(2.5f)
-                            .requiresCorrectToolForDrops().noOcclusion())) : null;
+                            .requiresCorrectToolForDrops().noOcclusion()));
 
     @Nullable
     public static final DeferredBlock<ShipDockBlock> SHIP_DOCK = register("ship_dock",

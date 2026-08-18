@@ -12,6 +12,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
+import com.rieno.gadgetsandgizmos.registry.CTFeatureToggles;
 import com.rieno.gadgetsandgizmos.registry.CTLootModifiers;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.resources.ResourceLocation;
@@ -79,7 +80,8 @@ public class PlayerMannequinChestLootModifier extends LootModifier {
     // Apply the mannequin chest loot
     @Override
     protected ObjectArrayList<ItemStack> doApply(ObjectArrayList<ItemStack> generatedLoot, LootContext ctx) {
-        if (!CTConfigs.COMMON.enableSpecialThanksMannequinLoot.get()
+        if (!CTFeatureToggles.isItemEnabled("player_mannequin")
+                || !CTConfigs.COMMON.enableSpecialThanksMannequinLoot.get()
                 || !isVanillaChestLoot(ctx.getQueriedLootTableId())
                 || ctx.getRandom().nextFloat() >= chance) {
             return generatedLoot;
@@ -88,7 +90,7 @@ public class PlayerMannequinChestLootModifier extends LootModifier {
         List<PlayerMannequinVariant> variants = PlayerMannequinVariants.all();
         if (!variants.isEmpty()) {
             PlayerMannequinVariant variant = variants.get(ctx.getRandom().nextInt(variants.size()));
-            ItemStack stack = PlayerMannequinItem.createStack(variant);
+            ItemStack stack = SupporterHeads.createStack(variant);
             if (!stack.isEmpty()) {
                 generatedLoot.add(stack);
             }
