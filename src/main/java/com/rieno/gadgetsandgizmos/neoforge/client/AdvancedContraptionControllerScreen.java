@@ -28,7 +28,6 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphFunctions;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphImageAssets;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphLiveValue;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphPortState;
-import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphRuntime;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphSelection;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphTemplates;
 import com.rieno.gadgetsandgizmos.lib.graph.render.GraphWireGeometry;
@@ -2784,7 +2783,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                                    PortPosition src, PortPosition target, String type) {
         if (!"exec".equals(type) || minecraft == null || minecraft.level == null) return;
         AdvancedContraptionControllerBlockEntity controller = menu.getMenuConfigTargetBlockEntity();
-        long pulse = graphExecutionPulse(controller, AdvancedGraphRuntime.executionEdgeKey(edge));
+        long pulse = graphExecutionPulse(controller, GraphRuntime.executionEdgeKey(edge));
         long age = minecraft.level.getGameTime() - pulse;
         if (age < 0 || age > 4) return;
         double t = Math.floorMod(minecraft.level.getGameTime(), 12) / 12.0;
@@ -11933,7 +11932,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Get the structured input types
     private CompoundTag structuredInputTypes(AdvancedContraptionControllerBlockEntity controller,
                                              AdvancedGraphDocument.Node node, String port) {
-        CompoundTag outputs = AdvancedGraphRuntime.splitListOutputsFor(
+        CompoundTag outputs = GraphRuntime.splitListOutputsFor(
                 draftSimulationRuntime == null
                         ? controller.previewGraphInput(draft, node, port)
                         : previewDraftInput(node, port));
@@ -14963,7 +14962,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             for (AdvancedGraphDocument.Edge edge : activeEdges()) {
                 if (edge.fromNode().equals(hit.node().id()) && edge.fromPort().equals(hit.port())) {
                     latest = Math.max(latest, graphExecutionPulse(
-                            controller, AdvancedGraphRuntime.executionEdgeKey(edge)));
+                            controller, GraphRuntime.executionEdgeKey(edge)));
                 }
             }
             return latest == Long.MIN_VALUE ? "not pulsed"

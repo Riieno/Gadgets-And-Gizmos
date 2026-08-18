@@ -217,7 +217,7 @@ public final class AdvancedGraphPortState {
                 AdvancedGraphDocument.Value stored =
                         AdvancedGraphDocument.Value.fromTag(defaults.getCompound(port));
                 return "any".equals(normalizedType)
-                        ? stored : AdvancedGraphRuntime.convertValue(stored, normalizedType);
+                        ? stored : GraphRuntime.convertValue(stored, normalizedType);
             }
         }
         return defaultValue(normalizedType);
@@ -237,7 +237,7 @@ public final class AdvancedGraphPortState {
         AdvancedGraphDocument.Value converted = val == null
                 ? defaultValue(normalizedType)
                 : "any".equals(normalizedType)
-                ? val : AdvancedGraphRuntime.convertValue(val, normalizedType);
+                ? val : GraphRuntime.convertValue(val, normalizedType);
         CompoundTag defaults = node.data().getCompound("Defaults");
         defaults.put(port, converted.toTag());
         node.data().put("Defaults", defaults);
@@ -288,7 +288,7 @@ public final class AdvancedGraphPortState {
                 AdvancedGraphDocument.Value stored =
                         AdvancedGraphDocument.Value.fromTag(defaults.getCompound(port));
                 return "any".equals(normalizedType)
-                        ? stored : AdvancedGraphRuntime.convertValue(stored, normalizedType);
+                        ? stored : GraphRuntime.convertValue(stored, normalizedType);
             }
         }
         return defaultValue(normalizedType);
@@ -308,7 +308,7 @@ public final class AdvancedGraphPortState {
         AdvancedGraphDocument.Value converted = val == null
                 ? defaultValue(normalizedType)
                 : "any".equals(normalizedType)
-                ? val : AdvancedGraphRuntime.convertValue(val, normalizedType);
+                ? val : GraphRuntime.convertValue(val, normalizedType);
         CompoundTag defaults = node.data().getCompound(OUTPUT_DEFAULTS_TAG);
         defaults.put(port, converted.toTag());
         node.data().put(OUTPUT_DEFAULTS_TAG, defaults);

@@ -10,7 +10,9 @@ package com.rieno.gadgetsandgizmos.content.advanced;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
+import com.rieno.gadgetsandgizmos.compat.create.CreateFantasizingGraphCompat;
 import com.rieno.gadgetsandgizmos.compat.create.CreateRotationSpeedControllerGraphCompat;
+import com.rieno.gadgetsandgizmos.compat.create.NavigationTableGraphCompat;
 import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEntity;
 import com.rieno.gadgetsandgizmos.content.AccDisplayBlockEntity;
 import com.rieno.gadgetsandgizmos.lib.control.math.PidControllerMath;
@@ -635,6 +637,19 @@ public final class GraphRuntime {
     // Get the execution pulses
     public Map<String, Long> executionPulses() {
         return Map.copyOf(executionPulses);
+    }
+
+    // Get the execution edge key
+    public static String executionEdgeKey(AdvancedGraphDocument.Edge edge) {
+        return edge.fromNode() + ":" + edge.fromPort()
+                + ">" + edge.toNode() + ":" + edge.toPort();
+    }
+
+    // Get the split list outputs
+    public static CompoundTag splitListOutputsFor(AdvancedGraphDocument.Value val) {
+        CompoundTag outputs = new CompoundTag();
+        splitListEntries(val).forEach((key, entry) -> outputs.putString(key, entry.type()));
+        return outputs;
     }
 
     // Put the live input
@@ -1385,7 +1400,7 @@ public final class GraphRuntime {
                 }
                 changedPorts.addAll(AdvancedGraphOutputDelta.changedPorts(
                         controller, node.source(), desiredValues));
-                changedPorts.addAll(AdvancedGraphRuntime.setDataForceWritePorts(node.source()));
+                changedPorts.addAll(setDataForceWritePorts(node.source()));
                 changedPorts.addAll(CreateRotationSpeedControllerGraphCompat.portsRequiringWrite(
                         node.source(), node.targetWritePorts()));
                 boolean success = simulationOnly || changedPorts.isEmpty()
@@ -1816,7 +1831,7 @@ public final class GraphRuntime {
                 double amount = frame.value(node, "amount", operations).asNumber();
                 yield AdvancedGraphDocument.Value.number(Mth.lerp(amount, a, b));
             }
-            case "data_branch" -> AdvancedGraphRuntime.inferBodyOverride(frame.value(node,
+            case "data_branch" -> inferBodyOverride(frame.value(node,
                     frame.value(node, "condition", operations).asBoolean() ? "true" : "false", operations));
             case "switch" -> {
                 if (!AdvancedGraphCatalog.switchDataMode(node.source())) {
@@ -1826,7 +1841,7 @@ public final class GraphRuntime {
                 String selected = node.inputTypes().containsKey("case_" + selector)
                         ? "case_" + selector : "default";
                 yield "value".equals(port)
-                        ? AdvancedGraphRuntime.inferBodyOverride(
+                        ? inferBodyOverride(
                                 frame.value(node, selected, operations))
                         : AdvancedGraphDocument.Value.number(0);
             }
@@ -1971,7 +1986,7 @@ public final class GraphRuntime {
             case "find_in_string" -> AdvancedGraphDocument.Value.number(findInString(
                     frame.value(node, "string", operations).asString(),
                     frame.value(node, "search", operations).asString()));
-            case "convert_type" -> AdvancedGraphRuntime.convertValue(
+            case "convert_type" -> convertValue(
                     frame.value(node, "value", operations),
                     node.data().getString("OutputType"));
             case "validate_number" -> {
@@ -2675,6 +2690,67 @@ public final class GraphRuntime {
         }
     }
 
+    // Check if the data port is writable
+    private static boolean writableDataPort(Set<String> writablePorts, String port) {
+        return writablePorts.contains(port)
+                && !"exec".equals(port)
+                && !"target".equals(port)
+                && !"state_waterlogged".equals(port);
+    }
+
+    // Get the Set Data write ports
+    private static Set<String> setDataWritePorts(
+            AdvancedGraphDocument.Node node,
+            Iterable<AdvancedGraphDocument.Edge> incoming
+    ) {
+        Set<String> activePorts = new LinkedHashSet<>();
+        if (node == null) {
+            return activePorts;
+        }
+
+        Set<String> writablePorts = AdvancedGraphCatalog.inputs(node).keySet();
+        if (incoming != null) {
+            for (AdvancedGraphDocument.Edge edge : incoming) {
+                if (edge != null && writableDataPort(writablePorts, edge.toPort())) {
+                    activePorts.add(edge.toPort());
+                }
+            }
+        }
+
+        CompoundTag prefilledInputs = node.data().getCompound("PrefilledInputs");
+        for (String port : node.data().getCompound("Defaults").getAllKeys()) {
+            if (!prefilledInputs.contains(port) && writableDataPort(writablePorts, port)) {
+                activePorts.add(port);
+            }
+        }
+
+        activePorts.addAll(setDataForceWritePorts(node));
+        return activePorts;
+    }
+
+    // Get the Set Data force-write ports
+    private static Set<String> setDataForceWritePorts(AdvancedGraphDocument.Node node) {
+        Set<String> forcedPorts = new LinkedHashSet<>();
+        if (node == null) {
+            return forcedPorts;
+        }
+
+        Set<String> writablePorts = AdvancedGraphCatalog.inputs(node).keySet();
+        CompoundTag forceWriteInputs = node.data().getCompound("ForceWriteInputs");
+        for (String port : forceWriteInputs.getAllKeys()) {
+            if (forceWriteInputs.getBoolean(port)
+                    && writableDataPort(writablePorts, port)) {
+                forcedPorts.add(port);
+            }
+        }
+
+        forcedPorts.addAll(CreateFantasizingGraphCompat.portsRequiringWrite(
+                node, writablePorts));
+        forcedPorts.addAll(NavigationTableGraphCompat.portsRequiringWrite(
+                node, writablePorts));
+        return forcedPorts;
+    }
+
     // Check if the port is a direct data target
     private static boolean directTargetDataPort(Map<String, String> inputTypes, String port) {
         String type = inputTypes.get(port);
@@ -2804,7 +2880,7 @@ public final class GraphRuntime {
     private static Map<String, AdvancedGraphDocument.Value> splitListEntries(AdvancedGraphDocument.Value val) {
         Map<String, AdvancedGraphDocument.Value> entries = new LinkedHashMap<>();
         if (val == null) return entries;
-        val = AdvancedGraphRuntime.inferBodyOverride(val);
+        val = inferBodyOverride(val);
         if ("map".equals(val.type()) || "list".equals(val.type())) {
             CompoundTag payload = val.payload();
             for (String key : payload.getAllKeys()) entries.put(key, dataValue(payload, key));
@@ -2900,6 +2976,164 @@ public final class GraphRuntime {
             case "string", "direction" -> val.asString();
             default -> val.payload().toString();
         };
+    }
+
+    // Infer the concrete value stored inside an Any value
+    private static AdvancedGraphDocument.Value inferBodyOverride(
+            AdvancedGraphDocument.Value val
+    ) {
+        if (val == null || !"any".equals(val.type())) {
+            return val;
+        }
+
+        CompoundTag payload = val.payload();
+        if (payload.contains("Value", Tag.TAG_BYTE)) {
+            return AdvancedGraphDocument.Value.bool(payload.getBoolean("Value"));
+        }
+        if (payload.contains("Value", Tag.TAG_ANY_NUMERIC)) {
+            double number = payload.getDouble("Value");
+            return Double.isFinite(number)
+                    ? AdvancedGraphDocument.Value.number(number)
+                    : val;
+        }
+        if (!payload.contains("Value", Tag.TAG_STRING)) {
+            return val;
+        }
+
+        String raw = payload.getString("Value");
+        String text = raw.trim();
+        if ("true".equalsIgnoreCase(text)) {
+            return AdvancedGraphDocument.Value.bool(true);
+        }
+        if ("false".equalsIgnoreCase(text)) {
+            return AdvancedGraphDocument.Value.bool(false);
+        }
+
+        try {
+            double number = Double.parseDouble(text);
+            if (Double.isFinite(number)) {
+                return AdvancedGraphDocument.Value.number(number);
+            }
+        } catch (NumberFormatException ignored) {
+        }
+
+        boolean mayBeJson = text.startsWith("{")
+                || text.startsWith("[")
+                || text.startsWith("\"");
+        if (mayBeJson) {
+            try {
+                return jsonValue(JsonParser.parseString(text));
+            } catch (RuntimeException ignored) {
+            }
+        }
+        return AdvancedGraphDocument.Value.string(raw);
+    }
+
+    // Convert a graph value to the requested port type
+    static AdvancedGraphDocument.Value convertValue(
+            AdvancedGraphDocument.Value val,
+            String targetType
+    ) {
+        if (val == null) {
+            val = AdvancedGraphDocument.Value.string("");
+        }
+        if (targetType == null || targetType.isBlank()) {
+            targetType = "string";
+        }
+        if ("any".equals(targetType) || targetType.equals(val.type())) {
+            return val;
+        }
+
+        return switch (targetType) {
+            case "string" -> AdvancedGraphDocument.Value.string(valueText(val));
+            case "number" -> AdvancedGraphDocument.Value.number(numberValue(val));
+            case "boolean" -> AdvancedGraphDocument.Value.bool(booleanValue(val));
+            case "direction" -> AdvancedGraphDocument.Value.direction(directionValue(val));
+            case "frequency" -> AdvancedGraphDocument.Value.frequency(new CompoundTag());
+            case "target" -> AdvancedGraphDocument.Value.target(new CompoundTag());
+            case "list", "map" -> structuredConversion(val, targetType);
+            default -> AdvancedGraphDocument.Value.string("");
+        };
+    }
+
+    // Convert a String/Any value into a List or Map when it contains JSON
+    private static AdvancedGraphDocument.Value structuredConversion(
+            AdvancedGraphDocument.Value val,
+            String targetType
+    ) {
+        AdvancedGraphDocument.Value inferred = inferBodyOverride(val);
+        if (targetType.equals(inferred.type())) {
+            return inferred;
+        }
+        if ("string".equals(inferred.type())) {
+            try {
+                AdvancedGraphDocument.Value parsed = jsonValue(
+                        JsonParser.parseString(inferred.asString().trim()));
+                if (targetType.equals(parsed.type())) {
+                    return parsed;
+                }
+            } catch (RuntimeException ignored) {
+            }
+        }
+        return "list".equals(targetType)
+                ? AdvancedGraphDocument.Value.list(new CompoundTag())
+                : AdvancedGraphDocument.Value.map(new CompoundTag());
+    }
+
+    // Read a graph value as a finite Number
+    private static double numberValue(AdvancedGraphDocument.Value val) {
+        if ("number".equals(val.type())) {
+            return Double.isFinite(val.asNumber()) ? val.asNumber() : 0.0D;
+        }
+        if ("boolean".equals(val.type())) {
+            return val.asBoolean() ? 1.0D : 0.0D;
+        }
+        if (!"string".equals(val.type())) {
+            return 0.0D;
+        }
+        try {
+            double parsed = Double.parseDouble(val.asString().trim());
+            return Double.isFinite(parsed) ? parsed : 0.0D;
+        } catch (NumberFormatException ignored) {
+            return 0.0D;
+        }
+    }
+
+    // Read a graph value as a Boolean
+    private static boolean booleanValue(AdvancedGraphDocument.Value val) {
+        if ("boolean".equals(val.type())) {
+            return val.asBoolean();
+        }
+        if ("number".equals(val.type())) {
+            return Double.isFinite(val.asNumber()) && val.asNumber() != 0.0D;
+        }
+        if (!"string".equals(val.type())) {
+            return false;
+        }
+
+        String text = val.asString().trim();
+        if ("true".equalsIgnoreCase(text)) {
+            return true;
+        }
+        if ("false".equalsIgnoreCase(text) || text.isEmpty()) {
+            return false;
+        }
+        try {
+            double parsed = Double.parseDouble(text);
+            return Double.isFinite(parsed) && parsed != 0.0D;
+        } catch (NumberFormatException ignored) {
+            return false;
+        }
+    }
+
+    // Read a graph value as a valid Direction ID
+    private static String directionValue(AdvancedGraphDocument.Value val) {
+        if (!"string".equals(val.type()) && !"direction".equals(val.type())) {
+            return "";
+        }
+        String direction = val.asString().trim().toLowerCase(java.util.Locale.ROOT);
+        return List.of("north", "east", "south", "west", "up", "down")
+                .contains(direction) ? direction : "";
     }
 
     // Expose the value expression
@@ -3052,7 +3286,7 @@ public final class GraphRuntime {
         public AdvancedGraphDocument.Value evaluate(Frame frame, int[] operations) {
             AdvancedGraphDocument.Value val = frame.output(from, fromPort, operations);
             return expectedType == null || "any".equals(expectedType)
-                    ? val : AdvancedGraphRuntime.convertValue(val, expectedType);
+                    ? val : convertValue(val, expectedType);
         }
     }
 
@@ -3246,6 +3480,19 @@ public final class GraphRuntime {
         private Set<String> inactiveBranchOutputBindings(String selectedPort) {
             return inactiveBranchOutputs.getOrDefault(selectedPort, Set.of());
         }
+    }
+
+    // Get the output bindings which must be cleared for an inactive branch
+    private static Set<String> inactiveBranchOutputBindings(
+            AdvancedGraphDocument graph,
+            String branchId,
+            String selectedPort
+    ) {
+        if (graph == null) {
+            return Set.of();
+        }
+        return AdvancedGraphProgram.compile(graph)
+                .inactiveBranchOutputBindings(branchId, selectedPort);
     }
 
     // Handle the compiled program
@@ -3490,9 +3737,9 @@ public final class GraphRuntime {
                 compileTargetWrites(node, incoming.getOrDefault(node.id(), List.of()));
                 if ("branch".equals(node.type())) {
                     node.inactiveBranchOutputs.put("true",
-                            AdvancedGraphRuntime.inactiveBranchOutputBindings(executionGraph, node.id(), "true"));
+                            inactiveBranchOutputBindings(executionGraph, node.id(), "true"));
                     node.inactiveBranchOutputs.put("false",
-                            AdvancedGraphRuntime.inactiveBranchOutputBindings(executionGraph, node.id(), "false"));
+                            inactiveBranchOutputBindings(executionGraph, node.id(), "false"));
                 }
             }
 
@@ -3560,7 +3807,7 @@ public final class GraphRuntime {
                 for (AdvancedGraphDocument.Edge edge : outgoing.getOrDefault(new PortKey(node.id(), port), List.of())) {
                     NodeInstruction target = nodes.get(edge.toNode());
                     if (target != null) {
-                        edges.add(new ExecEdge(AdvancedGraphRuntime.executionEdgeKey(edge), target, edge.toPort()));
+                        edges.add(new ExecEdge(executionEdgeKey(edge), target, edge.toPort()));
                     }
                 }
                 node.execTargets.put(port, edges.toArray(ExecEdge[]::new));
@@ -3571,7 +3818,7 @@ public final class GraphRuntime {
         private static void compileTargetWrites(NodeInstruction node, List<AdvancedGraphDocument.Edge> incoming) {
             if ("set_block_data".equals(node.type())) {
                 node.targetWritePorts.addAll(
-                        AdvancedGraphRuntime.setDataWritePorts(node.source(), incoming));
+                        setDataWritePorts(node.source(), incoming));
                 return;
             }
             if ("direct_target_output".equals(node.type()) || "linker_face_output".equals(node.type())) {

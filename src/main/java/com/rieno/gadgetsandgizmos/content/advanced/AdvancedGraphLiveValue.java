@@ -75,7 +75,7 @@ public record AdvancedGraphLiveValue(String type, double numberValue,
 
     // Get the entry types
     private static Map<String, String> entryTypes(AdvancedGraphDocument.Value val) {
-        CompoundTag outputs = AdvancedGraphRuntime.splitListOutputsFor(val);
+        CompoundTag outputs = GraphRuntime.splitListOutputsFor(val);
         Map<String, String> res = new LinkedHashMap<>();
         for (String key : outputs.getAllKeys()) {
             if (res.size() >= MAX_ENTRY_TYPES) {

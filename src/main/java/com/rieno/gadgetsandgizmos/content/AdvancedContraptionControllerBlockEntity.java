@@ -14,7 +14,6 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphLiveValue;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphFunctions;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphPortState;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphProfilerMath;
-import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphRuntime;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDataProvider;
 import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphTemplates;
@@ -3666,7 +3665,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             }
             if ("split_list".equals(node.type()) || "json_split".equals(node.type())
                     || "break_out".equals(node.type())) {
-                CompoundTag outputs = AdvancedGraphRuntime.splitListOutputsFor(
+                CompoundTag outputs = GraphRuntime.splitListOutputsFor(
                         graphRuntime.previewInput(graph, node, "value"));
                 if (outputs.isEmpty()) {
                     node.data().remove("DynamicOutputs");
