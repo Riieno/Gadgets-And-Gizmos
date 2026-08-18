@@ -1075,6 +1075,7 @@
   "createthrusters.advanced_controller.node.round.summary": "Rounds a Number to the nearest whole Number.",
   "createthrusters.advanced_controller.node.floor.summary": "Rounds a Number down to the nearest whole Number.",
   "createthrusters.advanced_controller.node.ceil.summary": "Rounds a Number up to the nearest whole Number.",
+  "createthrusters.advanced_controller.node.x-1.summary": "Swaps a number from Positive to Negative or Vica-Versa.",
   "createthrusters.advanced_controller.node.clamp.summary": "Keeps a Number between the chosen Minimum and Maximum.",
   "createthrusters.advanced_controller.node.map_range.summary": "Converts a Number from one Range to another.",
   "createthrusters.advanced_controller.node.curve.summary": "Maps a clamped Value through the drawn Curve. Input pulses sweep forward while active and reverse on release; Tick and Interval pulses advance one Speed step.",

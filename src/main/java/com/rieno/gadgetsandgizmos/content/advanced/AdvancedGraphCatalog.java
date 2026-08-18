@@ -123,6 +123,7 @@ public final class AdvancedGraphCatalog {
         register("lerp", "math", Map.of("exec", "exec", "a", "number", "b", "number", "amount", "number"), Map.of("exec", "exec", "value", "number"), true);
         register("sin", "math", Map.of("value", "number"), Map.of("value", "number"), false);
         register("cos", "math", Map.of("value", "number"), Map.of("value", "number"), false);
+        register("x-1", "math", Map.of("value", "number"), Map.of("value", "number"), false);
         register("math_sqrt", "math", Map.of("In", "number"), Map.of("Out", "number"), false);
         register("math_tan", "math", Map.of("In", "number"), Map.of("Out", "number"), false);
         register("math_acos", "math", Map.of("In", "number"), Map.of("Out", "number"), false);
