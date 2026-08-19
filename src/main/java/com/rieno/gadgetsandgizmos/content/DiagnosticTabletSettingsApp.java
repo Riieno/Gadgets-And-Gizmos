@@ -12,7 +12,9 @@ import com.rieno.gadgetsandgizmos.lib.GadgetsNGizmosLibrary;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAction;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionContext;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionHandler;
+import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppAccess;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppDefinition;
+import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppPurchaseScope;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppRegistry;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletNotifications;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletStorage;
@@ -41,7 +43,6 @@ public final class DiagnosticTabletSettingsApp {
     static final ResourceLocation APP_ID = DiagnosticTabletData.appId("settings");
     private static final Set<String> WALLPAPERS = Set.of(
             "aurora", "midnight", "sunset", "meadow", "graphite");
-    private static final Set<ResourceLocation> REQUIRED_APPS = Set.of(APP_ID);
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -90,13 +91,18 @@ public final class DiagnosticTabletSettingsApp {
             }
             case "app_install", "app_uninstall" -> {
                 ResourceLocation appId = ResourceLocation.tryParse(val);
-                if (appId == null || TabletAppRegistry.definition(appId) == null) {
+                TabletAppDefinition app = appId == null ? null : TabletAppRegistry.definition(appId);
+                if (app == null) {
                     yield failure("That application is not available");
                 }
-                if (REQUIRED_APPS.contains(appId) && "app_uninstall".equals(action.actionId())) {
+                if (app.builtIn() && "app_uninstall".equals(action.actionId())) {
                     yield failure("Built-in applications cannot be removed");
                 }
                 boolean installed = "app_install".equals(action.actionId());
+                if (installed && !app.builtIn() && !TabletAppAccess.canUse(app,
+                        TabletAppPurchaseScope.PLAYER, ctx.player().getUUID(), tabletId)) {
+                    yield failure("Purchase this application from the App Store first");
+                }
                 yield database.setInstalled(tabletId, appId, installed)
                         ? success(installed ? "Application installed" : "Application removed")
                         : failure("Could not update the application");
@@ -137,7 +143,7 @@ public final class DiagnosticTabletSettingsApp {
             app.putString("Name", definition.title().getString());
             app.putString("Description", definition.description().getString());
             app.putBoolean("Installed", installed.contains(definition.id()));
-            app.putBoolean("Required", REQUIRED_APPS.contains(definition.id()));
+            app.putBoolean("Required", definition.builtIn());
             apps.add(app);
         }
         root.put("Apps", apps);

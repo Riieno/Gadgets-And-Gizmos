@@ -17,6 +17,7 @@ import com.rieno.gadgetsandgizmos.content.DiagnosticTabletItem;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletDatabase;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletAppStorage;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAction;
+import com.rieno.gadgetsandgizmos.lib.tablet.TabletStorageApi;
 import com.rieno.gadgetsandgizmos.registry.CTFeatureToggles;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletInteractionMode;
 import net.minecraft.core.BlockPos;
@@ -124,7 +125,7 @@ public record DiagnosticTabletActionPayload(boolean placed, InteractionHand hand
             ResourceLocation settingsId = DiagnosticTabletData.appId("settings");
             ResourceLocation homeId = DiagnosticTabletData.appId("home");
             if (!homeId.equals(payload.appId()) && !settingsId.equals(payload.appId())
-                    && !database.installedApps(state.tabletId()).contains(payload.appId())) {
+                    && !TabletStorageApi.storage().installedApps(state.tabletId()).contains(payload.appId())) {
                 return;
             }
             boolean backgroundRefresh = "background_refresh".equals(payload.actionId());

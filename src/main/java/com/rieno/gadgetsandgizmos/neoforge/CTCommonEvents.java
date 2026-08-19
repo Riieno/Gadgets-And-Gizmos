@@ -102,6 +102,7 @@ import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.registry.CTEntityTypes;
 import com.rieno.gadgetsandgizmos.util.MobHauntingConversions;
 import com.rieno.gadgetsandgizmos.util.ThrusterFuelData;
+import com.rieno.gadgetsandgizmos.content.DiagnosticTabletAppStoreConfig;
 import net.minecraft.core.Direction;
 import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.server.MinecraftServer;
@@ -155,6 +156,7 @@ public final class CTCommonEvents {
         evt.addListener((PreparableReloadListener) ThrusterFuelData.RELOAD_LISTENER);
         evt.addListener((PreparableReloadListener) MobHauntingConversions.RELOAD_LISTENER);
         evt.addListener((PreparableReloadListener) GraphV2ThemeData.RELOAD_LISTENER);
+        evt.addListener((PreparableReloadListener) DiagnosticTabletAppStoreConfig.RELOAD_LISTENER);
     }
 
     // Register the entity attributes

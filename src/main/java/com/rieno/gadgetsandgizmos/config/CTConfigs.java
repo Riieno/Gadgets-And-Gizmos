@@ -15,6 +15,7 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.neoforge.common.ModConfigSpec;
+import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppPurchaseScope;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -339,6 +340,8 @@ public final class CTConfigs {
         public final ModConfigSpec.IntValue advancedControllerMaxNodes;
         // Enable diagnostic tablet
         public final ModConfigSpec.BooleanValue enableDiagnosticTablet;
+        // App purchase Ownership Scope
+        public final ModConfigSpec.EnumValue<TabletAppPurchaseScope> appPurchaseScope;
         // Initialize the common
         private Common(ModConfigSpec.Builder builder) {
             builder.comment("Gameplay values shared between client and server").push("common");
@@ -505,6 +508,11 @@ public final class CTConfigs {
                     .comment("Enable the Smart Tablet block, item, user interface, apps and networking")
                     .define("enabled", true);
             builder.pop();
+
+            builder.comment("App Ownership and persistance").push("diagnostic_tablet");
+            appPurchaseScope = builder
+                    .comment("Who owns the paid apps, PLAYER is shared across tablets, DEVICE is not.")
+                    .defineEnum("appPurchaseScope", TabletAppPurchaseScope.PLAYER);
             builder.pop();
         }
     }

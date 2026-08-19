@@ -78,11 +78,14 @@ public final class DiagnosticTabletApps {
             List.of(tab("home", "Home", "refresh", "channel_button", "channel_toggle", "channel_slider"),
                     tab("devices", "Devices", "channel_create", "bind_channel", "channel_mode",
                             "channel_strength", "channel_rename", "channel_remove")));
+    private static final TabletAppDefinition APP_STORE = definition("app_store", "App Store",
+            "Purchase and install tablet applications", 0xFF66BB6A,
+            List.of(tab("store", "Store", "refresh", "purchase_app")), Set.of(), true);
     private static final TabletAppDefinition SETTINGS = definition("settings", "Settings",
             "Tablet identity, appearance and applications", 0xFF90A4AE,
             List.of(tab("tablet", "Tablet", "tablet_rename", "wallpaper_set"),
                     tab("apps", "Apps", "app_install", "app_uninstall"),
-                    tab("about", "About", "refresh")));
+                    tab("about", "About", "refresh")), Set.of(), true);
     private static final TabletAppDefinition GG_AUTO = definition("gg_auto", "G&G Auto",
             "On-ship navigation and telemetry", 0xFF5AC8FA,
             List.of(tab("drive", "Drive", "refresh", "navigate", "hover", "dock"),
@@ -124,6 +127,7 @@ public final class DiagnosticTabletApps {
         TabletAppRegistry.registerIfAbsent(BLOCK360, DiagnosticTabletApps::execute);
         TabletAppRegistry.registerIfAbsent(JOURNEY, DiagnosticTabletApps::execute);
         TabletAppRegistry.registerIfAbsent(REDSTONE_LINK, DiagnosticTabletApps::execute);
+        TabletAppRegistry.registerIfAbsent(APP_STORE, DiagnosticTabletApps::execute);
         TabletAppRegistry.registerIfAbsent(SETTINGS, DiagnosticTabletApps::execute);
         TabletAppRegistry.registerIfAbsent(GG_AUTO, DiagnosticTabletApps::execute);
         TabletAppRegistry.registerIfAbsent(NFC, DiagnosticTabletApps::execute);
@@ -146,6 +150,7 @@ public final class DiagnosticTabletApps {
             case "block360" -> definition == BLOCK360;
             case "journey" -> definition == JOURNEY;
             case "redstone_link" -> definition == REDSTONE_LINK;
+            case "app_store" -> definition == APP_STORE;
             case "settings" -> definition == SETTINGS;
             case "gg_auto" -> definition == GG_AUTO;
             case "nfc" -> definition == NFC;
@@ -161,11 +166,18 @@ public final class DiagnosticTabletApps {
 
     // Get the definition
     private static TabletAppDefinition definition(String id, String title, String description,
-                                                  int accent, List<TabletTabDefinition> tabs,
-                                                  Set<String> sharedKeys) {
+                                                   int accent, List<TabletTabDefinition> tabs,
+                                                   Set<String> sharedKeys) {
+        return definition(id, title, description, accent, tabs, sharedKeys, false);
+    }
+
+    // Get the definition
+    private static TabletAppDefinition definition(String id, String title, String description,
+                                                   int accent, List<TabletTabDefinition> tabs,
+                                                   Set<String> sharedKeys, boolean builtIn) {
         ResourceLocation appId = DiagnosticTabletData.appId(id);
         return new TabletAppDefinition(appId, Component.literal(title),
-                Component.literal(description), accent, tabs, null, sharedKeys);
+                Component.literal(description), accent, tabs, null, sharedKeys, builtIn);
     }
 
     // Get the tab
@@ -222,6 +234,9 @@ public final class DiagnosticTabletApps {
         }
         if (REDSTONE_LINK.id().equals(app)) {
             return DiagnosticTabletRedstoneLinkApp.execute(ctx, action);
+        }
+        if (APP_STORE.id().equals(app)) {
+            return DiagnosticTabletAppStore.execute(ctx, action);
         }
         if (SETTINGS.id().equals(app)) {
             return DiagnosticTabletSettingsApp.execute(ctx, action);

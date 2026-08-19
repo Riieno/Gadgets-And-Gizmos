@@ -10,6 +10,9 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletStorage;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletStorageApi;
+import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppEntitlementApi;
+import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppEntitlementStore;
+import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppPurchaseScope;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
@@ -43,7 +46,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.UnaryOperator;
 
 // Store tablet data in SQLite and keep normal reads inside the in-memory cache
-public final class DiagnosticTabletDatabase implements TabletStorage, AutoCloseable {
+public final class DiagnosticTabletDatabase implements TabletStorage, TabletAppEntitlementStore, AutoCloseable {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -55,17 +58,10 @@ public final class DiagnosticTabletDatabase implements TabletStorage, AutoClosea
     private static final System.Logger LOGGER = System.getLogger(
             DiagnosticTabletDatabase.class.getName());
     private static final String DATABASE_NAME = "diagnostic_tablet.db";
-    private static final Set<ResourceLocation> DEFAULT_INSTALLED_APPS = Set.of(
-            DiagnosticTabletData.appId("rdp"),
-            DiagnosticTabletData.appId("scm"),
-            DiagnosticTabletData.appId("block360"),
-            DiagnosticTabletData.appId("journey"),
-            DiagnosticTabletData.appId("redstone_link"),
-            DiagnosticTabletData.appId("settings"),
-            DiagnosticTabletData.appId("gg_auto"),
-            DiagnosticTabletData.appId("nfc"));
     private static final Set<ResourceLocation> REQUIRED_INSTALLED_APPS = Set.of(
-            DiagnosticTabletData.appId("settings"));
+            DiagnosticTabletData.appId("settings"),
+            DiagnosticTabletData.appId("app_store"));
+    private static final Set<ResourceLocation> DEFAULT_INSTALLED_APPS = REQUIRED_INSTALLED_APPS;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -104,6 +100,10 @@ public final class DiagnosticTabletDatabase implements TabletStorage, AutoClosea
     });
     // Tracks whether writes are being accepted
     private boolean acceptingWrites = true;
+    // Purchased app Entitlements
+    private final Set<EntitlementKey> entitlements = ConcurrentHashMap.newKeySet();
+
+    private final ConcurrentHashMap<EntitlementKey, Boolean> pendingEntitlements = new ConcurrentHashMap<>();
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -140,6 +140,7 @@ public final class DiagnosticTabletDatabase implements TabletStorage, AutoClosea
             DiagnosticTabletDatabase database = new DiagnosticTabletDatabase(evt.getServer());
             active = database;
             TabletStorageApi.install(database);
+            TabletAppEntitlementApi.install(database);
         } catch (IOException | SQLException err) {
             LOGGER.log(System.Logger.Level.ERROR, "Could not open the smart tablet database", err);
         }
@@ -170,6 +171,7 @@ public final class DiagnosticTabletDatabase implements TabletStorage, AutoClosea
                 current = new DiagnosticTabletDatabase(server);
                 active = current;
                 TabletStorageApi.install(current);
+                TabletAppEntitlementApi.install(current);
                 return current;
             } catch (IOException | SQLException err) {
                 throw new IllegalStateException("Could not open the smart tablet database", err);
@@ -266,6 +268,44 @@ public final class DiagnosticTabletDatabase implements TabletStorage, AutoClosea
         return true;
     }
 
+    @Override
+    public boolean owns(TabletAppPurchaseScope scope, UUID playerId, UUID tabletId,
+                        ResourceLocation appId) {
+        EntitlementKey key = entitlementKey(scope, playerId, tabletId, appId);
+        return key != null && entitlements.contains(key);
+    }
+
+    @Override
+    public synchronized boolean grant(TabletAppPurchaseScope scope, UUID playerId, UUID tabletId,
+                                      ResourceLocation appId) {
+        EntitlementKey key = entitlementKey(scope, playerId, tabletId, appId);
+        if (key == null) return false;
+        if (entitlements.add(key)) {
+            pendingEntitlements.put(key, true);
+            scheduleWriteDrain();
+        }
+        return true;
+    }
+
+    @Override
+    public synchronized boolean revoke(TabletAppPurchaseScope scope, UUID playerId, UUID tabletId,
+                                       ResourceLocation appId) {
+        EntitlementKey key = entitlementKey(scope, playerId, tabletId, appId);
+        if (key == null) return false;
+        if (entitlements.remove(key)) {
+            pendingEntitlements.put(key, false);
+            scheduleWriteDrain();
+        }
+        return true;
+    }
+
+    private static EntitlementKey entitlementKey(TabletAppPurchaseScope scope, UUID playerId,
+                                                 UUID tabletId, ResourceLocation appId) {
+        if (scope == null || appId == null) return null;
+        UUID ownerId = scope == TabletAppPurchaseScope.PLAYER ? playerId : tabletId;
+        return ownerId == null ? null : new EntitlementKey(scope, ownerId, appId);
+    }
+
     // Import the legacy
     public synchronized void importLegacy(UUID tabletId, DiagnosticTabletData.State state) {
         if (tabletId == null || state == null) return;
@@ -349,12 +389,13 @@ public final class DiagnosticTabletDatabase implements TabletStorage, AutoClosea
             while (true) {
                 Map<UUID, CompoundTag> tabletBatch = removePendingTabletWrites();
                 Map<AppKey, AppRow> appBatch = removePendingAppWrites();
-                if (tabletBatch.isEmpty() && appBatch.isEmpty()) return;
-                writeBatch(tabletBatch, appBatch);
+                Map<EntitlementKey, Boolean> entitlementBatch = removePendingEntitlementWrites();
+                if (tabletBatch.isEmpty() && appBatch.isEmpty() && entitlementBatch.isEmpty()) return;
+                writeBatch(tabletBatch, appBatch, entitlementBatch);
             }
         } finally {
             writeDrainScheduled.set(false);
-            if (!pendingTabletWrites.isEmpty() || !pendingAppWrites.isEmpty()) {
+            if (!pendingTabletWrites.isEmpty() || !pendingAppWrites.isEmpty() || !pendingEntitlements.isEmpty()) {
                 scheduleWriteDrain();
             }
         }
@@ -384,47 +425,79 @@ public final class DiagnosticTabletDatabase implements TabletStorage, AutoClosea
 
     // Write the batch
     private void writeBatch(Map<UUID, CompoundTag> tabletBatch,
-                            Map<AppKey, AppRow> appBatch) {
-        try {
-            connection.setAutoCommit(false);
-            try (PreparedStatement tablet = connection.prepareStatement("""
-                    INSERT INTO tablets(tablet_id, data, updated_at) VALUES(?, ?, ?)
-                    ON CONFLICT(tablet_id) DO UPDATE SET data=excluded.data,
-                    updated_at=excluded.updated_at
-                    """);
-                 PreparedStatement app = connection.prepareStatement("""
-                    INSERT INTO tablet_apps(tablet_id, app_id, installed, data, updated_at)
-                    VALUES(?, ?, ?, ?, ?)
-                    ON CONFLICT(tablet_id, app_id) DO UPDATE SET installed=excluded.installed,
-                    data=excluded.data, updated_at=excluded.updated_at
-                    """)) {
-                long updatedAt = System.currentTimeMillis();
-                for (Map.Entry<UUID, CompoundTag> entry : tabletBatch.entrySet()) {
-                    tablet.setString(1, entry.getKey().toString());
-                    tablet.setBytes(2, encode(entry.getValue()));
-                    tablet.setLong(3, updatedAt);
-                    tablet.addBatch();
-                }
-                if (!tabletBatch.isEmpty()) tablet.executeBatch();
-                for (Map.Entry<AppKey, AppRow> entry : appBatch.entrySet()) {
-                    app.setString(1, entry.getKey().tabletId().toString());
-                    app.setString(2, entry.getKey().appId().toString());
-                    app.setInt(3, entry.getValue().installed() ? 1 : 0);
-                    app.setBytes(4, encode(entry.getValue().data()));
-                    app.setLong(5, updatedAt);
-                    app.addBatch();
-                }
-                if (!appBatch.isEmpty()) app.executeBatch();
+                        Map<AppKey, AppRow> appBatch,
+                        Map<EntitlementKey, Boolean> entitlementBatch) {
+    try {
+        connection.setAutoCommit(false);
+        try (PreparedStatement tablet = connection.prepareStatement("""
+                INSERT INTO tablets(tablet_id, data, updated_at) VALUES(?, ?, ?)
+                ON CONFLICT(tablet_id) DO UPDATE SET data=excluded.data,
+                updated_at=excluded.updated_at
+                """);
+             PreparedStatement app = connection.prepareStatement("""
+                INSERT INTO tablet_apps(tablet_id, app_id, installed, data, updated_at)
+                VALUES(?, ?, ?, ?, ?)
+                ON CONFLICT(tablet_id, app_id) DO UPDATE SET installed=excluded.installed,
+                data=excluded.data, updated_at=excluded.updated_at
+                """);
+             PreparedStatement entitlementInsert = connection.prepareStatement("""
+                INSERT OR REPLACE INTO tablet_app_entitlements(
+                ownership_scope, owner_id, app_id, acquired_at) VALUES(?, ?, ?, ?)
+                """);
+             PreparedStatement entitlementDelete = connection.prepareStatement("""
+                DELETE FROM tablet_app_entitlements
+                WHERE ownership_scope=? AND owner_id=? AND app_id=?
+                """)) {
+            long updatedAt = System.currentTimeMillis();
+            for (Map.Entry<UUID, CompoundTag> entry : tabletBatch.entrySet()) {
+                tablet.setString(1, entry.getKey().toString());
+                tablet.setBytes(2, encode(entry.getValue()));
+                tablet.setLong(3, updatedAt);
+                tablet.addBatch();
             }
-            connection.commit();
-        } catch (SQLException | IOException err) {
-            rollbackQuietly();
-            LOGGER.log(System.Logger.Level.ERROR,
-                    "Could not save diagnostic tablet data", err);
-        } finally {
-            setAutoCommitQuietly(true);
+            if (!tabletBatch.isEmpty()) tablet.executeBatch();
+
+            for (Map.Entry<AppKey, AppRow> entry : appBatch.entrySet()) {
+                app.setString(1, entry.getKey().tabletId().toString());
+                app.setString(2, entry.getKey().appId().toString());
+                app.setInt(3, entry.getValue().installed() ? 1 : 0);
+                app.setBytes(4, encode(entry.getValue().data()));
+                app.setLong(5, updatedAt);
+                app.addBatch();
+            }
+            if (!appBatch.isEmpty()) app.executeBatch();
+
+            boolean hasInserts = false;
+            boolean hasDeletes = false;
+            for (Map.Entry<EntitlementKey, Boolean> entry : entitlementBatch.entrySet()) {
+                EntitlementKey key = entry.getKey();
+                if (entry.getValue()) {
+                    entitlementInsert.setString(1, key.scope().name());
+                    entitlementInsert.setString(2, key.ownerId().toString());
+                    entitlementInsert.setString(3, key.appId().toString());
+                    entitlementInsert.setLong(4, updatedAt);
+                    entitlementInsert.addBatch();
+                    hasInserts = true;
+                } else {
+                    entitlementDelete.setString(1, key.scope().name());
+                    entitlementDelete.setString(2, key.ownerId().toString());
+                    entitlementDelete.setString(3, key.appId().toString());
+                    entitlementDelete.addBatch();
+                    hasDeletes = true;
+                }
+            }
+            if (hasInserts) entitlementInsert.executeBatch();
+            if (hasDeletes) entitlementDelete.executeBatch();
         }
+        connection.commit();
+    } catch (SQLException | IOException error) {
+        rollbackQuietly();
+        LOGGER.log(System.Logger.Level.ERROR,
+                "Could not save diagnostic tablet data", error);
+    } finally {
+        setAutoCommitQuietly(true);
     }
+}
 
     // Write the app
     private boolean writeApp(AppKey key, boolean installed, CompoundTag data) {
@@ -459,6 +532,14 @@ public final class DiagnosticTabletDatabase implements TabletStorage, AutoClosea
                     tablet_id TEXT NOT NULL, app_id TEXT NOT NULL, installed INTEGER NOT NULL,
                     data BLOB NOT NULL, updated_at INTEGER NOT NULL,
                     PRIMARY KEY(tablet_id, app_id))
+                    """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS tablet_app_entitlements(
+                    ownership_scope TEXT NOT NULL,
+                    owner_id TEXT NOT NULL,
+                    app_id TEXT NOT NULL,
+                    acquired_at INTEGER NOT NULL,
+                    PRIMARY KEY(ownership_scope, owner_id, app_id))
                     """);
         }
     }
@@ -497,6 +578,29 @@ public final class DiagnosticTabletDatabase implements TabletStorage, AutoClosea
                 }
             }
         }
+        try (Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery(
+                     "SELECT ownership_scope, owner_id, app_id FROM tablet_app_entitlements")) {
+            while (rows.next()) {
+                try {
+                    entitlements.add(new EntitlementKey(TabletAppPurchaseScope.valueOf(rows.getString(1)),
+                    UUID.fromString(rows.getString(2)),
+                    ResourceLocation.parse(rows.getString(3))));
+                } catch (IllegalArgumentException err) {
+                    LOGGER.log(System.Logger.Level.WARNING, "Ignored an invalid tablet app entitlement row", err);
+                }
+            }
+        }
+    }
+
+    private Map<EntitlementKey, Boolean> removePendingEntitlementWrites(){
+        Map<EntitlementKey, Boolean> batch = new LinkedHashMap<>();
+        pendingEntitlements.forEach((key, installed) ->{
+            if(pendingEntitlements.remove(key, installed)){
+                batch.put(key, installed);
+            }
+        });
+        return batch;
     }
 
     // Install the missing built ins
@@ -539,6 +643,7 @@ public final class DiagnosticTabletDatabase implements TabletStorage, AutoClosea
         active = null;
         if (current == null) return;
         TabletStorageApi.uninstall(current);
+        TabletAppEntitlementApi.uninstall(current);
         try {
             current.close();
         } catch (Exception err) {
@@ -566,15 +671,16 @@ public final class DiagnosticTabletDatabase implements TabletStorage, AutoClosea
     @Override
     public synchronized void close() throws SQLException {
         acceptingWrites = false;
-        if (!pendingTabletWrites.isEmpty() || !pendingAppWrites.isEmpty()) {
+        if (!pendingTabletWrites.isEmpty() || !pendingAppWrites.isEmpty()
+                || !pendingEntitlements.isEmpty()) {
             scheduleWriteDrain();
         }
         AtomicReference<SQLException> closeFailure = new AtomicReference<>();
         writer.execute(() -> {
             try {
                 connection.close();
-            } catch (SQLException err) {
-                closeFailure.set(err);
+            } catch (SQLException error) {
+                closeFailure.set(error);
             }
         });
         writer.shutdown();
@@ -585,31 +691,32 @@ public final class DiagnosticTabletDatabase implements TabletStorage, AutoClosea
                 LOGGER.log(System.Logger.Level.WARNING,
                         "Tablet data is still flushing after the shutdown timeout");
             }
-        } catch (InterruptedException err) {
+        } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
             LOGGER.log(System.Logger.Level.WARNING,
-                    "Interrupted while flushing diagnostic tablet data", err);
+                    "Interrupted while flushing diagnostic tablet data", error);
         }
         tablets.clear();
         apps.clear();
+        entitlements.clear();
         if (terminated) {
             pendingTabletWrites.clear();
             pendingAppWrites.clear();
+            pendingEntitlements.clear();
         }
         if (closeFailure.get() != null) {
             throw closeFailure.get();
         }
     }
-
-    // Store the app key
     private record AppKey(UUID tabletId, ResourceLocation appId) {
     }
 
-    // Store the app row
     private record AppRow(boolean installed, CompoundTag data) {
-        // Initialize the app row
         private AppRow {
             data = data == null ? new CompoundTag() : data.copy();
         }
+    }
+
+    private record EntitlementKey(TabletAppPurchaseScope scope, UUID ownerId, ResourceLocation appId) {
     }
 }

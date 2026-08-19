@@ -124,6 +124,8 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     private int homePage;
     // Current redstone page
     private int redstonePage;
+    // Current App Store page
+    private int appStorePage;
     // Current redstone editing id
     private String redstoneEditingId = "";
     // Redstone first index
@@ -481,6 +483,10 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         if (isBuiltInApp(app, "scm")) {
             renderScmApp(graphics, mouseX, mouseY, app, contentLeft, contentWidth);
             if (!editingAction.isBlank()) renderInlineEditor(graphics, mouseX, mouseY, contentLeft, contentWidth);
+            return;
+        }
+        if (isBuiltInApp(app, "app_store")) {
+            renderAppStoreNativeApp(graphics, mouseX, mouseY, app, contentLeft, contentWidth);
             return;
         }
         if (isBuiltInApp(app, "settings")) {
@@ -1339,12 +1345,12 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
                         app.accentColor(), inside(mouseX, mouseY, contentLeft, y, contentWidth, 25));
                 graphics.drawString(font, row.getString("Name"), contentLeft + 11, y + 8,
                         0xFFF1F4F6, false);
-                String status = row.getBoolean("Installed") ? "Installed" : "Not installed";
+                String status = row.getBoolean("Installed") ? "Installed" : "Available in App Store";
                 graphics.drawString(font, status, contentLeft + 190, y + 8,
                         row.getBoolean("Installed") ? 0xFF80CBC4 : 0xFF9EA7B0, false);
                 if (!row.getBoolean("Required")) {
                     drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 79,
-                            y + 3, 70, 19, row.getBoolean("Installed") ? "Remove" : "Install",
+                            y + 3, 70, 19, row.getBoolean("Installed") ? "Remove" : "Store",
                             row.getBoolean("Installed") ? 0xFFE57373 : 0xFF66BB6A);
                 } else {
                     graphics.drawCenteredString(font, "Built in",
@@ -1364,6 +1370,51 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
                 176, 24, "Open G&G Wiki", app.accentColor());
         drawSmallButton(graphics, mouseX, mouseY, contentLeft + 186, top + 174,
                 176, 24, "Join Discord", 0xFF5865F2);
+    }
+
+    // Draw the App Store
+    private void renderAppStoreNativeApp(GuiGraphics graphics, int mouseX, int mouseY,
+                                         TabletAppDefinition app, int contentLeft, int contentWidth) {
+        CompoundTag data = appData(app.id());
+        ListTag apps = data.getList("Apps", Tag.TAG_COMPOUND);
+        int pageCount = Math.max(1, (apps.size() + SETTINGS_APP_PAGE_SIZE - 1)
+                / SETTINGS_APP_PAGE_SIZE);
+        appStorePage = Mth.clamp(appStorePage, 0, pageCount - 1);
+        graphics.drawString(font, "Applications", contentLeft, top + 73, 0xFFF3F5F7, false);
+        if (pageCount > 1) {
+            drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 112,
+                    top + 68, 22, 18, "<", app.accentColor());
+            graphics.drawCenteredString(font, (appStorePage + 1) + " / " + pageCount,
+                    contentLeft + contentWidth - 57, top + 73, 0xFFC4CFDA);
+            drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 22,
+                    top + 68, 22, 18, ">", app.accentColor());
+        }
+        int firstApp = appStorePage * SETTINGS_APP_PAGE_SIZE;
+        for (int visible = 0; visible < SETTINGS_APP_PAGE_SIZE && firstApp + visible < apps.size(); visible++) {
+            CompoundTag row = apps.getCompound(firstApp + visible);
+            int y = top + 90 + visible * 29;
+            boolean owned = row.getBoolean("Owned");
+            boolean installed = row.getBoolean("Installed");
+            int priceCount = row.getInt("PriceCount");
+            String price = priceCount == 0 ? "Free"
+                    : priceCount + " " + label(ResourceLocation.tryParse(row.getString("PriceItem"))
+                    == null ? "item" : ResourceLocation.parse(row.getString("PriceItem")).getPath());
+            drawNativeCard(graphics, contentLeft, y, contentWidth, 25, app.accentColor(),
+                    inside(mouseX, mouseY, contentLeft, y, contentWidth, 25));
+            graphics.drawString(font, row.getString("Name"), contentLeft + 11, y + 4, 0xFFF1F4F6, false);
+            graphics.drawString(font, installed ? "Installed" : owned ? "Owned" : price,
+                    contentLeft + 11, y + 14, installed ? 0xFF80CBC4 : owned ? 0xFF8DD4FF : 0xFF9EA7B0,
+                    false);
+            if (!installed) {
+                drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 79,
+                        y + 3, 70, 19, owned ? "Install" : priceCount == 0 ? "Get" : "Buy",
+                        owned ? 0xFF42A5F5 : app.accentColor());
+            }
+        }
+        if (apps.isEmpty()) {
+            graphics.drawString(font, "No purchasable applications are registered.", contentLeft, top + 98,
+                    0xFF9EA7B0, false);
+        }
     }
 
     // Draw the auto app
@@ -1969,6 +2020,9 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         if (isBuiltInApp(app, "scm")) {
             return clickScmNativeApp(mouseX, mouseY, app, contentLeft, contentWidth);
         }
+        if (isBuiltInApp(app, "app_store")) {
+            return clickAppStoreNativeApp(mouseX, mouseY, app, contentLeft, contentWidth);
+        }
         if (isBuiltInApp(app, "settings")) {
             return clickSettingsApp(mouseX, mouseY, app, contentLeft, contentWidth);
         }
@@ -2538,8 +2592,11 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
                 int y = top + 90 + visible * 29;
                 if (!row.getBoolean("Required") && inside(mouseX, mouseY,
                         contentLeft + contentWidth - 79, y + 3, 70, 19)) {
-                    send(row.getBoolean("Installed") ? "app_uninstall" : "app_install",
-                            row.getString("Id"));
+                    if (row.getBoolean("Installed")) {
+                        send("app_uninstall", row.getString("Id"));
+                    } else {
+                        select(DiagnosticTabletData.appId("app_store"), "store");
+                    }
                     return true;
                 }
             }
@@ -2550,6 +2607,36 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
             }
             if (inside(mouseX, mouseY, contentLeft + 186, top + 174, 176, 24)) {
                 Util.getPlatform().openUri("https://discord.gg/zhvuEMEpZR");
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Handle the App Store click
+    private boolean clickAppStoreNativeApp(double mouseX, double mouseY, TabletAppDefinition app,
+                                           int contentLeft, int contentWidth) {
+        ListTag apps = appData(app.id()).getList("Apps", Tag.TAG_COMPOUND);
+        int pageCount = Math.max(1, (apps.size() + SETTINGS_APP_PAGE_SIZE - 1)
+                / SETTINGS_APP_PAGE_SIZE);
+        appStorePage = Mth.clamp(appStorePage, 0, pageCount - 1);
+        if (pageCount > 1 && inside(mouseX, mouseY,
+                contentLeft + contentWidth - 112, top + 68, 22, 18)) {
+            appStorePage = Math.max(0, appStorePage - 1);
+            return true;
+        }
+        if (pageCount > 1 && inside(mouseX, mouseY,
+                contentLeft + contentWidth - 22, top + 68, 22, 18)) {
+            appStorePage = Math.min(pageCount - 1, appStorePage + 1);
+            return true;
+        }
+        int firstApp = appStorePage * SETTINGS_APP_PAGE_SIZE;
+        for (int visible = 0; visible < SETTINGS_APP_PAGE_SIZE && firstApp + visible < apps.size(); visible++) {
+            CompoundTag row = apps.getCompound(firstApp + visible);
+            int y = top + 90 + visible * 29;
+            if (!row.getBoolean("Installed") && inside(mouseX, mouseY,
+                    contentLeft + contentWidth - 79, y + 3, 70, 19)) {
+                send("purchase_app", row.getString("Id"));
                 return true;
             }
         }
