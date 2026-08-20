@@ -145,7 +145,7 @@ public final class CTConfigs {
                     snapshotFeatureValues(SERVER.blockFeatures, CTFeatureToggles.blockDefaults()));
             Map<String, Boolean> items = new LinkedHashMap<>(
                     snapshotFeatureValues(SERVER.itemFeatures, CTFeatureToggles.itemDefaults()));
-            boolean tabletEnabled = current.blocks().getOrDefault("diagnostic_tablet", true);
+            boolean tabletEnabled = current.blocks().getOrDefault("diagnostic_tablet", false); // Disable the Smart Tablet by default in release
             blocks.put("diagnostic_tablet", tabletEnabled);
             items.put("diagnostic_tablet", tabletEnabled);
             featureToggleSnapshot = new FeatureToggleSnapshot(
@@ -506,7 +506,7 @@ public final class CTConfigs {
             builder.comment("Smart Tablet availability").push("diagnostic_tablet");
             enableDiagnosticTablet = builder
                     .comment("Enable the Smart Tablet block, item, user interface, apps and networking")
-                    .define("enabled", true);
+                    .define("enabled", false); // Disable the Tablet by default in release
             builder.pop();
 
             builder.comment("App Ownership and persistance").push("diagnostic_tablet");

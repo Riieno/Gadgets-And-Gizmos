@@ -54,7 +54,7 @@ public final class DiagnosticTabletAppStoreConfig{
 
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final String FILE_NAME = "CT_tablet_apps.json";
-    private static final String DEFAULT_RESOURCE = "/createthusters/default-tablet-apps.json";
+    private static final String DEFAULT_RESOURCE = "/createthrusters/default-tablet-apps.json";
 
 
 /*--------------------------------------------------------##---------------------------------------------------------

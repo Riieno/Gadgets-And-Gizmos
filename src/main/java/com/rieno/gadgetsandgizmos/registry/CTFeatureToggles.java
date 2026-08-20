@@ -113,11 +113,11 @@ public final class CTFeatureToggles {
         define(blocks, "advanced_contraption_controller", true);
         define(blocks, "ship_control_module", true);
         define(blocks, "ship_coupler", true);
-        define(blocks, ACC_DISPLAY_FEATURE, true);
-        define(blocks, "universal_display_adapter", true);
+        define(blocks, ACC_DISPLAY_FEATURE, false); // Disable ACC Displays in Release
+        define(blocks, "universal_display_adapter", false);// Disable ACC Displays adaptor in Release
         define(blocks, "ship_dock", true);
         define(blocks, "advanced_navigation_table", true);
-        define(blocks, "diagnostic_tablet", true);
+        define(blocks, "diagnostic_tablet", false); // Disable Smart Tablet in Release
         define(blocks, "shipping_manifest", true);
         define(blocks, "alternator", true);
         define(blocks, "claw", true);

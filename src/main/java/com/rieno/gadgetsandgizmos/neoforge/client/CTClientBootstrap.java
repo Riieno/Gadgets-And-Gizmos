@@ -9,7 +9,10 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.lib.client.render.AreaHighlightRenderTypes;
+import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientRegistry;
+import com.rieno.gadgetsandgizmos.content.DiagnosticTabletData;
 import com.rieno.gadgetsandgizmos.content.ZiplineRidingController;
+import com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps.AppStore;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
 import com.rieno.gadgetsandgizmos.ponder.CTPonderPlugin;
@@ -67,6 +70,7 @@ public final class CTClientBootstrap {
         CTPartialModels.init();
         modEventBus.addListener((FMLClientSetupEvent evt) -> {
             evt.enqueueWork(() -> {
+                TabletAppClientRegistry.registerIfAbsent(DiagnosticTabletData.appId("app_store"), new AppStore());
                 AccDisplayConnectedTextures.register();
                 registerAccDisplayRenderLayers();
                 CTClientRenderers.registerVisualizers();

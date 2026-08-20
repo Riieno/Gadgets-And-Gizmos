@@ -20,6 +20,8 @@ import com.rieno.gadgetsandgizmos.lib.tablet.TabletInteractionMode;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientContext;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientRegistry;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientRenderer;
+import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientSession;
+import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientSurface;
 import com.rieno.gadgetsandgizmos.neoforge.network.DiagnosticTabletActionPayload;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
@@ -64,6 +66,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
 
     private static final int PANEL_WIDTH = 492;
     private static final int PANEL_HEIGHT = 286;
+    private static final int STATUS_BAR_HEIGHT = 31;
     private static final int CONTENT_MARGIN = 18;
     private static final int HOME_ICON_SIZE = 42;
     private static final int HOME_CELL_WIDTH = 82;
@@ -124,8 +127,8 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     private int homePage;
     // Current redstone page
     private int redstonePage;
-    // Current App Store page
-    private int appStorePage;
+    // Tablet app client session
+    private final TabletAppClientSession appClientSession = new TabletAppClientSession();
     // Current redstone editing id
     private String redstoneEditingId = "";
     // Redstone first index
@@ -439,22 +442,24 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         if (app == null) return;
         int contentLeft = contentLeft();
         int contentWidth = contentWidth();
-        drawAppIcon(graphics, app, contentLeft, top + 34, 20);
-        graphics.drawString(font, app.title(), contentLeft + 27, top + 40,
-                AdvancedControllerV2Theme.PRIMARY, false);
-        int notifications = notificationCount(app.id());
-        if (notifications > 0) {
-            String label = notifications + " notification" + (notifications == 1 ? "" : "s");
-            graphics.drawString(font, label, contentLeft + 27, top + 52,
-                    0xFFE3A64B, false);
+        TabletAppClientRenderer renderer = TabletAppClientRegistry.renderer(app.id());
+        if (renderer == null || !renderer.ownsAppSurface()) {
+            drawAppIcon(graphics, app, contentLeft, top + 34, 20);
+            graphics.drawString(font, app.title(), contentLeft + 27, top + 40,
+                    AdvancedControllerV2Theme.PRIMARY, false);
+            int notifications = notificationCount(app.id());
+            if (notifications > 0) {
+                String label = notifications + " notification" + (notifications == 1 ? "" : "s");
+                graphics.drawString(font, label, contentLeft + 27, top + 52,
+                        0xFFE3A64B, false);
+            }
+            if (usesReaderMode(app)) {
+                drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 92,
+                        top + 34, 92, 18, state.mode() == TabletInteractionMode.READER
+                                ? "Reader active" : "Reader mode", app.accentColor());
+            }
+            renderTabs(graphics, mouseX, mouseY, app, contentLeft, contentWidth);
         }
-        if (usesReaderMode(app)) {
-            drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 92,
-                    top + 34, 92, 18, state.mode() == TabletInteractionMode.READER
-                            ? "Reader active" : "Reader mode", app.accentColor());
-        }
-
-        renderTabs(graphics, mouseX, mouseY, app, contentLeft, contentWidth);
         // -----------------------------------------------------BUILT IN APPS-----------------------------------------------------
         if (isBuiltInApp(app, "rdp")) {
             renderRdpNativeApp(graphics, mouseX, mouseY, app, contentLeft, contentWidth);
@@ -485,10 +490,6 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
             if (!editingAction.isBlank()) renderInlineEditor(graphics, mouseX, mouseY, contentLeft, contentWidth);
             return;
         }
-        if (isBuiltInApp(app, "app_store")) {
-            renderAppStoreNativeApp(graphics, mouseX, mouseY, app, contentLeft, contentWidth);
-            return;
-        }
         if (isBuiltInApp(app, "settings")) {
             renderSettingsApp(graphics, mouseX, mouseY, app, contentLeft, contentWidth);
             if (!editingAction.isBlank()) renderInlineEditor(graphics, mouseX, mouseY, contentLeft, contentWidth);
@@ -503,9 +504,9 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
             renderNfcApp(graphics, mouseX, mouseY, app, contentLeft, contentWidth);
             return;
         }
-        TabletAppClientRenderer renderer = TabletAppClientRegistry.renderer(app.id());
         if (renderer != null) {
-            renderer.render(clientAppContext(app, graphics, mouseX, mouseY));
+            renderer.render(clientAppContext(app, graphics, mouseX, mouseY),
+                    appClientSession.stateFor(app.id(), renderer));
             return;
         }
         TabletTabDefinition tab = activeTab(app);
@@ -1372,51 +1373,6 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
                 176, 24, "Join Discord", 0xFF5865F2);
     }
 
-    // Draw the App Store
-    private void renderAppStoreNativeApp(GuiGraphics graphics, int mouseX, int mouseY,
-                                         TabletAppDefinition app, int contentLeft, int contentWidth) {
-        CompoundTag data = appData(app.id());
-        ListTag apps = data.getList("Apps", Tag.TAG_COMPOUND);
-        int pageCount = Math.max(1, (apps.size() + SETTINGS_APP_PAGE_SIZE - 1)
-                / SETTINGS_APP_PAGE_SIZE);
-        appStorePage = Mth.clamp(appStorePage, 0, pageCount - 1);
-        graphics.drawString(font, "Applications", contentLeft, top + 73, 0xFFF3F5F7, false);
-        if (pageCount > 1) {
-            drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 112,
-                    top + 68, 22, 18, "<", app.accentColor());
-            graphics.drawCenteredString(font, (appStorePage + 1) + " / " + pageCount,
-                    contentLeft + contentWidth - 57, top + 73, 0xFFC4CFDA);
-            drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 22,
-                    top + 68, 22, 18, ">", app.accentColor());
-        }
-        int firstApp = appStorePage * SETTINGS_APP_PAGE_SIZE;
-        for (int visible = 0; visible < SETTINGS_APP_PAGE_SIZE && firstApp + visible < apps.size(); visible++) {
-            CompoundTag row = apps.getCompound(firstApp + visible);
-            int y = top + 90 + visible * 29;
-            boolean owned = row.getBoolean("Owned");
-            boolean installed = row.getBoolean("Installed");
-            int priceCount = row.getInt("PriceCount");
-            String price = priceCount == 0 ? "Free"
-                    : priceCount + " " + label(ResourceLocation.tryParse(row.getString("PriceItem"))
-                    == null ? "item" : ResourceLocation.parse(row.getString("PriceItem")).getPath());
-            drawNativeCard(graphics, contentLeft, y, contentWidth, 25, app.accentColor(),
-                    inside(mouseX, mouseY, contentLeft, y, contentWidth, 25));
-            graphics.drawString(font, row.getString("Name"), contentLeft + 11, y + 4, 0xFFF1F4F6, false);
-            graphics.drawString(font, installed ? "Installed" : owned ? "Owned" : price,
-                    contentLeft + 11, y + 14, installed ? 0xFF80CBC4 : owned ? 0xFF8DD4FF : 0xFF9EA7B0,
-                    false);
-            if (!installed) {
-                drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 79,
-                        y + 3, 70, 19, owned ? "Install" : priceCount == 0 ? "Get" : "Buy",
-                        owned ? 0xFF42A5F5 : app.accentColor());
-            }
-        }
-        if (apps.isEmpty()) {
-            graphics.drawString(font, "No purchasable applications are registered.", contentLeft, top + 98,
-                    0xFF9EA7B0, false);
-        }
-    }
-
     // Draw the auto app
     private void renderAutoApp(GuiGraphics graphics, int mouseX, int mouseY,
                                TabletAppDefinition app, int contentLeft, int contentWidth) {
@@ -1982,26 +1938,29 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         if (app == null) return false;
         int contentLeft = contentLeft();
         int contentWidth = contentWidth();
-        if (usesReaderMode(app) && inside(mouseX, mouseY, contentLeft + contentWidth - 92,
-                top + 34, 92, 18)) {
-            if (state.mode() == TabletInteractionMode.READER) {
-                state = state.withMode(TabletInteractionMode.STANDARD, "");
-                send("mode_cycle", TabletInteractionMode.STANDARD.id());
-            } else {
-                beginReaderMode(readerActionFor(app));
-            }
-            return true;
-        }
-        int gap = 3;
-        int tabWidth = app.tabs().isEmpty() ? contentWidth
-                : Math.max(44, (contentWidth - gap * (app.tabs().size() - 1)) / app.tabs().size());
-        int tabX = contentLeft;
-        for (TabletTabDefinition tab : app.tabs()) {
-            if (inside(mouseX, mouseY, tabX, top + PANEL_HEIGHT - 43, tabWidth, 26)) {
-                select(app.id(), tab.id());
+        TabletAppClientRenderer renderer = TabletAppClientRegistry.renderer(app.id());
+        if (renderer == null || !renderer.ownsAppSurface()) {
+            if (usesReaderMode(app) && inside(mouseX, mouseY, contentLeft + contentWidth - 92,
+                    top + 34, 92, 18)) {
+                if (state.mode() == TabletInteractionMode.READER) {
+                    state = state.withMode(TabletInteractionMode.STANDARD, "");
+                    send("mode_cycle", TabletInteractionMode.STANDARD.id());
+                } else {
+                    beginReaderMode(readerActionFor(app));
+                }
                 return true;
             }
-            tabX += tabWidth + gap;
+            int gap = 3;
+            int tabWidth = app.tabs().isEmpty() ? contentWidth
+                    : Math.max(44, (contentWidth - gap * (app.tabs().size() - 1)) / app.tabs().size());
+            int tabX = contentLeft;
+            for (TabletTabDefinition tab : app.tabs()) {
+                if (inside(mouseX, mouseY, tabX, top + PANEL_HEIGHT - 43, tabWidth, 26)) {
+                    select(app.id(), tab.id());
+                    return true;
+                }
+                tabX += tabWidth + gap;
+            }
         }
 
         // -----------------------------------------------------BUILT IN APPS-----------------------------------------------------
@@ -2020,9 +1979,6 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         if (isBuiltInApp(app, "scm")) {
             return clickScmNativeApp(mouseX, mouseY, app, contentLeft, contentWidth);
         }
-        if (isBuiltInApp(app, "app_store")) {
-            return clickAppStoreNativeApp(mouseX, mouseY, app, contentLeft, contentWidth);
-        }
         if (isBuiltInApp(app, "settings")) {
             return clickSettingsApp(mouseX, mouseY, app, contentLeft, contentWidth);
         }
@@ -2032,10 +1988,9 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         if (isBuiltInApp(app, "nfc")) {
             return clickNfcApp(mouseX, mouseY, app, contentLeft, contentWidth);
         }
-        TabletAppClientRenderer renderer = TabletAppClientRegistry.renderer(app.id());
         if (renderer != null) {
             return renderer.mouseClicked(clientAppContext(app, null, (int) mouseX, (int) mouseY),
-                    mouseX, mouseY, 0);
+                    appClientSession.stateFor(app.id(), renderer), mouseX, mouseY, 0);
         }
 
         int actionIndex = 0;
@@ -2613,36 +2568,6 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         return false;
     }
 
-    // Handle the App Store click
-    private boolean clickAppStoreNativeApp(double mouseX, double mouseY, TabletAppDefinition app,
-                                           int contentLeft, int contentWidth) {
-        ListTag apps = appData(app.id()).getList("Apps", Tag.TAG_COMPOUND);
-        int pageCount = Math.max(1, (apps.size() + SETTINGS_APP_PAGE_SIZE - 1)
-                / SETTINGS_APP_PAGE_SIZE);
-        appStorePage = Mth.clamp(appStorePage, 0, pageCount - 1);
-        if (pageCount > 1 && inside(mouseX, mouseY,
-                contentLeft + contentWidth - 112, top + 68, 22, 18)) {
-            appStorePage = Math.max(0, appStorePage - 1);
-            return true;
-        }
-        if (pageCount > 1 && inside(mouseX, mouseY,
-                contentLeft + contentWidth - 22, top + 68, 22, 18)) {
-            appStorePage = Math.min(pageCount - 1, appStorePage + 1);
-            return true;
-        }
-        int firstApp = appStorePage * SETTINGS_APP_PAGE_SIZE;
-        for (int visible = 0; visible < SETTINGS_APP_PAGE_SIZE && firstApp + visible < apps.size(); visible++) {
-            CompoundTag row = apps.getCompound(firstApp + visible);
-            int y = top + 90 + visible * 29;
-            if (!row.getBoolean("Installed") && inside(mouseX, mouseY,
-                    contentLeft + contentWidth - 79, y + 3, 70, 19)) {
-                send("purchase_app", row.getString("Id"));
-                return true;
-            }
-        }
-        return false;
-    }
-
     // Handle the auto app click
     private boolean clickAutoApp(double mouseX, double mouseY, TabletAppDefinition app,
                                  int contentLeft, int contentWidth) {
@@ -3024,8 +2949,17 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     private TabletAppClientContext clientAppContext(TabletAppDefinition app,
                                                     GuiGraphics graphics, int mouseX, int mouseY) {
         return new TabletAppClientContext(app, activeTab(app), appData(app.id()), graphics, font,
-                contentLeft(), top + 69, contentWidth(), PANEL_HEIGHT - 112, mouseX, mouseY,
-                this::send, this::reqActiveAppSnapshot);
+                contentLeft(), top + 69, contentWidth(), PANEL_HEIGHT - 112,
+                new TabletAppClientSurface(left + 3, top + STATUS_BAR_HEIGHT,
+                        PANEL_WIDTH - 6, PANEL_HEIGHT - STATUS_BAR_HEIGHT - 3),
+                mouseX, mouseY, this::send, this::reqActiveAppSnapshot);
+    }
+
+    // Check if the app owns the area below the status bar
+    private boolean ownsAppSurface(TabletAppDefinition app) {
+        if (app == null) return false;
+        TabletAppClientRenderer renderer = TabletAppClientRegistry.renderer(app.id());
+        return renderer != null && renderer.ownsAppSurface();
     }
 
     // Draw the action button
