@@ -225,6 +225,14 @@ public class AccDisplayBlock extends HorizontalDirectionalBlock
                 level, pos, AccDisplayBlockEntity.class);
     }
 
+    @Override
+    protected void neighborChanged(BlockState state, Level level, BlockPos pos, Block block, BlockPos fromPos, boolean isMoving){
+        super.neighborChanged(state, level, pos, block, fromPos, isMoving);
+        if(level.isClientSide) return;
+        AccDisplayBlockEntity display = findDisplay(level, pos);
+        if(display != null) display.queueDisplayRefresh();
+    }   
+
     // Get the shape
     @Override
     protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos,

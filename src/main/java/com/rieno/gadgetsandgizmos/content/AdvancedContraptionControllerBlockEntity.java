@@ -538,9 +538,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 trackGraphChannelChanges();
             }
             if (activeGraphHasContent || graphRuntime.hasPendingWork()) {
-                if (graphRuntime.needsRegularTick(activeGraph, !observers.isEmpty())
+                if (graphRuntime.needsRegularTick(activeGraph, true)// !observers.isEmpty())
                         || graphRuntime.hasPendingWork()) {
-                    graphRuntime.tick(activeGraph, !observers.isEmpty());
+                    graphRuntime.tick(activeGraph, true); //!observers.isEmpty());
                 }
             }
             if (!transientMouseInputs.isEmpty()) {

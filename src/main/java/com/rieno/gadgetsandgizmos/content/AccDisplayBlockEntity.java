@@ -72,6 +72,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
     public static final List<String> DISPLAY_MODES = List.of(
             DISPLAY_MODE_AUTO, "acc_widgets", "acc_graph", "acc_plotter",
             "ship_information", "external", "display_link", "advanced_data_link");
+    private static final int SOURCE_DISCOVERY_TICKS = 20;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -133,6 +134,8 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
     private int cachedNetworkHeight = 1;
     // Display refresh queued
     private final AtomicBoolean displayRefreshQueued = new AtomicBoolean();
+    // Current source discovery tick
+    private int sourceDiscoveryTicks;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -290,13 +293,23 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
     }
 
     // Update the server
-    public static void tickServer(Level level, BlockPos pos, BlockState state,
+     public static void tickServer(Level level, BlockPos pos, BlockState state,
                                   AccDisplayBlockEntity display) {
-        if (display.displayRefreshQueued.getAndSet(false)
-                && !AccDisplayControllerRegistry.isStopping(level)) {
-            display.requestDisplayRefresh();
+        if(AccDisplayControllerRegistry.isStopping(level)) return;
+        if(++display.sourceDiscoveryTicks >= SOURCE_DISCOVERY_TICKS){
+            display.sourceDiscoveryTicks = 0;
+            if(display.isNetworkRoot()) display.queueDisplayRefresh();
+
         }
+        if(display.displayRefreshQueued.getAndSet(false)) display.requestDisplayRefresh();
     }
+    // public static void tickServer(Level level, BlockPos pos, BlockState state,
+    //                               AccDisplayBlockEntity display) {
+    //     if (display.displayRefreshQueued.getAndSet(false)
+    //             && !AccDisplayControllerRegistry.isStopping(level)) {
+    //         display.requestDisplayRefresh();
+    //     }
+    // }
 
     // Receive the controller update
     public void receiveControllerUpdate(
@@ -1732,10 +1745,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
                 BlockPos displayPos = worldPosition.below(y).relative(screenRight(), x);
                 for (Direction dir : Direction.values()) {
                     BlockEntity candidate = level.getBlockEntity(displayPos.relative(dir));
-                    if (candidate instanceof UniversalDisplayAdapterBlockEntity
-                            || AccDisplaySourceRegistry.isSource(candidate)) {
-                        return candidate;
-                    }
+                    if (candidate instanceof UniversalDisplayAdapterBlockEntity) return candidate;
                 }
             }
         }
@@ -1761,15 +1771,13 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
 
     // Get the adjacent external source
     private @Nullable BlockEntity adjacentExternalSource() {
-        if (level == null) {
-            return null;
-        }
+        if (level == null) return null;
         for (int y = 0; y < networkHeight(); y++) {
             for (int x = 0; x < networkWidth(); x++) {
                 BlockPos displayPos = worldPosition.below(y).relative(screenRight(), x);
                 for (Direction dir : Direction.values()) {
                     BlockEntity candidate = level.getBlockEntity(displayPos.relative(dir));
-                    if (candidate instanceof UniversalDisplayAdapterBlockEntity) {
+                    if (candidate instanceof UniversalDisplayAdapterBlockEntity || AccDisplaySourceRegistry.isSource(candidate)) {
                         return candidate;
                     }
                 }
