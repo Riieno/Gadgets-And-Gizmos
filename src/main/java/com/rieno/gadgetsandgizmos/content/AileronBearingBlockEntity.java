@@ -431,8 +431,8 @@ public class AileronBearingBlockEntity extends KineticBlockEntity implements Men
         double availableStep = Math.abs(signedStep);
         HeadMode mode = getHeadMode();
         activeControlMode = resolveActiveControlMode();
-
-        if (mode != HeadMode.PRECISE && !hasAnyRedstoneSignal() && !hasFreshComputerInput()) {
+    // && !hasFreshComputerInput()
+        if (mode != HeadMode.PRECISE && !hasAnyRedstoneSignal() && activeControlMode == ControlMode.REDSTONE) {
             for (BearingHead head : BearingHead.values()) {
                 HeadState state = state(head);
                 state.targetAngleDeg = clampToHeadRange(head, 0.0D);

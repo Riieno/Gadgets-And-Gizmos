@@ -3,13 +3,14 @@
   "category": "misc",
   "pattern": [
     "BPB",
-    "S S",
+    "SGS",
     "BRB"
   ],
   "key": {
     "B": { "item": "create:brass_ingot" },
     "P": { "item": "create:precision_mechanism" },
     "S": { "item": "create:shaft" },
+    "G": { "item": "simulated:directional_gearshift" },
     "R": { "item": "minecraft:redstone" }
   },
   "result": {

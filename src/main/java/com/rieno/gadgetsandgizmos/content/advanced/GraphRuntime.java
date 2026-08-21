@@ -214,15 +214,39 @@ public final class GraphRuntime {
     }
 
     // Queue the HUD interaction
-    public void enqueueHudInteraction(String nodeId, String interactionId,
-                                      AdvancedGraphDocument.Value val) {
+    public boolean enqueueHudInteraction(String nodeId, String interactionId,
+                                         AdvancedGraphDocument.Value val) {
         if (shutdownPrepared || nodeId == null || nodeId.isBlank()
-                || interactionId == null || interactionId.isBlank()
-                || eventScheduler.immediateSize() >= MAX_EVENTS_PER_TICK) {
-            return;
+                || interactionId == null || interactionId.isBlank()) {
+            return false;
         }
-        eventScheduler.enqueue(new RuntimeEvent("hud:" + nodeId + ":" + interactionId,
+        return eventScheduler.enqueue(new RuntimeEvent("hud:" + nodeId + ":" + interactionId,
                 val == null ? AdvancedGraphDocument.Value.number(0) : val, null));
+    }
+
+    // Queue one momentary HUD button press and its later release
+    public boolean enqueueHudButtonInteraction(String nodeId, String interactionId,
+                                               long serverGameTime) {
+        if (shutdownPrepared || nodeId == null || nodeId.isBlank()
+                || interactionId == null || interactionId.isBlank()) {
+            return false;
+        }
+        String eventId = "hud:" + nodeId + ":" + interactionId;
+        return eventScheduler.enqueueAndSchedule(
+                new RuntimeEvent(eventId, AdvancedGraphDocument.Value.bool(true), null),
+                serverGameTime + 2L,
+                new RuntimeEvent(eventId, AdvancedGraphDocument.Value.bool(false), null));
+    }
+
+    // Queue an authoritative HUD toggle operation
+    public boolean enqueueHudToggleInteraction(String nodeId, String interactionId) {
+        if (shutdownPrepared || nodeId == null || nodeId.isBlank()
+                || interactionId == null || interactionId.isBlank()) {
+            return false;
+        }
+        return eventScheduler.enqueue(new RuntimeEvent(
+                "hud_toggle:" + nodeId + ":" + interactionId,
+                AdvancedGraphDocument.Value.bool(true), null));
     }
 
     // Check if the set binding is active
@@ -1104,7 +1128,8 @@ public final class GraphRuntime {
                 if (node != null) {
                     executeNode(frame, node, "reset", operations);
                 }
-            } else if (eventId.startsWith("hud:")) {
+            } else if (eventId.startsWith("hud:")
+                    || eventId.startsWith("hud_toggle:")) {
                 executeHudInteraction(program, frame, evt, operations);
             }
 
@@ -1232,12 +1257,29 @@ public final class GraphRuntime {
             }
             String valuePort = elm.getString("ValuePort");
             String execPort = elm.getString("ExecPort");
+            boolean toggleEvent = evt.id().startsWith("hud_toggle:");
+            if (toggleEvent && !"toggle".equals(elm.getString("Type"))) {
+                return;
+            }
+            AdvancedGraphDocument.Value interactionValue = evt.data();
+            if (toggleEvent && !valuePort.isBlank()) {
+                String stateKey = node.id() + ":hud:" + valuePort;
+                AdvancedGraphDocument.Value previous = state.get(stateKey);
+                if (previous == null) {
+                    previous = liveOutputs.getOrDefault(
+                            node.portKey(valuePort),
+                            AdvancedGraphDocument.Value.bool(false));
+                }
+                interactionValue = AdvancedGraphDocument.Value.bool(
+                        !previous.asBoolean());
+            }
             if (!valuePort.isBlank()) {
-                state.put(node.id() + ":hud:" + valuePort, evt.data());
-                frame.seedOutput(node, valuePort, evt.data());
+                state.put(node.id() + ":hud:" + valuePort, interactionValue);
+                frame.seedOutput(node, valuePort, interactionValue);
             }
             boolean buttonRelease = "button".equals(elm.getString("Type"))
-                    && "boolean".equals(evt.data().type()) && !evt.data().asBoolean();
+                    && "boolean".equals(interactionValue.type())
+                    && !interactionValue.asBoolean();
             if (!buttonRelease && !execPort.isBlank()) {
                 followExec(frame, node, execPort, operations);
             }

@@ -16,6 +16,8 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphCatalog;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementBinding;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementStyle;
+import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
+import com.rieno.gadgetsandgizmos.lib.display.DisplayWidgetProjection;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -798,7 +800,7 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
         AdvancedGraphDocument graph = blockEntity.graph();
         String mode = blockEntity.displayFrame().getString("Mode");
         if ("graph".equals(mode)) {
-            renderNodeGraph(graph, width, height, poseStack, buffer);
+            renderNodeGraph(blockEntity, graph, width, height, poseStack, buffer);
             return;
         }
         if ("plotter".equals(mode)) {
@@ -845,14 +847,15 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
                 float rotation = (float) elm.getDouble("Rotation");
                 boolean hologram = "acc_hologram_widget".equals(node.type());
                 if (!hologram) {
-                    SurfaceWidgetBounds bounded = fitWidgetToSurface(
+                    DisplayWidgetProjection.Bounds bounded = DisplayWidgetProjection.fit(
                             x, y, elementWidth, elementHeight, width, height);
                     x = bounded.x();
                     y = bounded.y();
                     elementWidth = bounded.width();
                     elementHeight = bounded.height();
-                    configuredScale = Math.min(configuredScale, maxSurfaceScale(
-                            x, y, elementWidth, elementHeight, width, height, rotation));
+                    configuredScale = Math.min(configuredScale,
+                            DisplayWidgetProjection.maximumScale(
+                                    bounded, width, height, rotation));
                 }
                 float elementScale = (float) Mth.clamp(configuredScale, 0.01D, 100.0D);
                 poseStack.pushPose();
@@ -889,34 +892,6 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
             drawCentered("Add an ACC Display Widget node to the active graph",
                     width, height / 2, 0xFFB7C0C8, poseStack, buffer);
         }
-    }
-
-    // Keep regular widgets on the actual screen while hologram nodes deliberately bypass this limit
-    private static SurfaceWidgetBounds fitWidgetToSurface(int x, int y, int widgetWidth,
-                                                          int widgetHeight, int surfaceWidth,
-                                                          int surfaceHeight) {
-        int boundedWidth = Math.max(1, Math.min(widgetWidth, Math.max(1, surfaceWidth)));
-        int boundedHeight = Math.max(1, Math.min(widgetHeight, Math.max(1, surfaceHeight)));
-        int boundedX = Mth.clamp(x, 0, Math.max(0, surfaceWidth - boundedWidth));
-        int boundedY = Mth.clamp(y, 0, Math.max(0, surfaceHeight - boundedHeight));
-        return new SurfaceWidgetBounds(boundedX, boundedY, boundedWidth, boundedHeight);
-    }
-
-    // Get the maximum surface scale
-    private static double maxSurfaceScale(int x, int y, int widgetWidth, int widgetHeight,
-                                              int surfaceWidth, int surfaceHeight, float rotation) {
-        double rad = Math.toRadians(rotation);
-        double cosine = Math.abs(Math.cos(rad));
-        double sine = Math.abs(Math.sin(rad));
-        double rotatedWidth = cosine * widgetWidth + sine * widgetHeight;
-        double rotatedHeight = sine * widgetWidth + cosine * widgetHeight;
-        double centerX = x + widgetWidth * 0.5D;
-        double centerY = y + widgetHeight * 0.5D;
-        double horizontal = rotatedWidth <= 0.0D ? 1.0D
-                : Math.max(0.01D, 2.0D * Math.min(centerX, surfaceWidth - centerX) / rotatedWidth);
-        double vertical = rotatedHeight <= 0.0D ? 1.0D
-                : Math.max(0.01D, 2.0D * Math.min(centerY, surfaceHeight - centerY) / rotatedHeight);
-        return Math.max(0.01D, Math.min(1.0D, Math.min(horizontal, vertical)));
     }
 
     // Draw the procedural widget
@@ -958,6 +933,7 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
         }
         // -----------------------------------------------------WIDGET VALUE-----------------------------------------------------
         AdvancedGraphDocument.Value current = blockEntity.value(node.id(), valuePort);
+        boolean interactionPulse = blockEntity.isWidgetInteractionPulsing(node.id(), elm.getString("InteractionId"));
         String text = widgetText(blockEntity, node, elm);
 
         // ------------------------------------WIDGET RENDERING------------------------------------
@@ -966,7 +942,8 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
                     AdvancedHudElementStyle.color(elm, "Color", 0xAA1A2732),
                     border, borderWidth, radius, poseStack, buffer);
             case "button" -> {
-                drawPanel(width, height, background, border, borderWidth, radius, poseStack, buffer);
+                drawPanel(width, height, interactionPulse ? accent : background,
+                        border, borderWidth, radius, poseStack, buffer);
                 drawScaledText(fittedText(text.isBlank() ? "Button" : text,
                                 Math.max(1, width - 4), fontScale), width * 0.5F, height * 0.5F,
                         textColor, fontScale, true, poseStack, buffer);
@@ -974,7 +951,8 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
             case "toggle" -> {
                 int toggleWidth = Math.min(width, Math.max(12, height * 2));
                 int toggleX = Math.max(0, width - toggleWidth);
-                int toggleSurface = current.asBoolean() ? accent : track;
+                int toggleSurface = current.asBoolean() || interactionPulse
+                        ? accent : track;
                 int labelColor = readableTextColor(textColor, toggleSurface);
                 roundedFillAtZ(toggleX, 0, width, height, CONTENT_Z, toggleSurface,
                         Math.min(radius, height / 2),
@@ -1004,12 +982,14 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
                         CONTENT_Z, track, trackHeight / 2, poseStack, buffer);
                 int fillWidth = (int) Math.round(width * amount);
                 roundedFillAtZ(0, trackY, fillWidth, trackY + trackHeight,
-                        OVERLAY_Z, accent, trackHeight / 2, poseStack, buffer);
+                        OVERLAY_Z, interactionPulse ? 0xFFFFFFFF : accent,
+                        trackHeight / 2, poseStack, buffer);
                 int handle = Math.max(trackHeight + 2, Math.min(height - labelSpace, 10));
                 int handleX = Mth.clamp(fillWidth - handle / 2, 0, Math.max(0, width - handle));
                 roundedFillAtZ(handleX, trackY + trackHeight / 2 - handle / 2,
                         handleX + handle, trackY + trackHeight / 2 + (handle + 1) / 2,
-                        FOREGROUND_Z, accent, handle / 2, poseStack, buffer);
+                        FOREGROUND_Z, interactionPulse ? 0xFFFFFFFF : accent,
+                        handle / 2, poseStack, buffer);
                 if (!text.isBlank()) {
                     drawScaledText(fittedText(text, width, fontScale), 0, 0, textColor, fontScale,
                             false, poseStack, buffer);
@@ -1167,7 +1147,7 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
     }
 
     // Draw the node graph
-    private void renderNodeGraph(AdvancedGraphDocument graph, int width, int height,
+    private void renderNodeGraph(AccDisplayBlockEntity blockEntity, AdvancedGraphDocument graph, int width, int height,
                                  PoseStack poseStack, MultiBufferSource buffer) {
         if (graph.nodes().isEmpty()) {
             drawCentered("Active graph is empty", width, height / 2,
@@ -1195,7 +1175,7 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
             PixelPoint to = positions.get(edge.toNode());
             if (from != null && to != null) {
                 line(from.x() + 34, from.y() + 6, to.x(), to.y() + 6,
-                        1.5F, 0xFF5684A0, poseStack, buffer);
+                        1.5F, blockEntity.isExecutionPulsing(GraphRuntime.executionEdgeKey(edge)) ? 0xFFFFD35A : 0xFF56B4A0, poseStack, buffer);
             }
         }
         for (AdvancedGraphDocument.Node node : graph.nodes()) {
@@ -1371,10 +1351,6 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
 
     // Store the pixel point
     private record PixelPoint(int x, int y) {
-    }
-
-    // Store the surface widget bounds
-    private record SurfaceWidgetBounds(int x, int y, int width, int height) {
     }
 
     // Store the content layout

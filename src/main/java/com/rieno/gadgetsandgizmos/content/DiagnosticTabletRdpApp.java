@@ -138,19 +138,14 @@ final class DiagnosticTabletRdpApp {
         CompoundTag resolved = AdvancedHudElementBinding.resolvedCopy(elm, values);
 
         // -----------------------------------------------------WIDGET ACTION-----------------------------------------------------
+        boolean accepted;
         switch (type) {
-            case "button" -> {
-                controller.handleHudInteraction(node.id(), interactionId,
-                        AdvancedGraphDocument.Value.bool(true));
-                controller.handleHudInteraction(node.id(), interactionId,
-                        AdvancedGraphDocument.Value.bool(false));
-            }
-            case "toggle" -> {
-                String valuePort = elm.getString("ValuePort");
-                boolean current = !valuePort.isBlank() && values.apply(valuePort).asBoolean();
-                controller.handleHudInteraction(node.id(), interactionId,
-                        AdvancedGraphDocument.Value.bool(!current));
-            }
+            case "button" -> accepted =
+                    controller.handleHudButtonInteraction(
+                            node.id(), interactionId);
+            case "toggle" -> accepted =
+                    controller.handleHudToggleInteraction(
+                            node.id(), interactionId);
             case "slider" -> {
                 double minimum = resolved.getDouble("Min");
                 double maximum = resolved.getDouble("Max");
@@ -165,18 +160,21 @@ final class DiagnosticTabletRdpApp {
                 if (step > 0.0D && Double.isFinite(step)) {
                     next = minimum + Math.round((next - minimum) / step) * step;
                 }
-                controller.handleHudInteraction(node.id(), interactionId,
+                accepted = controller.handleHudInteraction(node.id(), interactionId,
                         AdvancedGraphDocument.Value.number(Mth.clamp(next, minimum, maximum)));
             }
             case "text_input" -> {
                 String textValue = requested == null ? "" : requested.strip();
                 if (textValue.length() > 64) textValue = textValue.substring(0, 64);
-                controller.handleHudInteraction(node.id(), interactionId,
+                accepted = controller.handleHudInteraction(node.id(), interactionId,
                         AdvancedGraphDocument.Value.string(textValue));
             }
             default -> {
                 return failure("This RDP element is read-only");
             }
+        }
+        if (!accepted) {
+            return failure("The ACC graph runtime event queue is full");
         }
         sendSnapshot(ctx, snapshot(ctx));
         return quietSuccess();

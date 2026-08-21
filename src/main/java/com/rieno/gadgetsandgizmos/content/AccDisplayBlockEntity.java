@@ -16,6 +16,7 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementBinding;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudInteractions;
 import com.rieno.gadgetsandgizmos.lib.display.DisplayFrameEnvelope;
 import com.rieno.gadgetsandgizmos.lib.display.DisplaySurfaceProjection;
+import com.rieno.gadgetsandgizmos.lib.display.DisplayWidgetProjection;
 import com.rieno.gadgetsandgizmos.lib.display.AccDisplaySource;
 import com.rieno.gadgetsandgizmos.lib.display.AccDisplaySourceRegistry;
 import com.rieno.gadgetsandgizmos.lib.display.ShipInformationDisplayModes;
@@ -136,6 +137,8 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
     private final AtomicBoolean displayRefreshQueued = new AtomicBoolean();
     // Current source discovery tick
     private int sourceDiscoveryTicks;
+    // Active widget interaction pulse expiry
+    private final Map<String, Long> widgetInteractionPulseExpiry = new LinkedHashMap<>();
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -163,6 +166,31 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
     public void addBehaviours(List<BlockEntityBehaviour> behaviours) {
     }
 
+    private void widgetInteractionPulse(String nodeId, String interactionId){
+        if(level == null || level.isClientSide || nodeId == null || nodeId.isBlank() || interactionId == null || interactionId.isBlank()) return;
+        AccDisplayBlockEntity root = networkRoot();
+        if(root == null) root = this;
+        root.widgetInteractionPulseExpiry.put(nodeId + ":" + interactionId, level.getGameTime() + 4L);
+        root.rebuildAndPublishFrame();
+    }
+
+    private void putWidgetInteractionPulses(CompoundTag frame){
+        if (level == null || frame == null) return;
+        long now = level.getGameTime();
+        widgetInteractionPulseExpiry.entrySet().removeIf(entry -> entry.getValue() < now);
+        ListTag pulses = new ListTag();
+        for (Map.Entry<String, Long> entry : widgetInteractionPulseExpiry.entrySet()){
+            int split = entry.getKey().lastIndexOf(":");
+            if (split <= 0 || split == entry.getKey().length() - 1) continue;
+            CompoundTag pulse = new CompoundTag();
+            pulse.putString("NodeId", entry.getKey().substring(0, split));
+            pulse.putString("InteractionId", entry.getKey().substring(split + 1));
+            pulse.putLong("ExpiresAt", entry.getValue());
+            pulses.add(pulse);
+        }
+        if (!pulses.isEmpty()) frame.put("WidgetInteractionPulses", pulses);
+    }
+
     // Rebuild and publish the frame
     private void rebuildAndPublishFrame() {
         if (level == null || level.isClientSide
@@ -170,6 +198,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
             return;
         }
         CompoundTag nextFrame = createDisplayFrame();
+        putWidgetInteractionPulses(nextFrame);
         boolean graphFrame = "graph".equals(nextFrame.getString("State"));
         boolean graphChanged = graphFrame && (!"graph".equals(displayFrame.getString("State"))
                 || nextFrame.getInt("GraphRevision") != displayFrame.getInt("GraphRevision"));
@@ -183,6 +212,24 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
         displayFrame = nextFrame;
         lastFrameFingerprint = fingerprint;
         sendData();
+    }
+
+    public boolean isWidgetInteractionPulsing(String nodeId, String interactionId){
+        if(level == null || nodeId == null || interactionId == null) return false;
+        ListTag pulses = displayFrame.getList("WidgetInteractionPulses", Tag.TAG_COMPOUND);
+        long now = level.getGameTime();
+        for (int idx = 0; idx < pulses.size(); idx ++){
+            CompoundTag pulse = pulses.getCompound(idx);
+            if(nodeId.equals(pulse.getString("NodeId")) && interactionId.equals(pulse.getString("InteractionId")) && now <= pulse.getLong("ExpiresAt")) return true;
+        }
+        return false;
+    }
+
+    public boolean isExecutionPulsing(String edgeKey){
+        if(level == null || edgeKey == null || edgeKey.isBlank()) return false;
+        CompoundTag pulses = displayFrame.getCompound("ExecutionPulses");
+        if(!pulses.contains(edgeKey, Tag.TAG_LONG)) return false;
+        return level.getGameTime() - pulses.getLong(edgeKey) <= 4L;
     }
 
     // Get the display frame
@@ -303,13 +350,6 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
         }
         if(display.displayRefreshQueued.getAndSet(false)) display.requestDisplayRefresh();
     }
-    // public static void tickServer(Level level, BlockPos pos, BlockState state,
-    //                               AccDisplayBlockEntity display) {
-    //     if (display.displayRefreshQueued.getAndSet(false)
-    //             && !AccDisplayControllerRegistry.isStopping(level)) {
-    //         display.requestDisplayRefresh();
-    //     }
-    // }
 
     // Receive the controller update
     public void receiveControllerUpdate(
@@ -704,6 +744,12 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
             return false;
         }
         List<AdvancedGraphDocument.Node> nodes = graph.nodes();
+        int surfaceWidth = root.surfacePixelWidth();
+        int surfaceHeight = root.displayFrame.getList("Sources", Tag.TAG_COMPOUND).size() > 1
+                ? Math.max(1, root.surfacePixelHeight() - TASKBAR_PIXELS)
+                : root.surfacePixelHeight();
+        double pointerX = point.x() * surfaceWidth;
+        double pointerY = point.y() * surfaceHeight;
         for (int nodeIndex = nodes.size() - 1; nodeIndex >= 0; nodeIndex--) {
             AdvancedGraphDocument.Node node = nodes.get(nodeIndex);
             if (!(isDisplayWidgetNode(node)
@@ -714,18 +760,45 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
             }
             int canvasWidth = Math.max(1, node.data().getInt("WidgetWidth"));
             int canvasHeight = Math.max(1, node.data().getInt("WidgetHeight"));
-            double canvasX = point.x() * canvasWidth;
-            double canvasY = point.y() * canvasHeight;
+            if (canvasWidth == 1) canvasWidth = 320;
+            if (canvasHeight == 1) canvasHeight = 180;
+            double scaleX = surfaceWidth / (double) canvasWidth;
+            double scaleY = surfaceHeight / (double) canvasHeight;
             ListTag elements = node.data().getList(AdvancedHudInteractions.ELEMENTS, Tag.TAG_COMPOUND);
             for (int idx = elements.size() - 1; idx >= 0; idx--) {
                 CompoundTag elm = AdvancedHudElementBinding.resolvedCopy(
                         elements.getCompound(idx), port -> root.value(node.id(), port));
+                int widgetX = (int) Math.round(elm.getInt("X") * scaleX);
+                int widgetY = (int) Math.round(elm.getInt("Y") * scaleY);
+                int widgetWidth = Math.max(1, (int) Math.round(elm.getInt("W") * scaleX));
+                int widgetHeight = Math.max(1, (int) Math.round(elm.getInt("H") * scaleY));
+                boolean hologram = "acc_hologram_widget".equals(node.type());
+                float rotation = (float) elm.getDouble("Rotation");
+                DisplayWidgetProjection.Bounds bounds = hologram
+                        ? new DisplayWidgetProjection.Bounds(
+                        widgetX, widgetY, widgetWidth, widgetHeight)
+                        : DisplayWidgetProjection.fit(
+                        widgetX, widgetY, widgetWidth, widgetHeight,
+                        surfaceWidth, surfaceHeight);
+                double configuredScale = elm.contains("Scale", Tag.TAG_DOUBLE)
+                        ? elm.getDouble("Scale") : 1.0D;
+                if (!hologram) {
+                    configuredScale = Math.min(configuredScale,
+                            DisplayWidgetProjection.maximumScale(
+                                    bounds, surfaceWidth, surfaceHeight,
+                                    rotation));
+                }
+                double widgetScale = Mth.clamp(configuredScale, 0.01D, 100.0D);
+                DisplayWidgetProjection.Point widgetPoint = DisplayWidgetProjection.unproject(
+                        bounds, pointerX, pointerY, widgetScale,
+                        rotation);
                 if (!AdvancedHudInteractions.isInteractiveType(elm.getString("Type"))
                         || elm.contains("Visible", Tag.TAG_BYTE) && !elm.getBoolean("Visible")
-                        || !contains(elm, canvasX, canvasY)) {
+                        || !widgetPoint.isInside(bounds)) {
                     continue;
                 }
-                return root.runInteraction(serverPlayer, node, elm, canvasX);
+                return root.runInteraction(activeController, serverPlayer, node, elm,
+                        widgetPoint.horizontalFraction(bounds));
             }
         }
         return false;
@@ -835,8 +908,8 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
     }
 
     // Run the interaction
-    private boolean runInteraction(ServerPlayer player, AdvancedGraphDocument.Node node,
-                                   CompoundTag elm, double canvasX) {
+    private boolean runInteraction(AdvancedContraptionControllerBlockEntity activeController, ServerPlayer player, AdvancedGraphDocument.Node node,
+                                   CompoundTag elm, double horizontalFraction) {
         String interactionId = elm.getString("InteractionId");
         if (interactionId.isBlank()) {
             return false;
@@ -847,26 +920,33 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
                 ? AdvancedGraphDocument.Value.number(0.0D) : value(node.id(), valuePort);
         switch (type) {
             case "button" -> {
-                controller.handleHudInteraction(node.id(), interactionId,
-                        AdvancedGraphDocument.Value.bool(true));
-                controller.handleHudInteraction(node.id(), interactionId,
-                        AdvancedGraphDocument.Value.bool(false));
+                if (activeController.handleHudButtonInteraction(
+                        node.id(), interactionId)) {
+                    widgetInteractionPulse(node.id(), interactionId);
+                }
             }
-            case "toggle" -> controller.handleHudInteraction(node.id(), interactionId,
-                    AdvancedGraphDocument.Value.bool(!current.asBoolean()));
+            case "toggle" -> {
+                if (activeController.handleHudToggleInteraction(
+                        node.id(), interactionId)) {
+                    widgetInteractionPulse(node.id(), interactionId);
+                }
+            }
             case "slider" -> {
                 double minimum = elm.getDouble("Min");
                 double maximum = elm.getDouble("Max");
                 if (!(maximum > minimum)) maximum = minimum + 1.0D;
-                double fraction = Mth.clamp((canvasX - elm.getInt("X"))
-                        / Math.max(1.0D, elm.getInt("W")), 0.0D, 1.0D);
+                double fraction = Mth.clamp(horizontalFraction, 0.0D, 1.0D);
                 double next = minimum + (maximum - minimum) * fraction;
                 double step = elm.getDouble("Step");
                 if (step > 0.0D && Double.isFinite(step)) {
                     next = minimum + Math.round((next - minimum) / step) * step;
                 }
-                controller.handleHudInteraction(node.id(), interactionId,
-                        AdvancedGraphDocument.Value.number(Mth.clamp(next, minimum, maximum)));
+                if (activeController.handleHudInteraction(
+                        node.id(), interactionId,
+                        AdvancedGraphDocument.Value.number(
+                                Mth.clamp(next, minimum, maximum)))) {
+                    widgetInteractionPulse(node.id(), interactionId);
+                }
             }
             case "text_input" -> PacketDistributor.sendToPlayer(player,
                     new AccDisplayTextInputOpenPayload(
@@ -903,11 +983,16 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
 
     // Get the screen point
     private ScreenPoint screenPoint(AccDisplayBlockEntity clicked, BlockHitResult hit) {
-        DisplaySurfaceProjection.Point point = DisplaySurfaceProjection.normalizedPoint(
-                worldPosition, clicked.worldPosition, screenRight(),
-                SimulatedHelper.toBlockLocalHitPosition(clicked, hit),
-                networkWidth(), networkHeight(), PIXELS_PER_BLOCK, BORDER_PIXELS);
-        return new ScreenPoint(point.x(), point.y());
+        DisplaySurfaceProjection.VisiblePoint point =
+                DisplaySurfaceProjection.normalizedVisiblePoint(
+                        worldPosition, clicked.worldPosition, screenRight(),
+                        SimulatedHelper.toBlockLocalHitPosition(clicked, hit),
+                        networkWidth(), networkHeight(), PIXELS_PER_BLOCK, BORDER_PIXELS,
+                        AccDisplaySurfaceLayout.visiblePixelsPerRow(getBlockState()),
+                        AccDisplaySurfaceLayout.srcTopPixels(getBlockState()));
+        return point.inside()
+                ? new ScreenPoint(point.x(), point.y())
+                : new ScreenPoint(-1.0D, -1.0D);
     }
 
     // Select the source
@@ -969,15 +1054,6 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
     public int surfacePixelHeight() {
         return AccDisplaySurfaceLayout.visibleSurfaceHeight(getBlockState(), networkHeight());
         //return Math.max(1, networkHeight() * PIXELS_PER_BLOCK - BORDER_PIXELS * 2);
-    }
-
-    // Check if this contains the value
-    private static boolean contains(CompoundTag elm, double x, double y) {
-        int left = elm.getInt("X");
-        int top = elm.getInt("Y");
-        return x >= left && y >= top
-                && x <= left + Math.max(1, elm.getInt("W"))
-                && y <= top + Math.max(1, elm.getInt("H"));
     }
 
     // Get the screen left
@@ -1430,6 +1506,9 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
         frame.putInt("GraphRevision", graphRevision);
         frame.put("Graph", cachedGraphTag);
         frame.put("Values", sharedValues);
+        CompoundTag executionPulses = new CompoundTag();
+        controller.getAccDisplayExecutionPulsesSnapshot().forEach(executionPulses::putLong);
+        frame.put("ExecutionPulses", executionPulses);
         return frame;
     }
 

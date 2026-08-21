@@ -225,8 +225,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private int graphObserverSampleRevision = Integer.MIN_VALUE;
     // Tracked direct runtime send states
     private final Map<String, DirectRuntimeSendState> directRuntimeSendStates = new LinkedHashMap<>();
-    // Acc display runtime snapshot tick
-    private long accDisplayRuntimeSnapshotTick = Long.MIN_VALUE;
+    // Acc display runtime snapshot revision
+    private long accDisplayRuntimeSnapshotRevision = Long.MIN_VALUE;
     // Tracked ACC display runtime inputs
     private Map<String, AdvancedGraphDocument.Value> accDisplayRuntimeInputs = Map.of();
     // Tracked ACC display runtime outputs
@@ -2687,15 +2687,49 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     }
 
     // Handle the HUD interaction
-    public void handleHudInteraction(String nodeId, String interactionId,
-                                     AdvancedGraphDocument.Value value) {
+    public boolean handleHudInteraction(String nodeId, String interactionId,
+                                        AdvancedGraphDocument.Value value) {
         if (getLevel() == null || getLevel().isClientSide
                 || nodeId == null || nodeId.isBlank()
                 || interactionId == null || interactionId.isBlank()) {
-            return;
+            return false;
         }
-        graphRuntime.enqueueHudInteraction(nodeId, interactionId, value);
-        lastGraphObserverSample = Long.MIN_VALUE;
+        boolean accepted = graphRuntime.enqueueHudInteraction(
+                nodeId, interactionId, value);
+        if (accepted) {
+            lastGraphObserverSample = Long.MIN_VALUE;
+        }
+        return accepted;
+    }
+
+    // Handle a momentary HUD button interaction
+    public boolean handleHudButtonInteraction(String nodeId, String interactionId) {
+        if (getLevel() == null || getLevel().isClientSide
+                || nodeId == null || nodeId.isBlank()
+                || interactionId == null || interactionId.isBlank()) {
+            return false;
+        }
+        boolean accepted = graphRuntime.enqueueHudButtonInteraction(
+                nodeId, interactionId, getLevel().getGameTime());
+        if (accepted) {
+            lastGraphObserverSample = Long.MIN_VALUE;
+        }
+        return accepted;
+    }
+
+    // Handle an authoritative HUD toggle interaction
+    public boolean handleHudToggleInteraction(String nodeId, String interactionId) {
+        if (getLevel() == null || getLevel().isClientSide
+                || nodeId == null || nodeId.isBlank()
+                || interactionId == null || interactionId.isBlank()) {
+            return false;
+        }
+        boolean accepted = graphRuntime.enqueueHudToggleInteraction(
+                nodeId, interactionId);
+        if (accepted) {
+            lastGraphObserverSample = Long.MIN_VALUE;
+        }
+        return accepted;
     }
 
     // Collect the graph owned key bindings
@@ -2878,13 +2912,18 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return accDisplayRuntimeOutputs;
     }
 
+    // Get execution pulses for ACC display publication
+    public Map<String, Long> getAccDisplayExecutionPulsesSnapshot() {
+        return graphRuntime.executionPulses();
+    }
+
     // Refresh the ACC display snapshot
     private void refreshAccDisplaySnapshot() {
-        long gameTime = getLevel() == null ? Long.MIN_VALUE : getLevel().getGameTime();
-        if (gameTime == accDisplayRuntimeSnapshotTick) {
+        long runtimeRevision = graphRuntime.liveValueRevision();
+        if (runtimeRevision == accDisplayRuntimeSnapshotRevision) {
             return;
         }
-        accDisplayRuntimeSnapshotTick = gameTime;
+        accDisplayRuntimeSnapshotRevision = runtimeRevision;
         accDisplayRuntimeInputs = graphRuntime.liveInputs();
         accDisplayRuntimeOutputs = graphRuntime.liveOutputs();
     }
@@ -2925,7 +2964,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         boolean updateDue = lastAccDisplayUpdateTick == Long.MIN_VALUE
                 || gameTime < lastAccDisplayUpdateTick
                 || gameTime - lastAccDisplayUpdateTick >= ACC_DISPLAY_UPDATE_INTERVAL;
-        if (!graphChanged && !refreshTargets && !accDisplayFramesDirty && !updateDue) {
+        boolean runtimeChanged = runtimeRevision != lastAccDisplayRuntimeRevision;
+        if (!graphChanged && !refreshTargets && !accDisplayFramesDirty
+                && !runtimeChanged && !updateDue) {
             return;
         }
         lastAccDisplayUpdateTick = gameTime;
@@ -2933,7 +2974,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 shipInitializationProgressPercent, shipInitializationProgressStatus,
                 publishesShipInformation ? shipInformationStatusHash() : 0);
         boolean frameChanged = graphChanged
-                || runtimeRevision != lastAccDisplayRuntimeRevision
+                || runtimeChanged
                 || statusHash != lastAccDisplayStatusHash
                 || accDisplayFramesDirty;
         if (!frameChanged && !refreshTargets) {

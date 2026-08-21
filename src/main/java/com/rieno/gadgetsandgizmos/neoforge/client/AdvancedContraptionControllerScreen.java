@@ -683,6 +683,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private final Map<String, NodePortLayout> graphRenderPortLayouts = new LinkedHashMap<>();
     // Current graph render cache document
     private AdvancedGraphDocument graphRenderCacheDocument;
+    private int graphRenderCacheSignature;
     // Structured data sync tick count
     private int structuredDataSyncTicks;
     // Profiler report tick count
@@ -1766,10 +1767,17 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Prepare the graph render cache
     private void prepareGraphRenderCache() {
-        if (draft == null || graphRenderCacheDocument == draft) return;
+        //if (draft == null || graphRenderCacheDocument == draft) return;
+        if (draft == null){
+            clearGraphRenderCache();
+            return;
+        }
+        int signature = graphPortLayoutSignature();
+        if(graphRenderCacheDocument == draft && graphRenderCacheSignature == signature) return;
         graphRenderNodes.clear();
         graphRenderPortLayouts.clear();
         graphRenderCacheDocument = draft;
+        graphRenderCacheSignature = signature;
         for (AdvancedGraphDocument.Node node : activeNodes()) {
             graphRenderNodes.put(node.id(), node);
             Map<String, String> inputs = AdvancedGraphCatalog.inputs(node);
@@ -1852,6 +1860,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Clear the graph render cache
     private void clearGraphRenderCache() {
         graphRenderCacheDocument = null;
+        graphRenderCacheSignature = 0;
         graphRenderNodes.clear();
         graphRenderPortLayouts.clear();
     }
@@ -8763,7 +8772,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             if (entry.getKey().equals(port)) break;
             row++;
         }
-        return screenY(node.y()) + (int) ((25 + ("curve".equals(node.type()) ? CURVE_BODY_HEIGHT : 0) + row * 15 + 6.5) * zoom);
+        //return screenY(node.y()) + (int) ((25 + ("curve".equals(node.type()) ? CURVE_BODY_HEIGHT : 0) + row * 15 + 6.5) * zoom);
+        // Fix port alignement
+        int y = screenY(node.y()) + (int) (25 * zoom);
+        if("curve".equals(node.type())) y += (int) (CURVE_BODY_HEIGHT * zoom);
+        for(int idx = 0; idx < row; idx++){
+            y += (int) (15 * zoom);
+        }
+        return y + (int)(6.5 * zoom);
     }
 
     // Check if the pointer is over the collapse handle

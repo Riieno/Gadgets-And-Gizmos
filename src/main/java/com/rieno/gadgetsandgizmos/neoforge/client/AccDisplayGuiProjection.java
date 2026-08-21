@@ -16,6 +16,7 @@ import com.mojang.blaze3d.vertex.VertexSorting;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.AccDisplayBlockEntity;
+import com.rieno.gadgetsandgizmos.content.AccDisplaySurfaceLayout;
 import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEntity;
 import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerMenu;
 import com.rieno.gadgetsandgizmos.content.ControllerManifestStore;
@@ -560,17 +561,24 @@ public final class AccDisplayGuiProjection {
     private static ScreenPoint screenPoint(AccDisplayBlockEntity root,
                                            AccDisplayBlockEntity clicked,
                                            BlockHitResult hit) {
-        DisplaySurfaceProjection.Point point = DisplaySurfaceProjection.normalizedPoint(
-                root.getBlockPos(), clicked.getBlockPos(), root.screenRight(),
-                SimulatedHelper.toBlockLocalHitPosition(clicked, hit),
-                root.networkWidth(), root.networkHeight(),
-                AccDisplayBlockEntity.PIXELS_PER_BLOCK,
-                AccDisplayBlockEntity.BORDER_PIXELS);
+        DisplaySurfaceProjection.VisiblePoint point =
+                DisplaySurfaceProjection.normalizedVisiblePoint(
+                        root.getBlockPos(), clicked.getBlockPos(), root.screenRight(),
+                        SimulatedHelper.toBlockLocalHitPosition(clicked, hit),
+                        root.networkWidth(), root.networkHeight(),
+                        AccDisplayBlockEntity.PIXELS_PER_BLOCK,
+                        AccDisplayBlockEntity.BORDER_PIXELS,
+                        AccDisplaySurfaceLayout.visiblePixelsPerRow(
+                                root.getBlockState()),
+                        AccDisplaySurfaceLayout.srcTopPixels(
+                                root.getBlockState()));
+        if (!point.inside()) return null;
         return new ScreenPoint(point.x(), point.y());
     }
 
     // Get the content point
     private static ScreenPoint contentPoint(AccDisplayBlockEntity root, ScreenPoint point) {
+        if (point == null) return null;
         CompoundTag frame = root.displayFrame();
         if (frame.getList("Sources", Tag.TAG_COMPOUND).size() > 1) {
             double contentHeight = root.contentHeightFraction();
