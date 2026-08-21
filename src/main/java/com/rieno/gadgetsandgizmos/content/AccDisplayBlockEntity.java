@@ -967,7 +967,8 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
 
     // Get the surface pixel height
     public int surfacePixelHeight() {
-        return Math.max(1, networkHeight() * PIXELS_PER_BLOCK - BORDER_PIXELS * 2);
+        return AccDisplaySurfaceLayout.visibleSurfaceHeight(getBlockState(), networkHeight());
+        //return Math.max(1, networkHeight() * PIXELS_PER_BLOCK - BORDER_PIXELS * 2);
     }
 
     // Check if this contains the value

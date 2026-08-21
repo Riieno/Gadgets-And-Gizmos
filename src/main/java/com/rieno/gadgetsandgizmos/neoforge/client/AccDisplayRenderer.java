@@ -129,15 +129,10 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
 
         poseStack.pushPose();
         poseStack.translate(
-                0.5D + right.getStepX() * (blocksWide - 1) * 0.5D,
-                verticalCenter - (blocksHigh - 1) * 0.5D,
-                0.5D + right.getStepZ() * (blocksWide - 1) * 0.5D);
+                0.5D + right.getStepX() * (blocksWide - 1) * 0.5D, verticalCenter - (blocksHigh - 1) * 0.5D, 0.5D + right.getStepZ() * (blocksWide - 1) * 0.5D);
         poseStack.mulPose(com.mojang.math.Axis.YP.rotationDegrees(180.0F - facing.toYRot()));
-        poseStack.translate(0.0D, 0.0D, renderPlane(displayBlock.displayType(),
-                blockEntity.getBlockState().getValue(AccDisplayBlock.Z_ALIGNMENT)));
-        poseStack.scale(-1.0F / AccDisplayBlockEntity.PIXELS_PER_BLOCK,
-                -1.0F / AccDisplayBlockEntity.PIXELS_PER_BLOCK,
-                1.0F / AccDisplayBlockEntity.PIXELS_PER_BLOCK);
+        poseStack.translate(0.0D, 0.0D, renderPlane(displayBlock.displayType(), blockEntity.getBlockState().getValue(AccDisplayBlock.Z_ALIGNMENT)));
+        poseStack.scale(-1.0F / AccDisplayBlockEntity.PIXELS_PER_BLOCK, -1.0F / AccDisplayBlockEntity.PIXELS_PER_BLOCK, 1.0F / AccDisplayBlockEntity.PIXELS_PER_BLOCK);
         poseStack.translate(-pixelWidth * 0.5F, -pixelHeight * 0.5F, 0.0F);
 
         // ------------------------------------CONTENT LAYOUT------------------------------------
