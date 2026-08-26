@@ -8,16 +8,19 @@ package com.rieno.gadgetsandgizmos.compat.computercraft;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.GadgetsPeripheral;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.lua.LuaFunction;
-import dan200.computercraft.api.peripheral.IPeripheral;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
 import java.lang.reflect.Method;
 
 // Expose Simulated Throttle Lever controls and telemetry to ComputerCraft
-public class SimulatedThrottleLeverPeripheral implements IPeripheral {
+@PeripheralTypeDoc("simulated_throttle_lever")
+public class SimulatedThrottleLeverPeripheral extends GadgetsPeripheral<BlockEntity> {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -29,7 +32,6 @@ public class SimulatedThrottleLeverPeripheral implements IPeripheral {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Bound block entity
-    private final BlockEntity blockEntity;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -41,7 +43,7 @@ public class SimulatedThrottleLeverPeripheral implements IPeripheral {
 
     // Initialize the simulated throttle lever peripheral
     public SimulatedThrottleLeverPeripheral(BlockEntity blockEntity) {
-        this.blockEntity = blockEntity;
+        super(blockEntity, "simulated_throttle_lever");
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -52,21 +54,10 @@ public class SimulatedThrottleLeverPeripheral implements IPeripheral {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Get the type
-    @Override
-    public String getType() {
-        return "simulated_throttle_lever";
-    }
-
-    // Compare this simulated throttle lever peripheral with another object
-    @Override
-    public boolean equals(IPeripheral other) {
-        return other instanceof SimulatedThrottleLeverPeripheral peripheral
-                && peripheral.blockEntity == blockEntity;
-    }
-
     // Get the name
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getName", signature = "getName(): string",
+            description = "Returns the name.")
     public final String getName() {
         Object val = invokeNoArgs("getCustomName", "getName");
         if (val instanceof Component component) {
@@ -79,7 +70,9 @@ public class SimulatedThrottleLeverPeripheral implements IPeripheral {
     }
 
     // Set the name
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setName", signature = "setName(name: string)",
+            description = "Sets the name.")
     public final void setName(String name) {
         String normalized = name == null || name.isBlank() ? null : name.strip();
         boolean applied = invokeOneArg("setCustomName", String.class, normalized)
@@ -92,7 +85,9 @@ public class SimulatedThrottleLeverPeripheral implements IPeripheral {
     }
 
     // Get the signal
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getSignal", signature = "getSignal(): number",
+            description = "Returns the signal.")
     public final int getSignal() {
         Object val = invokeNoArgs("getSignal", "getOutputSignal", "getRedstoneSignal");
         if (val instanceof Number num) {
@@ -102,7 +97,9 @@ public class SimulatedThrottleLeverPeripheral implements IPeripheral {
     }
 
     // Set the signal
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setSignal", signature = "setSignal(signal: number)",
+            description = "Sets the signal.")
     public final void setSignal(int signal) throws LuaException {
         if (signal < 0 || signal > 15) {
             throw new LuaException("signal must be between 0 and 15");

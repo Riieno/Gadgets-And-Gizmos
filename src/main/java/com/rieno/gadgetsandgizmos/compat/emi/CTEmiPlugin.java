@@ -93,7 +93,7 @@ public class CTEmiPlugin implements EmiPlugin {
             });
             registry.addGenericExclusionArea((screen, consumer) -> {
                 if (screen instanceof AdvancedContraptionControllerScreen advanced) {
-                    advanced.getEmiExclusionAreas().forEach(rect ->
+                    advanced.getRecipeViewerExclusionAreas().forEach(rect ->
                             consumer.accept(new Bounds(rect.getX(), rect.getY(), rect.getWidth(), rect.getHeight())));
                 }
             });

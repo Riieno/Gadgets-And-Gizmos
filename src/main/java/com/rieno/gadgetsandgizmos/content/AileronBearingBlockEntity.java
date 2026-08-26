@@ -23,6 +23,7 @@ import com.rieno.gadgetsandgizmos.lib.kinetics.BearingHead;
 import com.rieno.gadgetsandgizmos.lib.kinetics.BearingHeadAccess;
 import com.rieno.gadgetsandgizmos.lib.kinetics.KineticAngleHelper;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuOpenHeader;
+import com.rieno.gadgetsandgizmos.lib.physics.MountedAssemblyStatus;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyTopologyInvalidation;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
@@ -280,10 +281,10 @@ public class AileronBearingBlockEntity extends KineticBlockEntity implements Men
     private void maintainMountedAssemblies(ServerLevel serverLevel) {
         for (BearingHead head : BearingHead.values()) {
             HeadState state = state(head);
-            AileronBearingMountedAssembly.MountedBlockStatus status =
-                    state.assembly.mountedBlockStatus(this, serverLevel);
-            if (state.mountedSubLevelId != null
-                    && AileronBearingMountedAssembly.shouldClearMountedAssembly(status)) {
+            MountedAssemblyStatus status = state.assembly.mountedBlockStatus(this, serverLevel);
+            if (state.mountedSubLevelId != null && status.shouldDisassemble()) {
+                disassembleMountedBlock(head);
+            } else if (state.mountedSubLevelId != null && status.shouldClear()) {
                 state.assembly.clearInvalidAssembly(this, serverLevel);
             } else if (state.mountedSubLevelId != null && !state.mountedAssemblyPresent) {
                 state.mountedAssemblyPresent = true;

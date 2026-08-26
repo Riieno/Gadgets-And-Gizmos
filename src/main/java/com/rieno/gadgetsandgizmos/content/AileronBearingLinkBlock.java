@@ -29,6 +29,7 @@ import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.EnumProperty;
+import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
@@ -138,6 +139,18 @@ public class AileronBearingLinkBlock extends CTDirectionalBlock
     @Override
     public InteractionResult onWrenched(BlockState state, UseOnContext ctx) {
         return InteractionResult.PASS;
+    }
+
+    // Handle the aileron bearing link block being destroyed by a player
+    @Override
+    public boolean onDestroyedByPlayer(BlockState state, Level level, BlockPos pos, Player player,
+                                       boolean willHarvest, FluidState fluid) {
+        if (!level.isClientSide
+                && level.getBlockEntity(pos) instanceof AileronBearingLinkBlockEntity link
+                && link.disassembleParent()) {
+            return true;
+        }
+        return super.onDestroyedByPlayer(state, level, pos, player, willHarvest, fluid);
     }
 
     // Handle the remove event

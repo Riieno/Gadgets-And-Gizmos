@@ -128,6 +128,52 @@ public class CTJeiPlugin implements IModPlugin {
             registration.addGhostIngredientHandler(ClawConfigScreen.class, ghostHandler());
             registration.addGhostIngredientHandler(GyroscopeLinkConfigScreen.class, ghostHandler());
             registration.addGhostIngredientHandler(DiagnosticTabletScreen.class, tabletGhostHandler());
+            registration.addGuiScreenHandler(AdvancedContraptionControllerScreen.class, screen -> {
+                Rect2i area = screen.recipeViewerGuiArea();
+                return new IGuiProperties() {
+                    // Get the screen class
+                    @Override
+                    public Class<AdvancedContraptionControllerScreen> screenClass() {
+                        return AdvancedContraptionControllerScreen.class;
+                    }
+
+                    // Get the gui left
+                    @Override
+                    public int guiLeft() {
+                        return area.getX();
+                    }
+
+                    // Get the gui top
+                    @Override
+                    public int guiTop() {
+                        return area.getY();
+                    }
+
+                    // Get the gui x size
+                    @Override
+                    public int guiXSize() {
+                        return area.getWidth();
+                    }
+
+                    // Get the gui y size
+                    @Override
+                    public int guiYSize() {
+                        return area.getHeight();
+                    }
+
+                    // Get the screen width
+                    @Override
+                    public int screenWidth() {
+                        return screen.width;
+                    }
+
+                    // Get the screen height
+                    @Override
+                    public int screenHeight() {
+                        return screen.height;
+                    }
+                };
+            });
             registration.addGuiScreenHandler(DiagnosticTabletScreen.class, screen -> {
                 Rect2i area = screen.tabletGuiArea();
                 return new IGuiProperties() {
@@ -178,7 +224,7 @@ public class CTJeiPlugin implements IModPlugin {
                 // Get the gui extra areas
                 @Override
                 public List<Rect2i> getGuiExtraAreas(AdvancedContraptionControllerScreen screen) {
-                    return screen.getEmiExclusionAreas();
+                    return screen.getRecipeViewerExclusionAreas();
                 }
             });
         } catch (Throwable throwable) {

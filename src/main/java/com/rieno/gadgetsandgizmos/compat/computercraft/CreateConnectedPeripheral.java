@@ -8,13 +8,15 @@ package com.rieno.gadgetsandgizmos.compat.computercraft;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.GadgetsPeripheral;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerSignalBus;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import com.simibubi.create.foundation.blockEntity.behaviour.scrollValue.ScrollValueBehaviour;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.lua.LuaFunction;
-import dan200.computercraft.api.peripheral.IPeripheral;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -28,7 +30,8 @@ import java.util.Locale;
 import java.util.Map;
 
 // Wrap Create connected peripherals while preserving their normal identity and equality rules
-public final class CreateConnectedPeripheral implements IPeripheral {
+@PeripheralTypeDoc(prefixes = "create_connected_")
+public final class CreateConnectedPeripheral extends GadgetsPeripheral<BlockEntity> {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -40,9 +43,6 @@ public final class CreateConnectedPeripheral implements IPeripheral {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Bound block entity
-    private final BlockEntity blockEntity;
-    // Create connected peripheral type
-    private final String type;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -54,10 +54,14 @@ public final class CreateConnectedPeripheral implements IPeripheral {
 
     // Initialize the create connected peripheral
     public CreateConnectedPeripheral(BlockEntity blockEntity) {
-        this.blockEntity = blockEntity;
+        super(blockEntity, peripheralType(blockEntity));
+    }
+
+    // Build the create connected peripheral type
+    private static String peripheralType(BlockEntity blockEntity) {
         ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock());
         String path = blockId == null ? "machine" : blockId.getPath();
-        this.type = "create_connected_" + path;
+        return "create_connected_" + path;
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -68,76 +72,84 @@ public final class CreateConnectedPeripheral implements IPeripheral {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Get the type
-    @Override
-    public String getType() {
-        return type;
-    }
-
-    // Compare this create connected peripheral with another object
-    @Override
-    public boolean equals(IPeripheral other) {
-        return other instanceof CreateConnectedPeripheral peripheral && peripheral.blockEntity == blockEntity;
-    }
-
     // Get the block id
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getBlockId", signature = "getBlockId(): string",
+            description = "Returns the block id.")
     public final String getBlockId() {
         ResourceLocation id = BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock());
         return id == null ? "create_connected:unknown" : id.toString();
     }
 
     // Get the block entity id
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getBlockEntityId", signature = "getBlockEntityId(): string",
+            description = "Returns the block entity id.")
     public final String getBlockEntityId() {
         ResourceLocation id = BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(blockEntity.getType());
         return id == null ? "create_connected:unknown" : id.toString();
     }
 
     // Get the speed
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getSpeed", signature = "getSpeed(): number",
+            description = "Returns the speed.")
     public final double getSpeed() {
         return blockEntity instanceof KineticBlockEntity kinetic ? kinetic.getSpeed() : 0.0D;
     }
 
     // Get the theoretical speed
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getTheoreticalSpeed", signature = "getTheoreticalSpeed(): number",
+            description = "Returns the theoretical speed.")
     public final double getTheoreticalSpeed() {
         return blockEntity instanceof KineticBlockEntity kinetic ? kinetic.getTheoreticalSpeed() : 0.0D;
     }
 
     // Get the generated speed
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getGeneratedSpeed", signature = "getGeneratedSpeed(): number",
+            description = "Returns the generated speed.")
     public final double getGeneratedSpeed() {
         return blockEntity instanceof KineticBlockEntity kinetic ? kinetic.getGeneratedSpeed() : 0.0D;
     }
 
     // Check if this has network
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "hasNetwork", signature = "hasNetwork(): boolean",
+            description = "Returns whether this has network.")
     public final boolean hasNetwork() {
         return blockEntity instanceof KineticBlockEntity kinetic && kinetic.hasNetwork();
     }
 
     // Check if this is overstressed
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isOverstressed", signature = "isOverstressed(): boolean",
+            description = "Returns whether this is overstressed.")
     public final boolean isOverstressed() {
         return blockEntity instanceof KineticBlockEntity kinetic && kinetic.isOverStressed();
     }
 
     // Get the stress
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getStress", signature = "getStress(): number",
+            description = "Returns the stress.")
     public final double getStress() {
         return blockEntity instanceof KineticBlockEntity kinetic ? numericField(kinetic, "stress") : 0.0D;
     }
 
     // Get the capacity
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getCapacity", signature = "getCapacity(): number",
+            description = "Returns the capacity.")
     public final double getCapacity() {
         return blockEntity instanceof KineticBlockEntity kinetic ? numericField(kinetic, "capacity") : 0.0D;
     }
 
     // Get the network id
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getNetworkId", signature = "getNetworkId(): number",
+            description = "Returns the network id.")
     public final long getNetworkId() {
         if (blockEntity instanceof KineticBlockEntity kinetic && kinetic.network != null) {
             return kinetic.network;
@@ -146,7 +158,9 @@ public final class CreateConnectedPeripheral implements IPeripheral {
     }
 
     // Get the source
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getSource", signature = "getSource(): table",
+            description = "Returns the source.")
     public final Map<String, Object> getSource() {
         if (blockEntity instanceof KineticBlockEntity kinetic && kinetic.source != null) {
             return ComputerCraftPositionHelper.blockPosition(blockEntity, kinetic.source);
@@ -155,7 +169,9 @@ public final class CreateConnectedPeripheral implements IPeripheral {
     }
 
     // Get the output speed
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getOutputSpeed", signature = "getOutputSpeed(face: string): number",
+            description = "Returns the output speed.")
     public final double getOutputSpeed(String face) throws LuaException {
         Direction dir = parseDirection(face);
         if (!(blockEntity instanceof KineticBlockEntity kinetic)) {
@@ -166,7 +182,9 @@ public final class CreateConnectedPeripheral implements IPeripheral {
     }
 
     // Check if this is powered
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isPowered", signature = "isPowered(): boolean",
+            description = "Returns whether this is powered.")
     public final boolean isPowered() {
         if (blockEntity.getBlockState().hasProperty(BlockStateProperties.POWERED)) {
             return blockEntity.getBlockState().getValue(BlockStateProperties.POWERED);
@@ -177,12 +195,16 @@ public final class CreateConnectedPeripheral implements IPeripheral {
 
     // Set the powered
     @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setPowered", signature = "setPowered(powered: boolean)",
+            description = "Sets the powered.")
     public final void setPowered(boolean powered) {
         setInjectedSignal(powered ? 15 : 0);
     }
 
     // Set the signal
     @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setSignal", signature = "setSignal(signal: number)",
+            description = "Sets the signal.")
     public final void setSignal(int signal) throws LuaException {
         if (signal < 0 || signal > 15) {
             throw new LuaException("signal must be between 0 and 15");
@@ -194,7 +216,9 @@ public final class CreateConnectedPeripheral implements IPeripheral {
     }
 
     // Get the signal
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getSignal", signature = "getSignal(): number",
+            description = "Returns the signal.")
     public final int getSignal() {
         Object val = invokeNoArgs(blockEntity, "getSignal");
         if (val instanceof Number num) {
@@ -204,7 +228,9 @@ public final class CreateConnectedPeripheral implements IPeripheral {
     }
 
     // Get the battery level
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getBatteryLevel", signature = "getBatteryLevel(): number",
+            description = "Returns the battery level.")
     public final double getBatteryLevel() {
         Object val = invokeNoArgs(blockEntity, "getBatteryLevel");
         return val instanceof Number num ? num.doubleValue() : 0.0D;
@@ -212,6 +238,8 @@ public final class CreateConnectedPeripheral implements IPeripheral {
 
     // Set the battery level
     @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setBatteryLevel", signature = "setBatteryLevel(level: number)",
+            description = "Sets the battery level.")
     public final void setBatteryLevel(double level) throws LuaException {
         if (!invokeOneArg(blockEntity, "setBatteryLevel", double.class, level)) {
             throw new LuaException("this block is not a kinetic battery");
@@ -220,7 +248,9 @@ public final class CreateConnectedPeripheral implements IPeripheral {
     }
 
     // Get the list controls
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "listControls", signature = "listControls(): table",
+            description = "Returns the list controls.")
     public final Map<String, Object> listControls() {
         Map<String, Object> controls = new LinkedHashMap<>();
         for (Class<?> current = blockEntity.getClass(); current != null && current != Object.class; current = current.getSuperclass()) {
@@ -239,7 +269,9 @@ public final class CreateConnectedPeripheral implements IPeripheral {
     }
 
     // Get the control
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getControl", signature = "getControl(name: string): any",
+            description = "Returns the control.")
     public final Object getControl(String name) throws LuaException {
         String normalized = normalizeControlName(name);
         Field field = findConnectedField(blockEntity.getClass(), normalized);
@@ -252,6 +284,8 @@ public final class CreateConnectedPeripheral implements IPeripheral {
 
     // Set the control
     @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setControl", signature = "setControl(name: string, value: number)",
+            description = "Sets the control.")
     public final void setControl(String name, int value) throws LuaException {
         String normalized = normalizeControlName(name);
         Field field = findConnectedField(blockEntity.getClass(), normalized);
@@ -268,10 +302,12 @@ public final class CreateConnectedPeripheral implements IPeripheral {
     }
 
     // Get the status
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getStatus", signature = "getStatus(): table",
+            description = "Returns the status.")
     public final Map<String, Object> getStatus() {
         Map<String, Object> status = new LinkedHashMap<>();
-        status.put("type", type);
+        status.put("type", getType());
         status.put("blockId", getBlockId());
         status.put("blockEntityId", getBlockEntityId());
         status.put("speed", getSpeed());

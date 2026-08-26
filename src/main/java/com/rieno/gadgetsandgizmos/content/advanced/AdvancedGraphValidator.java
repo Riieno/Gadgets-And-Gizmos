@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.content.advanced;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode;
+import com.rieno.gadgetsandgizmos.lib.graph.edit.GraphNodeAlias;
 import net.minecraft.nbt.NbtIo;
 
 import java.io.ByteArrayOutputStream;
@@ -19,6 +20,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 // Check graph structure, ports and data types before a graph is allowed to run
 public final class AdvancedGraphValidator {
@@ -97,12 +99,26 @@ public final class AdvancedGraphValidator {
 
         // ------------------------------------NODE VALIDATION------------------------------------
         Map<String, AdvancedGraphDocument.Node> nodes = new HashMap<>();
+        Set<String> nodeIds = graph.nodes().stream()
+                .map(AdvancedGraphDocument.Node::id).collect(Collectors.toSet());
+        Set<String> nodeAliases = new HashSet<>();
         for (AdvancedGraphDocument.Node node : graph.nodes()) {
             if (node.id().isBlank() || nodes.putIfAbsent(node.id(), node) != null) {
                 diagnostics.add(error("duplicate_node", "Node IDs must be non-empty and unique", node.id()));
             }
             if (AdvancedGraphCatalog.get(node.type()) == null) {
                 diagnostics.add(error("missing_type", "Unknown node type: " + node.type(), node.id()));
+            }
+            String alias = GraphNodeAlias.normalize(
+                    node.data().getString(GraphNodeAlias.DATA_KEY));
+            if (!GraphNodeAlias.isValid(alias)) {
+                diagnostics.add(error("invalid_node_alias",
+                        "Node aliases may contain at most " + GraphNodeAlias.MAX_LENGTH
+                                + " non-control characters", node.id()));
+            } else if (!alias.isBlank()
+                    && (nodeIds.contains(alias) || !nodeAliases.add(alias))) {
+                diagnostics.add(error("duplicate_node_alias",
+                        "Node aliases must be unique and cannot match a node ID", node.id()));
             }
             if (AdvancedGraphFunctions.CALL_TYPE.equals(node.type())
                     && graph.function(node.data().getString(AdvancedGraphFunctions.FUNCTION_ID)) == null) {

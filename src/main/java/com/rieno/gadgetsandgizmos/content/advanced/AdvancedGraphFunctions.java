@@ -112,6 +112,47 @@ public final class AdvancedGraphFunctions {
         }
     }
 
+    // Remove one function and every call node which targets it
+    public static boolean removeFunction(
+            AdvancedGraphDocument graph, String functionId) {
+        if (graph == null || functionId == null || functionId.isBlank()
+                || graph.function(functionId) == null) {
+            return false;
+        }
+        removeFunctionCalls(graph.nodes(), graph.edges(), functionId);
+        for (AdvancedGraphDocument.FunctionGraph function : graph.functions()) {
+            if (!function.id().equals(functionId)) {
+                removeFunctionCalls(function.nodes(), function.edges(), functionId);
+            }
+        }
+        boolean removed = graph.functions().removeIf(
+                function -> function.id().equals(functionId));
+        if (removed) {
+            synchronizeCalls(graph);
+        }
+        return removed;
+    }
+
+    // Remove call nodes and their attached edges for one deleted function
+    private static void removeFunctionCalls(
+            List<AdvancedGraphDocument.Node> nodes,
+            List<AdvancedGraphDocument.Edge> edges,
+            String functionId) {
+        Set<String> removed = new LinkedHashSet<>();
+        for (AdvancedGraphDocument.Node node : nodes) {
+            if (CALL_TYPE.equals(node.type())
+                    && functionId.equals(node.data().getString(FUNCTION_ID))) {
+                removed.add(node.id());
+            }
+        }
+        if (removed.isEmpty()) {
+            return;
+        }
+        nodes.removeIf(node -> removed.contains(node.id()));
+        edges.removeIf(edge -> removed.contains(edge.fromNode())
+                || removed.contains(edge.toNode()));
+    }
+
     // Sync the calls
     private static void synchronizeCalls(AdvancedGraphDocument graph,
                                          List<AdvancedGraphDocument.Node> nodes,

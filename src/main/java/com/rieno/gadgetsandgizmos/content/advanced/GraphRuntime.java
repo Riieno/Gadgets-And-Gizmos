@@ -181,15 +181,19 @@ public final class GraphRuntime {
 
     // Queue the graph
     public void enqueue(String eventId) {
-        enqueue(eventId, null);
+        tryEnqueue(eventId, null);
     }
 
     // Queue the graph
     public void enqueue(String eventId, @Nullable UUID triggeringPlayerId) {
-        if (!shutdownPrepared && eventId != null) {
-            eventScheduler.enqueue(new RuntimeEvent(eventId,
-                    AdvancedGraphDocument.Value.number(0), triggeringPlayerId));
-        }
+        tryEnqueue(eventId, triggeringPlayerId);
+    }
+
+    // Try to queue the graph
+    public boolean tryEnqueue(String eventId, @Nullable UUID triggeringPlayerId) {
+        return !shutdownPrepared && eventId != null
+                && eventScheduler.enqueue(new RuntimeEvent(eventId,
+                AdvancedGraphDocument.Value.number(0), triggeringPlayerId));
     }
 
     // Queue the current controller-session state so interaction nodes never depend on a menu opening
@@ -2737,6 +2741,7 @@ public final class GraphRuntime {
         return writablePorts.contains(port)
                 && !"exec".equals(port)
                 && !"target".equals(port)
+                && !"face".equals(port)
                 && !"state_waterlogged".equals(port);
     }
 

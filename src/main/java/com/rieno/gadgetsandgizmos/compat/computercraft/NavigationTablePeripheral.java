@@ -8,11 +8,13 @@ package com.rieno.gadgetsandgizmos.compat.computercraft;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.GadgetsPeripheral;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import com.rieno.gadgetsandgizmos.content.navigation.NavigationTableExtensionAccess;
 import com.rieno.gadgetsandgizmos.content.navigation.NavigationTableMapResolver;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.lua.LuaFunction;
-import dan200.computercraft.api.peripheral.IPeripheral;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
 import com.rieno.gadgetsandgizmos.lib.discovery.INamedBlockEntity;
@@ -24,7 +26,8 @@ import java.util.Map;
 import java.util.Optional;
 
 // Read and edit navigation targets through the same rules used by the table screen
-public class NavigationTablePeripheral implements IPeripheral {
+@PeripheralTypeDoc("navigation_table")
+public class NavigationTablePeripheral extends GadgetsPeripheral<BlockEntity> {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -36,7 +39,6 @@ public class NavigationTablePeripheral implements IPeripheral {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Bound block entity
-    private final BlockEntity blockEntity;
     // Ext
     private final NavigationTableExtensionAccess ext;
 
@@ -50,7 +52,7 @@ public class NavigationTablePeripheral implements IPeripheral {
 
     // Initialize the navigation table peripheral
     public NavigationTablePeripheral(BlockEntity blockEntity, NavigationTableExtensionAccess ext) {
-        this.blockEntity = blockEntity;
+        super(blockEntity, "navigation_table");
         this.ext = ext;
     }
 
@@ -62,28 +64,19 @@ public class NavigationTablePeripheral implements IPeripheral {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Get the type
-    @Override
-    public String getType() {
-        return "navigation_table";
-    }
-
-    // Compare this navigation table peripheral with another object
-    @Override
-    public boolean equals(IPeripheral other) {
-        return other instanceof NavigationTablePeripheral peripheral
-                && peripheral.blockEntity == blockEntity;
-    }
-
     // Get the name
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getName", signature = "getName(): string",
+            description = "Returns the name.")
     public final String getName() {
         String name = blockEntity instanceof INamedBlockEntity named ? named.getCustomName() : null;
         return name != null ? name : "";
     }
 
     // Set the name
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setName", signature = "setName(name:string)",
+            description = "Sets the name.")
     public final void setName(String name) {
         if (blockEntity instanceof INamedBlockEntity named) {
             named.setCustomName(name == null || name.isBlank() ? null : name.strip());
@@ -91,25 +84,33 @@ public class NavigationTablePeripheral implements IPeripheral {
     }
 
     // Get the slot count
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getSlotCount", signature = "getSlotCount(): number",
+            description = "Returns the slot count.")
     public final int getSlotCount() {
         return NavigationTableExtensionAccess.SLOT_COUNT;
     }
 
     // Get the selected slot
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getSelectedSlot", signature = "getSelectedSlot(): number",
+            description = "Returns the selected slot.")
     public final int getSelectedSlot() {
         return ext.ct$getSelectedSlot() + 1;
     }
 
     // Set the selected slot
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setSelectedSlot", signature = "setSelectedSlot(slot:number)",
+            description = "Sets the selected slot.")
     public final void setSelectedSlot(int slot) throws LuaException {
         ext.ct$setSelectedSlot(validateSlot(slot));
     }
 
     // Get the next slot
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "nextSlot", signature = "nextSlot(): number",
+            description = "Returns the next slot.")
     public final int nextSlot() {
         int slot = (ext.ct$getSelectedSlot() + 1) % NavigationTableExtensionAccess.SLOT_COUNT;
         ext.ct$setSelectedSlot(slot);
@@ -117,7 +118,9 @@ public class NavigationTablePeripheral implements IPeripheral {
     }
 
     // Get the previous slot
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "previousSlot", signature = "previousSlot(): number",
+            description = "Returns the previous slot.")
     public final int previousSlot() {
         int slot = ext.ct$getSelectedSlot() - 1;
         if (slot < 0) {
@@ -128,33 +131,43 @@ public class NavigationTablePeripheral implements IPeripheral {
     }
 
     // Get the slot
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getSlot", signature = "getSlot(slot:number): table",
+            description = "Returns the slot.")
     public final Map<String, Object> getSlot(int slot) throws LuaException {
         return describeSlot(validateSlot(slot));
     }
 
     // Check if this has map
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "hasMap", signature = "hasMap(slot:number): boolean",
+            description = "Returns whether this has map.")
     public final boolean hasMap(int slot) throws LuaException {
         return !ext.ct$getMapInSlot(validateSlot(slot)).isEmpty();
     }
 
     // Get the map name
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getMapName", signature = "getMapName(slot:number): string",
+            description = "Returns the map name.")
     public final String getMapName(int slot) throws LuaException {
         var map = ext.ct$getMapInSlot(validateSlot(slot));
         return map.isEmpty() ? "" : map.getHoverName().getString();
     }
 
     // Get the slot target
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getSlotTarget", signature = "getSlotTarget(slot:number): table",
+            description = "Returns the slot target.")
     public final Map<String, Object> getSlotTarget(int slot) throws LuaException {
         int zeroBasedSlot = validateSlot(slot);
         return describeTarget(zeroBasedSlot, ext.ct$getResolvedTarget(zeroBasedSlot));
     }
 
     // Get the list slots
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "listSlots", signature = "listSlots(): table[]",
+            description = "Returns the list slots.")
     public final Object[] listSlots() {
         List<Map<String, Object>> slots = new ArrayList<>();
         for (int i = 0; i < NavigationTableExtensionAccess.SLOT_COUNT; i++) {
@@ -164,7 +177,9 @@ public class NavigationTablePeripheral implements IPeripheral {
     }
 
     // Get the filled slot count
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getFilledSlotCount", signature = "getFilledSlotCount(): number",
+            description = "Returns the filled slot count.")
     public final int getFilledSlotCount() {
         int filled = 0;
         for (int i = 0; i < NavigationTableExtensionAccess.SLOT_COUNT; i++) {
@@ -176,13 +191,17 @@ public class NavigationTablePeripheral implements IPeripheral {
     }
 
     // Clear the slot
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "clearSlot", signature = "clearSlot(slot:number)",
+            description = "Clears the slot.")
     public final void clearSlot(int slot) throws LuaException {
         ext.ct$setMapInSlot(validateSlot(slot), net.minecraft.world.item.ItemStack.EMPTY);
     }
 
     // Clear every navigation slot
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "clearAllSlots", signature = "clearAllSlots()",
+            description = "Clears every navigation slot.")
     public final void clearAllSlots() {
         for (int i = 0; i < NavigationTableExtensionAccess.SLOT_COUNT; i++) {
             ext.ct$setMapInSlot(i, net.minecraft.world.item.ItemStack.EMPTY);
@@ -190,13 +209,17 @@ public class NavigationTablePeripheral implements IPeripheral {
     }
 
     // Get the state
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getState", signature = "getState(): string",
+            description = "Returns the state.")
     public final String getState() {
         return ext.ct$getRunState().name().toLowerCase(java.util.Locale.ROOT);
     }
 
     // Set the state
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setState", signature = "setState(state:string)",
+            description = "Sets the state.")
     public final void setState(String state) throws LuaException {
         if (state == null) {
             throw new LuaException("state must be 'idle', 'running', or 'paused'");
@@ -210,67 +233,89 @@ public class NavigationTablePeripheral implements IPeripheral {
     }
 
     // Check if this is running
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isRunning", signature = "isRunning(): boolean",
+            description = "Returns whether this is running.")
     public final boolean isRunning() {
         return ext.ct$getRunState() == NavigationTableExtensionAccess.RunState.RUNNING;
     }
 
     // Check if this is paused
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isPaused", signature = "isPaused(): boolean",
+            description = "Returns whether this is paused.")
     public final boolean isPaused() {
         return ext.ct$getRunState() == NavigationTableExtensionAccess.RunState.PAUSED;
     }
 
     // Check if this is idle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isIdle", signature = "isIdle(): boolean",
+            description = "Returns whether this is idle.")
     public final boolean isIdle() {
         return ext.ct$getRunState() == NavigationTableExtensionAccess.RunState.IDLE;
     }
 
     // Start the navigation table peripheral
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "start", signature = "start()",
+            description = "Start the navigation table peripheral.")
     public final void start() {
         ext.ct$startNavigation();
     }
 
     // Pause the navigation table peripheral
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "pause", signature = "pause()",
+            description = "Pause the navigation table peripheral.")
     public final void pause() {
         ext.ct$pauseNavigation();
     }
 
     // Stop the navigation table peripheral
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "stop", signature = "stop()",
+            description = "Stop the navigation table peripheral.")
     public final void stop() {
         ext.ct$stopNavigation();
     }
 
     // Get the table position
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getTablePosition", signature = "getTablePosition(): table",
+            description = "Returns the table position.")
     public final Map<String, Object> getTablePosition() {
         return ComputerCraftPositionHelper.blockPosition(blockEntity);
     }
 
     // Get the block pos
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getBlockPos", signature = "getBlockPos(): table",
+            description = "Returns the block pos.")
     public final Map<String, Object> getBlockPos() {
         return getTablePosition();
     }
 
     // Get the block
-    @LuaFunction(value = "getblock")
+    @LuaFunction(value = "getblock", mainThread = true)
+    @PeripheralDoc(name = "getblock", signature = "getblock(): table",
+            description = "Returns the block.")
     public final Map<String, Object> getBlock() {
         return getTablePosition();
     }
 
     // Get the current angle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getCurrentAngle", signature = "getCurrentAngle(): number",
+            description = "Returns the current angle.")
     public final double getCurrentAngle() {
         return ext.ct$getRelativeAngleDeg();
     }
 
     // Get the vector
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getVector", signature = "getVector(): table",
+            description = "Returns the vector.")
     public final Map<String, Object> getVector() {
         Map<String, Object> data = new LinkedHashMap<>();
         var snapshot = ext.ct$getDirectionalSnapshot();
@@ -284,26 +329,34 @@ public class NavigationTablePeripheral implements IPeripheral {
     }
 
     // Check if this has target
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "hasTarget", signature = "hasTarget(): boolean",
+            description = "Returns whether this has target.")
     public final boolean hasTarget() {
         return ext.ct$getResolvedTarget(ext.ct$getSelectedSlot()) != null;
     }
 
     // Check if this has target in slot
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "hasTargetInSlot", signature = "hasTargetInSlot(slot:number): boolean",
+            description = "Returns whether this has target in slot.")
     public final boolean hasTargetInSlot(int slot) throws LuaException {
         return ext.ct$getResolvedTarget(validateSlot(slot)) != null;
     }
 
     // Get the target label
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getTargetLabel", signature = "getTargetLabel(): string?",
+            description = "Returns the target label.")
     public final String getTargetLabel() {
         String label = ext.ct$getTargetLabel();
         return label != null && !label.isBlank() ? label : null;
     }
 
     // Get the target label in slot
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getTargetLabelInSlot", signature = "getTargetLabelInSlot(slot:number): string?",
+            description = "Returns the target label in slot.")
     public final String getTargetLabelInSlot(int slot) throws LuaException {
         NavigationTableMapResolver.ResolvedTarget target = ext.ct$getResolvedTarget(validateSlot(slot));
         if (target == null || target.label() == null || target.label().isBlank()) {
@@ -313,45 +366,59 @@ public class NavigationTablePeripheral implements IPeripheral {
     }
 
     // Get the target
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getTarget", signature = "getTarget(): table",
+            description = "Returns the target.")
     public final Map<String, Object> getTarget() {
         return describeTarget(ext.ct$getSelectedSlot(), ext.ct$getResolvedTarget(ext.ct$getSelectedSlot()));
     }
 
     // Get the target position
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getTargetPosition", signature = "getTargetPosition(): table?",
+            description = "Returns the target position.")
     public final Map<String, Object> getTargetPosition() {
         return describePosition(ext.ct$getResolvedTarget(ext.ct$getSelectedSlot()));
     }
 
     // Get the target pos
-    @LuaFunction(value = "getTargetPos")
+    @LuaFunction(value = "getTargetPos", mainThread = true)
+    @PeripheralDoc(name = "getTargetPos", signature = "getTargetPos(): table?",
+            description = "Returns the target pos.")
     public final Map<String, Object> getTargetPos() {
         return getTargetPosition();
     }
 
     // Get the target position in slot
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getTargetPositionInSlot", signature = "getTargetPositionInSlot(slot:number): table?",
+            description = "Returns the target position in slot.")
     public final Map<String, Object> getTargetPositionInSlot(int slot) throws LuaException {
         return describePosition(ext.ct$getResolvedTarget(validateSlot(slot)));
     }
 
     // Get the target distance
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getTargetDistance", signature = "getTargetDistance(): number",
+            description = "Returns the target distance.")
     public final double getTargetDistance() {
         NavigationTableMapResolver.ResolvedTarget target = ext.ct$getResolvedTarget(ext.ct$getSelectedSlot());
         return target == null ? -1.0D : Math.sqrt(target.distanceSquared());
     }
 
     // Get the target distance in slot
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getTargetDistanceInSlot", signature = "getTargetDistanceInSlot(slot:number): number",
+            description = "Returns the target distance in slot.")
     public final double getTargetDistanceInSlot(int slot) throws LuaException {
         NavigationTableMapResolver.ResolvedTarget target = ext.ct$getResolvedTarget(validateSlot(slot));
         return target == null ? -1.0D : Math.sqrt(target.distanceSquared());
     }
 
     // Get the selected map info
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getSelectedMapInfo", signature = "getSelectedMapInfo(): table",
+            description = "Returns the selected map info.")
     public final Map<String, Object> getSelectedMapInfo() throws LuaException {
         Map<String, Object> data = new LinkedHashMap<>();
         int selectedSlot = ext.ct$getSelectedSlot();
@@ -361,7 +428,9 @@ public class NavigationTablePeripheral implements IPeripheral {
     }
 
     // Get the status
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getStatus", signature = "getStatus(): table",
+            description = "Returns the status.")
     public final Map<String, Object> getStatus() {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("name", getName());
@@ -377,111 +446,6 @@ public class NavigationTablePeripheral implements IPeripheral {
         data.put("filledSlots", getFilledSlotCount());
         data.put("vector", getVector());
         return data;
-    }
-
-    // List the exposed peripheral methods
-    @LuaFunction
-    public final List<String> methods() {
-        return List.of(
-                "getName(): string",
-                "setName(name:string)",
-                "getSlotCount(): number",
-                "getSelectedSlot(): number",
-                "setSelectedSlot(slot:number)",
-                "nextSlot(): number",
-                "previousSlot(): number",
-                "getSlot(slot:number): table",
-                "hasMap(slot:number): boolean",
-                "getMapName(slot:number): string",
-                "getSlotTarget(slot:number): table",
-                "listSlots(): table[]",
-                "getFilledSlotCount(): number",
-                "clearSlot(slot:number)",
-                "clearAllSlots()",
-                "getState(): string",
-                "setState(state:string)",
-                "isRunning(): boolean",
-                "isPaused(): boolean",
-                "isIdle(): boolean",
-                "start()",
-                "pause()",
-                "stop()",
-                "getTablePosition(): table",
-                "getBlockPos(): table",
-                "getblock(): table",
-                "getCurrentAngle(): number",
-                "getVector(): table",
-                "hasTarget(): boolean",
-                "hasTargetInSlot(slot:number): boolean",
-                "getTargetLabel(): string?",
-                "getTargetLabelInSlot(slot:number): string?",
-                "getTarget(): table",
-                "getTargetPosition(): table?",
-                "getTargetPos(): table?",
-                "getTargetPositionInSlot(slot:number): table?",
-                "getTargetDistance(): number",
-                "getTargetDistanceInSlot(slot:number): number",
-                "getSelectedMapInfo(): table",
-                "getStatus(): table",
-                "help(method?: string): string|table"
-        );
-    }
-
-    // Get the help
-    @LuaFunction
-    public final Object help(Optional<String> method) throws LuaException {
-        Map<String, String> docs = Map.ofEntries(
-                Map.entry("getName", "getName() -> current custom computer-facing name or empty string"),
-                Map.entry("setName", "setName(name) -> set or clear the custom name used by this table"),
-                Map.entry("getSlotCount", "getSlotCount() -> total stored navigation-item slots"),
-                Map.entry("getSelectedSlot", "getSelectedSlot() -> current selected slot, 1-based"),
-                Map.entry("setSelectedSlot", "setSelectedSlot(slot) -> select one stored navigation-item slot"),
-                Map.entry("nextSlot", "nextSlot() -> advance selection, wrapping around, and return the new slot"),
-                Map.entry("previousSlot", "previousSlot() -> move selection backward, wrapping around, and return the new slot"),
-                Map.entry("getSlot", "getSlot(slot) -> item/selection/target data for one slot"),
-                Map.entry("hasMap", "hasMap(slot) -> true when the slot contains a stored navigation item"),
-                Map.entry("getMapName", "getMapName(slot) -> display name of the stored navigation item or empty string"),
-                Map.entry("getSlotTarget", "getSlotTarget(slot) -> resolved target info for one slot, including coords when known"),
-                Map.entry("listSlots", "listSlots() -> array of per-slot tables for all 15 slots"),
-                Map.entry("getFilledSlotCount", "getFilledSlotCount() -> number of non-empty stored navigation-item slots"),
-                Map.entry("clearSlot", "clearSlot(slot) -> remove the stored navigation item from one slot"),
-                Map.entry("clearAllSlots", "clearAllSlots() -> remove every stored navigation item"),
-                Map.entry("getState", "getState() -> current nav state: idle, running, or paused"),
-                Map.entry("setState", "setState(state) -> switch the table to idle/running/paused"),
-                Map.entry("isRunning", "isRunning() -> true when the selected navigation item is actively driving navigation output"),
-                Map.entry("isPaused", "isPaused() -> true when navigation is paused"),
-                Map.entry("isIdle", "isIdle() -> true when navigation is stopped"),
-                Map.entry("start", "start() -> enter running state"),
-                Map.entry("pause", "pause() -> enter paused state"),
-                Map.entry("stop", "stop() -> enter idle state"),
-                Map.entry("getTablePosition", "getTablePosition() -> projected world position with x/y/z, localX/localY/localZ, dimension, and subLevelId"),
-                Map.entry("getBlockPos", "getBlockPos() -> alias of getTablePosition()"),
-                Map.entry("getblock", "getblock() -> alias of getTablePosition()"),
-                Map.entry("getCurrentAngle", "getCurrentAngle() -> current navigation angle in degrees"),
-                Map.entry("getVector", "getVector() -> directional analogue snapshot and angle"),
-                Map.entry("hasTarget", "hasTarget() -> true when the selected slot resolves to a target"),
-                Map.entry("hasTargetInSlot", "hasTargetInSlot(slot) -> true when that slot resolves to a target"),
-                Map.entry("getTargetLabel", "getTargetLabel() -> active target label for the selected slot when running"),
-                Map.entry("getTargetLabelInSlot", "getTargetLabelInSlot(slot) -> resolved label for a stored slot when known"),
-                Map.entry("getTarget", "getTarget() -> selected-slot target table including coords, distance, and state"),
-                Map.entry("getTargetPosition", "getTargetPosition() -> selected-slot target x/y/z table or nil"),
-                Map.entry("getTargetPos", "getTargetPos() -> alias of getTargetPosition()"),
-                Map.entry("getTargetPositionInSlot", "getTargetPositionInSlot(slot) -> target x/y/z table for one slot or nil"),
-                Map.entry("getTargetDistance", "getTargetDistance() -> horizontal distance from the table to the selected target, or -1 when absent"),
-                Map.entry("getTargetDistanceInSlot", "getTargetDistanceInSlot(slot) -> distance for one slot, or -1 when absent"),
-                Map.entry("getSelectedMapInfo", "getSelectedMapInfo() -> combined slot and target info for the selected navigation item"),
-                Map.entry("getStatus", "getStatus() -> combined table status with target and vector data"),
-                Map.entry("methods", "methods() -> list of all callable peripheral methods"),
-                Map.entry("help", "help() -> all docs, help('name') -> one entry")
-        );
-        if (method.isEmpty()) {
-            return docs;
-        }
-        String key = method.get();
-        if (!docs.containsKey(key)) {
-            throw new LuaException("unknown method '" + key + "'");
-        }
-        return docs.get(key);
     }
 
     // Validate the slot

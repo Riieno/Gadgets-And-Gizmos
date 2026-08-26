@@ -8,11 +8,13 @@ package com.rieno.gadgetsandgizmos.compat.computercraft;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.GadgetsPeripheral;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import com.rieno.gadgetsandgizmos.content.AileronBearingBlockEntity;
 import com.rieno.gadgetsandgizmos.lib.kinetics.BearingHead;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.lua.LuaFunction;
-import dan200.computercraft.api.peripheral.IPeripheral;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,7 +23,8 @@ import java.util.Map;
 import java.util.Optional;
 
 // Expose one aileron target and its live angle to ComputerCraft
-public class AileronBearingPeripheral implements IPeripheral {
+@PeripheralTypeDoc("aileron_bearing")
+public class AileronBearingPeripheral extends GadgetsPeripheral<AileronBearingBlockEntity> {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -33,7 +36,6 @@ public class AileronBearingPeripheral implements IPeripheral {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Bound block entity
-    private final AileronBearingBlockEntity blockEntity;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -45,7 +47,7 @@ public class AileronBearingPeripheral implements IPeripheral {
 
     // Initialize the aileron bearing peripheral
     public AileronBearingPeripheral(AileronBearingBlockEntity blockEntity) {
-        this.blockEntity = blockEntity;
+        super(blockEntity, "aileron_bearing");
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -56,51 +58,50 @@ public class AileronBearingPeripheral implements IPeripheral {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Get the type
-    @Override
-    public String getType() {
-        return "aileron_bearing";
-    }
-
-    // Compare this aileron bearing peripheral with another object
-    @Override
-    public boolean equals(IPeripheral other) {
-        return other instanceof AileronBearingPeripheral peripheral
-                && peripheral.blockEntity == blockEntity;
-    }
-
     // Get the head mode
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getHeadMode", signature = "getHeadMode(): string",
+            description = "Returns the head mode.")
     public final String getHeadMode() {
         return blockEntity.getHeadMode().serializedName();
     }
 
     // Set the head mode
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setHeadMode", signature = "setHeadMode(mode: 'single'|'mirrored'|'opposed'|'precise'|'free_single'|'free_mirrored'|'free_opposed')",
+            description = "Sets the head mode.")
     public final void setHeadMode(String modeName) throws LuaException {
         blockEntity.setHeadMode(parseHeadMode(modeName));
     }
 
     // Get the control mode
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getControlMode", signature = "getControlMode(): string",
+            description = "Returns the control mode.")
     public final String getControlMode() {
         return blockEntity.getControlMode().serializedName();
     }
 
     // Set the control mode
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setControlMode", signature = "setControlMode(mode: 'auto'|'redstone'|'servo'|'computer')",
+            description = "Sets the control mode.")
     public final void setControlMode(String modeName) throws LuaException {
         blockEntity.setControlMode(parseControlMode(modeName));
     }
 
     // Get the active control mode
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getActiveControlMode", signature = "getActiveControlMode(): string",
+            description = "Returns the active control mode.")
     public final String getActiveControlMode() {
         return blockEntity.getActiveControlMode().serializedName();
     }
 
     // Get the angles
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getAngles", signature = "getAngles(): table",
+            description = "Returns the angles.")
     public final Map<String, Object> getAngles() {
         Map<String, Object> angles = new LinkedHashMap<>();
         addHeadAngles(angles, BearingHead.PRIMARY);
@@ -109,7 +110,9 @@ public class AileronBearingPeripheral implements IPeripheral {
     }
 
     // Set the angles
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setAngles", signature = "setAngles(primaryDegrees: number, secondaryDegrees: number)",
+            description = "Sets the angles.")
     public final void setAngles(double primaryDegrees, double secondaryDegrees) throws LuaException {
         validateFinite(primaryDegrees, "primaryDegrees");
         validateFinite(secondaryDegrees, "secondaryDegrees");
@@ -118,27 +121,35 @@ public class AileronBearingPeripheral implements IPeripheral {
     }
 
     // Set the head angle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setHeadAngle", signature = "setHeadAngle(head: string, angleDegrees: number)",
+            description = "Sets the head angle.")
     public final void setHeadAngle(String headName, double angleDegrees) throws LuaException {
         validateFinite(angleDegrees, "angleDegrees");
         blockEntity.setHeadTargetAngle(parseHead(headName), angleDegrees);
     }
 
     // Clear the head angle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "clearHeadAngle", signature = "clearHeadAngle(head: string)",
+            description = "Clears the head angle.")
     public final void clearHeadAngle(String headName) throws LuaException {
         blockEntity.clearHeadTargetOverride(parseHead(headName));
     }
 
     // Clear the angles
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "clearAngles", signature = "clearAngles()",
+            description = "Clears the angles.")
     public final void clearAngles() {
         blockEntity.clearHeadTargetOverride(BearingHead.PRIMARY);
         blockEntity.clearHeadTargetOverride(BearingHead.SECONDARY);
     }
 
     // Get the ranges
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getRanges", signature = "getRanges(): table",
+            description = "Returns the ranges.")
     public final Map<String, Object> getRanges() {
         Map<String, Object> ranges = new LinkedHashMap<>();
         addHeadRange(ranges, BearingHead.PRIMARY);
@@ -147,7 +158,9 @@ public class AileronBearingPeripheral implements IPeripheral {
     }
 
     // Set the head range
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setHeadRange", signature = "setHeadRange(head: string, minDegrees: number, maxDegrees: number)",
+            description = "Sets the head range.")
     public final void setHeadRange(String headName, double minDegrees, double maxDegrees) throws LuaException {
         validateFinite(minDegrees, "minDegrees");
         validateFinite(maxDegrees, "maxDegrees");
@@ -155,7 +168,9 @@ public class AileronBearingPeripheral implements IPeripheral {
     }
 
     // Get the signals
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getSignals", signature = "getSignals(): table",
+            description = "Returns the signals.")
     public final Map<String, Object> getSignals() {
         Map<String, Object> signals = new LinkedHashMap<>();
         for (BearingHead head : BearingHead.values()) {
@@ -168,25 +183,33 @@ public class AileronBearingPeripheral implements IPeripheral {
     }
 
     // Assemble the aileron bearing peripheral
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "assemble", signature = "assemble(head: string): boolean",
+            description = "Assemble the aileron bearing peripheral.")
     public final boolean assemble(String headName) throws LuaException {
         return blockEntity.tryAssembleMountedBlock(parseHead(headName));
     }
 
     // Disassemble the aileron bearing peripheral
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "disassemble", signature = "disassemble(head: string)",
+            description = "Disassemble the aileron bearing peripheral.")
     public final void disassemble(String headName) throws LuaException {
         blockEntity.disassembleMountedBlock(parseHead(headName));
     }
 
     // Check if this is assembled
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isAssembled", signature = "isAssembled(head: string): boolean",
+            description = "Returns whether this is assembled.")
     public final boolean isAssembled(String headName) throws LuaException {
         return blockEntity.isMountedAssemblyPresent(parseHead(headName));
     }
 
     // Get the assemblies
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getAssemblies", signature = "getAssemblies(): table",
+            description = "Returns the assemblies.")
     public final Map<String, Object> getAssemblies() {
         Map<String, Object> assemblies = new LinkedHashMap<>();
         for (BearingHead head : BearingHead.values()) {
@@ -196,7 +219,9 @@ public class AileronBearingPeripheral implements IPeripheral {
     }
 
     // Get the status
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getStatus", signature = "getStatus(): table",
+            description = "Returns the status.")
     public final Map<String, Object> getStatus() {
         Map<String, Object> status = new LinkedHashMap<>();
         status.put("headMode", getHeadMode());
@@ -207,58 +232,6 @@ public class AileronBearingPeripheral implements IPeripheral {
         status.put("signals", getSignals());
         status.put("assemblies", getAssemblies());
         return status;
-    }
-
-    // List the exposed peripheral methods
-    @LuaFunction
-    public final List<String> methods() {
-        return List.of(
-                "getHeadMode(): string",
-                "setHeadMode(mode: 'single'|'mirrored'|'opposed'|'precise'|'free_single'|'free_mirrored'|'free_opposed')",
-                "getControlMode(): string",
-                "setControlMode(mode: 'auto'|'redstone'|'servo'|'computer')",
-                "getActiveControlMode(): string",
-                "getAngles(): table",
-                "setAngles(primaryDegrees: number, secondaryDegrees: number)",
-                "setHeadAngle(head: string, angleDegrees: number)",
-                "clearHeadAngle(head: string)",
-                "clearAngles()",
-                "getRanges(): table",
-                "setHeadRange(head: string, minDegrees: number, maxDegrees: number)",
-                "getSignals(): table",
-                "assemble(head: string): boolean",
-                "disassemble(head: string)",
-                "isAssembled(head: string): boolean",
-                "getAssemblies(): table",
-                "getStatus(): table",
-                "methods(): string[]",
-                "help(method?: string): string|table");
-    }
-
-    // Get the help
-    @LuaFunction
-    public final Object help(Optional<String> method) throws LuaException {
-        Map<String, String> help = new LinkedHashMap<>();
-        help.put("setHeadMode", "setHeadMode('single'|'mirrored'|'opposed'|'precise'|'free_single'|'free_mirrored'|'free_opposed')");
-        help.put("setControlMode", "setControlMode('auto'|'redstone'|'servo'|'computer')");
-        help.put("setAngles", "setAngles(primaryDegrees, secondaryDegrees)");
-        help.put("setHeadAngle", "setHeadAngle('primary'|'secondary'|'cyan'|'orange'|'left'|'right', angleDegrees)");
-        help.put("clearHeadAngle", "clearHeadAngle(head) clears that head's computer target override");
-        help.put("setHeadRange", "setHeadRange('primary'|'secondary'|'cyan'|'orange'|'left'|'right', minDegrees, maxDegrees)");
-        help.put("assemble", "assemble(head) attempts to assemble the selected head");
-        help.put("disassemble", "disassemble(head) disassembles the selected head");
-        help.put("isAssembled", "isAssembled(head) returns whether the selected head is assembled");
-        help.put("getStatus", "getStatus() -> table of modes, angles, ranges, signals, and assemblies");
-        help.put("methods", "methods() -> list of all callable peripheral methods");
-        help.put("help", "help() -> all docs, help('name') -> one entry");
-        if (method.isEmpty()) {
-            return help;
-        }
-        String key = method.get();
-        if (!help.containsKey(key)) {
-            throw new LuaException("unknown method '" + key + "'");
-        }
-        return help.get(key);
     }
 
     // Add the head angles

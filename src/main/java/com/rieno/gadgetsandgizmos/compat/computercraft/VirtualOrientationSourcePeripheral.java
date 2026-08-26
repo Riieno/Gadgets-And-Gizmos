@@ -8,9 +8,11 @@ package com.rieno.gadgetsandgizmos.compat.computercraft;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.GadgetsPeripheral;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import com.rieno.gadgetsandgizmos.content.VirtualOrientationSourceBlockEntity;
 import dan200.computercraft.api.lua.LuaFunction;
-import dan200.computercraft.api.peripheral.IPeripheral;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.LinkedHashMap;
@@ -18,7 +20,8 @@ import java.util.List;
 import java.util.Map;
 
 // Expose Virtual Orientation Source controls and telemetry to ComputerCraft
-public class VirtualOrientationSourcePeripheral implements IPeripheral {
+@PeripheralTypeDoc("virtual_orientation_source")
+public class VirtualOrientationSourcePeripheral extends GadgetsPeripheral<VirtualOrientationSourceBlockEntity> {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -30,7 +33,6 @@ public class VirtualOrientationSourcePeripheral implements IPeripheral {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Bound block entity
-    private final VirtualOrientationSourceBlockEntity blockEntity;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -42,7 +44,7 @@ public class VirtualOrientationSourcePeripheral implements IPeripheral {
 
     // Initialize the virtual orientation source peripheral
     public VirtualOrientationSourcePeripheral(VirtualOrientationSourceBlockEntity blockEntity) {
-        this.blockEntity = blockEntity;
+        super(blockEntity, "virtual_orientation_source");
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -53,51 +55,50 @@ public class VirtualOrientationSourcePeripheral implements IPeripheral {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Get the type
-    @Override
-    public String getType() {
-        return "virtual_orientation_source";
-    }
-
-    // Compare this virtual orientation source peripheral with another object
-    @Override
-    public boolean equals(IPeripheral other) {
-        return other instanceof VirtualOrientationSourcePeripheral peripheral
-                && peripheral.blockEntity == blockEntity;
-    }
-
     // Set the angles
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setAngles", signature = "setAngles(xRadians:number,zRadians:number)",
+            description = "Sets the angles.")
     public final void setAngles(double xRadians, double zRadians) {
         blockEntity.setAnglesRadians(xRadians, zRadians);
     }
 
     // Set the angles degrees
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setAnglesDegrees", signature = "setAnglesDegrees(xDegrees:number,zDegrees:number)",
+            description = "Sets the angles degrees.")
     public final void setAnglesDegrees(double xDegrees, double zDegrees) {
         blockEntity.setAnglesDegrees(xDegrees, zDegrees);
     }
 
     // Set the direction
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setDirection", signature = "setDirection(x:number,y:number,z:number)",
+            description = "Sets the direction.")
     public final void setDirection(double x, double y, double z) {
         blockEntity.setDirection(new Vec3(x, y, z));
     }
 
     // Clear the virtual orientation source peripheral
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "clear", signature = "clear()",
+            description = "Clears the virtual orientation source peripheral.")
     public final void clear() {
         blockEntity.clearVirtualOrientation();
     }
 
     // Check if this is active
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isActive", signature = "isActive(): boolean",
+            description = "Returns whether this is active.")
     public final boolean isActive() {
         return blockEntity.isOrientationSourceActive();
     }
 
     // Get the state
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getState", signature = "getState(): table",
+            description = "Returns the state.")
     public final Map<String, Object> getState() {
         Map<String, Object> state = new LinkedHashMap<>();
         state.put("active", blockEntity.isOrientationSourceActive());
@@ -116,18 +117,5 @@ public class VirtualOrientationSourcePeripheral implements IPeripheral {
         }
         state.put("lastUpdateTick", blockEntity.getLastUpdateTick());
         return state;
-    }
-
-    // List the exposed peripheral methods
-    @LuaFunction
-    public final List<String> methods() {
-        return List.of(
-                "setAngles(xRadians:number,zRadians:number)",
-                "setAnglesDegrees(xDegrees:number,zDegrees:number)",
-                "setDirection(x:number,y:number,z:number)",
-                "clear()",
-                "isActive(): boolean",
-                "getState(): table"
-        );
     }
 }

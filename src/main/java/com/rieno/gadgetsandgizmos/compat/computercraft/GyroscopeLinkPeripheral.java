@@ -8,10 +8,12 @@ package com.rieno.gadgetsandgizmos.compat.computercraft;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.GadgetsPeripheral;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import com.rieno.gadgetsandgizmos.content.GyroscopeLinkBlockEntity;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.lua.LuaFunction;
-import dan200.computercraft.api.peripheral.IPeripheral;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.phys.Vec3;
@@ -23,7 +25,8 @@ import java.util.Optional;
 import java.util.Set;
 
 // Expose Gyroscope Link controls and telemetry to ComputerCraft
-public class GyroscopeLinkPeripheral implements IPeripheral {
+@PeripheralTypeDoc({"advanced_data_link", "gyroscope_link"})
+public class GyroscopeLinkPeripheral extends GadgetsPeripheral<GyroscopeLinkBlockEntity> {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -35,7 +38,6 @@ public class GyroscopeLinkPeripheral implements IPeripheral {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Bound block entity
-    private final GyroscopeLinkBlockEntity blockEntity;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -47,7 +49,7 @@ public class GyroscopeLinkPeripheral implements IPeripheral {
 
     // Initialize the gyroscope link peripheral
     public GyroscopeLinkPeripheral(GyroscopeLinkBlockEntity blockEntity) {
-        this.blockEntity = blockEntity;
+        super(blockEntity, "advanced_data_link");
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -58,33 +60,24 @@ public class GyroscopeLinkPeripheral implements IPeripheral {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Get the type
-    @Override
-    public String getType() {
-        return "advanced_data_link";
-    }
-
     // Get the additional types
     @Override
     public Set<String> getAdditionalTypes() {
         return Set.of("gyroscope_link");
     }
 
-    // Compare this gyroscope link peripheral with another object
-    @Override
-    public boolean equals(IPeripheral other) {
-        return other instanceof GyroscopeLinkPeripheral peripheral
-                && peripheral.blockEntity == blockEntity;
-    }
-
     // Check if this is linked
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isLinked", signature = "isLinked(): boolean",
+            description = "Returns whether this is linked.")
     public final boolean isLinked() {
         return blockEntity.isLinked();
     }
 
     // Get the target
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getTarget", signature = "getTarget(): table",
+            description = "Returns the target.")
     public final Map<String, Object> getTarget() {
         Map<String, Object> target = new LinkedHashMap<>();
         BlockPos pos = blockEntity.getGyroPos();
@@ -103,7 +96,9 @@ public class GyroscopeLinkPeripheral implements IPeripheral {
     }
 
     // Get the angles
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getAngles", signature = "getAngles(): table",
+            description = "Returns the angles.")
     public final Map<String, Object> getAngles() {
         Map<String, Object> angles = new LinkedHashMap<>();
         double[] rad = blockEntity.getLinkedAnglesRadians();
@@ -120,7 +115,9 @@ public class GyroscopeLinkPeripheral implements IPeripheral {
     }
 
     // Get the direction
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getDirection", signature = "getDirection(): table",
+            description = "Returns the direction.")
     public final Map<String, Object> getDirection() {
         Map<String, Object> dir = new LinkedHashMap<>();
         Vec3 linkedDirection = blockEntity.getLinkedDirection();
@@ -135,7 +132,9 @@ public class GyroscopeLinkPeripheral implements IPeripheral {
     }
 
     // Get the status
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getStatus", signature = "getStatus(): table",
+            description = "Returns the status.")
     public final Map<String, Object> getStatus() {
         Map<String, Object> status = new LinkedHashMap<>();
         status.put("target", getTarget());
@@ -146,13 +145,17 @@ public class GyroscopeLinkPeripheral implements IPeripheral {
     }
 
     // Get the mode
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getMode", signature = "getMode(): string",
+            description = "Returns the mode.")
     public final String getMode() {
         return blockEntity.getTrackingMode().name().toLowerCase();
     }
 
     // Set the mode
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setMode", signature = "setMode(mode:string)",
+            description = "Sets the mode.")
     public final void setMode(String modeName) throws LuaException {
         try {
             blockEntity.setTrackingMode(GyroscopeLinkBlockEntity.TrackingMode.valueOf(modeName.trim().toUpperCase()));
@@ -162,7 +165,9 @@ public class GyroscopeLinkPeripheral implements IPeripheral {
     }
 
     // Set the target
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setTarget", signature = "setTarget(x:number,y:number,z:number,dimension?:string)",
+            description = "Sets the target.")
     public final void setTarget(int x, int y, int z, Optional<String> dimension) throws LuaException {
         String dim = dimension.orElseGet(() -> blockEntity.getLevel() == null
                 ? null
@@ -174,51 +179,10 @@ public class GyroscopeLinkPeripheral implements IPeripheral {
     }
 
     // Clear the target
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "clearTarget", signature = "clearTarget()",
+            description = "Clears the target.")
     public final void clearTarget() {
         blockEntity.setGyroTarget(null, null);
-    }
-
-    // List the exposed peripheral methods
-    @LuaFunction
-    public final List<String> methods() {
-        return List.of(
-                "isLinked(): boolean",
-                "getTarget(): table",
-                "getAngles(): table",
-                "getDirection(): table",
-                "getStatus(): table",
-                "getMode(): string",
-                "setMode(mode:string)",
-                "setTarget(x:number,y:number,z:number,dimension?:string)",
-                "clearTarget()",
-                "help(method?: string): string|table"
-        );
-    }
-
-    // Get the help
-    @LuaFunction
-    public final Object help(Optional<String> method) throws LuaException {
-        Map<String, String> docs = Map.ofEntries(
-            Map.entry("isLinked", "isLinked() -> true when an orientation source target is stored"),
-            Map.entry("getTarget", "getTarget() -> live projected target with linked/x/y/z, local coordinates, subLevelId, and dimension"),
-            Map.entry("getAngles", "getAngles() -> live angle table with x/z in radians and degrees when available"),
-            Map.entry("getDirection", "getDirection() -> live direction vector derived from the linked source angles"),
-            Map.entry("getStatus", "getStatus() -> combined target, angle, and direction tables"),
-            Map.entry("getMode", "getMode() -> current Advanced Data Link tracking mode: 'live' or 'static'"),
-            Map.entry("setMode", "setMode(mode) -> switch between live moving-target tracking and static world-position sampling"),
-            Map.entry("setTarget", "setTarget(x,y,z,dimension?) -> set the linked sensor position"),
-            Map.entry("clearTarget", "clearTarget() -> unlink this block"),
-            Map.entry("methods", "methods() -> list of all callable peripheral methods"),
-            Map.entry("help", "help() -> all docs, help('name') -> one entry")
-        );
-        if (method.isEmpty()) {
-            return docs;
-        }
-        String key = method.get();
-        if (!docs.containsKey(key)) {
-            throw new LuaException("unknown method '" + key + "'");
-        }
-        return docs.get(key);
     }
 }

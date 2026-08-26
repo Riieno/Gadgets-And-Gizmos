@@ -870,7 +870,8 @@ final class ScissorPistonMountedAssembly {
                 }
                 configArmBlockEntity(piston, level, child, armLocalPos, distance);
             } else if (current.getBlock() instanceof ScissorPistonArmBlock) {
-                configArmBlockEntity(piston, level, child, armLocalPos, distance);
+                markArmRemoving(level, child, armLocalPos);
+                plot.getEmbeddedLevelAccessor().setBlock(relativePos, Blocks.AIR.defaultBlockState(), 2);
             }
         }
     }

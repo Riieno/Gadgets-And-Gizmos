@@ -38,6 +38,10 @@ repositories {
         name = 'Modrinth'
         url = 'https://api.modrinth.com/maven'
     }
+    maven {
+        name = 'Shedaniel'
+        url = 'https://maven.shedaniel.me/'
+    }
 }
 
 def libsDir = file('libs')
@@ -45,12 +49,14 @@ def requiredSableJar = file("libs/sable-neoforge-${minecraft_version}-${sable_ve
 def localJars = fileTree(libsDir) {
     include '*.jar'
     exclude 'sable-neoforge-*.jar'
+    exclude "${library_archive_name}-*.jar"
 }
 def localRuntimeJars = fileTree(libsDir) {
     include '*.jar'
     exclude 'MixinSquared-*.jar'
     exclude 'veil-neoforge-*.jar'
     exclude 'sable-neoforge-*.jar'
+    exclude "${library_archive_name}-*.jar"
 }
 def libraryProjectDir = file(library_project_dir)
 def libraryJarFile = new File(libraryProjectDir,
@@ -218,6 +224,7 @@ dependencies {
     compileOnly files(libraryJarFile)
     compileOnly 'mezz.jei:jei-1.21.1-neoforge-api:19.27.0.340'
     compileOnly 'dev.emi:emi-neoforge:1.1.22+1.21.1'
+    compileOnly 'me.shedaniel:RoughlyEnoughItems-api-neoforge:16.0.799'
     compileOnly 'maven.modrinth:jade:15.10.5+neoforge'
     compileOnly "dev.engine-room.flywheel:flywheel-neoforge-api-${minecraft_version}:${flywheel_version}"
     compileOnly 'top.theillusivec4.curios:curios-neoforge:9.5.1+1.21.1'
@@ -225,6 +232,43 @@ dependencies {
     runtimeOnly files(requiredSableJar)
     runtimeOnly files(libraryJarFile)
     runtimeOnly "dev.engine-room.flywheel:flywheel-neoforge-${minecraft_version}:${flywheel_version}"
+}
+
+sourceSets {
+    docgen {
+        java.srcDir 'src/docgen/java'
+        compileClasspath += sourceSets.main.output + configurations.compileClasspath
+        runtimeClasspath += output + compileClasspath
+    }
+}
+
+def ccDocsCatalogue = layout.projectDirectory.file(
+        'src/main/resources/data/computercraft/lua/rom/modules/main/'
+                + 'gadgetsandgizmos/docs_catalog.lua')
+
+tasks.named('compileDocgenJava') {
+    dependsOn tasks.named('classes')
+}
+
+tasks.register('generateComputerCraftDocs', JavaExec) {
+    group = 'documentation'
+    description = 'Regenerates the checked-in CC:Tweaked Lua documentation catalogue.'
+    dependsOn tasks.named('docgenClasses')
+    classpath = sourceSets.docgen.runtimeClasspath
+    mainClass = 'com.rieno.gadgetsandgizmos.tools.GenerateComputerCraftDocs'
+    args ccDocsCatalogue.asFile.absolutePath
+    outputs.file ccDocsCatalogue
+}
+
+tasks.register('verifyComputerCraftDocs', JavaExec) {
+    group = 'verification'
+    description = 'Fails when CC:Tweaked documentation is missing or stale.'
+    dependsOn tasks.named('docgenClasses')
+    classpath = sourceSets.docgen.runtimeClasspath
+    mainClass = 'com.rieno.gadgetsandgizmos.tools.GenerateComputerCraftDocs'
+    args '--check', ccDocsCatalogue.asFile.absolutePath
+    inputs.files sourceSets.main.output, sourceSets.docgen.output
+    inputs.file ccDocsCatalogue
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -235,6 +279,7 @@ tasks.withType(JavaCompile).configureEach {
 
 tasks.named('check') {
     dependsOn validateMixinConfig
+    dependsOn tasks.named('verifyComputerCraftDocs')
 }
 
 tasks.named('jar', Jar) {

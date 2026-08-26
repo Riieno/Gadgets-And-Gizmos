@@ -122,7 +122,7 @@ public final class FunctionPlotterScreen extends Screen {
     // Current units per pixel x
     private double unitsPerPixelX = 1.0D;
     // Current units per pixel y
-    private double unitsPerPixelY = 0.75D;
+    private double unitsPerPixelY = 1.0D;
     // Tracks whether function plotter is panning
     private boolean panning;
     // Last mouse x
@@ -401,7 +401,7 @@ public final class FunctionPlotterScreen extends Screen {
         boolean previousValid = false;
         int previousX = 0;
         int previousY = 0;
-        for (int sampleX = left; sampleX < width; sampleX += 2) {
+        for (int sampleX = left; sampleX < width; sampleX++) {
             NotationExpression.Point point;
             try {
                 point = program.evaluatePoint(series, worldX(sampleX));
@@ -910,10 +910,12 @@ public final class FunctionPlotterScreen extends Screen {
                 ? finite(tag.getDouble("CenterX"), 0.0D) : 0.0D;
         centerY = tag.contains("CenterY", Tag.TAG_ANY_NUMERIC)
                 ? finite(tag.getDouble("CenterY"), 0.0D) : 0.0D;
-        unitsPerPixelX = tag.contains("UnitsPerPixelX", Tag.TAG_ANY_NUMERIC)
-                ? clampScale(tag.getDouble("UnitsPerPixelX")) : defaultHorizontalScale();
-        unitsPerPixelY = tag.contains("UnitsPerPixelY", Tag.TAG_ANY_NUMERIC)
-                ? clampScale(tag.getDouble("UnitsPerPixelY")) : defaultVerticalScale();
+        double storedHorizontalScale = tag.contains("UnitsPerPixelX", Tag.TAG_ANY_NUMERIC)
+                ? clampScale(tag.getDouble("UnitsPerPixelX")) : defaultScale();
+        double storedVerticalScale = tag.contains("UnitsPerPixelY", Tag.TAG_ANY_NUMERIC)
+                ? clampScale(tag.getDouble("UnitsPerPixelY")) : defaultScale();
+        unitsPerPixelX = Math.max(storedHorizontalScale, storedVerticalScale);
+        unitsPerPixelY = unitsPerPixelX;
         viewInitialized = true;
         dirty = false;
         rebuildProgram();
@@ -1046,19 +1048,16 @@ public final class FunctionPlotterScreen extends Screen {
     private void initView() {
         centerX = 0.0D;
         centerY = 0.0D;
-        unitsPerPixelX = defaultHorizontalScale();
-        unitsPerPixelY = defaultVerticalScale();
+        unitsPerPixelX = defaultScale();
+        unitsPerPixelY = unitsPerPixelX;
         viewInitialized = true;
     }
 
-    // Create the default horizontal scale
-    private double defaultHorizontalScale() {
-        return clampScale(20.0D / Math.max(320, width - sidebarWidth()));
-    }
-
-    // Create the default vertical scale
-    private double defaultVerticalScale() {
-        return clampScale(14.0D / Math.max(240, height - TOOLBAR_HEIGHT));
+    // Create the default scale
+    private double defaultScale() {
+        double horizontalScale = 20.0D / Math.max(320, width - sidebarWidth());
+        double verticalScale = 14.0D / Math.max(240, height - TOOLBAR_HEIGHT);
+        return clampScale(Math.max(horizontalScale, verticalScale));
     }
 
     // Zoom around the cursor
@@ -1315,12 +1314,25 @@ public final class FunctionPlotterScreen extends Screen {
 
     // Draw the line
     private static void drawLine(GuiGraphics graphics, int x1, int y1, int x2, int y2, int col) {
-        int steps = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1));
-        for (int idx = 0; idx <= steps; idx++) {
-            double amount = steps == 0 ? 0.0D : idx / (double) steps;
-            int x = (int) Math.round(x1 + (x2 - x1) * amount);
-            int y = (int) Math.round(y1 + (y2 - y1) * amount);
-            graphics.fill(x, y, x + 2, y + 2, col);
+        int dx = Math.abs(x2 - x1);
+        int dy = Math.abs(y2 - y1);
+        int stepX = x1 < x2 ? 1 : -1;
+        int stepY = y1 < y2 ? 1 : -1;
+        int error = dx - dy;
+        while (true) {
+            graphics.fill(x1, y1, x1 + 1, y1 + 1, col);
+            if (x1 == x2 && y1 == y2) {
+                return;
+            }
+            int doubledError = error * 2;
+            if (doubledError > -dy) {
+                error -= dy;
+                x1 += stepX;
+            }
+            if (doubledError < dx) {
+                error += dx;
+                y1 += stepY;
+            }
         }
     }
 

@@ -8,10 +8,12 @@ package com.rieno.gadgetsandgizmos.compat.computercraft;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.GadgetsPeripheral;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import com.rieno.gadgetsandgizmos.lib.control.IDirectControlReceiver;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.lua.LuaFunction;
-import dan200.computercraft.api.peripheral.IPeripheral;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
@@ -21,7 +23,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 // Expose Wheel Mount controls and telemetry to ComputerCraft
-public class WheelMountPeripheral implements IPeripheral {
+@PeripheralTypeDoc("wheel_mount")
+public class WheelMountPeripheral extends GadgetsPeripheral<BlockEntity> {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -33,7 +36,6 @@ public class WheelMountPeripheral implements IPeripheral {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Bound block entity
-    private final BlockEntity blockEntity;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -45,7 +47,7 @@ public class WheelMountPeripheral implements IPeripheral {
 
     // Initialize the wheel mount peripheral
     public WheelMountPeripheral(BlockEntity blockEntity) {
-        this.blockEntity = blockEntity;
+        super(blockEntity, "wheel_mount");
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -56,39 +58,34 @@ public class WheelMountPeripheral implements IPeripheral {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Get the type
-    @Override
-    public String getType() {
-        return "wheel_mount";
-    }
-
-    // Compare this wheel mount peripheral with another object
-    @Override
-    public boolean equals(IPeripheral other) {
-        return other instanceof WheelMountPeripheral peripheral
-                && peripheral.blockEntity == blockEntity;
-    }
-
     // Set the left
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setLeft", signature = "setLeft(value: number)",
+            description = "Sets the left.")
     public final void setLeft(double value) throws LuaException {
         applyDirectSignal("yaw_left", value, "left");
     }
 
     // Set the right
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setRight", signature = "setRight(value: number)",
+            description = "Sets the right.")
     public final void setRight(double value) throws LuaException {
         applyDirectSignal("yaw_right", value, "right");
     }
 
     // Set the brake
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setBrake", signature = "setBrake(value: number)",
+            description = "Sets the brake.")
     public final void setBrake(double value) throws LuaException {
         applyDirectSignal("throttle_down", value, "brake");
     }
 
     // Set the controls
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setControls", signature = "setControls(left: number, right: number, brake: number)",
+            description = "Sets the controls.")
     public final void setControls(double left, double right, double brake) throws LuaException {
         float leftValue = requireUnitValue(left, "left");
         float rightValue = requireUnitValue(right, "right");
@@ -105,13 +102,17 @@ public class WheelMountPeripheral implements IPeripheral {
     }
 
     // Clear the controls
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "clearControls", signature = "clearControls()",
+            description = "Clears the controls.")
     public final void clearControls() throws LuaException {
         setControls(0.0, 0.0, 0.0);
     }
 
     // Get the status
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getStatus", signature = "getStatus(): table",
+            description = "Returns the status.")
     public final Map<String, Object> getStatus() throws LuaException {
         WheelMountControlBridge bridge = bridgeOrThrow();
         Map<String, Object> status = new LinkedHashMap<>();

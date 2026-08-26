@@ -8,10 +8,12 @@ package com.rieno.gadgetsandgizmos.compat.computercraft;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.GadgetsPeripheral;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import com.rieno.gadgetsandgizmos.content.ClawBlockEntity;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.lua.LuaFunction;
-import dan200.computercraft.api.peripheral.IPeripheral;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
@@ -27,7 +29,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 // Give ComputerCraft safe control over one attached claw and its held target
-public class ClawPeripheral implements IPeripheral {
+@PeripheralTypeDoc("claw")
+public class ClawPeripheral extends GadgetsPeripheral<ClawBlockEntity> {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -39,7 +42,6 @@ public class ClawPeripheral implements IPeripheral {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Bound block entity
-    private final ClawBlockEntity blockEntity;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -51,7 +53,7 @@ public class ClawPeripheral implements IPeripheral {
 
     // Initialize the claw peripheral
     public ClawPeripheral(ClawBlockEntity blockEntity) {
-        this.blockEntity = blockEntity;
+        super(blockEntity, "claw");
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -62,21 +64,10 @@ public class ClawPeripheral implements IPeripheral {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Get the type
-    @Override
-    public String getType() {
-        return "claw";
-    }
-
-    // Compare this claw peripheral with another object
-    @Override
-    public boolean equals(IPeripheral other) {
-        return other instanceof ClawPeripheral peripheral
-                && peripheral.blockEntity == blockEntity;
-    }
-
     // Set the signal
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setSignal", signature = "setSignal(signal: number)",
+            description = "Sets the signal.")
     public final void setSignal(int signal) throws LuaException {
         if (signal < 0 || signal > 15) {
             throw new LuaException("signal must be between 0 and 15");
@@ -85,104 +76,138 @@ public class ClawPeripheral implements IPeripheral {
     }
 
     // Clear the signal override
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "clearSignalOverride", signature = "clearSignalOverride()",
+            description = "Clears the signal override.")
     public final void clearSignalOverride() {
         blockEntity.clearComputerSignalOverride();
     }
 
     // Open the claw peripheral
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "open", signature = "open()",
+            description = "Open the claw peripheral.")
     public final void open() {
         blockEntity.setComputerSignalOverride(0);
     }
 
     // Close the claw peripheral
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "close", signature = "close()",
+            description = "Close the claw peripheral.")
     public final void close() {
         blockEntity.setComputerSignalOverride(15);
     }
 
     // Release the claw peripheral
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "release", signature = "release()",
+            description = "Release the claw peripheral.")
     public final void release() {
         blockEntity.forceRelease();
         blockEntity.setComputerSignalOverride(0);
     }
 
     // Get the signal
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getSignal", signature = "getSignal(): number",
+            description = "Returns the signal.")
     public final int getSignal() {
         return blockEntity.getSignalStrength();
     }
 
     // Get the computer signal
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getComputerSignal", signature = "getComputerSignal(): number",
+            description = "Returns the computer signal.")
     public final int getComputerSignal() {
         return blockEntity.getComputerSignalOverride();
     }
 
     // Check if this is holding
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isHolding", signature = "isHolding(): boolean",
+            description = "Returns whether this is holding.")
     public final boolean isHolding() {
         return blockEntity.isHoldingConnector();
     }
 
     // Get the held connector pos
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getHeldConnectorPos", signature = "getHeldConnectorPos(): table",
+            description = "Returns the held connector pos.")
     public final @Nullable Map<String, Object> getHeldConnectorPos() {
         return toPosMap(blockEntity.getGrabbedConnectorReference());
     }
 
     // Get the selected connector pos
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getSelectedConnectorPos", signature = "getSelectedConnectorPos(): table",
+            description = "Returns the selected connector pos.")
     public final @Nullable Map<String, Object> getSelectedConnectorPos() {
         return toPosMap(blockEntity.getPendingConnectorReference());
     }
 
     // Get the nearest connector
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getNearestConnector", signature = "getNearestConnector(): table",
+            description = "Returns the nearest connector.")
     public final @Nullable Map<String, Object> getNearestConnector() {
         return toPosMap(blockEntity.findNearestFreeConnectorReferenceInRange(3));
     }
 
     // Get the nearest connector in range
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getNearestConnectorInRange", signature = "getNearestConnectorInRange(range: number): table",
+            description = "Returns the nearest connector in range.")
     public final @Nullable Map<String, Object> getNearestConnectorInRange(int range) {
         return toPosMap(blockEntity.findNearestFreeConnectorReferenceInRange(range));
     }
 
     // Get the connectors in range
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getConnectorsInRange", signature = "getConnectorsInRange(range: number): table",
+            description = "Returns the connectors in range.")
     public final List<Map<String, Object>> getConnectorsInRange(int range) {
         return toPosList(blockEntity.getFreeConnectorReferencesInRange(range, 64));
     }
 
     // Get the connectors in range limited
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getConnectorsInRangeLimited", signature = "getConnectorsInRangeLimited(range: number, limit: number): table",
+            description = "Returns the connectors in range limited.")
     public final List<Map<String, Object>> getConnectorsInRangeLimited(int range, int limit) {
         return toPosList(blockEntity.getFreeConnectorReferencesInRange(range, limit));
     }
 
     // Check if the connector is in range
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isConnectorInRange", signature = "isConnectorInRange(x: number, y: number, z: number): boolean",
+            description = "Returns whether the connector is in range.")
     public final boolean isConnectorInRange(int x, int y, int z) {
         return blockEntity.isConnectorInRange(new BlockPos(x, y, z), 3);
     }
 
     // Check if the connector is in the range with radius
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isConnectorInRangeWithRadius", signature = "isConnectorInRangeWithRadius(x: number, y: number, z: number, range: number): boolean",
+            description = "Returns whether the connector is in the range with radius.")
     public final boolean isConnectorInRangeWithRadius(int x, int y, int z, int range) {
         return blockEntity.isConnectorInRange(new BlockPos(x, y, z), range);
     }
 
     // Select the connector
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "selectConnector", signature = "selectConnector(x: number, y: number, z: number): boolean",
+            description = "Select the connector.")
     public final boolean selectConnector(int x, int y, int z) {
         return blockEntity.selectConnector(new BlockPos(x, y, z));
     }
 
     // Check if the connector reference is in range
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isConnectorReferenceInRange", signature = "isConnectorReferenceInRange(localX: number, localY: number, localZ: number, subLevelId: string, [range: number]): boolean",
+            description = "Returns whether the connector reference is in range.")
     public final boolean isConnectorReferenceInRange(int localX, int localY, int localZ, String subLevelId,
                                                      Optional<Integer> range) throws LuaException {
         int checkedRange = Math.max(1, range.orElse(3));
@@ -191,7 +216,9 @@ public class ClawPeripheral implements IPeripheral {
     }
 
     // Select the connector reference
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "selectConnectorReference", signature = "selectConnectorReference(localX: number, localY: number, localZ: number, subLevelId: string): boolean",
+            description = "Select the connector reference.")
     public final boolean selectConnectorReference(int localX, int localY, int localZ,
                                                   String subLevelId) throws LuaException {
         return blockEntity.selectConnector(
@@ -199,25 +226,33 @@ public class ClawPeripheral implements IPeripheral {
     }
 
     // Clear the selected connector
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "clearSelectedConnector", signature = "clearSelectedConnector()",
+            description = "Clears the selected connector.")
     public final void clearSelectedConnector() {
         blockEntity.clearSelectedConnector();
     }
 
     // Set the receiver frequency
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setReceiverFrequency", signature = "setReceiverFrequency(frequencyA: string, frequencyB: string)",
+            description = "Sets the receiver frequency.")
     public final void setReceiverFrequency(String frequencyA, String frequencyB) throws LuaException {
         blockEntity.setReceiverFrequency(parseFrequency(frequencyA), parseFrequency(frequencyB));
     }
 
     // Clear the receiver frequency
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "clearReceiverFrequency", signature = "clearReceiverFrequency()",
+            description = "Clears the receiver frequency.")
     public final void clearReceiverFrequency() {
         blockEntity.setReceiverFrequency(ItemStack.EMPTY, ItemStack.EMPTY);
     }
 
     // Get the receiver frequency
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getReceiverFrequency", signature = "getReceiverFrequency(): table",
+            description = "Returns the receiver frequency.")
     public final Map<String, Object> getReceiverFrequency() {
         Map<String, Object> out = new HashMap<>();
         ItemStack first = blockEntity.getReceiverFrequencyFirst();
@@ -228,39 +263,10 @@ public class ClawPeripheral implements IPeripheral {
         return out;
     }
 
-    // List the exposed peripheral methods
-    @LuaFunction
-    public final List<String> methods() {
-        return List.of(
-                "methods",
-                "setSignal",
-                "clearSignalOverride",
-                "open",
-                "close",
-                "release",
-                "getSignal",
-                "getComputerSignal",
-                "isHolding",
-                "getHeldConnectorPos",
-                "getSelectedConnectorPos",
-                "getNearestConnector",
-                "getNearestConnectorInRange",
-                "getConnectorsInRange",
-                "getConnectorsInRangeLimited",
-                "isConnectorInRange",
-                "isConnectorInRangeWithRadius",
-                "selectConnector",
-                "isConnectorReferenceInRange",
-                "selectConnectorReference",
-                "clearSelectedConnector",
-                "setReceiverFrequency",
-                "clearReceiverFrequency",
-                "getReceiverFrequency",
-                "getStatus");
-    }
-
     // Get the status
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getStatus", signature = "getStatus(): table",
+            description = "Returns the status.")
     public final Map<String, Object> getStatus() {
         Map<String, Object> out = new HashMap<>();
         out.put("signal", blockEntity.getSignalStrength());

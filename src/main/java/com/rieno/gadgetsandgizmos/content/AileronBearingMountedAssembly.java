@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.mojang.logging.LogUtils;
 import com.rieno.gadgetsandgizmos.lib.kinetics.BearingHead;
+import com.rieno.gadgetsandgizmos.lib.physics.MountedAssemblyStatus;
 import com.rieno.gadgetsandgizmos.lib.physics.SableConstraintApi;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
@@ -83,14 +84,6 @@ final class AileronBearingMountedAssembly {
     private ServerSubLevel jointParent;
     // Current joint child
     private ServerSubLevel jointChild;
-
-    // Define the mounted block status values
-    enum MountedBlockStatus {
-        PRESENT,
-        UNAVAILABLE,
-        BROKEN,
-        INVALID
-    }
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -259,50 +252,40 @@ final class AileronBearingMountedAssembly {
 
     // Check if this has mounted block
     boolean hasMountedBlock(AileronBearingBlockEntity bearing, ServerLevel level) {
-        return mountedBlockStatus(bearing, level) == MountedBlockStatus.PRESENT;
+        return mountedBlockStatus(bearing, level) == MountedAssemblyStatus.PRESENT;
     }
 
     // Get the mounted block status
-    MountedBlockStatus mountedBlockStatus(AileronBearingBlockEntity bearing, ServerLevel level) {
+    MountedAssemblyStatus mountedBlockStatus(AileronBearingBlockEntity bearing, ServerLevel level) {
         BlockPos localPos = bearing.getMountedLocalPos(head);
         if (localPos == null) {
-            return MountedBlockStatus.INVALID;
+            return MountedAssemblyStatus.INVALID;
         }
         ServerSubLevel child = findChild(bearing, level);
         if (child == null) {
-            return MountedBlockStatus.UNAVAILABLE;
+            return MountedAssemblyStatus.UNAVAILABLE;
         }
         if (child.isRemoved()) {
-            return MountedBlockStatus.BROKEN;
+            return MountedAssemblyStatus.BROKEN;
         }
         if (!isMountedPositionLoaded(child, localPos)) {
-            return MountedBlockStatus.UNAVAILABLE;
+            return MountedAssemblyStatus.UNAVAILABLE;
         }
         BlockState mountedState = resolveMountedState(child, localPos);
         if (mountedState == null || !(mountedState.getBlock() instanceof AileronBearingLinkBlock)) {
-            return MountedBlockStatus.BROKEN;
+            return MountedAssemblyStatus.BROKEN;
         }
         if (mountedState.getValue(AileronBearingLinkBlock.FACING) != bearing.getHeadDirection(head)
                 || mountedState.getValue(AileronBearingLinkBlock.HEAD)
                 != AileronBearingLinkBlock.HeadVariant.fromHead(head)) {
-            return MountedBlockStatus.INVALID;
+            return MountedAssemblyStatus.INVALID;
         }
         AileronBearingLinkBlockEntity link = SimulatedHelper.findBlockEntityInSubLevel(
                 child, localPos, AileronBearingLinkBlockEntity.class);
         if (link == null) {
-            return MountedBlockStatus.UNAVAILABLE;
+            return MountedAssemblyStatus.UNAVAILABLE;
         }
-        return link.isOwnedBy(bearing, head) ? MountedBlockStatus.PRESENT : MountedBlockStatus.INVALID;
-    }
-
-    // Check if this should clear mounted assembly
-    static boolean shouldClearMountedAssembly(MountedBlockStatus status) {
-        return status == MountedBlockStatus.INVALID;
-    }
-
-    // Check if this should retry mounted assembly
-    static boolean shouldRetryMountedAssembly(MountedBlockStatus status) {
-        return status == MountedBlockStatus.UNAVAILABLE || status == MountedBlockStatus.BROKEN;
+        return link.isOwnedBy(bearing, head) ? MountedAssemblyStatus.PRESENT : MountedAssemblyStatus.INVALID;
     }
 
     // Absorb the placed block
@@ -356,12 +339,12 @@ final class AileronBearingMountedAssembly {
 
     // Aim the mounted assembly
     boolean aim(AileronBearingBlockEntity bearing, ServerLevel level, double angleDegrees) {
-        MountedBlockStatus status = mountedBlockStatus(bearing, level);
-        if (shouldRetryMountedAssembly(status)) {
+        MountedAssemblyStatus status = mountedBlockStatus(bearing, level);
+        if (status.shouldRetry()) {
             releaseJoint();
             return true;
         }
-        if (status == MountedBlockStatus.INVALID) {
+        if (status.shouldClear() || status.shouldDisassemble()) {
             releaseJoint();
             return false;
         }

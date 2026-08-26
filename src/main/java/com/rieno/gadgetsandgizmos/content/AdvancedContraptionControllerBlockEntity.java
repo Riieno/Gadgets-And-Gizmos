@@ -15,6 +15,8 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphFunctions;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphPortState;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphProfilerMath;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDataProvider;
+import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementBinding;
+import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementStyle;
 import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphTemplates;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphValidator;
@@ -34,7 +36,9 @@ import com.rieno.gadgetsandgizmos.compat.createrailwaysnavigator.RailwayNavigato
 import com.rieno.gadgetsandgizmos.lib.control.AnalogueControlChannel;
 import com.rieno.gadgetsandgizmos.lib.control.IDirectControlReceiver;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
+import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataAccessPolicy;
 import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataAdapterRegistry;
+import com.rieno.gadgetsandgizmos.lib.probe.BlockStateDataAccess;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyBoundsApi;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.rieno.gadgetsandgizmos.lib.control.DirectionalAnalogSnapshot;
@@ -98,8 +102,6 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.state.properties.BooleanProperty;
-import net.minecraft.world.level.block.state.properties.IntegerProperty;
 import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
@@ -1663,6 +1665,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     public void remove() {
         releaseAccDisplays();
         AccDisplayControllerRegistry.unregister(this);
+        AdvancedControllerNamedEventBus.unregister(this);
         shipStockNetworkCache.clear();
         shipControlRuntime.close();
         super.remove();
@@ -1673,6 +1676,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     public void onChunkUnloaded() {
         releaseAccDisplays();
         AccDisplayControllerRegistry.unregister(this);
+        AdvancedControllerNamedEventBus.unregister(this);
         shipStockNetworkCache.clear();
         shippingScheduleRuntime.suspendForChunkUnload();
         shipControlRuntime.suspendForChunkUnload();
@@ -2113,6 +2117,12 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Trigger the graph event
     public void triggerGraphEvent(String eventId, @Nullable UUID triggeringPlayerId) {
         graphRuntime.enqueue(eventId, triggeringPlayerId);
+    }
+
+    // Try to trigger the graph event
+    public boolean tryTriggerGraphEvent(
+            String eventId, @Nullable UUID triggeringPlayerId) {
+        return graphRuntime.tryEnqueue(eventId, triggeringPlayerId);
     }
 
     // Record controller use without counting the graph editor
@@ -2702,6 +2712,63 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return accepted;
     }
 
+    // Handle a validated HUD element interaction
+    public boolean handleHudElementInteraction(String nodeId, String interactionId,
+                                               AdvancedGraphDocument.Value value) {
+        if (nodeId == null || nodeId.isBlank() || interactionId == null || interactionId.isBlank()) {
+            return false;
+        }
+        AdvancedGraphDocument.Node node = activeGraph.nodes().stream()
+                .filter(candidate -> candidate != null && nodeId.equals(candidate.id())
+                        && "advanced_hud_element".equals(candidate.type()))
+                .findFirst().orElse(null);
+        if (node == null) {
+            return false;
+        }
+        ListTag elements = node.data().getList("WidgetElements", Tag.TAG_COMPOUND);
+        for (int idx = 0; idx < elements.size(); idx++) {
+            CompoundTag elm = elements.getCompound(idx);
+            if (!interactionId.equals(elm.getString("InteractionId"))) {
+                continue;
+            }
+            return switch (elm.getString("Type")) {
+                case "button" -> value != null && "boolean".equals(value.type()) && value.asBoolean()
+                        && handleHudButtonInteraction(nodeId, interactionId);
+                case "toggle" -> value != null && "boolean".equals(value.type()) && value.asBoolean()
+                        && handleHudToggleInteraction(nodeId, interactionId);
+                case "slider" -> handleHudSliderInteraction(nodeId, interactionId, elm, value);
+                default -> false;
+            };
+        }
+        return false;
+    }
+
+    // Handle a validated HUD slider interaction
+    private boolean handleHudSliderInteraction(String nodeId, String interactionId,
+                                               CompoundTag elm, AdvancedGraphDocument.Value value) {
+        if (value == null || !"number".equals(value.type()) || !Double.isFinite(value.asNumber())) {
+            return false;
+        }
+        CompoundTag resolved = AdvancedHudElementBinding.resolvedCopy(
+                elm, port -> graphRuntime.liveInput(nodeId, port));
+        AdvancedHudElementStyle.applyDefaults(resolved);
+        double minimum = resolved.getDouble("Min");
+        double maximum = resolved.getDouble("Max");
+        if (!Double.isFinite(minimum) || !Double.isFinite(maximum)) {
+            return false;
+        }
+        if (!(maximum > minimum)) {
+            maximum = minimum + 1.0D;
+        }
+        double step = resolved.getDouble("Step");
+        double resolvedValue = Mth.clamp(value.asNumber(), minimum, maximum);
+        if (step > 0.0D && Double.isFinite(step)) {
+            resolvedValue = minimum + Math.round((resolvedValue - minimum) / step) * step;
+        }
+        return handleHudInteraction(nodeId, interactionId,
+                AdvancedGraphDocument.Value.number(Mth.clamp(resolvedValue, minimum, maximum)));
+    }
+
     // Handle a momentary HUD button interaction
     public boolean handleHudButtonInteraction(String nodeId, String interactionId) {
         if (getLevel() == null || getLevel().isClientSide
@@ -2898,6 +2965,39 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Get the graph live outputs snapshot
     public Map<String, AdvancedGraphDocument.Value> getGraphLiveOutputsSnapshot() {
         return Collections.unmodifiableMap(new LinkedHashMap<>(graphLiveOutputs));
+    }
+
+    // Get the server graph runtime outputs snapshot
+    public Map<String, AdvancedGraphDocument.Value> getGraphRuntimeOutputsSnapshot() {
+        return graphRuntime.liveOutputs();
+    }
+
+    // Get every public output for one active graph node
+    public Map<String, AdvancedGraphDocument.Value> getGraphNodeOutputsSnapshot(
+            AdvancedGraphDocument.Node node) {
+        if (node == null || activeGraph.nodes().stream()
+                .noneMatch(candidate -> candidate.id().equals(node.id()))) {
+            return Map.of();
+        }
+        Map<String, AdvancedGraphDocument.Value> liveOutputs = graphRuntime.liveOutputs();
+        Map<String, AdvancedGraphDocument.Value> outputs = new LinkedHashMap<>();
+        GraphRuntime queryRuntime = null;
+        for (Map.Entry<String, String> port : AdvancedGraphCatalog.outputs(node).entrySet()) {
+            if ("exec".equals(port.getValue()) || port.getKey().startsWith("__")) {
+                continue;
+            }
+            AdvancedGraphDocument.Value value = liveOutputs.get(
+                    node.id() + ":" + port.getKey());
+            if (value == null) {
+                if (queryRuntime == null) {
+                    queryRuntime = new GraphRuntime(this, true);
+                    queryRuntime.beginPreviewSample(activeGraph);
+                }
+                value = queryRuntime.previewOutput(activeGraph, node, port.getKey());
+            }
+            outputs.put(port.getKey(), value);
+        }
+        return Collections.unmodifiableMap(outputs);
     }
 
     // Get the ACC display runtime inputs snapshot
@@ -3285,11 +3385,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         AdvancedGraphDocument.Value railwayNavigator = RailwayNavigatorGraphCompat.read(blockEntity, port);
         if (railwayNavigator != null) return railwayNavigator;
         // Read block state and common capability data
-        if (port.startsWith("state_")) {
-            String property = port.substring("state_".length());
-            for (Property<?> candidate : state.getProperties()) {
-                if (candidate.getName().equals(property)) return propertyGraphValue(state, candidate);
-            }
+        GraphValue stateValue = BlockStateDataAccess.read(state, port);
+        if (stateValue != null) {
+            return GraphRuntime.fromLibraryValue(stateValue);
         }
         return switch (port) {
             case "data" -> AdvancedGraphDocument.Value.map(blockDataSnapshot(
@@ -3422,7 +3520,27 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         // Write block state and specialized integrations
         BlockState state = target.level().getBlockState(target.pos());
         BlockEntity blockEntity = target.level().getBlockEntity(target.pos());
-        boolean changed = false;
+        if ("set_block_data".equals(node.type())) {
+            String aeroworksSection = configureAeroworksGraphSection(node, blockEntity);
+            CompoundTag writablePorts = graphDataPorts(
+                    target.level(), target.pos(), true, aeroworksSection);
+            for (String port : activePorts) {
+                if (!writablePorts.contains(port)) {
+                    return false;
+                }
+            }
+        }
+        Map<String, GraphValue> stateWrites = new LinkedHashMap<>();
+        for (String port : activePorts) {
+            if (port != null && port.startsWith(BlockStateDataAccess.PORT_PREFIX)) {
+                stateWrites.put(port, GraphRuntime.toLibraryValue(values.apply(port)));
+            }
+        }
+        boolean changed = BlockStateDataAccess.write(target.level(), target.pos(), stateWrites);
+        if (changed) {
+            state = target.level().getBlockState(target.pos());
+            blockEntity = target.level().getBlockEntity(target.pos());
+        }
         TargetAccess attachedTarget = resolveAttachedLinkerTarget(node, target);
         boolean nixieTarget = CreateNixieTubeGraphCompat.isTarget(attachedTarget.level(), attachedTarget.pos());
         boolean nixieStringHandled = nixieTarget && activePorts.contains(CreateNixieTubeGraphCompat.STRING_PORT);
@@ -3588,25 +3706,49 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return ContraptionNetworkLinkerData.directTargetForFace(discovery, configuredDirection(node, "face"));
     }
 
+    // Get every node in the root graph and its function bodies
+    private static List<AdvancedGraphDocument.Node> graphNodesIncludingFunctions(
+            AdvancedGraphDocument graph) {
+        if (graph == null) return List.of();
+        List<AdvancedGraphDocument.Node> nodes = new ArrayList<>(graph.nodes());
+        for (AdvancedGraphDocument.FunctionGraph function : graph.functions()) {
+            nodes.addAll(function.nodes());
+        }
+        return nodes;
+    }
+
+    // Get the edges which own one root or function node
+    private static List<AdvancedGraphDocument.Edge> graphEdgesForNode(
+            AdvancedGraphDocument graph, AdvancedGraphDocument.Node node) {
+        if (graph == null || node == null) return List.of();
+        if (graph.nodes().contains(node)) return graph.edges();
+        for (AdvancedGraphDocument.FunctionGraph function : graph.functions()) {
+            if (function.nodes().contains(node)) return function.edges();
+        }
+        return List.of();
+    }
+
     // Refresh the data ports
     private void refreshDataPorts(AdvancedGraphDocument graph) {
-        for (AdvancedGraphDocument.Node node : graph.nodes()) {
+        for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)) {
             boolean getData = "get_block_data".equals(node.type());
             boolean setData = "set_block_data".equals(node.type());
             boolean directInput = "discovered_target_input".equals(node.type()) || "linker_face_input".equals(node.type());
             boolean directOutput = "direct_target_output".equals(node.type()) || "linker_face_output".equals(node.type());
             if (!getData && !setData && !directInput && !directOutput) continue;
-            node.data().remove("OutputLabels");
             ControllerDiscoveryNode discovery = ControllerDiscoveryNode.fromTag(
                     node.data().getCompound("TargetData"));
             boolean writable = setData || directOutput;
+            configureDataTargetFaceOptions(node, discovery);
             if (ContraptionDiagramControllerCompat.isTarget(discovery)) {
                 CompoundTag ports = getData && !writable
                         ? ContraptionDiagramControllerCompat.readablePorts()
                         : new CompoundTag();
+                node.data().remove("OutputLabels");
                 node.data().put(writable ? "DynamicInputs" : "DynamicOutputs", ports);
                 node.data().put(writable ? "InputOptions" : "OutputOptions", new CompoundTag());
                 configureLinkerFaceInputOptions(node, discovery);
+                configureDataTargetFaceOptions(node, discovery);
                 continue;
             }
             TargetAccess target = resolveGraphTarget(node);
@@ -3618,23 +3760,25 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             CompoundTag ports = getData || setData
                     ? graphDataPorts(target.level(), target.pos(), writable, aeroworksSection)
                     : graphDirectAxisPorts(blockEntity, writable);
+            CompoundTag labels = getData && !writable
+                    ? graphReadableDataPortLabels(target.level(), target.pos())
+                    : new CompoundTag();
+            node.data().remove("OutputLabels");
             node.data().put(writable ? "DynamicInputs" : "DynamicOutputs", ports);
             node.data().put(writable ? "InputOptions" : "OutputOptions",
                     graphDataPortOptions(target.level(), target.pos(), writable));
-            if (getData && !writable) {
-                CompoundTag labels = graphReadableDataPortLabels(target.level(), target.pos());
-                if (!labels.isEmpty()) {
-                    node.data().put("OutputLabels", labels);
-                }
+            if (!labels.isEmpty()) {
+                node.data().put("OutputLabels", labels);
             }
             if (aeroworksSection != null) {
                 Map<String, String> inputs = AdvancedGraphCatalog.inputs(node);
                 Map<String, String> outputs = AdvancedGraphCatalog.outputs(node);
-                graph.edges().removeIf(edge ->
+                graphEdgesForNode(graph, node).removeIf(edge ->
                         (edge.fromNode().equals(node.id()) && !outputs.containsKey(edge.fromPort()))
                                 || (edge.toNode().equals(node.id()) && !inputs.containsKey(edge.toPort())));
             }
             configureLinkerFaceInputOptions(node, discovery);
+            configureDataTargetFaceOptions(node, discovery);
         }
         refreshStructuredDataPorts(graph);
     }
@@ -3695,12 +3839,62 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
     }
 
+    // Configure the Get / Set Data linker face options
+    public static void configureDataTargetFaceOptions(AdvancedGraphDocument.Node node,
+                                                       @Nullable ControllerDiscoveryNode target) {
+        if (node == null || (!"get_block_data".equals(node.type())
+                && !"set_block_data".equals(node.type()))) {
+            return;
+        }
+
+        CompoundTag dynamicInputs = node.data().getCompound("DynamicInputs");
+        CompoundTag inputOptions = node.data().getCompound("InputOptions");
+        dynamicInputs.remove("face");
+        inputOptions.remove("face");
+
+        List<Direction> directions = target == null
+                || !ContraptionNetworkLinkerData.nodeUsesFaceOptions(target)
+                ? List.of()
+                : ContraptionNetworkLinkerData.faceOptionsForNode(target).stream()
+                .map(ContraptionNetworkLinkerData.FaceOption::face)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        if (directions.size() > 1) {
+            dynamicInputs.putString("face", "direction");
+            ListTag values = new ListTag();
+            for (Direction direction : directions) {
+                values.add(StringTag.valueOf(direction.getSerializedName()));
+            }
+            inputOptions.put("face", values);
+            Direction configured = configuredDirection(node, "face");
+            if (!directions.contains(configured)) {
+                putGraphDefault(node.data(), "face", "direction",
+                        directions.getFirst().getSerializedName());
+            }
+        } else {
+            CompoundTag defaults = node.data().getCompound("Defaults");
+            defaults.remove("face");
+            if (defaults.isEmpty()) node.data().remove("Defaults");
+            else node.data().put("Defaults", defaults);
+            CompoundTag prefilled = node.data().getCompound("PrefilledInputs");
+            prefilled.remove("face");
+            if (prefilled.isEmpty()) node.data().remove("PrefilledInputs");
+            else node.data().put("PrefilledInputs", prefilled);
+        }
+
+        if (dynamicInputs.isEmpty()) node.data().remove("DynamicInputs");
+        else node.data().put("DynamicInputs", dynamicInputs);
+        if (inputOptions.isEmpty()) node.data().remove("InputOptions");
+        else node.data().put("InputOptions", inputOptions);
+    }
+
     // Refresh the structured data ports
     private void refreshStructuredDataPorts(AdvancedGraphDocument graph) {
         if (graph == null) {
             return;
         }
-        for (AdvancedGraphDocument.Node node : graph.nodes()) {
+        for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)) {
             if (node == null) {
                 continue;
             }
@@ -3754,11 +3948,13 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 ? RailwayNavigatorGraphCompat.writableData(blockEntity)
                 : RailwayNavigatorGraphCompat.readableData(blockEntity);
         railwayPorts.forEach(ports::putString);
-        return addDirectPortFallbacks(ports, writable,
+        CompoundTag resolved = addDirectPortFallbacks(ports, writable,
                 blockEntity instanceof DirectionalAnalogSource,
                 blockEntity instanceof LinkedOrientationSource || SimulatedHelper.isGimbalSensor(blockEntity),
                 blockEntity instanceof OrientationTarget,
                 blockEntity instanceof IDirectControlReceiver && supportsAxisControl(blockEntity));
+        if (writable) removeUnsafeGraphWritePorts(resolved);
+        return resolved;
     }
 
     // Add the direct port fallbacks
@@ -3823,15 +4019,14 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                     ? AeroworksControllerCompat.writableData(blockEntity, aeroworksSection.id())
                     : AeroworksControllerCompat.readableData(blockEntity, aeroworksSection.id());
             sectionPorts.forEach(ports::putString);
+            if (writable) removeUnsafeGraphWritePorts(ports);
             return ports;
         }
         Map<String, String> registeredPorts = writable
                 ? BlockEntityDataAdapterRegistry.writableData(blockEntity)
                 : BlockEntityDataAdapterRegistry.readableData(blockEntity);
         registeredPorts.forEach(ports::putString);
-        if (!writable) {
-            addGraphStatePorts(ports, state, false);
-        }
+        BlockStateDataAccess.data(state, writable).forEach(ports::putString);
         // Build writable ports from specialized controls
         if (writable) {
             boolean hasSpecificControlSchema = !registeredPorts.isEmpty();
@@ -3878,6 +4073,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                     && blockEntity instanceof IDirectControlReceiver && supportsAxisControl(blockEntity)) {
                 for (String channel : DIRECT_AXIS_CHANNELS) ports.putString(channel, "number");
             }
+            removeUnsafeGraphWritePorts(ports);
             return ports;
         }
         // Build readable capability and provider ports
@@ -3975,15 +4171,20 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (level == null || pos == null || !level.isLoaded(pos)) return opts;
         BlockState state = level.getBlockState(pos);
         BlockEntity blockEntity = level.getBlockEntity(pos);
-        if (!writable) {
-            addGraphStatePortOptions(opts, state, false);
-        }
+        BlockStateDataAccess.options(state, writable).forEach((port, entries) -> {
+            ListTag values = new ListTag();
+            entries.forEach(value -> values.add(StringTag.valueOf(value)));
+            if (!values.isEmpty()) {
+                opts.put(port, values);
+            }
+        });
         if (writable) {
             mergeOptions(opts, registeredDataOptions(blockEntity));
             mergeOptions(opts, CreateRotationSpeedControllerGraphCompat.writableOptions(blockEntity));
             mergeOptions(opts, NavigationTableGraphCompat.writableOptions(blockEntity));
             mergeOptions(opts, AeroworksControllerCompat.writableOptions(blockEntity));
             mergeOptions(opts, RailwayNavigatorGraphCompat.writableOptions(blockEntity));
+            removeUnsafeGraphWritePorts(opts);
         }
         return opts;
     }
@@ -4011,39 +4212,18 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         for (String key : src.getAllKeys()) target.put(key, src.get(key).copy());
     }
 
-    // Add the graph state ports
-    private static void addGraphStatePorts(CompoundTag ports, BlockState state, boolean writable) {
-        for (Property<?> property : state.getProperties()) {
-            if (writable && !isWritableGraphStateProperty(property)) {
-                continue;
-            }
-            ports.putString("state_" + property.getName(), propertyGraphType(state, property));
+    // Remove ports which could replace stored item contents
+    private static void removeUnsafeGraphWritePorts(CompoundTag ports) {
+        if (ports == null || ports.isEmpty()) {
+            return;
         }
-    }
-
-    // Add the graph state port options
-    private static void addGraphStatePortOptions(CompoundTag opts, BlockState state, boolean writable) {
-        for (Property<?> property : state.getProperties()) {
-            if (writable && !isWritableGraphStateProperty(property)) {
-                continue;
+        for (String port : List.copyOf(ports.getAllKeys())) {
+            if (!port.startsWith(BlockStateDataAccess.PORT_PREFIX)
+                    && BlockEntityDataAccessPolicy.isItemContentMutation(
+                    port, ports.getString(port))) {
+                ports.remove(port);
             }
-            ListTag values = new ListTag();
-            property.getPossibleValues().forEach(val ->
-                    values.add(StringTag.valueOf(propertyValueOption(property, val))));
-            opts.put("state_" + property.getName(), values);
         }
-    }
-
-    // Check if this is a writable graph state property
-    private static boolean isWritableGraphStateProperty(Property<?> property) {
-        return property != null && !"waterlogged".equals(property.getName());
-    }
-
-    // Get the property value option
-    private static <T extends Comparable<T>> String propertyValueOption(Property<T> property, Comparable<?> val) {
-        @SuppressWarnings("unchecked")
-        T typed = (T) val;
-        return property.getName(typed);
     }
 
     // Get the display text
@@ -4327,12 +4507,26 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     }
 
     // Resolve the attached data target
-    private static TargetAccess resolveAttachedDataTarget(AdvancedGraphDocument.Node node, TargetAccess target) {
+    private static @Nullable TargetAccess resolveAttachedDataTarget(
+            AdvancedGraphDocument.Node node, TargetAccess target) {
         if (node == null || target == null
                 || (!"get_block_data".equals(node.type()) && !"set_block_data".equals(node.type()))) {
             return target;
         }
-        return resolveAttachedLinkerTarget(node, target);
+        BlockState state = target.level().getBlockState(target.pos());
+        if (!(state.getBlock() instanceof ContraptionNetworkLinkerPlaneBlock)) {
+            return target;
+        }
+        Direction side = target.side() == null ? singleLinkerFace(node) : target.side();
+        if (side == null) {
+            return null;
+        }
+        BlockPos attachedPos = target.pos().relative(side.getOpposite());
+        if (!target.level().isLoaded(attachedPos)
+                || target.level().getBlockState(attachedPos).isAir()) {
+            return null;
+        }
+        return new TargetAccess(target.level(), attachedPos, side);
     }
 
     // Resolve the attached linker target
@@ -4496,7 +4690,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Reconcile the graph targets
     private boolean reconcileGraphTargets(AdvancedGraphDocument graph) {
         boolean changed = false;
-        for (AdvancedGraphDocument.Node node : graph.nodes()) {
+        for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)) {
             ControllerDiscoveryNode stale = ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
             ControllerDiscoveryNode current = refreshCurrentTarget(stale);
             if (current == null || current.equals(stale)) continue;
@@ -5309,34 +5503,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Get the property value
     private static <T extends Comparable<T>> String propertyValue(BlockState state, Property<T> property) {
         return property.getName(state.getValue(property));
-    }
-
-    // Get the property graph type
-    private static String propertyGraphType(BlockState state, Property<?> property) {
-        if (property instanceof BooleanProperty) return "boolean";
-        if (property instanceof IntegerProperty) return "number";
-        return state.getValue(property) instanceof Direction ? "direction" : "string";
-    }
-
-    // Get the property graph value
-    private static AdvancedGraphDocument.Value propertyGraphValue(BlockState state, Property<?> property) {
-        String val = propertyValueUnchecked(state, property);
-        if (property instanceof BooleanProperty) return AdvancedGraphDocument.Value.bool(Boolean.parseBoolean(val));
-        if (property instanceof IntegerProperty) {
-            try {
-                return AdvancedGraphDocument.Value.number(Integer.parseInt(val));
-            } catch (NumberFormatException ignored) {
-                return AdvancedGraphDocument.Value.number(0);
-            }
-        }
-        return state.getValue(property) instanceof Direction
-                ? AdvancedGraphDocument.Value.direction(val)
-                : AdvancedGraphDocument.Value.string(val);
-    }
-
-    // Get the property value unchecked
-    private static <T extends Comparable<T>> String propertyValueUnchecked(BlockState state, Property<T> property) {
-        return propertyValue(state, property);
     }
 
     // Get the value text

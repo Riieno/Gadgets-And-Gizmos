@@ -83,7 +83,10 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
         // ---------------------------------------------------DIRECT MOD GATES---------------------------------------------------
         if ("com.rieno.gadgetsandgizmos.mixin.ComputerCraftRemoteDesktopMenuMixin"
                 .equals(mixinClassName)) {
-            return isModLoadedDuringMixinSelection("computercraft");
+            String version = getLoadedModVersion("computercraft");
+            return version != null
+                    && compareVersions(version, "1.118.0") >= 0
+                    && compareVersions(version, "1.119.0") < 0;
         }
         if ("com.rieno.gadgetsandgizmos.mixin.CreateAdditionEnergyThresholdConditionMixin"
                 .equals(mixinClassName)) {
