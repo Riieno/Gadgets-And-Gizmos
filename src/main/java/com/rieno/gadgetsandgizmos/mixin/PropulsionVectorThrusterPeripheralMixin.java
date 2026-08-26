@@ -10,6 +10,8 @@ package com.rieno.gadgetsandgizmos.mixin;
 
 import com.rieno.gadgetsandgizmos.compat.createpropulsion.PropulsionVectorThrusterAngleAccess;
 import com.rieno.gadgetsandgizmos.compat.createpropulsion.PropulsionVectorThrusterAngles;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.lua.LuaFunction;
 import org.spongepowered.asm.mixin.Mixin;
@@ -26,6 +28,7 @@ import java.util.Map;
         },
         remap = false
 )
+@PeripheralTypeDoc({"vector_thruster", "liquid_vector_thruster"})
 public abstract class PropulsionVectorThrusterPeripheralMixin {
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -37,6 +40,9 @@ public abstract class PropulsionVectorThrusterPeripheralMixin {
 
     // Set the vector angles
     @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setVectorAngles",
+            signature = "setVectorAngles(xDegrees: number, yDegrees: number)",
+            description = "Sets the vector angle override in degrees.")
     public final void setVectorAngles(double xDegrees, double yDegrees) throws LuaException {
         ct$angleTarget().createThrusters$setVectorAngles(
                 ct$validateAngle("xDegrees", xDegrees, PropulsionVectorThrusterAngles.maxAngleDegrees()),
@@ -45,12 +51,16 @@ public abstract class PropulsionVectorThrusterPeripheralMixin {
 
     // Get the vector angles
     @LuaFunction
+    @PeripheralDoc(name = "getVectorAngles", signature = "getVectorAngles(): table",
+            description = "Returns the requested and applied vector angles in degrees.")
     public final Map<String, Object> getVectorAngles() throws LuaException {
         return ct$angleTarget().createThrusters$getVectorAngles();
     }
 
     // Get the vector angle limits
     @LuaFunction
+    @PeripheralDoc(name = "getVectorAngleLimits", signature = "getVectorAngleLimits(): table",
+            description = "Returns the minimum and maximum vector angles in degrees.")
     public final Map<String, Object> getVectorAngleLimits() throws LuaException {
         return Map.of(
                 "min", -PropulsionVectorThrusterAngles.maxAngleDegrees(),
@@ -59,6 +69,8 @@ public abstract class PropulsionVectorThrusterPeripheralMixin {
 
     // Clear the vector angles
     @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "clearVectorAngles", signature = "clearVectorAngles()",
+            description = "Clears the vector angle override.")
     public final void clearVectorAngles() throws LuaException {
         ct$angleTarget().createThrusters$clearVectorAngles();
     }

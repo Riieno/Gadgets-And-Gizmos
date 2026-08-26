@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content.advanced;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.graph.edit.GraphNodeAlias;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
@@ -126,6 +127,12 @@ public final class AdvancedGraphSelection {
             }
             String copiedId = UUID.randomUUID().toString();
             CompoundTag copiedData = node.data().copy();
+            String alias = GraphNodeAlias.normalize(
+                    copiedData.getString(GraphNodeAlias.DATA_KEY));
+            if (!alias.isBlank()) {
+                copiedData.putString(GraphNodeAlias.DATA_KEY,
+                        availableNodeAlias(alias, destination.nodes()));
+            }
             String variable = referencedVariable(node);
             String remappedVariable = remappedVariables.get(variable);
             if (remappedVariable != null) {
@@ -246,6 +253,26 @@ public final class AdvancedGraphSelection {
             if (!existingNames.contains(candidate)) {
                 return candidate;
             }
+        }
+    }
+
+    // Get the available node alias
+    private static String availableNodeAlias(
+            String requestedAlias, Iterable<AdvancedGraphDocument.Node> existingNodes) {
+        Set<String> unavailable = new LinkedHashSet<>();
+        for (AdvancedGraphDocument.Node node : existingNodes) {
+            unavailable.add(node.id());
+            String alias = GraphNodeAlias.normalize(
+                    node.data().getString(GraphNodeAlias.DATA_KEY));
+            if (!alias.isBlank()) unavailable.add(alias);
+        }
+        for (int copy = 1; ; copy++) {
+            String suffix = copy == 1 ? "_copy" : "_copy_" + copy;
+            int prefixLength = Math.max(1, GraphNodeAlias.MAX_LENGTH - suffix.length());
+            String prefix = requestedAlias.substring(
+                    0, Math.min(requestedAlias.length(), prefixLength));
+            String candidate = prefix + suffix;
+            if (!unavailable.contains(candidate)) return candidate;
         }
     }
 

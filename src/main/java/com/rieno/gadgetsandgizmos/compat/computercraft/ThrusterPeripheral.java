@@ -8,10 +8,12 @@ package com.rieno.gadgetsandgizmos.compat.computercraft;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.GadgetsPeripheral;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.lua.LuaFunction;
-import dan200.computercraft.api.peripheral.IPeripheral;
 
 import java.util.HashMap;
 import java.util.List;
@@ -19,7 +21,8 @@ import java.util.Map;
 import java.util.Optional;
 
 // Expose Thruster controls and telemetry to ComputerCraft
-public class ThrusterPeripheral implements IPeripheral {
+@PeripheralTypeDoc("thruster")
+public class ThrusterPeripheral extends GadgetsPeripheral<ThrusterBlockEntity> {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -31,7 +34,6 @@ public class ThrusterPeripheral implements IPeripheral {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Bound block entity
-    private final ThrusterBlockEntity blockEntity;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -43,7 +45,7 @@ public class ThrusterPeripheral implements IPeripheral {
 
     // Initialize the thruster peripheral
     public ThrusterPeripheral(ThrusterBlockEntity blockEntity) {
-        this.blockEntity = blockEntity;
+        super(blockEntity, "thruster");
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -54,21 +56,10 @@ public class ThrusterPeripheral implements IPeripheral {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Get the type
-    @Override
-    public String getType() {
-        return "thruster";
-    }
-
-    // Compare this thruster peripheral with another object
-    @Override
-    public boolean equals(IPeripheral other) {
-        return other instanceof ThrusterPeripheral peripheral
-                && peripheral.blockEntity == blockEntity;
-    }
-
     // Set the throttle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setThrottle", signature = "setThrottle(throttle: number 0..1)",
+            description = "Switches to COMPUTER control mode.")
     public final void setThrottle(double throttle) throws LuaException {
         if (Double.isNaN(throttle) || throttle < 0.0 || throttle > 1.0) {
             throw new LuaException("throttle must be between 0.0 and 1.0");
@@ -77,68 +68,90 @@ public class ThrusterPeripheral implements IPeripheral {
     }
 
     // Get the throttle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getThrottle", signature = "getThrottle(): number",
+            description = "Current applied throttle.")
     public final double getThrottle() {
         return blockEntity.getThrottle();
     }
 
     // Set the enabled
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setEnabled", signature = "setEnabled(enabled: boolean)",
+            description = "Toggle thruster.")
     public final void setEnabled(boolean enabled) {
         blockEntity.setEnabled(enabled);
     }
 
     // Check if this is enabled
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isEnabled", signature = "isEnabled(): boolean",
+            description = "True/false.")
     public final boolean isEnabled() {
         return blockEntity.isEnabled();
     }
 
     // Get the fuel
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getFuel", signature = "getFuel(): number",
+            description = "Current fuel amount (mB).")
     public final int getFuel() {
         return blockEntity.getFuelAmount();
     }
 
     // Get the fuel capacity
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getFuelCapacity", signature = "getFuelCapacity(): number",
+            description = "Tank capacity (mB).")
     public final int getFuelCapacity() {
         return blockEntity.getFuelCapacity();
     }
 
     // Get the fuel type
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getFuelType", signature = "getFuelType(): string",
+            description = "Registry id of current fluid fuel, or empty string.")
     public final String getFuelType() {
         return blockEntity.getFuelTypeId();
     }
 
     // Get the burn time seconds
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getBurnTimeSeconds", signature = "getBurnTimeSeconds(): number",
+            description = "Estimated burn time at current throttle.")
     public final double getBurnTimeSeconds() {
         return blockEntity.getEstimatedBurnSeconds();
     }
 
     // Get the name
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getName", signature = "getName(): string",
+            description = "Returns the name.")
     public final String getName() {
         String name = blockEntity.getCustomName();
         return name != null ? name : "";
     }
 
     // Set the name
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setName", signature = "setName(name: string)",
+            description = "Sets the name.")
     public final void setName(String name) {
         blockEntity.setCustomName(name == null || name.isBlank() ? null : name.strip());
     }
 
     // Get the control mode
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getControlMode", signature = "getControlMode(): string",
+            description = "'redstone' or 'computer'.")
     public final String getControlMode() {
         return blockEntity.getControlMode().name().toLowerCase();
     }
 
     // Set the control mode
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setControlMode", signature = "setControlMode(mode: 'auto'|'redstone'|'computer')",
+            description = "SetControlMode(mode) where mode is 'auto', 'redstone', or 'computer'.")
     public final void setControlMode(String mode) throws LuaException {
         if (mode == null) {
             throw new LuaException("mode must be 'auto', 'redstone' or 'computer'");
@@ -160,43 +173,57 @@ public class ThrusterPeripheral implements IPeripheral {
     }
 
     // Get the thrust
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getThrust", signature = "getThrust(): number",
+            description = "Current thrust output.")
     public final double getThrust() {
         return blockEntity.getThrust();
     }
 
     // Get the real thrust
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getRealThrust", signature = "getRealThrust(): number",
+            description = "Current scaled real thrust output used by Aeronautics/Sable physics.")
     public final double getRealThrust() {
         return blockEntity.getRealThrust();
     }
 
     // Get the lift capacity
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getLiftCapacity", signature = "getLiftCapacity(): number",
+            description = "Current lift capacity derived from real thrust and local gravity.")
     public final double getLiftCapacity() {
         return blockEntity.getLiftCapacity();
     }
 
     // Get the airflow
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getAirflow", signature = "getAirflow(): number",
+            description = "Current airflow output.")
     public final double getAirflow() {
         return blockEntity.getAirflow();
     }
 
     // Check if this is active
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isActive", signature = "isActive(): boolean",
+            description = "True when enabled, fueled, and throttled.")
     public final boolean isActive() {
         return blockEntity.isActive();
     }
 
     // Check if this is a soul mode
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isSoulMode", signature = "isSoulMode(): boolean",
+            description = "True when haunting/soul mode is enabled.")
     public final boolean isSoulMode() {
         return blockEntity.isSoulThruster();
     }
 
     // Set the soul mode
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setSoulMode", signature = "setSoulMode(enabled: boolean)",
+            description = "Switch normal/soul mode.")
     public final void setSoulMode(boolean soulMode) {
         if (soulMode) {
             blockEntity.enableSoulThruster();
@@ -206,19 +233,25 @@ public class ThrusterPeripheral implements IPeripheral {
     }
 
     // Clear the throttle override
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "clearThrottleOverride", signature = "clearThrottleOverride()",
+            description = "Return throttle to redstone control.")
     public final void clearThrottleOverride() {
         blockEntity.clearCcThrottleOverride();
     }
 
     // Get the redstone signal
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getRedstoneSignal", signature = "getRedstoneSignal(): number",
+            description = "Current neighboring redstone strength.")
     public final int getRedstoneSignal() {
         return blockEntity.getSignalStrength();
     }
 
     // Get the status
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getStatus", signature = "getStatus(): table",
+            description = "Table of telemetry values.")
     public final Map<String, Object> getStatus() {
         Map<String, Object> status = new HashMap<>();
         status.put("enabled", blockEntity.isEnabled());
@@ -237,70 +270,5 @@ public class ThrusterPeripheral implements IPeripheral {
         status.put("soulMode", blockEntity.isSoulThruster());
         status.put("redstoneSignal", blockEntity.getSignalStrength());
         return status;
-    }
-
-    // List the exposed peripheral methods
-    @LuaFunction
-    public final List<String> methods() {
-        return List.of(
-                "setThrottle(throttle: number 0..1)",
-                "getThrottle(): number",
-                "setEnabled(enabled: boolean)",
-                "isEnabled(): boolean",
-                "getFuel(): number",
-                "getFuelCapacity(): number",
-                "getFuelType(): string",
-                "getBurnTimeSeconds(): number",
-                "getControlMode(): string",
-                "setControlMode(mode: 'auto'|'redstone'|'computer')",
-                "clearThrottleOverride()",
-                "getThrust(): number",
-                "getRealThrust(): number",
-                "getLiftCapacity(): number",
-                "getAirflow(): number",
-                "isActive(): boolean",
-                "isSoulMode(): boolean",
-                "setSoulMode(enabled: boolean)",
-                "getRedstoneSignal(): number",
-                "getStatus(): table",
-                "help(method?: string): string|table"
-        );
-    }
-
-    // Get the help
-    @LuaFunction
-    public final Object help(Optional<String> method) throws LuaException {
-        Map<String, String> docs = new HashMap<>();
-        docs.put("setThrottle", "setThrottle(throttle:number 0..1) - switches to COMPUTER control mode");
-        docs.put("getThrottle", "getThrottle() -> current applied throttle");
-        docs.put("setEnabled", "setEnabled(enabled:boolean) -> toggle thruster");
-        docs.put("isEnabled", "isEnabled() -> true/false");
-        docs.put("getFuel", "getFuel() -> current fuel amount (mB)");
-        docs.put("getFuelCapacity", "getFuelCapacity() -> tank capacity (mB)");
-        docs.put("getFuelType", "getFuelType() -> registry id of current fluid fuel, or empty string");
-        docs.put("getBurnTimeSeconds", "getBurnTimeSeconds() -> estimated burn time at current throttle");
-        docs.put("getControlMode", "getControlMode() -> 'redstone' or 'computer'");
-        docs.put("setControlMode", "setControlMode(mode) where mode is 'auto', 'redstone', or 'computer'");
-        docs.put("clearThrottleOverride", "clearThrottleOverride() -> return throttle to redstone control");
-        docs.put("getThrust", "getThrust() -> current thrust output");
-        docs.put("getRealThrust", "getRealThrust() -> current scaled real thrust output used by Aeronautics/Sable physics");
-        docs.put("getLiftCapacity", "getLiftCapacity() -> current lift capacity derived from real thrust and local gravity");
-        docs.put("getAirflow", "getAirflow() -> current airflow output");
-        docs.put("isActive", "isActive() -> true when enabled, fueled, and throttled");
-        docs.put("isSoulMode", "isSoulMode() -> true when haunting/soul mode is enabled");
-        docs.put("setSoulMode", "setSoulMode(enabled) -> switch normal/soul mode");
-        docs.put("getRedstoneSignal", "getRedstoneSignal() -> current neighboring redstone strength");
-        docs.put("getStatus", "getStatus() -> table of telemetry values");
-        docs.put("methods", "methods() -> list of all callable peripheral methods");
-        docs.put("help", "help() -> all docs, help('name') -> one entry");
-
-        if (method.isEmpty()) {
-            return docs;
-        }
-        String key = method.get();
-        if (!docs.containsKey(key)) {
-            throw new LuaException("unknown method '" + key + "'");
-        }
-        return docs.get(key);
     }
 }

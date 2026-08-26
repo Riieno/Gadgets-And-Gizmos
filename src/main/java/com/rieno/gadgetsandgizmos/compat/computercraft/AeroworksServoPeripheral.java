@@ -8,8 +8,10 @@ package com.rieno.gadgetsandgizmos.compat.computercraft;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.GadgetsPeripheral;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import dan200.computercraft.api.lua.LuaFunction;
-import dan200.computercraft.api.peripheral.IPeripheral;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
 import java.lang.reflect.Field;
@@ -19,7 +21,8 @@ import java.util.List;
 import java.util.Map;
 
 // Expose Aeroworks Servo controls and telemetry to ComputerCraft
-public final class AeroworksServoPeripheral implements IPeripheral {
+@PeripheralTypeDoc("servo_bearing")
+public final class AeroworksServoPeripheral extends GadgetsPeripheral<BlockEntity> {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -31,7 +34,6 @@ public final class AeroworksServoPeripheral implements IPeripheral {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Bound block entity
-    private final BlockEntity blockEntity;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -43,7 +45,7 @@ public final class AeroworksServoPeripheral implements IPeripheral {
 
     // Initialize the aeroworks servo peripheral
     public AeroworksServoPeripheral(BlockEntity blockEntity) {
-        this.blockEntity = blockEntity;
+        super(blockEntity, "servo_bearing");
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -54,21 +56,10 @@ public final class AeroworksServoPeripheral implements IPeripheral {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Get the type
-    @Override
-    public String getType() {
-        return "servo_bearing";
-    }
-
-    // Compare this aeroworks servo peripheral with another object
-    @Override
-    public boolean equals(IPeripheral other) {
-        return other instanceof AeroworksServoPeripheral peripheral
-                && peripheral.blockEntity == blockEntity;
-    }
-
     // Get the current angle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getCurrentAngle", signature = "getCurrentAngle(): number",
+            description = "Returns the current angle.")
     public final double getCurrentAngle() {
         try {
             Method method = blockEntity.getClass().getMethod(
@@ -81,20 +72,26 @@ public final class AeroworksServoPeripheral implements IPeripheral {
     }
 
     // Get the target angle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getTargetAngle", signature = "getTargetAngle(): number",
+            description = "Returns the target angle.")
     public final double getTargetAngle() {
         return fieldNumber("target");
     }
 
     // Check if this is moving
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isMoving", signature = "isMoving(): boolean",
+            description = "Returns whether this is moving.")
     public final boolean isMoving() {
         Object val = fieldValue("moving");
         return val instanceof Boolean moving && moving;
     }
 
     // Get the status
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getStatus", signature = "getStatus(): table",
+            description = "Returns the status.")
     public final Map<String, Object> getStatus() {
         Map<String, Object> status = new LinkedHashMap<>();
         status.put("currentAngle", getCurrentAngle());
@@ -102,17 +99,6 @@ public final class AeroworksServoPeripheral implements IPeripheral {
         status.put("moving", isMoving());
         status.put("position", ComputerCraftPositionHelper.blockPosition(blockEntity));
         return status;
-    }
-
-    // List the exposed peripheral methods
-    @LuaFunction
-    public final List<String> methods() {
-        return List.of(
-                "getCurrentAngle(): number",
-                "getTargetAngle(): number",
-                "isMoving(): boolean",
-                "getStatus(): table"
-        );
     }
 
     // Get the field number

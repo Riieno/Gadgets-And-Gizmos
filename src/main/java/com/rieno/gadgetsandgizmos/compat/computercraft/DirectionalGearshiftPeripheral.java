@@ -8,9 +8,11 @@ package com.rieno.gadgetsandgizmos.compat.computercraft;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.GadgetsPeripheral;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import com.rieno.gadgetsandgizmos.mixin.DirectionalGearshiftBlockInvoker;
 import dan200.computercraft.api.lua.LuaFunction;
-import dan200.computercraft.api.peripheral.IPeripheral;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.Level;
@@ -24,7 +26,8 @@ import java.util.Map;
 import java.util.Locale;
 
 // Expose Directional Gearshift controls and telemetry to ComputerCraft
-public class DirectionalGearshiftPeripheral implements IPeripheral {
+@PeripheralTypeDoc("directional_gearshift")
+public class DirectionalGearshiftPeripheral extends GadgetsPeripheral<BlockEntity> {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -36,7 +39,6 @@ public class DirectionalGearshiftPeripheral implements IPeripheral {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Bound block entity
-    private final BlockEntity blockEntity;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -48,7 +50,7 @@ public class DirectionalGearshiftPeripheral implements IPeripheral {
 
     // Initialize the directional gearshift peripheral
     public DirectionalGearshiftPeripheral(BlockEntity blockEntity) {
-        this.blockEntity = blockEntity;
+        super(blockEntity, "directional_gearshift");
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -59,21 +61,10 @@ public class DirectionalGearshiftPeripheral implements IPeripheral {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Get the type
-    @Override
-    public String getType() {
-        return "directional_gearshift";
-    }
-
-    // Compare this directional gearshift peripheral with another object
-    @Override
-    public boolean equals(IPeripheral other) {
-        return other instanceof DirectionalGearshiftPeripheral peripheral
-                && peripheral.blockEntity == blockEntity;
-    }
-
     // Get the name
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getName", signature = "getName(): string",
+            description = "Returns the name.")
     public final String getName() {
         Object val = invokeNoArgs("getCustomName", "getName");
         if (val instanceof Component component) {
@@ -86,7 +77,9 @@ public class DirectionalGearshiftPeripheral implements IPeripheral {
     }
 
     // Set the name
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setName", signature = "setName(name: string)",
+            description = "Sets the name.")
     public final void setName(String name) {
         String normalized = name == null || name.isBlank() ? null : name.strip();
         boolean applied = invokeOneArg("setCustomName", String.class, normalized)
@@ -99,7 +92,9 @@ public class DirectionalGearshiftPeripheral implements IPeripheral {
     }
 
     // Check if the left is powered
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isLeftPowered", signature = "isLeftPowered(): boolean",
+            description = "Returns whether the left is powered.")
     public final boolean isLeftPowered() {
         BlockState state = currentState();
         return state.hasProperty(dev.simulated_team.simulated.content.blocks.directional_gearshift.DirectionalGearshiftBlock.LEFT_POWERED)
@@ -107,7 +102,9 @@ public class DirectionalGearshiftPeripheral implements IPeripheral {
     }
 
     // Check if the right is powered
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isRightPowered", signature = "isRightPowered(): boolean",
+            description = "Returns whether the right is powered.")
     public final boolean isRightPowered() {
         BlockState state = currentState();
         return state.hasProperty(dev.simulated_team.simulated.content.blocks.directional_gearshift.DirectionalGearshiftBlock.RIGHT_POWERED)
@@ -116,30 +113,40 @@ public class DirectionalGearshiftPeripheral implements IPeripheral {
 
     // Set the left
     @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setLeft", signature = "setLeft(powered: boolean)",
+            description = "Sets the left.")
     public final void setLeft(boolean powered) {
         applyOutputs(powered, isRightPowered());
     }
 
     // Set the right
     @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setRight", signature = "setRight(powered: boolean)",
+            description = "Sets the right.")
     public final void setRight(boolean powered) {
         applyOutputs(isLeftPowered(), powered);
     }
 
     // Set the outputs
     @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setOutputs", signature = "setOutputs(leftPowered: boolean, rightPowered: boolean)",
+            description = "Sets the outputs.")
     public final void setOutputs(boolean leftPowered, boolean rightPowered) {
         applyOutputs(leftPowered, rightPowered);
     }
 
     // Clear the directional gearshift peripheral
     @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "clear", signature = "clear()",
+            description = "Clears the directional gearshift peripheral.")
     public final void clear() {
         applyOutputs(false, false);
     }
 
     // Get the rotation modifier
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getRotationModifier", signature = "getRotationModifier(face: string): number",
+            description = "Returns the rotation modifier.")
     public final int getRotationModifier(String face) {
         Direction dir = parseDirection(face);
         if (dir == null) {
@@ -153,7 +160,9 @@ public class DirectionalGearshiftPeripheral implements IPeripheral {
     }
 
     // Get the status
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getStatus", signature = "getStatus(): table",
+            description = "Returns the status.")
     public final Map<String, Object> getStatus() {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("leftPowered", isLeftPowered());
@@ -166,35 +175,37 @@ public class DirectionalGearshiftPeripheral implements IPeripheral {
     }
 
     // Get the facing
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getFacing", signature = "getFacing(): string",
+            description = "Returns the facing.")
     public final String getFacing() {
         Direction dir = getLocalFacing();
         return dir == null ? "unknown" : dir.getName();
     }
 
     // Get the world facing
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getWorldFacing", signature = "getWorldFacing(): table",
+            description = "Returns the world facing.")
     public final Map<String, Object> getWorldFacing() {
         Direction dir = getLocalFacing();
         return dir == null ? Map.of() : ComputerCraftPositionHelper.worldDirection(blockEntity, dir);
     }
 
     // Get the position
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getPosition", signature = "getPosition(): table",
+            description = "Returns the position.")
     public final Map<String, Object> getPosition() {
         return ComputerCraftPositionHelper.blockPosition(blockEntity);
     }
 
     // Get the class name
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getClassName", signature = "getClassName(): string",
+            description = "Returns the class name.")
     public final String getClassName() {
         return blockEntity.getClass().getName();
-    }
-
-    // Get the help
-    @LuaFunction
-    public final String help() {
-        return "Directional gearshift API: setLeft(boolean), setRight(boolean), setOutputs(boolean, boolean), clear(), isLeftPowered(), isRightPowered(), getRotationModifier(face), getFacing(), getWorldFacing(), getPosition(), getStatus()";
     }
 
     // Apply the outputs

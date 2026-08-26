@@ -47,9 +47,18 @@ public final class ComputerCraftCompatRegistrar {
     }
 
     // Register the capabilities
-    @SuppressWarnings({"rawtypes", "unchecked"})
     public static void registerCapabilities(RegisterCapabilitiesEvent evt) {
-        // ------------------------------------CREATE THRUSTERS PERIPHERALS------------------------------------
+        ComputerCraftRednetEventBridge.install();
+        registerDisplays(evt);
+        registerPropulsion(evt);
+        registerBearings(evt);
+        registerControllers(evt);
+        registerToolsAndNavigation(evt);
+        registerOptionalMachines(evt);
+    }
+
+    // Register the displays
+    private static void registerDisplays(RegisterCapabilitiesEvent evt) {
         if (CTBlockEntities.ACC_DISPLAY != null) {
             evt.registerBlockEntity(PeripheralCapability.get(), CTBlockEntities.ACC_DISPLAY.get(),
                     (AccDisplayBlockEntity be, Direction side) -> new AccDisplayPeripheral(be));
@@ -60,6 +69,10 @@ public final class ComputerCraftCompatRegistrar {
                     (UniversalDisplayAdapterBlockEntity be, Direction side) ->
                             new UniversalDisplayAdapterPeripheral(be));
         }
+    }
+
+    // Register the propulsion blocks
+    private static void registerPropulsion(RegisterCapabilitiesEvent evt) {
         if (CTBlockEntities.THRUSTER != null) {
             evt.registerBlockEntity(PeripheralCapability.get(), CTBlockEntities.THRUSTER.get(),
                     (ThrusterBlockEntity be, Direction side) -> new ThrusterPeripheral(be));
@@ -68,6 +81,10 @@ public final class ComputerCraftCompatRegistrar {
             evt.registerBlockEntity(PeripheralCapability.get(), CTBlockEntities.RCS_THRUSTER.get(),
                     (RcsThrusterBlockEntity be, Direction side) -> new RcsThrusterPeripheral(be));
         }
+    }
+
+    // Register the bearings
+    private static void registerBearings(RegisterCapabilitiesEvent evt) {
         if (CTBlockEntities.THRUSTER_BEARING != null) {
             evt.registerBlockEntity(PeripheralCapability.get(), CTBlockEntities.THRUSTER_BEARING.get(),
                     (ThrusterBearingBlockEntity be, Direction side) -> new ThrusterBearingPeripheral(be));
@@ -80,6 +97,10 @@ public final class ComputerCraftCompatRegistrar {
             evt.registerBlockEntity(PeripheralCapability.get(), CTBlockEntities.AILERON_BEARING.get(),
                     (AileronBearingBlockEntity be, Direction side) -> new AileronBearingPeripheral(be));
         }
+    }
+
+    // Register the controllers
+    private static void registerControllers(RegisterCapabilitiesEvent evt) {
         if (CTBlockEntities.GYROSCOPE_LINK != null) {
             evt.registerBlockEntity(PeripheralCapability.get(), CTBlockEntities.GYROSCOPE_LINK.get(),
                     (GyroscopeLinkBlockEntity be, Direction side) -> new GyroscopeLinkPeripheral(be));
@@ -105,6 +126,10 @@ public final class ComputerCraftCompatRegistrar {
             evt.registerBlockEntity(PeripheralCapability.get(), CTBlockEntities.ANALOGUE_JOYSTICK.get(),
                     (AnalogueJoystickBlockEntity be, Direction side) -> new AnalogueJoystickPeripheral(be));
         }
+    }
+
+    // Register the tools and navigation blocks
+    private static void registerToolsAndNavigation(RegisterCapabilitiesEvent evt) {
         if (CTBlockEntities.CLAW != null) {
             evt.registerBlockEntity(PeripheralCapability.get(), CTBlockEntities.CLAW.get(),
                     (ClawBlockEntity be, Direction side) -> new ClawPeripheral(be));
@@ -113,8 +138,11 @@ public final class ComputerCraftCompatRegistrar {
             evt.registerBlockEntity(PeripheralCapability.get(), CTBlockEntities.ADVANCED_NAVIGATION_TABLE.get(),
                     (AdvancedNavigationTableBlockEntity be, Direction side) -> new NavigationTablePeripheral(be, be));
         }
+    }
 
-        // ------------------------------------SIMULATED MACHINES------------------------------------
+    // Register the optional machines
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private static void registerOptionalMachines(RegisterCapabilitiesEvent evt) {
         BuiltInRegistries.BLOCK_ENTITY_TYPE.getOptional(ResourceLocation.parse("simulated:throttle_lever"))
                 .ifPresent(type -> evt.registerBlockEntity(PeripheralCapability.get(), (BlockEntityType) type,
                         (be, side) -> new SimulatedThrottleLeverPeripheral(be)));

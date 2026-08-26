@@ -8,11 +8,13 @@ package com.rieno.gadgetsandgizmos.compat.computercraft;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.GadgetsPeripheral;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import com.rieno.gadgetsandgizmos.content.AnalogueJoystickBlockEntity;
 import com.rieno.gadgetsandgizmos.lib.control.DirectionalAnalogSnapshot;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.lua.LuaFunction;
-import dan200.computercraft.api.peripheral.IPeripheral;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,7 +23,8 @@ import java.util.Map;
 import java.util.Optional;
 
 // Expose Analogue Joystick controls and telemetry to ComputerCraft
-public class AnalogueJoystickPeripheral implements IPeripheral {
+@PeripheralTypeDoc("analogue_joystick")
+public class AnalogueJoystickPeripheral extends GadgetsPeripheral<AnalogueJoystickBlockEntity> {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -33,7 +36,6 @@ public class AnalogueJoystickPeripheral implements IPeripheral {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Bound block entity
-    private final AnalogueJoystickBlockEntity blockEntity;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -45,7 +47,7 @@ public class AnalogueJoystickPeripheral implements IPeripheral {
 
     // Initialize the analogue joystick peripheral
     public AnalogueJoystickPeripheral(AnalogueJoystickBlockEntity blockEntity) {
-        this.blockEntity = blockEntity;
+        super(blockEntity, "analogue_joystick");
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -56,34 +58,27 @@ public class AnalogueJoystickPeripheral implements IPeripheral {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Get the type
-    @Override
-    public String getType() {
-        return "analogue_joystick";
-    }
-
-    // Compare this analogue joystick peripheral with another object
-    @Override
-    public boolean equals(IPeripheral other) {
-        return other instanceof AnalogueJoystickPeripheral peripheral
-                && peripheral.blockEntity == blockEntity;
-    }
-
     // Get the name
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getName", signature = "getName(): string",
+            description = "Custom joystick name or an empty string.")
     public final String getName() {
         String name = blockEntity.getCustomName();
         return name != null ? name : "";
     }
 
     // Set the name
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setName", signature = "setName(name:string)",
+            description = "Sets or clear the custom joystick name.")
     public final void setName(String name) {
         blockEntity.setCustomName(name == null || name.isBlank() ? null : name.strip());
     }
 
     // Get the tilt
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getTilt", signature = "getTilt(): table",
+            description = "{x, z, magnitude, held, active}; x and z are local axes from -1 to 1.")
     public final Map<String, Object> getTilt() {
         DirectionalAnalogSnapshot snapshot = blockEntity.getDirectionalAnalogSnapshot();
         Map<String, Object> tilt = new LinkedHashMap<>();
@@ -96,7 +91,9 @@ public class AnalogueJoystickPeripheral implements IPeripheral {
     }
 
     // Get the tilt degrees
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getTiltDegrees", signature = "getTiltDegrees(): table",
+            description = "{x, z, max}; sensor-equivalent tilt angles in degrees.")
     public final Map<String, Object> getTiltDegrees() {
         DirectionalAnalogSnapshot snapshot = blockEntity.getDirectionalAnalogSnapshot();
         double maxTilt = blockEntity.getMaxTiltDegrees();
@@ -108,19 +105,25 @@ public class AnalogueJoystickPeripheral implements IPeripheral {
     }
 
     // Get the x
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getX", signature = "getX(): number",
+            description = "Local left/right tilt from -1 to 1.")
     public final double getX() {
         return blockEntity.getDirectionalAnalogSnapshot().localX();
     }
 
     // Get the z
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getZ", signature = "getZ(): number",
+            description = "Local forward/backward tilt from -1 to 1.")
     public final double getZ() {
         return blockEntity.getDirectionalAnalogSnapshot().localZ();
     }
 
     // Get the redstone
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getRedstone", signature = "getRedstone(): table",
+            description = "{forward, backward, left, right, max}; each value is 0 to 15.")
     public final Map<String, Object> getRedstone() {
         DirectionalAnalogSnapshot snapshot = blockEntity.getDirectionalAnalogSnapshot();
         Map<String, Object> redstone = new LinkedHashMap<>();
@@ -135,7 +138,9 @@ public class AnalogueJoystickPeripheral implements IPeripheral {
     }
 
     // Get the redstone output
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getRedstoneOutput", signature = "getRedstoneOutput(channel:string): number",
+            description = "One directional redstone value from 0 to 15.")
     public final int getRedstoneOutput(String channel) throws LuaException {
         DirectionalAnalogSnapshot snapshot = blockEntity.getDirectionalAnalogSnapshot();
         return switch (normalizeChannel(channel)) {
@@ -148,37 +153,49 @@ public class AnalogueJoystickPeripheral implements IPeripheral {
     }
 
     // Check if this is held
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isHeld", signature = "isHeld(): boolean",
+            description = "True while a player is actively dragging the joystick.")
     public final boolean isHeld() {
         return blockEntity.isHeld();
     }
 
     // Check if this is active
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isActive", signature = "isActive(): boolean",
+            description = "True while held or while a latched non-zero tilt remains.")
     public final boolean isActive() {
         return blockEntity.isDirectionalAnalogActive();
     }
 
     // Get the deadzone
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getDeadzone", signature = "getDeadzone(): number",
+            description = "Configured neutral deadzone from 0 to 0.95.")
     public final double getDeadzone() {
         return blockEntity.getDeadzone();
     }
 
     // Get the max tilt degrees
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getMaxTiltDegrees", signature = "getMaxTiltDegrees(): number",
+            description = "Configured maximum sensor-equivalent tilt angle.")
     public final double getMaxTiltDegrees() {
         return blockEntity.getMaxTiltDegrees();
     }
 
     // Get the release mode
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getReleaseMode", signature = "getReleaseMode(): string",
+            description = "'latched' or 'momentary'.")
     public final String getReleaseMode() {
         return blockEntity.getReleaseMode().name().toLowerCase(Locale.ROOT);
     }
 
     // Get the status
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getStatus", signature = "getStatus(): table",
+            description = "Combined name, tilt, redstone, and configuration table.")
     public final Map<String, Object> getStatus() {
         Map<String, Object> status = new LinkedHashMap<>();
         status.put("name", getName());
@@ -189,59 +206,6 @@ public class AnalogueJoystickPeripheral implements IPeripheral {
         status.put("maxTiltDegrees", getMaxTiltDegrees());
         status.put("releaseMode", getReleaseMode());
         return status;
-    }
-
-    // List the exposed peripheral methods
-    @LuaFunction
-    public final List<String> methods() {
-        return List.of(
-                "getName(): string",
-                "setName(name:string)",
-                "getTilt(): table",
-                "getTiltDegrees(): table",
-                "getX(): number",
-                "getZ(): number",
-                "getRedstone(): table",
-                "getRedstoneOutput(channel:string): number",
-                "isHeld(): boolean",
-                "isActive(): boolean",
-                "getDeadzone(): number",
-                "getMaxTiltDegrees(): number",
-                "getReleaseMode(): string",
-                "getStatus(): table",
-                "methods(): table",
-                "help(method?:string): string|table"
-        );
-    }
-
-    // Get the help
-    @LuaFunction
-    public final Object help(Optional<String> method) throws LuaException {
-        Map<String, String> docs = new LinkedHashMap<>();
-        docs.put("getName", "getName() -> custom joystick name or an empty string");
-        docs.put("setName", "setName(name) -> set or clear the custom joystick name");
-        docs.put("getTilt", "getTilt() -> {x, z, magnitude, held, active}; x and z are local axes from -1 to 1");
-        docs.put("getTiltDegrees", "getTiltDegrees() -> {x, z, max}; sensor-equivalent tilt angles in degrees");
-        docs.put("getX", "getX() -> local left/right tilt from -1 to 1");
-        docs.put("getZ", "getZ() -> local forward/backward tilt from -1 to 1");
-        docs.put("getRedstone", "getRedstone() -> {forward, backward, left, right, max}; each value is 0 to 15");
-        docs.put("getRedstoneOutput", "getRedstoneOutput(channel) -> one directional redstone value from 0 to 15");
-        docs.put("isHeld", "isHeld() -> true while a player is actively dragging the joystick");
-        docs.put("isActive", "isActive() -> true while held or while a latched non-zero tilt remains");
-        docs.put("getDeadzone", "getDeadzone() -> configured neutral deadzone from 0 to 0.95");
-        docs.put("getMaxTiltDegrees", "getMaxTiltDegrees() -> configured maximum sensor-equivalent tilt angle");
-        docs.put("getReleaseMode", "getReleaseMode() -> 'latched' or 'momentary'");
-        docs.put("getStatus", "getStatus() -> combined name, tilt, redstone, and configuration table");
-        docs.put("methods", "methods() -> list of all callable joystick methods");
-        docs.put("help", "help() -> all docs, help('name') -> one entry");
-        if (method.isEmpty()) {
-            return docs;
-        }
-        String entry = docs.get(method.get());
-        if (entry == null) {
-            throw new LuaException("unknown method '" + method.get() + "'");
-        }
-        return entry;
     }
 
     // Normalize the channel

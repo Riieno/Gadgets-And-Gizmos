@@ -8,10 +8,12 @@ package com.rieno.gadgetsandgizmos.compat.computercraft;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.GadgetsPeripheral;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import com.rieno.gadgetsandgizmos.content.VectorBearingBlockEntity;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.lua.LuaFunction;
-import dan200.computercraft.api.peripheral.IPeripheral;
 import net.minecraft.core.Direction;
 
 import java.util.LinkedHashMap;
@@ -20,7 +22,8 @@ import java.util.Locale;
 import java.util.Map;
 
 // Expose Vector Bearing controls and telemetry to ComputerCraft
-public class VectorBearingPeripheral implements IPeripheral {
+@PeripheralTypeDoc("vector_bearing")
+public class VectorBearingPeripheral extends GadgetsPeripheral<VectorBearingBlockEntity> {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -32,7 +35,6 @@ public class VectorBearingPeripheral implements IPeripheral {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Bound block entity
-    private final VectorBearingBlockEntity blockEntity;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -44,7 +46,7 @@ public class VectorBearingPeripheral implements IPeripheral {
 
     // Initialize the vector bearing peripheral
     public VectorBearingPeripheral(VectorBearingBlockEntity blockEntity) {
-        this.blockEntity = blockEntity;
+        super(blockEntity, "vector_bearing");
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -55,45 +57,42 @@ public class VectorBearingPeripheral implements IPeripheral {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Get the type
-    @Override
-    public String getType() {
-        return "vector_bearing";
-    }
-
-    // Compare this vector bearing peripheral with another object
-    @Override
-    public boolean equals(IPeripheral other) {
-        return other instanceof VectorBearingPeripheral peripheral
-                && peripheral.blockEntity == blockEntity;
-    }
-
     // Get the mode
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getMode", signature = "getMode(): string",
+            description = "Returns the mode.")
     public final String getMode() {
         return blockEntity.getControlMode().name().toLowerCase(Locale.ROOT);
     }
 
     // Set the mode
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setMode", signature = "setMode('auto'|'computer'|'redstone')",
+            description = "Sets the mode.")
     public final void setMode(String modeName) throws LuaException {
         blockEntity.setControlMode(parseMode(modeName));
     }
 
     // Get the active mode
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getActiveMode", signature = "getActiveMode(): string",
+            description = "Returns the active mode.")
     public final String getActiveMode() {
         return blockEntity.getActiveControlMode().name().toLowerCase(Locale.ROOT);
     }
 
     // Get the max tilt angle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getMaxTiltAngle", signature = "getMaxTiltAngle(): number",
+            description = "Returns the max tilt angle.")
     public final double getMaxTiltAngle() {
         return blockEntity.getMaxTiltDegrees();
     }
 
     // Set the max tilt angle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setMaxTiltAngle", signature = "setMaxTiltAngle(angleDegrees: number)",
+            description = "Sets the max tilt angle.")
     public final void setMaxTiltAngle(double angleDegrees) throws LuaException {
         if (!Double.isFinite(angleDegrees)) {
             throw new LuaException("angleDegrees must be finite");
@@ -102,7 +101,9 @@ public class VectorBearingPeripheral implements IPeripheral {
     }
 
     // Get the angles
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getAngles", signature = "getAngles(): table",
+            description = "Returns the angles.")
     public final Map<String, Object> getAngles() {
         return Map.of(
                 "x", blockEntity.getAppliedXDegrees(),
@@ -113,7 +114,9 @@ public class VectorBearingPeripheral implements IPeripheral {
     }
 
     // Set the angles
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setAngles", signature = "setAngles(xDegrees: number, zDegrees: number)",
+            description = "Sets the angles.")
     public final void setAngles(double xDegrees, double zDegrees) throws LuaException {
         if (!Double.isFinite(xDegrees) || !Double.isFinite(zDegrees)) {
             throw new LuaException("xDegrees and zDegrees must be finite");
@@ -122,13 +125,17 @@ public class VectorBearingPeripheral implements IPeripheral {
     }
 
     // Clear the angles
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "clearAngles", signature = "clearAngles()",
+            description = "Clears the angles.")
     public final void clearAngles() {
         blockEntity.clearComputerAngles();
     }
 
     // Get the signals
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getSignals", signature = "getSignals(): table",
+            description = "Returns the signals.")
     public final Map<String, Object> getSignals() {
         Map<String, Object> signals = new LinkedHashMap<>();
         signals.put("north", blockEntity.getSignal(Direction.NORTH));
@@ -139,25 +146,33 @@ public class VectorBearingPeripheral implements IPeripheral {
     }
 
     // Assemble the vector bearing peripheral
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "assemble", signature = "assemble(): boolean",
+            description = "Assemble the vector bearing peripheral.")
     public final boolean assemble() {
         return blockEntity.tryAssembleMountedBlock();
     }
 
     // Disassemble the vector bearing peripheral
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "disassemble", signature = "disassemble()",
+            description = "Disassemble the vector bearing peripheral.")
     public final void disassemble() {
         blockEntity.disassembleMountedBlock();
     }
 
     // Check if this is assembled
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isAssembled", signature = "isAssembled(): boolean",
+            description = "Returns whether this is assembled.")
     public final boolean isAssembled() {
         return blockEntity.isMountedAssemblyPresent();
     }
 
     // Get the status
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getStatus", signature = "getStatus(): table",
+            description = "Returns the status.")
     public final Map<String, Object> getStatus() {
         Map<String, Object> status = new LinkedHashMap<>();
         status.put("mode", getMode());
@@ -171,28 +186,6 @@ public class VectorBearingPeripheral implements IPeripheral {
         status.put("assembled", blockEntity.isMountedAssemblyPresent());
         status.put("signals", getSignals());
         return status;
-    }
-
-    // List the exposed peripheral methods
-    @LuaFunction
-    public final List<String> methods() {
-        return List.of(
-                "getMode", "setMode", "getActiveMode",
-                "getMaxTiltAngle", "setMaxTiltAngle",
-                "getAngles", "setAngles", "clearAngles",
-                "getSignals", "assemble", "disassemble", "isAssembled", "getStatus");
-    }
-
-    // Get the help
-    @LuaFunction
-    public final Map<String, String> help() {
-        Map<String, String> help = new LinkedHashMap<>();
-        help.put("setMode", "setMode('auto'|'computer'|'redstone')");
-        help.put("setAngles", "setAngles(xDegrees, zDegrees) sets computer-mode tilt input");
-        help.put("setMaxTiltAngle", "setMaxTiltAngle(angleDegrees) clamps to 0..89");
-        help.put("assemble", "assemble() attempts to mount the block on the bearing-facing side");
-        help.put("disassemble", "disassemble() returns the mounted sublevel to the bearing-facing side");
-        return help;
     }
 
     // Parse the mode

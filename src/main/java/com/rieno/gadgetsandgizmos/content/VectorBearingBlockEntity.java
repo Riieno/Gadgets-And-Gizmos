@@ -20,6 +20,7 @@ import com.rieno.gadgetsandgizmos.lib.control.OrientationTarget;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.kinetics.KineticAngleHelper;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuOpenHeader;
+import com.rieno.gadgetsandgizmos.lib.physics.MountedAssemblyStatus;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyTopologyInvalidation;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
@@ -299,9 +300,10 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         if (mountedSubLevelId != null && mountedAssembly.recoverConflictingHeads(this, serverLevel)) {
             return;
         }
-        VectorBearingMountedAssembly.MountedBlockStatus status = mountedAssembly.mountedBlockStatus(this, serverLevel);
-        if (mountedSubLevelId != null
-                && VectorBearingMountedAssembly.shouldClearMountedAssembly(status)) {
+        MountedAssemblyStatus status = mountedAssembly.mountedBlockStatus(this, serverLevel);
+        if (mountedSubLevelId != null && status.shouldDisassemble()) {
+            disassembleMountedBlock();
+        } else if (mountedSubLevelId != null && status.shouldClear()) {
             mountedAssembly.clearInvalidAssembly(this, serverLevel);
         } else if (mountedSubLevelId != null && !mountedAssemblyPresent) {
             mountedAssemblyPresent = true;
@@ -1307,6 +1309,7 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         ServerLevel serverLevel = SableLevelApi.serverLevel(level);
         if (serverLevel != null) {
             mountedAssembly.disassemble(this, serverLevel);
+            markNestedAssemblyMutation(serverLevel);
         } else {
             mountedAssembly.releaseJoint();
             setMountedAssembly(null, null);

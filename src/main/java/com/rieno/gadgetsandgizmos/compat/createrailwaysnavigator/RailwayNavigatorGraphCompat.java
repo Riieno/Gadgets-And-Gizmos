@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.WeakHashMap;
@@ -60,6 +61,39 @@ public final class RailwayNavigatorGraphCompat {
             Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<Object, DisplaySnapshot> INITIALIZATION_DISPLAY_SNAPSHOTS =
             Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<String, SettingAccessor> DISPLAY_SETTING_ACCESSORS = Map.ofEntries(
+            Map.entry("auto_platform_width", new SettingAccessor("isAutoPlatformWidth", "boolean")),
+            Map.entry("auto_platform_width_next_stop", new SettingAccessor("isAutoPlatformWidthNextStop", "boolean")),
+            Map.entry("auto_train_name_width", new SettingAccessor("isAutoTrainNameWidth", "boolean")),
+            Map.entry("auto_train_name_width_next_stop", new SettingAccessor("isAutoTrainNameWidthNextStop", "boolean")),
+            Map.entry("back_color", new SettingAccessor("getBackColor", "number")),
+            Map.entry("bounds_action", new SettingAccessor("getBoundsAction", "string")),
+            Map.entry("carriage_index", new SettingAccessor("getCarriageIndex", "number")),
+            Map.entry("components_count", new SettingAccessor("getComponentsCount", "number")),
+            Map.entry("font_color", new SettingAccessor("getFontColor", "number")),
+            Map.entry("full_label_background_color", new SettingAccessor("isFullLabelBackgroundColor", "boolean")),
+            Map.entry("full_train_name_width", new SettingAccessor("isFullTrainNameWidth", "boolean")),
+            Map.entry("info_width_percentage", new SettingAccessor("getInfoWidthPercentage", "number")),
+            Map.entry("max_text_width", new SettingAccessor("isMaxTextWidth", "boolean")),
+            Map.entry("min_x_scale", new SettingAccessor("getMinXScale", "number")),
+            Map.entry("platform_width", new SettingAccessor("getPlatformWidth", "number")),
+            Map.entry("platform_width_next_stop", new SettingAccessor("getPlatformWidthNextStop", "number")),
+            Map.entry("selected_component_index", new SettingAccessor("getSelectedComponentIndex", "number")),
+            Map.entry("static_text", new SettingAccessor("getStaticText", "string")),
+            Map.entry("stopovers_width_percentage", new SettingAccessor("getStopoversWidthPercentage", "number")),
+            Map.entry("text_alignment", new SettingAccessor("getTextAlignment", "string")),
+            Map.entry("text_background_color", new SettingAccessor("getTextBackgroundColor", "number")),
+            Map.entry("text_max_width", new SettingAccessor("getTextMaxWidth", "number")),
+            Map.entry("time_display", new SettingAccessor("getTimeDisplay", "string")),
+            Map.entry("train_name_width", new SettingAccessor("getTrainNameWidth", "number")),
+            Map.entry("train_name_width_next_stop", new SettingAccessor("getTrainNameWidthNextStop", "number")),
+            Map.entry("train_stop_type", new SettingAccessor("getTrainStopType", "string")),
+            Map.entry("train_text_components", new SettingAccessor("getTrainTextComponents", "string")),
+            Map.entry("x", new SettingAccessor("getX", "number")),
+            Map.entry("x_scale", new SettingAccessor("getXScale", "number")),
+            Map.entry("y", new SettingAccessor("getY", "number")),
+            Map.entry("y_scale", new SettingAccessor("getYScale", "number"))
+    );
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -182,6 +216,11 @@ public final class RailwayNavigatorGraphCompat {
         ports.put("display_text", "string");
         ports.put("display_lines", "list");
         ports.put("display_settings", "map");
+        DISPLAY_SETTING_ACCESSORS.forEach((port, accessor) -> {
+            if (publicMethod(settings(display), accessor.method(), 0) != null) {
+                ports.put("setting_" + port, accessor.type());
+            }
+        });
         return ports;
     }
 
@@ -569,7 +608,35 @@ public final class RailwayNavigatorGraphCompat {
         if ("display_settings".equals(port)) return AdvancedGraphDocument.Value.map(serialize(settings));
         if ("display_text".equals(port)) return AdvancedGraphDocument.Value.string(text(settings));
         if ("display_lines".equals(port)) return AdvancedGraphDocument.Value.list(lines(settings));
+        if (port != null && port.startsWith("setting_")) {
+            return readDisplaySetting(settings, port.substring("setting_".length()));
+        }
         return null;
+    }
+
+    // Read one explicit display setting
+    private static AdvancedGraphDocument.Value readDisplaySetting(Object settings, String port) {
+        SettingAccessor accessor = DISPLAY_SETTING_ACCESSORS.get(port);
+        if (settings == null || accessor == null
+                || publicMethod(settings, accessor.method(), 0) == null) {
+            return null;
+        }
+        Object val = invoke(settings, accessor.method(), new Class<?>[0]);
+        if ("boolean".equals(accessor.type())) {
+            return val instanceof Boolean bool ? AdvancedGraphDocument.Value.bool(bool) : null;
+        }
+        if ("number".equals(accessor.type())) {
+            if (val instanceof Number num && Double.isFinite(num.doubleValue())) {
+                return AdvancedGraphDocument.Value.number(num.doubleValue());
+            }
+            Object color = invoke(val, "getAsARGB", new Class<?>[0]);
+            return color instanceof Number num
+                    ? AdvancedGraphDocument.Value.number(num.doubleValue()) : null;
+        }
+        if (val instanceof Enum<?> option) {
+            return AdvancedGraphDocument.Value.string(option.name().toLowerCase(Locale.ROOT));
+        }
+        return val == null ? null : AdvancedGraphDocument.Value.string(String.valueOf(val));
     }
 
     // Write the railway navigator graph compat
@@ -956,6 +1023,10 @@ public final class RailwayNavigatorGraphCompat {
 
     // Store the display snapshot
     private record DisplaySnapshot(Object displayType, CompoundTag settings) {
+    }
+
+    // Store one explicit display setting accessor
+    private record SettingAccessor(String method, String type) {
     }
 
     // Get the graph string

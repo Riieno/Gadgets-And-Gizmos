@@ -11,6 +11,7 @@ package com.rieno.gadgetsandgizmos.compat.controller;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.lib.control.IDirectControlReceiver;
+import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataAccessPolicy;
 import com.simibubi.create.foundation.blockEntity.behaviour.scrollValue.ScrollOptionBehaviour;
 import com.simibubi.create.foundation.blockEntity.behaviour.scrollValue.ScrollValueBehaviour;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -169,7 +170,10 @@ public final class ExternalBlockEntityDirectControlCompat {
 
     // Get the writable data
     public static Map<String, String> writableData(@Nullable BlockEntity blockEntity) {
-        return dndDataPorts(blockEntity);
+        Map<String, String> ports = dndDataPorts(blockEntity);
+        ports.entrySet().removeIf(entry -> BlockEntityDataAccessPolicy.isItemContentMutation(
+                entry.getKey(), entry.getValue()));
+        return ports;
     }
 
     // Read the data
@@ -190,6 +194,9 @@ public final class ExternalBlockEntityDirectControlCompat {
     // Write the data
     public static boolean writeData(@Nullable BlockEntity blockEntity, String port,
                                     AdvancedGraphDocument.Value val) {
+        if (BlockEntityDataAccessPolicy.isItemContentMutation(port)) {
+            return false;
+        }
         ScrollValueBehaviour behaviour = dndBehaviours(blockEntity).get(port);
         if (behaviour == null || val == null) {
             return false;

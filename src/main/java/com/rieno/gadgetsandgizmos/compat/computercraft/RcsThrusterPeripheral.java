@@ -8,10 +8,12 @@ package com.rieno.gadgetsandgizmos.compat.computercraft;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.GadgetsPeripheral;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import com.rieno.gadgetsandgizmos.content.RcsThrusterBlockEntity;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.lua.LuaFunction;
-import dan200.computercraft.api.peripheral.IPeripheral;
 import net.minecraft.core.Direction;
 
 import java.util.LinkedHashMap;
@@ -20,7 +22,8 @@ import java.util.Locale;
 import java.util.Map;
 
 // Expose RCS Thruster controls and telemetry to ComputerCraft
-public class RcsThrusterPeripheral implements IPeripheral {
+@PeripheralTypeDoc("rcs_thruster")
+public class RcsThrusterPeripheral extends GadgetsPeripheral<RcsThrusterBlockEntity> {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -32,7 +35,6 @@ public class RcsThrusterPeripheral implements IPeripheral {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Bound block entity
-    private final RcsThrusterBlockEntity blockEntity;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -44,7 +46,7 @@ public class RcsThrusterPeripheral implements IPeripheral {
 
     // Initialize the RCS thruster peripheral
     public RcsThrusterPeripheral(RcsThrusterBlockEntity blockEntity) {
-        this.blockEntity = blockEntity;
+        super(blockEntity, "rcs_thruster");
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -55,21 +57,10 @@ public class RcsThrusterPeripheral implements IPeripheral {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Get the type
-    @Override
-    public String getType() {
-        return "rcs_thruster";
-    }
-
-    // Compare this RCS thruster peripheral with another object
-    @Override
-    public boolean equals(IPeripheral other) {
-        return other instanceof RcsThrusterPeripheral peripheral
-                && peripheral.blockEntity == blockEntity;
-    }
-
     // Set the throttle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setThrottle", signature = "setThrottle(nozzle: 'north'|'east'|'south'|'west', throttle: number 0..1)",
+            description = "Sets the throttle.")
     public final void setThrottle(String nozzle, double throttle) throws LuaException {
         Direction dir = parseNozzle(nozzle);
         if (!Double.isFinite(throttle) || throttle < 0.0D || throttle > 1.0D) {
@@ -79,19 +70,25 @@ public class RcsThrusterPeripheral implements IPeripheral {
     }
 
     // Get the throttle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getThrottle", signature = "getThrottle(nozzle): number",
+            description = "Returns the throttle.")
     public final double getThrottle(String nozzle) throws LuaException {
         return blockEntity.getThrottle(parseNozzle(nozzle));
     }
 
     // Clear the throttle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "clearThrottle", signature = "clearThrottle(nozzle)",
+            description = "Clears the throttle.")
     public final void clearThrottle(String nozzle) throws LuaException {
         blockEntity.clearComputerThrottle(parseNozzle(nozzle));
     }
 
     // Clear every thruster throttle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "clearAllThrottles", signature = "clearAllThrottles()",
+            description = "Clears every thruster throttle.")
     public final void clearAllThrottles() {
         for (Direction nozzle : Direction.Plane.HORIZONTAL) {
             blockEntity.clearComputerThrottle(nozzle);
@@ -99,31 +96,41 @@ public class RcsThrusterPeripheral implements IPeripheral {
     }
 
     // Get the thrust
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getThrust", signature = "getThrust(nozzle): number",
+            description = "Returns the thrust.")
     public final double getThrust(String nozzle) throws LuaException {
         return blockEntity.getNozzleThrust(parseNozzle(nozzle));
     }
 
     // Get the max thrust
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getMaxThrust", signature = "getMaxThrust(): number",
+            description = "Returns the max thrust.")
     public final double getMaxThrust() {
         return blockEntity.getMaxNozzleThrust();
     }
 
     // Get the RPM
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getRPM", signature = "getRPM(): number",
+            description = "Returns the RPM.")
     public final double getRPM() {
         return blockEntity.getSpeed();
     }
 
     // Check if this is active
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isActive", signature = "isActive(nozzle): boolean",
+            description = "Returns whether this is active.")
     public final boolean isActive(String nozzle) throws LuaException {
         return blockEntity.isNozzleActive(parseNozzle(nozzle));
     }
 
     // Get the status
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getStatus", signature = "getStatus(): table",
+            description = "Returns the status.")
     public final Map<String, Object> getStatus() {
         Map<String, Object> status = new LinkedHashMap<>();
         status.put("rpm", blockEntity.getSpeed());
@@ -140,21 +147,6 @@ public class RcsThrusterPeripheral implements IPeripheral {
             status.put(name, nozzleStatus);
         }
         return status;
-    }
-
-    // List the exposed peripheral methods
-    @LuaFunction
-    public final List<String> methods() {
-        return List.of(
-                "setThrottle(nozzle: 'north'|'east'|'south'|'west', throttle: number 0..1)",
-                "getThrottle(nozzle): number",
-                "clearThrottle(nozzle)",
-                "clearAllThrottles()",
-                "getThrust(nozzle): number",
-                "getMaxThrust(): number",
-                "getRPM(): number",
-                "isActive(nozzle): boolean",
-                "getStatus(): table");
     }
 
     // Parse the nozzle

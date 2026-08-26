@@ -943,8 +943,8 @@
   "block.createthrusters.ship_control_module": "Ship Control Module [EXPERIMENTAL]",
   "block.createthrusters.ship_control_module.tooltip.summary": "Maps the propulsion, thrust vectoring, bearings, and nested sub-levels that make up a Sable ship so the ACC can control it as one vehicle.",
   "block.createthrusters.ship_control_module.tooltip.condition1": "Place an Advanced Contraption Controller on the module's exposed face",
-  "block.createthrusters.ship_control_module.tooltip.behaviour1": "Adds ship initialization, flight control, navigation, docking, telemetry, and Shipping Schedule nodes to the ACC.",
-  "createthrusters.advanced_controller.node.ship_initialize.summary": "Selects the vehicle control mode, scans the ship and its nested sub-levels, then builds the control map used for navigation and stabilization.",
+  "block.createthrusters.ship_control_module.tooltip.behaviour1": "Adds ship initialization, flight control, navigation, docking, telemetry, and Shipping Schedule nodes to the ACC. - [CAR] and [PLANE] modes aren't supported yet",
+  "createthrusters.advanced_controller.node.ship_initialize.summary": "Selects the vehicle control mode, scans the ship and its nested sub-levels, then builds the control map used for navigation and stabilization. - [CAR] and [PLANE] modes aren't supported yet",
   "createthrusters.advanced_controller.node.ship_stop_initialization.summary": "Stops initialization immediately, restores the ship, and keeps the previous control map if one already existed.",
   "createthrusters.advanced_controller.node.ship_status.summary": "Outputs the SCM's current state, initialization progress, control-map identity, and the propulsion and steering hardware it found.",
   "createthrusters.advanced_controller.node.ship_yaw.summary": "Adds persistent yaw from -1 to 1 around the ship's local up axis without replacing any other active controls.",
@@ -1296,7 +1296,7 @@
   "item.createthrusters.diagnostic_tablet.bound": "Linked: %s",
   "screen.createthrusters.diagnostic_tablet": "Smart Tablet [EXPERIMENTAL]",
   "screen.createthrusters.diagnostic_tablet.value": "Action value",
-  "block.createthrusters.ship_coupler": "Ship Coupler [EXPERIMENTAL]",
+  "block.createthrusters.ship_coupler": "Ship Coupler",
   "block.createthrusters.ship_coupler.tooltip.summary": "Couples two independent ship carriages together, locking pitch and roll while leaving yaw free like a train coupler.",
   "block.createthrusters.ship_coupler.tooltip.condition1": "Power it with redstone or change its behaviour by hand",
   "block.createthrusters.ship_coupler.tooltip.behaviour1": "By default, powered attaches and unpowered releases. Use it with an empty hand to invert that behaviour.",
@@ -1322,6 +1322,6 @@
   "createthrusters.scm.flight_behavior.direct_vector": "Direct Vector",
   "createthrusters.scm.flight_behavior.prefer_ship_direction": "Prefer Ship Direction",
   "createthrusters.scm.control_mode.airship": "Airship",
-  "createthrusters.scm.control_mode.plane": "Plane",
-  "createthrusters.scm.control_mode.car": "Car"
+  "createthrusters.scm.control_mode.plane": "Plane - Unsupported",
+  "createthrusters.scm.control_mode.car": "Car - Unsupported"
 }

@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content.advanced;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.mojang.logging.LogUtils;
 import com.rieno.gadgetsandgizmos.compat.computed.ComputedEventCompat;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEntity;
@@ -15,6 +16,7 @@ import com.simibubi.create.infrastructure.config.AllConfigs;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.Vec3;
+import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -32,8 +34,12 @@ public final class AdvancedControllerNamedEventBus {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+    private static final Logger LOGGER = LogUtils.getLogger();
+
     private static final Map<MinecraftServer, Set<AdvancedContraptionControllerBlockEntity>> CONTROLLERS =
             new WeakHashMap<>();
+
+    private static ExternalBridge externalBridge;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -55,6 +61,42 @@ public final class AdvancedControllerNamedEventBus {
         }
         CONTROLLERS.computeIfAbsent(controller.getLevel().getServer(),
                 ignored -> Collections.newSetFromMap(new WeakHashMap<>())).add(controller);
+        if (externalBridge != null) {
+            externalBridge.register(controller);
+        }
+    }
+
+    // Unregister the advanced controller named event bus
+    public static synchronized void unregister(AdvancedContraptionControllerBlockEntity controller) {
+        if (controller == null) {
+            return;
+        }
+        for (Set<AdvancedContraptionControllerBlockEntity> controllers : CONTROLLERS.values()) {
+            controllers.remove(controller);
+        }
+        if (externalBridge != null) {
+            externalBridge.unregister(controller);
+        }
+    }
+
+    // Install the optional external named event bridge
+    public static synchronized void installExternalBridge(ExternalBridge bridge) {
+        if (bridge == null || externalBridge == bridge) {
+            return;
+        }
+        if (externalBridge != null) {
+            for (Set<AdvancedContraptionControllerBlockEntity> controllers : CONTROLLERS.values()) {
+                for (AdvancedContraptionControllerBlockEntity controller : controllers) {
+                    externalBridge.unregister(controller);
+                }
+            }
+        }
+        externalBridge = bridge;
+        for (Set<AdvancedContraptionControllerBlockEntity> controllers : CONTROLLERS.values()) {
+            for (AdvancedContraptionControllerBlockEntity controller : controllers) {
+                bridge.register(controller);
+            }
+        }
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -84,6 +126,7 @@ public final class AdvancedControllerNamedEventBus {
         Vec3 sourcePosition = src.namedControllerEventPosition();
         publishToControllers(src, name, data, distance, sourcePosition);
         ComputedEventCompat.publishFromGadgets(src, name, data, distance);
+        publishToExternalBridge(src, name, data, distance);
     }
 
     // Publish the external
@@ -133,5 +176,34 @@ public final class AdvancedControllerNamedEventBus {
         }
         double maximumDistanceSquared = maximumDistance * (double) maximumDistance;
         return src.distanceToSqr(recipient) <= maximumDistanceSquared;
+    }
+
+    // Publish the named controller event to the optional external bridge
+    private static void publishToExternalBridge(AdvancedContraptionControllerBlockEntity src, String name,
+                                                AdvancedGraphDocument.Value data, int maximumDistance) {
+        ExternalBridge bridge;
+        synchronized (AdvancedControllerNamedEventBus.class) {
+            bridge = externalBridge;
+        }
+        if (bridge == null) {
+            return;
+        }
+        AdvancedGraphDocument.Value value = data == null
+                ? AdvancedGraphDocument.Value.number(0) : data;
+        try {
+            bridge.publish(src, name, value, maximumDistance);
+        } catch (RuntimeException err) {
+            LOGGER.warn("[G&G][ACC] Could not deliver a named event to the external bridge", err);
+        }
+    }
+
+    // Connect one optional transport without introducing its classes into the graph runtime
+    public interface ExternalBridge {
+        void register(AdvancedContraptionControllerBlockEntity controller);
+
+        void unregister(AdvancedContraptionControllerBlockEntity controller);
+
+        void publish(AdvancedContraptionControllerBlockEntity controller, String name,
+                     AdvancedGraphDocument.Value data, int maximumDistance);
     }
 }

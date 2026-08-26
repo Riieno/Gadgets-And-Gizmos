@@ -28,6 +28,7 @@ import com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget;
 import com.rieno.gadgetsandgizmos.lib.client.render.SimulatedDiagramMiniRenderer;
 import com.rieno.gadgetsandgizmos.lib.client.render.PhysicsGogglesOverlayRegistry;
+import com.rieno.gadgetsandgizmos.lib.display.DisplayWidgetProjection;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerProfilerPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedHudInteractionPayload;
@@ -689,14 +690,11 @@ public final class CTPhysicsGogglesClient {
             graphics.pose().popPose();
             if (mode == OverlayMode.DIAGRAM && isInteractiveHudElement(elm)
                     && binding.pairId() != null && !elm.getString("InteractionId").isBlank()) {
-                int hitWidth = Math.max(1, (int) Math.round(w * elementScale));
-                int hitHeight = Math.max(1, (int) Math.round(h * elementScale));
-                Rect hitRect = new Rect(
-                        x + (w - hitWidth) / 2, y + (h - hitHeight) / 2, hitWidth, hitHeight);
                 HUD_INTERACTION_TARGETS.add(new HudInteractionTarget(
                         binding.target(), binding.pairId(), node.id(),
                         elm.getString("InteractionId"), elm.getString("Type"),
-                        elm.getString("ValuePort"), hitRect,
+                        new Rect(x, y, w, h),
+                        elementScale, rotation,
                         elm.getDouble("Min"), elm.getDouble("Max"), elm.getDouble("Step")));
             }
         }
@@ -1089,19 +1087,6 @@ public final class CTPhysicsGogglesClient {
         };
     }
 
-    // Get the interaction value
-    private static AdvancedGraphDocument.Value interactionValue(HudInteractionTarget target) {
-        BoundControllerBinding binding = boundControllerBinding(Minecraft.getInstance());
-        if (binding == null || !target.pairId().equals(binding.pairId())) {
-            return null;
-        }
-        AdvancedGraphDocument.Node node = binding.controller().getActiveGraph().nodes().stream()
-                .filter(candidate -> candidate != null && candidate.id().equals(target.nodeId()))
-                .findFirst().orElse(null);
-        return node == null || target.valuePort().isBlank()
-                ? null : hudOutputValue(binding.controller(), node, target.valuePort());
-    }
-
     // Send the HUD boolean
     private static void sendHudBoolean(HudInteractionTarget target, boolean val) {
         PacketDistributor.sendToServer(AdvancedHudInteractionPayload.bool(
@@ -1109,14 +1094,13 @@ public final class CTPhysicsGogglesClient {
     }
 
     // Send the HUD slider
-    private static void sendHudSlider(HudInteractionTarget target, double mouseX) {
+    private static void sendHudSlider(HudInteractionTarget target, double mouseX, double mouseY) {
         double minimum = target.minimum();
         double maximum = target.maximum();
         if (!(maximum > minimum)) {
             maximum = minimum + 1.0D;
         }
-        double fraction = Mth.clamp(
-                (mouseX - target.rect().x()) / Math.max(1.0D, target.rect().width()), 0.0D, 1.0D);
+        double fraction = target.horizontalFraction(mouseX, mouseY);
         double val = minimum + (maximum - minimum) * fraction;
         if (target.step() > 0.0D && Double.isFinite(target.step())) {
             val = minimum + Math.round((val - minimum) / target.step()) * target.step();
@@ -1587,8 +1571,28 @@ public final class CTPhysicsGogglesClient {
 
     // Store the HUD interaction target
     private record HudInteractionTarget(MenuConfigTarget target, UUID pairId, String nodeId,
-                                        String interactionId, String type, String valuePort,
-                                        Rect rect, double minimum, double maximum, double step) {
+                                         String interactionId, String type, Rect rect,
+                                         double scale, double rotation,
+                                         double minimum, double maximum, double step) {
+        // Check if the HUD interaction contains the point
+        private boolean contains(double mouseX, double mouseY) {
+            DisplayWidgetProjection.Bounds bounds = projectionBounds();
+            return DisplayWidgetProjection.unproject(
+                    bounds, mouseX, mouseY, scale, rotation).isInside(bounds);
+        }
+
+        // Get the horizontal interaction fraction
+        private double horizontalFraction(double mouseX, double mouseY) {
+            DisplayWidgetProjection.Bounds bounds = projectionBounds();
+            return DisplayWidgetProjection.unproject(
+                    bounds, mouseX, mouseY, scale, rotation).horizontalFraction(bounds);
+        }
+
+        // Get the reusable widget projection bounds
+        private DisplayWidgetProjection.Bounds projectionBounds() {
+            return new DisplayWidgetProjection.Bounds(
+                    rect.x(), rect.y(), rect.width(), rect.height());
+        }
     }
 
     // Store the rect
@@ -1717,19 +1721,17 @@ public final class CTPhysicsGogglesClient {
             if (mode == OverlayMode.DIAGRAM) {
                 for (int idx = HUD_INTERACTION_TARGETS.size() - 1; idx >= 0; idx--) {
                     HudInteractionTarget target = HUD_INTERACTION_TARGETS.get(idx);
-                    if (!target.rect().contains(mouseX, mouseY)) {
+                    if (!target.contains(mouseX, mouseY)) {
                         continue;
                     }
-                    pressedHudInteraction = target;
                     switch (target.type()) {
                         case "button" -> sendHudBoolean(target, true);
-                        case "toggle" -> {
-                            AdvancedGraphDocument.Value current = interactionValue(target);
-                            sendHudBoolean(target, current == null || !current.asBoolean());
+                        case "toggle" -> sendHudBoolean(target, true);
+                        case "slider" -> {
+                            pressedHudInteraction = target;
+                            sendHudSlider(target, mouseX, mouseY);
                         }
-                        case "slider" -> sendHudSlider(target, mouseX);
                         default -> {
-                            pressedHudInteraction = null;
                             continue;
                         }
                     }
@@ -1818,7 +1820,7 @@ public final class CTPhysicsGogglesClient {
             if (mode == OverlayMode.DIAGRAM) {
                 if (btn == GLFW.GLFW_MOUSE_BUTTON_LEFT && pressedHudInteraction != null
                         && "slider".equals(pressedHudInteraction.type())) {
-                    sendHudSlider(pressedHudInteraction, mouseX);
+                    sendHudSlider(pressedHudInteraction, mouseX, mouseY);
                     return true;
                 }
                 OverlayBox diagram = OVERLAY_BOXES.get(OverlayId.DIAGRAM);
@@ -1871,10 +1873,8 @@ public final class CTPhysicsGogglesClient {
         public boolean mouseReleased(double mouseX, double mouseY, int btn) {
             if (mode == OverlayMode.DIAGRAM) {
                 if (pressedHudInteraction != null) {
-                    if ("button".equals(pressedHudInteraction.type())) {
-                        sendHudBoolean(pressedHudInteraction, false);
-                    } else if ("slider".equals(pressedHudInteraction.type())) {
-                        sendHudSlider(pressedHudInteraction, mouseX);
+                    if ("slider".equals(pressedHudInteraction.type())) {
+                        sendHudSlider(pressedHudInteraction, mouseX, mouseY);
                     }
                     pressedHudInteraction = null;
                     return true;

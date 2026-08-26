@@ -8,11 +8,13 @@ package com.rieno.gadgetsandgizmos.compat.computercraft;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.GadgetsPeripheral;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import com.rieno.gadgetsandgizmos.content.ThrusterBearingBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.lua.LuaFunction;
-import dan200.computercraft.api.peripheral.IPeripheral;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 
@@ -24,7 +26,8 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 // Expose bearing pose and attached-thruster control through a stable ComputerCraft API
-public class ThrusterBearingPeripheral implements IPeripheral {
+@PeripheralTypeDoc("thruster_bearing")
+public class ThrusterBearingPeripheral extends GadgetsPeripheral<ThrusterBearingBlockEntity> {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -36,7 +39,6 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Bound block entity
-    private final ThrusterBearingBlockEntity blockEntity;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -48,7 +50,7 @@ public class ThrusterBearingPeripheral implements IPeripheral {
 
     // Initialize the thruster bearing peripheral
     public ThrusterBearingPeripheral(ThrusterBearingBlockEntity blockEntity) {
-        this.blockEntity = blockEntity;
+        super(blockEntity, "thruster_bearing");
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -58,19 +60,6 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
-
-    // Get the type
-    @Override
-    public String getType() {
-        return "thruster_bearing";
-    }
-
-    // Compare this thruster bearing peripheral with another object
-    @Override
-    public boolean equals(IPeripheral other) {
-        return other instanceof ThrusterBearingPeripheral peripheral
-                && peripheral.blockEntity == blockEntity;
-    }
 
     // Get the thrusters
     private Map<String, ThrusterBlockEntity> getThrusters() {
@@ -169,74 +158,98 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Get the name
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getName", signature = "getName(): string",
+            description = "Returns the name.")
     public final String getName() {
         String name = blockEntity.getCustomName();
         return name != null ? name : "";
     }
 
     // Set the name
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setName", signature = "setName(name: string)",
+            description = "Sets the name.")
     public final void setName(String name) {
         blockEntity.setCustomName(name == null || name.isBlank() ? null : name.strip());
     }
 
     // Get the forward signal
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getForwardSignal", signature = "getForwardSignal(): number",
+            description = "Returns the forward signal.")
     public final int getForwardSignal() {
         return blockEntity.getForwardSignal();
     }
 
     // Get the backward signal
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getBackwardSignal", signature = "getBackwardSignal(): number",
+            description = "Returns the backward signal.")
     public final int getBackwardSignal() {
         return blockEntity.getBackwardSignal();
     }
 
     // Get the pivot angle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getPivotAngle", signature = "getPivotAngle(): number",
+            description = "Returns the pivot angle.")
     public final double getPivotAngle() {
         return blockEntity.getCurrentPivotAngleDegrees();
     }
 
     // Get the current angle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getCurrentAngle", signature = "getCurrentAngle(): number",
+            description = "Returns the current angle.")
     public final double getCurrentAngle() {
         return blockEntity.getCurrentPivotAngleDegrees();
     }
 
     // Get the target angle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getTargetAngle", signature = "getTargetAngle(): number",
+            description = "Returns the target angle.")
     public final double getTargetAngle() {
         return blockEntity.getTargetAngleDegrees();
     }
 
     // Get the bearing control mode
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getBearingControlMode", signature = "getBearingControlMode(): string",
+            description = "Returns the bearing control mode.")
     public final String getBearingControlMode() {
         return blockEntity.getControlMode().name().toLowerCase();
     }
 
     // Get the servo input angle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getServoInputAngle", signature = "getServoInputAngle(): number",
+            description = "Returns the servo input angle.")
     public final double getServoInputAngle() {
         return blockEntity.getServoInputAngleDegrees();
     }
 
     // Get the min angle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getMinAngle", signature = "getMinAngle(): number",
+            description = "Returns the min angle.")
     public final double getMinAngle() {
         return blockEntity.getMinAngleDegrees();
     }
 
     // Get the max angle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getMaxAngle", signature = "getMaxAngle(): number",
+            description = "Returns the max angle.")
     public final double getMaxAngle() {
         return blockEntity.getMaxAngleDegrees();
     }
 
     // Set the pivot angle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setPivotAngle", signature = "setPivotAngle(angleDeg: number)",
+            description = "Sets the pivot angle.")
     public final void setPivotAngle(double angleDeg) throws LuaException {
         if (Double.isNaN(angleDeg) || Double.isInfinite(angleDeg)) {
             throw new LuaException("angleDeg must be a finite number");
@@ -245,7 +258,9 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Set the bearing control mode
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setBearingControlMode", signature = "setBearingControlMode(mode: 'auto'|'redstone'|'computer'|'servo')",
+            description = "Sets the bearing control mode.")
     public final void setBearingControlMode(String mode) throws LuaException {
         if (mode == null) {
             throw new LuaException("mode must be 'auto', 'redstone', 'computer' or 'servo'");
@@ -262,7 +277,9 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Set the min angle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setMinAngle", signature = "setMinAngle(angleDeg: number)",
+            description = "Sets the min angle.")
     public final void setMinAngle(double angleDeg) throws LuaException {
         if (Double.isNaN(angleDeg) || Double.isInfinite(angleDeg)) {
             throw new LuaException("angleDeg must be a finite number");
@@ -271,7 +288,9 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Set the max angle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setMaxAngle", signature = "setMaxAngle(angleDeg: number)",
+            description = "Sets the max angle.")
     public final void setMaxAngle(double angleDeg) throws LuaException {
         if (Double.isNaN(angleDeg) || Double.isInfinite(angleDeg)) {
             throw new LuaException("angleDeg must be a finite number");
@@ -280,13 +299,17 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Clear the pivot override
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "clearPivotOverride", signature = "clearPivotOverride()",
+            description = "Clears the pivot override.")
     public final void clearPivotOverride() {
         blockEntity.clearPivotOverride();
     }
 
     // Get the list thrusters
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "listThrusters", signature = "listThrusters(): table",
+            description = "Returns the list thrusters.")
     public final Map<String, Object> listThrusters() {
         Map<String, Object> thrusters = new LinkedHashMap<>();
         for (Map.Entry<String, ThrusterBlockEntity> entry : getThrusters().entrySet()) {
@@ -306,19 +329,25 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Get the thruster count
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getThrusterCount", signature = "getThrusterCount(): number",
+            description = "Returns the thruster count.")
     public final int getThrusterCount() {
         return getThrusters().size();
     }
 
     // Get the owned thrusters
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getOwnedThrusters", signature = "getOwnedThrusters(): string[]",
+            description = "Returns the owned thrusters.")
     public final List<String> getOwnedThrusters() {
         return List.copyOf(getThrusters().keySet());
     }
 
     // Get the ids
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "ids", signature = "ids(): string[]",
+            description = "Returns the ids.")
     public final List<String> ids() {
         return getThrusters().values().stream()
                 .map(blockEntity::getThrusterAlias)
@@ -327,7 +356,9 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Get the network info
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getNetworkInfo", signature = "getNetworkInfo(): table",
+            description = "Returns the network info.")
     public final Map<String, Object> getNetworkInfo() {
         Map<String, ThrusterBlockEntity> thrusters = getThrusters();
         Map<String, Object> aliases = new LinkedHashMap<>();
@@ -345,7 +376,9 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Handle the thruster alias
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "thrusterAlias", signature = "thrusterAlias(id|alias, alias: string)",
+            description = "Handle the thruster alias.")
     public final void thrusterAlias(String thrusterId, String alias) throws LuaException {
         Map<String, ThrusterBlockEntity> thrusters = getThrusters();
         ThrusterBlockEntity thruster = thrusters.get(thrusterId);
@@ -368,14 +401,18 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Set the throttle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setThrottle", signature = "setThrottle(id|'all', throttle: number 0..1 or 0..100)",
+            description = "Sets the throttle.")
     public final void setThrottle(String thrusterId, double throttle) throws LuaException {
         float normalizedThrottle = normalizeThrottle(throttle);
         applyToThrusters(thrusterId, thruster -> thruster.setThrottle(normalizedThrottle));
     }
 
     // Get the throttle
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getThrottle", signature = "getThrottle(id|'all'): number|table",
+            description = "Returns the throttle.")
     public final Object getThrottle(String thrusterId) throws LuaException {
         if ("all".equalsIgnoreCase(thrusterId)) {
             return thrusterValueMap(ThrusterBlockEntity::getThrottle);
@@ -384,7 +421,9 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Get the throttle map
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getThrottleMap", signature = "getThrottleMap(id|'all'): table",
+            description = "Returns the throttle map.")
     public final Map<String, Object> getThrottleMap(String thrusterId) throws LuaException {
         if (thrusterId == null || thrusterId.isBlank() || "all".equalsIgnoreCase(thrusterId.trim())) {
             return thrusterValueMap(ThrusterBlockEntity::getThrottle);
@@ -407,13 +446,17 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Set the enabled
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setEnabled", signature = "setEnabled(id|'all', enabled: boolean)",
+            description = "Sets the enabled.")
     public final void setEnabled(String thrusterId, boolean enabled) throws LuaException {
         applyToThrusters(thrusterId, thruster -> thruster.setEnabled(enabled));
     }
 
     // Check if the bearing is enabled
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isEnabled", signature = "isEnabled(id|'all'): boolean|table",
+            description = "Returns whether the bearing is enabled.")
     public final Object isEnabled(String thrusterId) throws LuaException {
         if ("all".equalsIgnoreCase(thrusterId)) {
             return thrusterValueMap(ThrusterBlockEntity::isEnabled);
@@ -422,7 +465,9 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Get the fuel
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getFuel", signature = "getFuel(id|'all'): number|table",
+            description = "Returns the fuel.")
     public final Object getFuel(String thrusterId) throws LuaException {
         if ("all".equalsIgnoreCase(thrusterId)) {
             return thrusterValueMap(ThrusterBlockEntity::getFuelAmount);
@@ -431,7 +476,9 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Get the fuel capacity
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getFuelCapacity", signature = "getFuelCapacity(id|'all'): number|table",
+            description = "Returns the fuel capacity.")
     public final Object getFuelCapacity(String thrusterId) throws LuaException {
         if ("all".equalsIgnoreCase(thrusterId)) {
             return thrusterValueMap(ThrusterBlockEntity::getFuelCapacity);
@@ -440,7 +487,9 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Get the fuel type
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getFuelType", signature = "getFuelType(id|'all'): string|table",
+            description = "Returns the fuel type.")
     public final Object getFuelType(String thrusterId) throws LuaException {
         if ("all".equalsIgnoreCase(thrusterId)) {
             return thrusterValueMap(ThrusterBlockEntity::getFuelTypeId);
@@ -449,7 +498,9 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Get the burn time seconds
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getBurnTimeSeconds", signature = "getBurnTimeSeconds(id|'all'): number|table",
+            description = "Returns the burn time seconds.")
     public final Object getBurnTimeSeconds(String thrusterId) throws LuaException {
         if ("all".equalsIgnoreCase(thrusterId)) {
             return thrusterValueMap(ThrusterBlockEntity::getEstimatedBurnSeconds);
@@ -458,7 +509,9 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Get the control mode
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getControlMode", signature = "getControlMode(id|'all'): string|table",
+            description = "Returns the control mode.")
     public final Object getControlMode(String thrusterId) throws LuaException {
         if ("all".equalsIgnoreCase(thrusterId)) {
             return thrusterValueMap(thruster -> thruster.getControlMode().name().toLowerCase());
@@ -467,7 +520,9 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Set the control mode
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setControlMode", signature = "setControlMode(id|'all', mode: 'auto'|'redstone'|'computer')",
+            description = "Sets the control mode.")
     public final void setControlMode(String thrusterId, String mode) throws LuaException {
         if (mode == null) {
             throw new LuaException("mode must be 'auto', 'redstone' or 'computer'");
@@ -483,7 +538,9 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Get the thrust
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getThrust", signature = "getThrust(id|'all'): number|table",
+            description = "Returns the thrust.")
     public final Object getThrust(String thrusterId) throws LuaException {
         if ("all".equalsIgnoreCase(thrusterId)) {
             return thrusterValueMap(ThrusterBlockEntity::getThrust);
@@ -492,7 +549,9 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Get the real thrust
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getRealThrust", signature = "getRealThrust(id|'all'): number|table",
+            description = "Returns the real thrust.")
     public final Object getRealThrust(String thrusterId) throws LuaException {
         if ("all".equalsIgnoreCase(thrusterId)) {
             return thrusterValueMap(ThrusterBlockEntity::getRealThrust);
@@ -501,7 +560,9 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Get the lift capacity
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getLiftCapacity", signature = "getLiftCapacity(id|'all'): number|table",
+            description = "Returns the lift capacity.")
     public final Object getLiftCapacity(String thrusterId) throws LuaException {
         if ("all".equalsIgnoreCase(thrusterId)) {
             return thrusterValueMap(ThrusterBlockEntity::getLiftCapacity);
@@ -510,19 +571,25 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Get the total real thrust
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getTotalRealThrust", signature = "getTotalRealThrust(): number",
+            description = "Returns the total real thrust.")
     public final double getTotalRealThrust() {
         return blockEntity.getAssemblyRealThrust();
     }
 
     // Get the total lift capacity
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getTotalLiftCapacity", signature = "getTotalLiftCapacity(): number",
+            description = "Returns the total lift capacity.")
     public final double getTotalLiftCapacity() {
         return blockEntity.getAssemblyLiftCapacity();
     }
 
     // Get the airflow
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getAirflow", signature = "getAirflow(id|'all'): number|table",
+            description = "Returns the airflow.")
     public final Object getAirflow(String thrusterId) throws LuaException {
         if ("all".equalsIgnoreCase(thrusterId)) {
             return thrusterValueMap(ThrusterBlockEntity::getAirflow);
@@ -531,7 +598,9 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Check if the bearing is active
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isActive", signature = "isActive(id|'all'): boolean|table",
+            description = "Returns whether the bearing is active.")
     public final Object isActive(String thrusterId) throws LuaException {
         if ("all".equalsIgnoreCase(thrusterId)) {
             return thrusterValueMap(ThrusterBlockEntity::isActive);
@@ -540,7 +609,9 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Check if soul mode is enabled
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isSoulMode", signature = "isSoulMode(id|'all'): boolean|table",
+            description = "Returns whether soul mode is enabled.")
     public final Object isSoulMode(String thrusterId) throws LuaException {
         if ("all".equalsIgnoreCase(thrusterId)) {
             return thrusterValueMap(ThrusterBlockEntity::isSoulThruster);
@@ -549,7 +620,9 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Set the soul mode
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setSoulMode", signature = "setSoulMode(id|'all', enabled: boolean)",
+            description = "Sets the soul mode.")
     public final void setSoulMode(String thrusterId, boolean enabled) throws LuaException {
         applyToThrusters(thrusterId, thruster -> {
             if (enabled) {
@@ -561,13 +634,17 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Clear the throttle override
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "clearThrottleOverride", signature = "clearThrottleOverride(id|'all')",
+            description = "Clears the throttle override.")
     public final void clearThrottleOverride(String thrusterId) throws LuaException {
         applyToThrusters(thrusterId, ThrusterBlockEntity::clearCcThrottleOverride);
     }
 
     // Get the redstone signal
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getRedstoneSignal", signature = "getRedstoneSignal(id|'all'): number|table",
+            description = "Returns the redstone signal.")
     public final Object getRedstoneSignal(String thrusterId) throws LuaException {
         if ("all".equalsIgnoreCase(thrusterId)) {
             return thrusterValueMap(ThrusterBlockEntity::getSignalStrength);
@@ -576,7 +653,9 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Get the thruster status
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getThrusterStatus", signature = "getThrusterStatus(id|'all'): table",
+            description = "Returns the thruster status.")
     public final Object getThrusterStatus(String thrusterId) throws LuaException {
         if ("all".equalsIgnoreCase(thrusterId)) {
             return thrusterValueMap(thruster -> buildThrusterStatus(null, thruster));
@@ -586,7 +665,9 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Get the status
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getStatus", signature = "getStatus(): table",
+            description = "Returns the status.")
     public final Map<String, Object> getStatus() {
         Map<String, Object> status = new LinkedHashMap<>();
         status.put("facing", getFacing());
@@ -608,19 +689,25 @@ public class ThrusterBearingPeripheral implements IPeripheral {
     }
 
     // Get the facing
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getFacing", signature = "getFacing(): string",
+            description = "Returns the facing.")
     public final String getFacing() {
         return blockEntity.getFacing().name().toLowerCase();
     }
 
     // Get the world facing
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getWorldFacing", signature = "getWorldFacing(): table",
+            description = "Returns the world facing.")
     public final Map<String, Object> getWorldFacing() {
         return ComputerCraftPositionHelper.worldDirection(blockEntity, blockEntity.getFacing());
     }
 
     // Set the facing
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setFacing", signature = "setFacing(direction: string)",
+            description = "Sets the facing.")
     public final void setFacing(String direction) throws LuaException {
         Direction dir;
         try {
@@ -636,121 +723,5 @@ public class ThrusterBearingPeripheral implements IPeripheral {
         if (state.hasProperty(BlockStateProperties.FACING)) {
             level.setBlock(blockEntity.getBlockPos(), state.setValue(BlockStateProperties.FACING, dir), 3);
         }
-    }
-
-    // List the exposed peripheral methods
-    @LuaFunction
-    public final List<String> methods() {
-        return List.of(
-                "getForwardSignal(): number",
-                "getBackwardSignal(): number",
-                "getBearingControlMode(): string",
-                "getServoInputAngle(): number",
-                "getPivotAngle(): number",
-                "getCurrentAngle(): number",
-                "getTargetAngle(): number",
-                "getMinAngle(): number",
-                "getMaxAngle(): number",
-                "setBearingControlMode(mode: 'auto'|'redstone'|'computer'|'servo')",
-                "setPivotAngle(angleDeg: number)",
-                "setMinAngle(angleDeg: number)",
-                "setMaxAngle(angleDeg: number)",
-                "clearPivotOverride()",
-                "listThrusters(): table",
-                "getThrusterCount(): number",
-                "getOwnedThrusters(): string[]",
-                "ids(): string[]",
-                "getNetworkInfo(): table",
-                "thrusterAlias(id|alias, alias: string)",
-                "setThrottle(id|'all', throttle: number 0..1 or 0..100)",
-                "getThrottle(id|'all'): number|table",
-                "getThrottleMap(id|'all'): table",
-                "setEnabled(id|'all', enabled: boolean)",
-                "isEnabled(id|'all'): boolean|table",
-                "getFuel(id|'all'): number|table",
-                "getFuelCapacity(id|'all'): number|table",
-                "getFuelType(id|'all'): string|table",
-                "getBurnTimeSeconds(id|'all'): number|table",
-                "getControlMode(id|'all'): string|table",
-                "setControlMode(id|'all', mode: 'auto'|'redstone'|'computer')",
-                "getThrust(id|'all'): number|table",
-                "getRealThrust(id|'all'): number|table",
-                "getLiftCapacity(id|'all'): number|table",
-                "getTotalRealThrust(): number",
-                "getTotalLiftCapacity(): number",
-                "getAirflow(id|'all'): number|table",
-                "isActive(id|'all'): boolean|table",
-                "isSoulMode(id|'all'): boolean|table",
-                "setSoulMode(id|'all', enabled: boolean)",
-                "clearThrottleOverride(id|'all')",
-                "getRedstoneSignal(id|'all'): number|table",
-                "getThrusterStatus(id|'all'): table",
-                "getFacing(): string",
-                "getWorldFacing(): table",
-                "setFacing(direction: string)",
-                "getStatus(): table",
-                "help(method?: string): string|table"
-        );
-    }
-
-    // Get the help
-    @LuaFunction
-    public final Object help(Optional<String> method) throws LuaException {
-        Map<String, String> docs = Map.ofEntries(
-                Map.entry("getForwardSignal", "getForwardSignal() -> redstone signal on facing side"),
-                Map.entry("getBackwardSignal", "getBackwardSignal() -> redstone signal on opposite side"),
-                Map.entry("getPivotAngle", "getPivotAngle() -> current physical pivot angle in degrees"),
-                Map.entry("getCurrentAngle", "getCurrentAngle() -> current physical pivot angle in degrees"),
-                Map.entry("getTargetAngle", "getTargetAngle() -> requested pivot target in degrees"),
-                Map.entry("getMinAngle", "getMinAngle() -> current minimum allowed pivot angle in degrees"),
-                Map.entry("getMaxAngle", "getMaxAngle() -> current maximum allowed pivot angle in degrees"),
-                Map.entry("setPivotAngle", "setPivotAngle(angleDeg) -> enable computer control and set pivot angle"),
-                Map.entry("setMinAngle", "setMinAngle(angleDeg) -> set the minimum allowed pivot angle in degrees"),
-                Map.entry("setMaxAngle", "setMaxAngle(angleDeg) -> set the maximum allowed pivot angle in degrees"),
-                Map.entry("clearPivotOverride", "clearPivotOverride() -> return to redstone control"),
-                Map.entry("listThrusters", "listThrusters() -> table of attached thruster ids and quick telemetry"),
-                Map.entry("getThrusterCount", "getThrusterCount() -> number of thrusters currently attached to this bearing"),
-                Map.entry("getOwnedThrusters", "getOwnedThrusters() -> list of thruster ids currently owned by this bearing"),
-                Map.entry("ids", "ids() -> list of thruster aliases for the thrusters currently attached to this bearing"),
-                Map.entry("getNetworkInfo", "getNetworkInfo() -> table containing owned thrusters, aliases, and quick telemetry"),
-                Map.entry("thrusterAlias", "thrusterAlias(id|alias, alias) -> assign or clear a persistent alias for a thruster"),
-                Map.entry("setThrottle", "setThrottle(id|'all', throttle) -> set thruster throttle; accepts 0..1 or 0..100"),
-                Map.entry("getThrottle", "getThrottle(id|'all') -> throttle for one thruster or id->value table"),
-                Map.entry("getThrottleMap", "getThrottleMap(id|'all') -> always returns a table of thruster id -> throttle"),
-                Map.entry("setEnabled", "setEnabled(id|'all', enabled) -> enable or disable attached thrusters"),
-                Map.entry("isEnabled", "isEnabled(id|'all') -> enabled state for one thruster or id->value table"),
-                Map.entry("getFuel", "getFuel(id|'all') -> current fuel amount for one thruster or id->value table"),
-                Map.entry("getFuelCapacity", "getFuelCapacity(id|'all') -> fuel capacity for one thruster or id->value table"),
-                Map.entry("getFuelType", "getFuelType(id|'all') -> active fuel id for one thruster or id->value table"),
-                Map.entry("getBurnTimeSeconds", "getBurnTimeSeconds(id|'all') -> remaining burn time for one thruster or id->value table"),
-                Map.entry("getControlMode", "getControlMode(id|'all') -> control mode for one thruster or id->value table"),
-                Map.entry("setControlMode", "setControlMode(id|'all', mode) -> set auto/redstone/computer control mode"),
-                Map.entry("getThrust", "getThrust(id|'all') -> thrust for one thruster or id->value table"),
-                Map.entry("getRealThrust", "getRealThrust(id|'all') -> scaled real thrust for one thruster or id->value table"),
-                Map.entry("getLiftCapacity", "getLiftCapacity(id|'all') -> lift capacity for one thruster or id->value table"),
-                Map.entry("getTotalRealThrust", "getTotalRealThrust() -> summed real thrust across all thrusters attached to this bearing"),
-                Map.entry("getTotalLiftCapacity", "getTotalLiftCapacity() -> summed assembly lift capacity derived from total real thrust and local gravity"),
-                Map.entry("getAirflow", "getAirflow(id|'all') -> airflow for one thruster or id->value table"),
-                Map.entry("isActive", "isActive(id|'all') -> active state for one thruster or id->value table"),
-                Map.entry("isSoulMode", "isSoulMode(id|'all') -> soul mode state for one thruster or id->value table"),
-                Map.entry("setSoulMode", "setSoulMode(id|'all', enabled) -> switch normal/soul mode"),
-                Map.entry("clearThrottleOverride", "clearThrottleOverride(id|'all') -> return thruster control to redstone"),
-                Map.entry("getRedstoneSignal", "getRedstoneSignal(id|'all') -> redstone strength for one thruster or id->value table"),
-                Map.entry("getThrusterStatus", "getThrusterStatus(id|'all') -> full telemetry table for one thruster or all"),
-                Map.entry("getFacing", "getFacing() -> current local block facing"),
-                Map.entry("getWorldFacing", "getWorldFacing() -> projected world-space facing vector"),
-                Map.entry("setFacing", "setFacing(direction) -> rotate block facing"),
-                Map.entry("getStatus", "getStatus() -> table with bearing telemetry plus attached thruster ids"),
-                Map.entry("methods", "methods() -> list of all callable peripheral methods"),
-                Map.entry("help", "help() -> all docs, help('name') -> one entry")
-        );
-        if (method.isEmpty()) {
-            return docs;
-        }
-        String key = method.get();
-        if (!docs.containsKey(key)) {
-            throw new LuaException("unknown method '" + key + "'");
-        }
-        return docs.get(key);
     }
 }

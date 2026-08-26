@@ -216,7 +216,7 @@ public final class PortableContraptionControllerRuntime {
                 activateLectern(player.level(), bindingPos, true);
                 State state = LECTERN_ACTIVE.get(lecternKey(player.level(), bindingPos));
                 if (state != null && state.controller instanceof AdvancedContraptionControllerBlockEntity controller) {
-                    controller.handleHudInteraction(nodeId, interactionId, val);
+                    controller.handleHudElementInteraction(nodeId, interactionId, val);
                     tickActiveLectern(player.level(), bindingPos, state);
                     return;
                 }
@@ -239,7 +239,7 @@ public final class PortableContraptionControllerRuntime {
                 ACTIVE.computeIfAbsent(player.getUUID(), ignored -> new ArrayList<>()).add(state);
             }
             if (state.controller instanceof AdvancedContraptionControllerBlockEntity controller) {
-                controller.handleHudInteraction(nodeId, interactionId, val);
+                controller.handleHudElementInteraction(nodeId, interactionId, val);
                 tickActiveController(player, state);
             }
             return;

@@ -8,6 +8,9 @@ package com.rieno.gadgetsandgizmos.compat.computercraft;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.DocumentedPeripheral;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
+import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import com.rieno.gadgetsandgizmos.content.UniversalDisplayAdapterBlockEntity;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.lua.LuaFunction;
@@ -26,7 +29,8 @@ import java.util.Map;
 import java.util.WeakHashMap;
 
 // Expose Universal Display Adapter controls and telemetry to ComputerCraft
-public final class UniversalDisplayAdapterPeripheral extends TermMethods implements IPeripheral {
+@PeripheralTypeDoc("monitor")
+public final class UniversalDisplayAdapterPeripheral extends TermMethods implements DocumentedPeripheral {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -80,7 +84,9 @@ public final class UniversalDisplayAdapterPeripheral extends TermMethods impleme
     }
 
     // Set the text scale
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setTextScale", signature = "setTextScale(requested: number)",
+            description = "Sets the text scale.")
     public final void setTextScale(double requested) throws LuaException {
         if (!Double.isFinite(requested) || requested < 0.5D || requested > 5.0D) {
             throw new LuaException("Expected number in range 0.5-5");
@@ -91,7 +97,9 @@ public final class UniversalDisplayAdapterPeripheral extends TermMethods impleme
     }
 
     // Get the text scale
-    @LuaFunction
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getTextScale", signature = "getTextScale(): number",
+            description = "Returns the text scale.")
     public final double getTextScale() {
         return state().textScale() * 0.5D;
     }
