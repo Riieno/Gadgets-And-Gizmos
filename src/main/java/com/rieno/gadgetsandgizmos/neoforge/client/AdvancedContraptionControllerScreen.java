@@ -699,6 +699,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private int projectionGraphFingerprint;
     // Current projected mouse button
     private int projectedMouseButton = GLFW.GLFW_MOUSE_BUTTON_LEFT;
+    // Define Modal Enum
+    private enum tModals{
+        LINKER, SHARE, TOOLS
+    }
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -4750,6 +4754,39 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
     }
 
+    // Switch Modals
+    private boolean selectModal(tModals req){
+        return switch(req){
+            case LINKER -> setLinkerOpen(!linkerOpen);
+            case SHARE -> {
+                if(shareModalOpen){
+                    setShareModalOpen(false);
+                    yield true;
+                }
+                if(linkerOpen && !setLinkerOpen(false)){
+                    yield false;
+                }
+                setShareModalOpen(true);
+                yield shareModalOpen;
+            }
+            case TOOLS -> {
+                if(toolsMenuOpen){
+                    toolsMenuOpen = false;
+                    yield true;
+                }
+                if(frequencyModalOpen && !closeFrequencyEditor()){
+                    yield false;
+                }
+                if(linkerOpen && !setLinkerOpen(false)){
+                    yield false;
+                }
+                setShareModalOpen(false);
+                toolsMenuOpen = true;
+                yield true;
+            }
+        };
+    }
+
     // Clamp the linker window
     private void clampLinkerWindow() {
         int maxX = Math.max(layoutLeft(), layoutRight() - LINKER_MODAL_WIDTH);
@@ -5339,6 +5376,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle mouse clicked
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (mouseY >= 5 && mouseY < 23 && super.mouseClicked(mouseX, mouseY, button)) return true;
+
         // ------------------------------------OVERLAY INPUT------------------------------------
 
         if (hudOpen) {
