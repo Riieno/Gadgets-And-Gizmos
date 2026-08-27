@@ -13,6 +13,7 @@ import com.rieno.gadgetsandgizmos.lib.control.OrientationPayload;
 import com.rieno.gadgetsandgizmos.lib.control.OrientationTarget;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
 import com.rieno.gadgetsandgizmos.lib.kinetics.KineticGraphHelper;
+import com.rieno.gadgetsandgizmos.lib.kinetics.HeldAngleKineticGraph;
 import com.rieno.gadgetsandgizmos.lib.kinetics.ServoMotionController;
 import com.rieno.gadgetsandgizmos.lib.kinetics.ServoMotionController.ServoMotionConfig;
 import com.rieno.gadgetsandgizmos.lib.kinetics.SingleFaceRotationConfiguration;
@@ -1207,15 +1208,6 @@ public class BiDirectionalGearboxBlockEntity extends SplitShaftBlockEntity imple
         return getSpeed();
     }
 
-    // Get the rotation angle offset
-    @Override
-    public int getRotationAngleOffset(Direction.Axis axis) {
-        if (!angleControlActive || axis != getPrimaryLaneAxis()) {
-            return super.getRotationAngleOffset(axis);
-        }
-        return Math.round((float) ((angleNorth + angleSouth) * 0.5D));
-    }
-
     // Get the east west speed
     public float getEastWestSpeed() {
         if (usesPassthroughSplitKinetics()) {
@@ -1268,9 +1260,10 @@ public class BiDirectionalGearboxBlockEntity extends SplitShaftBlockEntity imple
 
     // Apply the servo face controllers
     private void applyServoFaceControllers(Level level) {
-        Set<BlockPos> claimedTargets = new HashSet<>();
+        Set<BlockPos> heldAngleTargets = new HashSet<>();
+        Set<BlockPos> legacyAcceptorTargets = new HashSet<>();
         for (ServoFaceController controller : servoControllers) {
-            controller.apply(level, claimedTargets);
+            controller.apply(level, heldAngleTargets, legacyAcceptorTargets);
         }
     }
 
@@ -1645,6 +1638,8 @@ public class BiDirectionalGearboxBlockEntity extends SplitShaftBlockEntity imple
         private final Direction face;
         // Generated source
         private final ServoGeneratedSource generatedSource;
+        // Shared held-angle output graph
+        private final HeldAngleKineticGraph heldAngleGraph = new HeldAngleKineticGraph();
 
         // Motion
         private final ServoMotionController motion = new ServoMotionController(new ServoMotionConfig(
@@ -1747,6 +1742,7 @@ public class BiDirectionalGearboxBlockEntity extends SplitShaftBlockEntity imple
         // Stop the servo face
         private void stop(Level level) {
             stopMotion();
+            heldAngleGraph.clear(level, BiDirectionalGearboxBlockEntity.this::syncAngleDrivenBlockEntity);
             clearCachedTargets();
         }
 
@@ -1758,26 +1754,39 @@ public class BiDirectionalGearboxBlockEntity extends SplitShaftBlockEntity imple
         }
 
         // Apply the servo face
-        private void apply(Level level, Set<BlockPos> claimedTargets) {
+        private void apply(Level level, Set<BlockPos> heldAngleTargets, Set<BlockPos> legacyAcceptorTargets) {
             KineticBlockEntity seedTarget = getFaceSeedTarget(face);
             float targetAngle = (float) getFaceAngle(face);
 
-            if (seedTarget == null || claimedTargets.contains(seedTarget.getBlockPos())) {
+            if (seedTarget == null || heldAngleTargets.contains(seedTarget.getBlockPos())) {
                 motion.snapTo(targetAngle);
                 stopMotion();
+                heldAngleGraph.apply(level, null, 0.0f, heldAngleTargets,
+                        target -> false, BiDirectionalGearboxBlockEntity.this::syncAngleDrivenBlockEntity);
                 clearCachedTargets();
                 return;
             }
 
             updateMotion(targetAngle);
-            refreshTargetCache(level, seedTarget, claimedTargets);
-            if (hasClaimedTargetConflict(claimedTargets)) {
+            heldAngleGraph.apply(
+                    level,
+                    seedTarget,
+                    getOutputAngle(),
+                    heldAngleTargets,
+                    target -> target == generatedSource
+                            || target == BiDirectionalGearboxBlockEntity.this
+                            || target == eastWestLane
+                            || isMechanicalCrafter(target),
+                    BiDirectionalGearboxBlockEntity.this::syncAngleDrivenBlockEntity);
+
+            refreshTargetCache(level, seedTarget, legacyAcceptorTargets);
+            if (hasClaimedTargetConflict(legacyAcceptorTargets)) {
                 motion.snapTo(targetAngle);
                 stopMotion();
                 clearCachedTargets();
                 return;
             }
-            claimCachedTargets(claimedTargets);
+            claimCachedTargets(legacyAcceptorTargets);
             applyCachedTargets(level);
             generatedSource.updateGeneratedRotation();
         }
@@ -2114,15 +2123,6 @@ public class BiDirectionalGearboxBlockEntity extends SplitShaftBlockEntity imple
         @Override
         public float getRotationSpeedModifier(Direction face) {
             return parent.getEastWestLaneModifier(face);
-        }
-
-        // Get the rotation angle offset
-        @Override
-        public int getRotationAngleOffset(Direction.Axis axis) {
-            if (!parent.angleControlActive || axis != parent.getSecondaryLaneAxis()) {
-                return super.getRotationAngleOffset(axis);
-            }
-            return Math.round((float) ((parent.angleEast + parent.angleWest) * 0.5D));
         }
 
         // Get the lane modifier

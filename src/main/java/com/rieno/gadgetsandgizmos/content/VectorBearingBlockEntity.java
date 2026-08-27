@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
+import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedPreciseAngleCompat;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDataProvider;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.lib.control.AnalogueControlChannel;
@@ -1146,27 +1147,26 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
             return shaftAngleDegrees;
         }
 
-        long now = level.getGameTime();
-        if (!shaftAngleInitialized) {
+        double heldAngle = KineticAngleHelper.getHeldRotationAngleDegrees(this, getBearingFacing().getAxis());
+        if (!Double.isNaN(heldAngle)) {
+            shaftAngleDegrees = heldAngle;
             shaftAngleInitialized = true;
-            shaftAngleDegrees = KineticAngleHelper.normalizeDegrees(
-                    getRotationAngleOffset(getBearingFacing().getAxis()));
-            lastShaftSampleTick = now;
-            return shaftAngleDegrees;
-        }
-        if (lastShaftSampleTick == Long.MIN_VALUE) {
-            lastShaftSampleTick = now;
+            lastShaftSampleTick = level.getGameTime();
             return shaftAngleDegrees;
         }
 
-        long deltaTicks = Math.max(0L, now - lastShaftSampleTick);
-        if (deltaTicks > 0L) {
-            double delta = getSignedAngularStep() * deltaTicks;
-            if (Math.abs(delta) > 1.0E-6D) {
-                shaftAngleDegrees = KineticAngleHelper.normalizeDegrees(shaftAngleDegrees + delta);
-            }
-            lastShaftSampleTick = now;
+        double torsionSpringAngle = SimulatedPreciseAngleCompat.getTorsionSpringOutputAngleDegrees(this);
+        if (!Double.isNaN(torsionSpringAngle)) {
+            shaftAngleDegrees = torsionSpringAngle;
+            shaftAngleInitialized = true;
+            lastShaftSampleTick = level.getGameTime();
+            return shaftAngleDegrees;
         }
+
+        shaftAngleDegrees = KineticAngleHelper.getAbsoluteRotationAngleDegrees(
+                this, getBearingFacing().getAxis());
+        shaftAngleInitialized = true;
+        lastShaftSampleTick = level.getGameTime();
         return shaftAngleDegrees;
     }
 
