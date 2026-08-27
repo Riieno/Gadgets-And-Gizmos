@@ -2758,12 +2758,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
             int col = group.contains("Color") ? group.getInt("Color") : 0xFF5D9FE3;
             graphics.fill(x, y, x + w, y + h, (col & 0x00FFFFFF) | 0x26000000);
-            graphics.fill(x, y, x + w, y + Math.max(14, (int) (18 * zoom)), (col & 0x00FFFFFF) | 0x77000000);
+            int titleHeight = Math.max(1, (int) Math.round(18 * zoom));
+            int titleOffset = Math.max(1, (int) Math.round(5 * zoom));
+            graphics.fill(x, y, x + w, y + titleHeight, (col & 0x00FFFFFF) | 0x77000000);
             graphics.renderOutline(x, y, w, h, group.getString("Id").equals(selectedGroup) ? 0xFFFFFFFF : col);
-            drawNodeString(graphics, group.getString("Title").isBlank() ? "Comment" : group.getString("Title"),
-                    x + 5, y + 5, 0xFFFFFFFF);
+            String title = group.getString("Title").isBlank() ? "Comment" : group.getString("Title");
+            drawNodeString(graphics, title, x + titleOffset, y + titleOffset, 0xFFFFFFFF);
             if (group.getString("Id").equals(selectedGroup)) {
-                graphics.fill(x + w - 8, y + h - 8, x + w, y + h, 0xFFFFFFFF);
+                int handleSize = Math.max(1, (int) Math.round(8 * zoom));
+                graphics.fill(x + w - handleSize, y + h - handleSize, x + w, y + h, 0xFFFFFFFF);
             }
         }
     }
@@ -5562,7 +5565,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 int gy = screenY(group.getDouble("Y"));
                 int gw = (int) (group.getDouble("Width") * zoom);
                 int gh = (int) (group.getDouble("Height") * zoom);
-                if (mouseX >= gx + gw - 12 && mouseY >= gy + gh - 12) resizingGroup = selectedGroup;
+                int handleSize = Math.max(1, (int) Math.round(12 * zoom));
+                if (mouseX >= gx + gw - handleSize && mouseY >= gy + gh - handleSize) resizingGroup = selectedGroup;
                 else draggingGroup = selectedGroup;
                 syncInspector();
                 return true;
