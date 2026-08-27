@@ -8,15 +8,15 @@ package com.rieno.gadgetsandgizmos.content.advanced;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
-import com.mojang.logging.LogUtils;
-import com.rieno.gadgetsandgizmos.compat.computed.ComputedEventCompat;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEntity;
+import com.rieno.gadgetsandgizmos.lib.namedevents.NamedEvent;
+import com.rieno.gadgetsandgizmos.lib.namedevents.NamedEventBus;
+import com.rieno.gadgetsandgizmos.lib.namedevents.NamedEventSource;
 import com.simibubi.create.infrastructure.config.AllConfigs;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.Vec3;
-import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -24,7 +24,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 
-// Queue named graph events and wake only listeners for that event
+// Queue named graph events and bridge them through the shared transport bus
 public final class AdvancedControllerNamedEventBus {
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -34,11 +34,10 @@ public final class AdvancedControllerNamedEventBus {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    private static final Logger LOGGER = LogUtils.getLogger();
-
+    private static final String TRANSPORT_ID = "gadgetsandgizmos:acc";
     private static final Map<MinecraftServer, Set<AdvancedContraptionControllerBlockEntity>> CONTROLLERS =
             new WeakHashMap<>();
-
+    private static NamedEventBus.Subscription transportSubscription;
     private static ExternalBridge externalBridge;
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -59,6 +58,7 @@ public final class AdvancedControllerNamedEventBus {
                 || controller.getLevel().isClientSide || controller.getLevel().getServer() == null) {
             return;
         }
+        installTransport();
         CONTROLLERS.computeIfAbsent(controller.getLevel().getServer(),
                 ignored -> Collections.newSetFromMap(new WeakHashMap<>())).add(controller);
         if (externalBridge != null) {
@@ -79,23 +79,25 @@ public final class AdvancedControllerNamedEventBus {
         }
     }
 
-    // Install the optional external named event bridge
+    // Install the ACC endpoint on the shared named event transport bus
+    private static synchronized void installTransport() {
+        if (transportSubscription == null) {
+            transportSubscription = NamedEventBus.subscribe(TRANSPORT_ID,
+                    AdvancedControllerNamedEventBus::receive);
+        }
+    }
+
+    // Install one optional controller endpoint bridge for physical transport registration
     public static synchronized void installExternalBridge(ExternalBridge bridge) {
-        if (bridge == null || externalBridge == bridge) {
+        if (externalBridge == bridge) {
             return;
         }
         if (externalBridge != null) {
-            for (Set<AdvancedContraptionControllerBlockEntity> controllers : CONTROLLERS.values()) {
-                for (AdvancedContraptionControllerBlockEntity controller : controllers) {
-                    externalBridge.unregister(controller);
-                }
-            }
+            CONTROLLERS.values().forEach(controllers -> controllers.forEach(externalBridge::unregister));
         }
         externalBridge = bridge;
-        for (Set<AdvancedContraptionControllerBlockEntity> controllers : CONTROLLERS.values()) {
-            for (AdvancedContraptionControllerBlockEntity controller : controllers) {
-                bridge.register(controller);
-            }
+        if (bridge != null) {
+            CONTROLLERS.values().forEach(controllers -> controllers.forEach(bridge::register));
         }
     }
 
@@ -116,53 +118,51 @@ public final class AdvancedControllerNamedEventBus {
     // Publish the advanced controller named event bus
     public static void publish(AdvancedContraptionControllerBlockEntity src, String name,
                                AdvancedGraphDocument.Value data, int maximumDistance) {
-        if (src == null || src.getLevel() == null || src.getLevel().getServer() == null
-                || name == null || name.isBlank()) {
+        if (!valid(src) || name == null || name.isBlank()) {
             return;
         }
-        MinecraftServer server = src.getLevel().getServer();
         int configuredMaximum = Math.max(1, AllConfigs.server().logistics.linkRange.get());
         int distance = Math.max(0, Math.min(maximumDistance, configuredMaximum));
-        Vec3 sourcePosition = src.namedControllerEventPosition();
-        publishToControllers(src, name, data, distance, sourcePosition);
-        ComputedEventCompat.publishFromGadgets(src, name, data, distance);
-        publishToExternalBridge(src, name, data, distance);
+        NamedEventBus.publish(NamedEvent.of(source(src), name,
+                GraphRuntime.toLibraryValue(normalize(data)), distance));
     }
 
-    // Publish the external
+    // Publish a named event from an external block entity transport
     public static void publishExternal(BlockEntity src, String name,
                                        AdvancedGraphDocument.Value data) {
-        if (src == null || src.getLevel() == null || src.getLevel().getServer() == null
-                || name == null || name.isBlank()) {
+        if (!valid(src) || name == null || name.isBlank()) {
             return;
         }
-        Vec3 sourcePosition = SimulatedHelper.toGlobalWorldPosition(
+        Vec3 position = SimulatedHelper.toGlobalWorldPosition(
                 src, Vec3.atCenterOf(src.getBlockPos()));
-        publishToControllers(src, name, data, 0, sourcePosition);
+        NamedEventSource source = new NamedEventSource(src.getLevel().getServer(),
+                src.getLevel().dimension(), position, endpointId(src));
+        NamedEventBus.publish(NamedEvent.of(source, name,
+                GraphRuntime.toLibraryValue(normalize(data)), 0));
     }
 
-    // Publish the controllers
-    private static void publishToControllers(BlockEntity src, String name,
-                                             AdvancedGraphDocument.Value data, int distance,
-                                             Vec3 sourcePosition) {
-        MinecraftServer server = src.getLevel().getServer();
+    // Receive one shared named event at every matching ACC graph
+    private static void receive(NamedEvent event) {
+        if (event == null || event.source() == null) {
+            return;
+        }
+        MinecraftServer server = event.source().server();
         ArrayList<AdvancedContraptionControllerBlockEntity> recipients;
         synchronized (AdvancedControllerNamedEventBus.class) {
             Set<AdvancedContraptionControllerBlockEntity> registered = CONTROLLERS.get(server);
             recipients = registered == null ? new ArrayList<>() : new ArrayList<>(registered);
         }
+        AdvancedGraphDocument.Value data = GraphRuntime.fromLibraryValue(event.data());
         for (AdvancedContraptionControllerBlockEntity controller : recipients) {
-            if (controller == null || controller.isRemoved()
-                    || controller.getLevel() == null || controller.getLevel().getServer() != server) {
+            if (!valid(controller) || controller.getLevel().getServer() != server) {
                 continue;
             }
-            boolean sameDimension = src.getLevel().dimension().equals(controller.getLevel().dimension());
-            if (!withinDistance(sameDimension, sourcePosition,
-                    controller.namedControllerEventPosition(), distance)) {
+            boolean sameDimension = event.source().dimension().equals(controller.getLevel().dimension());
+            if (!withinDistance(sameDimension, event.source().position(),
+                    controller.namedControllerEventPosition(), event.maximumDistance())) {
                 continue;
             }
-            controller.receiveNamedControllerEvent(name,
-                    data == null ? AdvancedGraphDocument.Value.number(0) : data);
+            controller.receiveNamedControllerEvent(event.name(), data);
         }
     }
 
@@ -178,32 +178,35 @@ public final class AdvancedControllerNamedEventBus {
         return src.distanceToSqr(recipient) <= maximumDistanceSquared;
     }
 
-    // Publish the named controller event to the optional external bridge
-    private static void publishToExternalBridge(AdvancedContraptionControllerBlockEntity src, String name,
-                                                AdvancedGraphDocument.Value data, int maximumDistance) {
-        ExternalBridge bridge;
-        synchronized (AdvancedControllerNamedEventBus.class) {
-            bridge = externalBridge;
-        }
-        if (bridge == null) {
-            return;
-        }
-        AdvancedGraphDocument.Value value = data == null
-                ? AdvancedGraphDocument.Value.number(0) : data;
-        try {
-            bridge.publish(src, name, value, maximumDistance);
-        } catch (RuntimeException err) {
-            LOGGER.warn("[G&G][ACC] Could not deliver a named event to the external bridge", err);
-        }
+    // Normalize nullable advanced graph data for the reusable library boundary
+    private static AdvancedGraphDocument.Value normalize(AdvancedGraphDocument.Value data) {
+        return data == null ? AdvancedGraphDocument.Value.number(0) : data;
     }
 
-    // Connect one optional transport without introducing its classes into the graph runtime
+    // Create one stable endpoint id for a block entity publisher
+    private static String endpointId(BlockEntity source) {
+        return source.getType().builtInRegistryHolder().key().location()
+                + "/" + source.getLevel().dimension().location()
+                + "/" + source.getBlockPos().asLong();
+    }
+
+    // Create a shared named event source for an ACC graph
+    private static NamedEventSource source(AdvancedContraptionControllerBlockEntity controller) {
+        return new NamedEventSource(controller.getLevel().getServer(),
+                controller.getLevel().dimension(), controller.namedControllerEventPosition(),
+                endpointId(controller));
+    }
+
+    // Check if one block entity can publish a server named event
+    private static boolean valid(BlockEntity source) {
+        return source != null && !source.isRemoved() && source.getLevel() != null
+                && !source.getLevel().isClientSide && source.getLevel().getServer() != null;
+    }
+
+    // Register physical endpoint receivers without coupling the shared event transport to an optional mod
     public interface ExternalBridge {
         void register(AdvancedContraptionControllerBlockEntity controller);
 
         void unregister(AdvancedContraptionControllerBlockEntity controller);
-
-        void publish(AdvancedContraptionControllerBlockEntity controller, String name,
-                     AdvancedGraphDocument.Value data, int maximumDistance);
     }
 }

@@ -360,7 +360,7 @@ return {
     },
     ["publishNamedEvent"] = {
       signature = "publishNamedEvent(name: string, data: any, [maximumDistance: number])",
-      description = "Publishes a Named Event to ACC graphs and optional CC rednet listeners.",
+      description = "Publishes a Named Event through ACC graphs, installed shared transports and optional CC rednet listeners.",
       since = "2",
       deprecatedBy = "",
       examples = {},

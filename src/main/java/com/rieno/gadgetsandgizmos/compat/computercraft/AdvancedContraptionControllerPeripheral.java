@@ -189,7 +189,7 @@ public class AdvancedContraptionControllerPeripheral extends AnalogueContraption
     // Publish the named controller event
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "publishNamedEvent", signature = "publishNamedEvent(name: string, data: any, [maximumDistance: number])",
-            description = "Publishes a Named Event to ACC graphs and optional CC rednet listeners.")
+            description = "Publishes a Named Event through ACC graphs, installed shared transports and optional CC rednet listeners.")
     public final void publishNamedEvent(String name, Object data,
                                         Optional<Integer> maximumDistance) throws LuaException {
         advanced.publishNamedControllerEvent(namedEventName(name), namedEventData(data),

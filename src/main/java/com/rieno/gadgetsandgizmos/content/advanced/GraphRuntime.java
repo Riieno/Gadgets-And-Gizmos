@@ -1867,7 +1867,7 @@ public final class GraphRuntime {
             case "round" -> AdvancedGraphDocument.Value.number(Math.round(frame.value(node, "value", operations).asNumber()));
             case "floor" -> AdvancedGraphDocument.Value.number(Math.floor(frame.value(node, "value", operations).asNumber()));
             case "ceil" -> AdvancedGraphDocument.Value.number(Math.ceil(frame.value(node, "value", operations).asNumber()));
-            case "x-1" -> AdvancedGraphDocument.Value.number(-frame.value(node, "value", operations).asNumber());
+            case "-x" -> AdvancedGraphDocument.Value.number(-frame.value(node, "value", operations).asNumber());
             case "lerp" -> {
                 if (!recentlyPulsed(node)) {
                     yield AdvancedGraphDocument.Value.number(0);

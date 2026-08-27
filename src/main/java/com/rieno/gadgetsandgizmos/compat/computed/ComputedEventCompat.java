@@ -10,9 +10,11 @@ package com.rieno.gadgetsandgizmos.compat.computed;
 
 import com.mojang.logging.LogUtils;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
-import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEntity;
-import com.rieno.gadgetsandgizmos.content.advanced.AdvancedControllerNamedEventBus;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
+import com.rieno.gadgetsandgizmos.lib.namedevents.NamedEvent;
+import com.rieno.gadgetsandgizmos.lib.namedevents.NamedEventBus;
+import com.rieno.gadgetsandgizmos.lib.namedevents.NamedEventSource;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NumericTag;
@@ -64,6 +66,7 @@ public final class ComputedEventCompat {
 
     // Shared Lua API
     private static volatile LuaApi luaApi;
+    private static NamedEventBus.Subscription transportSubscription;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -91,6 +94,7 @@ public final class ComputedEventCompat {
             return;
         }
         synchronized (COMPUTERS) {
+            installTransport();
             COMPUTERS.put(computer, new WeakReference<>(scheduler));
         }
     }
@@ -103,13 +107,6 @@ public final class ComputedEventCompat {
         synchronized (COMPUTERS) {
             COMPUTERS.remove(computer);
         }
-    }
-
-    // Publish the gadgets
-    public static void publishFromGadgets(AdvancedContraptionControllerBlockEntity src,
-                                          String name, AdvancedGraphDocument.Value data,
-                                          int maximumDistance) {
-        publishToComputed(src, name, data, maximumDistance, null);
     }
 
     // Forward the computed
@@ -136,8 +133,8 @@ public final class ComputedEventCompat {
                         || src.getLevel().getServer() != server) {
                     return;
                 }
-                AdvancedControllerNamedEventBus.publishExternal(src, name, data);
-                publishToComputed(src, name, data, 0, src);
+                NamedEventBus.publish(NamedEvent.of(source(src), name,
+                        ComputedEventCompat.toLibraryValue(data), 0));
             };
             if (server.isSameThread()) {
                 forward.run();
@@ -151,22 +148,22 @@ public final class ComputedEventCompat {
         }
     }
 
-    // Publish the computed
-    private static void publishToComputed(BlockEntity src, String name,
-                                          AdvancedGraphDocument.Value data, int maximumDistance,
-                                          BlockEntity excludedComputer) {
-        String normalizedName = normalizeEventName(name);
-        if (src == null || src.getLevel() == null || src.getLevel().getServer() == null
-                || normalizedName.isBlank()) {
+    // Install the Computed endpoint on the shared named event transport bus
+    private static synchronized void installTransport() {
+        if (transportSubscription == null) {
+            transportSubscription = NamedEventBus.subscribe("computed:event_bus",
+                    ComputedEventCompat::publishToComputed);
+        }
+    }
+
+    // Publish one shared named event to every matching Computed computer
+    private static void publishToComputed(NamedEvent event) {
+        if (event == null || event.source() == null) {
             return;
         }
-        MinecraftServer server = src.getLevel().getServer();
-        AdvancedGraphDocument.Value copiedData = data == null
-                ? AdvancedGraphDocument.Value.number(0)
-                : new AdvancedGraphDocument.Value(data.type(), data.payload());
-        int distance = Math.max(0, maximumDistance);
+        MinecraftServer server = event.source().server();
         Runnable publish = () -> publishToComputedNow(
-                src, server, normalizedName, copiedData, distance, excludedComputer);
+                event, server);
         if (server.isSameThread()) {
             publish.run();
         } else {
@@ -175,35 +172,31 @@ public final class ComputedEventCompat {
     }
 
     // Publish the computed now
-    private static void publishToComputedNow(BlockEntity src, MinecraftServer server,
-                                             String name, AdvancedGraphDocument.Value data,
-                                             int maximumDistance, BlockEntity excludedComputer) {
-        if (src.isRemoved() || src.getLevel() == null
-                || src.getLevel().getServer() != server) {
-            return;
-        }
-        Vec3 sourcePosition = SimulatedHelper.toGlobalWorldPosition(
-                src, Vec3.atCenterOf(src.getBlockPos()));
+    private static void publishToComputedNow(NamedEvent event, MinecraftServer server) {
+        AdvancedGraphDocument.Value data = fromLibraryValue(event.data());
         List<ComputerTarget> targets = trackedComputers();
         for (ComputerTarget target : targets) {
             BlockEntity computer = target.computer();
-            if (computer == excludedComputer || computer.isRemoved() || computer.getLevel() == null
+            if (computer.isRemoved() || computer.getLevel() == null
                     || computer.getLevel().getServer() != server) {
                 continue;
             }
-            if (maximumDistance > 0) {
-                boolean sameDimension = src.getLevel().dimension()
+            if (event.source().endpointId().equals(endpointId(computer))) {
+                continue;
+            }
+            if (event.maximumDistance() > 0) {
+                boolean sameDimension = event.source().dimension()
                         .equals(computer.getLevel().dimension());
                 Vec3 computerPosition = SimulatedHelper.toGlobalWorldPosition(
                         computer, Vec3.atCenterOf(computer.getBlockPos()));
-                double maximumDistanceSquared = maximumDistance * (double) maximumDistance;
-                if (!sameDimension || sourcePosition == null || computerPosition == null
-                        || sourcePosition.distanceToSqr(computerPosition) > maximumDistanceSquared) {
+                double maximumDistanceSquared = event.maximumDistance() * (double) event.maximumDistance();
+                if (!sameDimension || event.source().position() == null
+                        || event.source().position().distanceToSqr(computerPosition) > maximumDistanceSquared) {
                     continue;
                 }
             }
             try {
-                emit(target.scheduler(), name, data);
+                emit(target.scheduler(), event.name(), data);
             } catch (ReflectiveOperationException | RuntimeException err) {
                 if (SEND_FAILURE_LOGGED.compareAndSet(false, true)) {
                     LOGGER.warn("[CT][Compat] Could not deliver a named event to Computed", err);
@@ -227,6 +220,32 @@ public final class ComputedEventCompat {
             });
         }
         return targets;
+    }
+
+    // Convert advanced graph data to the reusable named event value boundary
+    private static GraphValue toLibraryValue(AdvancedGraphDocument.Value data) {
+        AdvancedGraphDocument.Value normalized = data == null
+                ? AdvancedGraphDocument.Value.number(0)
+                : data;
+        return new GraphValue(normalized.type(), toPlainValue(normalized));
+    }
+
+    // Convert reusable named event data to the advanced graph runtime value boundary
+    private static AdvancedGraphDocument.Value fromLibraryValue(GraphValue data) {
+        return fromPlainValue(data == null ? 0.0D : data.value());
+    }
+
+    // Create a stable shared named event source for one Computed computer
+    private static NamedEventSource source(BlockEntity computer) {
+        return new NamedEventSource(computer.getLevel().getServer(),
+                computer.getLevel().dimension(), SimulatedHelper.toGlobalWorldPosition(
+                computer, Vec3.atCenterOf(computer.getBlockPos())), endpointId(computer));
+    }
+
+    // Create one stable endpoint id for a Computed computer
+    private static String endpointId(BlockEntity computer) {
+        return "computed/" + computer.getLevel().dimension().location()
+                + "/" + computer.getBlockPos().asLong();
     }
 
     // Emit the computed event compat
