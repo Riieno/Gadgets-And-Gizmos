@@ -4588,7 +4588,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private void drawLinkerWindow(GuiGraphics graphics, int mouseX, int mouseY) {
         renderAdvancedPanel(graphics, linkerX, linkerY, LINKER_MODAL_WIDTH, LINKER_MODAL_HEIGHT);
         graphics.drawString(font, "Contraption Network Linker", linkerX + 8, linkerY + 7, 0xFFFFFFFF, false);
-        graphics.drawString(font, "Drag this title bar to move", linkerX + 8, linkerY + 32, 0xFF91A9B8, false);
+        //graphics.drawString(font, "Drag this title bar to move", linkerX + 8, linkerY + 32, 0xFF91A9B8, false);
         int linkerSlotX = leftPos + AdvancedContraptionControllerMenu.LINKER_SLOT_X;
         int linkerSlotY = topPos + AdvancedContraptionControllerMenu.LINKER_SLOT_Y;
         int gogglesInputX = leftPos + AdvancedContraptionControllerMenu.GOGGLES_INPUT_SLOT_X;
