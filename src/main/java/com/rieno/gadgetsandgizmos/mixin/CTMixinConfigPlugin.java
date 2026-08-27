@@ -45,6 +45,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
     private static final AtomicBoolean CT_LOGGED_PROPULSION_PRECISE_THROTTLE = new AtomicBoolean(false);
     private static final AtomicBoolean CT_LOGGED_BASIC_NAVIGATION_CC = new AtomicBoolean(false);
     private static final AtomicBoolean CT_LOGGED_COMPUTED_EVENTS = new AtomicBoolean(false);
+    private static final AtomicBoolean CT_LOGGED_SYNAXIS_EVENTS = new AtomicBoolean(false);
     private static final AtomicBoolean CT_LOGGED_DOCKING_ENERGY_SKIP = new AtomicBoolean(false);
     private static final AtomicBoolean CT_LOGGED_PROPULSION_PLATINUM_TANK = new AtomicBoolean(false);
     private static final AtomicBoolean CT_LOGGED_PROPULSION_OXIDIZED_FUEL = new AtomicBoolean(false);
@@ -286,6 +287,16 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
             return loaded;
         }
 
+        if (isSynaxisEventMixin(mixinClassName)) {
+            boolean loaded = isModLoadedDuringMixinSelection("synaxis");
+            if (loaded && CT_LOGGED_SYNAXIS_EVENTS.compareAndSet(false, true)) {
+                CT_LOGGER.info("[G&G][Compat] Enabled Synaxis named event compatibility");
+            }
+            // The Synaxis targets are @Pseudo string targets. Do not reject them merely because
+            // NeoForge has not populated its mod list yet during early Mixin selection.
+            return true;
+        }
+
         return true;
     }
 
@@ -363,6 +374,17 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
     private static boolean isComputedEventMixin(String mixinClassName) {
         return "com.rieno.gadgetsandgizmos.mixin.ComputedComputerBlockEntityMixin".equals(mixinClassName)
                 || "com.rieno.gadgetsandgizmos.mixin.ComputedPendingLuaInvocationMixin"
+                .equals(mixinClassName);
+    }
+
+    // Check if this is a Synaxis named event mixin
+    private static boolean isSynaxisEventMixin(String mixinClassName) {
+        return "com.rieno.gadgetsandgizmos.mixin.SynaxisCimulinkWorldRuntimesMixin".equals(mixinClassName)
+                || "com.rieno.gadgetsandgizmos.mixin.SynaxisCircuitLdGraphMixin".equals(mixinClassName)
+                || "com.rieno.gadgetsandgizmos.mixin.SynaxisCircuitNodeLibraryMixin".equals(mixinClassName)
+                || "com.rieno.gadgetsandgizmos.mixin.SynaxisCircuitLdGraphBlueprintAdapterAccessor"
+                .equals(mixinClassName)
+                || "com.rieno.gadgetsandgizmos.mixin.SynaxisCircuitLdGraphBlueprintAdapterMixin"
                 .equals(mixinClassName);
     }
 

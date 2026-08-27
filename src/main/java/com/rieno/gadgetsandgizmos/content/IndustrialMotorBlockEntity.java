@@ -264,6 +264,23 @@ public class IndustrialMotorBlockEntity extends GeneratingKineticBlockEntity {
         return Mth.clamp(targetSpeedBehaviour.getValue(), MIN_TARGET_SPEED_RPM, CTConfigs.COMMON.electricMotorRpmRange.get());
     }
 
+    // Expose speed to the ACC
+    public float getTargetSpeedRPM(){
+        return getConfiguredTargetSpeedRpm();
+    }
+
+    // ACC compatable speed SETTER
+
+    public boolean setTargetSpeedRPM(double rpm){
+        if(!Double.isFinite(rpm) || targetSpeedBehaviour == null) return false;
+        int next = Mth.clamp((int) Math.round(rpm), MIN_TARGET_SPEED_RPM, CTConfigs.COMMON.electricMotorRpmRange.get());
+        if(targetSpeedBehaviour.getValue() == next) return false;
+        targetSpeedBehaviour.setValue(next);
+        sendData();
+        setChanged();
+        return true;
+    }
+
     // Set the motor powered
     private void setMotorPowered(boolean powered) {
         if (level == null || level.isClientSide) {
@@ -277,6 +294,13 @@ public class IndustrialMotorBlockEntity extends GeneratingKineticBlockEntity {
             return;
         }
         level.setBlock(worldPosition, state.setValue(IndustrialMotorBlock.POWERED, powered), 3);
+    }
+
+    // ACC compatable power SETTER
+    private static boolean setPower(IndustrialMotorBlockEntity target, boolean enabled){
+        if(target.isEnabled() == enabled) return false;
+        target.setEnabled(enabled);
+        return true;
     }
 
     // Add the goggle tooltip

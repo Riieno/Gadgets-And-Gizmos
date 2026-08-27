@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
+import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedPreciseAngleCompat;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDataProvider;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
@@ -1384,10 +1385,6 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
 
     // Get the servo input angle degrees
     public double getServoInputAngleDegrees() {
-        if (hasRecentGearboxServoInput()) {
-            return gearboxServoInputAngleDeg;
-        }
-
         KineticBlockEntity inputCog = getExtraKinetics();
         if (inputCog == null) {
             return trackedServoInputInitialized ? trackedServoInputAngleDeg : Double.NaN;
@@ -1396,6 +1393,15 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
         double heldAngle = getHeldServoAngleDeg();
         if (!Double.isNaN(heldAngle)) {
             return acceptServoInputAngle(inputCog, heldAngle);
+        }
+
+        double torsionSpringAngle = SimulatedPreciseAngleCompat.getTorsionSpringOutputAngleDegrees(inputCog);
+        if (!Double.isNaN(torsionSpringAngle)) {
+            return acceptServoInputAngle(inputCog, torsionSpringAngle);
+        }
+
+        if (hasRecentGearboxServoInput()) {
+            return acceptServoInputAngle(inputCog, gearboxServoInputAngleDeg);
         }
 
         if (hasLiveServoCogInput(inputCog)) {
@@ -1479,10 +1485,11 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
 
     // Get the published servo angle deg
     private double getPublishedServoAngleDeg() {
-        if (hasRecentGearboxServoInput()) {
-            return gearboxServoInputAngleDeg;
+        double heldAngle = getHeldServoAngleDeg();
+        if (!Double.isNaN(heldAngle)) {
+            return heldAngle;
         }
-        return getHeldServoAngleDeg();
+        return hasRecentGearboxServoInput() ? gearboxServoInputAngleDeg : Double.NaN;
     }
 
     // Check if this has recent gearbox servo input
@@ -1528,11 +1535,7 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
     // Get the live servo angle deg
     private double getLiveServoAngleDeg(KineticBlockEntity inputCog) {
         Direction.Axis axis = getServoInputAxis(inputCog);
-        double liveAngle = KineticAngleHelper.getAbsoluteRotationAngleDegrees(inputCog, axis);
-        if (Double.isNaN(liveAngle)) {
-            liveAngle = inputCog.getRotationAngleOffset(axis);
-        }
-        return clampTargetAngle(liveAngle);
+        return clampTargetAngle(KineticAngleHelper.getAbsoluteRotationAngleDegrees(inputCog, axis));
     }
 
     // Check if this has live servo cog input

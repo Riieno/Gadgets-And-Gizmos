@@ -1323,5 +1323,8 @@
   "createthrusters.scm.flight_behavior.prefer_ship_direction": "Prefer Ship Direction",
   "createthrusters.scm.control_mode.airship": "Airship",
   "createthrusters.scm.control_mode.plane": "Plane - Unsupported",
-  "createthrusters.scm.control_mode.car": "Car - Unsupported"
+  "createthrusters.scm.control_mode.car": "Car - Unsupported",
+  "gui.synaxis.circuit.ldgraph.library.category.gadgets_and_gizmos": "Gadgets & Gizmos Compat",
+  "gui.synaxis.circuit.ldgraph.library.entry.named_event_send": "Send Named Event",
+  "gui.synaxis.circuit.ldgraph.library.entry.named_event_receive": "Receive Named Event"
 }

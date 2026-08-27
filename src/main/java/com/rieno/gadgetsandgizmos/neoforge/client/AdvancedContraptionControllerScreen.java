@@ -699,6 +699,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private int projectionGraphFingerprint;
     // Current projected mouse button
     private int projectedMouseButton = GLFW.GLFW_MOUSE_BUTTON_LEFT;
+    // Define Modal Enum
+    private enum tModals{
+        LINKER, SHARE, TOOLS
+    }
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -2754,12 +2758,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
             int col = group.contains("Color") ? group.getInt("Color") : 0xFF5D9FE3;
             graphics.fill(x, y, x + w, y + h, (col & 0x00FFFFFF) | 0x26000000);
-            graphics.fill(x, y, x + w, y + Math.max(14, (int) (18 * zoom)), (col & 0x00FFFFFF) | 0x77000000);
+            int titleHeight = Math.max(1, (int) Math.round(18 * zoom));
+            int titleOffset = Math.max(1, (int) Math.round(5 * zoom));
+            graphics.fill(x, y, x + w, y + titleHeight, (col & 0x00FFFFFF) | 0x77000000);
             graphics.renderOutline(x, y, w, h, group.getString("Id").equals(selectedGroup) ? 0xFFFFFFFF : col);
-            drawNodeString(graphics, group.getString("Title").isBlank() ? "Comment" : group.getString("Title"),
-                    x + 5, y + 5, 0xFFFFFFFF);
+            String title = group.getString("Title").isBlank() ? "Comment" : group.getString("Title");
+            drawNodeString(graphics, title, x + titleOffset, y + titleOffset, 0xFFFFFFFF);
             if (group.getString("Id").equals(selectedGroup)) {
-                graphics.fill(x + w - 8, y + h - 8, x + w, y + h, 0xFFFFFFFF);
+                int handleSize = Math.max(1, (int) Math.round(8 * zoom));
+                graphics.fill(x + w - handleSize, y + h - handleSize, x + w, y + h, 0xFFFFFFFF);
             }
         }
     }
@@ -4588,7 +4595,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private void drawLinkerWindow(GuiGraphics graphics, int mouseX, int mouseY) {
         renderAdvancedPanel(graphics, linkerX, linkerY, LINKER_MODAL_WIDTH, LINKER_MODAL_HEIGHT);
         graphics.drawString(font, "Contraption Network Linker", linkerX + 8, linkerY + 7, 0xFFFFFFFF, false);
-        graphics.drawString(font, "Drag this title bar to move", linkerX + 8, linkerY + 32, 0xFF91A9B8, false);
+        //graphics.drawString(font, "Drag this title bar to move", linkerX + 8, linkerY + 32, 0xFF91A9B8, false);
         int linkerSlotX = leftPos + AdvancedContraptionControllerMenu.LINKER_SLOT_X;
         int linkerSlotY = topPos + AdvancedContraptionControllerMenu.LINKER_SLOT_Y;
         int gogglesInputX = leftPos + AdvancedContraptionControllerMenu.GOGGLES_INPUT_SLOT_X;
@@ -4748,6 +4755,39 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             publicSharePending = false;
             send("public_share_status", "");
         }
+    }
+
+    // Switch Modals
+    private boolean selectModal(tModals req){
+        return switch(req){
+            case LINKER -> setLinkerOpen(!linkerOpen);
+            case SHARE -> {
+                if(shareModalOpen){
+                    setShareModalOpen(false);
+                    yield true;
+                }
+                if(linkerOpen && !setLinkerOpen(false)){
+                    yield false;
+                }
+                setShareModalOpen(true);
+                yield shareModalOpen;
+            }
+            case TOOLS -> {
+                if(toolsMenuOpen){
+                    toolsMenuOpen = false;
+                    yield true;
+                }
+                if(frequencyModalOpen && !closeFrequencyEditor()){
+                    yield false;
+                }
+                if(linkerOpen && !setLinkerOpen(false)){
+                    yield false;
+                }
+                setShareModalOpen(false);
+                toolsMenuOpen = true;
+                yield true;
+            }
+        };
     }
 
     // Clamp the linker window
@@ -5339,6 +5379,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle mouse clicked
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (mouseY >= 5 && mouseY < 23 && super.mouseClicked(mouseX, mouseY, button)) return true;
+
         // ------------------------------------OVERLAY INPUT------------------------------------
 
         if (hudOpen) {
@@ -5523,7 +5565,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 int gy = screenY(group.getDouble("Y"));
                 int gw = (int) (group.getDouble("Width") * zoom);
                 int gh = (int) (group.getDouble("Height") * zoom);
-                if (mouseX >= gx + gw - 12 && mouseY >= gy + gh - 12) resizingGroup = selectedGroup;
+                int handleSize = Math.max(1, (int) Math.round(12 * zoom));
+                if (mouseX >= gx + gw - handleSize && mouseY >= gy + gh - handleSize) resizingGroup = selectedGroup;
                 else draggingGroup = selectedGroup;
                 syncInspector();
                 return true;

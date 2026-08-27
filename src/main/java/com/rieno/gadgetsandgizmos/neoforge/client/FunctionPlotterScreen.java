@@ -22,6 +22,7 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.Mth;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.lwjgl.glfw.GLFW;
@@ -246,6 +247,7 @@ public final class FunctionPlotterScreen extends Screen {
         int visibleRows = expressionVisibleRows();
         expressionScroll = Mth.clamp(expressionScroll, 0, maxExpressionScroll());
         graphics.enableScissor(listBounds.x, listBounds.y, listBounds.right(), listBounds.bottom());
+        NotationExpression.LineResult hoveredError = null;
         int lastVisible = Math.min(expressionValues.size(), expressionScroll + visibleRows);
         for (int idx = expressionScroll; idx < lastVisible; idx++) {
             Rect bounds = expressionBounds(idx);
@@ -260,8 +262,25 @@ public final class FunctionPlotterScreen extends Screen {
                 String src = expressionValues.get(idx);
                 String shown = src.isBlank() ? "Click to add expression..." : src;
                 int textColor = src.isBlank() ? mutedTextColor() : primaryTextColor();
-                graphics.drawString(font, trim(shown, Math.max(10, (bounds.width - 78) / 6)),
-                        bounds.x + 34, bounds.y + 6, textColor, false);
+                int sourceX = bounds.x + 34;
+                int sourceY = bounds.y + 6;
+                int sourceWidth = Math.max(1, bounds.width - 68);
+                String visibleSource = font.plainSubstrByWidth(shown, sourceWidth);
+                graphics.drawString(font, visibleSource, sourceX, sourceY, textColor, false);
+                if (!res.valid() && res.errorColumn() >= 0) {
+                    int start = Math.min(res.safeErrorColumn(), visibleSource.length());
+                    int end = Math.min(visibleSource.length(), start + res.safeErrorLength());
+                    if (start < visibleSource.length()) {
+                        int underlineX = sourceX + font.width(visibleSource.substring(0, start));
+                        int underlineWidth = Math.max(1, font.width(visibleSource.substring(
+                                start, Math.max(start + 1, end))));
+                        graphics.fill(underlineX, sourceY + font.lineHeight,
+                                underlineX + underlineWidth, sourceY + font.lineHeight + 2, errorColor());
+                    } else {
+                        graphics.fill(bounds.right() - 28, bounds.y + 3,
+                                bounds.right() - 26, bounds.bottom() - 3, errorColor());
+                    }
+                }
                 if (res.valid() && !src.isBlank() && !program.plotted(idx)) {
                     try {
                         String val = "= " + compact(program.evaluateLine(idx, 0.0D));
@@ -274,6 +293,7 @@ public final class FunctionPlotterScreen extends Screen {
             if (!res.valid()) {
                 graphics.fill(bounds.right() - 28, bounds.y + 3,
                         bounds.right() - 26, bounds.bottom() - 3, errorColor());
+                if (hovered) hoveredError = res;
             }
             Rect remove = removeExpressionBounds(idx);
             parent.renderAdvancedButton(graphics, font, remove.x, remove.y, remove.width, remove.height,
@@ -305,6 +325,19 @@ public final class FunctionPlotterScreen extends Screen {
         int footerColor = statusError || expressionError ? errorColor() : accentTextColor();
         graphics.drawString(font, trim(footer, Math.max(20, (sidebar - 16) / 6)),
                 8, height - 14, footerColor, false);
+        if (hoveredError != null) {
+            List<FormattedCharSequence> tooltip = new ArrayList<>();
+            String location = "Line " + (hoveredError.lineIndex() + 1);
+            if (hoveredError.errorColumn() >= 0) {
+                location += ", column " + (hoveredError.safeErrorColumn() + 1);
+            }
+            tooltip.add(Component.literal(location).getVisualOrderText());
+            tooltip.add(Component.literal(hoveredError.error()).getVisualOrderText());
+            graphics.renderTooltip(font, tooltip, mouseX, mouseY);
+        } else if (new Rect(6, height - 18, Math.max(1, sidebar - 12), 16).contains(mouseX, mouseY)
+                && !footer.isBlank()) {
+            graphics.renderTooltip(font, Component.literal(footer), mouseX, mouseY);
+        }
     }
 
     // Draw the expression scrollbar
@@ -968,6 +1001,12 @@ public final class FunctionPlotterScreen extends Screen {
         valueBeforeEdit = field == EDIT_DRAFT_NAME ? draftName : expressionValues.get(field);
         dirtyBeforeEdit = dirty;
         layoutInlineEditor(true);
+        if (field >= 0 && inlineEditor != null) {
+            NotationExpression.LineResult result = program.lines().get(field);
+            if (!result.valid() && result.errorColumn() >= 0) {
+                inlineEditor.setCursorPosition(Math.min(result.safeErrorColumn(), inlineEditor.getValue().length()));
+            }
+        }
     }
 
     // Lay out the inline editor

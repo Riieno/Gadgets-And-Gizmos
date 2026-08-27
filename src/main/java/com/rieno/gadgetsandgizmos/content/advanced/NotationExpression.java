@@ -68,9 +68,10 @@ public final class NotationExpression {
         List<ParsedLine> parsed = new ArrayList<>();
         Map<String, Definition> definitions = new LinkedHashMap<>();
         for (int idx = 0; idx < safeSources.size(); idx++) {
-            String src = safeSources.get(idx) == null ? "" : safeSources.get(idx).strip();
+            String src = safeSources.get(idx) == null ? "" : safeSources.get(idx);
             if (src.isBlank()) {
-                parsed.add(new ParsedLine(idx, src, "", null, null, "", false, false, "", ""));
+                parsed.add(new ParsedLine(idx, src, "", null, null, "", -1, 0,
+                        false, false, "", ""));
                 continue;
             }
             try {
@@ -81,7 +82,13 @@ public final class NotationExpression {
                     lineIdentifiers.add(parts.parameter().toLowerCase(Locale.ROOT));
                     lineValues.add(parts.parameter().toLowerCase(Locale.ROOT));
                 }
-                Expr expression = new Parser(parts.expression(), lineIdentifiers, lineValues).parse();
+                Expr expression;
+                try {
+                    expression = new Parser(parts.expression().text(), lineIdentifiers, lineValues).parse();
+                } catch (ParseException error) {
+                    throw new ParseException(error.getMessage(),
+                            parts.expression().sourceColumn(error.position, src.length()));
+                }
                 Definition definition = null;
                 if (!parts.name().isBlank()) {
                     String key = parts.name().toLowerCase(Locale.ROOT);
@@ -96,12 +103,11 @@ public final class NotationExpression {
                     definitions.put(key, definition);
                 }
                 String label = parts.label().isBlank() ? "y" : parts.label();
-                parsed.add(new ParsedLine(idx, src, label, expression, definition, "",
+                parsed.add(new ParsedLine(idx, src, label, expression, definition, "", -1, 0,
                         parts.forcePlot(), parts.autoPlot(), parts.coordinate(), parts.parameter()));
             } catch (ParseException err) {
                 parsed.add(new ParsedLine(idx, src, "", null, null,
-                        err.getMessage() + " at column " + (err.position + 1),
-                        false, false, "", ""));
+                        err.getMessage(), err.position, 1, false, false, "", ""));
             }
         }
         return new Program(parsed, definitions);
@@ -165,10 +171,14 @@ public final class NotationExpression {
     private static LineParts splitLine(String src) {
         int equals = topLevelEquals(src);
         if (equals < 0) {
-            return new LineParts("", "", "y", src, false, true, "");
+            return new LineParts("", "", "y", sourceSlice(src, 0, src.length()), false, true, "");
         }
-        String left = src.substring(0, equals).strip();
-        String right = src.substring(equals + 1).strip();
+        int leftStart = skipWhitespace(src, 0, equals);
+        int leftEnd = trimWhitespace(src, leftStart, equals);
+        int rightStart = skipWhitespace(src, equals + 1, src.length());
+        int rightEnd = trimWhitespace(src, rightStart, src.length());
+        String left = src.substring(leftStart, leftEnd);
+        String right = src.substring(rightStart, rightEnd);
         if (right.isBlank()) {
             throw new ParseException("Expected an expression", equals + 1);
         }
@@ -179,27 +189,94 @@ public final class NotationExpression {
             }
             String name = left.substring(0, open).strip();
             String parameter = left.substring(open + 1, left.length() - 1).strip();
-            requireId(name, 0);
-            requireId(parameter, open + 1);
+            requireId(name, leftStart);
+            requireId(parameter, leftStart + open + 1);
             if (BUILT_INS.contains(name.toLowerCase(Locale.ROOT))) {
-                return new LineParts("", "", src, "(" + left + ") - (" + right + ")",
+                return new LineParts("", "", src,
+                        implicitExpression(src, leftStart, leftEnd, equals, rightStart, rightEnd),
                         true, false, "implicit");
             }
             String coordinate = coordinateName(name);
             return coordinate.isBlank()
-                    ? new LineParts(name, parameter, name + "(" + parameter + ")", right, true, false, "")
+                    ? new LineParts(name, parameter, name + "(" + parameter + ")",
+                    sourceSlice(src, rightStart, rightEnd), true, false, "")
                     : new LineParts("", parameter, coordinate + "(" + parameter + ")",
-                    right, false, false, coordinate);
+                    sourceSlice(src, rightStart, rightEnd), false, false, coordinate);
         }
         if (implicitRelationLeft(left)) {
-            return new LineParts("", "", src, "(" + left + ") - (" + right + ")",
+            return new LineParts("", "", src,
+                    implicitExpression(src, leftStart, leftEnd, equals, rightStart, rightEnd),
                     true, false, "implicit");
         }
-        requireId(left, 0);
+        requireId(left, leftStart);
         String coordinate = coordinateName(left);
         return coordinate.isBlank()
-                ? new LineParts(left, "", left, right, false, false, "")
-                : new LineParts("", "", coordinate, right, false, false, coordinate);
+                ? new LineParts(left, "", left, sourceSlice(src, rightStart, rightEnd), false, false, "")
+                : new LineParts("", "", coordinate, sourceSlice(src, rightStart, rightEnd), false, false, coordinate);
+    }
+
+    // Preserve original source columns for a direct parser slice.
+    private static SourceExpression sourceSlice(String source, int requestedStart, int requestedEnd) {
+        int start = Math.max(0, Math.min(requestedStart, source.length()));
+        int end = Math.max(start, Math.min(requestedEnd, source.length()));
+        String text = source.substring(start, end);
+        int[] columns = new int[text.length() + 1];
+        for (int index = 0; index <= text.length(); index++) {
+            columns[index] = start + index;
+        }
+        return new SourceExpression(text, columns);
+    }
+
+    // Preserve the source origin of both sides of an implicit relation rewritten for the parser.
+    private static SourceExpression implicitExpression(String source, int leftStart, int leftEnd,
+                                                       int equals, int rightStart, int rightEnd) {
+        StringBuilder text = new StringBuilder();
+        List<Integer> columns = new ArrayList<>();
+        appendGenerated(text, columns, "(", leftStart);
+        appendSourceSlice(text, columns, source, leftStart, leftEnd);
+        appendGenerated(text, columns, ") - (", equals);
+        appendSourceSlice(text, columns, source, rightStart, rightEnd);
+        appendGenerated(text, columns, ")", rightEnd);
+        int[] mapping = new int[columns.size() + 1];
+        for (int index = 0; index < columns.size(); index++) {
+            mapping[index] = columns.get(index);
+        }
+        mapping[columns.size()] = rightEnd;
+        return new SourceExpression(text.toString(), mapping);
+    }
+
+    // Append source characters and their exact columns to a rewritten expression.
+    private static void appendSourceSlice(StringBuilder text, List<Integer> columns,
+                                          String source, int requestedStart, int requestedEnd) {
+        int start = Math.max(0, Math.min(requestedStart, source.length()));
+        int end = Math.max(start, Math.min(requestedEnd, source.length()));
+        for (int index = start; index < end; index++) {
+            text.append(source.charAt(index));
+            columns.add(index);
+        }
+    }
+
+    // Append parser-only text with a nearby original source column.
+    private static void appendGenerated(StringBuilder text, List<Integer> columns,
+                                        String generated, int sourceColumn) {
+        for (int index = 0; index < generated.length(); index++) {
+            text.append(generated.charAt(index));
+            columns.add(sourceColumn);
+        }
+    }
+
+    // Skip source whitespace without losing its original column positions.
+    private static int skipWhitespace(String source, int requestedStart, int end) {
+        int index = Math.max(0, requestedStart);
+        while (index < end && Character.isWhitespace(source.charAt(index))) index++;
+        return index;
+    }
+
+    // Remove trailing source whitespace without losing its original column positions.
+    private static int trimWhitespace(String source, int start, int requestedEnd) {
+        int end = Math.max(start, Math.min(requestedEnd, source.length()));
+        while (end > start && Character.isWhitespace(source.charAt(end - 1))) end--;
+        return end;
     }
 
     // Get the coordinate name
@@ -275,10 +352,23 @@ public final class NotationExpression {
     }
 
     // Store line results
-    public record LineResult(int lineIndex, String source, String label, String error) {
+    public record LineResult(int lineIndex, String source, String label, String error,
+                             int errorColumn, int errorLength) {
         // Check if this is valid
         public boolean valid() {
             return error == null || error.isBlank();
+        }
+
+        // Get a source-safe parse error column.
+        public int safeErrorColumn() {
+            return Math.max(0, Math.min(errorColumn, source == null ? 0 : source.length()));
+        }
+
+        // Get a source-safe parse error length.
+        public int safeErrorLength() {
+            int sourceLength = source == null ? 0 : source.length();
+            int remaining = Math.max(1, sourceLength - safeErrorColumn());
+            return Math.max(1, Math.min(errorLength, remaining));
         }
     }
 
@@ -337,7 +427,7 @@ public final class NotationExpression {
                     validated.add(line);
                 } catch (EvaluationException err) {
                     validated.add(new ParsedLine(line.index, line.source, line.label, line.expression,
-                            line.definition, err.getMessage(), false, false,
+                            line.definition, err.getMessage(), -1, 0, false, false,
                             line.coordinate, line.parameter));
                 }
             }
@@ -377,7 +467,8 @@ public final class NotationExpression {
         // Get the lines
         public List<LineResult> lines() {
             return lines.stream().map(line ->
-                    new LineResult(line.index, line.source, line.label, line.error)).toList();
+                    new LineResult(line.index, line.source, line.label, line.error,
+                            line.errorColumn, line.errorLength)).toList();
         }
 
         // Get the series
@@ -1127,7 +1218,8 @@ public final class NotationExpression {
 
     // Store the parsed line
     private record ParsedLine(int index, String source, String label, Expr expression,
-                              Definition definition, String error, boolean forcePlot, boolean autoPlot,
+                              Definition definition, String error, int errorColumn, int errorLength,
+                              boolean forcePlot, boolean autoPlot,
                               String coordinate, String parameter) {
         // Initialize the parsed line
         private ParsedLine {
@@ -1154,7 +1246,21 @@ public final class NotationExpression {
     }
 
     // Store the line parts
-    private record LineParts(String name, String parameter, String label, String expression,
+    private record SourceExpression(String text, int[] sourceColumns) {
+        private SourceExpression {
+            text = text == null ? "" : text;
+            sourceColumns = sourceColumns == null ? new int[]{0} : sourceColumns.clone();
+        }
+
+        private int sourceColumn(int expressionColumn, int sourceLength) {
+            if (sourceColumns.length == 0) return Math.max(0, sourceLength);
+            int index = Math.max(0, Math.min(expressionColumn, sourceColumns.length - 1));
+            return Math.max(0, Math.min(sourceColumns[index], Math.max(0, sourceLength)));
+        }
+    }
+
+    // Store the source-aware line parts
+    private record LineParts(String name, String parameter, String label, SourceExpression expression,
                              boolean forcePlot, boolean autoPlot, String coordinate) {
     }
 
