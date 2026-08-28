@@ -1687,6 +1687,24 @@ public final class GraphRuntime {
             return defaultValue(AdvancedGraphCatalog.outputs(node.source()).get(port));
         }
         try {
+            if (AdvancedGraphCatalog.COLLAPSED_OUTPUT_MAP_PORT.equals(port)
+                    && node.data().getBoolean(AdvancedGraphCatalog.COLLAPSE_OUTPUTS_TO_MAP_TAG)) {
+                CompoundTag values = new CompoundTag();
+                for (Map.Entry<String, String> output : node.outputTypes().entrySet()) {
+                    if (!"exec".equals(output.getValue())
+                            && !AdvancedGraphCatalog.COLLAPSED_OUTPUT_MAP_PORT.equals(output.getKey())) {
+                        values.put(output.getKey(), frame.output(node, output.getKey(), operations).toTag());
+                    }
+                }
+                AdvancedGraphDocument.Value value = AdvancedGraphDocument.Value.map(values);
+                frame.seedOutput(node, port, value);
+                return value;
+            }
+            AdvancedGraphDocument.Value inlineMapValue = inlineMapOutput(frame, node, port, operations);
+            if (inlineMapValue != null) {
+                frame.seedOutput(node, port, inlineMapValue);
+                return inlineMapValue;
+            }
             if (AdvancedGraphCatalog.isShipControlPassiveType(node.type())) {
                 double collisionDetectionDistance = collisionDetectionDistance(
                         frame, node, operations);
@@ -2485,6 +2503,11 @@ public final class GraphRuntime {
 
     // Get the PID value
     private double pidValue(Frame frame, NodeInstruction node, int[] operations) {
+        if (frame.value(node, AdvancedGraphCatalog.CONTROLLER_RESET_PORT, operations).asBoolean()) {
+            state.remove(node.id() + ":integral");
+            state.remove(node.id() + ":previous_error");
+            return 0.0D;
+        }
         double error = frame.value(node, "target", operations).asNumber()
                 - frame.value(node, "actual", operations).asNumber();
         String integralKey = node.id() + ":integral";
@@ -2513,6 +2536,14 @@ public final class GraphRuntime {
     // Get the ADRC value
     private AdvancedGraphDocument.Value adrcValue(Frame frame, NodeInstruction node, String port, int[] operations) {
         String prefix = node.id() + ":adrc:";
+        if (frame.value(node, AdvancedGraphCatalog.CONTROLLER_RESET_PORT, operations).asBoolean()) {
+            state.remove(prefix + "estimate");
+            state.remove(prefix + "disturbance");
+            state.remove(prefix + "control");
+            frame.seedOutput(node, "value", AdvancedGraphDocument.Value.number(0.0D));
+            frame.seedOutput(node, "disturbance", AdvancedGraphDocument.Value.number(0.0D));
+            return frame.cachedOutput(node, port);
+        }
         AdrcControllerMath.State prev = new AdrcControllerMath.State(
                 state.getOrDefault(prefix + "estimate", AdvancedGraphDocument.Value.number(
                         frame.value(node, "actual", operations).asNumber())).asNumber(),
@@ -2539,6 +2570,14 @@ public final class GraphRuntime {
             Frame frame, NodeInstruction node, String port, int[] operations
     ) {
         String prefix = node.id() + ":adrc_nth_order:";
+        if (frame.value(node, AdvancedGraphCatalog.CONTROLLER_RESET_PORT, operations).asBoolean()) {
+            state.remove(prefix + "state");
+            state.remove(prefix + "disturbance");
+            state.remove(prefix + "control");
+            frame.seedOutput(node, "value", AdvancedGraphDocument.Value.number(0.0D));
+            frame.seedOutput(node, "disturbance", AdvancedGraphDocument.Value.number(0.0D));
+            return frame.cachedOutput(node, port);
+        }
         double actual = frame.value(node, "actual", operations).asNumber();
         int order = normalizedNthOrder(frame.value(node, "order", operations).asNumber());
         AdrcControllerNthOrderMath.State prev = nthOrderState(state.get(prefix + "state"), order);
@@ -2919,6 +2958,20 @@ public final class GraphRuntime {
     }
 
     // Get the structured value
+    // Resolve a dynamically exposed field from an inline MAP output.
+    private static AdvancedGraphDocument.Value inlineMapOutput(
+            Frame frame, NodeInstruction node, String port, int[] operations
+    ) {
+        CompoundTag mapping = node.data().getCompound(AdvancedGraphCatalog.INLINE_MAP_OUTPUTS_TAG)
+                .getCompound(port);
+        String source = mapping.getString(AdvancedGraphCatalog.INLINE_MAP_SOURCE_TAG);
+        String key = mapping.getString(AdvancedGraphCatalog.INLINE_MAP_KEY_TAG);
+        if (source.isBlank() || key.isBlank() || source.equals(port)) {
+            return null;
+        }
+        return structuredValue(frame.output(node, source, operations), key);
+    }
+
     public static AdvancedGraphDocument.Value structuredValue(AdvancedGraphDocument.Value val, String key) {
         return splitListEntries(val).getOrDefault(key, AdvancedGraphDocument.Value.number(0));
     }
@@ -3238,8 +3291,56 @@ public final class GraphRuntime {
         private AdvancedGraphDocument.Value value(NodeInstruction node, String port, int[] operations) {
             String key = node.portKey(port);
             AdvancedGraphDocument.Value val = node.input(port).evaluate(this, operations);
+            if (!node.hasInput(port)
+                    && node.data().getBoolean(AdvancedGraphCatalog.COLLAPSE_INPUTS_TO_MAP_TAG)
+                    && !AdvancedGraphCatalog.COLLAPSED_INPUT_MAP_PORT.equals(port)
+                    && node.hasInput(AdvancedGraphCatalog.COLLAPSED_INPUT_MAP_PORT)) {
+                AdvancedGraphDocument.Value map = node.input(AdvancedGraphCatalog.COLLAPSED_INPUT_MAP_PORT)
+                        .evaluate(this, operations);
+                if ("map".equals(map.type()) && map.payload().contains(port, Tag.TAG_COMPOUND)) {
+                    val = convertValue(AdvancedGraphDocument.Value.fromTag(map.payload().getCompound(port)),
+                            node.inputTypes().get(port));
+                }
+            }
+            val = inlineMapInput(this, node, port, val, operations);
             recordLiveInput(node, key, port, val);
             return val;
+        }
+
+        // Combine explicitly supplied inline fields into their parent MAP input.
+        private AdvancedGraphDocument.Value inlineMapInput(
+                Frame frame, NodeInstruction node, String port,
+                AdvancedGraphDocument.Value current, int[] operations
+        ) {
+            CompoundTag mappings = node.data().getCompound(AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG);
+            if (mappings.isEmpty()) {
+                return current;
+            }
+            AdvancedGraphDocument.Value normalized = inferBodyOverride(current);
+            CompoundTag values = "map".equals(normalized.type())
+                    ? normalized.payload().copy() : new CompoundTag();
+            boolean matched = false;
+            boolean changed = false;
+            for (String inlinePort : mappings.getAllKeys()) {
+                CompoundTag mapping = mappings.getCompound(inlinePort);
+                if (!port.equals(mapping.getString(AdvancedGraphCatalog.INLINE_MAP_SOURCE_TAG))) {
+                    continue;
+                }
+                matched = true;
+                if (!node.hasInput(inlinePort) && node.defaultValue(inlinePort) == null) {
+                    continue;
+                }
+                String key = mapping.getString(AdvancedGraphCatalog.INLINE_MAP_KEY_TAG);
+                if (key.isBlank()) {
+                    continue;
+                }
+                values.put(key, frame.value(node, inlinePort, operations).toTag());
+                changed = true;
+            }
+            if (!matched || !changed) {
+                return current;
+            }
+            return AdvancedGraphDocument.Value.map(values);
         }
 
         // Get the output

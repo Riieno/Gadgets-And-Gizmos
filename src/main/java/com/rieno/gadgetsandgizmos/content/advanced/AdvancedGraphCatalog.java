@@ -38,6 +38,17 @@ public final class AdvancedGraphCatalog {
     public static final String PID_PREVENT_INTEGRAL_WINDUP_TAG = "PreventIntegralWindup";
     public static final String PID_INTEGRAL_MIN_PORT = "integral_min";
     public static final String PID_INTEGRAL_MAX_PORT = "integral_max";
+    public static final String CONTROLLER_RESET_PORT = "reset";
+    public static final String COLLAPSE_INPUTS_TO_MAP_TAG = "CollapseInputsToMap";
+    public static final String COLLAPSE_OUTPUTS_TO_MAP_TAG = "CollapseOutputsToMap";
+    public static final String COLLAPSED_INPUT_MAP_PORT = "input_map";
+    public static final String COLLAPSED_OUTPUT_MAP_PORT = "output_map";
+    /** Maps dynamically exposed input ports to their source MAP port and key. */
+    public static final String INLINE_MAP_INPUTS_TAG = "InlineMapInputs";
+    /** Maps dynamically exposed output ports to their source MAP port and key. */
+    public static final String INLINE_MAP_OUTPUTS_TAG = "InlineMapOutputs";
+    public static final String INLINE_MAP_SOURCE_TAG = "Source";
+    public static final String INLINE_MAP_KEY_TAG = "Key";
     public static final String SHIP_SPEED_PERCENT_TAG = "ShipSpeedPercent";
     public static final double DEFAULT_COLLISION_DETECTION_DISTANCE = 64.0D;
     public static final double DEFAULT_COLLISION_POLL_RATE = 20.0D;
@@ -156,15 +167,16 @@ public final class AdvancedGraphCatalog {
                 Map.of("value", "number", "start", "number", "resist", "number"),
                 Map.of("value", "number"), false);
         register("smoothing", "response", Map.of("exec", "exec", "value", "number", "amount", "number"), Map.of("exec", "exec", "value", "number"), true);
-        register("pid", "response", Map.of("target", "number", "actual", "number", "p", "number", "i", "number", "d", "number"), Map.of("value", "number"), true);
+        register("pid", "response", Map.of("target", "number", "actual", "number", "p", "number", "i", "number", "d", "number", CONTROLLER_RESET_PORT, "boolean"), Map.of("value", "number"), true);
         register("lqr_controller", "response", Map.of("target", "number", "actual", "number", "gain", "number",
                 "feed_forward", "number", "min", "number", "max", "number"), Map.of("value", "number"), false);
-        register("adrc", "response", Map.of("target", "number", "actual", "number", "delta_time", "number",
+        register("adrc", "response", Map.of("target", "number", "actual", "number", CONTROLLER_RESET_PORT, "boolean", "delta_time", "number",
                 "controller_bandwidth", "number", "observer_bandwidth", "number", "plant_gain", "number",
                 "output_limit", "number"), Map.of("value", "number", "disturbance", "number"), true);
         register("adrc_nth_order", "response", Map.ofEntries(
                 Map.entry("target", "number"),
                 Map.entry("actual", "number"),
+                Map.entry(CONTROLLER_RESET_PORT, "boolean"),
                 Map.entry("order", "number"),
                 Map.entry("delta_time", "number"),
                 Map.entry("controller_bandwidth", "number"),
@@ -870,7 +882,13 @@ public final class AdvancedGraphCatalog {
             dynamicInputs = dynamicInputs.copy();
             dynamicInputs.remove("text");
         }
-        return mergePorts(baseInputs, dynamicInputs);
+        Map<String, String> ports = mergePorts(baseInputs, dynamicInputs);
+        if (node.data().getBoolean(COLLAPSE_INPUTS_TO_MAP_TAG)
+                && ports.entrySet().stream().anyMatch(entry -> !"exec".equals(entry.getValue()))) {
+            ports = new LinkedHashMap<>(ports);
+            ports.put(COLLAPSED_INPUT_MAP_PORT, "map");
+        }
+        return ports;
     }
 
     // Check if this is a CRN static text mode
@@ -897,7 +915,13 @@ public final class AdvancedGraphCatalog {
                 }
             }
         }
-        return mergePorts(baseOutputs, dynamicOutputs);
+        Map<String, String> ports = mergePorts(baseOutputs, dynamicOutputs);
+        if (node.data().getBoolean(COLLAPSE_OUTPUTS_TO_MAP_TAG)
+                && ports.entrySet().stream().anyMatch(entry -> !"exec".equals(entry.getValue()))) {
+            ports = new LinkedHashMap<>(ports);
+            ports.put(COLLAPSED_OUTPUT_MAP_PORT, "map");
+        }
+        return ports;
     }
 
     // Switch the type

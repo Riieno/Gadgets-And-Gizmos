@@ -794,10 +794,22 @@
     return `data:${asset.mediaType || "image/png"};base64,${asset.base64}`;
   }
 
-  // Merge fixed catalog ports with the dynamic ports stored on each node
-  function nodePorts(def, data, direction) {
+  // Add the runtime MAP port used when a node body is collapsed.
+  function withCollapsedMap(ports, data, direction) {
+    const collapseKey = direction === "inputs" ? "CollapseInputsToMap" : "CollapseOutputsToMap";
+    const mapPort = direction === "inputs" ? "input_map" : "output_map";
+    if (Boolean(data?.[collapseKey])
+        && Object.values(ports).some((type) => type !== "exec")) {
+      return { ...ports, [mapPort]: "map" };
+    }
+    return ports;
+  }
+
+  // Merge fixed catalog ports with the dynamic ports stored on each node.
+  // This is the complete runtime contract, including ports hidden by MAP collapsing.
+  function graphNodePorts(def, data, direction) {
     if (def?.id === "switch" && data?.SwitchType === "data") {
-      if (direction === "outputs") return { value: "any" };
+      if (direction === "outputs") return withCollapsedMap({ value: "any" }, data, direction);
       const caseTypes = data.SwitchCaseTypes && typeof data.SwitchCaseTypes === "object"
         ? data.SwitchCaseTypes : {};
       const dynamicInputs = dynamicPorts(data, "DynamicInputs");
@@ -808,7 +820,7 @@
       for (const [port, type] of Object.entries(dynamicInputs)) {
         if (/^case_\d+$/.test(port)) inputs[port] = caseTypes[port] || type || "any";
       }
-      return inputs;
+      return withCollapsedMap(inputs, data, direction);
     }
     const dynamicConstructorInputs = direction === "inputs"
       && Boolean(data?.DynamicConstructor)
@@ -826,7 +838,21 @@
         delete ports.integral_max;
       }
     }
-    return ports;
+    return withCollapsedMap(ports, data, direction);
+  }
+
+  // Get the ports rendered in the node body. Collapsed fields retain their runtime ports,
+  // but are represented by one MAP handle in the editor.
+  function nodePorts(def, data, direction) {
+    const ports = graphNodePorts(def, data, direction);
+    const collapseKey = direction === "inputs" ? "CollapseInputsToMap" : "CollapseOutputsToMap";
+    const mapPort = direction === "inputs" ? "input_map" : "output_map";
+    if (!Boolean(data?.[collapseKey])) return ports;
+    const visible = {};
+    for (const [port, type] of Object.entries(ports)) {
+      if (type === "exec" || port === mapPort) visible[port] = type;
+    }
+    return visible;
   }
 
   // Convert complete graphs in both directions while preserving data the studio does not understand
@@ -852,7 +878,7 @@
       const def = state.definitions.get(node.Type);
       const data = node.Data && typeof node.Data === "object" ? deepCopy(node.Data) : {};
       data.isCollapsed = Boolean(data.EditorCollapsed);
-      const inputs = nodePorts(def, data, "inputs");
+      const inputs = graphNodePorts(def, data, "inputs");
       const outputs = nodePorts(def, data, "outputs");
       const defaults = data.Defaults && typeof data.Defaults === "object" && !Array.isArray(data.Defaults)
         ? data.Defaults : {};
@@ -1176,7 +1202,7 @@
   // Get a graph port type
   function graphPortType(node, direction, port) {
     const def = state.definitions.get(node?.Type);
-    return nodePorts(def, node?.Data, direction)[port] || "any";
+    return graphNodePorts(def, node?.Data, direction)[port] || "any";
   }
 
   // Convert selected nodes to a function

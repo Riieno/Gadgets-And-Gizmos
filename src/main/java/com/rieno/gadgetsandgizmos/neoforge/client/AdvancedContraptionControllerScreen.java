@@ -147,6 +147,12 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private static final int VARIABLE_BROWSER_BUTTON_WIDTH = 34;
     private static final int NODE_WIDTH = 166;
     private static final int NODE_HEADER = 20;
+    /** First body row in graph units when there is no collapse control. */
+    private static final int NODE_BODY_TOP = 25;
+    /** Height of the dedicated collapse-control row directly below the title bar. */
+    private static final int NODE_COLLAPSE_HANDLE_HEIGHT = 10;
+    /** Extra graph-unit offset reserved for the collapse row; tune this to adjust port clearance. */
+    private static final int NODE_COLLAPSE_PORT_OFFSET = 10;
     private static final int REROUTE_WIDTH = 30;
     private static final int REROUTE_HEIGHT = 18;
     private static final int MINI_BROWSER_WIDTH = 242;
@@ -816,7 +822,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         try {
             return Boolean.TRUE.equals(CTConfigs.CLIENT.advancedControllerV2Ui.get());
         } catch (RuntimeException ignored) {
-            return false;
+            return true;
         }
     }
 
@@ -1789,8 +1795,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         graphRenderCacheSignature = signature;
         for (AdvancedGraphDocument.Node node : activeNodes()) {
             graphRenderNodes.put(node.id(), node);
-            Map<String, String> inputs = AdvancedGraphCatalog.inputs(node);
-            Map<String, String> outputs = AdvancedGraphCatalog.outputs(node);
+            Map<String, String> inputs = editorPorts(node, false);
+            Map<String, String> outputs = editorPorts(node, true);
             boolean collapsed = collapsedNodes.contains(node.id()) || isPersistedNodeCollapsed(node);
             graphRenderPortLayouts.put(node.id(), new NodePortLayout(
                     inputs, outputs, new LinkedHashSet<>(), new LinkedHashSet<>(),
@@ -1858,6 +1864,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             signature = 31 * signature + (dynamicInputs == null ? 0 : dynamicInputs.hashCode());
             signature = 31 * signature + (dynamicOutputs == null ? 0 : dynamicOutputs.hashCode());
             signature = 31 * signature + (outputLabels == null ? 0 : outputLabels.hashCode());
+            signature = 31 * signature + Boolean.hashCode(node.data().getBoolean(
+                    AdvancedGraphCatalog.COLLAPSE_INPUTS_TO_MAP_TAG));
+            signature = 31 * signature + Boolean.hashCode(node.data().getBoolean(
+                    AdvancedGraphCatalog.COLLAPSE_OUTPUTS_TO_MAP_TAG));
         }
         for (AdvancedGraphDocument.Edge edge : activeEdges()) {
             signature = 31 * signature + Objects.hash(
@@ -1879,6 +1889,31 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         NodePortLayout layout = graphRenderCacheDocument == draft && node != null
                 ? graphRenderPortLayouts.get(node.id()) : null;
         return layout == null ? AdvancedGraphCatalog.inputs(node) : layout.inputs();
+    }
+
+    // Get the ports displayed by the editor. The graph runtime retains the individual ports
+    // and transparently maps them through input_map/output_map when a side is collapsed.
+    private static Map<String, String> editorPorts(AdvancedGraphDocument.Node node, boolean output) {
+        Map<String, String> ports = output ? AdvancedGraphCatalog.outputs(node)
+                : AdvancedGraphCatalog.inputs(node);
+        boolean collapsed = node != null && node.data().getBoolean(output
+                ? AdvancedGraphCatalog.COLLAPSE_OUTPUTS_TO_MAP_TAG
+                : AdvancedGraphCatalog.COLLAPSE_INPUTS_TO_MAP_TAG);
+        if (!collapsed) {
+            return ports;
+        }
+        Map<String, String> visible = new LinkedHashMap<>();
+        for (var entry : ports.entrySet()) {
+            if ("exec".equals(entry.getValue())) {
+                visible.put(entry.getKey(), entry.getValue());
+            }
+        }
+        String mapPort = output ? AdvancedGraphCatalog.COLLAPSED_OUTPUT_MAP_PORT
+                : AdvancedGraphCatalog.COLLAPSED_INPUT_MAP_PORT;
+        if (ports.containsKey(mapPort)) {
+            visible.put(mapPort, "map");
+        }
+        return visible;
     }
 
     // Get the node outputs
@@ -2972,8 +3007,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Draw the collapse handle
     private void drawCollapseHandle(GuiGraphics graphics, AdvancedGraphDocument.Node node, int x, int y, int width, int height) {
         if (!canCollapse(node)) return;
-        int handleHeight = Math.max(7, (int) (10 * zoom));
-        int top = y + height - handleHeight - nodeFrameBodyHeightPad();
+        int handleHeight = collapseHandleHeight();
+        int top = collapseHandleTop(y);
         int inset = Math.max(9, (int) Math.round(9 * zoom));
         renderControllerOption(graphics, x + inset, top, Math.max(1, width - inset * 2), handleHeight,
                 AdvancedGraphCatalog.categoryColor(AdvancedGraphCatalog.get(node.type()).category()), false, false);
@@ -2981,14 +3016,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         drawNodeStringCentered(graphics, chevron, x + width / 2, top + 1, nodeValueTextColor());
     }
 
-    // Get the node frame body height pad
-    private int nodeFrameBodyHeightPad() {
-        return Math.max(1, (int) Math.round(NODE_FRAME_BODY_HEIGHT_PAD * zoom));
-    }
-
     // Draw the rich node body
     private void drawRichNodeBody(GuiGraphics graphics, AdvancedGraphDocument.Node node, int x, int y, int width) {
-        int bodyY = y + (int) (25 * zoom);
+        int bodyY = nodeBodyTop(node, y);
         if ("curve".equals(node.type())) {
             drawCurveEditor(graphics, node, x + 7, bodyY, width - 14, (int) (CURVE_BODY_HEIGHT * zoom), false);
             bodyY += (int) (CURVE_BODY_HEIGHT * zoom);
@@ -3607,7 +3637,24 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the port start
     private int portStart(AdvancedGraphDocument.Node node) {
-        return 31 + bodyControlCount(node) * 15 + ("curve".equals(node.type()) ? CURVE_BODY_HEIGHT : 0);
+        return nodeBodyTopUnits(node) + 6 + bodyControlCount(node) * 15
+                + ("curve".equals(node.type()) ? CURVE_BODY_HEIGHT : 0);
+    }
+
+    private int nodeBodyTopUnits(AdvancedGraphDocument.Node node) {
+        return NODE_BODY_TOP + (canCollapse(node) ? NODE_COLLAPSE_PORT_OFFSET : 0);
+    }
+
+    private int nodeBodyTop(AdvancedGraphDocument.Node node, int nodeScreenY) {
+        return nodeScreenY + (int) Math.round(nodeBodyTopUnits(node) * zoom);
+    }
+
+    private int collapseHandleHeight() {
+        return Math.max(7, (int) Math.round(NODE_COLLAPSE_HANDLE_HEIGHT * zoom));
+    }
+
+    private int collapseHandleTop(int nodeScreenY) {
+        return nodeScreenY + (int) Math.round(NODE_HEADER * zoom);
     }
 
     // Get the node height
@@ -5960,7 +6007,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Get the node context actions
     private List<String> nodeContextActions() {
         List<String> actions = new ArrayList<>(List.of(
-                "Duplicate", "Delete", "Create Comment Group", "Disconnect Wires"));
+                "Duplicate", "Delete", "Create Comment Group", "Disconnect Wires",
+                "Collapse Input to MAP", "Collapse Output to MAP"));
         if (selectedNodes.size() == 1) {
             actions.add("Copy Node ID");
         }
@@ -5987,6 +6035,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         String portType = (hit.output()
                 ? AdvancedGraphCatalog.outputs(hit.node())
                 : AdvancedGraphCatalog.inputs(hit.node())).get(hit.port());
+        if ("map".equals(portType)) {
+            actions.add("Breakout");
+        }
         if (portType != null && !"exec".equals(portType)) {
             actions.add("Promote to Variable");
         }
@@ -6389,7 +6440,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         // -----------------------------------------------------BODY HIT TEST-----------------------------------------------------
         int x = screenX(node.x());
         int y = screenY(node.y());
-        int bodyTop = y + (int) (25 * zoom);
+        int bodyTop = nodeBodyTop(node, y);
         int rowHeight = Math.max(10, (int) (15 * zoom));
         if ("curve".equals(node.type())) bodyTop += (int) (CURVE_BODY_HEIGHT * zoom);
         if (mouseX < x + 5 || mouseX > x + NODE_WIDTH * zoom - 5 || mouseY < bodyTop
@@ -6522,7 +6573,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         selectOnly(node.id());
         selectedInputPort = "label:" + port;
         syncInspector();
-        int bodyTop = screenY(node.y()) + (int) (25 * zoom);
+        int bodyTop = nodeBodyTop(node, screenY(node.y()));
         int rowHeight = Math.max(10, (int) (15 * zoom));
         if ("curve".equals(node.type())) bodyTop += (int) (CURVE_BODY_HEIGHT * zoom);
         int row = (int) ((mouseY - bodyTop) / rowHeight);
@@ -6609,7 +6660,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         selectOnly(node.id());
         selectedInputPort = CONSTRUCTOR_LABEL_PREFIX + port;
         syncInspector();
-        int bodyTop = screenY(node.y()) + (int) (25 * zoom);
+        int bodyTop = nodeBodyTop(node, screenY(node.y()));
         int rowHeight = Math.max(10, (int) (15 * zoom));
         int visibleRow = 0;
         for (var entry : AdvancedGraphCatalog.inputs(node).entrySet()) {
@@ -6970,7 +7021,34 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             case "Copy Node ID" -> copySelectedNodeId();
             case "Delete Comment Group" -> deleteSelectedGroup();
             case "Convert to Function" -> selectionToFunction();
+            case "Collapse Input to MAP" -> toggleSelectedPortMap(false);
+            case "Collapse Output to MAP" -> toggleSelectedPortMap(true);
         }
+    }
+
+    // Toggle the structured MAP view for the selected node side without deleting its ports or wires.
+    private void toggleSelectedPortMap(boolean output) {
+        if (selectedNodes.isEmpty()) {
+            return;
+        }
+        String key = output ? AdvancedGraphCatalog.COLLAPSE_OUTPUTS_TO_MAP_TAG
+                : AdvancedGraphCatalog.COLLAPSE_INPUTS_TO_MAP_TAG;
+        boolean next = selectedNodes.stream().map(this::findNode).filter(Objects::nonNull)
+                .anyMatch(node -> !node.data().getBoolean(key));
+        checkpoint();
+        for (String id : selectedNodes) {
+            AdvancedGraphDocument.Node node = findNode(id);
+            if (node == null) {
+                continue;
+            }
+            if (next) {
+                node.data().putBoolean(key, true);
+            } else {
+                node.data().remove(key);
+            }
+        }
+        showGraphToast((next ? "Collapsed " : "Expanded ")
+                + (output ? "outputs" : "inputs") + " as MAP", GraphActionToastSeverity.SUCCESS);
     }
 
     // Copy the selected node ID
@@ -6998,6 +7076,16 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             syncInspector();
             return;
         }
+        if ("Breakout".equals(action) && "map".equals(ctx.output()
+                ? AdvancedGraphCatalog.outputs(node).get(ctx.port())
+                : AdvancedGraphCatalog.inputs(node).get(ctx.port()))) {
+            if (ctx.output()) {
+                inlineBreakoutMapOutput(node, ctx.port());
+            } else {
+                inlineBreakoutMapInput(node, ctx.port());
+            }
+            return;
+        }
         if ("Promote to Variable".equals(action)) {
             promotePortToVariable(node, ctx.port(), ctx.output());
             return;
@@ -7021,6 +7109,75 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             clearGraphRenderCache();
             syncInspector();
         }
+    }
+
+    // Expose the current keys of a MAP output as direct ports on the same node.
+    private void inlineBreakoutMapOutput(AdvancedGraphDocument.Node node, String sourcePort) {
+        CompoundTag entries = GraphRuntime.splitListOutputsFor(currentPortValue(node, sourcePort, true));
+        if (entries.isEmpty()) {
+            showGraphToast("MAP has no readable entries to break out", GraphActionToastSeverity.WARNING);
+            return;
+        }
+        checkpoint();
+        CompoundTag mappings = node.data().getCompound(AdvancedGraphCatalog.INLINE_MAP_OUTPUTS_TAG).copy();
+        CompoundTag dynamicOutputs = node.data().getCompound("DynamicOutputs").copy();
+        for (String key : entries.getAllKeys()) {
+            String inlinePort = inlineMapPortName(node, sourcePort, key, true, mappings);
+            CompoundTag mapping = new CompoundTag();
+            mapping.putString(AdvancedGraphCatalog.INLINE_MAP_SOURCE_TAG, sourcePort);
+            mapping.putString(AdvancedGraphCatalog.INLINE_MAP_KEY_TAG, key);
+            mappings.put(inlinePort, mapping);
+            dynamicOutputs.putString(inlinePort, entries.getString(key));
+        }
+        node.data().put(AdvancedGraphCatalog.INLINE_MAP_OUTPUTS_TAG, mappings);
+        node.data().put("DynamicOutputs", dynamicOutputs);
+        clearGraphRenderCache();
+        syncInspector();
+        showGraphToast("MAP fields added to node outputs", GraphActionToastSeverity.SUCCESS);
+    }
+
+    // Expose the current keys of a MAP input as editable direct inputs on the same node.
+    private void inlineBreakoutMapInput(AdvancedGraphDocument.Node node, String sourcePort) {
+        CompoundTag entries = GraphRuntime.splitListOutputsFor(currentPortValue(node, sourcePort, false));
+        if (entries.isEmpty()) {
+            showGraphToast("MAP has no readable entries to break out", GraphActionToastSeverity.WARNING);
+            return;
+        }
+        checkpoint();
+        CompoundTag mappings = node.data().getCompound(AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG).copy();
+        CompoundTag dynamicInputs = node.data().getCompound("DynamicInputs").copy();
+        for (String key : entries.getAllKeys()) {
+            String inlinePort = inlineMapPortName(node, sourcePort, key, false, mappings);
+            CompoundTag mapping = new CompoundTag();
+            mapping.putString(AdvancedGraphCatalog.INLINE_MAP_SOURCE_TAG, sourcePort);
+            mapping.putString(AdvancedGraphCatalog.INLINE_MAP_KEY_TAG, key);
+            mappings.put(inlinePort, mapping);
+            dynamicInputs.putString(inlinePort, entries.getString(key));
+            putInputDefault(node, inlinePort, entries.getString(key),
+                    GraphRuntime.structuredValue(currentPortValue(node, sourcePort, false), key));
+        }
+        node.data().put(AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG, mappings);
+        node.data().put("DynamicInputs", dynamicInputs);
+        clearGraphRenderCache();
+        syncInspector();
+        showGraphToast("MAP fields added to node inputs", GraphActionToastSeverity.SUCCESS);
+    }
+
+    private String inlineMapPortName(AdvancedGraphDocument.Node node, String sourcePort, String key,
+                                     boolean output, CompoundTag mappings) {
+        String base = sourcePort + "." + key;
+        String name = base;
+        int suffix = 2;
+        Map<String, String> ports = output ? AdvancedGraphCatalog.outputs(node) : AdvancedGraphCatalog.inputs(node);
+        while (ports.containsKey(name) && !inlineMapPortMatches(mappings.getCompound(name), sourcePort, key)) {
+            name = base + "_" + suffix++;
+        }
+        return name;
+    }
+
+    private static boolean inlineMapPortMatches(CompoundTag mapping, String sourcePort, String key) {
+        return sourcePort.equals(mapping.getString(AdvancedGraphCatalog.INLINE_MAP_SOURCE_TAG))
+                && key.equals(mapping.getString(AdvancedGraphCatalog.INLINE_MAP_KEY_TAG));
     }
 
     // Get the current port value
@@ -8448,7 +8605,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         } else if (!output) {
             x = screenX(node.x());
             if ("curve".equals(node.type()) && "value".equals(port)) {
-                y = screenY(node.y()) + (int) ((25 + CURVE_BODY_HEIGHT / 2.0) * zoom);
+                y = screenY(node.y()) + (int) Math.round((nodeBodyTopUnits(node)
+                        + CURVE_BODY_HEIGHT / 2.0) * zoom);
             } else {
                 y = bodyControlCenterY(node, port);
             }
@@ -8476,9 +8634,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             if (entry.getKey().equals(port)) break;
             row++;
         }
-        //return screenY(node.y()) + (int) ((25 + ("curve".equals(node.type()) ? CURVE_BODY_HEIGHT : 0) + row * 15 + 6.5) * zoom);
-        // Fix port alignement
-        int y = screenY(node.y()) + (int) (25 * zoom);
+        int y = nodeBodyTop(node, screenY(node.y()));
         if("curve".equals(node.type())) y += (int) (CURVE_BODY_HEIGHT * zoom);
         for(int idx = 0; idx < row; idx++){
             y += (int) (15 * zoom);
@@ -8493,8 +8649,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         int y = screenY(node.y());
         int width = (int) (NODE_WIDTH * zoom);
         int height = (int) (nodeHeight(node) * zoom);
-        int handleHeight = Math.max(7, (int) (10 * zoom));
-        int top = y + height - handleHeight - nodeFrameBodyHeightPad();
+        int handleHeight = collapseHandleHeight();
+        int top = collapseHandleTop(y);
         return mouseX >= x && mouseX <= x + width && mouseY >= top && mouseY <= top + handleHeight;
     }
 
@@ -9486,7 +9642,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 continue;
             }
             int x = screenX(node.x());
-            int bodyY = screenY(node.y()) + (int) (25 * zoom);
+            int bodyY = nodeBodyTop(node, screenY(node.y()));
             if ("curve".equals(node.type())) {
                 bodyY += (int) (CURVE_BODY_HEIGHT * zoom);
             }
@@ -9846,7 +10002,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private boolean handleBodyCurveClick(AdvancedGraphDocument.Node node, double mouseX, double mouseY, int btn) {
         if (!"curve".equals(node.type())) return false;
         int x = screenX(node.x()) + 7;
-        int y = screenY(node.y()) + (int) (25 * zoom);
+        int y = nodeBodyTop(node, screenY(node.y()));
         int width = (int) (NODE_WIDTH * zoom) - 14;
         int height = (int) (CURVE_BODY_HEIGHT * zoom);
         return handleCurveClick(node, mouseX, mouseY, btn, x, y, width, height, false);
@@ -9895,7 +10051,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         AdvancedGraphDocument.Node node = findNode(draggingCurveNode);
         if (node == null) return;
         int x = draggingInspectorCurve ? graphRight() + 10 : screenX(node.x()) + 7;
-        int y = draggingInspectorCurve ? 163 : screenY(node.y()) + (int) (25 * zoom);
+        int y = draggingInspectorCurve ? 163 : nodeBodyTop(node, screenY(node.y()));
         int width = draggingInspectorCurve ? RIGHT_WIDTH - 20 : (int) (NODE_WIDTH * zoom) - 14;
         int height = draggingInspectorCurve ? 116 : (int) (CURVE_BODY_HEIGHT * zoom);
         List<CompoundTag> points = curvePoints(node);
@@ -10031,7 +10187,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the frequency body y
     private int frequencyBodyY(AdvancedGraphDocument.Node node) {
-        int y = screenY(node.y()) + (int) (25 * zoom);
+        int y = nodeBodyTop(node, screenY(node.y()));
         if ("curve".equals(node.type())) y += (int) (CURVE_BODY_HEIGHT * zoom);
         if (usesBinding(node)) y += (int) (15 * zoom);
         y += (int) (propertyControlCount(node) * 15 * zoom);
@@ -11455,7 +11611,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private String hudBodyPortAt(AdvancedGraphDocument.Node node, double mouseX, double mouseY) {
         int x = screenX(node.x());
         int y = screenY(node.y());
-        int bodyTop = y + (int) (25 * zoom);
+        int bodyTop = nodeBodyTop(node, y);
         int rowHeight = Math.max(10, (int) (15 * zoom));
         if ("curve".equals(node.type())) bodyTop += (int) (CURVE_BODY_HEIGHT * zoom);
         if (mouseX < x + 5 || mouseX > x + NODE_WIDTH * zoom - 5 || mouseY < bodyTop

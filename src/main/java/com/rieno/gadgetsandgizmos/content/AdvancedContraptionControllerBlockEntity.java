@@ -65,6 +65,7 @@ import com.simibubi.create.content.equipment.clipboard.ClipboardOverrides;
 import com.simibubi.create.content.redstone.displayLink.DisplayLinkBlockEntity;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.api.schematic.SubLevelSchematicSerializationContext;
+import dev.simulated_team.simulated.content.blocks.altitude_sensor.AltitudeSensorBlockEntity;
 import dev.simulated_team.simulated.content.blocks.nav_table.NavTableBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.ChatFormatting;
@@ -3290,12 +3291,18 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (blockEntity instanceof AccDisplayBlockEntity display && "display_mode".equals(port)) {
             return AdvancedGraphDocument.Value.string(display.displayMode());
         }
+        if ("altitude".equals(port) && blockEntity instanceof AltitudeSensorBlockEntity altitudeSensor) {
+            return AdvancedGraphDocument.Value.number(altitudeSensor.getWorldHeight());
+        }
         if ("distance_to_target".equals(port) && blockEntity instanceof NavTableBlockEntity navigationTable) {
             return AdvancedGraphDocument.Value.number(NavigationTableGraphData.targetDistance(
                     navigationTable, navigationTable.getTargetPosition(false)));
         }
         if ("target_coordinates".equals(port) && blockEntity instanceof NavTableBlockEntity navigationTable) {
             return NavigationTableGraphData.targetCoordinates(navigationTable);
+        }
+        if ("angle_to_target".equals(port) && blockEntity instanceof NavTableBlockEntity navigationTable) {
+            return AdvancedGraphDocument.Value.number(navigationTable.getRelativeAngle());
         }
         // Read native and provider backed values
         AdvancedGraphDocument.Value navigationTableValue = NavigationTableGraphCompat.read(blockEntity, port);
@@ -3395,9 +3402,12 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             case "block_id" -> AdvancedGraphDocument.Value.string(String.valueOf(BuiltInRegistries.BLOCK.getKey(state.getBlock())));
             case "block_entity_type" -> AdvancedGraphDocument.Value.string(blockEntity == null ? "" :
                     String.valueOf(BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(blockEntity.getType())));
-            case "x" -> AdvancedGraphDocument.Value.number(target.pos().getX());
-            case "y" -> AdvancedGraphDocument.Value.number(target.pos().getY());
-            case "z" -> AdvancedGraphDocument.Value.number(target.pos().getZ());
+            case "x" -> AdvancedGraphDocument.Value.number(graphTargetWorldPosition(
+                    target.level(), target.pos(), blockEntity).x);
+            case "y" -> AdvancedGraphDocument.Value.number(graphTargetWorldPosition(
+                    target.level(), target.pos(), blockEntity).y);
+            case "z" -> AdvancedGraphDocument.Value.number(graphTargetWorldPosition(
+                    target.level(), target.pos(), blockEntity).z);
             case "redstone_power" -> AdvancedGraphDocument.Value.number(graphRedstonePower(node, target, state));
             case "state_properties" -> AdvancedGraphDocument.Value.map(stateProperties(state));
             case "items" -> AdvancedGraphDocument.Value.list(itemSummary(
@@ -3446,6 +3456,15 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             return target.level().getBestNeighborSignal(target.pos());
         }
         return graphFaceRedstonePower(target.level(), target.pos(), state, face);
+    }
+
+    // Resolve a target's world-space centre through Sable before exposing coordinates to a graph.
+    private static Vec3 graphTargetWorldPosition(Level targetLevel, BlockPos targetPos,
+                                                  @Nullable BlockEntity blockEntity) {
+        Vec3 localPosition = Vec3.atCenterOf(targetPos);
+        return blockEntity == null
+                ? SimulatedHelper.projectOutOfSubLevels(targetLevel, localPosition)
+                : SimulatedHelper.toGlobalWorldPosition(blockEntity, localPosition);
     }
 
     // Find the only linker face
@@ -4104,6 +4123,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (blockEntity instanceof NavTableBlockEntity) {
             ports.putString("distance_to_target", "number");
             ports.putString("target_coordinates", "map");
+            ports.putString("angle_to_target", "number");
+        }
+        if (blockEntity instanceof AltitudeSensorBlockEntity) {
+            ports.putString("altitude", "number");
         }
         ExternalBlockEntityDirectControlCompat.readableData(blockEntity).forEach(ports::putString);
         if (blockEntity instanceof DisplayLinkBlockEntity) {
@@ -5385,10 +5408,21 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         CompoundTag data = stateProperties(state);
         data.putString("block_id", String.valueOf(BuiltInRegistries.BLOCK.getKey(state.getBlock())));
         data.putString("block_entity_type", blockEntity == null ? "" : String.valueOf(BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(blockEntity.getType())));
-        data.putInt("x", pos.getX());
-        data.putInt("y", pos.getY());
-        data.putInt("z", pos.getZ());
+        Vec3 worldPosition = graphTargetWorldPosition(level, pos, blockEntity);
+        data.putDouble("x", worldPosition.x);
+        data.putDouble("y", worldPosition.y);
+        data.putDouble("z", worldPosition.z);
         data.putInt("redstone_power", level.getBestNeighborSignal(pos));
+        if (blockEntity instanceof AltitudeSensorBlockEntity altitudeSensor) {
+            data.putDouble("altitude", altitudeSensor.getWorldHeight());
+        }
+        if (blockEntity instanceof NavTableBlockEntity navigationTable) {
+            data.putDouble("distance_to_target", NavigationTableGraphData.targetDistance(
+                    navigationTable, navigationTable.getTargetPosition(false)));
+            putGraphValue(data, "target_coordinates",
+                    NavigationTableGraphData.targetCoordinates(navigationTable));
+            data.putDouble("angle_to_target", navigationTable.getRelativeAngle());
+        }
         putDoubleButtonData(data, blockEntity);
         if (hasMultiblockItemHandler(level, pos, state, blockEntity)) {
             Summary items = itemSummary(level, pos, state, blockEntity, targetSide);

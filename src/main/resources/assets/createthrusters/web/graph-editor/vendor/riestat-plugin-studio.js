@@ -371611,6 +371611,28 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
               }, className: "p-1.5 bg-rose-500/20 text-rose-500 hover:bg-rose-500 hover:text-[var(--text-primary)] rounded-[var(--ui-radius-sm)] transition-all disabled:opacity-40 disabled:hover:bg-rose-500/20 disabled:hover:text-rose-500", title: "Delete Node", children: /* @__PURE__ */ (0, import_jsx_runtime90.jsx)(Trash2, { size: 12 }) })
             ] })
           ] }),
+          isCollapsible && /* @__PURE__ */ (0, import_jsx_runtime90.jsx)(
+            "div",
+            {
+              className: "h-5 px-4 flex items-center justify-center border-b border-[var(--border-color)] bg-[var(--bg-primary)]/25",
+              children: /* @__PURE__ */ (0, import_jsx_runtime90.jsx)(
+                "button",
+                {
+                  onMouseDown: (e) => e.stopPropagation(),
+                  onClick: (e) => {
+                    e.stopPropagation();
+                    updateNodeData({
+                      isCollapsed: !isCollapsed,
+                      EditorCollapsed: !isCollapsed
+                    }, node.id);
+                  },
+                  className: "flex h-full w-full items-center justify-center text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)]",
+                  title: isCollapsed ? "Expand Node" : "Collapse Node",
+                  children: /* @__PURE__ */ (0, import_jsx_runtime90.jsx)(ChevronDown, { size: 12, className: `transition-transform duration-300 ${isCollapsed ? "" : "rotate-180"}` })
+                }
+              )
+            }
+          ),
           remoteHoverUsers.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime90.jsx)("div", { className: "absolute -top-7 left-2 right-2 flex flex-wrap gap-1 pointer-events-none z-[120]", children: remoteHoverUsers.slice(0, 3).map((entry) => /* @__PURE__ */ (0, import_jsx_runtime90.jsx)(
             "span",
             {
@@ -371920,24 +371942,6 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
                 )
               ] }, port);
             }),
-            isCollapsible && /* @__PURE__ */ (0, import_jsx_runtime90.jsx)("div", { className: "mt-2 border-t border-theme opacity-60 pt-2 px-4 pb-1", children: /* @__PURE__ */ (0, import_jsx_runtime90.jsxs)(
-              "button",
-              {
-                onMouseDown: (e) => e.stopPropagation(),
-                onClick: (e) => {
-                  e.stopPropagation();
-                  updateNodeData({
-                    isCollapsed: !isCollapsed,
-                    EditorCollapsed: !isCollapsed
-                  }, node.id);
-                },
-                className: "w-full flex items-center justify-between p-1 rounded-[var(--ui-radius-sm)] hover:bg-[var(--bg-hover)] transition-all group/collapse",
-                children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime90.jsx)("span", { className: "text-[9px] font-black text-secondary group-hover/collapse:text-primary uppercase tracking-widest transition-opacity", children: isCollapsed ? "Expand Node" : "Collapse Node" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime90.jsx)(ChevronDown, { size: 10, className: `text-[var(--text-muted)] transition-transform duration-300 ${isCollapsed ? "" : "rotate-180"}` })
-                ]
-              }
-            ) }),
             node.type === "arr_select_key" && /* @__PURE__ */ (0, import_jsx_runtime90.jsx)("div", { className: "px-4 pb-2 pt-1 animate-in fade-in duration-300", children: /* @__PURE__ */ (0, import_jsx_runtime90.jsxs)("div", { className: "space-y-2", children: [
               /* @__PURE__ */ (0, import_jsx_runtime90.jsxs)("div", { className: "flex items-center gap-2 px-1", children: [
                 /* @__PURE__ */ (0, import_jsx_runtime90.jsx)(List, { size: 10, className: "text-[var(--accent-color)] opacity-50" }),
@@ -374756,6 +374760,10 @@ lastTemp;`
     onClone,
     onCopyId,
     onToggleMini,
+    inputMapCollapsed,
+    outputMapCollapsed,
+    onToggleInputMap,
+    onToggleOutputMap,
     onCreateGroup,
     onConvertToFunction,
     showHomeAssistantPicker,
@@ -374795,6 +374803,28 @@ lastTemp;`
             )
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime105.jsxs)("div", { className: "px-4 space-y-1 mb-4", children: [
+            typeof onToggleInputMap === "function" && /* @__PURE__ */ (0, import_jsx_runtime105.jsxs)(
+              "button",
+              {
+                onClick: () => onToggleInputMap(nodeContextMenu.nodeId),
+                className: "w-full flex items-center gap-3 p-3 hover:bg-[var(--bg-hover)] rounded-[var(--ui-radius-sm)] transition-all group/item text-left",
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime105.jsx)("div", { className: "p-2 bg-[var(--bg-hover)] rounded-[var(--ui-radius-sm)] text-[var(--text-muted)] group-hover:text-[var(--text-primary)]", children: /* @__PURE__ */ (0, import_jsx_runtime105.jsx)(Minimize2, { size: 14 }) }),
+                  /* @__PURE__ */ (0, import_jsx_runtime105.jsx)("span", { className: "text-xs font-black text-primary uppercase tracking-widest", children: inputMapCollapsed ? "Expand Input from MAP" : "Collapse Input to MAP" })
+                ]
+              }
+            ),
+            typeof onToggleOutputMap === "function" && /* @__PURE__ */ (0, import_jsx_runtime105.jsxs)(
+              "button",
+              {
+                onClick: () => onToggleOutputMap(nodeContextMenu.nodeId),
+                className: "w-full flex items-center gap-3 p-3 hover:bg-[var(--bg-hover)] rounded-[var(--ui-radius-sm)] transition-all group/item text-left",
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime105.jsx)("div", { className: "p-2 bg-[var(--bg-hover)] rounded-[var(--ui-radius-sm)] text-[var(--muted)] group-hover:text-[var(--text-primary)]", children: /* @__PURE__ */ (0, import_jsx_runtime105.jsx)(Layers, { size: 14 }) }),
+                  /* @__PURE__ */ (0, import_jsx_runtime105.jsx)("span", { className: "text-xs font-black text-primary uppercase tracking-widest", children: outputMapCollapsed ? "Expand Output from MAP" : "Collapse Output to MAP" })
+                ]
+              }
+            ),
             showHomeAssistantPicker && typeof onOpenHomeAssistantPicker === "function" && /* @__PURE__ */ (0, import_jsx_runtime105.jsxs)(
               "button",
               {
@@ -380088,6 +380118,22 @@ lastTemp;`
             },
             onToggleMini: (id, next) => {
               updateNodeData({ renderMode: next ? "mini" : "full" }, id);
+              setNodeContextMenu(null);
+            },
+            inputMapCollapsed: !!node?.data?.CollapseInputsToMap,
+            outputMapCollapsed: !!node?.data?.CollapseOutputsToMap,
+            onToggleInputMap: (id) => {
+              const target = localNodes.find((entry) => entry.id === id);
+              if (target) {
+                updateNodeData({ CollapseInputsToMap: !target.data?.CollapseInputsToMap }, id);
+              }
+              setNodeContextMenu(null);
+            },
+            onToggleOutputMap: (id) => {
+              const target = localNodes.find((entry) => entry.id === id);
+              if (target) {
+                updateNodeData({ CollapseOutputsToMap: !target.data?.CollapseOutputsToMap }, id);
+              }
               setNodeContextMenu(null);
             },
             onCreateGroup: () => {

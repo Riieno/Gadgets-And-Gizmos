@@ -237,8 +237,8 @@ public final class CTConfigs {
                     .comment("Use the StrawStatues/Statue Menus armor stand GUI for armor stands and player mannequins when StrawStatues is installed. StrawStatues entities always keep their own GUI.")
                     .define("preferStrawStatuesPoserGui", true);
             advancedControllerV2Ui = builder
-                    .comment("Use the optional V2 node graph interface for Advanced Contraption Controllers")
-                    .define("advancedControllerV2Ui", false);
+                    .comment("Use the V2 node graph interface for Advanced Contraption Controllers")
+                    .define("advancedControllerV2Ui", true);
             thrusterMaxVolume = builder
                     .comment("Maximum local volume multiplier for thruster sounds (0 disables local thruster audio)")
                     .defineInRange("thrusterMaxVolume", 1.0D, 0.0D, 2.0D);
