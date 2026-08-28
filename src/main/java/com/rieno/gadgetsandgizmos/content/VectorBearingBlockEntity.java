@@ -1147,27 +1147,39 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
             return shaftAngleDegrees;
         }
 
-        double heldAngle = KineticAngleHelper.getHeldRotationAngleDegrees(this, getBearingFacing().getAxis());
-        if (!Double.isNaN(heldAngle)) {
-            shaftAngleDegrees = heldAngle;
+        long now = level.getGameTime();
+        if (!shaftAngleInitialized) {
+            shaftAngleDegrees = 0.0D;
             shaftAngleInitialized = true;
-            lastShaftSampleTick = level.getGameTime();
+            lastShaftSampleTick = now;
+        }
+
+        double exactAngle = KineticAngleHelper.getHeldRotationAngleDegrees(this, getBearingFacing().getAxis());
+        if (Double.isNaN(exactAngle)) {
+            exactAngle = SimulatedPreciseAngleCompat.getTorsionSpringOutputAngleDegrees(this);
+        }
+        if (!Double.isNaN(exactAngle)) {
+            shaftAngleDegrees = KineticAngleHelper.normalizeDegrees(exactAngle);
+            lastShaftSampleTick = now;
             return shaftAngleDegrees;
         }
 
-        double torsionSpringAngle = SimulatedPreciseAngleCompat.getTorsionSpringOutputAngleDegrees(this);
-        if (!Double.isNaN(torsionSpringAngle)) {
-            shaftAngleDegrees = torsionSpringAngle;
-            shaftAngleInitialized = true;
-            lastShaftSampleTick = level.getGameTime();
-            return shaftAngleDegrees;
+        if (lastShaftSampleTick != Long.MIN_VALUE) {
+            long deltaTicks = Math.max(0L, now - lastShaftSampleTick);
+            if (deltaTicks > 0L) {
+                shaftAngleDegrees = KineticAngleHelper.normalizeDegrees(
+                        shaftAngleDegrees + getSignedAngularStep() * deltaTicks);
+            }
         }
-
-        shaftAngleDegrees = KineticAngleHelper.getAbsoluteRotationAngleDegrees(
-                this, getBearingFacing().getAxis());
-        shaftAngleInitialized = true;
-        lastShaftSampleTick = level.getGameTime();
+        lastShaftSampleTick = now;
         return shaftAngleDegrees;
+    }
+
+    // Reset the mounted head's rotation frame. A new assembly always begins at zero.
+    private void resetShaftAngleForAssembly() {
+        shaftAngleDegrees = 0.0D;
+        shaftAngleInitialized = true;
+        lastShaftSampleTick = level == null ? Long.MIN_VALUE : level.getGameTime();
     }
 
     // Get the signed angular step
@@ -1275,6 +1287,7 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
             mountedAssembly.clearInvalidAssembly(this, serverLevel);
         }
         try {
+            resetShaftAngleForAssembly();
             if (!mountedAssembly.assemble(this, serverLevel)) {
                 return false;
             }
