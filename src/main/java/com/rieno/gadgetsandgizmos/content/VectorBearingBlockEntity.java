@@ -117,6 +117,14 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
     private static final double MIN_TILT_BLEND = 0.18D;
     private static final double MAX_TILT_BLEND = 0.62D;
     private static final double FAST_TILT_ERROR_FRACTION = 0.4D;
+    /**
+     * Redstone and Redstone Link signals are quantised and linked signals refresh in
+     * batches. Use a deliberately slower response for that control path so a one-tick
+     * signal fluctuation cannot jerk a mounted assembly towards a new tilt.
+     */
+    private static final double MIN_REDSTONE_TILT_BLEND = 0.045D;
+    private static final double MAX_REDSTONE_TILT_BLEND = 0.16D;
+    private static final double REDSTONE_FAST_TILT_ERROR_FRACTION = 0.65D;
     private static final double TILT_SNAP_EPSILON_DEGREES = 1.0E-3D;
     private static final ResourceLocation COPYCAT_PANEL_ID =
             ResourceLocation.fromNamespaceAndPath("create", "copycat_panel");
@@ -184,6 +192,8 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
     private double appliedZDegrees;
     // Active control mode
     private ControlMode activeControlMode = ControlMode.AUTO;
+    // Retains redstone damping while a released redstone target returns to neutral
+    private boolean redstoneTiltDamping;
     // Mounted sub-level id
     private UUID mountedSubLevelId;
     // Mounted local pos
@@ -447,6 +457,14 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         double previousZ = targetZDegrees;
         targetXDegrees = command.xDegrees();
         targetZDegrees = command.zDegrees();
+        if (command.sourceMode() == ControlMode.REDSTONE) {
+            redstoneTiltDamping = true;
+        } else if (command.sourceMode() == ControlMode.COMPUTER) {
+            redstoneTiltDamping = false;
+        } else if (Math.hypot(targetXDegrees - appliedXDegrees, targetZDegrees - appliedZDegrees)
+                <= TILT_SNAP_EPSILON_DEGREES) {
+            redstoneTiltDamping = false;
+        }
         return Math.abs(previousX - targetXDegrees) > 1.0E-4D
                 || Math.abs(previousZ - targetZDegrees) > 1.0E-4D;
     }
@@ -462,7 +480,9 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
             appliedXDegrees = targetXDegrees;
             appliedZDegrees = targetZDegrees;
         } else {
-            double blend = adaptiveTiltBlend(errorDegrees, maxTiltDegrees);
+            double blend = redstoneTiltDamping
+                    ? dampedRedstoneTiltBlend(errorDegrees, maxTiltDegrees)
+                    : adaptiveTiltBlend(errorDegrees, maxTiltDegrees);
             appliedXDegrees += deltaX * blend;
             appliedZDegrees += deltaZ * blend;
         }
@@ -476,6 +496,16 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         double normalizedError = Mth.clamp(Math.abs(errorDegrees) / fastResponseError, 0.0D, 1.0D);
         double easedError = normalizedError * normalizedError * (3.0D - 2.0D * normalizedError);
         return MIN_TILT_BLEND + (MAX_TILT_BLEND - MIN_TILT_BLEND) * easedError;
+    }
+
+    // Get the damped redstone tilt blend
+    static double dampedRedstoneTiltBlend(double errorDegrees, double maxTiltDegrees) {
+        double fastResponseError = Math.max(1.0D,
+                Math.abs(maxTiltDegrees) * REDSTONE_FAST_TILT_ERROR_FRACTION);
+        double normalizedError = Mth.clamp(Math.abs(errorDegrees) / fastResponseError, 0.0D, 1.0D);
+        double easedError = normalizedError * normalizedError * (3.0D - 2.0D * normalizedError);
+        return MIN_REDSTONE_TILT_BLEND
+                + (MAX_REDSTONE_TILT_BLEND - MIN_REDSTONE_TILT_BLEND) * easedError;
     }
 
     // Clamp the tilt state
