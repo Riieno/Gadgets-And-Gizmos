@@ -294,8 +294,6 @@ public final class CTConfigs {
         public final ModConfigSpec.BooleanValue gearboxReverseWithRedstone;
         // Scissor piston max range
         public final ModConfigSpec.IntValue scissorPistonMaxRange;
-        // Enable special thanks mannequin loot
-        public final ModConfigSpec.BooleanValue enableSpecialThanksMannequinLoot;
         // Enable mob head drops
         public final ModConfigSpec.BooleanValue enableMobHeadDrops;
         // Focused mode FE per tick
@@ -420,9 +418,6 @@ public final class CTConfigs {
             builder.pop();
 
             builder.comment("Optional loot and entity drops").push("loot");
-            enableSpecialThanksMannequinLoot = builder
-                    .comment("Allow Special Thanks Player Mannequins to appear in vanilla chest loot")
-                    .define("enableSpecialThanksMannequinLoot", true);
             enableMobHeadDrops = builder
                     .comment("Allow mobs and players to drop heads through the addon's head-drop system")
                     .define("enableMobHeadDrops", true);

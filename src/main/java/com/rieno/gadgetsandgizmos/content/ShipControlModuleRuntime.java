@@ -148,8 +148,10 @@ public final class ShipControlModuleRuntime {
     private static final double COLLISION_SCAN_RANGE =
             AdvancedGraphCatalog.DEFAULT_COLLISION_DETECTION_DISTANCE;
     private static final double COLLISION_HULL_MARGIN = 0.125D;
-    private static final int COLLISION_TELEMETRY_DIRECTIONS_PER_TICK = 6;
-    private static final int COLLISION_TELEMETRY_PROBES_PER_BOUNDS = 36;
+    // Roll the six hull directions across a few ticks instead of producing one long server hitch.
+    private static final int COLLISION_TELEMETRY_DIRECTIONS_PER_TICK = 2;
+    // Collision telemetry needs a representative leading face; navigation keeps its denser probe grid.
+    private static final int COLLISION_TELEMETRY_PROBES_PER_BOUNDS = 16;
     private static final int MAX_COLLISION_TELEMETRY_CONFIGURATIONS = 16;
     private static final int COLLISION_NAVIGATION_PROBES_PER_BOUNDS = 64;
     private static final double NAVIGATION_MIN_CLEARANCE = 3.0D;
@@ -8336,7 +8338,8 @@ public final class ShipControlModuleRuntime {
                         right, up, up.scale(-1.0D)),
                 hull.worldBoundsAt(telemetry.position(), COLLISION_HULL_MARGIN),
                 ctx,
-                collisionProbeCache(ctx.level()),
+                // Cache shape lookups for the complete rolling scan, then discard them with the scan.
+                new SubLevelParticleOcclusion.ProbeCache(),
                 cached);
     }
 

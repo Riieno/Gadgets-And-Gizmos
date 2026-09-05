@@ -147,6 +147,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private static final int VARIABLE_BROWSER_BUTTON_WIDTH = 34;
     private static final int NODE_WIDTH = 166;
     private static final int NODE_HEADER = 20;
+    private static final int INLINE_MAP_PORT_INDENT = 8;
     /** First body row in graph units when there is no collapse control. */
     private static final int NODE_BODY_TOP = 25;
     /** Height of the dedicated collapse-control row directly below the title bar. */
@@ -1861,9 +1862,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             Tag dynamicInputs = node.data().get("DynamicInputs");
             Tag dynamicOutputs = node.data().get("DynamicOutputs");
             Tag outputLabels = node.data().get("OutputLabels");
+            Tag dataPortGroups = node.data().get(AdvancedGraphCatalog.DATA_PORT_GROUPS_TAG);
             signature = 31 * signature + (dynamicInputs == null ? 0 : dynamicInputs.hashCode());
             signature = 31 * signature + (dynamicOutputs == null ? 0 : dynamicOutputs.hashCode());
             signature = 31 * signature + (outputLabels == null ? 0 : outputLabels.hashCode());
+            signature = 31 * signature + (dataPortGroups == null ? 0 : dataPortGroups.hashCode());
             signature = 31 * signature + Boolean.hashCode(node.data().getBoolean(
                     AdvancedGraphCatalog.COLLAPSE_INPUTS_TO_MAP_TAG));
             signature = 31 * signature + Boolean.hashCode(node.data().getBoolean(
@@ -1893,14 +1896,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the ports displayed by the editor. The graph runtime retains the individual ports
     // and transparently maps them through input_map/output_map when a side is collapsed.
-    private static Map<String, String> editorPorts(AdvancedGraphDocument.Node node, boolean output) {
+    private Map<String, String> editorPorts(AdvancedGraphDocument.Node node, boolean output) {
         Map<String, String> ports = output ? AdvancedGraphCatalog.outputs(node)
                 : AdvancedGraphCatalog.inputs(node);
         boolean collapsed = node != null && node.data().getBoolean(output
                 ? AdvancedGraphCatalog.COLLAPSE_OUTPUTS_TO_MAP_TAG
                 : AdvancedGraphCatalog.COLLAPSE_INPUTS_TO_MAP_TAG);
         if (!collapsed) {
-            return ports;
+            return groupedEditorPorts(node, ports, output);
         }
         Map<String, String> visible = new LinkedHashMap<>();
         for (var entry : ports.entrySet()) {
@@ -1914,6 +1917,47 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             visible.put(mapPort, "map");
         }
         return visible;
+    }
+
+    // Keep generated MAP ports compact while retaining connected legacy leaf ports
+    private Map<String, String> groupedEditorPorts(AdvancedGraphDocument.Node node,
+                                                   Map<String, String> ports, boolean output) {
+        CompoundTag groups = node == null ? new CompoundTag()
+                : node.data().getCompound(AdvancedGraphCatalog.DATA_PORT_GROUPS_TAG);
+        if (groups.isEmpty()) {
+            return ports;
+        }
+
+        Set<String> groupedLeaves = new LinkedHashSet<>();
+        for (String group : groups.getAllKeys()) {
+            groupedLeaves.addAll(groups.getCompound(group).getAllKeys());
+        }
+
+        Map<String, String> visible = new LinkedHashMap<>();
+        for (var entry : ports.entrySet()) {
+            String port = entry.getKey();
+            if (groups.contains(port)) {
+                visible.put(port, "map");
+            } else if (!groupedLeaves.contains(port) || groupedDataLeafIsVisible(node, port, output)) {
+                visible.put(port, entry.getValue());
+            }
+        }
+        return visible;
+    }
+
+    // Keep an explicitly wired or configured legacy leaf available in the editor
+    private boolean groupedDataLeafIsVisible(AdvancedGraphDocument.Node node, String port, boolean output) {
+        if (node == null || port == null || port.isBlank()) {
+            return false;
+        }
+        boolean connected = activeEdges().stream().anyMatch(edge -> output
+                ? node.id().equals(edge.fromNode()) && port.equals(edge.fromPort())
+                : node.id().equals(edge.toNode()) && port.equals(edge.toPort()));
+        if (connected) {
+            return true;
+        }
+        return !output && node.data().getCompound("Defaults").contains(port)
+                && !node.data().getCompound("PrefilledInputs").contains(port);
     }
 
     // Get the node outputs
@@ -3063,7 +3107,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                             inputDisplayLabel(node, port.getKey()),
                             inputValueLabel(node, port.getKey(), port.getValue()),
                             portColor(port.getValue()), "boolean".equals(port.getValue()) && inputBoolean(node, port.getKey()),
-                            setDataForceWriteContainerInset(node, port.getKey()));
+                            inputControlInset(node, port.getKey()));
                 }
                 if (!inputConnected && isSetDataForceWriteInput(node, port.getKey())) {
                     drawSetDataForceWriteCheckbox(graphics, node, port.getKey(), x, bodyY);
@@ -3088,9 +3132,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                                        int x, int y, int width) {
         int right = x + width - 5;
         int rowHeight = Math.max(12, (int) (13 * zoom));
-        renderControllerOption(graphics, x + 5, y, right - x - 4, rowHeight, portColor(type), false);
+        int controlLeft = x + 5 + inputControlInset(node, port);
+        renderControllerOption(graphics, controlLeft, y, right - controlLeft + 1, rowHeight, portColor(type), false);
         String label = inputDisplayLabel(node, port);
-        drawNodeString(graphics, trim(label, 11), x + 11, y + 3, nodeMutedTextColor());
+        drawNodeString(graphics, trim(label, 11), controlLeft + 6, y + 3, nodeMutedTextColor());
         String shown = trim(wiredInputValueLabel(node, port, type), 11);
         drawNodeStringRight(graphics, shown, right - 3, y + 3, nodeValueTextColor());
     }
@@ -3099,7 +3144,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private void drawBodyFrequency(GuiGraphics graphics, AdvancedGraphDocument.Node node, String port,
                                    int x, int y, int width) {
         int right = x + width - 5;
-        int leadingInset = setDataForceWriteContainerInset(node, port);
+        int leadingInset = inputControlInset(node, port);
         int controlLeft = x + 5 + leadingInset;
         renderControllerOption(graphics, controlLeft, y, right - controlLeft + 1,
                 Math.max(18, (int) (20 * zoom)),
@@ -3209,7 +3254,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         int trackY = y + Math.max(5, (int) (7 * zoom));
         double[] range = numberRange(node, port);
         double amount = sliderAmount(inputNumber(node, port), range);
-        int leadingInset = setDataForceWriteContainerInset(node, port);
+        int leadingInset = inputControlInset(node, port);
         int controlLeft = leadingInset == 0 ? left : x + 5 + leadingInset;
         renderControllerOption(graphics, controlLeft, y, right - controlLeft + 1,
                 Math.max(12, (int) (13 * zoom)),
@@ -3276,7 +3321,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         int x = graphRight();
         int right = layoutRight() - 8;
         int valueWidth = sliderValueWidth(node, port, 30, 8);
-        int left = x + 82;
+        int left = x + 82 + inspectorInlineMapPortIndent(node, port, false);
         int trackRight = right - valueWidth - 4;
         return new SliderTrack(left, Math.max(left + 1, trackRight));
     }
@@ -3368,7 +3413,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             int py = pos.y();
             if (!portWithinViewport(pos)) continue;
             renderDataPort(graphics, pos.x(), py, port.getValue(), true);
-            drawWrappedOutputPortLabel(graphics, node, port.getKey(), x + width - 9, py);
+            drawWrappedOutputPortLabel(graphics, node, port.getKey(),
+                    x + width - 9 - inlineMapPortIndent(node, port.getKey(), true), py);
         }
     }
 
@@ -3558,7 +3604,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the wrapped output port label
     private List<FormattedCharSequence> wrappedOutputPortLabel(AdvancedGraphDocument.Node node, String port) {
-        int availableWidth = NODE_WIDTH - 18;
+        int availableWidth = NODE_WIDTH - 18 - inspectorInlineMapPortIndent(node, port, true);
         return font.split(Component.literal(outputDisplayLabel(node, port)), availableWidth);
     }
 
@@ -4215,7 +4261,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     drawInspectorControl(graphics, x, y,
                             inputDisplayLabel(selectedNode, port.getKey()),
                             inputValueLabel(selectedNode, port.getKey(), port.getValue()),
-                            portColor(port.getValue()), port.getKey().equals(selectedInputPort));
+                            portColor(port.getValue()), port.getKey().equals(selectedInputPort),
+                            inspectorInlineMapPortIndent(selectedNode, port.getKey(), false));
                 }
                 y += "frequency".equals(port.getValue()) ? 22 : 17;
             }
@@ -4437,8 +4484,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Draw the inspector control
     private void drawInspectorControl(GuiGraphics graphics, int x, int y, String label, String val, int col, boolean selected) {
-        renderControllerOption(graphics, x + 7, y - 3, layoutRight() - x - 14, 15, col, selected);
-        graphics.drawString(font, trim(label, 15), x + 14, y, nodeMutedTextColor(), false);
+        drawInspectorControl(graphics, x, y, label, val, col, selected, 0);
+    }
+
+    // Draw the inspector control
+    private void drawInspectorControl(GuiGraphics graphics, int x, int y, String label, String val, int col,
+                                      boolean selected, int leadingInset) {
+        int controlLeft = x + 7 + leadingInset;
+        renderControllerOption(graphics, controlLeft, y - 3, layoutRight() - controlLeft - 7, 15, col, selected);
+        graphics.drawString(font, trim(label, 15), controlLeft + 7, y, nodeMutedTextColor(), false);
         String shown = trim(val, 12);
         graphics.drawString(font, shown, layoutRight() - font.width(shown) - 11, y, nodeValueTextColor(), false);
     }
@@ -4446,16 +4500,17 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Draw the driven inspector control
     private void drawDrivenInspectorControl(GuiGraphics graphics, AdvancedGraphDocument.Node node, String port, String type,
                                             int x, int y) {
-        renderControllerOption(graphics, x + 7, y - 3, layoutRight() - x - 14, 15, portColor(type), false);
+        int controlLeft = x + 7 + inspectorInlineMapPortIndent(node, port, false);
+        renderControllerOption(graphics, controlLeft, y - 3, layoutRight() - controlLeft - 7, 15, portColor(type), false);
         String label = inputDisplayLabel(node, port);
-        graphics.drawString(font, trim(label, 15), x + 14, y, nodeMutedTextColor(), false);
+        graphics.drawString(font, trim(label, 15), controlLeft + 7, y, nodeMutedTextColor(), false);
         String shown = trim(wiredInputValueLabel(node, port, type), 12);
         graphics.drawString(font, shown, layoutRight() - font.width(shown) - 11, y, nodeValueTextColor(), false);
     }
 
     // Draw the inspector slider
     private void drawInspectorSlider(GuiGraphics graphics, AdvancedGraphDocument.Node node, String port, int x, int y) {
-        int left = x + 8;
+        int left = x + 8 + inspectorInlineMapPortIndent(node, port, false);
         int right = layoutRight() - 8;
         String val = compactNumber(inputNumber(node, port));
         SliderTrack track = inspectorSliderTrack(node, port);
@@ -6037,6 +6092,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 : AdvancedGraphCatalog.inputs(hit.node())).get(hit.port());
         if ("map".equals(portType)) {
             actions.add("Breakout");
+            if (canCollapseInlineMap(hit.node(), hit.port(), hit.output())) {
+                actions.add("Collapse");
+            }
         }
         if (portType != null && !"exec".equals(portType)) {
             actions.add("Promote to Variable");
@@ -6536,7 +6594,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 startSliderDrag(node, port.getKey(), false, mouseX);
             } else if (!inputOptions(node, port.getKey()).isEmpty()
                     || List.of("boolean", "direction", "frequency", "target").contains(port.getValue())) {
-                applyInputControl(node, port.getKey(), port.getValue(), mouseX, mouseY, x + 5, NODE_WIDTH * zoom - 10);
+                int controlInset = inputControlInset(node, port.getKey());
+                applyInputControl(node, port.getKey(), port.getValue(), mouseX, mouseY,
+                        x + 5 + controlInset, NODE_WIDTH * zoom - 10 - controlInset);
             } else {
                 syncInspector();
                 openBodyEditor(node, port.getKey(), bodyTop + portRow * rowHeight, rowHeight);
@@ -6849,7 +6909,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                         startSliderDrag(node, port.getKey(), true, mouseX);
                     }
                 }
-                else applyInputControl(node, port.getKey(), port.getValue(), mouseX, mouseY, graphRight() + 7, RIGHT_WIDTH - 14);
+                else {
+                    int controlInset = inspectorInlineMapPortIndent(node, port.getKey(), false);
+                    applyInputControl(node, port.getKey(), port.getValue(), mouseX, mouseY,
+                            graphRight() + 7 + controlInset, RIGHT_WIDTH - 14 - controlInset);
+                }
                 syncInspector();
                 return true;
             }
@@ -7086,6 +7150,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
             return;
         }
+        if ("Collapse".equals(action) && canCollapseInlineMap(node, ctx.port(), ctx.output())) {
+            collapseInlineMap(node, ctx.port(), ctx.output());
+            return;
+        }
         if ("Promote to Variable".equals(action)) {
             promotePortToVariable(node, ctx.port(), ctx.output());
             return;
@@ -7161,6 +7229,75 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         clearGraphRenderCache();
         syncInspector();
         showGraphToast("MAP fields added to node inputs", GraphActionToastSeverity.SUCCESS);
+    }
+
+    // Collapse an unwired MAP breakout back into its parent port
+    private void collapseInlineMap(AdvancedGraphDocument.Node node, String sourcePort, boolean output) {
+        if (!canCollapseInlineMap(node, sourcePort, output)) {
+            showGraphToast("Disconnect MAP fields before collapsing", GraphActionToastSeverity.WARNING);
+            return;
+        }
+        AdvancedGraphDocument.Value collapsed = output
+                ? null : currentPortValue(node, sourcePort, false);
+        String mappingsTag = output ? AdvancedGraphCatalog.INLINE_MAP_OUTPUTS_TAG
+                : AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG;
+        CompoundTag mappings = node.data().getCompound(mappingsTag).copy();
+        List<String> inlinePorts = mappings.getAllKeys().stream()
+                .filter(port -> sourcePort.equals(mappings.getCompound(port)
+                        .getString(AdvancedGraphCatalog.INLINE_MAP_SOURCE_TAG)))
+                .toList();
+        checkpoint();
+        if (!output) {
+            putInputDefault(node, sourcePort, "map", collapsed);
+        }
+        for (String inlinePort : inlinePorts) {
+            AdvancedGraphPortState.setPersistent(node, inlinePort, output, false, null);
+            mappings.remove(inlinePort);
+        }
+        if (mappings.isEmpty()) node.data().remove(mappingsTag);
+        else node.data().put(mappingsTag, mappings);
+        if (output) {
+            removeInlineMapPortEntries(node, inlinePorts, "DynamicOutputs", "OutputLabels",
+                    "OutputOptions", AdvancedGraphPortState.OUTPUT_DEFAULTS_TAG);
+        } else {
+            removeInlineMapPortEntries(node, inlinePorts, "DynamicInputs", "Defaults",
+                    "PrefilledInputs", "ForceWriteInputs", "InputOptions",
+                    AdvancedGraphCatalog.INPUT_LABELS_TAG);
+        }
+        clearGraphRenderCache();
+        syncInspector();
+        showGraphToast("MAP fields collapsed", GraphActionToastSeverity.SUCCESS);
+    }
+
+    // Check whether every child of one MAP breakout is unwired
+    private boolean canCollapseInlineMap(AdvancedGraphDocument.Node node, String sourcePort, boolean output) {
+        if (node == null || sourcePort == null || sourcePort.isBlank()) return false;
+        CompoundTag mappings = node.data().getCompound(output
+                ? AdvancedGraphCatalog.INLINE_MAP_OUTPUTS_TAG : AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG);
+        boolean found = false;
+        for (String inlinePort : mappings.getAllKeys()) {
+            if (!sourcePort.equals(mappings.getCompound(inlinePort)
+                    .getString(AdvancedGraphCatalog.INLINE_MAP_SOURCE_TAG))) {
+                continue;
+            }
+            found = true;
+            boolean wired = activeEdges().stream().anyMatch(edge -> output
+                    ? node.id().equals(edge.fromNode()) && inlinePort.equals(edge.fromPort())
+                    : node.id().equals(edge.toNode()) && inlinePort.equals(edge.toPort()));
+            if (wired) return false;
+        }
+        return found;
+    }
+
+    // Remove stored graph state for collapsed inline MAP fields
+    private static void removeInlineMapPortEntries(AdvancedGraphDocument.Node node,
+                                                   List<String> ports, String... dataKeys) {
+        for (String dataKey : dataKeys) {
+            CompoundTag entries = node.data().getCompound(dataKey);
+            ports.forEach(entries::remove);
+            if (entries.isEmpty()) node.data().remove(dataKey);
+            else node.data().put(dataKey, entries);
+        }
     }
 
     private String inlineMapPortName(AdvancedGraphDocument.Node node, String sourcePort, String key,
@@ -8603,7 +8740,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 y = screenY(node.y()) + (int) ((NODE_HEADER / 2.0) * zoom) - 2;
             }
         } else if (!output) {
-            x = screenX(node.x());
+            x = screenX(node.x()) + inlineMapPortIndent(node, port, false);
             if ("curve".equals(node.type()) && "value".equals(port)) {
                 y = screenY(node.y()) + (int) Math.round((nodeBodyTopUnits(node)
                         + CURVE_BODY_HEIGHT / 2.0) * zoom);
@@ -8611,7 +8748,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 y = bodyControlCenterY(node, port);
             }
         } else {
-            x = screenX(node.x()) + (output ? (int) (NODE_WIDTH * zoom) : 0);
+            x = screenX(node.x()) + (int) (NODE_WIDTH * zoom) - inlineMapPortIndent(node, port, true);
             y = screenY(node.y()) + (int) Math.round(portStart(node) * zoom)
                     + (int) Math.round(outputDataPortOffset(node, port) * zoom);
         }
@@ -9606,7 +9743,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Draw the set data force write checkbox
     private void drawSetDataForceWriteCheckbox(GuiGraphics graphics, AdvancedGraphDocument.Node node,
                                                 String port, int x, int y) {
-        UiRect bounds = setDataForceWriteBounds(x, y);
+        UiRect bounds = setDataForceWriteBounds(node, port, x, y);
         boolean enabled = isSetDataForceWriteEnabled(node, port);
         graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(), 0xFF0B1118);
         graphics.fill(bounds.x() + 1, bounds.y() + 1, bounds.right() - 1, bounds.bottom() - 1,
@@ -9618,10 +9755,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     // Set the data force write bounds
-    private UiRect setDataForceWriteBounds(int x, int y) {
+    private UiRect setDataForceWriteBounds(AdvancedGraphDocument.Node node, String port, int x, int y) {
         int size = Math.max(5, (int) Math.round(8 * zoom));
         int inset = Math.max(1, (int) Math.round(5 * zoom));
-        return new UiRect(x + inset, y + inset, size, size);
+        int childIndent = inlineMapPortIndent(node, port, false);
+        return new UiRect(x + inset + childIndent, y + inset, size, size);
     }
 
     // Set the data force write container inset
@@ -9633,6 +9771,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         int checkboxSize = Math.max(5, (int) Math.round(8 * zoom));
         int gap = Math.max(2, (int) Math.round(3 * zoom));
         return Math.max(0, checkboxInset + checkboxSize + gap - 5);
+    }
+
+    // Get the input control inset
+    private int inputControlInset(AdvancedGraphDocument.Node node, String port) {
+        return setDataForceWriteContainerInset(node, port) + inlineMapPortIndent(node, port, false);
     }
 
     // Set the data force write
@@ -9657,7 +9800,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     continue;
                 }
                 if (isSetDataForceWriteInput(node, port.getKey())
-                        && setDataForceWriteBounds(x, bodyY).contains(mouseX, mouseY)) {
+                        && setDataForceWriteBounds(node, port.getKey(), x, bodyY).contains(mouseX, mouseY)) {
                     return new ForceWriteHit(node, port.getKey());
                 }
                 bodyY += (int) (15 * zoom);
@@ -10308,6 +10451,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             CompoundTag ports = getData && !writable
                     ? ContraptionDiagramControllerCompat.readablePorts()
                     : new CompoundTag();
+            AdvancedContraptionControllerBlockEntity.clearDataPortGroups(node);
             node.data().remove("DynamicInputs");
             node.data().remove("DynamicOutputs");
             node.data().remove("OutputLabels");
@@ -10360,6 +10504,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 ? AdvancedContraptionControllerBlockEntity.graphDataPorts(
                         targetLevel, targetPos, writable, aeroworksSection)
                 : AdvancedContraptionControllerBlockEntity.graphDirectAxisPorts(blockEntity, writable);
+        if (getData || setData) {
+            ports = AdvancedContraptionControllerBlockEntity.configureDataPortGroups(node, ports);
+        } else {
+            AdvancedContraptionControllerBlockEntity.clearDataPortGroups(node);
+        }
         CompoundTag options = AdvancedContraptionControllerBlockEntity.graphDataPortOptions(
                 targetLevel, targetPos, writable);
         CompoundTag labels = getData && !writable
@@ -11302,6 +11451,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the input display label
     private String inputDisplayLabel(AdvancedGraphDocument.Node node, String port) {
+        String inlineMapLabel = inlineMapPortLabel(node, port, false);
+        if (!inlineMapLabel.isBlank()) return inlineMapLabel;
         if (isHudNode(node)) {
             return hudFieldLabel(node, port);
         }
@@ -11313,7 +11464,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the output display label
     private String outputDisplayLabel(AdvancedGraphDocument.Node node, String port) {
-        String label = node.data().getCompound("OutputLabels").getString(port);
+        String label = inlineMapPortLabel(node, port, true);
+        if (label.isBlank()) {
+            label = node.data().getCompound("OutputLabels").getString(port);
+        }
         if (label.isBlank()) {
             label = humanPort(port);
         }
@@ -11321,6 +11475,28 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             label += " [P]";
         }
         return label;
+    }
+
+    // Get the inline MAP child label
+    private String inlineMapPortLabel(AdvancedGraphDocument.Node node, String port, boolean output) {
+        if (node == null || port == null || port.isBlank()) return "";
+        CompoundTag mappings = node.data().getCompound(output
+                ? AdvancedGraphCatalog.INLINE_MAP_OUTPUTS_TAG : AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG);
+        String key = mappings.getCompound(port).getString(AdvancedGraphCatalog.INLINE_MAP_KEY_TAG);
+        if (key.isBlank()) return "";
+        int separator = key.lastIndexOf('.');
+        return humanPort(separator < 0 ? key : key.substring(separator + 1));
+    }
+
+    // Get the inline MAP child port indent
+    private int inlineMapPortIndent(AdvancedGraphDocument.Node node, String port, boolean output) {
+        return inlineMapPortLabel(node, port, output).isBlank() ? 0
+                : Math.max(2, (int) Math.round(INLINE_MAP_PORT_INDENT * zoom));
+    }
+
+    // Get the inspector inline MAP child port indent
+    private int inspectorInlineMapPortIndent(AdvancedGraphDocument.Node node, String port, boolean output) {
+        return inlineMapPortLabel(node, port, output).isBlank() ? 0 : INLINE_MAP_PORT_INDENT;
     }
 
     // Ensure the dynamic constructor

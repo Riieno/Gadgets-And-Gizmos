@@ -8,8 +8,10 @@ package com.rieno.gadgetsandgizmos.compat.sable;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
-import com.rieno.gadgetsandgizmos.content.AileronBearingLinkBlockEntity;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.content.AileronBearingLinkBlockEntity;
+import com.rieno.gadgetsandgizmos.content.ThrusterBearingLinkBlockEntity;
+import com.rieno.gadgetsandgizmos.content.VectorBearingLinkBlockEntity;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -23,8 +25,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 
-// Ignore the player's own mounted aileron during camera collision checks
-public final class AileronBearingCameraCollisionFilter {
+// Ignore bearing-owned mounted sublevels during contraption camera collision checks
+public final class BearingCameraCollisionFilter {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -33,7 +35,7 @@ public final class AileronBearingCameraCollisionFilter {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    private static final Map<UUID, BlockPos> AILERON_SUB_LEVELS = new ConcurrentHashMap<>();
+    private static final Map<UUID, BlockPos> BEARING_SUB_LEVELS = new ConcurrentHashMap<>();
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -43,8 +45,8 @@ public final class AileronBearingCameraCollisionFilter {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Initialize the aileron bearing camera collision filter
-    private AileronBearingCameraCollisionFilter() {
+    // Initialize the bearing camera collision filter
+    private BearingCameraCollisionFilter() {
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -55,12 +57,12 @@ public final class AileronBearingCameraCollisionFilter {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Get the extend ignored chain
+    // Add every bearing-owned sublevel to the camera's ignored connected chain
     public static Collection<SubLevel> extendIgnoredChain(Collection<SubLevel> connectedChain) {
         Map<SubLevel, Boolean> matches = new IdentityHashMap<>();
         return extendContains(connectedChain, candidate -> candidate instanceof SubLevel subLevel
                 && matches.computeIfAbsent(
-                        subLevel, AileronBearingCameraCollisionFilter::isAileronSubLevel));
+                        subLevel, BearingCameraCollisionFilter::isBearingSubLevel));
     }
 
     // Get the extend contains
@@ -68,31 +70,38 @@ public final class AileronBearingCameraCollisionFilter {
         return new ExtendedContainsCollection<>(original, additionalContains);
     }
 
-    // Check if this is an aileron sublevel
-    private static boolean isAileronSubLevel(SubLevel subLevel) {
+    // Check if this sublevel belongs to one of this addon's bearing heads
+    private static boolean isBearingSubLevel(SubLevel subLevel) {
         if (subLevel == null || subLevel.isRemoved()) {
             return false;
         }
 
         UUID id = subLevel.getUniqueId();
-        BlockPos cachedPos = id == null ? null : AILERON_SUB_LEVELS.get(id);
+        BlockPos cachedPos = id == null ? null : BEARING_SUB_LEVELS.get(id);
         if (cachedPos != null) {
             BlockEntity cached = SubLevelBlockEntityCollector.getBlockEntity(subLevel, cachedPos);
-            if (cached instanceof AileronBearingLinkBlockEntity) {
+            if (isBearingLink(cached)) {
                 return true;
             }
-            AILERON_SUB_LEVELS.remove(id, cachedPos);
+            BEARING_SUB_LEVELS.remove(id, cachedPos);
         }
 
         for (BlockEntity blockEntity : SubLevelBlockEntityCollector.getBlockEntities(subLevel)) {
-            if (blockEntity instanceof AileronBearingLinkBlockEntity) {
+            if (isBearingLink(blockEntity)) {
                 if (id != null) {
-                    AILERON_SUB_LEVELS.put(id, blockEntity.getBlockPos().immutable());
+                    BEARING_SUB_LEVELS.put(id, blockEntity.getBlockPos().immutable());
                 }
                 return true;
             }
         }
         return false;
+    }
+
+    // Check whether a block entity is the mounted link for one of this addon's bearing types
+    private static boolean isBearingLink(BlockEntity blockEntity) {
+        return blockEntity instanceof AileronBearingLinkBlockEntity
+                || blockEntity instanceof ThrusterBearingLinkBlockEntity
+                || blockEntity instanceof VectorBearingLinkBlockEntity;
     }
 
     // Handle the extended contains collection

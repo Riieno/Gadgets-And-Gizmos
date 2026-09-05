@@ -483,6 +483,20 @@ final class AileronBearingMountedAssembly {
         bearing.setMountedAssembly(head, null, null);
     }
 
+    // Remove the head after failed disassembly
+    void removeHeadAfterFailedDisassembly(AileronBearingBlockEntity bearing, ServerLevel level) {
+        releaseJoint();
+        ServerSubLevel child = resolveChild(bearing, level);
+        BlockPos localPos = bearing.getMountedLocalPos(head);
+        if (child != null && localPos != null) {
+            try {
+                destroyLinkBlock(level, child, localPos);
+            } catch (RuntimeException | LinkageError ignored) {
+            }
+        }
+        bearing.setMountedAssembly(head, null, null);
+    }
+
     // Check if this has removed containing sublevel
     private boolean hasRemovedContainingSubLevel(ServerLevel level, BlockPos pos) {
         SubLevel containing = Sable.HELPER.getContaining(level, pos);

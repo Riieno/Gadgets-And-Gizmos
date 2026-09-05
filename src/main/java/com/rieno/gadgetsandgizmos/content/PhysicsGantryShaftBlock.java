@@ -252,6 +252,21 @@ public class PhysicsGantryShaftBlock extends DirectionalKineticBlock
         }
     }
 
+    // Release all attached payloads before their backing shaft disappears
+    @Override
+    public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean isMoving) {
+        if (state.getBlock() != newState.getBlock()
+                && !level.isClientSide
+                && level.getBlockEntity(pos) instanceof PhysicsGantryShaftBlockEntity shaft) {
+            Direction shaftDirection = state.getValue(FACING);
+            UUID shaftSubLevelId = SimulatedHelper.getContainingSubLevelId(shaft);
+            for (PhysicsGantryCarriageBlockEntity carriage : shaft.getConnectedCarriages()) {
+                carriage.onAttachedShaftRemoved(pos, shaftDirection, shaftSubLevelId);
+            }
+        }
+        IBE.onRemove(state, level, pos, newState);
+    }
+
     // Handle the neighboring block change
     @Override
     public void neighborChanged(BlockState state, Level level, BlockPos pos, Block block,

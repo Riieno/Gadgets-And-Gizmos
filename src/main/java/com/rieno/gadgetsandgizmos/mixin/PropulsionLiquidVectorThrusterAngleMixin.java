@@ -41,18 +41,6 @@ public abstract class PropulsionLiquidVectorThrusterAngleMixin implements Propul
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Current west signal
-    @Shadow
-    private int westSignal;
-    // Current east signal
-    @Shadow
-    private int eastSignal;
-    // Current down signal
-    @Shadow
-    private int downSignal;
-    // Current up signal
-    @Shadow
-    private int upSignal;
     // Target vector x
     @Shadow
     private float targetVectorX;
@@ -197,8 +185,10 @@ public abstract class PropulsionLiquidVectorThrusterAngleMixin implements Propul
     // Apply the signal mapped targets
     @Unique
     private void createThrusters$applySignalMappedTargets() {
-        this.targetVectorX = Mth.clamp((this.westSignal - this.eastSignal) / 15.0f, -1.0f, 1.0f);
-        this.targetVectorY = Mth.clamp((this.downSignal - this.upSignal) / 15.0f, -1.0f, 1.0f);
+        this.targetVectorX = Mth.clamp((PropulsionVectorThrusterAngles.vectorSignal(this, "westSignal")
+                - PropulsionVectorThrusterAngles.vectorSignal(this, "eastSignal")) / 15.0f, -1.0f, 1.0f);
+        this.targetVectorY = Mth.clamp((PropulsionVectorThrusterAngles.vectorSignal(this, "downSignal")
+                - PropulsionVectorThrusterAngles.vectorSignal(this, "upSignal")) / 15.0f, -1.0f, 1.0f);
     }
 
     // Reset the signal mapped vectors
@@ -214,18 +204,12 @@ public abstract class PropulsionLiquidVectorThrusterAngleMixin implements Propul
     // Check if this has no vector signals
     @Unique
     private boolean createThrusters$hasNoVectorSignals() {
-        return this.westSignal == 0
-                && this.eastSignal == 0
-                && this.downSignal == 0
-                && this.upSignal == 0;
+        return PropulsionVectorThrusterAngles.hasNoVectorSignals(this);
     }
 
     // Clear the vector signals
     @Unique
     private void createThrusters$clearVectorSignals() {
-        this.westSignal = 0;
-        this.eastSignal = 0;
-        this.downSignal = 0;
-        this.upSignal = 0;
+        PropulsionVectorThrusterAngles.clearVectorSignals(this);
     }
 }

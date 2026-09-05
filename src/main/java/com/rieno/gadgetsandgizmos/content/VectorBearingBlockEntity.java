@@ -106,7 +106,7 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final double DEFAULT_MAX_TILT_DEGREES = 30.0D;
     private static final double MIN_MAX_TILT_DEGREES = 0.0D;
-    private static final double MAX_MAX_TILT_DEGREES = 89.0D;
+    private static final double MAX_MAX_TILT_DEGREES = 90.0D;
     private static final long LINK_PAYLOAD_TIMEOUT_TICKS = 20L;
     private static final long DIRECT_INPUT_TIMEOUT_TICKS = 20L;
     private static final long WIRELESS_SIGNAL_SAMPLE_INTERVAL_TICKS = 5L;
@@ -899,12 +899,6 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         Map<String, String> data = new LinkedHashMap<>();
         data.put("tilt_x", "number");
         data.put("tilt_z", "number");
-        data.put("max_tilt", "number");
-        data.put("control_mode", "string");
-        data.put("forward", "number");
-        data.put("backward", "number");
-        data.put("left", "number");
-        data.put("right", "number");
         return data;
     }
 

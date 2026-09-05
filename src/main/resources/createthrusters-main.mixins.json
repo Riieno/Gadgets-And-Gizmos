@@ -95,7 +95,7 @@
   "client": [
     "BundledSupporterHeadMixin",
     "AeroCamSyncGameRendererPickGuardMixin",
-    "AileronBearingCameraCollisionMixin",
+    "BearingCameraCollisionMixin",
     "AnalogueControllerMouseScrollMixin",
     "AnalogueControllerKeyboardHandlerMixin",
     "AnalogueJoystickMouseHandlerMixin",

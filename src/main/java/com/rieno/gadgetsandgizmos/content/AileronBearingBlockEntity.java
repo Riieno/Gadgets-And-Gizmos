@@ -1604,7 +1604,13 @@ public class AileronBearingBlockEntity extends KineticBlockEntity implements Men
             try {
                 disassembleMountedBlock(head);
             } catch (RuntimeException | LinkageError ignored) {
-                state(head).assembly.releaseJoint();
+                ServerLevel serverLevel = SableLevelApi.serverLevel(level);
+                if (serverLevel != null) {
+                    state(head).assembly.removeHeadAfterFailedDisassembly(this, serverLevel);
+                } else {
+                    state(head).assembly.releaseJoint();
+                    setMountedAssembly(head, null, null);
+                }
             }
         }
         super.destroy();
