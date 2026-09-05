@@ -80,7 +80,8 @@ def ignorePrefixes=[
         "dev.eriksonn.aeronautics.aeronautics",
         "dev.ryanhcode.offroad.offroad",
         "dev.simulated_team.simulated.simulated",
-        "MixinSquared"
+        "MixinSquared",
+        "create",
 ]
 def localJars = fileTree(libsDir) {
     include '*.jar'
