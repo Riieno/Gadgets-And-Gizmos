@@ -50,6 +50,9 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
     private AdvancedGraphDocument initialDraft;
     // Initial active
     private AdvancedGraphDocument initialActive;
+    // Initial hidden Schedule Scratch graphs
+    private AdvancedGraphDocument initialShippingScheduleDraft;
+    private AdvancedGraphDocument initialShippingScheduleActive;
     // Tracks whether tablet remote access is set
     private boolean tabletRemoteAccess;
 
@@ -79,6 +82,8 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
                 SimulatedHelper.getContainingSubLevelId(blockEntity));
         initialDraft = blockEntity.getDraftGraph();
         initialActive = blockEntity.getActiveGraph();
+        initialShippingScheduleDraft = blockEntity.getShippingScheduleDraftGraph();
+        initialShippingScheduleActive = blockEntity.getShippingScheduleActiveGraph();
     }
 
     // Initialize the advanced contraption controller menu
@@ -90,6 +95,8 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
                 SimulatedHelper.getContainingSubLevelId(blockEntity));
         initialDraft = blockEntity.getDraftGraph();
         initialActive = blockEntity.getActiveGraph();
+        initialShippingScheduleDraft = blockEntity.getShippingScheduleDraftGraph();
+        initialShippingScheduleActive = blockEntity.getShippingScheduleActiveGraph();
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -111,6 +118,8 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
                         getContentPos(), getContentSubLevelId(), draftRevision, activeRevision);
         initialDraft = AdvancedGraphDocument.fromTag(snapshot.draft());
         initialActive = AdvancedGraphDocument.fromTag(snapshot.active());
+        initialShippingScheduleDraft = AdvancedGraphDocument.fromTag(snapshot.scheduleDraft());
+        initialShippingScheduleActive = AdvancedGraphDocument.fromTag(snapshot.scheduleActive());
     }
 
     // Get the initial draft
@@ -121,6 +130,18 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
     // Get the initial active
     public AdvancedGraphDocument getInitialActive() {
         return initialActive == null ? new AdvancedGraphDocument() : initialActive.copy();
+    }
+
+    // Get the initial Schedule Scratch graph draft
+    public AdvancedGraphDocument getInitialShippingScheduleDraft() {
+        return initialShippingScheduleDraft == null
+                ? new AdvancedGraphDocument() : initialShippingScheduleDraft.copy();
+    }
+
+    // Get the initial active Schedule Scratch graph
+    public AdvancedGraphDocument getInitialShippingScheduleActive() {
+        return initialShippingScheduleActive == null
+                ? new AdvancedGraphDocument() : initialShippingScheduleActive.copy();
     }
 
     // Check if the still is valid

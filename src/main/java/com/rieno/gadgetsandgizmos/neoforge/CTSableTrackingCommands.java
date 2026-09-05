@@ -126,7 +126,14 @@ public final class CTSableTrackingCommands {
                         .then(Commands.argument("targets", EntityArgument.entities())
                                 .executes(ctx -> resetMusicDiskCollected(
                                         ctx.getSource(),
-                                        EntityArgument.getEntities(ctx, "targets"))))));
+                                        EntityArgument.getEntities(ctx, "targets")))))
+                .then(Commands.literal("scm_path_debug")
+                        .requires(src -> src.hasPermission(OP_PERMISSION_LEVEL))
+                        .executes(ctx -> setScmPathDebug(ctx.getSource(), null))
+                        .then(Commands.literal("on")
+                                .executes(ctx -> setScmPathDebug(ctx.getSource(), Boolean.TRUE)))
+                        .then(Commands.literal("off")
+                                .executes(ctx -> setScmPathDebug(ctx.getSource(), Boolean.FALSE)))));
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -136,6 +143,19 @@ public final class CTSableTrackingCommands {
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
+
+    // Toggle the server-fed SCM pathfinding renderer for the issuing player.
+    private static int setScmPathDebug(CommandSourceStack src, Boolean enabled)
+            throws CommandSyntaxException {
+        ServerPlayer player = src.getPlayerOrException();
+        boolean state = enabled == null
+                ? ScmPathDebugService.toggle(player)
+                : ScmPathDebugService.setEnabled(player, enabled);
+        src.sendSuccess(() -> Component.literal(state
+                ? "SCM path debug enabled: green = forward, orange = reverse, red = blocked current leg."
+                : "SCM path debug disabled."), false);
+        return Command.SINGLE_SUCCESS;
+    }
 
     // Queue the disabled item cleanup
     private static int queueDisabledItemCleanup(CommandSourceStack src, int chunkRange) {

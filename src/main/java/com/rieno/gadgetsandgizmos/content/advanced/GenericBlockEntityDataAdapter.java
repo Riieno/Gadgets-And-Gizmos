@@ -177,6 +177,9 @@ public final class GenericBlockEntityDataAdapter implements BlockEntityDataAdapt
     }
 
     private static AdvancedGraphDocument.Value runtimeValue(Object value) {
+        if (value instanceof GraphValue graphValue) {
+            return GraphRuntime.fromLibraryValue(graphValue);
+        }
         if (value instanceof Boolean bool) {
             return AdvancedGraphDocument.Value.bool(bool);
         }

@@ -30,6 +30,8 @@ import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedContraptionController
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphActionResultPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphHistoryPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphSnapshotPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.ScmConfigurationSnapshotPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.ScmPathDebugPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerPublicSharePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerSharedGraphsPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimePayload;
@@ -310,6 +312,12 @@ public final class CTCommonEvents {
                 registrar.playToClient(AdvancedControllerGraphSnapshotPayload.TYPE,
                                 AdvancedControllerGraphSnapshotPayload.STREAM_CODEC,
                                 AdvancedControllerGraphSnapshotPayload::handle);
+                registrar.playToClient(ScmConfigurationSnapshotPayload.TYPE,
+                                ScmConfigurationSnapshotPayload.STREAM_CODEC,
+                                ScmConfigurationSnapshotPayload::handle);
+                registrar.playToClient(ScmPathDebugPayload.TYPE,
+                                ScmPathDebugPayload.STREAM_CODEC,
+                                ScmPathDebugPayload::handle);
                 registrar.playToClient(AdvancedControllerRuntimePayload.TYPE, AdvancedControllerRuntimePayload.STREAM_CODEC,
                                 AdvancedControllerRuntimePayload::handle);
                 registrar.playToClient(FunctionPlotterDataPayload.TYPE,

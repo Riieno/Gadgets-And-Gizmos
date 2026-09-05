@@ -547,8 +547,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     protected boolean isControllerRuntimeLoaded() {
         return level != null
                 && !level.isClientSide
-                && !isRemoved()
-                && level.isLoaded(worldPosition);
+                && !isRemoved();
     }
 
     // Send the runtime data

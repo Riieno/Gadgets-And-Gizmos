@@ -11,7 +11,7 @@ package com.rieno.gadgetsandgizmos.compat.computercraft;
 import com.rieno.gadgetsandgizmos.compat.computercraft.api.GadgetsPeripheral;
 import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
 import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
-import com.rieno.gadgetsandgizmos.mixin.DirectionalGearshiftBlockInvoker;
+import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import dan200.computercraft.api.lua.LuaFunction;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
@@ -226,10 +226,18 @@ public class DirectionalGearshiftPeripheral extends GadgetsPeripheral<BlockEntit
             blockEntity.setChanged();
             Level level = blockEntity.getLevel();
             if (level != null && !level.isClientSide) {
-                if (state.getBlock() instanceof DirectionalGearshiftBlockInvoker invoker) {
-                    invoker.ct$detachKinetics(level, blockEntity.getBlockPos(), true);
+                KineticBlockEntity kineticBlockEntity = blockEntity instanceof KineticBlockEntity kinetic
+                        ? kinetic
+                        : null;
+                if (kineticBlockEntity != null) {
+                    kineticBlockEntity.detachKinetics();
                 }
                 level.setBlock(blockEntity.getBlockPos(), state, 2);
+                if (kineticBlockEntity != null && !kineticBlockEntity.isRemoved()) {
+                    kineticBlockEntity.attachKinetics();
+                    kineticBlockEntity.setChanged();
+                    kineticBlockEntity.sendData();
+                }
             }
         }
     }

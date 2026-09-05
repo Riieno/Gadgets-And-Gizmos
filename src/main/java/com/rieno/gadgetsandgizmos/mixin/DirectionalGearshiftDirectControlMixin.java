@@ -13,10 +13,8 @@ import com.rieno.gadgetsandgizmos.lib.control.IDirectControlReceiver;
 import com.simibubi.create.content.kinetics.transmission.SplitShaftBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.ticks.TickPriority;
 import org.spongepowered.asm.mixin.Mixin;
 
 import java.util.Locale;
@@ -73,12 +71,16 @@ public abstract class DirectionalGearshiftDirectControlMixin extends SplitShaftB
         }
 
         if (changed) {
-            setChanged();
-            if (state.getBlock() instanceof DirectionalGearshiftBlockInvoker invoker) {
-                invoker.ct$detachKinetics(level, worldPosition, true);
-            }
+            // A scheduled block tick is not reliable while this block is in a moving
+            // Sable sub-level. Rebuild the kinetic network synchronously instead,
+            // matching Create's normal kinetic state-transition pattern.
+            detachKinetics();
             level.setBlock(worldPosition, state, 2);
-            level.scheduleTick(worldPosition, (Block) state.getBlock(), 1, TickPriority.EXTREMELY_HIGH);
+            if (!isRemoved()) {
+                attachKinetics();
+                setChanged();
+                sendData();
+            }
         }
     }
 }

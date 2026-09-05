@@ -174,7 +174,7 @@ public class AnalogueContraptionControllerBlock extends CTDirectionalBlock
     // Get the missing slab half face
     private static Direction missingSlabHalfFace(BlockState state) {
         if (state.getBlock() instanceof ShipControlModuleBlock) {
-            return Direction.UP;
+            return ShipControlModuleBlock.exposedFace(state);
         }
         return state.getValue(BlockStateProperties.SLAB_TYPE) == SlabType.BOTTOM
                 ? Direction.UP

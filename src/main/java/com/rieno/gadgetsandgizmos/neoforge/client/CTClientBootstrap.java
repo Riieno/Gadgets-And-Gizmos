@@ -155,6 +155,7 @@ public final class CTClientBootstrap {
         NeoForge.EVENT_BUS.addListener(SupporterHeadClientEvents::onItemTooltip);
 
         NeoForge.EVENT_BUS.addListener(CTGantryAnchorDebugRenderer::onRenderWorld);
+        NeoForge.EVENT_BUS.addListener(ScmPathDebugRenderer::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(ShippingManifestRenderer::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(PoweredZiplinePlacementHandler::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(ContraptionNetworkLinkerFaceRenderer::onRenderWorld);

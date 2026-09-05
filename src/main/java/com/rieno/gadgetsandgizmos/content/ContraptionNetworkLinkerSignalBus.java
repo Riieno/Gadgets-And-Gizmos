@@ -138,7 +138,6 @@ public final class ContraptionNetworkLinkerSignalBus {
             PlaneSignalKey key = new PlaneSignalKey(immutablePos, planeFace, resolvedSubLevelId);
             Map<String, Integer> bySource = byPlane == null ? null : byPlane.get(key);
             int previousMax = maxPlaneSignal(bySource);
-            Integer previousForSource = bySource == null ? null : bySource.get(sourceId);
 
             if (strength <= 0) {
                 if (bySource != null) {
@@ -157,8 +156,10 @@ public final class ContraptionNetworkLinkerSignalBus {
             }
 
             int nextMax = maxPlaneSignal(bySource);
-            Integer nextForSource = bySource == null ? null : bySource.get(sourceId);
-            changed = !Objects.equals(previousForSource, nextForSource) || previousMax != nextMax;
+            // A plane is a single face-scoped output. Source bookkeeping may
+            // change while its effective redstone value does not; notifying
+            // the attached block in that case creates a false neighbour pulse.
+            changed = previousMax != nextMax;
 
             if (bySource != null && bySource.isEmpty() && byPlane != null) {
                 byPlane.remove(key);
@@ -709,25 +710,12 @@ public final class ContraptionNetworkLinkerSignalBus {
 
     // Calculate the plane injected signal
     private static int computePlaneInjectedSignal(PlaneSignalSnapshot snapshot,
-                                                  Level level,
-                                                  BlockPos queriedPos,
-                                                  Direction towardTarget,
-                                                  SignalQueryCache cache) {
-        int max = lookupPlaneSignal(snapshot, queriedPos, towardTarget, null);
-        if (max >= 15) {
-            return max;
-        }
-
-        Set<UUID> candidateSubLevelIds = snapshot.subLevelIdsAt(queriedPos);
-        if (candidateSubLevelIds.isEmpty()) {
-            return max;
-        }
-
-        UUID queriedSubLevelId = cache.getSubLevelId(level, queriedPos, candidateSubLevelIds);
-        if (queriedSubLevelId == null) {
-            return max;
-        }
-        return Math.max(max, lookupPlaneSignal(snapshot, queriedPos, towardTarget, queriedSubLevelId));
+                                                   Level level,
+                                                   BlockPos queriedPos,
+                                                   Direction towardTarget,
+                                                   SignalQueryCache cache) {
+        UUID queriedSubLevelId = resolvePlaneQuerySubLevelId(snapshot, level, queriedPos, cache);
+        return lookupPlaneSignal(snapshot, queriedPos, towardTarget, queriedSubLevelId);
     }
 
     // Get the plane block signal
@@ -745,46 +733,31 @@ public final class ContraptionNetworkLinkerSignalBus {
 
     // Calculate the best plane neighbor signal
     private static int computeBestPlaneNeighborSignal(PlaneSignalSnapshot snapshot,
-                                                      Level level,
-                                                      BlockPos targetPos,
-                                                      SignalQueryCache cache) {
-        int max = lookupAttachedPlaneSignal(snapshot, targetPos, null);
+                                                       Level level,
+                                                       BlockPos targetPos,
+                                                       SignalQueryCache cache) {
+        UUID targetSubLevelId = resolvePlaneQuerySubLevelId(snapshot, level, targetPos, cache);
+        int max = lookupAttachedPlaneSignal(snapshot, targetPos, targetSubLevelId);
         for (Direction dir : DIRECTIONS) {
             BlockPos planePos = targetPos.relative(dir);
-            max = Math.max(max, lookupPlaneSignal(snapshot, planePos, dir, null));
-        }
-
-        if (max >= 15) {
-            return max;
-        }
-
-        Set<UUID> attachedSubLevelIds = snapshot.subLevelIdsAt(targetPos);
-        if (!attachedSubLevelIds.isEmpty()) {
-            UUID targetSubLevelId = cache.getSubLevelId(level, targetPos, attachedSubLevelIds);
-            if (targetSubLevelId != null) {
-                max = Math.max(max, lookupAttachedPlaneSignal(snapshot, targetPos, targetSubLevelId));
-            }
-        }
-
-        if (max >= 15) {
-            return max;
-        }
-
-        for (Direction dir : DIRECTIONS) {
-            BlockPos planePos = targetPos.relative(dir);
-            Set<UUID> candidateSubLevelIds = snapshot.subLevelIdsAt(planePos);
-            if (candidateSubLevelIds.isEmpty()) {
-                continue;
-            }
-            UUID subLevelId = cache.getSubLevelId(level, planePos, candidateSubLevelIds);
-            if (subLevelId != null) {
-                max = Math.max(max, lookupPlaneSignal(snapshot, planePos, dir, subLevelId));
-            }
-            if (max >= 15) {
-                return max;
-            }
+            max = Math.max(max, lookupPlaneSignal(snapshot, planePos, dir, targetSubLevelId));
         }
         return max;
+    }
+
+    // Resolve the one sub-level which owns a face query. Plane signals must
+    // never fall back from a contraption to the root level (or vice versa), as
+    // equal local coordinates would otherwise power an unrelated neighbour.
+    private static @Nullable UUID resolvePlaneQuerySubLevelId(PlaneSignalSnapshot snapshot,
+                                                               Level level,
+                                                               BlockPos pos,
+                                                               SignalQueryCache cache) {
+        UUID containingId = resolveTargetSubLevelId(level, pos, null);
+        if (containingId != null) {
+            return containingId;
+        }
+        Set<UUID> candidates = snapshot.subLevelIdsAt(pos);
+        return candidates.isEmpty() ? null : cache.getSubLevelId(level, pos, candidates);
     }
 
     // Get the injected snapshot
@@ -1108,11 +1081,7 @@ public final class ContraptionNetworkLinkerSignalBus {
         if (snapshot == null || planePos == null || planeFace == null) {
             return 0;
         }
-        int max = snapshot.strengths().getOrDefault(new PlaneSignalKey(planePos, planeFace, subLevelId), 0);
-        if (subLevelId != null) {
-            max = Math.max(max, snapshot.strengths().getOrDefault(new PlaneSignalKey(planePos, planeFace, null), 0));
-        }
-        return max;
+        return snapshot.strengths().getOrDefault(new PlaneSignalKey(planePos, planeFace, subLevelId), 0);
     }
 
     // Get the lookup attached plane signal
@@ -1122,11 +1091,7 @@ public final class ContraptionNetworkLinkerSignalBus {
         if (snapshot == null || attachedPos == null) {
             return 0;
         }
-        int max = snapshot.attachedStrengths().getOrDefault(new PlaneAttachmentKey(attachedPos, subLevelId), 0);
-        if (subLevelId != null) {
-            max = Math.max(max, snapshot.attachedStrengths().getOrDefault(new PlaneAttachmentKey(attachedPos, null), 0));
-        }
-        return max;
+        return snapshot.attachedStrengths().getOrDefault(new PlaneAttachmentKey(attachedPos, subLevelId), 0);
     }
 
     // Resolve the signal level

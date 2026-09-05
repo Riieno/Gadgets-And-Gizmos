@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.simibubi.create.AllDataComponents;
 import com.simibubi.create.content.processing.burner.BlazeBurnerBlock;
 import com.simibubi.create.content.contraptions.actors.seat.SeatBlock;
 import com.simibubi.create.content.contraptions.actors.seat.SeatEntity;
@@ -20,6 +21,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionHand;
@@ -403,6 +405,85 @@ public final class ShippingSchedulePilot {
         return controller.getLevel().getBlockState(burnerPos).getBlock() instanceof BlazeBurnerBlock;
     }
 
+    // Resolve an adjacent seated pilot for the ACC Schedule workspace. This deliberately does not require a held item:
+    // new schedule graphs are allowed to start a shipping route without creating a shipping schedule item.
+    public static @org.jetbrains.annotations.Nullable LivingEntity findAdjacentSeatedPilot(
+            AdvancedContraptionControllerBlockEntity controller
+    ) {
+        if (controller == null || controller.getLevel() == null) {
+            return null;
+        }
+        AABB bounds = new AABB(controller.getBlockPos()).inflate(2.0D);
+        for (SeatEntity seat : controller.getLevel().getEntitiesOfClass(SeatEntity.class, bounds)) {
+            for (Entity passenger : seat.getPassengers()) {
+                if (passenger instanceof LivingEntity pilot && isSeatedAtController(pilot, controller)) {
+                    return pilot;
+                }
+            }
+        }
+        return null;
+    }
+
+    // Check whether the controller has a currently valid Schedule workspace pilot.
+    public static boolean hasScheduleWorkspacePilot(AdvancedContraptionControllerBlockEntity controller) {
+        return isBlazeBurnerPilot(controller) || findAdjacentSeatedPilot(controller) != null;
+    }
+
+    // Read the legacy item held by the adjacent seated pilot. This fallback is
+    // deliberately read-only: it lets an ACC surface an already-running old
+    // schedule even when its runtime graph cache predates the Scratch feature.
+    public static @org.jetbrains.annotations.Nullable Schedule adjacentPilotSchedule(
+            AdvancedContraptionControllerBlockEntity controller
+    ) {
+        if (controller == null || controller.getLevel() == null) return null;
+        LivingEntity pilot = findAdjacentSeatedPilot(controller);
+        if (pilot == null) return null;
+        ItemStack stack = pilot.getMainHandItem();
+        return stack.getItem() instanceof ShippingScheduleItem
+                ? ScheduleItem.getSchedule(controller.getLevel().registryAccess(), stack) : null;
+    }
+
+    // Write an SCM-owned schedule to the adjacent pilot's already-held item.
+    // This is intentionally an explicit item operation: it does not create an
+    // item, install a runtime, or alter a controller-owned schedule.
+    public static boolean writeAdjacentPilotSchedule(AdvancedContraptionControllerBlockEntity controller,
+                                                     Schedule schedule) {
+        if (controller == null || schedule == null || controller.getLevel() == null) return false;
+        LivingEntity pilot = findAdjacentSeatedPilot(controller);
+        if (pilot == null) return false;
+        ItemStack held = pilot.getMainHandItem();
+        if (!(held.getItem() instanceof ShippingScheduleItem)) return false;
+        held.set(AllDataComponents.TRAIN_SCHEDULE, schedule.write(controller.getLevel().registryAccess()));
+        ShippingAutoRefuelSettings.write(held, ShippingAutoRefuelSettings.fromSchedule(schedule));
+        pilot.setItemSlot(EquipmentSlot.MAINHAND, held);
+        return true;
+    }
+
+    // Update the legacy physical schedule item when a paired ACC Scratch graph changes.
+    public static void syncPairedScheduleItem(AdvancedContraptionControllerBlockEntity controller,
+                                              Schedule schedule) {
+        if (controller == null || schedule == null || controller.getLevel() == null
+                || controller.getLevel().getServer() == null) {
+            return;
+        }
+        UUID pilotId = controller.getShippingSchedulePilotId();
+        if (pilotId == null || controller.hasBlazeBurnerShippingPilot()) {
+            return;
+        }
+        for (ServerLevel level : controller.getLevel().getServer().getAllLevels()) {
+            Entity entity = level.getEntity(pilotId);
+            if (!(entity instanceof LivingEntity pilot)) continue;
+            ItemStack paired = pilot.getMainHandItem();
+            if (!(paired.getItem() instanceof ShippingScheduleItem)) {
+                return;
+            }
+            paired.set(AllDataComponents.TRAIN_SCHEDULE, schedule.write(level.registryAccess()));
+            ShippingAutoRefuelSettings.write(paired, ShippingAutoRefuelSettings.fromSchedule(schedule));
+            pilot.setItemSlot(EquipmentSlot.MAINHAND, paired);
+            return;
+        }
+    }
+
     // Check if this burner belongs to the controller
     private static boolean isBlazeBurnerPilotAt(AdvancedContraptionControllerBlockEntity controller,
                                                 BlockPos burnerPos) {
@@ -430,8 +511,7 @@ public final class ShippingSchedulePilot {
             AdvancedContraptionControllerBlockEntity controller
     ) {
         if (pilot == null || controller == null || !pilot.isAlive()
-                || !(pilot.getVehicle() instanceof SeatEntity seat)
-                || !(pilot.getMainHandItem().getItem() instanceof ShippingScheduleItem)) {
+                || !(pilot.getVehicle() instanceof SeatEntity seat)) {
             return false;
         }
         Object pilotSubLevel = SimulatedHelper.getEntityTrackingSubLevel(pilot);

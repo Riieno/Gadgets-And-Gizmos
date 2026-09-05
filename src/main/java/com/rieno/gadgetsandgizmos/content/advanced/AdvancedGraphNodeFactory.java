@@ -340,16 +340,25 @@ public final class AdvancedGraphNodeFactory {
         }
         if ("acc_display_graph".equals(type) || "acc_display_plotter".equals(type)
                 || "acc_display_external".equals(type)
-                || "acc_display_crn".equals(type)) {
+                || "acc_display_crn".equals(type)
+                || "acc_display_shipping_information".equals(type)
+                || "acc_display_scm_information".equals(type)) {
             CompoundTag defaults = data.getCompound("Defaults");
             defaults.put("visible", graphDefault("boolean", true));
             if ("acc_display_plotter".equals(type)) {
                 defaults.put("value", graphDefault("number", 0.0D));
             }
-            if ("acc_display_crn".equals(type)) {
+            if ("acc_display_crn".equals(type) || "acc_display_shipping_information".equals(type)) {
                 data.putString("DisplayMode",
                         ShipInformationDisplayModes.DEFAULT);
                 defaults.put("text", graphDefault("string", ""));
+            }
+            if ("acc_display_scm_information".equals(type)) {
+                for (String port : AdvancedGraphCatalog.get(type).inputs().keySet()) {
+                    if (port.startsWith("show_")) {
+                        defaults.put(port, graphDefault("boolean", false));
+                    }
+                }
             }
             defaults.put("x", graphDefault("number", 0.0D));
             defaults.put("y", graphDefault("number", 0.0D));

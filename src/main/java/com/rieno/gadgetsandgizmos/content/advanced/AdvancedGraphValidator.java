@@ -219,12 +219,35 @@ public final class AdvancedGraphValidator {
                         diagnostic.nodeId(), diagnostic.edgeId()));
             }
             for (AdvancedGraphDocument.Node node : function.nodes()) {
+                if (AdvancedGraphCatalog.isShipControlType(node.type())
+                        && !AdvancedGraphCatalog.isScmFunctionPrimitiveType(node.type())) {
+                    diagnostics.add(error("scm_function_command",
+                            "Only direct SCM primitives may be used inside a graph function",
+                            node.id()));
+                }
                 if (AdvancedGraphFunctions.CALL_TYPE.equals(node.type())
                         && graph.function(node.data().getString(AdvancedGraphFunctions.FUNCTION_ID)) == null) {
                     diagnostics.add(error("missing_function",
                             "Function " + function.name() + ": function call references a missing function",
                             node.id()));
                 }
+            }
+        }
+        // SCM action bindings are graph-level call-site substitutions. Reject a
+        // stale binding rather than silently falling back to a different control
+        // program after an edit or a function deletion.
+        for (Map.Entry<String, String> entry : graph.scmActionFunctions().entrySet()) {
+            String action = entry.getKey();
+            AdvancedGraphDocument.FunctionGraph function = graph.function(entry.getValue());
+            if (!AdvancedGraphCatalog.isScmActionDispatchType(action)) {
+                diagnostics.add(error("invalid_scm_action",
+                        "SCM action binding references an unsupported action: " + action, ""));
+            } else if (function == null) {
+                diagnostics.add(error("missing_scm_action_function",
+                        "SCM action " + action + " references a missing function", ""));
+            } else if (!AdvancedGraphFunctions.hasActionSignature(action, function)) {
+                diagnostics.add(error("scm_action_signature",
+                        "SCM action " + action + " must mirror its node inputs and outputs", ""));
             }
         }
         return new Result(diagnostics.stream().noneMatch(d -> "error".equals(d.severity())), List.copyOf(diagnostics));

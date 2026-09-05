@@ -33,7 +33,7 @@ public final class AdvancedGraphDocument
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    public static final int CURRENT_VERSION = 9;
+    public static final int CURRENT_VERSION = 10;
     public static final int DEFAULT_MAX_NODES = 512;
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -90,6 +90,9 @@ public final class AdvancedGraphDocument
     private final List<CompoundTag> notes = new ArrayList<>();
     // Tracked functions
     private final List<FunctionGraph> functions = new ArrayList<>();
+    // Public SCM action type to function id bindings. Keeping this in the document
+    // makes an action program change atomic with the rest of a graph revision.
+    private final Map<String, String> scmActionFunctions = new LinkedHashMap<>();
 
     // Get the revision
     public int revision() {
@@ -183,6 +186,10 @@ public final class AdvancedGraphDocument
             hash = 31 * hash + function.name().hashCode();
             hash = 31 * hash + tagFingerprint(function.toTag());
         }
+        for (Map.Entry<String, String> entry : scmActionFunctions.entrySet()) {
+            hash = 31 * hash + entry.getKey().hashCode();
+            hash = 31 * hash + entry.getValue().hashCode();
+        }
         return hash;
     }
 
@@ -242,6 +249,33 @@ public final class AdvancedGraphDocument
     // Get the functions
     public List<FunctionGraph> functions() {
         return functions;
+    }
+
+    // Get the SCM action bindings
+    public Map<String, String> scmActionFunctions() {
+        return scmActionFunctions;
+    }
+
+    // Get the function assigned to a public SCM action
+    public String scmActionFunction(String actionType) {
+        if (actionType == null || actionType.isBlank()) {
+            return "";
+        }
+        return scmActionFunctions.getOrDefault(actionType.trim(), "");
+    }
+
+    // Assign a function to a public SCM action. An empty id restores the built-in action.
+    public void setScmActionFunction(String actionType, String functionId) {
+        if (actionType == null || actionType.isBlank()) {
+            return;
+        }
+        String action = actionType.trim();
+        String function = functionId == null ? "" : functionId.trim();
+        if (function.isBlank()) {
+            scmActionFunctions.remove(action);
+        } else {
+            scmActionFunctions.put(action, function);
+        }
     }
 
     // Get the function
@@ -329,6 +363,9 @@ public final class AdvancedGraphDocument
         ListTag functionTags = new ListTag();
         functions.forEach(function -> functionTags.add(function.toTag()));
         tag.put("Functions", functionTags);
+        CompoundTag scmActions = new CompoundTag();
+        scmActionFunctions.forEach(scmActions::putString);
+        tag.put("ScmActionFunctions", scmActions);
         return tag;
     }
 
@@ -388,6 +425,13 @@ public final class AdvancedGraphDocument
             if (!function.id().isBlank()
                     && graph.functions.stream().noneMatch(existing -> existing.id().equals(function.id()))) {
                 graph.functions.add(function);
+            }
+        }
+        CompoundTag scmActions = tag.getCompound("ScmActionFunctions");
+        for (String action : scmActions.getAllKeys()) {
+            String functionId = scmActions.getString(action).trim();
+            if (!action.isBlank() && !functionId.isBlank()) {
+                graph.scmActionFunctions.put(action.trim(), functionId);
             }
         }
         // ------------------------------------VERSION MIGRATION------------------------------------

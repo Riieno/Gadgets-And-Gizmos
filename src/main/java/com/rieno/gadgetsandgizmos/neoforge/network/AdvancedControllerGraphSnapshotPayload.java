@@ -120,12 +120,21 @@ public record AdvancedControllerGraphSnapshotPayload(
     // Send the advanced controller graph snapshot
     public static void send(ServerPlayer player, BlockPos pos, UUID subLevelId,
                             AdvancedGraphDocument draft, AdvancedGraphDocument active) {
+        send(player, pos, subLevelId, draft, active, new AdvancedGraphDocument(), new AdvancedGraphDocument());
+    }
+
+    // Send normal ACC graphs together with the host-only Scratch schedule graphs.
+    public static void send(ServerPlayer player, BlockPos pos, UUID subLevelId,
+                            AdvancedGraphDocument draft, AdvancedGraphDocument active,
+                            AdvancedGraphDocument scheduleDraft, AdvancedGraphDocument scheduleActive) {
         if (player == null || pos == null) {
             return;
         }
         CompoundTag graphs = new CompoundTag();
         graphs.put("Draft", draft == null ? new CompoundTag() : draft.toTag());
         graphs.put("Active", active == null ? new CompoundTag() : active.toTag());
+        graphs.put("ScheduleDraft", scheduleDraft == null ? new CompoundTag() : scheduleDraft.toTag());
+        graphs.put("ScheduleActive", scheduleActive == null ? new CompoundTag() : scheduleActive.toTag());
         byte[] compressed = compress(graphs);
         if (compressed.length == 0 || compressed.length > MAX_COMPRESSED_BYTES) {
             LOGGER.warn("Skipped oversized advanced controller graph snapshot at {} ({} compressed bytes)",
@@ -215,7 +224,9 @@ public record AdvancedControllerGraphSnapshotPayload(
                     payload.draftRevision(),
                     payload.activeRevision(),
                     graphs.getCompound("Draft"),
-                    graphs.getCompound("Active"));
+                    graphs.getCompound("Active"),
+                    graphs.getCompound("ScheduleDraft"),
+                    graphs.getCompound("ScheduleActive"));
             CLIENT_SNAPSHOTS.put(
                     new GraphKey(payload.pos(), payload.subLevelId()), snapshot);
             clientHandler.apply(payload.pos(), payload.subLevelId(), snapshot);
@@ -300,14 +311,18 @@ public record AdvancedControllerGraphSnapshotPayload(
 
     // Store the graph snapshot
     public record GraphSnapshot(int draftRevision, int activeRevision,
-                                CompoundTag draft, CompoundTag active) {
+                                CompoundTag draft, CompoundTag active,
+                                CompoundTag scheduleDraft, CompoundTag scheduleActive) {
         private static final GraphSnapshot EMPTY =
-                new GraphSnapshot(0, 0, new CompoundTag(), new CompoundTag());
+                new GraphSnapshot(0, 0, new CompoundTag(), new CompoundTag(),
+                        new CompoundTag(), new CompoundTag());
 
         // Initialize the graph snapshot
         public GraphSnapshot {
             draft = draft == null ? new CompoundTag() : draft.copy();
             active = active == null ? new CompoundTag() : active.copy();
+            scheduleDraft = scheduleDraft == null ? new CompoundTag() : scheduleDraft.copy();
+            scheduleActive = scheduleActive == null ? new CompoundTag() : scheduleActive.copy();
         }
 
         // Get the draft
@@ -320,9 +335,19 @@ public record AdvancedControllerGraphSnapshotPayload(
             return active.copy();
         }
 
+        // Get the Schedule Scratch draft
+        public CompoundTag scheduleDraft() {
+            return scheduleDraft.copy();
+        }
+
+        // Get the active Schedule Scratch graph
+        public CompoundTag scheduleActive() {
+            return scheduleActive.copy();
+        }
+
         // Copy the graph snapshot
         private GraphSnapshot copy() {
-            return new GraphSnapshot(draftRevision, activeRevision, draft, active);
+            return new GraphSnapshot(draftRevision, activeRevision, draft, active, scheduleDraft, scheduleActive);
         }
     }
 

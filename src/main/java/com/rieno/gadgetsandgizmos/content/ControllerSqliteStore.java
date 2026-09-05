@@ -736,7 +736,7 @@ final class ControllerSqliteStore {
                 deleteGraphImages(connection, "linker", linkerId, null);
                 int copied;
                 try (PreparedStatement statement = connection.prepareStatement("""
-                        // ------------------------------------GRAPH COPY------------------------------------
+                        -- ------------------------------------GRAPH COPY------------------------------------
                         INSERT INTO graphs (
                             id, owner_type, owner_id, graph_role, graph_name, revision,
                             graph_json, graph_nbt, content_hash, needs_compilation, updated_at
@@ -760,7 +760,7 @@ final class ControllerSqliteStore {
                     return false;
                 }
                 try (PreparedStatement statement = connection.prepareStatement("""
-                        // ------------------------------------IMAGE COPY------------------------------------
+                        -- ------------------------------------IMAGE COPY------------------------------------
                         INSERT INTO graph_images (
                             owner_type, owner_id, graph_role, asset_id,
                             media_type, base64_data, updated_at
@@ -776,7 +776,7 @@ final class ControllerSqliteStore {
                     statement.executeUpdate();
                 }
                 try (PreparedStatement statement = connection.prepareStatement("""
-                        // ------------------------------------LINKER ASSIGNMENT------------------------------------
+                        -- ------------------------------------LINKER ASSIGNMENT------------------------------------
                         UPDATE linkers
                         SET controller_id = ?, selected_graph_id = ?, revision = revision + 1,
                             updated_at = ?

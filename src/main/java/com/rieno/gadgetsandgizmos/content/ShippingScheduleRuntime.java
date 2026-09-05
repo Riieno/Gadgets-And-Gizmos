@@ -58,6 +58,7 @@ import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -258,6 +259,8 @@ public final class ShippingScheduleRuntime {
     private long invalidPilotSinceTick = Long.MIN_VALUE;
     // Tracks whether resume lifecycle pause is pending
     private boolean resumeLifecyclePausePending;
+    // Tracks whether a recovery brake/hover command set must be cleared before motion resumes
+    private boolean dockingRecoveryControlActive;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -783,6 +786,44 @@ public final class ShippingScheduleRuntime {
         return true;
     }
 
+    // Replace an already installed schedule without dropping its pilot assignment or requiring a schedule item round trip.
+    public boolean replaceSchedule(Schedule incoming) {
+        if (shutdownSnapshotPending || schedule == null || incoming == null || incoming.entries.isEmpty()
+                || controller.getLevel() == null) {
+            return false;
+        }
+        HolderLookup.Provider registries = controller.getLevel().registryAccess();
+        Schedule replacement = Schedule.fromTag(registries, incoming.write(registries));
+        if (replacement.entries.isEmpty()) {
+            return false;
+        }
+        int previousEntry = currentEntry;
+        schedule = replacement;
+        autoRefuel = ShippingAutoRefuelSettings.fromSchedule(replacement);
+        currentEntry = Math.max(firstOperationalEntry(), Math.min(previousEntry, replacement.entries.size() - 1));
+        if (currentEntry >= replacement.entries.size()) {
+            currentEntry = firstOperationalEntry();
+        }
+        conditionProgress = new int[0];
+        conditionStarted = new long[0];
+        clearAutoRefuelInterruption();
+        clearHoldingState();
+        invalidateRouteCache();
+        refreshRouteCache();
+        status = "Shipping schedule updated from ACC";
+        controller.setChanged();
+        return true;
+    }
+
+    // Copy the live schedule for the ACC's paired Scratch graph.
+    public @Nullable Schedule scheduleCopy() {
+        if (schedule == null || controller.getLevel() == null) {
+            return null;
+        }
+        return Schedule.fromTag(controller.getLevel().registryAccess(),
+                schedule.write(controller.getLevel().registryAccess()));
+    }
+
     // Remove the shipping schedule
     public ItemStack remove() {
         if (shutdownSnapshotPending || schedule == null || controller.getLevel() == null) {
@@ -868,6 +909,7 @@ public final class ShippingScheduleRuntime {
         boolean success = switch (command) {
             case "shipping_pause" -> pause();
             case "shipping_resume" -> resume();
+            case "shipping_stop" -> stop();
             case "shipping_restart" -> restart();
             case "shipping_skip" -> skip();
             default -> false;
@@ -879,11 +921,24 @@ public final class ShippingScheduleRuntime {
         return success;
     }
 
+    // Invoke an explicit UI Start action without graph-command de-duplication.
+    // Repeated Start clicks are intentionally allowed to restart an SCM route.
+    public boolean restartFromController() {
+        if (shutdownSnapshotPending) return false;
+        boolean restarted = restart();
+        if (restarted) {
+            lastGraphCommand = "";
+            controller.setChanged();
+        }
+        return restarted;
+    }
+
     // Check if the command state is unchanged
     private boolean commandStateIsUnchanged(String command) {
         return switch (command) {
             case "shipping_pause" -> phase == Phase.PAUSED;
             case "shipping_resume" -> phase != Phase.PAUSED;
+            case "shipping_stop" -> phase == Phase.PAUSED && currentEntry == firstOperationalEntry();
             case "shipping_restart", "shipping_skip" -> true;
             default -> false;
         };
@@ -927,6 +982,21 @@ public final class ShippingScheduleRuntime {
         status = "Shipping schedule resumed by the controller graph";
         phaseStartedTick = controller.getLevel() == null
                 ? 0L : controller.getLevel().getGameTime();
+        controller.setChanged();
+        return true;
+    }
+
+    // Stop keeps the SCM-owned schedule installed, returns its cursor to the
+    // first operational entry, and leaves it paused until the player resumes
+    // or starts it again. This deliberately does not manufacture or require a
+    // shipping-schedule item.
+    private boolean stop() {
+        if (schedule == null) return false;
+        if (phase != Phase.PAUSED) pause();
+        currentEntry = firstOperationalEntry();
+        schedule.savedProgress = currentEntry;
+        phaseBeforePause = Phase.PRE_TRANSIT;
+        status = "Shipping schedule stopped by the controller";
         controller.setChanged();
         return true;
     }
@@ -2262,13 +2332,15 @@ public final class ShippingScheduleRuntime {
         if (controller.getLevel() == null || target == null) {
             return false;
         }
+        clearDockingRecoveryControl();
         lastTargetRefreshTick = controller.getLevel().getGameTime();
         return controller.executeShipControlGraphCommand(
                 PARK_NAVIGATION_COMMAND, "ship_follow",
-                Map.of("x", target.x, "y", target.y, "z", target.z,
+                routeControlParameters(Map.of(
+                        "x", target.x, "y", target.y, "z", target.z,
                         "speed", Math.min(routeSpeed, 8.0D),
                         "follow_distance", 0.0D,
-                        "avoid_collisions", 1.0D));
+                        "avoid_collisions", 1.0D)));
     }
 
     // Hold the ship at its reserved landing zone
@@ -2302,6 +2374,12 @@ public final class ShippingScheduleRuntime {
     private boolean isAirshipMode() {
         return controller.getShipControlMode().id().equals(
                 ScmBuiltinControlModes.AIRSHIP_ID);
+    }
+
+    // Check if the current SCM controls a ground vehicle.
+    private boolean isCarMode() {
+        return controller.getShipControlMode().id().equals(
+                ScmBuiltinControlModes.CAR_ID);
     }
 
     // Select the ship connector for entry
@@ -2717,10 +2795,11 @@ public final class ShippingScheduleRuntime {
         lastTargetRefreshTick = controller.getLevel().getGameTime();
         return controller.executeShipControlGraphCommand(
                 QUEUE_HOVER_COMMAND, "ship_follow",
-                Map.of("x", target.x, "y", target.y, "z", target.z,
+                routeControlParameters(Map.of(
+                        "x", target.x, "y", target.y, "z", target.z,
                         "speed", Math.min(routeSpeed, 8.0D),
                         "follow_distance", 0.0D,
-                        "avoid_collisions", 1.0D));
+                        "avoid_collisions", 1.0D)));
     }
 
     // Acquire the dock on arrival
@@ -3029,7 +3108,10 @@ public final class ShippingScheduleRuntime {
                     "shipping_schedule_undock_release", "ship_stop", Map.of());
             phase = Phase.PARKING;
             phaseStartedTick = controller.getLevel().getGameTime();
-            issueParkingNavigation(parkingTarget);
+            status = issueParkingNavigation(parkingTarget)
+                    ? "Parking after undocking"
+                    : "Parking control unavailable; stabilizing and retrying";
+            controller.setChanged();
             return;
         }
         ShipDockRegistry.Dock dock = cachedDock(currentDockId);
@@ -3050,6 +3132,8 @@ public final class ShippingScheduleRuntime {
         phase = Phase.NAVIGATING;
         phaseStartedTick = controller.getLevel().getGameTime();
         resetRouteProgress(dock);
+        status = "Navigating to " + dock.name();
+        controller.setChanged();
     }
 
     // Update the navigation
@@ -3298,6 +3382,21 @@ public final class ShippingScheduleRuntime {
         controller.executeShipControlGraphCommand(
                 "shipping_schedule_dock_recovery_hold", "ship_hover",
                 Map.of("y", currentPosition().y, "strength", 1.0D));
+        dockingRecoveryControlActive = true;
+    }
+
+    // Clear recovery-only commands before starting a new movement command. A
+    // stop is intentionally issued once at the transition: ship commands are
+    // composable, so otherwise the recovery brake and hover keep opposing the
+    // replacement navigation or docking command indefinitely.
+    private void clearDockingRecoveryControl() {
+        if (!dockingRecoveryControlActive || controller.getLevel() == null) {
+            return;
+        }
+        if (controller.executeShipControlGraphCommand(
+                "shipping_schedule_dock_recovery_clear", "ship_stop", Map.of())) {
+            dockingRecoveryControlActive = false;
+        }
     }
 
     // Issue the navigation
@@ -3305,6 +3404,7 @@ public final class ShippingScheduleRuntime {
         if (controller.getLevel() == null) {
             return false;
         }
+        clearDockingRecoveryControl();
         boolean useDockingConnector = hasUsableConnectorPair(dock);
         Vec3 approach = navigationTarget(dock);
         if (!useDockingConnector) {
@@ -3318,7 +3418,7 @@ public final class ShippingScheduleRuntime {
         lastTargetRefreshTick = controller.getLevel().getGameTime();
         return controller.executeShipControlGraphCommand(
                 NAVIGATION_COMMAND, "ship_navigate",
-                Map.ofEntries(
+                routeControlParameters(Map.ofEntries(
                         Map.entry("x", approach.x), Map.entry("y", approach.y),
                         Map.entry("z", approach.z), Map.entry("speed", routeSpeed),
                         Map.entry("tolerance", 1.25D),
@@ -3329,7 +3429,7 @@ public final class ShippingScheduleRuntime {
                         Map.entry("target_direction_z", dockingDirection.z),
                         Map.entry("target_up_x", dockingUp.x),
                         Map.entry("target_up_y", dockingUp.y),
-                        Map.entry("target_up_z", dockingUp.z)),
+                        Map.entry("target_up_z", dockingUp.z))),
                 Map.of("target_point", useDockingConnector
                         ? "docking_connector:" + currentShipConnectorIndex
                         : "center_of_mass"));
@@ -3340,15 +3440,17 @@ public final class ShippingScheduleRuntime {
         if (controller.getLevel() == null || target == null) {
             return false;
         }
+        clearDockingRecoveryControl();
         lastTargetRefreshTick = controller.getLevel().getGameTime();
         return controller.executeShipControlGraphCommand(
                 NAVIGATION_COMMAND, "ship_follow",
-                Map.of("x", target.x, "y", target.y, "z", target.z,
+                routeControlParameters(Map.of(
+                        "x", target.x, "y", target.y, "z", target.z,
                         "speed", routeSpeed, "follow_distance", 0.0D,
-                        "avoid_collisions", 1.0D));
+                        "avoid_collisions", 1.0D)));
     }
 
-    // Maintain the connectorless hover
+    // Maintain the connectorless stop
     private void maintainConnectorlessHover() {
         if (controller.getLevel() == null || connectorlessHoverTarget == null) {
             return;
@@ -3402,6 +3504,7 @@ public final class ShippingScheduleRuntime {
                 || dock.connectorUp() == null) {
             return false;
         }
+        clearDockingRecoveryControl();
         controller.setShipDockingMagneticCapture(currentShipConnectorIndex, false);
         Vec3 target = dock.dockingTarget();
         Vec3 facing = dock.connectorFacing().scale(-1.0D);
@@ -3409,7 +3512,7 @@ public final class ShippingScheduleRuntime {
         lastTargetRefreshTick = controller.getLevel().getGameTime();
         return controller.executeShipControlGraphCommand(
                 DOCKING_COMMAND, "ship_dock",
-                Map.ofEntries(
+                routeControlParameters(Map.ofEntries(
                         Map.entry("x", target.x), Map.entry("y", target.y),
                         Map.entry("z", target.z),
                         Map.entry("speed", Math.min(routeSpeed, MAX_DOCKING_SPEED)),
@@ -3420,8 +3523,18 @@ public final class ShippingScheduleRuntime {
                         Map.entry("target_direction_z", facing.z),
                         Map.entry("target_up_x", up.x),
                         Map.entry("target_up_y", up.y),
-                        Map.entry("target_up_z", up.z)),
+                        Map.entry("target_up_z", up.z))),
                 Map.of("target_point", "docking_connector:" + currentShipConnectorIndex));
+    }
+
+    // The schedule's Change Throttle value is the direct propulsion request
+    // for every vehicle mode. Target speed remains the physical navigation and
+    // stopping limit, while this value controls how strongly the configured
+    // Forward/Backward/Strafe or Acceleration channels drive toward that limit.
+    private Map<String, Double> routeControlParameters(Map<String, Double> values) {
+        Map<String, Double> routed = new LinkedHashMap<>(values);
+        routed.put("drive_throttle", routeThrottle);
+        return Map.copyOf(routed);
     }
 
     // Update the docked
@@ -4030,6 +4143,7 @@ public final class ShippingScheduleRuntime {
         return navigationTarget(dock, hasUsableConnectorPair(dock));
     }
 
+
     // Get the navigation target
     static Vec3 navigationTarget(ShipDockRegistry.Dock dock, boolean useDockingConnector) {
         if (useDockingConnector) {
@@ -4245,6 +4359,14 @@ public final class ShippingScheduleRuntime {
 
     // Read the shipping schedule
     public void read(CompoundTag parent, HolderLookup.Provider provider) {
+        read(parent, provider, true);
+    }
+
+    // Read the shipping schedule runtime. Persistent server loads recover
+    // interrupted physical actions; client synchronization packets must retain
+    // the exact authoritative phase and status sent by the server.
+    public void read(CompoundTag parent, HolderLookup.Provider provider,
+                     boolean recoverAfterLoad) {
         // -----------------------------------------------------DEFAULT STATE-----------------------------------------------------
         if (!parent.contains("ShippingScheduleRuntime", Tag.TAG_COMPOUND)) {
             schedule = null;
@@ -4264,6 +4386,7 @@ public final class ShippingScheduleRuntime {
             shutdownSnapshotPending = false;
             invalidPilotSinceTick = Long.MIN_VALUE;
             resumeLifecyclePausePending = false;
+            dockingRecoveryControlActive = false;
             invalidateRouteCache();
             return;
         }
@@ -4358,37 +4481,41 @@ public final class ShippingScheduleRuntime {
         invalidPilotSinceTick = Long.MIN_VALUE;
         resumeLifecyclePausePending = phase == Phase.PAUSED
                 && LOAD_INDUCED_SCM_PAUSE.equals(status);
+        dockingRecoveryControlActive = recoverAfterLoad && phase != Phase.IDLE;
         // -----------------------------------------------------RESUME STATE-----------------------------------------------------
-        if (phase == Phase.COUPLING && currentCouplingInstruction() == null) {
-            couplingEndpoints = List.of();
-            phase = Phase.PRE_TRANSIT;
-            status = "Carriage coupling action will restart from the saved schedule entry";
-        }
-        if (phaseBeforePause == Phase.COUPLING && currentCouplingInstruction() == null) {
-            couplingEndpoints = List.of();
-            phaseBeforePause = Phase.PRE_TRANSIT;
-        }
-        if (phase != Phase.COUPLING && phaseBeforePause != Phase.COUPLING) {
-            couplingEndpoints = List.of();
-        }
-        if (phase == Phase.NAVIGATING || phase == Phase.PARKING
-                || phase == Phase.WAITING_FOR_PARK) {
-            phase = Phase.PRE_TRANSIT;
-            status = "Resuming shipping schedule navigation after load";
-        }
-        if (phase == Phase.DOCKING || phase == Phase.UNDOCKING || phase == Phase.WAITING_FOR_DOCK) {
-            controller.activateShipDockingConnector(-1);
-            attachedDockId = null;
-            restoredDockOwnership = null;
-            phase = Phase.PRE_TRANSIT;
-            status = "Resuming shipping schedule after dock state restored";
-        }
-        if ((phase == Phase.PARKED || phase == Phase.DONE)
-                && (currentParkInstruction() == null || currentDockId == null
-                || currentParkingZoneId == null || parkingTarget == null)) {
-            clearParkingState();
-            phase = Phase.PRE_TRANSIT;
-            status = "Resuming shipping schedule after parking state restored";
+        if (recoverAfterLoad) {
+            if (phase == Phase.COUPLING && currentCouplingInstruction() == null) {
+                couplingEndpoints = List.of();
+                phase = Phase.PRE_TRANSIT;
+                status = "Carriage coupling action will restart from the saved schedule entry";
+            }
+            if (phaseBeforePause == Phase.COUPLING && currentCouplingInstruction() == null) {
+                couplingEndpoints = List.of();
+                phaseBeforePause = Phase.PRE_TRANSIT;
+            }
+            if (phase != Phase.COUPLING && phaseBeforePause != Phase.COUPLING) {
+                couplingEndpoints = List.of();
+            }
+            if (phase == Phase.NAVIGATING || phase == Phase.PARKING
+                    || phase == Phase.WAITING_FOR_PARK) {
+                phase = Phase.PRE_TRANSIT;
+                status = "Resuming shipping schedule navigation after load";
+            }
+            if (phase == Phase.DOCKING || phase == Phase.UNDOCKING
+                    || phase == Phase.WAITING_FOR_DOCK) {
+                controller.activateShipDockingConnector(-1);
+                attachedDockId = null;
+                restoredDockOwnership = null;
+                phase = Phase.PRE_TRANSIT;
+                status = "Resuming shipping schedule after dock state restored";
+            }
+            if ((phase == Phase.PARKED || phase == Phase.DONE)
+                    && (currentParkInstruction() == null || currentDockId == null
+                    || currentParkingZoneId == null || parkingTarget == null)) {
+                clearParkingState();
+                phase = Phase.PRE_TRANSIT;
+                status = "Resuming shipping schedule after parking state restored";
+            }
         }
     }
 

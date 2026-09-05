@@ -99,7 +99,7 @@ public final class AdvancedGraphEditingService implements VersionedGraphEditor {
         return new GraphDocumentSnapshot(AdvancedGraphDocument.CURRENT_VERSION,
                 graph.revision(), graph.templateId(), graph.viewportX(),
                 graph.viewportY(), graph.viewportZoom(), nodes, edges,
-                functions, variables);
+                functions, graph.scmActionFunctions(), variables);
     }
 
     private static GraphDocumentSnapshot.Node snapshotNode(
@@ -125,6 +125,61 @@ public final class AdvancedGraphEditingService implements VersionedGraphEditor {
                         .map(AdvancedGraphEditingService::snapshotNode).toList(),
                 function.edges().stream()
                         .map(AdvancedGraphEditingService::snapshotEdge).toList());
+    }
+
+    // Create a ready-to-edit SCM action function. Its initial body transparently
+    // forwards every public port to the built-in action, avoiding a dead action
+    // while still leaving an ordinary function graph for player customization.
+    private static AdvancedGraphDocument.FunctionGraph createScmActionFunction(
+            String id, String name, String action
+    ) {
+        AdvancedGraphCatalog.Definition definition = AdvancedGraphCatalog.get(action);
+        AdvancedGraphDocument.FunctionGraph function =
+                new AdvancedGraphDocument.FunctionGraph(id, name);
+        CompoundTag inputData = new CompoundTag();
+        CompoundTag inputPorts = new CompoundTag();
+        definition.inputs().forEach(inputPorts::putString);
+        inputData.put("DynamicOutputs", inputPorts);
+        CompoundTag outputData = new CompoundTag();
+        CompoundTag outputPorts = new CompoundTag();
+        definition.outputs().forEach(outputPorts::putString);
+        outputData.put("DynamicInputs", outputPorts);
+        AdvancedGraphDocument.Node input = new AdvancedGraphDocument.Node(
+                UUID.randomUUID().toString(), AdvancedGraphFunctions.INPUT_TYPE,
+                "Inputs", 40.0D, 110.0D, inputData);
+        AdvancedGraphDocument.Node builtin = new AdvancedGraphDocument.Node(
+                UUID.randomUUID().toString(), action, "Built-in " + humanActionName(action),
+                270.0D, 110.0D, new CompoundTag());
+        AdvancedGraphDocument.Node output = new AdvancedGraphDocument.Node(
+                UUID.randomUUID().toString(), AdvancedGraphFunctions.OUTPUT_TYPE,
+                "Outputs", 510.0D, 110.0D, outputData);
+        function.nodes().add(input);
+        function.nodes().add(builtin);
+        function.nodes().add(output);
+        definition.inputs().forEach((port, ignored) -> function.edges().add(
+                AdvancedGraphFunctions.edge(input.id(), port, builtin.id(), port)));
+        definition.outputs().forEach((port, ignored) -> function.edges().add(
+                AdvancedGraphFunctions.edge(builtin.id(), port, output.id(), port)));
+        return function;
+    }
+
+    // Turn a catalog action id into a compact editor label.
+    private static String humanActionName(String action) {
+        if (action == null || action.isBlank()) {
+            return "Action";
+        }
+        String raw = action.startsWith("ship_") ? action.substring("ship_".length()) : action;
+        StringBuilder result = new StringBuilder();
+        for (String word : raw.split("_")) {
+            if (word.isBlank()) {
+                continue;
+            }
+            if (!result.isEmpty()) {
+                result.append(' ');
+            }
+            result.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
+        }
+        return result.toString();
     }
     @Override
     public GraphEditResult mutateDraft(
@@ -202,6 +257,52 @@ public final class AdvancedGraphEditingService implements VersionedGraphEditor {
             boolean removed = AdvancedGraphFunctions.removeFunction(graph, id);
             return removed || missing(diagnostics, "function_not_found",
                     "Function does not exist", id, "");
+        }
+        if (mutation instanceof GraphMutation.SetScmActionFunction value) {
+            String action = value.actionType() == null ? "" : value.actionType().trim();
+            String functionId = resolve(value.functionId(), resolved);
+            if (!AdvancedGraphCatalog.isScmActionDispatchType(action)) {
+                return missing(diagnostics, "invalid_scm_action",
+                        "SCM action must name an executable public ship node", action, "");
+            }
+            if (functionId.isBlank()) {
+                graph.setScmActionFunction(action, "");
+                return true;
+            }
+            if (!AdvancedGraphCatalog.isPublicScmActionDispatchType(action)) {
+                return missing(diagnostics, "retired_scm_action",
+                        "This SCM action has been retired; use Forward or Backward", action, "");
+            }
+            AdvancedGraphDocument.FunctionGraph function = graph.function(functionId);
+            if (function == null) {
+                return missing(diagnostics, "function_not_found",
+                        "SCM action function does not exist", functionId, "");
+            }
+            if (!AdvancedGraphFunctions.hasActionSignature(action, function)) {
+                return missing(diagnostics, "scm_action_signature",
+                        "SCM action functions must mirror the public node inputs and outputs",
+                        functionId, "");
+            }
+            graph.setScmActionFunction(action, function.id());
+            return true;
+        }
+        if (mutation instanceof GraphMutation.CreateScmActionFunction value) {
+            String action = value.actionType() == null ? "" : value.actionType().trim();
+            if (!AdvancedGraphCatalog.isPublicScmActionDispatchType(action)) {
+                return missing(diagnostics, "invalid_scm_action",
+                        "SCM action must name an available public ship node", action, "");
+            }
+            String id = allocate(value.temporaryId(), "function", resolved, diagnostics);
+            if (id == null) {
+                return false;
+            }
+            String name = value.name() == null || value.name().isBlank()
+                    ? "SCM " + humanActionName(action) : value.name();
+            AdvancedGraphDocument.FunctionGraph function =
+                    createScmActionFunction(id, name, action);
+            graph.functions().add(function);
+            graph.setScmActionFunction(action, function.id());
+            return true;
         }
         if (mutation instanceof GraphMutation.AddNode value) {
             return addNode(graph, value, resolved, diagnostics);

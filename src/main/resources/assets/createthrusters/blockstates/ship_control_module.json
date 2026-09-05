@@ -1,19 +1,33 @@
 {
   "variants": {
-    "facing=north": {
-      "model": "createthrusters:block/ship_control_module"
-    },
-    "facing=east": {
-      "model": "createthrusters:block/ship_control_module",
-      "y": 90
-    },
-    "facing=south": {
-      "model": "createthrusters:block/ship_control_module",
-      "y": 180
-    },
-    "facing=west": {
-      "model": "createthrusters:block/ship_control_module",
-      "y": 270
-    }
+    "facing=north,mount_face=down": { "model": "createthrusters:block/ship_control_module" },
+    "facing=east,mount_face=down": { "model": "createthrusters:block/ship_control_module", "y": 90 },
+    "facing=south,mount_face=down": { "model": "createthrusters:block/ship_control_module", "y": 180 },
+    "facing=west,mount_face=down": { "model": "createthrusters:block/ship_control_module", "y": 270 },
+
+    "facing=north,mount_face=up": { "model": "createthrusters:block/ship_control_module", "x": 180 },
+    "facing=east,mount_face=up": { "model": "createthrusters:block/ship_control_module", "x": 180, "y": 90 },
+    "facing=south,mount_face=up": { "model": "createthrusters:block/ship_control_module", "x": 180, "y": 180 },
+    "facing=west,mount_face=up": { "model": "createthrusters:block/ship_control_module", "x": 180, "y": 270 },
+
+    "facing=north,mount_face=north": { "model": "createthrusters:block/ship_control_module", "x": 90, "y": 180 },
+    "facing=east,mount_face=north": { "model": "createthrusters:block/ship_control_module", "x": 90, "y": 180 },
+    "facing=south,mount_face=north": { "model": "createthrusters:block/ship_control_module", "x": 90, "y": 180 },
+    "facing=west,mount_face=north": { "model": "createthrusters:block/ship_control_module", "x": 90, "y": 180 },
+
+    "facing=north,mount_face=east": { "model": "createthrusters:block/ship_control_module", "x": 90, "y": 270 },
+    "facing=east,mount_face=east": { "model": "createthrusters:block/ship_control_module", "x": 90, "y": 270 },
+    "facing=south,mount_face=east": { "model": "createthrusters:block/ship_control_module", "x": 90, "y": 270 },
+    "facing=west,mount_face=east": { "model": "createthrusters:block/ship_control_module", "x": 90, "y": 270 },
+
+    "facing=north,mount_face=south": { "model": "createthrusters:block/ship_control_module", "x": 90 },
+    "facing=east,mount_face=south": { "model": "createthrusters:block/ship_control_module", "x": 90 },
+    "facing=south,mount_face=south": { "model": "createthrusters:block/ship_control_module", "x": 90 },
+    "facing=west,mount_face=south": { "model": "createthrusters:block/ship_control_module", "x": 90 },
+
+    "facing=north,mount_face=west": { "model": "createthrusters:block/ship_control_module", "x": 90, "y": 90 },
+    "facing=east,mount_face=west": { "model": "createthrusters:block/ship_control_module", "x": 90, "y": 90 },
+    "facing=south,mount_face=west": { "model": "createthrusters:block/ship_control_module", "x": 90, "y": 90 },
+    "facing=west,mount_face=west": { "model": "createthrusters:block/ship_control_module", "x": 90, "y": 90 }
   }
 }
