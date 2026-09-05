@@ -2,7 +2,16 @@ import groovy.json.JsonSlurper
 
 plugins {
     id 'java-library'
+    id 'idea'
     id 'net.neoforged.moddev' version '2.0.141'
+}
+
+def local = new Properties();
+{
+    def file = project.file("local.properties")
+    if (file.exists()) {
+        file.withInputStream { local.load(it) }
+    }
 }
 
 group = mod_group_id
@@ -42,14 +51,46 @@ repositories {
         name = 'Shedaniel'
         url = 'https://maven.shedaniel.me/'
     }
+
+    maven {
+        url = "https://maven.squiddev.cc"
+        content {
+            includeGroup("cc.tweaked")
+        }
+    }
+    //Aeronautics & Sable
+    maven {
+        name = "RyanHCode Maven"
+        url = "https://maven.ryanhcode.dev/releases"
+    }
+
+
+    maven { url = "https://maven.bawnorton.com/releases" } //MixinSquared
+    maven { url = "https://maven.enjarai.dev/mirrors" } // MixinSquared Mirror
+    maven { url = "https://maven.ithundxr.dev/snapshots" } // Registrate
+
 }
 
+
+
+
 def libsDir = file('libs')
-def requiredSableJar = file("libs/sable-neoforge-${minecraft_version}-${sable_version}.jar")
+def ignorePrefixes=[
+        "cc-tweaked",
+        "dev.eriksonn.aeronautics.aeronautics",
+        "dev.ryanhcode.offroad.offroad",
+        "dev.simulated_team.simulated.simulated",
+        "MixinSquared"
+]
 def localJars = fileTree(libsDir) {
     include '*.jar'
+
     exclude 'sable-neoforge-*.jar'
     exclude "${library_archive_name}-*.jar"
+
+    for (final def prefix in ignorePrefixes) {
+        exclude "$prefix-*.jar"
+    }
 }
 def localRuntimeJars = fileTree(libsDir) {
     include '*.jar'
@@ -57,6 +98,10 @@ def localRuntimeJars = fileTree(libsDir) {
     exclude 'veil-neoforge-*.jar'
     exclude 'sable-neoforge-*.jar'
     exclude "${library_archive_name}-*.jar"
+
+    for (final def prefix in ignorePrefixes) {
+        exclude "$prefix-*.jar"
+    }
 }
 def libraryProjectDir = file(library_project_dir)
 def libraryJarFile = new File(libraryProjectDir,
@@ -139,46 +184,46 @@ configurations {
     }
 }
 
-def buildLibrary = tasks.register('buildLibrary', Exec) {
-    group = 'build'
-    description = 'Builds the sibling Gadgets & Gizmos Library before compiling or bundling the addon.'
-    workingDir libraryProjectDir
-    outputs.file(libraryJarFile)
-    outputs.upToDateWhen { false }
+def buildLibrary = null;
+if("true" != local.no_build_local_library){
+    buildLibrary=tasks.register('buildLibrary', Exec) {
+        group = 'build'
+        description = 'Builds the sibling Gadgets & Gizmos Library before compiling or bundling the addon.'
+        workingDir libraryProjectDir
+        outputs.file(libraryJarFile)
+        outputs.upToDateWhen { false }
 
-    if (System.getProperty('os.name').toLowerCase().contains('windows')) {
-        commandLine 'cmd', '/c', new File(libraryProjectDir, 'gradlew.bat').absolutePath,
-                'clean', 'build',
-                "-Pmod_version=${mod_version}",
-                "-Partifact_version=${artifact_version}",
-                '--no-daemon', '--console=plain'
-    } else {
-        commandLine new File(libraryProjectDir, 'gradlew').absolutePath,
-                'clean', 'build',
-                "-Pmod_version=${mod_version}",
-                "-Partifact_version=${artifact_version}",
-                '--no-daemon', '--console=plain'
-    }
-
-    doFirst {
-        File wrapper = new File(libraryProjectDir,
-                System.getProperty('os.name').toLowerCase().contains('windows') ? 'gradlew.bat' : 'gradlew')
-        if (!wrapper.isFile()) {
-            throw new GradleException("Missing sibling library Gradle wrapper: ${wrapper}")
+        if (System.getProperty('os.name').toLowerCase().contains('windows')) {
+            commandLine 'cmd', '/c', new File(libraryProjectDir, 'gradlew.bat').absolutePath,
+                    'clean', 'build',
+                    "-Pmod_version=${mod_version}",
+                    "-Partifact_version=${artifact_version}",
+                    '--no-daemon', '--console=plain'
+        } else {
+            commandLine new File(libraryProjectDir, 'gradlew').absolutePath,
+                    'clean', 'build',
+                    "-Pmod_version=${mod_version}",
+                    "-Partifact_version=${artifact_version}",
+                    '--no-daemon', '--console=plain'
         }
-    }
-    doLast {
-        if (!libraryJarFile.isFile()) {
-            throw new GradleException("The sibling library build did not produce ${libraryJarFile}")
+
+        doFirst {
+            File wrapper = new File(libraryProjectDir,
+                    System.getProperty('os.name').toLowerCase().contains('windows') ? 'gradlew.bat' : 'gradlew')
+            if (!wrapper.isFile()) {
+                throw new GradleException("Missing sibling library Gradle wrapper: ${wrapper}")
+            }
+        }
+        doLast {
+            if (!libraryJarFile.isFile()) {
+                throw new GradleException("The sibling library build did not produce ${libraryJarFile}")
+            }
         }
     }
 }
 
 def validateLocalDependencies = tasks.register('validateLocalDependencies') {
     doLast {
-        if (!requiredSableJar.isFile()) {
-            throw new GradleException("Missing Sable ${sable_version} jar: ${requiredSableJar}")
-        }
         if (!libraryProjectDir.isDirectory()) {
             throw new GradleException("Missing sibling library project: ${libraryProjectDir}")
         }
@@ -218,19 +263,44 @@ def validateMixinConfig = tasks.register('validateMixinConfig') {
 }
 
 dependencies {
+//    compileOnly(annotationProcessor("com.github.bawnorton.mixinsquared:mixinsquared-common:0.3.7-beta.3"))
+    compileOnly(jarJar("com.github.bawnorton.mixinsquared:mixinsquared-common:$mixinsquared_version"))
+    implementation(jarJar("com.github.bawnorton.mixinsquared:mixinsquared-neoforge:$mixinsquared_version"))
     bundledSqlite 'org.xerial:sqlite-jdbc:3.46.1.3'
     compileOnly localJars
-    compileOnly files(requiredSableJar)
     compileOnly files(libraryJarFile)
     compileOnly 'mezz.jei:jei-1.21.1-neoforge-api:19.27.0.340'
     compileOnly 'dev.emi:emi-neoforge:1.1.22+1.21.1'
     compileOnly 'me.shedaniel:RoughlyEnoughItems-api-neoforge:16.0.799'
     compileOnly 'maven.modrinth:jade:15.10.5+neoforge'
     compileOnly 'maven.modrinth:B1CBVXHX:eFcwlxhy'
-    compileOnly "dev.engine-room.flywheel:flywheel-neoforge-api-${minecraft_version}:${flywheel_version}"
+    compileOnly("dev.engine-room.flywheel:flywheel-neoforge-api-${minecraft_version}:${flywheel_version}"){
+        exclude group: "org.ow2.asm"
+    }
+
+
+    compileOnly("cc.tweaked:cc-tweaked-$minecraft_version-common-api:$cc_tweaked_version")
+    compileOnly("cc.tweaked:cc-tweaked-$minecraft_version-core-api:$cc_tweaked_version")
+    compileOnly("cc.tweaked:cc-tweaked-$minecraft_version-forge-api:$cc_tweaked_version")
+    implementation("cc.tweaked:cc-tweaked-$minecraft_version-forge:$cc_tweaked_version")
+
     compileOnly 'top.theillusivec4.curios:curios-neoforge:9.5.1+1.21.1'
+
+
+    compileOnly("net.createmod.ponder:ponder-neoforge:${ponder_version}+mc${minecraft_version}")
+    api("com.simibubi.create:create-${minecraft_version}:${create_version}") { transitive = false }
+    api ("dev.eriksonn.aeronautics:aeronautics-neoforge-${minecraft_version}:$aeronautics_version"){ transitive = false }
+    api ("dev.simulated_team.simulated:simulated-neoforge-${minecraft_version}:$aeronautics_version"){ transitive = false }
+    implementation("dev.ryanhcode.offroad:offroad-neoforge-$minecraft_version:$aeronautics_version"){ transitive = false }
+    compileOnly "dev.ryanhcode.sable:sable-sable_rapier-${minecraft_version}:$sable_rapier_version"
+    compileOnly "dev.ryanhcode.sable-companion:sable-companion-common-${minecraft_version}:$sable_companion_version"
+
+//    compileOnly ("dev.ryanhcode.sable:sable-common-$minecraft_version:$aeronautics_version")
+    implementation ("dev.ryanhcode.sable:sable-neoforge-$minecraft_version:$sable_version")
+
+
+    runtimeOnly ("dev.ryanhcode.sable:sable-neoforge-$minecraft_version:$sable_version")
     runtimeOnly localRuntimeJars
-    runtimeOnly files(requiredSableJar)
     runtimeOnly files(libraryJarFile)
     runtimeOnly "dev.engine-room.flywheel:flywheel-neoforge-${minecraft_version}:${flywheel_version}"
 }
@@ -273,7 +343,7 @@ tasks.register('verifyComputerCraftDocs', JavaExec) {
 }
 
 tasks.withType(JavaCompile).configureEach {
-    dependsOn buildLibrary
+    if(buildLibrary!=null) dependsOn buildLibrary
     dependsOn validateLocalDependencies
     options.encoding = 'UTF-8'
 }
@@ -294,7 +364,6 @@ tasks.register('bundledJar', Jar) {
     archiveVersion = artifact_version
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     dependsOn tasks.named('jar')
-    dependsOn buildLibrary
     from('src/bundled/resources') {
         filesMatching(['META-INF/neoforge.mods.toml', 'META-INF/jarjar/metadata.json']) {
             expand bundledReplaceProperties
@@ -309,44 +378,45 @@ tasks.register('bundledJar', Jar) {
         rename { "${library_mod_id}-${mod_version}.jar" }
     }
 }
-
-tasks.register('copyBundledJarToModrinth') {
-    group = 'build'
-    description = 'Copies the bundled jar into the Modrinth Create addon dev profile mods directory.'
-    dependsOn tasks.named('bundledJar')
-    def modrinthModsDir = file('C:/Users/Rieno/AppData/Roaming/ModrinthApp/profiles/Create addon dev/mods')
-    inputs.file(tasks.named('bundledJar').flatMap { it.archiveFile })
-    outputs.file(modrinthModsDir.toPath().resolve(tasks.named('bundledJar').get().archiveFileName.get()).toFile())
-    doLast {
-        modrinthModsDir.mkdirs()
-        fileTree(modrinthModsDir) {
-            include "${archive_name}-*.jar"
-            include "${distribution_name}-*.jar"
-        }.each { File staleJar ->
-            if (!staleJar.name.equals(tasks.named('bundledJar').get().archiveFileName.get())) {
-                staleJar.delete()
+if(local.modrinth_path!=null && !local.modrinth_path.isEmpty() && file(local.modrinth_path).exists()) {
+    tasks.register('copyBundledJarToModrinth') {
+        group = 'build'
+        description = 'Copies the bundled jar into the Modrinth Create addon dev profile mods directory.'
+        dependsOn tasks.named('bundledJar')
+        def modrinthModsDir = file(local.modrinth_path)
+        inputs.file(tasks.named('bundledJar').flatMap { it.archiveFile })
+        outputs.file(modrinthModsDir.toPath().resolve(tasks.named('bundledJar').get().archiveFileName.get()).toFile())
+        doLast {
+            modrinthModsDir.mkdirs()
+            fileTree(modrinthModsDir) {
+                include "${archive_name}-*.jar"
+                include "${distribution_name}-*.jar"
+            }.each { File staleJar ->
+                if (!staleJar.name.equals(tasks.named('bundledJar').get().archiveFileName.get())) {
+                    staleJar.delete()
+                }
             }
-        }
 
-        File sourceJar = tasks.named('bundledJar').get().archiveFile.get().asFile
-        File targetJar = new File(modrinthModsDir, tasks.named('bundledJar').get().archiveFileName.get())
-        File tempJar = new File(modrinthModsDir, "${targetJar.name}.tmp")
-        try {
-            java.nio.file.Files.copy(sourceJar.toPath(), tempJar.toPath(),
-                    java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            File sourceJar = tasks.named('bundledJar').get().archiveFile.get().asFile
+            File targetJar = new File(modrinthModsDir, tasks.named('bundledJar').get().archiveFileName.get())
+            File tempJar = new File(modrinthModsDir, "${targetJar.name}.tmp")
             try {
-                java.nio.file.Files.move(tempJar.toPath(), targetJar.toPath(),
-                        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-                        java.nio.file.StandardCopyOption.ATOMIC_MOVE)
-            } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
-                java.nio.file.Files.move(tempJar.toPath(), targetJar.toPath(),
+                java.nio.file.Files.copy(sourceJar.toPath(), tempJar.toPath(),
                         java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                try {
+                    java.nio.file.Files.move(tempJar.toPath(), targetJar.toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                            java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+                } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+                    java.nio.file.Files.move(tempJar.toPath(), targetJar.toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                }
+            } catch (java.nio.file.AccessDeniedException lockedJar) {
+                tempJar.delete()
+                logger.warn("Could not update locked Modrinth profile jar '{}'. "
+                        + "The built artifact is still available at '{}'.",
+                        targetJar, sourceJar)
             }
-        } catch (java.nio.file.AccessDeniedException lockedJar) {
-            tempJar.delete()
-            logger.warn("Could not update locked Modrinth profile jar '{}'. "
-                    + "The built artifact is still available at '{}'.",
-                    targetJar, sourceJar)
         }
     }
 }
@@ -364,5 +434,11 @@ processResources {
     }
     filesMatching(['META-INF/neoforge.mods.toml']) {
         expand addonReplaceProperties
+    }
+}
+idea {
+    module {
+        downloadSources = true
+        downloadJavadoc = true
     }
 }
