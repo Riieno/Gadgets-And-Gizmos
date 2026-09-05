@@ -263,6 +263,11 @@ def validateMixinConfig = tasks.register('validateMixinConfig') {
     }
 }
 
+sourceSets.test.compileClasspath+=sourceSets.main.compileClasspath
+sourceSets.test.runtimeClasspath+=sourceSets.main.runtimeClasspath
+test {
+    useJUnitPlatform()
+}
 dependencies {
 //    compileOnly(annotationProcessor("com.github.bawnorton.mixinsquared:mixinsquared-common:0.3.7-beta.3"))
     compileOnly(jarJar("com.github.bawnorton.mixinsquared:mixinsquared-common:$mixinsquared_version"))
@@ -304,6 +309,22 @@ dependencies {
     runtimeOnly localRuntimeJars
     runtimeOnly files(libraryJarFile)
     runtimeOnly "dev.engine-room.flywheel:flywheel-neoforge-${minecraft_version}:${flywheel_version}"
+
+    //---------------------
+    //          test setup
+    //---------------------
+    def lombokVersion="1.18.42"
+//    compileOnly "org.projectlombok:lombok:$lombokVersion"
+//    annotationProcessor "org.projectlombok:lombok:$lombokVersion"
+    testCompileOnly "org.projectlombok:lombok:$lombokVersion"
+    testAnnotationProcessor "org.projectlombok:lombok:$lombokVersion"
+
+    testImplementation platform("org.junit:junit-bom:5.10.0")
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    testImplementation "org.apache.commons:commons-lang3:3.14.0"
+    testImplementation "org.joml:joml:1.10.5"
 }
 
 sourceSets {
