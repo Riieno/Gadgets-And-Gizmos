@@ -309,6 +309,7 @@ public class JVMGraphCompiler {
                 a = b;
                 b = a1;
                 b.clear();
+                depth++;
             }
 
             IntArrayList[] out = new IntArrayList[perDepth.size()];
@@ -361,12 +362,6 @@ public class JVMGraphCompiler {
 
             };
         }
-
-        private void typeConversion(ValueType from, ValueType to) {
-            if(from.equals(to)) return;
-
-        }
-
         public void buildNodeCallTree(GeneratorHelper adapter, int nodeID) {
             buildNodeCallTree(adapter, nodeID, defaultOutputs(nodes[nodeID]));
 
