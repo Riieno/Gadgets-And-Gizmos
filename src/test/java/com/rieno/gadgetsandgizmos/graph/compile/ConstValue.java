@@ -1,6 +1,6 @@
 package com.rieno.gadgetsandgizmos.graph.compile;
 
-import com.rieno.gadgetsandgizmos.graph.compile.asm.NodeType;
+import com.rieno.gadgetsandgizmos.graph.compile.asm.JVMNodeType;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.Inputs;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.Outputs;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.ValueType;
@@ -13,7 +13,7 @@ import org.objectweb.asm.commons.Method;
 
 import java.util.Map;
 
-class ConstValue extends NodeType {
+class ConstValue extends JVMNodeType {
 
     public ConstValue() {super(Map.of(), Map.of("value", ValueType.VALUE));}
 

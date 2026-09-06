@@ -1,7 +1,7 @@
 package com.rieno.gadgetsandgizmos.graph.compile;
 
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
-import com.rieno.gadgetsandgizmos.graph.compile.asm.NodeType;
+import com.rieno.gadgetsandgizmos.graph.compile.asm.JVMNodeType;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.Outputs;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.ValueType;
 import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapNode;
@@ -63,7 +63,7 @@ public class JVMGraphCompiler {
         int calculatorTracker = 0;
         for(int nodeI = 0; nodeI < nodes.size(); nodeI++) {
             AdvancedGraphDocument.Node node = nodes.get(nodeI);
-            NodeType nodeType = instance.entries.get(node.type());
+            JVMNodeType nodeType = instance.entries.get(node.type());
 
             nodeToIndex.put(node.id(), nodeI);
             var input = nodeType.getInput();

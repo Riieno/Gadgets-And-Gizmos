@@ -9,11 +9,11 @@ import net.minecraft.nbt.CompoundTag;
 import java.util.Map;
 
 @Getter
-public abstract class NodeType {
+public abstract class JVMNodeType {
     public final Object2ObjectLinkedOpenHashMap<String, ValueType> input;
     public final Object2ObjectLinkedOpenHashMap<String, ValueType> outputs;
 
-    public NodeType(Map<String, ValueType> input, Map<String, ValueType> outputs) {
+    public JVMNodeType(Map<String, ValueType> input, Map<String, ValueType> outputs) {
         this.input = new Object2ObjectLinkedOpenHashMap<>(input);
         this.outputs = new Object2ObjectLinkedOpenHashMap<>(outputs);
     }

@@ -1,7 +1,7 @@
 package com.rieno.gadgetsandgizmos.graph.compile.snapshot;
 
 import com.rieno.gadgetsandgizmos.graph.compile.JVMGraphCompiler;
-import com.rieno.gadgetsandgizmos.graph.compile.asm.NodeType;
+import com.rieno.gadgetsandgizmos.graph.compile.asm.JVMNodeType;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.ValueType;
 import it.unimi.dsi.fastutil.objects.*;
 import lombok.RequiredArgsConstructor;
@@ -16,7 +16,7 @@ public final class SnapNode {
     private static final String INPUT_POSTFIX = "\0001";
 
     public final int id;
-    public final NodeType type;
+    public final JVMNodeType type;
     public final CompoundTag data;
     public final JVMGraphCompiler.SnapEdge[] inputs;
     public final @Nullable ObjectArrayList<JVMGraphCompiler.SnapEdge>[] outputs;
@@ -26,7 +26,7 @@ public final class SnapNode {
 
     public SnapNode(
         int nodeI,
-        NodeType nodeType,
+        JVMNodeType nodeType,
         CompoundTag data,
         Object2ObjectMap<String, ValueType> input,
         Object2ObjectMap<String, ValueType> outputs
