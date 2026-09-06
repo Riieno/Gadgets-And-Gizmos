@@ -3783,6 +3783,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                         ? ContraptionDiagramControllerCompat.readablePorts()
                         : new CompoundTag();
                 clearDataPortGroups(node);
+                restoreInlineMapPorts(node, ports, !writable);
                 node.data().remove("OutputLabels");
                 node.data().put(writable ? "DynamicInputs" : "DynamicOutputs", ports);
                 node.data().put(writable ? "InputOptions" : "OutputOptions", new CompoundTag());
@@ -3804,6 +3805,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             } else {
                 clearDataPortGroups(node);
             }
+            restoreInlineMapPorts(node, ports, !writable);
             CompoundTag labels = getData && !writable
                     ? graphReadableDataPortLabels(target.level(), target.pos())
                     : new CompoundTag();
@@ -3825,6 +3827,46 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             configureDataTargetFaceOptions(node, discovery);
         }
         refreshStructuredDataPorts(graph);
+    }
+
+    // Keep valid inline MAP breakout ports when a target refresh replaces its derived port schema.
+    private static void restoreInlineMapPorts(AdvancedGraphDocument.Node node, CompoundTag ports,
+                                              boolean output) {
+        if (node == null || ports == null) {
+            return;
+        }
+        String mappingsKey = output ? AdvancedGraphCatalog.INLINE_MAP_OUTPUTS_TAG
+                : AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG;
+        String dynamicPortsKey = output ? "DynamicOutputs" : "DynamicInputs";
+        CompoundTag mappings = node.data().getCompound(mappingsKey);
+        if (mappings.isEmpty()) {
+            return;
+        }
+        CompoundTag previousPorts = node.data().getCompound(dynamicPortsKey);
+        CompoundTag retainedMappings = new CompoundTag();
+        for (String inlinePort : mappings.getAllKeys()) {
+            CompoundTag mapping = mappings.getCompound(inlinePort);
+            String source = mapping.getString(AdvancedGraphCatalog.INLINE_MAP_SOURCE_TAG);
+            String key = mapping.getString(AdvancedGraphCatalog.INLINE_MAP_KEY_TAG);
+            if (inlinePort.isBlank() || source.isBlank() || key.isBlank()
+                    || inlinePort.equals(source) || !"map".equals(ports.getString(source))) {
+                continue;
+            }
+            String type = dataPortGroup(node, source).getString(key);
+            if (type.isBlank()) {
+                type = previousPorts.getString(inlinePort);
+            }
+            if (type.isBlank() || "exec".equals(type)) {
+                continue;
+            }
+            ports.putString(inlinePort, type);
+            retainedMappings.put(inlinePort, mapping.copy());
+        }
+        if (retainedMappings.isEmpty()) {
+            node.data().remove(mappingsKey);
+        } else {
+            node.data().put(mappingsKey, retainedMappings);
+        }
     }
 
     // Configure the aeroworks graph section

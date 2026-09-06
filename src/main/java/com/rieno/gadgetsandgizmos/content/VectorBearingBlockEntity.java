@@ -162,6 +162,10 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
 
     // Current control mode
     private ControlMode controlMode = ControlMode.AUTO;
+    // Selected world axis used as the neutral mounted-head pose
+    private StabilizeAxis stabilizeAxis = StabilizeAxis.Y;
+    // Tracks whether the mounted head should hold the selected world axis
+    private boolean keepStable;
     // Max tilt in degrees
     private double maxTiltDegrees = DEFAULT_MAX_TILT_DEGREES;
     // Computer x in degrees
@@ -287,10 +291,11 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         }
         TiltCommand appliedCommand = TiltCommand.fromDegrees(appliedXDegrees, appliedZDegrees,
                 maxTiltDegrees, activeControlMode, command.active());
+        Vec3 headDirection = resolveHeadDirection(appliedCommand.direction());
 
         if (mountedSubLevelId != null) {
             try {
-                if (!mountedAssembly.aim(this, serverLevel, appliedCommand.direction(), shaftAngle)) {
+                if (!mountedAssembly.aim(this, serverLevel, headDirection, shaftAngle)) {
                     cleanupFailedAim(serverLevel);
                 }
             } catch (RuntimeException error) {
@@ -777,9 +782,82 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         return new Vector3d(dir.getStepX(), dir.getStepY(), dir.getStepZ());
     }
 
+    // Resolve the physical mounted-head direction from its tilt offset
+    private Vec3 resolveHeadDirection(Vec3 tiltDirection) {
+        if (!keepStable || tiltDirection == null || tiltDirection.lengthSqr() <= 1.0E-6D) {
+            return tiltDirection;
+        }
+
+        Quaterniond parentToWorld = NestedAssemblyFrame.resolve(this)
+                .toWorldOrientation(new Quaterniond());
+        Vector3d selectedAxisInParent = new Quaterniond(parentToWorld).invert()
+                .transform(stabilizeAxis.worldDirection()).normalize();
+        Quaterniond bearingBaseRotation = new Quaterniond().rotationTo(
+                new Vector3d(0.0D, 1.0D, 0.0D), directionVector(getBearingFacing()));
+        Vector3d stableNeutral = bearingBaseRotation.invert().transform(selectedAxisInParent).normalize();
+        if (stableNeutral.lengthSquared() <= 1.0E-6D) {
+            return tiltDirection;
+        }
+
+        Vector3d offset = new Vector3d(tiltDirection.x, tiltDirection.y, tiltDirection.z).normalize();
+        Vector3d resolved = new Quaterniond().rotationTo(new Vector3d(0.0D, 1.0D, 0.0D), stableNeutral)
+                .transform(offset).normalize();
+        return resolved.lengthSquared() <= 1.0E-6D
+                ? tiltDirection
+                : new Vec3(resolved.x, resolved.y, resolved.z);
+    }
+
+    // Get the interpolated physical mounted-head direction for rendering fallbacks
+    public Vec3 getInterpolatedHeadDirection(float partialTicks) {
+        TiltCommand command = TiltCommand.fromDegrees(
+                getInterpolatedAppliedXDegrees(partialTicks), getInterpolatedAppliedZDegrees(partialTicks),
+                maxTiltDegrees, activeControlMode, true);
+        return resolveHeadDirection(command.direction());
+    }
+
     // Get the control mode
     public ControlMode getControlMode() {
         return controlMode;
+    }
+
+    // Check whether the mounted head holds its selected world-space axis
+    public boolean isKeepStable() {
+        return keepStable;
+    }
+
+    // Set whether the mounted head should hold a world-space axis
+    public void setKeepStable(boolean keepStable) {
+        if (this.keepStable == keepStable) {
+            return;
+        }
+        this.keepStable = keepStable;
+        setChanged();
+        sendData();
+    }
+
+    // Get the selected world-space stabilization axis
+    public String getStabilizeAxis() {
+        return stabilizeAxis.graphValue();
+    }
+
+    // Set the selected world-space stabilization axis
+    private void setStabilizeAxis(StabilizeAxis stabilizeAxis) {
+        if (stabilizeAxis == null || this.stabilizeAxis == stabilizeAxis) {
+            return;
+        }
+        this.stabilizeAxis = stabilizeAxis;
+        setChanged();
+        sendData();
+    }
+
+    // Set the selected world-space stabilization axis from an API value
+    public boolean setStabilizeAxis(String stabilizeAxis) {
+        StabilizeAxis selected = StabilizeAxis.fromGraphValue(stabilizeAxis, null);
+        if (selected == null) {
+            return false;
+        }
+        setStabilizeAxis(selected);
+        return true;
     }
 
     // Set the control mode
@@ -899,13 +977,17 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         Map<String, String> data = new LinkedHashMap<>();
         data.put("tilt_x", "number");
         data.put("tilt_z", "number");
+        data.put("stabilize_axis", "string");
+        data.put("keep_stable", "boolean");
         return data;
     }
 
     // Get the graph writable options
     @Override
     public Map<String, List<String>> graphWritableOptions() {
-        return Map.of("control_mode", List.of("auto", "computer", "redstone"));
+        return Map.of(
+                "control_mode", List.of("auto", "computer", "redstone"),
+                "stabilize_axis", List.of("X-Axis", "Y-Axis", "Z-Axis"));
     }
 
     // Read the graph data
@@ -921,6 +1003,8 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
             case "active_control_mode" -> AdvancedGraphDocument.Value.string(activeControlMode.name().toLowerCase(Locale.ROOT));
             case "mounted" -> AdvancedGraphDocument.Value.bool(isMountedAssemblyPresent());
             case "mounted_sublevel" -> AdvancedGraphDocument.Value.string(mountedSubLevelId == null ? "" : mountedSubLevelId.toString());
+            case "stabilize_axis" -> AdvancedGraphDocument.Value.string(stabilizeAxis.graphValue());
+            case "keep_stable" -> AdvancedGraphDocument.Value.bool(keepStable);
             default -> AdvancedGraphDocument.Value.number(0);
         };
     }
@@ -935,6 +1019,13 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
             }
             case "tilt_z" -> {
                 setComputerAnglesDegrees(computerXDegrees, val.asNumber());
+                return true;
+            }
+            case "stabilize_axis" -> {
+                return setStabilizeAxis(val.asString());
+            }
+            case "keep_stable" -> {
+                setKeepStable(val.asBoolean());
                 return true;
             }
             case "max_tilt" -> {
@@ -1320,7 +1411,8 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
             updateAppliedTilt();
             TiltCommand appliedCommand = TiltCommand.fromDegrees(appliedXDegrees, appliedZDegrees,
                     maxTiltDegrees, command.sourceMode(), command.active());
-            if (!mountedAssembly.aim(this, serverLevel, appliedCommand.direction(), sampleShaftAngleDeg())) {
+            if (!mountedAssembly.aim(this, serverLevel, resolveHeadDirection(appliedCommand.direction()),
+                    sampleShaftAngleDeg())) {
                 mountedAssembly.disassemble(this, serverLevel);
                 markNestedAssemblyMutation(serverLevel);
                 return false;
@@ -1788,6 +1880,8 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
     public void writeSafe(CompoundTag tag, HolderLookup.Provider provider) {
         super.writeSafe(tag, provider);
         tag.putString("ControlMode", controlMode.name());
+        tag.putString("StabilizeAxis", stabilizeAxis.name());
+        tag.putBoolean("KeepStable", keepStable);
         tag.putDouble("MaxTiltDegrees", maxTiltDegrees);
         for (Direction dir : Direction.Plane.HORIZONTAL) {
             tag.put(frequencyKey(dir), frequencyBindings.get(dir).toTag(provider));
@@ -1799,6 +1893,8 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
     protected void write(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.write(tag, provider, clientPacket);
         tag.putString("ControlMode", controlMode.name());
+        tag.putString("StabilizeAxis", stabilizeAxis.name());
+        tag.putBoolean("KeepStable", keepStable);
         tag.putDouble("MaxTiltDegrees", maxTiltDegrees);
         tag.putDouble("ComputerXDegrees", computerXDegrees);
         tag.putDouble("ComputerZDegrees", computerZDegrees);
@@ -1853,6 +1949,8 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
     protected void read(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.read(tag, provider, clientPacket);
         controlMode = readEnum(tag, "ControlMode", ControlMode.AUTO);
+        stabilizeAxis = readEnum(tag, "StabilizeAxis", StabilizeAxis.Y);
+        keepStable = tag.getBoolean("KeepStable");
         maxTiltDegrees = Mth.clamp(tag.contains("MaxTiltDegrees") ? tag.getDouble("MaxTiltDegrees") : DEFAULT_MAX_TILT_DEGREES,
                 MIN_MAX_TILT_DEGREES, MAX_MAX_TILT_DEGREES);
         computerXDegrees = tag.getDouble("ComputerXDegrees");
@@ -2280,6 +2378,43 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         AUTO,
         COMPUTER,
         REDSTONE
+    }
+
+    // Store the selectable world-space stabilization axes
+    private enum StabilizeAxis {
+        X("X-Axis"),
+        Y("Y-Axis"),
+        Z("Z-Axis");
+
+        private final String graphValue;
+
+        StabilizeAxis(String graphValue) {
+            this.graphValue = graphValue;
+        }
+
+        String graphValue() {
+            return graphValue;
+        }
+
+        Vector3d worldDirection() {
+            return switch (this) {
+                case X -> new Vector3d(1.0D, 0.0D, 0.0D);
+                case Y -> new Vector3d(0.0D, 1.0D, 0.0D);
+                case Z -> new Vector3d(0.0D, 0.0D, 1.0D);
+            };
+        }
+
+        static StabilizeAxis fromGraphValue(String value, StabilizeAxis fallback) {
+            if (value == null || value.isBlank()) {
+                return fallback;
+            }
+            for (StabilizeAxis axis : values()) {
+                if (axis.graphValue.equalsIgnoreCase(value.trim()) || axis.name().equalsIgnoreCase(value.trim())) {
+                    return axis;
+                }
+            }
+            return fallback;
+        }
     }
 
     // Store the tilt command

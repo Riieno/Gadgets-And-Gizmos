@@ -51,6 +51,7 @@ public final class CTClientEvents {
         PoweredZiplineRidingHandler.clientTick();
         ShippingManifestClientHandler.tick();
         ThrusterSoundManager.tick();
+        PhysicsGantryBeltWheelConnectionParticles.tick();
     }
 
     // Handle the screen render event
@@ -74,6 +75,7 @@ public final class CTClientEvents {
         DiagnosticTabletClientAppData.clear();
         DoubleButtonClientHandler.reset();
         ArmorStandPoseClientState.reset();
+        PhysicsGantryBeltWheelConnectionParticles.clear();
         CTFeatureToggles.clearServerOverrides();
     }
 }

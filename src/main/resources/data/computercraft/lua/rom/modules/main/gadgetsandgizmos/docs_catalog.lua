@@ -5691,6 +5691,13 @@ return {
       deprecatedBy = "",
       examples = {},
     },
+    ["getStabilizeAxis"] = {
+      signature = "getStabilizeAxis(): string",
+      description = "Returns the world axis used as the zero-tilt pose when stabilization is enabled.",
+      since = "2",
+      deprecatedBy = "",
+      examples = {},
+    },
     ["getStatus"] = {
       signature = "getStatus(): table",
       description = "Returns the status.",
@@ -5712,6 +5719,13 @@ return {
       deprecatedBy = "",
       examples = {},
     },
+    ["isKeepStable"] = {
+      signature = "isKeepStable(): boolean",
+      description = "Returns whether the mounted head keeps its selected world axis stable.",
+      since = "2",
+      deprecatedBy = "",
+      examples = {},
+    },
     ["methods"] = {
       signature = "methods(): table",
       description = "Lists the documented Lua signatures exposed by this peripheral",
@@ -5726,6 +5740,13 @@ return {
       deprecatedBy = "",
       examples = {},
     },
+    ["setKeepStable"] = {
+      signature = "setKeepStable(keepStable: boolean)",
+      description = "Enables or disables world-axis stabilization for the mounted head.",
+      since = "2",
+      deprecatedBy = "",
+      examples = {},
+    },
     ["setMaxTiltAngle"] = {
       signature = "setMaxTiltAngle(angleDegrees: number)",
       description = "Sets the max tilt angle.",
@@ -5736,6 +5757,13 @@ return {
     ["setMode"] = {
       signature = "setMode('auto'|'computer'|'redstone')",
       description = "Sets the mode.",
+      since = "2",
+      deprecatedBy = "",
+      examples = {},
+    },
+    ["setStabilizeAxis"] = {
+      signature = "setStabilizeAxis('X-Axis'|'Y-Axis'|'Z-Axis')",
+      description = "Sets the world axis used as the zero-tilt pose when stabilization is enabled.",
       since = "2",
       deprecatedBy = "",
       examples = {},

@@ -38,6 +38,10 @@ public final class AdvancedGraphPortNormalizer {
             return ConnectResult.failure("wire_node_missing",
                     "Both wire nodes must exist in the same graph scope");
         }
+        if (AdvancedGraphFunctions.isInvalidInterfaceEdge(from, to)) {
+            return ConnectResult.failure("invalid_function_interface_wire",
+                    "Function inputs must feed the function body, and function outputs must be fed by it");
+        }
         String fromType = AdvancedGraphCatalog.outputs(from).get(fromPort);
         if (fromType == null) {
             return ConnectResult.failure("incompatible_wire",
@@ -86,6 +90,7 @@ public final class AdvancedGraphPortNormalizer {
         AdvancedGraphDocument.Node from = find(nodes, edge.fromNode());
         AdvancedGraphDocument.Node to = find(nodes, edge.toNode());
         if (from == null || to == null) return false;
+        if (AdvancedGraphFunctions.isInvalidInterfaceEdge(from, to)) return false;
         String fromType = AdvancedGraphCatalog.outputs(from).get(edge.fromPort());
         return fromType != null
                 && AdvancedGraphCatalog.inputs(to).containsKey(edge.toPort())

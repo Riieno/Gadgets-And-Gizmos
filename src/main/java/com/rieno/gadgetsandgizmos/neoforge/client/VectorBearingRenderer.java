@@ -11,7 +11,6 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 import com.rieno.gadgetsandgizmos.content.VectorBearingBlockEntity;
 import com.rieno.gadgetsandgizmos.content.VectorBearingPistonMath;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
-import com.rieno.gadgetsandgizmos.lib.control.OrientationMath;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.simibubi.create.AllPartialModels;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntityRenderer;
@@ -121,9 +120,7 @@ public class VectorBearingRenderer extends KineticBlockEntityRenderer<VectorBear
     // Get the applied tilt
     private Quaternionf appliedTilt(VectorBearingBlockEntity be, float partialTicks, Direction facing,
                                     Vector3f baseNormal) {
-        Vec3 dir = OrientationMath.directionFromAngles(
-                Math.toRadians(be.getInterpolatedAppliedXDegrees(partialTicks)),
-                Math.toRadians(be.getInterpolatedAppliedZDegrees(partialTicks)));
+        Vec3 dir = be.getInterpolatedHeadDirection(partialTicks);
         Vector3f localTarget = new Vector3f((float) dir.x, (float) dir.y, (float) dir.z);
         if (localTarget.lengthSquared() < 1.0E-6F) {
             localTarget.set(0.0F, 1.0F, 0.0F);
