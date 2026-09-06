@@ -38,6 +38,7 @@ import com.rieno.gadgetsandgizmos.lib.control.IDirectControlReceiver;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
 import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataAccessPolicy;
 import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataAdapterRegistry;
+import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataPortGroups;
 import com.rieno.gadgetsandgizmos.lib.probe.BlockStateDataAccess;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyBoundsApi;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
@@ -3277,6 +3278,14 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Get the graph target data
     public AdvancedGraphDocument.Value getGraphTargetData(AdvancedGraphDocument.Node node, String port) {
+        CompoundTag groupedPorts = dataPortGroup(node, port);
+        if (!groupedPorts.isEmpty()) {
+            CompoundTag values = new CompoundTag();
+            for (String field : groupedPorts.getAllKeys()) {
+                values.put(field, graphValueTag(getGraphTargetData(node, field)));
+            }
+            return AdvancedGraphDocument.Value.map(values);
+        }
         // Read diagram and resolved block targets
         ControllerDiscoveryNode discovery =
                 ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
@@ -3430,6 +3439,16 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             }
             default -> AdvancedGraphDocument.Value.number(0);
         };
+    }
+
+    // Store one graph value inside a generated MAP payload
+    private static CompoundTag graphValueTag(AdvancedGraphDocument.Value value) {
+        AdvancedGraphDocument.Value resolved = value == null
+                ? AdvancedGraphDocument.Value.number(0.0D) : value;
+        CompoundTag tag = new CompoundTag();
+        tag.putString("Type", resolved.type());
+        tag.put("Payload", resolved.payload().copy());
+        return tag;
     }
 
     // Set the graph display mode
@@ -3763,6 +3782,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 CompoundTag ports = getData && !writable
                         ? ContraptionDiagramControllerCompat.readablePorts()
                         : new CompoundTag();
+                clearDataPortGroups(node);
+                restoreInlineMapPorts(node, ports, !writable);
                 node.data().remove("OutputLabels");
                 node.data().put(writable ? "DynamicInputs" : "DynamicOutputs", ports);
                 node.data().put(writable ? "InputOptions" : "OutputOptions", new CompoundTag());
@@ -3779,6 +3800,12 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             CompoundTag ports = getData || setData
                     ? graphDataPorts(target.level(), target.pos(), writable, aeroworksSection)
                     : graphDirectAxisPorts(blockEntity, writable);
+            if (getData || setData) {
+                ports = configureDataPortGroups(node, ports);
+            } else {
+                clearDataPortGroups(node);
+            }
+            restoreInlineMapPorts(node, ports, !writable);
             CompoundTag labels = getData && !writable
                     ? graphReadableDataPortLabels(target.level(), target.pos())
                     : new CompoundTag();
@@ -3800,6 +3827,46 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             configureDataTargetFaceOptions(node, discovery);
         }
         refreshStructuredDataPorts(graph);
+    }
+
+    // Keep valid inline MAP breakout ports when a target refresh replaces its derived port schema.
+    private static void restoreInlineMapPorts(AdvancedGraphDocument.Node node, CompoundTag ports,
+                                              boolean output) {
+        if (node == null || ports == null) {
+            return;
+        }
+        String mappingsKey = output ? AdvancedGraphCatalog.INLINE_MAP_OUTPUTS_TAG
+                : AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG;
+        String dynamicPortsKey = output ? "DynamicOutputs" : "DynamicInputs";
+        CompoundTag mappings = node.data().getCompound(mappingsKey);
+        if (mappings.isEmpty()) {
+            return;
+        }
+        CompoundTag previousPorts = node.data().getCompound(dynamicPortsKey);
+        CompoundTag retainedMappings = new CompoundTag();
+        for (String inlinePort : mappings.getAllKeys()) {
+            CompoundTag mapping = mappings.getCompound(inlinePort);
+            String source = mapping.getString(AdvancedGraphCatalog.INLINE_MAP_SOURCE_TAG);
+            String key = mapping.getString(AdvancedGraphCatalog.INLINE_MAP_KEY_TAG);
+            if (inlinePort.isBlank() || source.isBlank() || key.isBlank()
+                    || inlinePort.equals(source) || !"map".equals(ports.getString(source))) {
+                continue;
+            }
+            String type = dataPortGroup(node, source).getString(key);
+            if (type.isBlank()) {
+                type = previousPorts.getString(inlinePort);
+            }
+            if (type.isBlank() || "exec".equals(type)) {
+                continue;
+            }
+            ports.putString(inlinePort, type);
+            retainedMappings.put(inlinePort, mapping.copy());
+        }
+        if (retainedMappings.isEmpty()) {
+            node.data().remove(mappingsKey);
+        } else {
+            node.data().put(mappingsKey, retainedMappings);
+        }
     }
 
     // Configure the aeroworks graph section
@@ -4169,6 +4236,64 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         AeroworksControllerCompat.readableData(blockEntity).forEach(ports::putString);
         RailwayNavigatorGraphCompat.readableData(blockEntity).forEach(ports::putString);
         return ports;
+    }
+
+    // Add generated MAP ports while retaining the underlying data-port schema
+    public static CompoundTag configureDataPortGroups(AdvancedGraphDocument.Node node, CompoundTag ports) {
+        CompoundTag resolved = ports == null ? new CompoundTag() : ports.copy();
+        if (node == null || (!"get_block_data".equals(node.type())
+                && !"set_block_data".equals(node.type()))) {
+            clearDataPortGroups(node);
+            return resolved;
+        }
+
+        Map<String, String> rawPorts = new LinkedHashMap<>();
+        resolved.getAllKeys().forEach(port -> rawPorts.put(port, resolved.getString(port)));
+        Map<String, Map<String, String>> groups = BlockEntityDataPortGroups.group(rawPorts);
+        if (groups.isEmpty()) {
+            clearDataPortGroups(node);
+            return resolved;
+        }
+
+        CompoundTag schemas = new CompoundTag();
+        groups.forEach((group, entries) -> {
+            CompoundTag fields = new CompoundTag();
+            entries.forEach(fields::putString);
+            schemas.put(group, fields);
+            resolved.putString(group, "map");
+        });
+        node.data().put(AdvancedGraphCatalog.DATA_PORT_GROUPS_TAG, schemas);
+        return resolved;
+    }
+
+    // Get one generated MAP port schema
+    public static CompoundTag dataPortGroup(@Nullable AdvancedGraphDocument.Node node, String port) {
+        if (node == null || port == null || port.isBlank()) {
+            return new CompoundTag();
+        }
+        return node.data().getCompound(AdvancedGraphCatalog.DATA_PORT_GROUPS_TAG)
+                .getCompound(port).copy();
+    }
+
+    // Find the generated MAP port which owns one retained data port
+    public static String dataPortGroupFor(@Nullable AdvancedGraphDocument.Node node, String port) {
+        if (node == null || port == null || port.isBlank()) {
+            return "";
+        }
+        CompoundTag groups = node.data().getCompound(AdvancedGraphCatalog.DATA_PORT_GROUPS_TAG);
+        for (String group : groups.getAllKeys()) {
+            if (groups.getCompound(group).contains(port)) {
+                return group;
+            }
+        }
+        return "";
+    }
+
+    // Remove stale generated MAP schemas
+    public static void clearDataPortGroups(@Nullable AdvancedGraphDocument.Node node) {
+        if (node != null) {
+            node.data().remove(AdvancedGraphCatalog.DATA_PORT_GROUPS_TAG);
+        }
     }
 
     // Check if this is a graph container target

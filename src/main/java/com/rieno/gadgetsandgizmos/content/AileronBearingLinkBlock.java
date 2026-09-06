@@ -12,6 +12,7 @@ import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.lib.kinetics.BearingHead;
 import com.simibubi.create.foundation.block.IBE;
 import dev.ryanhcode.sable.api.block.BlockSubLevelAssemblyListener;
+import dev.ryanhcode.sable.api.block.BlockSubLevelCollisionShape;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -32,11 +33,13 @@ import net.minecraft.world.level.block.state.properties.EnumProperty;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
 // Place and configure the remote head used by an aileron bearing
 public class AileronBearingLinkBlock extends CTDirectionalBlock
-        implements IBE<AileronBearingLinkBlockEntity>, BlockSubLevelAssemblyListener {
+        implements IBE<AileronBearingLinkBlockEntity>, BlockSubLevelCollisionShape,
+        BlockSubLevelAssemblyListener {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -96,6 +99,12 @@ public class AileronBearingLinkBlock extends CTDirectionalBlock
     protected VoxelShape getCollisionShape(BlockState state, BlockGetter level, BlockPos pos,
                                            CollisionContext ctx) {
         return getShape(state, level, pos, ctx);
+    }
+
+    // Keep the visual link out of physical sublevel collision and camera checks
+    @Override
+    public VoxelShape getSubLevelCollisionShape(BlockGetter level, BlockState state) {
+        return Shapes.empty();
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------

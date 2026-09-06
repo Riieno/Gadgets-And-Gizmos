@@ -99,7 +99,6 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
     private static final boolean ENABLE_GANTRY_DEBUG_VISUALS = false;
     private static final Set<ConstraintJointAxis> LOCKED_CONSTRAINT_AXES =
             EnumSet.allOf(ConstraintJointAxis.class);
-
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -138,8 +137,8 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
     private ServerSubLevel shaftConstraintParent;
     // Current shaft constraint child
     private ServerSubLevel shaftConstraintChild;
-    // Current shaft constraint world anchor
-    private Vec3 shaftConstraintWorldAnchor;
+    // Rail progress encoded in the current fixed joint's parent-local anchor
+    private double shaftConstraintProgress = Double.NaN;
     // Last attachment tick game time
     private long lastAttachmentTickGameTime = Long.MIN_VALUE;
     // Last toggle game time
@@ -374,7 +373,6 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
         attachedShaftDirection = null;
         attachedCarriageFacing = null;
         attachedShaftProgress = 0.0D;
-        shaftConstraintWorldAnchor = null;
 
         // ------------------------------------PENDING RELINK------------------------------------
         pendingManualRelinkShaftPos = shaftPos.immutable();
@@ -481,37 +479,14 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
                 || attachedShaftPos == null || attachedShaftDirection == null || attachedCarriageFacing == null) {
             return;
         }
-        if (shaftConstraintHandle != null && shaftConstraintHandle.isValid()) {
-            return;
-        }
-
-        ServerLevel serverLevel = resolveServerLevel(level);
-        if (serverLevel == null || resolveConstrainedSubLevel(serverLevel, subLevel) != subLevel) {
-            return;
-        }
-
-        PhysicsGantryShaftBlockEntity shaftBE = findAttachedShaftEntity(attachedShaftPos, attachedShaftSubLevelId);
-        if (shaftBE == null) {
-            return;
-        }
-
-        Vec3 worldAnchor = computeAttachmentWorldAnchor(shaftBE, attachedShaftProgress);
-        Quaterniond orientation = resolveLockedOrientation(subLevel);
-        Vector3d targetPosition = computeLockedAttachmentTargetPos(subLevel, worldAnchor, orientation);
-        if (!isFiniteAndSafe(targetPosition.x)
-                || !isFiniteAndSafe(targetPosition.y)
-                || !isFiniteAndSafe(targetPosition.z)) {
-            return;
-        }
-
-        handle.teleport(targetPosition, orientation);
-        Vector3d linearVelocity = handle.getLinearVelocity(new Vector3d());
-        Vector3d angularVelocity = handle.getAngularVelocity(new Vector3d());
-        handle.addLinearAndAngularVelocity(linearVelocity.negate(), angularVelocity.negate());
+        // The game-thread attachment update owns the constraint. Never correct the child
+        // transform from the physics thread: doing so races the solver whenever either
+        // sublevel changes and looks like a lateral teleport/jitter to the player.
+        return;
     }
 
     // Update the shaft constraint for the game tick
-    private void updateShaftConstraintForGameTick(Object subLevel, Vec3 worldAnchor) {
+    private void updateShaftConstraintForGameTick(Object subLevel) {
         ServerLevel serverLevel = resolveServerLevel(level);
         if (serverLevel == null || !(subLevel instanceof ServerSubLevel)) {
             return;
@@ -534,18 +509,16 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
             return;
         }
 
-        // ------------------------------------RELATIVE ORIENTATION------------------------------------
-        Quaterniond worldOrientation = resolveLockedOrientation(constrainedChild);
-        Quaterniond parentOrientation = parent == null ? new Quaterniond() : readSubLevelOrientation(parent);
-        if (parentOrientation == null) {
-            parentOrientation = new Quaterniond();
+        // The joint frame is expressed entirely in the shaft parent and carriage child
+        // local frames. It must not be derived from their changing world transforms.
+        Quaterniond relativeOrientation = resolveAttachmentRelativeOrientation();
+        if (relativeOrientation == null) {
+            return;
         }
-        Quaterniond relativeOrientation = new Quaterniond(parentOrientation)
-                .conjugate()
-                .mul(worldOrientation)
-                .normalize();
 
-        // -----------------------------------------------------ANCHORS-----------------------------------------------------
+        // A carriage is rigidly mounted at its current rail position. The parent
+        // anchor changes only when Create advances the carriage along the shaft;
+        // it is intentionally never recalculated from either body's world pose.
         Vector3d parentAnchor = new Vector3d(
                 attachedShaftPos.getX() + 0.5D,
                 attachedShaftPos.getY() + 0.5D,
@@ -564,12 +537,6 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
                         attachedCarriageFacing.getStepY() * 0.5D,
                         attachedCarriageFacing.getStepZ() * 0.5D);
 
-        Vector3d targetPosition = computeLockedAttachmentTargetPos(
-                constrainedChild, worldAnchor, worldOrientation);
-        if (!isFiniteAndSafe(targetPosition.x) || !isFiniteAndSafe(targetPosition.y) || !isFiniteAndSafe(targetPosition.z)) {
-            return;
-        }
-
         // ------------------------------------CONSTRAINT UPDATE------------------------------------
         try {
             ServerSubLevelContainer container = SubLevelContainer.getContainer(serverLevel);
@@ -578,41 +545,41 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
             }
             Object pipeline = container.physicsSystem().getPipeline();
 
-            boolean targetMoved = shaftConstraintWorldAnchor == null
-                    || shaftConstraintWorldAnchor.distanceToSqr(worldAnchor) > 1.0E-12D;
             boolean needsConstraint = shaftConstraintHandle == null
                     || !shaftConstraintHandle.isValid()
                     || shaftConstraintParent != parent
                     || shaftConstraintChild != constrainedChild;
+            boolean railPositionChanged = !Double.isFinite(shaftConstraintProgress)
+                    || Math.abs(shaftConstraintProgress - attachedShaftProgress) > 1.0E-9D;
             if (needsConstraint) {
                 clearShaftConstraint();
-                teleportSubLevel(constrainedChild, targetPosition, worldOrientation);
-                resetSubLevelVelocity(constrainedChild);
-                refreshRopeAttachmentsForMovedSubLevel(serverLevel, constrainedChild);
-
                 Object genericConstraint = SableConstraintApi.genericConfiguration(
-                        parentAnchor, childAnchor, relativeOrientation,
-                        new Quaterniond(), LOCKED_CONSTRAINT_AXES);
+                        parentAnchor, childAnchor, relativeOrientation, new Quaterniond(),
+                        LOCKED_CONSTRAINT_AXES);
                 shaftConstraintHandle = (PhysicsConstraintHandle) SableConstraintApi.addConstraint(
                         pipeline, parent, constrainedChild, genericConstraint);
                 shaftConstraintParent = parent;
                 shaftConstraintChild = constrainedChild;
-            }
-
-            if (shaftConstraintHandle == null || !shaftConstraintHandle.isValid()) {
-                clearShaftConstraint();
-                return;
-            }
-
-            SableConstraintApi.setFrame(shaftConstraintHandle, 1, parentAnchor, relativeOrientation);
-            SableConstraintApi.setFrame(shaftConstraintHandle, 2, childAnchor, new Quaterniond());
-            shaftConstraintHandle.setContactsEnabled(false);
-            if (needsConstraint || targetMoved) {
+                shaftConstraintProgress = attachedShaftProgress;
+                if (shaftConstraintHandle == null || !shaftConstraintHandle.isValid()) {
+                    clearShaftConstraint();
+                    return;
+                }
+                shaftConstraintHandle.setContactsEnabled(false);
+                SableConstraintApi.wakeUp(pipeline, parent);
+                SableConstraintApi.wakeUp(pipeline, constrainedChild);
+            } else if (railPositionChanged) {
+                // Preserve this joint's solver state. Recreating a fixed joint for every
+                // kinetic increment discards its warm start and causes lateral correction
+                // when either nested sublevel changes. The movement target is only this
+                // parent-local frame; all six relative degrees of freedom remain locked.
+                SableConstraintApi.setFrame(shaftConstraintHandle, 1, parentAnchor, relativeOrientation);
+                SableConstraintApi.setFrame(shaftConstraintHandle, 2, childAnchor, new Quaterniond());
+                shaftConstraintProgress = attachedShaftProgress;
+                shaftConstraintHandle.setContactsEnabled(false);
                 SableConstraintApi.wakeUp(pipeline, parent);
                 SableConstraintApi.wakeUp(pipeline, constrainedChild);
             }
-
-            shaftConstraintWorldAnchor = worldAnchor;
 
         } catch (Exception | LinkageError e) {
             CT_LOGGER.warn("[CT][PhysicsGantry] constraint update failed at {}: {}", worldPosition, e.toString());
@@ -783,6 +750,7 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
             active.setAssembledAttachmentState(shaftPos, shaftDirection, carriageFacing, attachedId, shaftSubLevelId);
             active.setChanged();
         }
+        active.alignFreshAssemblyToShaft(assembledSubLevel);
 
         Vec3 initialAnchor = Vec3.atCenterOf(shaftPos)
                 .add(carriageFacing.getStepX() * 0.5D,
@@ -942,6 +910,7 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
     // Set the assembled attachment state
     private void setAssembledAttachmentState(BlockPos shaftPos, Direction shaftDirection,
                                              Direction carriageFacing, UUID subLevelId, UUID shaftSubLevelId) {
+        clearShaftConstraint();
         assembledToSubLevel = true;
         attachedShaftPos = shaftPos == null ? null : shaftPos.immutable();
         attachedShaftDirection = shaftDirection;
@@ -958,9 +927,55 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
         lockedLocalAttachmentAnchor.set(0.0, 0.0, 0.0);
         hasLockedRotationPoint = false;
         lockedRotationPoint.set(0.0, 0.0, 0.0);
-        shaftConstraintWorldAnchor = null;
         lastException = null;
         SableAssemblyTopologyInvalidation.invalidate(level);
+    }
+
+    // Align a newly assembled payload with the shaft's containing frame before locking it
+    private void alignFreshAssemblyToShaft(Object subLevel) {
+        if (!(subLevel instanceof ServerSubLevel child)
+                || attachedShaftPos == null
+                || attachedShaftDirection == null
+                || attachedCarriageFacing == null) {
+            return;
+        }
+
+        PhysicsGantryShaftBlockEntity shaft = findAttachedShaftEntity(
+                attachedShaftPos, attachedShaftSubLevelId);
+        if (shaft == null) {
+            return;
+        }
+
+        Quaterniond targetOrientation = resolveAttachmentWorldOrientation(shaft, child);
+
+        Vec3 worldAnchor = computeAttachmentWorldAnchor(shaft, attachedShaftProgress);
+        if (worldAnchor == null) {
+            return;
+        }
+
+        hasLockedSubLevelOrientation = true;
+        lockedSubLevelOrientation.set(targetOrientation);
+        hasLockedShaftFrameOrientation = false;
+        Quaterniond shaftFrame = resolveShaftFrameOrientation();
+        if (shaftFrame != null) {
+            lockedShaftFrameOrientation.set(shaftFrame);
+            hasLockedShaftFrameOrientation = true;
+        }
+        hasLockedLocalAttachmentAnchor = false;
+        hasLockedRotationPoint = false;
+        Vector3d targetPosition = computeLockedAttachmentTargetPos(child, worldAnchor, targetOrientation);
+        if (!isFiniteAndSafe(targetPosition.x)
+                || !isFiniteAndSafe(targetPosition.y)
+                || !isFiniteAndSafe(targetPosition.z)) {
+            return;
+        }
+
+        teleportSubLevel(child, targetPosition, targetOrientation);
+        resetSubLevelVelocity(child);
+        ServerLevel serverLevel = resolveServerLevel(level);
+        if (serverLevel != null) {
+            refreshRopeAttachmentsForMovedSubLevel(serverLevel, child);
+        }
     }
 
     // Update the attached shaft position
@@ -1005,7 +1020,6 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
             attachedShaftDirection = shaftDirection;
         }
         attachedShaftSubLevelId = newShaftSubLevelId;
-        shaftConstraintWorldAnchor = null;
         hasLockedSubLevelOrientation = false;
         lockedSubLevelOrientation.identity();
         hasLockedShaftFrameOrientation = false;
@@ -1258,7 +1272,6 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
         attachedSubLevelId = null;
         attachedShaftSubLevelId = null;
         attachedShaftProgress = 0.0d;
-        shaftConstraintWorldAnchor = null;
         hasLockedSubLevelOrientation = false;
         lockedSubLevelOrientation.identity();
         hasLockedShaftFrameOrientation = false;
@@ -1342,8 +1355,39 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
     public boolean hasActiveAttachmentAnchor() {
         return assembledToSubLevel
                 || shaftConstraintHandle != null
-                || shaftConstraintWorldAnchor != null
                 || hasLockedLocalAttachmentAnchor;
+    }
+
+    // Release the payload when its carriage block is removed
+    public void onCarriageRemoved() {
+        if (level == null || level.isClientSide) {
+            return;
+        }
+
+        Object payloadSubLevel = resolveAttachedSubLevel();
+        BlockPos previousShaftPos = attachedShaftPos;
+        clearShaftConstraint();
+        clearDebugAnchorEntity();
+        clearPendingManualRelink();
+        if (payloadSubLevel != null) {
+            resetSubLevelVelocity(payloadSubLevel);
+        }
+        clearAttachmentTrackingState();
+        scrubKineticLinksAfterAttachmentTeardown(previousShaftPos);
+        refreshShaftAnchorLookup(previousShaftPos);
+    }
+
+    // Release the payload when its backing shaft block is removed
+    public void onAttachedShaftRemoved(BlockPos shaftPos, Direction shaftDirection, UUID shaftSubLevelId) {
+        if (!isAttachedToShaftBlock(shaftPos, shaftDirection, shaftSubLevelId)) {
+            return;
+        }
+
+        Object payloadSubLevel = resolveAttachedSubLevel();
+        if (payloadSubLevel != null) {
+            resetSubLevelVelocity(payloadSubLevel);
+        }
+        detachFromShaftKeepSubLevel("shaft-removed");
     }
 
     // Get the attached shaft pos
@@ -1740,24 +1784,20 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
             return;
         }
 
-        Vec3 shaftDirectionLocal = Vec3.atLowerCornerOf(attachedShaftDirection.getNormal());
-        Vec3 carriageFacingLocal = Vec3.atLowerCornerOf(attachedCarriageFacing.getNormal());
-
-        Vec3 localAnchor = Vec3.atCenterOf(attachedShaftPos)
-            .add(shaftDirectionLocal.x * attachedShaftProgress,
-                shaftDirectionLocal.y * attachedShaftProgress,
-                shaftDirectionLocal.z * attachedShaftProgress)
-            .add(carriageFacingLocal.x * 0.5D,
-                carriageFacingLocal.y * 0.5D,
-                carriageFacingLocal.z * 0.5D);
-
-        Vec3 worldAnchor = SimulatedHelper.toContainingWorldPosition(shaftBE, localAnchor);
-
         if (updateDebugAnchor) {
-            updateDebugAnchorEntity(worldAnchor, true);
+            Vec3 shaftDirectionLocal = Vec3.atLowerCornerOf(attachedShaftDirection.getNormal());
+            Vec3 carriageFacingLocal = Vec3.atLowerCornerOf(attachedCarriageFacing.getNormal());
+            Vec3 localAnchor = Vec3.atCenterOf(attachedShaftPos)
+                    .add(shaftDirectionLocal.x * attachedShaftProgress,
+                            shaftDirectionLocal.y * attachedShaftProgress,
+                            shaftDirectionLocal.z * attachedShaftProgress)
+                    .add(carriageFacingLocal.x * 0.5D,
+                            carriageFacingLocal.y * 0.5D,
+                            carriageFacingLocal.z * 0.5D);
+            updateDebugAnchorEntity(SimulatedHelper.toContainingWorldPosition(shaftBE, localAnchor), true);
         }
 
-        updateShaftConstraintForGameTick(subLevel, worldAnchor);
+        updateShaftConstraintForGameTick(subLevel);
     }
 
     // Check if the attached sublevel would hit a protected world block
@@ -1775,7 +1815,7 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
         if (worldAnchor == null) {
             return true;
         }
-        Quaterniond orientation = resolveLockedOrientation(subLevel);
+        Quaterniond orientation = resolveAttachmentWorldOrientation(shaftBE, subLevel);
         Vector3d targetPosition = computeLockedAttachmentTargetPos(subLevel, worldAnchor, orientation);
         return wouldSubLevelHitProtectedWorldBlock(subLevel, targetPosition, orientation);
     }
@@ -1939,7 +1979,7 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
             return;
         }
 
-        if (!hasTrackedAttachmentState() && shaftConstraintHandle == null && shaftConstraintWorldAnchor == null) {
+        if (!hasTrackedAttachmentState() && shaftConstraintHandle == null) {
             return;
         }
 
@@ -1956,8 +1996,6 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
         attachedCarriageFacing = null;
         attachedShaftProgress = 0.0d;
         attachedShaftSubLevelId = null;
-        shaftConstraintWorldAnchor = null;
-
         hasLockedSubLevelOrientation = false;
         lockedSubLevelOrientation.identity();
         hasLockedShaftFrameOrientation = false;
@@ -2311,48 +2349,6 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
         debugAnchorEntityId = null;
     }
 
-        // Ensure the shaft constraint
-        @SuppressWarnings("unused")
-        private boolean ensureShaftConstraint(Object subLevel, Vec3 worldAnchor, Vec3 localAnchor) {
-            ServerLevel serverLevel = resolveServerLevel(level);
-            if (serverLevel == null || subLevel == null) {
-            return false;
-        }
-
-        boolean shouldRefresh = shaftConstraintHandle == null || shaftConstraintWorldAnchor == null
-            || shaftConstraintWorldAnchor.distanceToSqr(worldAnchor) > 1.0E-6D;
-        if (!shouldRefresh) {
-            return true;
-        }
-
-        clearShaftConstraint();
-
-        try {
-            Vector3d anchorA = new Vector3d(worldAnchor.x, worldAnchor.y, worldAnchor.z);
-            Vector3d anchorB = new Vector3d(localAnchor.x, localAnchor.y, localAnchor.z);
-            Quaterniond orientation = new Quaterniond();
-            Object fixedConstraint = SableConstraintApi.fixedConfiguration(anchorA, anchorB, orientation);
-
-            ServerSubLevelContainer container = SubLevelContainer.getContainer(serverLevel);
-            if (container == null) {
-                return false;
-            }
-            shaftConstraintHandle = (PhysicsConstraintHandle) SableConstraintApi.addConstraint(
-                    container.physicsSystem().getPipeline(), null, subLevel, fixedConstraint);
-
-            if (shaftConstraintHandle == null) {
-            return false;
-            }
-
-            shaftConstraintWorldAnchor = worldAnchor;
-            return true;
-        } catch (Exception e) {
-            CT_LOGGER.warn("[CT][PhysicsGantry] constraint refresh failed at {}: {}", worldPosition, e.toString());
-            clearShaftConstraint();
-            return false;
-        }
-        }
-
     // Convert the physics gantry carriage to sublevel local anchor
     private Vec3 toSubLevelLocalAnchor(Object subLevel, Vec3 worldAnchor) {
         Vector3d pos = readSubLevelPosition(subLevel);
@@ -2382,7 +2378,7 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
         shaftConstraintHandle = null;
         shaftConstraintParent = null;
         shaftConstraintChild = null;
-        shaftConstraintWorldAnchor = null;
+        shaftConstraintProgress = Double.NaN;
     }
 
     // Get the measure shaft span
@@ -2614,6 +2610,42 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
             return null;
         }
         return orientation;
+    }
+
+    // Resolve the fixed carriage orientation in the shaft parent's local frame.
+    // Keeping this local is essential: a parent sublevel transform may change every
+    // physics step, but that must not change an already configured joint frame.
+    private Quaterniond resolveAttachmentRelativeOrientation() {
+        if (attachedCarriageFacing == null || attachedShaftDirection == null) {
+            return null;
+        }
+
+        BlockState carriageState = getBlockState();
+        if (!carriageState.hasProperty(PhysicsGantryCarriageBlock.FACING)) {
+            return null;
+        }
+
+        Direction carriageLocalFacing = carriageState.getValue(PhysicsGantryCarriageBlock.FACING);
+        Direction.Axis carriageLocalShaftAxis = PhysicsGantryCarriageBlock.getValidGantryShaftAxis(carriageState);
+        return basisOrientation(directionVector(attachedCarriageFacing), directionVector(attachedShaftDirection))
+                .mul(basisOrientation(directionVector(carriageLocalFacing), axisVector(carriageLocalShaftAxis)).conjugate())
+                .normalize();
+    }
+
+    // Resolve the only valid world orientation for initial placement and collision checks.
+    private Quaterniond resolveAttachmentWorldOrientation(PhysicsGantryShaftBlockEntity shaft,
+                                                          Object fallbackSubLevel) {
+        Quaterniond relativeOrientation = resolveAttachmentRelativeOrientation();
+        if (shaft == null || relativeOrientation == null) {
+            return resolveLockedOrientation(fallbackSubLevel);
+        }
+
+        Object containingShaft = SimulatedHelper.getContainingSubLevel(shaft);
+        Quaterniond parentOrientation = readSubLevelOrientation(containingShaft);
+        if (parentOrientation == null) {
+            parentOrientation = new Quaterniond();
+        }
+        return parentOrientation.mul(relativeOrientation).normalize();
     }
 
     // Resolve the locked orientation

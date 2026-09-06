@@ -2292,7 +2292,8 @@ public final class GraphRuntime {
 
     // Convert the graph to library entry
     private static Object toLibraryEntry(Tag tag) {
-        if (tag instanceof CompoundTag compound && compound.contains("Type", Tag.TAG_STRING)) {
+        if (isGraphValueTag(tag)) {
+            CompoundTag compound = (CompoundTag) tag;
             return toLibraryValue(AdvancedGraphDocument.Value.fromTag(compound));
         }
         return toLibraryRaw(tag);
@@ -2811,7 +2812,34 @@ public final class GraphRuntime {
         }
 
         activePorts.addAll(setDataForceWritePorts(node));
-        return activePorts;
+        return expandGroupedDataPorts(node, activePorts);
+    }
+
+    // Expand one generated MAP write into its retained data ports
+    private static Set<String> expandGroupedDataPorts(AdvancedGraphDocument.Node node,
+                                                      Set<String> requestedPorts) {
+        Set<String> expanded = new LinkedHashSet<>();
+        if (requestedPorts == null || requestedPorts.isEmpty()) {
+            return expanded;
+        }
+        for (String requestedPort : requestedPorts) {
+            String port = inlineMapInputSource(node, requestedPort);
+            CompoundTag fields = AdvancedContraptionControllerBlockEntity.dataPortGroup(node, port);
+            if (fields.isEmpty()) {
+                expanded.add(port);
+            } else {
+                expanded.addAll(fields.getAllKeys());
+            }
+        }
+        return expanded;
+    }
+
+    // Get the parent MAP input for one exposed inline field
+    private static String inlineMapInputSource(AdvancedGraphDocument.Node node, String port) {
+        if (node == null || port == null || port.isBlank()) return port;
+        String source = node.data().getCompound(AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG)
+                .getCompound(port).getString(AdvancedGraphCatalog.INLINE_MAP_SOURCE_TAG);
+        return source.isBlank() ? port : source;
     }
 
     // Get the Set Data force-write ports
@@ -3003,7 +3031,7 @@ public final class GraphRuntime {
     private static AdvancedGraphDocument.Value nbtValue(net.minecraft.nbt.Tag val) {
         if (val == null) return AdvancedGraphDocument.Value.string("");
         if (val instanceof CompoundTag compound) {
-            if (compound.contains("Type")) return AdvancedGraphDocument.Value.fromTag(compound);
+            if (isGraphValueTag(compound)) return AdvancedGraphDocument.Value.fromTag(compound);
             CompoundTag payload = new CompoundTag();
             for (String nestedKey : compound.getAllKeys()) {
                 payload.put(nestedKey, nbtValue(compound.get(nestedKey)).toTag());
@@ -3024,6 +3052,13 @@ public final class GraphRuntime {
             case Tag.TAG_STRING -> AdvancedGraphDocument.Value.string(val.getAsString());
             default -> AdvancedGraphDocument.Value.string(val.getAsString());
         };
+    }
+
+    // Check whether an NBT compound encodes one graph value
+    private static boolean isGraphValueTag(Tag tag) {
+        return tag instanceof CompoundTag compound
+                && compound.contains("Type", Tag.TAG_STRING)
+                && compound.contains("Payload", Tag.TAG_COMPOUND);
     }
 
     // Get the JSON entries
@@ -3300,6 +3335,20 @@ public final class GraphRuntime {
                 if ("map".equals(map.type()) && map.payload().contains(port, Tag.TAG_COMPOUND)) {
                     val = convertValue(AdvancedGraphDocument.Value.fromTag(map.payload().getCompound(port)),
                             node.inputTypes().get(port));
+                }
+            }
+            if (!node.hasInput(port)
+                    && (node.defaultValue(port) == null
+                    || node.data().getCompound("PrefilledInputs").contains(port))) {
+                String group = AdvancedContraptionControllerBlockEntity.dataPortGroupFor(
+                        node.source(), port);
+                if (!group.isBlank()
+                        && (node.hasInput(group) || node.defaultValue(group) != null)) {
+                    AdvancedGraphDocument.Value map = value(node, group, operations);
+                    if ("map".equals(map.type()) && map.payload().contains(port, Tag.TAG_COMPOUND)) {
+                        val = convertValue(AdvancedGraphDocument.Value.fromTag(
+                                map.payload().getCompound(port)), node.inputTypes().get(port));
+                    }
                 }
             }
             val = inlineMapInput(this, node, port, val, operations);

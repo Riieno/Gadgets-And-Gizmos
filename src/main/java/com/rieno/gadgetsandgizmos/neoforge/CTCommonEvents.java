@@ -76,6 +76,7 @@ import com.rieno.gadgetsandgizmos.neoforge.network.NavigationTableActionPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.FunctionPlotterDataPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.PhysicsGogglesDataPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.PhysicsGogglesDataRequestPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.PhysicsGantryBeltWheelSelectionPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.PortableContraptionControllerKeyPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.PortableContraptionControllerModePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.PortableContraptionControllerOpenPayload;
@@ -346,6 +347,9 @@ public final class CTCommonEvents {
                 registrar.playToClient(GraphSoundPayload.TYPE,
                                 GraphSoundPayload.STREAM_CODEC,
                                 GraphSoundPayload::handle);
+                registrar.playToClient(PhysicsGantryBeltWheelSelectionPayload.TYPE,
+                                PhysicsGantryBeltWheelSelectionPayload.STREAM_CODEC,
+                                PhysicsGantryBeltWheelSelectionPayload::handle);
         }
 
         // Sync the feature toggles to player

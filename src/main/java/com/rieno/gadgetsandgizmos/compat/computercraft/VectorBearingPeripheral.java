@@ -132,6 +132,40 @@ public class VectorBearingPeripheral extends GadgetsPeripheral<VectorBearingBloc
         blockEntity.clearComputerAngles();
     }
 
+    // Get the stabilization axis
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getStabilizeAxis", signature = "getStabilizeAxis(): string",
+            description = "Returns the world axis used as the zero-tilt pose when stabilization is enabled.")
+    public final String getStabilizeAxis() {
+        return blockEntity.getStabilizeAxis();
+    }
+
+    // Set the stabilization axis
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setStabilizeAxis", signature = "setStabilizeAxis('X-Axis'|'Y-Axis'|'Z-Axis')",
+            description = "Sets the world axis used as the zero-tilt pose when stabilization is enabled.")
+    public final void setStabilizeAxis(String axis) throws LuaException {
+        if (!blockEntity.setStabilizeAxis(axis)) {
+            throw new LuaException("axis must be 'X-Axis', 'Y-Axis' or 'Z-Axis'");
+        }
+    }
+
+    // Check whether stabilization is enabled
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isKeepStable", signature = "isKeepStable(): boolean",
+            description = "Returns whether the mounted head keeps its selected world axis stable.")
+    public final boolean isKeepStable() {
+        return blockEntity.isKeepStable();
+    }
+
+    // Set whether stabilization is enabled
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setKeepStable", signature = "setKeepStable(keepStable: boolean)",
+            description = "Enables or disables world-axis stabilization for the mounted head.")
+    public final void setKeepStable(boolean keepStable) {
+        blockEntity.setKeepStable(keepStable);
+    }
+
     // Get the signals
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getSignals", signature = "getSignals(): table",
@@ -183,6 +217,8 @@ public class VectorBearingPeripheral extends GadgetsPeripheral<VectorBearingBloc
         status.put("computerXAngle", blockEntity.getComputerXDegrees());
         status.put("computerZAngle", blockEntity.getComputerZDegrees());
         status.put("computerOverride", blockEntity.hasComputerOverride());
+        status.put("stabilizeAxis", blockEntity.getStabilizeAxis());
+        status.put("keepStable", blockEntity.isKeepStable());
         status.put("assembled", blockEntity.isMountedAssemblyPresent());
         status.put("signals", getSignals());
         return status;

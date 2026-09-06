@@ -218,6 +218,7 @@ public final class AdvancedGraphValidator {
                         "Function " + function.name() + ": " + diagnostic.message(),
                         diagnostic.nodeId(), diagnostic.edgeId()));
             }
+            validateFunctionInterfaceEdges(function, diagnostics);
             for (AdvancedGraphDocument.Node node : function.nodes()) {
                 if (AdvancedGraphFunctions.CALL_TYPE.equals(node.type())
                         && graph.function(node.data().getString(AdvancedGraphFunctions.FUNCTION_ID)) == null) {
@@ -228,6 +229,25 @@ public final class AdvancedGraphValidator {
             }
         }
         return new Result(diagnostics.stream().noneMatch(d -> "error".equals(d.severity())), List.copyOf(diagnostics));
+    }
+
+    // Reject function interface wires which would become self-referential after expansion.
+    private static void validateFunctionInterfaceEdges(AdvancedGraphDocument.FunctionGraph function,
+                                                       List<Diagnostic> diagnostics) {
+        Map<String, AdvancedGraphDocument.Node> functionNodes = new HashMap<>();
+        for (AdvancedGraphDocument.Node node : function.nodes()) {
+            functionNodes.put(node.id(), node);
+        }
+        for (AdvancedGraphDocument.Edge edge : function.edges()) {
+            AdvancedGraphDocument.Node from = functionNodes.get(edge.fromNode());
+            AdvancedGraphDocument.Node to = functionNodes.get(edge.toNode());
+            if (!AdvancedGraphFunctions.isInvalidInterfaceEdge(from, to)) {
+                continue;
+            }
+            diagnostics.add(error("invalid_function_interface_wire",
+                    "Function inputs must feed the function body, and function outputs must be fed by it",
+                    to == null ? "" : to.id(), edge.id()));
+        }
     }
 
     // Check if this has configured target

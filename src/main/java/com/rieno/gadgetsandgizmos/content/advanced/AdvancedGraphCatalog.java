@@ -47,6 +47,8 @@ public final class AdvancedGraphCatalog {
     public static final String INLINE_MAP_INPUTS_TAG = "InlineMapInputs";
     /** Maps dynamically exposed output ports to their source MAP port and key. */
     public static final String INLINE_MAP_OUTPUTS_TAG = "InlineMapOutputs";
+    /** Maps generated MAP ports to the retained block-data leaf port schemas. */
+    public static final String DATA_PORT_GROUPS_TAG = "DataPortGroups";
     public static final String INLINE_MAP_SOURCE_TAG = "Source";
     public static final String INLINE_MAP_KEY_TAG = "Key";
     public static final String SHIP_SPEED_PERCENT_TAG = "ShipSpeedPercent";
@@ -992,7 +994,8 @@ public final class AdvancedGraphCatalog {
             case "start_index" -> -67;
             case "end_index" -> -66;
             case "a" -> -60;
-            case "b" -> -59;
+            case "operator" -> -59;
+            case "b" -> -58;
             case "true" -> -50;
             case "false" -> -49;
             case "default" -> -40;

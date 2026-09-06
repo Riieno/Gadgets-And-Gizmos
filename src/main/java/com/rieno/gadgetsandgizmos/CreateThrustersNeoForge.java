@@ -15,6 +15,7 @@ import com.rieno.gadgetsandgizmos.content.DiagnosticTabletDatabase;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletFriendDatabase;
 import com.rieno.gadgetsandgizmos.content.PhotomancyBlueprintCompat;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinCrafting;
+import com.rieno.gadgetsandgizmos.content.SupporterHeadWanderingTraderTrades;
 import com.rieno.gadgetsandgizmos.content.PortableContraptionControllerRuntime;
 import com.rieno.gadgetsandgizmos.content.ShipControlMapStore;
 import com.rieno.gadgetsandgizmos.content.WirelessDockingTransfer;
@@ -67,6 +68,7 @@ public final class CreateThrustersNeoForge {
         NeoForge.EVENT_BUS.addListener(ControllerGraphWebServer::onServerStarted);
         NeoForge.EVENT_BUS.addListener(ControllerGraphWebServer::onServerStopped);
         NeoForge.EVENT_BUS.addListener(PlayerMannequinCrafting::onAnvilUpdate);
+        NeoForge.EVENT_BUS.addListener(SupporterHeadWanderingTraderTrades::addTrades);
         NeoForge.EVENT_BUS.addListener(CTMobHeadDrops::onLivingDrops);
         if (CTItems.ENTITY_LAUNCHER != null) {
             NeoForge.EVENT_BUS.addListener(EntityLauncherItem::postServerTick);

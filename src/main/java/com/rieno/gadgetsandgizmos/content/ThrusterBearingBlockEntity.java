@@ -372,12 +372,26 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
     public void destroy() {
         if (level != null && !level.isClientSide && !isBearingAssemblyTransfer()) {
             BlockPos platePos = getPlatePos();
-            if (platePos != null && isThrusterBearingLink(level.getBlockState(platePos))) {
+            if (platePos != null) {
                 removeThrusterLinkHandle();
                 destroyThrusterLink(platePos);
             }
         }
         super.destroy();
+    }
+
+    // Get the connection dependencies
+    @Override
+    public @org.jetbrains.annotations.Nullable Iterable<SubLevel> sable$getConnectionDependencies() {
+        if (level == null || getSubLevelID() == null) {
+            return null;
+        }
+        SubLevelContainer container = SubLevelContainer.getContainer(level);
+        if (container == null) {
+            return null;
+        }
+        SubLevel mountedSubLevel = container.getSubLevel(getSubLevelID());
+        return mountedSubLevel == null || mountedSubLevel.isRemoved() ? null : List.of(mountedSubLevel);
     }
 
     // Handle the state before assembly
@@ -774,26 +788,51 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
 
     // Destroy the thruster link
     private void destroyThrusterLink(BlockPos platePos) {
-        SubLevelContainer container = SubLevelContainer.getContainer(level);
-        if (container == null) {
+        if (level == null) {
             return;
         }
-        SubLevel subLevel = getSubLevelID() == null ? null : container.getSubLevel(getSubLevelID());
-        if (getSubLevelID() != null && subLevel == null) {
+        SubLevelContainer container = SubLevelContainer.getContainer(level);
+        SubLevel subLevel = container != null && getSubLevelID() != null
+                ? container.getSubLevel(getSubLevelID())
+                : null;
+
+        BlockState plateState = level.getBlockState(platePos);
+        if (isThrusterBearingLink(plateState)) {
+            if (level.getBlockEntity(platePos) instanceof ThrusterBearingLinkBlockEntity linkBlockEntity) {
+                linkBlockEntity.beforeAssembly();
+            }
+            level.setBlock(platePos, Blocks.AIR.defaultBlockState(), 2);
+            return;
+        }
+        if (plateState.getBlock() instanceof SwivelBearingPlateBlock) {
+            if (level.getBlockEntity(platePos) instanceof SwivelBearingPlateBlockEntity plateBlockEntity) {
+                plateBlockEntity.beforeAssembly();
+            }
+            level.setBlock(platePos, Blocks.AIR.defaultBlockState(), 2);
+            return;
+        }
+        if (!(subLevel instanceof ServerSubLevel child) || child.isRemoved()) {
             return;
         }
 
-        BlockState plateState = getLevel().getBlockState(platePos);
-        if (isThrusterBearingLink(plateState)
-                && getLevel().getBlockEntity(platePos) instanceof ThrusterBearingLinkBlockEntity linkBlockEntity) {
-            linkBlockEntity.beforeAssembly();
-            getLevel().setBlock(platePos, Blocks.AIR.defaultBlockState(), 2);
+        BlockPos relativePos = platePos.subtract(child.getPlot().getCenterBlock());
+        BlockState embeddedState = child.getPlot().getEmbeddedLevelAccessor().getBlockState(relativePos);
+        if (isThrusterBearingLink(embeddedState)) {
+            ThrusterBearingLinkBlockEntity linkBlockEntity = SimulatedHelper.findBlockEntityInSubLevel(
+                    child, platePos, ThrusterBearingLinkBlockEntity.class);
+            if (linkBlockEntity != null) {
+                linkBlockEntity.beforeAssembly();
+            }
+            child.getPlot().getEmbeddedLevelAccessor().setBlock(relativePos, Blocks.AIR.defaultBlockState(), 2);
             return;
         }
-        if (plateState.getBlock() instanceof SwivelBearingPlateBlock
-                && getLevel().getBlockEntity(platePos) instanceof SwivelBearingPlateBlockEntity plateBlockEntity) {
-            plateBlockEntity.beforeAssembly();
-            getLevel().setBlock(platePos, Blocks.AIR.defaultBlockState(), 2);
+        if (embeddedState.getBlock() instanceof SwivelBearingPlateBlock) {
+            SwivelBearingPlateBlockEntity plateBlockEntity = SimulatedHelper.findBlockEntityInSubLevel(
+                    child, platePos, SwivelBearingPlateBlockEntity.class);
+            if (plateBlockEntity != null) {
+                plateBlockEntity.beforeAssembly();
+            }
+            child.getPlot().getEmbeddedLevelAccessor().setBlock(relativePos, Blocks.AIR.defaultBlockState(), 2);
         }
     }
 

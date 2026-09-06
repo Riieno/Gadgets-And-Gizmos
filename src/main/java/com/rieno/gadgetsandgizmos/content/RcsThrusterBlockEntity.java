@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
+import com.rieno.gadgetsandgizmos.particle.worldspace.WorldSpaceParticleEmitter;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDataProvider;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
@@ -493,20 +494,11 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
         double speed = 0.035D + throttle * 0.055D;
         Vec3 localMotion = localDirection.scale(speed)
                 .add(randomPerpendicular(localDirection, 0.009D));
-        Vec3 worldPosition = SimulatedHelper.toGlobalWorldPosition(this, localEmitter);
-        Vec3 worldMotionEnd = SimulatedHelper.toGlobalWorldPosition(
-                this, localEmitter.add(localMotion));
-        if (worldPosition == null || worldMotionEnd == null) {
-            return;
-        }
-        Vec3 worldMotion = worldMotionEnd.subtract(worldPosition);
-
         float shade = 0.72F + level.random.nextFloat() * 0.23F;
         float scale = particleScale * (0.55F + level.random.nextFloat() * 0.30F + throttle * 0.20F);
-        level.addParticle(
+        WorldSpaceParticleEmitter.addParticle(this,
                 new RcsSteamParticleOptions(shade, shade, Math.min(1.0F, shade + 0.025F), scale),
-                worldPosition.x, worldPosition.y, worldPosition.z,
-                worldMotion.x, worldMotion.y, worldMotion.z);
+                localEmitter, localMotion);
     }
 
     // Get the random perpendicular

@@ -116,6 +116,16 @@ public class PhysicsGantryCarriageBlock extends DirectionalAxisKineticBlock impl
         withBlockEntityDo(level, pos, PhysicsGantryCarriageBlockEntity::queueAssembly);
     }
 
+    // Release a mounted payload before the carriage block entity is discarded
+    @Override
+    public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean isMoving) {
+        if (state.getBlock() != newState.getBlock()
+                && level.getBlockEntity(pos) instanceof PhysicsGantryCarriageBlockEntity carriage) {
+            carriage.onCarriageRemoved();
+        }
+        IBE.onRemove(state, level, pos, newState);
+    }
+
     // Get the facing for placement
     @Override
     protected Direction getFacingForPlacement(BlockPlaceContext ctx) {

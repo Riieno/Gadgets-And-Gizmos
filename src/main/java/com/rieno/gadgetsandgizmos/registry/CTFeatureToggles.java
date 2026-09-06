@@ -113,8 +113,8 @@ public final class CTFeatureToggles {
         define(blocks, "advanced_contraption_controller", true);
         define(blocks, "ship_control_module", true);
         define(blocks, "ship_coupler", true);
-        define(blocks, ACC_DISPLAY_FEATURE, false); // Disable ACC Displays in Release
-        define(blocks, "universal_display_adapter", false);// Disable ACC Displays adaptor in Release
+        define(blocks, ACC_DISPLAY_FEATURE, true); // Disable ACC Displays in Release
+        define(blocks, "universal_display_adapter", true);// Disable ACC Displays adaptor in Release
         define(blocks, "ship_dock", true);
         define(blocks, "advanced_navigation_table", true);
         define(blocks, "diagnostic_tablet", false); // Disable Smart Tablet in Release
@@ -164,7 +164,7 @@ public final class CTFeatureToggles {
         define(items, "universal_display_adapter", true);
         define(items, "ship_dock", true);
         define(items, "advanced_navigation_table", true);
-        define(items, "diagnostic_tablet", true);
+        define(items, "diagnostic_tablet", false);
         define(items, "portable_contraption_controller", true);
         define(items, "advanced_portable_contraption_controller", true);
         define(items, "alternator", true);

@@ -78,6 +78,11 @@ public abstract class PropulsionVectorThrusterPeripheralMixin {
     // Get the angle target
     private PropulsionVectorThrusterAngleAccess ct$angleTarget() throws LuaException {
         PropulsionVectorThrusterAngleAccess access = PropulsionVectorThrusterAngles.findAngleTarget(this);
+        // Newer Propulsion builds expose their own vector peripheral. Keep the
+        // established degree-based methods as aliases on that same endpoint.
+        if (PropulsionVectorThrusterAngles.hasDedicatedComputerCraftInterface(this) && access != null) {
+            return access;
+        }
         if (access != null) {
             return access;
         }

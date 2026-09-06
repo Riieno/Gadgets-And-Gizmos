@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
+import com.rieno.gadgetsandgizmos.neoforge.network.PhysicsGantryBeltWheelSelectionPayload;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.simibubi.create.content.equipment.wrench.IWrenchable;
 import com.simibubi.create.content.kinetics.simpleRelays.ICogWheel;
@@ -37,6 +38,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.common.Tags;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.Map;
 import java.util.UUID;
@@ -128,7 +130,7 @@ public class PhysicsGantryBeltWheelBlock extends RotatedPillarKineticBlock imple
 
         Long expiresAt = PENDING_LINK_EXPIRY.get(playerId);
         if (expiresAt != null && expiresAt < now) {
-            clearPendingSelection(playerId);
+            clearPendingSelection(player);
         }
 
         BlockPos pendingPos = PENDING_LINK_POSITIONS.get(playerId);
@@ -136,13 +138,13 @@ public class PhysicsGantryBeltWheelBlock extends RotatedPillarKineticBlock imple
 
         UUID clickedSubLevel = SimulatedHelper.getContainingSubLevelId(clickedWheel);
         if (pendingPos == null) {
-            setPendingSelection(playerId, clickedWheel.getBlockPos(), clickedSubLevel, now + LINK_SELECTION_TIMEOUT_TICKS);
+            setPendingSelection(player, clickedWheel, clickedSubLevel, now + LINK_SELECTION_TIMEOUT_TICKS);
             notify(player, "createthrusters.physics_gantry_belt_wheel.link_first", ChatFormatting.GRAY);
             return ItemInteractionResult.SUCCESS;
         }
 
         if (pendingPos.equals(clickedWheel.getBlockPos()) && java.util.Objects.equals(pendingSubLevel, clickedSubLevel)) {
-            clearPendingSelection(playerId);
+            clearPendingSelection(player);
             notify(player, "createthrusters.physics_gantry_belt_wheel.link_cleared", ChatFormatting.YELLOW);
             return ItemInteractionResult.SUCCESS;
         }
@@ -150,7 +152,7 @@ public class PhysicsGantryBeltWheelBlock extends RotatedPillarKineticBlock imple
         PhysicsGantryBeltWheelBlockEntity firstWheel = SimulatedHelper.findBlockEntity(level, pendingSubLevel, pendingPos,
                 PhysicsGantryBeltWheelBlockEntity.class);
         if (firstWheel == null || firstWheel.isRemoved()) {
-            setPendingSelection(playerId, clickedWheel.getBlockPos(), clickedSubLevel, now + LINK_SELECTION_TIMEOUT_TICKS);
+            setPendingSelection(player, clickedWheel, clickedSubLevel, now + LINK_SELECTION_TIMEOUT_TICKS);
             notify(player, "createthrusters.physics_gantry_belt_wheel.link_missing", ChatFormatting.RED);
             return ItemInteractionResult.SUCCESS;
         }
@@ -183,14 +185,16 @@ public class PhysicsGantryBeltWheelBlock extends RotatedPillarKineticBlock imple
             stack.shrink(1);
         }
 
-        clearPendingSelection(playerId);
+        clearPendingSelection(player);
         notify(player, "createthrusters.physics_gantry_belt_wheel.link_success", ChatFormatting.GREEN);
         return ItemInteractionResult.SUCCESS;
     }
 
     // Set the pending selection
-    private static void setPendingSelection(UUID playerId, BlockPos pos, @org.jetbrains.annotations.Nullable UUID subLevelId,
-                                            long expiresAtTick) {
+    private static void setPendingSelection(Player player, PhysicsGantryBeltWheelBlockEntity wheel,
+                                            @org.jetbrains.annotations.Nullable UUID subLevelId, long expiresAtTick) {
+        UUID playerId = player.getUUID();
+        BlockPos pos = wheel.getBlockPos();
         PENDING_LINK_POSITIONS.put(playerId, pos.immutable());
         if (subLevelId == null) {
             PENDING_LINK_SUBLEVELS.remove(playerId);
@@ -198,13 +202,27 @@ public class PhysicsGantryBeltWheelBlock extends RotatedPillarKineticBlock imple
             PENDING_LINK_SUBLEVELS.put(playerId, subLevelId);
         }
         PENDING_LINK_EXPIRY.put(playerId, expiresAtTick);
+        syncPendingSelection(player, true, pos, subLevelId, wheel.getWorldAnchorPosition());
     }
 
     // Clear the pending selection
-    private static void clearPendingSelection(UUID playerId) {
+    private static void clearPendingSelection(Player player) {
+        UUID playerId = player.getUUID();
         PENDING_LINK_POSITIONS.remove(playerId);
         PENDING_LINK_SUBLEVELS.remove(playerId);
         PENDING_LINK_EXPIRY.remove(playerId);
+        syncPendingSelection(player, false, BlockPos.ZERO, null, Vec3.ZERO);
+    }
+
+    // Synchronize the selected endpoint with its owner for Create-style connection particles.
+    private static void syncPendingSelection(Player player, boolean active, BlockPos pos,
+                                             @org.jetbrains.annotations.Nullable UUID subLevelId, Vec3 worldAnchor) {
+        if (!(player instanceof ServerPlayer serverPlayer)) {
+            return;
+        }
+        PacketDistributor.sendToPlayer(serverPlayer, new PhysicsGantryBeltWheelSelectionPayload(
+                active, pos.asLong(), subLevelId, worldAnchor.x, worldAnchor.y, worldAnchor.z,
+                getConfiguredMaxDistance()));
     }
 
     // Handle wrench use

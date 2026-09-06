@@ -112,6 +112,22 @@ public final class AdvancedGraphFunctions {
         }
     }
 
+    // Check whether an edge bypasses or feeds back into a function interface.
+    // Function inputs are sources for the function body and function outputs are
+    // sinks from the body. Wiring those two interface nodes together would turn
+    // into a self-referential edge on the expanded call node at runtime.
+    public static boolean isInvalidInterfaceEdge(AdvancedGraphDocument.Node from,
+                                                 AdvancedGraphDocument.Node to) {
+        if (from == null || to == null) {
+            return false;
+        }
+        boolean fromInput = INPUT_TYPE.equals(from.type());
+        boolean fromOutput = OUTPUT_TYPE.equals(from.type());
+        boolean toInput = INPUT_TYPE.equals(to.type());
+        boolean toOutput = OUTPUT_TYPE.equals(to.type());
+        return fromOutput || toInput || fromInput && toOutput;
+    }
+
     // Remove one function and every call node which targets it
     public static boolean removeFunction(
             AdvancedGraphDocument graph, String functionId) {
@@ -264,7 +280,7 @@ public final class AdvancedGraphFunctions {
         for (AdvancedGraphDocument.Edge edge : function.edges()) {
             AdvancedGraphDocument.Node from = functionNodes.get(edge.fromNode());
             AdvancedGraphDocument.Node to = functionNodes.get(edge.toNode());
-            if (from == null || to == null) {
+            if (from == null || to == null || isInvalidInterfaceEdge(from, to)) {
                 continue;
             }
             String fromNode;

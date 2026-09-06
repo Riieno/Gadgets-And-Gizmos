@@ -13,6 +13,7 @@ import com.mojang.math.Axis;
 import net.createmod.catnip.math.AngleHelper;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
+import com.rieno.gadgetsandgizmos.particle.worldspace.WorldSpaceParticleEmitter;
 import com.rieno.gadgetsandgizmos.lib.physics.SubLevelParticleOcclusion;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDataProvider;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
@@ -618,6 +619,10 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
             return;
         }
         FanProcessingType forcedType = getForcedProcessingType();
+        Level worldParticleLevel = WorldSpaceParticleEmitter.resolveWorldLevel(this);
+        if (worldParticleLevel == null) {
+            return;
+        }
 
         boolean spawnManualProcessingParticles = forcedType != null;
         double naturalExhaustRange = Mth.lerp(throttle, 2.0D, 5.5D);
@@ -643,7 +648,8 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
                             : randomExhaustSpread(level, localDirection, (0.02D + progress * 0.015D) * Math.max(0.15D, density));
                     Vec3 particlePos = localSample.add(jitter);
                     if (isParticleInRange(localStart, localDirection, particlePos, maxDistance)) {
-                        forcedType.spawnProcessingParticles(level, particlePos);
+                        Vec3 worldParticlePos = SimulatedHelper.toGlobalWorldPosition(this, particlePos);
+                        forcedType.spawnProcessingParticles(worldParticleLevel, worldParticlePos);
                     }
                 }
             }
@@ -793,9 +799,9 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
             float red = Mth.clamp(baseRed * brightness, 0.0f, 1.0f);
             float green = Mth.clamp(baseGreen * brightness, 0.0f, 1.0f);
             float blue = Mth.clamp(baseBlue * brightness, 0.0f, 1.0f);
-            level.addParticle(new ColoredCloudParticleOptions(red, green, blue),
-                    sample.x + jitter.x, sample.y + jitter.y, sample.z + jitter.z,
-                    vel.x, vel.y, vel.z);
+            WorldSpaceParticleEmitter.addParticle(this,
+                    new ColoredCloudParticleOptions(red, green, blue),
+                    sample.add(jitter), vel);
         }
     }
 

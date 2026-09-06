@@ -48,6 +48,10 @@ public final class PropulsionVectorThrusterAngles {
                     findField(type, "eastLink"),
                     findField(type, "downLink"),
                     findField(type, "upLink"),
+                    findField(type, "westSignal"),
+                    findField(type, "eastSignal"),
+                    findField(type, "downSignal"),
+                    findField(type, "upSignal"),
                     findMethod(type, "dirtyThrust"),
                     findMethod(type, "setChanged"),
                     findMethod(type, "notifyUpdate"));
@@ -184,6 +188,55 @@ public final class PropulsionVectorThrusterAngles {
         }
     }
 
+    // Check if this is Propulsion's dedicated vector-thruster peripheral
+    public static boolean hasDedicatedComputerCraftInterface(Object peripheral) {
+        if (peripheral == null) {
+            return false;
+        }
+        Class<?> type = peripheral.getClass();
+        return "dev.propulsionteam.propulsionsimulated.compat.computercraft.VectorThrusterPeripheral"
+                .equals(type.getName())
+                || "dev.propulsionteam.propulsionsimulated.compat.computercraft.LiquidVectorThrusterPeripheral"
+                .equals(type.getName());
+    }
+
+    // Read one vector redstone signal across integer and floating nightly builds
+    public static float vectorSignal(Object blockEntity, String name) {
+        if (blockEntity == null) {
+            return 0.0F;
+        }
+        Field field = VECTOR_THRUSTER_ACCESS.get(blockEntity.getClass()).signal(name);
+        if (field == null) {
+            return 0.0F;
+        }
+        try {
+            Object value = field.get(blockEntity);
+            return value instanceof Number number ? number.floatValue() : 0.0F;
+        } catch (IllegalAccessException ignored) {
+            return 0.0F;
+        }
+    }
+
+    // Check whether every vector redstone signal is inactive
+    public static boolean hasNoVectorSignals(Object blockEntity) {
+        return vectorSignal(blockEntity, "westSignal") == 0.0F
+                && vectorSignal(blockEntity, "eastSignal") == 0.0F
+                && vectorSignal(blockEntity, "downSignal") == 0.0F
+                && vectorSignal(blockEntity, "upSignal") == 0.0F;
+    }
+
+    // Clear vector redstone signals without assuming their serialized number type
+    public static void clearVectorSignals(Object blockEntity) {
+        if (blockEntity == null) {
+            return;
+        }
+        VectorThrusterAccess access = VECTOR_THRUSTER_ACCESS.get(blockEntity.getClass());
+        clearVectorSignal(blockEntity, access.westSignal());
+        clearVectorSignal(blockEntity, access.eastSignal());
+        clearVectorSignal(blockEntity, access.downSignal());
+        clearVectorSignal(blockEntity, access.upSignal());
+    }
+
     // Check if peripheral control is active
     private static boolean isPeripheralControlled(Object blockEntity) {
         Field controlModeField = VECTOR_THRUSTER_ACCESS.get(blockEntity.getClass()).controlMode();
@@ -301,6 +354,30 @@ public final class PropulsionVectorThrusterAngles {
         }
     }
 
+    // Write zero using the signal field's declared primitive type
+    private static void clearVectorSignal(Object target, Field field) {
+        if (field == null) {
+            return;
+        }
+        try {
+            Class<?> type = field.getType();
+            if (type == float.class) {
+                field.setFloat(target, 0.0F);
+            } else if (type == double.class) {
+                field.setDouble(target, 0.0D);
+            } else if (type == long.class) {
+                field.setLong(target, 0L);
+            } else if (type == int.class) {
+                field.setInt(target, 0);
+            } else if (type == short.class) {
+                field.setShort(target, (short) 0);
+            } else if (type == byte.class) {
+                field.setByte(target, (byte) 0);
+            }
+        } catch (IllegalAccessException ignored) {
+        }
+    }
+
     // Expose field
     private record FieldAccess(Field blockEntity) {
     }
@@ -324,6 +401,10 @@ public final class PropulsionVectorThrusterAngles {
             Field eastLink,
             Field downLink,
             Field upLink,
+            Field westSignal,
+            Field eastSignal,
+            Field downSignal,
+            Field upSignal,
             Method dirtyThrust,
             Method setChanged,
             Method notifyUpdate
@@ -335,6 +416,17 @@ public final class PropulsionVectorThrusterAngles {
                 case "eastLink" -> eastLink;
                 case "downLink" -> downLink;
                 case "upLink" -> upLink;
+                default -> null;
+            };
+        }
+
+        // Get one redstone signal field
+        private Field signal(String name) {
+            return switch (name) {
+                case "westSignal" -> westSignal;
+                case "eastSignal" -> eastSignal;
+                case "downSignal" -> downSignal;
+                case "upSignal" -> upSignal;
                 default -> null;
             };
         }

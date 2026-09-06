@@ -273,7 +273,7 @@ public final class CTBlocks {
 
     @Nullable
     public static final DeferredBlock<PhysicsGantryBeltWheelBlock> PHYSICS_GANTRY_BELT_WHEEL = register("physics_gantry_belt_wheel",
-            () -> new PhysicsGantryBeltWheelBlock(BlockBehaviour.Properties.of().mapColor(MapColor.COLOR_GRAY).strength(3.0f).requiresCorrectToolForDrops()));
+            () -> new PhysicsGantryBeltWheelBlock(BlockBehaviour.Properties.of().mapColor(MapColor.COLOR_GRAY).strength(3.0f).requiresCorrectToolForDrops().noOcclusion()));
 
     /*--------------------------------------------------------##---------------------------------------------------------
 

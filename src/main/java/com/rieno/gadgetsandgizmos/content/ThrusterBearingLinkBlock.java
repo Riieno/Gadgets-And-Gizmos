@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
+import dev.ryanhcode.sable.api.block.BlockSubLevelCollisionShape;
 import dev.simulated_team.simulated.content.blocks.swivel_bearing.link_block.SwivelBearingPlateBlock;
 import dev.simulated_team.simulated.content.blocks.swivel_bearing.link_block.SwivelBearingPlateBlockEntity;
 import net.minecraft.core.BlockPos;
@@ -22,12 +23,16 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.shapes.Shapes;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 // Keep the movable thruster bearing plate attached across Sable level moves
-public class ThrusterBearingLinkBlock extends SwivelBearingPlateBlock {
+public class ThrusterBearingLinkBlock extends SwivelBearingPlateBlock
+        implements BlockSubLevelCollisionShape {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -106,6 +111,12 @@ public class ThrusterBearingLinkBlock extends SwivelBearingPlateBlock {
     @Override
     public InteractionResult onWrenched(BlockState state, UseOnContext ctx) {
         return InteractionResult.PASS;
+    }
+
+    // Keep the visual link out of physical sublevel collision and camera checks
+    @Override
+    public VoxelShape getSubLevelCollisionShape(BlockGetter level, BlockState state) {
+        return Shapes.empty();
     }
 
     // Get the clone item stack

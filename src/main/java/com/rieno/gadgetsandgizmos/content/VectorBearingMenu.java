@@ -41,14 +41,20 @@ public class VectorBearingMenu extends GhostItemMenu<VectorBearingBlockEntity>
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    public static final int PLAYER_SLOTS_X = 31;
-    public static final int PLAYER_SLOTS_Y = 174;
-    public static final int FIRST_X = 104;
-    public static final int SECOND_X = 124;
-    public static final int NORTH_Y = 82;
-    public static final int SOUTH_Y = 106;
-    public static final int EAST_Y = 130;
-    public static final int WEST_Y = 154;
+    public static final int PLAYER_SLOTS_X = 48;
+    public static final int PLAYER_SLOTS_Y = 170;
+    private static final int NORTH_FIRST_X = 90;
+    private static final int NORTH_SECOND_X = 120;
+    private static final int NORTH_Y = 54;
+    private static final int SOUTH_FIRST_X = 90;
+    private static final int SOUTH_SECOND_X = 120;
+    private static final int SOUTH_Y = 134;
+    private static final int EAST_X = 145;
+    private static final int EAST_FIRST_Y = 79;
+    private static final int EAST_SECOND_Y = 109;
+    private static final int WEST_X = 61;
+    private static final int WEST_FIRST_Y = 79;
+    private static final int WEST_SECOND_Y = 109;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -159,16 +165,16 @@ public class VectorBearingMenu extends GhostItemMenu<VectorBearingBlockEntity>
     @Override
     protected void addSlots() {
         addPlayerSlots(PLAYER_SLOTS_X, PLAYER_SLOTS_Y);
-        addDirectionSlots(0, NORTH_Y);
-        addDirectionSlots(2, SOUTH_Y);
-        addDirectionSlots(4, EAST_Y);
-        addDirectionSlots(6, WEST_Y);
+        addDirectionSlots(0, NORTH_FIRST_X, NORTH_Y, NORTH_SECOND_X, NORTH_Y);
+        addDirectionSlots(2, SOUTH_FIRST_X, SOUTH_Y, SOUTH_SECOND_X, SOUTH_Y);
+        addDirectionSlots(4, EAST_X, EAST_FIRST_Y, EAST_X, EAST_SECOND_Y);
+        addDirectionSlots(6, WEST_X, WEST_FIRST_Y, WEST_X, WEST_SECOND_Y);
     }
 
     // Add the direction slots
-    private void addDirectionSlots(int startSlot, int y) {
-        addSlot(new SlotItemHandler(ghostInventory, startSlot, FIRST_X, y));
-        addSlot(new SlotItemHandler(ghostInventory, startSlot + 1, SECOND_X, y));
+    private void addDirectionSlots(int startSlot, int firstX, int firstY, int secondX, int secondY) {
+        addSlot(new SlotItemHandler(ghostInventory, startSlot, firstX, firstY));
+        addSlot(new SlotItemHandler(ghostInventory, startSlot + 1, secondX, secondY));
     }
 
     // Add the player slots
