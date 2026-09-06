@@ -4,6 +4,7 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.JVMNodeType;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.Outputs;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.ValueType;
+import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapEdge;
 import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapNode;
 import com.rieno.gadgetsandgizmos.graph.compile.util.GeneratorHelper;
 import com.rieno.gadgetsandgizmos.graph.struct.Calculator;
@@ -373,5 +374,4 @@ public class JVMGraphCompiler {
 
     }
 
-    public record SnapEdge(SnapNode nodeA, int portA, SnapNode nodeB, int portB) {}
 }

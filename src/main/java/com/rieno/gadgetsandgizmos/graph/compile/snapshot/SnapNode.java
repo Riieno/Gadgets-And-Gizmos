@@ -1,6 +1,5 @@
 package com.rieno.gadgetsandgizmos.graph.compile.snapshot;
 
-import com.rieno.gadgetsandgizmos.graph.compile.JVMGraphCompiler;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.JVMNodeType;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.ValueType;
 import it.unimi.dsi.fastutil.objects.*;
@@ -18,8 +17,8 @@ public final class SnapNode {
     public final int id;
     public final JVMNodeType type;
     public final CompoundTag data;
-    public final JVMGraphCompiler.SnapEdge[] inputs;
-    public final @Nullable ObjectArrayList<JVMGraphCompiler.SnapEdge>[] outputs;
+    public final SnapEdge[] inputs;
+    public final @Nullable ObjectArrayList<SnapEdge>[] outputs;
     public final ValueType[] portTypes;
     public Object2IntMap<String> portIndexer;
     public String[] portIndexerInverse;
@@ -35,7 +34,7 @@ public final class SnapNode {
             nodeI,
             nodeType,
             data,
-            new JVMGraphCompiler.SnapEdge[input.size()],
+            new SnapEdge[input.size()],
             new ObjectArrayList[outputs.size()],
             new ValueType[input.size() + outputs.size()]
         );
@@ -53,7 +52,7 @@ public final class SnapNode {
     }
 
 
-    public void outputEdge(int port, JVMGraphCompiler.SnapEdge snapEdge) {
+    public void outputEdge(int port, SnapEdge snapEdge) {
         port -= inputs.length;
         var edges = outputs[port];
         if(edges == null) edges = outputs[port] = new ObjectArrayList<>();
