@@ -325,6 +325,7 @@ public class IndustrialMotorBlockEntity extends GeneratingKineticBlockEntity {
         return true;
     }
 
+
     // Write the industrial motor safely
     @Override
     public void writeSafe(CompoundTag tag, HolderLookup.Provider provider) {
