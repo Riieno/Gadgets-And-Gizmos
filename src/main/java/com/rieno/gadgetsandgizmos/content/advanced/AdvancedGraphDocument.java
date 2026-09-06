@@ -853,8 +853,12 @@ public final class AdvancedGraphDocument
     }
 
     // Store the node
-    public record Node(String id, String type, String label, double x, double y, CompoundTag data)
+    public record Node(String id, String type, String label, double x, double y, CompoundTag data,Object state)
             implements GraphModel.Node {
+        public Node(String id, String type, String label, double x, double y, CompoundTag data) {
+            this(id, type, label, x, y, data, null);
+        }
+
         // Initialize the node
         public Node {
             id = normalize(id);

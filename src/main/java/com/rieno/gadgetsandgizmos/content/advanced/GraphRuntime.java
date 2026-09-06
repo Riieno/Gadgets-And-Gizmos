@@ -15,6 +15,7 @@ import com.rieno.gadgetsandgizmos.compat.create.CreateRotationSpeedControllerGra
 import com.rieno.gadgetsandgizmos.compat.create.NavigationTableGraphCompat;
 import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEntity;
 import com.rieno.gadgetsandgizmos.content.AccDisplayBlockEntity;
+import com.rieno.gadgetsandgizmos.graph.struct.AbstractGraphRuntime;
 import com.rieno.gadgetsandgizmos.lib.control.math.PidControllerMath;
 import com.rieno.gadgetsandgizmos.lib.control.math.AdrcControllerMath;
 import com.rieno.gadgetsandgizmos.lib.control.math.AdrcControllerNthOrderMath;
@@ -51,7 +52,7 @@ import java.util.Set;
 import java.util.UUID;
 
 // Run the live ACC graph and keep delayed work, SCM commands and output state bounded per tick
-public final class GraphRuntime {
+public final class GraphRuntime extends AbstractGraphRuntime {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
