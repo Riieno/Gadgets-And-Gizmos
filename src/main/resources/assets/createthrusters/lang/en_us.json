@@ -1327,6 +1327,6 @@
   "gui.synaxis.circuit.ldgraph.library.category.gadgets_and_gizmos": "Gadgets & Gizmos Compat",
   "gui.synaxis.circuit.ldgraph.library.entry.named_event_send": "Send Named Event",
   "gui.synaxis.circuit.ldgraph.library.entry.named_event_receive": "Receive Named Event",
-  "createthrusters.advanced_controller.node.ship_gamepad_input.summary": "Reads the value of the configures input from a gamepad or controller.",
+  "createthrusters.advanced_controller.node.gamepad_input.summary": "Reads the value of the configures input from a gamepad or controller.",
   "createthrusters.advanced_controller.node.event_graph_ready.summary": "Pulses once when the node graph has fully loaded and is ready."
 }
