@@ -20,6 +20,9 @@ import com.rieno.gadgetsandgizmos.content.DiagnosticTabletBlock;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletData;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletFriendDatabase;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletItem;
+import com.rieno.gadgetsandgizmos.content.DockingConnectorAutomation;
+import com.rieno.gadgetsandgizmos.content.ShipDockBlockEntity;
+import com.rieno.gadgetsandgizmos.content.ShipDockBlockItem;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryCarriageBlockEntity;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryShaftBlock;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryShaftBlockEntity;
@@ -219,6 +222,10 @@ public final class CTPlayerEvents {
         tryActivateRopeWinchUnstick(event);
 
         if (tryHandleDoubleButtonFreq(event)) {
+            return;
+        }
+
+        if (tryBindDockingConnectorToShipDock(event)) {
             return;
         }
 
@@ -433,6 +440,24 @@ public final class CTPlayerEvents {
         }
 
         RopeWinchUnstickWindow.activate(evt.getEntity(), claw);
+    }
+
+    // Bind a held docking connector to a Ship Dock before placement
+    private static boolean tryBindDockingConnectorToShipDock(PlayerInteractEvent.RightClickBlock evt) {
+        if (evt.getEntity() == null || !DockingConnectorAutomation.isDockingConnectorItem(evt.getItemStack())) {
+            return false;
+        }
+        if (!(evt.getLevel().getBlockEntity(evt.getPos()) instanceof ShipDockBlockEntity dock)) {
+            return false;
+        }
+        if (!evt.getLevel().isClientSide()) {
+            ShipDockBlockItem.bindDockingConnectorToShipDock(evt.getItemStack(), dock);
+            evt.getEntity().displayClientMessage(Component.translatable(
+                    "createthrusters.ship_dock.connector_bound_to_dock", dock.getDockName()), true);
+        }
+        evt.setCancellationResult(InteractionResult.SUCCESS);
+        evt.setCanceled(true);
+        return true;
     }
 
     // Try to handle linker face capture

@@ -163,7 +163,7 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
     // Current control mode
     private ControlMode controlMode = ControlMode.AUTO;
     // Selected world axis used as the neutral mounted-head pose
-    private StabilizeAxis stabilizeAxis = StabilizeAxis.Y;
+    private StabilizeAxis stabilizeAxis = StabilizeAxis.XZ;
     // Tracks whether the mounted head should hold the selected world axis
     private boolean keepStable;
     // Max tilt in degrees
@@ -790,11 +790,11 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
 
         Quaterniond parentToWorld = NestedAssemblyFrame.resolve(this)
                 .toWorldOrientation(new Quaterniond());
-        Vector3d selectedAxisInParent = new Quaterniond(parentToWorld).invert()
-                .transform(stabilizeAxis.worldDirection()).normalize();
+        Vector3d selectedPlaneNormalInParent = new Quaterniond(parentToWorld).invert()
+                .transform(stabilizeAxis.worldNormal()).normalize();
         Quaterniond bearingBaseRotation = new Quaterniond().rotationTo(
                 new Vector3d(0.0D, 1.0D, 0.0D), directionVector(getBearingFacing()));
-        Vector3d stableNeutral = bearingBaseRotation.invert().transform(selectedAxisInParent).normalize();
+        Vector3d stableNeutral = bearingBaseRotation.invert().transform(selectedPlaneNormalInParent).normalize();
         if (stableNeutral.lengthSquared() <= 1.0E-6D) {
             return tiltDirection;
         }
@@ -802,9 +802,34 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         Vector3d offset = new Vector3d(tiltDirection.x, tiltDirection.y, tiltDirection.z).normalize();
         Vector3d resolved = new Quaterniond().rotationTo(new Vector3d(0.0D, 1.0D, 0.0D), stableNeutral)
                 .transform(offset).normalize();
-        return resolved.lengthSquared() <= 1.0E-6D
+        Vec3 stabilizedDirection = resolved.lengthSquared() <= 1.0E-6D
                 ? tiltDirection
                 : new Vec3(resolved.x, resolved.y, resolved.z);
+        return clampCombinedTilt(stabilizedDirection, maxTiltDegrees);
+    }
+
+    // Limit the full stabilization correction and manual tilt to the configured cone
+    static Vec3 clampCombinedTilt(Vec3 direction, double maxTiltDegrees) {
+        if (direction == null || direction.lengthSqr() <= 1.0E-6D) {
+            return direction;
+        }
+        Vec3 normalized = direction.normalize();
+        double clampedMaxTilt = Double.isFinite(maxTiltDegrees)
+                ? Mth.clamp(maxTiltDegrees, MIN_MAX_TILT_DEGREES, MAX_MAX_TILT_DEGREES)
+                : MIN_MAX_TILT_DEGREES;
+        double maxRadians = Math.toRadians(clampedMaxTilt);
+        double maxCosine = Math.cos(maxRadians);
+        if (normalized.y >= maxCosine) {
+            return normalized;
+        }
+        double horizontalLength = Math.hypot(normalized.x, normalized.z);
+        double horizontalMagnitude = Math.sin(maxRadians);
+        if (horizontalLength <= 1.0E-6D) {
+            return new Vec3(0.0D, maxCosine, horizontalMagnitude);
+        }
+        return new Vec3(normalized.x / horizontalLength * horizontalMagnitude,
+                maxCosine,
+                normalized.z / horizontalLength * horizontalMagnitude);
     }
 
     // Get the interpolated physical mounted-head direction for rendering fallbacks
@@ -820,12 +845,12 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         return controlMode;
     }
 
-    // Check whether the mounted head holds its selected world-space axis
+    // Check whether the mounted head holds its selected world-space plane
     public boolean isKeepStable() {
         return keepStable;
     }
 
-    // Set whether the mounted head should hold a world-space axis
+    // Set whether the mounted head should hold a world-space plane
     public void setKeepStable(boolean keepStable) {
         if (this.keepStable == keepStable) {
             return;
@@ -835,13 +860,18 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         sendData();
     }
 
-    // Get the selected world-space stabilization axis
+    // Get the selected world-space stabilization axis or plane
     public String getStabilizeAxis() {
         return stabilizeAxis.graphValue();
     }
 
-    // Set the selected world-space stabilization axis
-    private void setStabilizeAxis(StabilizeAxis stabilizeAxis) {
+    // Get the selected world-space stabilization axis or plane
+    public StabilizeAxis getStabilizeAxisSelection() {
+        return stabilizeAxis;
+    }
+
+    // Set the selected world-space stabilization axis or plane
+    public void setStabilizeAxis(StabilizeAxis stabilizeAxis) {
         if (stabilizeAxis == null || this.stabilizeAxis == stabilizeAxis) {
             return;
         }
@@ -987,7 +1017,8 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
     public Map<String, List<String>> graphWritableOptions() {
         return Map.of(
                 "control_mode", List.of("auto", "computer", "redstone"),
-                "stabilize_axis", List.of("X-Axis", "Y-Axis", "Z-Axis"));
+                "stabilize_axis", List.of("X Axis", "Y Axis", "Z Axis",
+                        "XZ Axis", "XY Axis", "ZY Axis"));
     }
 
     // Read the graph data
@@ -1863,6 +1894,8 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         MenuOpenHeader.encode(buffer, worldPosition, SimulatedHelper.getContainingSubLevelId(this));
         buffer.writeEnum(controlMode);
         buffer.writeDouble(maxTiltDegrees);
+        buffer.writeEnum(stabilizeAxis);
+        buffer.writeBoolean(keepStable);
         writeMenuFrequency(buffer, Direction.NORTH);
         writeMenuFrequency(buffer, Direction.SOUTH);
         writeMenuFrequency(buffer, Direction.EAST);
@@ -1949,7 +1982,7 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
     protected void read(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.read(tag, provider, clientPacket);
         controlMode = readEnum(tag, "ControlMode", ControlMode.AUTO);
-        stabilizeAxis = readEnum(tag, "StabilizeAxis", StabilizeAxis.Y);
+        stabilizeAxis = StabilizeAxis.fromSerializedName(tag.getString("StabilizeAxis"), StabilizeAxis.XZ);
         keepStable = tag.getBoolean("KeepStable");
         maxTiltDegrees = Mth.clamp(tag.contains("MaxTiltDegrees") ? tag.getDouble("MaxTiltDegrees") : DEFAULT_MAX_TILT_DEGREES,
                 MIN_MAX_TILT_DEGREES, MAX_MAX_TILT_DEGREES);
@@ -2380,40 +2413,51 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         REDSTONE
     }
 
-    // Store the selectable world-space stabilization axes
-    private enum StabilizeAxis {
-        X("X-Axis"),
-        Y("Y-Axis"),
-        Z("Z-Axis");
+    // Store the selectable world-space stabilization axes and planes
+    public enum StabilizeAxis {
+        XZ("XZ Axis", new Vector3d(0.0D, 1.0D, 0.0D)),
+        XY("XY Axis", new Vector3d(0.0D, 0.0D, 1.0D)),
+        ZY("ZY Axis", new Vector3d(1.0D, 0.0D, 0.0D)),
+        X("X Axis", new Vector3d(1.0D, 0.0D, 0.0D)),
+        Y("Y Axis", new Vector3d(0.0D, 1.0D, 0.0D)),
+        Z("Z Axis", new Vector3d(0.0D, 0.0D, 1.0D));
 
         private final String graphValue;
+        private final Vector3d worldNormal;
 
-        StabilizeAxis(String graphValue) {
+        StabilizeAxis(String graphValue, Vector3d worldNormal) {
             this.graphValue = graphValue;
+            this.worldNormal = worldNormal;
         }
 
-        String graphValue() {
+        public String graphValue() {
             return graphValue;
         }
 
-        Vector3d worldDirection() {
-            return switch (this) {
-                case X -> new Vector3d(1.0D, 0.0D, 0.0D);
-                case Y -> new Vector3d(0.0D, 1.0D, 0.0D);
-                case Z -> new Vector3d(0.0D, 0.0D, 1.0D);
-            };
+        Vector3d worldNormal() {
+            return new Vector3d(worldNormal);
         }
 
         static StabilizeAxis fromGraphValue(String value, StabilizeAxis fallback) {
+            return fromSerializedName(value, fallback);
+        }
+
+        static StabilizeAxis fromSerializedName(String value, StabilizeAxis fallback) {
             if (value == null || value.isBlank()) {
                 return fallback;
             }
+            String selected = value.trim();
             for (StabilizeAxis axis : values()) {
-                if (axis.graphValue.equalsIgnoreCase(value.trim()) || axis.name().equalsIgnoreCase(value.trim())) {
+                if (axis.graphValue.equalsIgnoreCase(selected) || axis.name().equalsIgnoreCase(selected)) {
                     return axis;
                 }
             }
-            return fallback;
+            return switch (selected.toUpperCase(Locale.ROOT)) {
+                case "X", "X-AXIS" -> X;
+                case "Y", "Y-AXIS" -> Y;
+                case "Z", "Z-AXIS" -> Z;
+                default -> fallback;
+            };
         }
     }
 

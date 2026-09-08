@@ -2088,6 +2088,8 @@ public final class ShipControlModuleRuntime {
                 controller.getLevel(), connector.subLevelId(), connector.blockPosition());
         if (resolved instanceof SubLevel src && blockEntity != null
                 && isDockingConnector(blockEntity)) {
+            DockingConnectorAutomation.bindToShipControlModule(
+                    blockEntity, controller.getShipName(), connector.index());
             Direction facing = blockEntity.getBlockState().getValue(
                     net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING);
             Vec3 localFacing = Vec3.atLowerCornerOf(facing.getNormal());
@@ -2527,6 +2529,14 @@ public final class ShipControlModuleRuntime {
         // ------------------------------------PROPULSION UNITS------------------------------------
         calibrationUnits.clear();
         calibrationSubLevels.clear();
+        Level connectorLevel = controller.getLevel();
+        if (connectorLevel != null && !connectorLevel.isClientSide) {
+            for (ShipControlMap.DockingConnector connector : calibrationDockingConnectors) {
+                DockingConnectorAutomation.clearShipControlModuleBinding(
+                        DockingConnectorAutomation.resolve(
+                                connectorLevel, connector.subLevelId(), connector.blockPosition()));
+            }
+        }
         calibrationDockingConnectors.clear();
         Map<PropulsionUnitKey, ShipControlMap.PropulsionUnit> reusableUnits =
                 reusablePropulsionUnits(reconciliationBaseMap);
@@ -2588,6 +2598,14 @@ public final class ShipControlModuleRuntime {
             calibrationDockingConnectors.set(idx, new ShipControlMap.DockingConnector(
                     idx, connector.subLevelId(), connector.blockPosition(),
                     connector.rootTipPosition(), connector.rootFacing()));
+        }
+        if (connectorLevel != null && !connectorLevel.isClientSide) {
+            for (ShipControlMap.DockingConnector connector : calibrationDockingConnectors) {
+                DockingConnectorAutomation.bindToShipControlModule(
+                        DockingConnectorAutomation.resolve(
+                                connectorLevel, connector.subLevelId(), connector.blockPosition()),
+                        controller.getShipName(), connector.index());
+            }
         }
         List<AerodynamicSurfaceCalibration> aerodynamicSurfaces =
                 initializationFilters.mapsSails()

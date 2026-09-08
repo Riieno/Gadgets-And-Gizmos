@@ -26,6 +26,8 @@ public record VectorBearingConfigPayload(
         MenuConfigTarget target,
         VectorBearingBlockEntity.ControlMode controlMode,
         double maxTiltDegrees,
+        VectorBearingBlockEntity.StabilizeAxis stabilizeAxis,
+        boolean keepStable,
         ItemStack northFirst,
         ItemStack northSecond,
         ItemStack southFirst,
@@ -82,6 +84,8 @@ public record VectorBearingConfigPayload(
             }
             bearing.setControlMode(payload.controlMode());
             bearing.setMaxTiltDegrees(payload.maxTiltDegrees());
+            bearing.setStabilizeAxis(payload.stabilizeAxis());
+            bearing.setKeepStable(payload.keepStable());
             bearing.setFrequency(Direction.NORTH, payload.northFirst(), payload.northSecond());
             bearing.setFrequency(Direction.SOUTH, payload.southFirst(), payload.southSecond());
             bearing.setFrequency(Direction.EAST, payload.eastFirst(), payload.eastSecond());
@@ -94,6 +98,8 @@ public record VectorBearingConfigPayload(
         MenuConfigTarget.STREAM_CODEC.encode(buffer, payload.target());
         buffer.writeEnum(payload.controlMode());
         buffer.writeDouble(payload.maxTiltDegrees());
+        buffer.writeEnum(payload.stabilizeAxis());
+        buffer.writeBoolean(payload.keepStable());
         ItemStack.OPTIONAL_STREAM_CODEC.encode(buffer, payload.northFirst());
         ItemStack.OPTIONAL_STREAM_CODEC.encode(buffer, payload.northSecond());
         ItemStack.OPTIONAL_STREAM_CODEC.encode(buffer, payload.southFirst());
@@ -110,6 +116,8 @@ public record VectorBearingConfigPayload(
                 MenuConfigTarget.STREAM_CODEC.decode(buffer),
                 buffer.readEnum(VectorBearingBlockEntity.ControlMode.class),
                 buffer.readDouble(),
+                buffer.readEnum(VectorBearingBlockEntity.StabilizeAxis.class),
+                buffer.readBoolean(),
                 ItemStack.OPTIONAL_STREAM_CODEC.decode(buffer),
                 ItemStack.OPTIONAL_STREAM_CODEC.decode(buffer),
                 ItemStack.OPTIONAL_STREAM_CODEC.decode(buffer),

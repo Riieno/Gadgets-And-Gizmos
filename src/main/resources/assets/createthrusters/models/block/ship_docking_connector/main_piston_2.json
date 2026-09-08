@@ -1,0 +1,7 @@
+{
+  "parent": "simulated:block/docking_connector/main_piston_2",
+  "textures": {
+    "0": "createthrusters:block/ship_docking_connector/dock",
+    "1": "createthrusters:block/ship_docking_connector/dock_2"
+  }
+}

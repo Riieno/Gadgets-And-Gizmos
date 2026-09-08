@@ -50,6 +50,7 @@ final class WirelessDockingTransferEvents {
     @SubscribeEvent
     public static void blockBroken(BlockEvent.BreakEvent event) {
         if (event.getLevel() instanceof Level level) {
+            DockingConnectorAutomation.unregisterShipDockConnector(level, event.getPos());
             WirelessDockingTransfer.invalidateDockStock(level, event.getPos());
         }
     }

@@ -8,10 +8,15 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.compat.simulated.DockingConnectorBindingAccess;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.compat.simulated.ShippingDockingConnectorAccess;
 import dev.simulated_team.simulated.content.blocks.docking_connector.DockingConnectorBlockEntity;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.BlockItem;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -45,6 +50,69 @@ public final class DockingConnectorAutomation {
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
+
+    // Check if this is a docking connector item
+    public static boolean isDockingConnectorItem(@Nullable ItemStack stack) {
+        if (stack == null || !(stack.getItem() instanceof BlockItem item)) return false;
+        return ResourceLocation.fromNamespaceAndPath("simulated", "docking_connector")
+                .equals(BuiltInRegistries.BLOCK.getKey(item.getBlock()));
+    }
+
+    // Bind a connector to a Ship Dock
+    public static void bindToShipDock(
+            @Nullable BlockEntity connector,
+            @Nullable UUID dockId,
+            String dockName,
+            int connectorIndex
+    ) {
+        if (connector instanceof DockingConnectorBindingAccess access && dockId != null
+                && connector.getLevel() != null && !connector.getLevel().isClientSide) {
+            access.createthrusters$setShipDockBinding(dockId, dockName, connectorIndex);
+        }
+    }
+
+    // Clear a Ship Dock binding from a connector
+    public static void clearShipDockBinding(@Nullable BlockEntity connector, @Nullable UUID dockId) {
+        if (connector instanceof DockingConnectorBindingAccess access && dockId != null
+                && connector.getLevel() != null && !connector.getLevel().isClientSide) {
+            access.createthrusters$clearShipDockBinding(dockId);
+        }
+    }
+
+    // Remove a broken connector from every Ship Dock that registered it
+    public static void unregisterShipDockConnector(@Nullable Level level, @Nullable BlockPos pos) {
+        if (level == null || pos == null || level.isClientSide || level.getServer() == null) {
+            return;
+        }
+        BlockEntity connector = level.getBlockEntity(pos);
+        if (!isDockingConnector(connector)) {
+            return;
+        }
+        ShipDockRegistry.get(level.getServer()).removeLinkedDockingConnector(
+                level.dimension().location(),
+                SimulatedHelper.getContainingSubLevelId(connector),
+                pos);
+    }
+
+    // Bind a connector to a Ship Control Module
+    public static void bindToShipControlModule(
+            @Nullable BlockEntity connector,
+            String shipName,
+            int connectorIndex
+    ) {
+        if (connector instanceof DockingConnectorBindingAccess access
+                && connector.getLevel() != null && !connector.getLevel().isClientSide) {
+            access.createthrusters$setShipControlModuleBinding(shipName, connectorIndex);
+        }
+    }
+
+    // Clear a Ship Control Module binding from a connector
+    public static void clearShipControlModuleBinding(@Nullable BlockEntity connector) {
+        if (connector instanceof DockingConnectorBindingAccess access
+                && connector.getLevel() != null && !connector.getLevel().isClientSide) {
+            access.createthrusters$clearShipControlModuleBinding();
+        }
+    }
 
     // Resolve the docking connector automation
     public static @Nullable DockingConnectorBlockEntity resolve(

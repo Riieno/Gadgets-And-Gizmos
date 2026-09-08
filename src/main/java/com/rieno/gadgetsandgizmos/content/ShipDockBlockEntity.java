@@ -64,6 +64,7 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
     private static final int FLUID_CAPACITY = 64_000;
     private static final int ENERGY_CAPACITY = 1_000_000;
     private static final int ENERGY_TRANSFER = 16_384;
+    private static final int MAX_CONNECTOR_SELECTIONS = 64;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -85,10 +86,26 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
     private boolean restock = true;
     // Tracks whether packages are set
     private boolean packages = true;
+    // Tracks whether docked ship doors open
+    private boolean doorControlEnabled;
+    // Selected docked ship door directions
+    private int doorControlMask = DoorDirection.allMask();
     // Tracks whether buffers empty is set
     private boolean buffersEmpty = true;
     // Tracked linked connectors
-    private final List<LinkedConnector> linkedConnectors = new ArrayList<>();
+    private final List<ConnectorReference> linkedConnectors = new ArrayList<>();
+    // Selected refueling connectors
+    private final List<ConnectorReference> refuelConnectorSelection = new ArrayList<>();
+    // Selected restocking connectors
+    private final List<ConnectorReference> restockConnectorSelection = new ArrayList<>();
+    // Selected package connectors
+    private final List<ConnectorReference> packageConnectorSelection = new ArrayList<>();
+    // Tracks whether refueling connector selection was explicitly configured
+    private boolean refuelConnectorSelectionConfigured;
+    // Tracks whether restocking connector selection was explicitly configured
+    private boolean restockConnectorSelectionConfigured;
+    // Tracks whether package connector selection was explicitly configured
+    private boolean packageConnectorSelectionConfigured;
     // Tracked landing zones
     private final List<LandingZone> landingZones = new ArrayList<>();
     // Item buffer
@@ -144,6 +161,7 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
         super.initialize();
         if (level != null && !level.isClientSide && level.getServer() != null) {
             ShipDockRegistry.get(level.getServer()).update(this);
+            refreshLinkedConnectorBindings();
         }
     }
 
@@ -256,7 +274,8 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
             return List.of();
         }
         List<DockConnector> resolved = new ArrayList<>();
-        for (LinkedConnector linked : linkedConnectors) {
+        for (int index = 0; index < linkedConnectors.size(); index++) {
+            ConnectorReference linked = linkedConnectors.get(index);
             BlockEntity candidate = SimulatedHelper.findLoadedBlockEntityExact(
                     level, linked.subLevelId(), linked.blockPosition());
             if (candidate == null) {
@@ -270,6 +289,7 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
                         level, linked.subLevelId(), linked.blockPosition());
             }
             if (isDockingConnector(candidate)) {
+                DockingConnectorAutomation.bindToShipDock(candidate, dockId, dockName, index);
                 Object connectorSubLevel = SimulatedHelper.getContainingSubLevel(candidate);
                 resolved.add(connectorRecord(candidate, connectorSubLevel, linked.subLevelId()));
             }
@@ -347,21 +367,163 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
     ) {
     }
 
-    // Configure the ship dock
+    // Limit a door setting to the supported directions
+    public static int sanitizeDoorControlMask(int mask) {
+        return mask & DoorDirection.allMask();
+    }
+
+    // Get the selected linked connectors from a client configuration
+    private List<ConnectorReference> selectedLinkedConnectors(List<ConnectorReference> requested) {
+        if (requested == null || requested.isEmpty()) {
+            return List.of();
+        }
+        List<ConnectorReference> selected = new ArrayList<>();
+        for (ConnectorReference reference : requested) {
+            if (reference == null || !linkedConnectors.contains(reference)
+                    || selected.contains(reference)) {
+                continue;
+            }
+            selected.add(reference);
+            if (selected.size() >= MAX_CONNECTOR_SELECTIONS) {
+                break;
+            }
+        }
+        return List.copyOf(selected);
+    }
+
+    // Replace one connector selection
+    private static void replaceSelection(
+            List<ConnectorReference> target,
+            List<ConnectorReference> source
+    ) {
+        target.clear();
+        target.addAll(source);
+    }
+
+    // Get an effective connector selection
+    private List<ConnectorReference> effectiveConnectorSelection(
+            List<ConnectorReference> selected,
+            boolean configured
+    ) {
+        return List.copyOf(configured ? selected : linkedConnectors);
+    }
+
+    // Reconcile connector selections with the current linked connector list
+    private void normalizeConnectorSelections() {
+        normalizeConnectorSelection(refuelConnectorSelection, refuelConnectorSelectionConfigured);
+        normalizeConnectorSelection(restockConnectorSelection, restockConnectorSelectionConfigured);
+        normalizeConnectorSelection(packageConnectorSelection, packageConnectorSelectionConfigured);
+    }
+
+    // Reconcile one connector selection
+    private void normalizeConnectorSelection(
+            List<ConnectorReference> selected,
+            boolean configured
+    ) {
+        selected.removeIf(reference -> !linkedConnectors.contains(reference));
+        if (!configured) {
+            replaceSelection(selected, linkedConnectors);
+        }
+    }
+
+    // Write connector references to an NBT list
+    private static ListTag connectorReferenceTag(List<ConnectorReference> references) {
+        ListTag tag = new ListTag();
+        for (int index = 0; index < references.size() && index < MAX_CONNECTOR_SELECTIONS; index++) {
+            ConnectorReference reference = references.get(index);
+            CompoundTag entry = new CompoundTag();
+            entry.putLong("Pos", reference.blockPosition().asLong());
+            if (reference.subLevelId() != null) {
+                entry.putUUID("SubLevel", reference.subLevelId());
+            }
+            tag.add(entry);
+        }
+        return tag;
+    }
+
+    // Read connector references from an NBT list
+    private static void readConnectorReferences(
+            CompoundTag tag,
+            String key,
+            List<ConnectorReference> target
+    ) {
+        target.clear();
+        ListTag entries = tag.getList(key, Tag.TAG_COMPOUND);
+        for (int index = 0; index < entries.size() && index < MAX_CONNECTOR_SELECTIONS; index++) {
+            CompoundTag entry = entries.getCompound(index);
+            if (!entry.contains("Pos", Tag.TAG_LONG)) {
+                continue;
+            }
+            ConnectorReference reference = new ConnectorReference(
+                    entry.hasUUID("SubLevel") ? entry.getUUID("SubLevel") : null,
+                    BlockPos.of(entry.getLong("Pos")));
+            if (!target.contains(reference)) {
+                target.add(reference);
+            }
+        }
+    }
+
+    // Configure the ship dock while retaining connector and door settings
     public void configure(String name, boolean refuel, boolean restock, boolean packages) {
+        configureInternal(name, refuel, restock, packages, doorControlEnabled, doorControlMask,
+                false, List.of(), List.of(), List.of());
+    }
+
+    // Configure the ship dock
+    public void configure(String name, boolean refuel, boolean restock, boolean packages,
+                          boolean doorControlEnabled, int doorControlMask,
+                          List<ConnectorReference> refuelConnectors,
+                          List<ConnectorReference> restockConnectors,
+                          List<ConnectorReference> packageConnectors) {
+        configureInternal(name, refuel, restock, packages, doorControlEnabled, doorControlMask,
+                true, refuelConnectors, restockConnectors, packageConnectors);
+    }
+
+    // Apply the ship dock configuration
+    private void configureInternal(String name, boolean refuel, boolean restock, boolean packages,
+                                   boolean doorControlEnabled, int doorControlMask,
+                                   boolean updateConnectorSelections,
+                                   List<ConnectorReference> refuelConnectors,
+                                   List<ConnectorReference> restockConnectors,
+                                   List<ConnectorReference> packageConnectors) {
         String normalized = name == null ? "" : name.trim();
         String nextName = normalized.isEmpty() ? "Ship Dock"
                 : normalized.substring(0, Math.min(64, normalized.length()));
+        int nextDoorControlMask = sanitizeDoorControlMask(doorControlMask);
+        List<ConnectorReference> nextRefuelConnectors = updateConnectorSelections
+                ? selectedLinkedConnectors(refuelConnectors) : List.copyOf(refuelConnectorSelection);
+        List<ConnectorReference> nextRestockConnectors = updateConnectorSelections
+                ? selectedLinkedConnectors(restockConnectors) : List.copyOf(restockConnectorSelection);
+        List<ConnectorReference> nextPackageConnectors = updateConnectorSelections
+                ? selectedLinkedConnectors(packageConnectors) : List.copyOf(packageConnectorSelection);
         if (dockName.equals(nextName) && this.refuel == refuel
-                && this.restock == restock && this.packages == packages) {
+                && this.restock == restock && this.packages == packages
+                && this.doorControlEnabled == doorControlEnabled
+                && this.doorControlMask == nextDoorControlMask
+                && (!updateConnectorSelections || (refuelConnectorSelectionConfigured
+                && restockConnectorSelectionConfigured && packageConnectorSelectionConfigured
+                && refuelConnectorSelection.equals(nextRefuelConnectors)
+                && restockConnectorSelection.equals(nextRestockConnectors)
+                && packageConnectorSelection.equals(nextPackageConnectors)))) {
             return;
         }
         this.dockName = nextName;
         this.refuel = refuel;
         this.restock = restock;
         this.packages = packages;
+        this.doorControlEnabled = doorControlEnabled;
+        this.doorControlMask = nextDoorControlMask;
+        if (updateConnectorSelections) {
+            refuelConnectorSelectionConfigured = true;
+            restockConnectorSelectionConfigured = true;
+            packageConnectorSelectionConfigured = true;
+            replaceSelection(refuelConnectorSelection, nextRefuelConnectors);
+            replaceSelection(restockConnectorSelection, nextRestockConnectors);
+            replaceSelection(packageConnectorSelection, nextPackageConnectors);
+        }
         setChanged();
         sendData();
+        refreshLinkedConnectorBindings();
         if (level != null && level.getServer() != null) {
             ShipDockRegistry.get(level.getServer()).update(this);
         }
@@ -398,6 +560,79 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
     // Check if this can handle packages
     public boolean canHandlePackages() {
         return packages;
+    }
+
+    // Check whether docked ship doors should open
+    public boolean isDoorControlEnabled() {
+        return doorControlEnabled;
+    }
+
+    // Get the selected docked ship door directions
+    public int getDoorControlMask() {
+        return doorControlMask;
+    }
+
+    // Check whether the dock opens the selected door direction
+    public boolean opensDoor(DoorDirection direction) {
+        return direction != null && (doorControlMask & direction.mask()) != 0;
+    }
+
+    // Get the linked docking connectors
+    public List<ConnectorReference> linkedConnectorReferences() {
+        return List.copyOf(linkedConnectors);
+    }
+
+    // Add a docking connector to this Ship Dock
+    public boolean addLinkedDockingConnector(ConnectorReference connector) {
+        if (connector == null || linkedConnectors.contains(connector)) return false;
+        linkedConnectors.add(connector);
+        normalizeConnectorSelections();
+        storageChanged();
+        if (level != null && level.getServer() != null) {
+            ShipDockRegistry.get(level.getServer()).update(this);
+        }
+        refreshLinkedConnectorBindings();
+        return true;
+    }
+
+    // Remove a docking connector from this Ship Dock
+    public boolean removeLinkedDockingConnector(ConnectorReference connector) {
+        return removeLinkedDockingConnector(connector, true);
+    }
+
+    // Remove a docking connector without rediscovering it before the block is removed
+    boolean removeLinkedDockingConnector(ConnectorReference connector, boolean updateRegistry) {
+        if (connector == null || !linkedConnectors.remove(connector)) return false;
+        normalizeConnectorSelections();
+        storageChanged();
+        refreshLinkedConnectorBindings();
+        if (updateRegistry && level != null && level.getServer() != null) {
+            ShipDockRegistry.get(level.getServer()).update(this);
+        }
+        return true;
+    }
+
+    // Clear this Ship Dock's connector bindings
+    public void clearLinkedConnectorBindings() {
+        clearLinkedConnectorBindings(List.copyOf(linkedConnectors));
+    }
+
+    // Get the selected refueling connectors
+    public List<ConnectorReference> refuelConnectorReferences() {
+        return effectiveConnectorSelection(refuelConnectorSelection,
+                refuelConnectorSelectionConfigured);
+    }
+
+    // Get the selected restocking connectors
+    public List<ConnectorReference> restockConnectorReferences() {
+        return effectiveConnectorSelection(restockConnectorSelection,
+                restockConnectorSelectionConfigured);
+    }
+
+    // Get the selected package connectors
+    public List<ConnectorReference> packageConnectorReferences() {
+        return effectiveConnectorSelection(packageConnectorSelection,
+                packageConnectorSelectionConfigured);
     }
 
     // Get the landing zones
@@ -505,6 +740,7 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
 
     // Apply the linked connectors
     public void applyLinkedConnectors(ItemStack stack) {
+        List<ConnectorReference> previous = List.copyOf(linkedConnectors);
         linkedConnectors.clear();
         CompoundTag customData = stack.getOrDefault(
                 DataComponents.CUSTOM_DATA, CustomData.EMPTY).getUnsafe();
@@ -517,16 +753,44 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
             }
             UUID subLevelId = entry.hasUUID(ShipDockBlockItem.LINKED_CONNECTOR_SUBLEVEL_TAG)
                     ? entry.getUUID(ShipDockBlockItem.LINKED_CONNECTOR_SUBLEVEL_TAG) : null;
-            LinkedConnector linked = new LinkedConnector(
+            ConnectorReference linked = new ConnectorReference(
                     subLevelId,
                     BlockPos.of(entry.getLong(ShipDockBlockItem.LINKED_CONNECTOR_POS_TAG)));
             if (!linkedConnectors.contains(linked)) {
                 linkedConnectors.add(linked);
             }
         }
+        normalizeConnectorSelections();
+        clearLinkedConnectorBindings(previous);
         storageChanged();
+        refreshLinkedConnectorBindings();
         if (level != null && level.getServer() != null) {
+            // An item-applied connector list is an explicit edit, including an intentional
+            // empty list. Normal load-time registry refreshes retain persisted links until their
+            // linked sublevels finish restoring.
             ShipDockRegistry.get(level.getServer()).update(this);
+        }
+    }
+
+    // Refresh the linked connector bindings
+    private void refreshLinkedConnectorBindings() {
+        if (level == null || level.isClientSide) return;
+        for (int index = 0; index < linkedConnectors.size(); index++) {
+            ConnectorReference connector = linkedConnectors.get(index);
+            DockingConnectorAutomation.bindToShipDock(
+                    SimulatedHelper.findLoadedBlockEntityExact(
+                            level, connector.subLevelId(), connector.blockPosition()),
+                    dockId, dockName, index);
+        }
+    }
+
+    // Clear bindings from the supplied connector references
+    private void clearLinkedConnectorBindings(List<ConnectorReference> connectors) {
+        if (level == null || level.isClientSide) return;
+        for (ConnectorReference connector : connectors) {
+            DockingConnectorAutomation.clearShipDockBinding(
+                    SimulatedHelper.findLoadedBlockEntityExact(
+                            level, connector.subLevelId(), connector.blockPosition()), dockId);
         }
     }
 
@@ -541,7 +805,7 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
     // Push the buffers to adjacent connectors
     private void pushBuffersToAdjacentConnectors() {
         Set<BlockEntity> targets = Collections.newSetFromMap(new IdentityHashMap<>());
-        for (LinkedConnector linked : linkedConnectors) {
+        for (ConnectorReference linked : linkedConnectors) {
             BlockEntity target = SimulatedHelper.findLoadedBlockEntityExact(
                     level, linked.subLevelId(), linked.blockPosition());
             if (DockingConnectorAutomation.isDockingConnector(target)
@@ -653,11 +917,13 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
         tag.putBoolean("Refuel", refuel);
         tag.putBoolean("Restock", restock);
         tag.putBoolean("Packages", packages);
+        tag.putBoolean("DoorControlEnabled", doorControlEnabled);
+        tag.putInt("DoorControlMask", doorControlMask);
         tag.put(BUFFER_ITEMS_TAG, itemBuffer.serializeNBT(provider));
         tag.put(BUFFER_FLUID_TAG, fluidBuffer.writeToNBT(provider, new CompoundTag()));
         tag.putInt(BUFFER_ENERGY_TAG, energyBuffer.getEnergyStored());
         ListTag linkedTag = new ListTag();
-        for (LinkedConnector linked : linkedConnectors) {
+        for (ConnectorReference linked : linkedConnectors) {
             CompoundTag entry = new CompoundTag();
             entry.putLong("Pos", linked.blockPosition().asLong());
             if (linked.subLevelId() != null) {
@@ -666,6 +932,12 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
             linkedTag.add(entry);
         }
         tag.put("LinkedConnectors", linkedTag);
+        tag.putBoolean("RefuelConnectorSelectionConfigured", refuelConnectorSelectionConfigured);
+        tag.putBoolean("RestockConnectorSelectionConfigured", restockConnectorSelectionConfigured);
+        tag.putBoolean("PackageConnectorSelectionConfigured", packageConnectorSelectionConfigured);
+        tag.put("RefuelConnectorSelection", connectorReferenceTag(refuelConnectorSelection));
+        tag.put("RestockConnectorSelection", connectorReferenceTag(restockConnectorSelection));
+        tag.put("PackageConnectorSelection", connectorReferenceTag(packageConnectorSelection));
         ListTag zoneTags = new ListTag();
         for (LandingZone zone : landingZones) zoneTags.add(zone.toTag());
         tag.put("LandingZones", zoneTags);
@@ -684,6 +956,10 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
         refuel = !tag.contains("Refuel") || tag.getBoolean("Refuel");
         restock = !tag.contains("Restock") || tag.getBoolean("Restock");
         packages = !tag.contains("Packages") || tag.getBoolean("Packages");
+        doorControlEnabled = tag.getBoolean("DoorControlEnabled");
+        doorControlMask = tag.contains("DoorControlMask", Tag.TAG_INT)
+                ? sanitizeDoorControlMask(tag.getInt("DoorControlMask"))
+                : DoorDirection.fromLegacyName(tag.getString("DoorControl"));
         if (tag.contains(BUFFER_ITEMS_TAG, Tag.TAG_COMPOUND)) {
             itemBuffer.deserializeNBT(provider, tag.getCompound(BUFFER_ITEMS_TAG));
         }
@@ -699,10 +975,17 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
             if (!entry.contains("Pos", Tag.TAG_LONG)) {
                 continue;
             }
-            linkedConnectors.add(new LinkedConnector(
+            linkedConnectors.add(new ConnectorReference(
                     entry.hasUUID("SubLevel") ? entry.getUUID("SubLevel") : null,
                     BlockPos.of(entry.getLong("Pos"))));
         }
+        refuelConnectorSelectionConfigured = tag.getBoolean("RefuelConnectorSelectionConfigured");
+        restockConnectorSelectionConfigured = tag.getBoolean("RestockConnectorSelectionConfigured");
+        packageConnectorSelectionConfigured = tag.getBoolean("PackageConnectorSelectionConfigured");
+        readConnectorReferences(tag, "RefuelConnectorSelection", refuelConnectorSelection);
+        readConnectorReferences(tag, "RestockConnectorSelection", restockConnectorSelection);
+        readConnectorReferences(tag, "PackageConnectorSelection", packageConnectorSelection);
+        normalizeConnectorSelections();
         landingZones.clear();
         ListTag zoneTags = tag.getList("LandingZones", Tag.TAG_COMPOUND);
         for (int idx = 0; idx < zoneTags.size(); idx++) {
@@ -710,6 +993,44 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
             if (zone != null) landingZones.add(zone);
         }
         landingZones.sort(Comparator.comparingInt(LandingZone::queueOrder));
+    }
+
+    // Store the docked ship door directions
+    public enum DoorDirection {
+        NORTH(1),
+        SOUTH(2),
+        EAST(4),
+        WEST(8);
+
+        private final int mask;
+
+        // Initialize the direction
+        DoorDirection(int mask) {
+            this.mask = mask;
+        }
+
+        // Get the direction mask
+        public int mask() {
+            return mask;
+        }
+
+        // Get the mask containing every door direction
+        public static int allMask() {
+            return NORTH.mask | SOUTH.mask | EAST.mask | WEST.mask;
+        }
+
+        // Migrate the previous left/right door setting
+        private static int fromLegacyName(String value) {
+            if (value == null || value.isBlank()) {
+                return allMask();
+            }
+            return switch (value.trim().toUpperCase(java.util.Locale.ROOT)) {
+                case "LEFT" -> WEST.mask;
+                case "RIGHT" -> EAST.mask;
+                case "BOTH" -> EAST.mask | WEST.mask;
+                default -> allMask();
+            };
+        }
     }
 
     // Store the landing zone
@@ -750,11 +1071,11 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
         }
     }
 
-    // Store the linked connector
-    private record LinkedConnector(@Nullable UUID subLevelId, BlockPos blockPosition) {
-        // Initialize the linked connector
-        private LinkedConnector {
-            blockPosition = blockPosition.immutable();
+    // Store a dock connector reference
+    public record ConnectorReference(@Nullable UUID subLevelId, BlockPos blockPosition) {
+        // Initialize the connector reference
+        public ConnectorReference {
+            blockPosition = (blockPosition == null ? BlockPos.ZERO : blockPosition).immutable();
         }
     }
 

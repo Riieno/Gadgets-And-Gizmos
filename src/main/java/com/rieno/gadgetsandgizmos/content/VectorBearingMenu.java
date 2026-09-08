@@ -74,6 +74,10 @@ public class VectorBearingMenu extends GhostItemMenu<VectorBearingBlockEntity>
     private VectorBearingBlockEntity.ControlMode initialControlMode;
     // Initial max tilt in degrees
     private double initialMaxTiltDegrees;
+    // Initial stabilization plane
+    private VectorBearingBlockEntity.StabilizeAxis initialStabilizeAxis;
+    // Initial stabilization state
+    private boolean initialKeepStable;
     // Tracks whether initial config is received
     private boolean receivedInitialConfig;
     // Initial ghost stacks
@@ -148,6 +152,8 @@ public class VectorBearingMenu extends GhostItemMenu<VectorBearingBlockEntity>
     public void readExtraOpenData(RegistryFriendlyByteBuf buf) {
         initialControlMode = buf.readEnum(VectorBearingBlockEntity.ControlMode.class);
         initialMaxTiltDegrees = buf.readDouble();
+        initialStabilizeAxis = buf.readEnum(VectorBearingBlockEntity.StabilizeAxis.class);
+        initialKeepStable = buf.readBoolean();
         receivedInitialConfig = true;
         initialGhostStacks = new ItemStack[8];
         for (int i = 0; i < initialGhostStacks.length; i++) {
@@ -294,6 +300,16 @@ public class VectorBearingMenu extends GhostItemMenu<VectorBearingBlockEntity>
     // Get the initial max tilt degrees
     public double getInitialMaxTiltDegrees() {
         return receivedInitialConfig ? initialMaxTiltDegrees : 30.0D;
+    }
+
+    // Get the initial stabilization plane
+    public VectorBearingBlockEntity.StabilizeAxis getInitialStabilizeAxis() {
+        return initialStabilizeAxis == null ? VectorBearingBlockEntity.StabilizeAxis.XZ : initialStabilizeAxis;
+    }
+
+    // Check whether stabilization was initially enabled
+    public boolean isInitialKeepStable() {
+        return receivedInitialConfig && initialKeepStable;
     }
 
     // Copy one item

@@ -1,0 +1,6 @@
+{
+  "parent": "simulated:block/docking_connector/foot",
+  "textures": {
+    "1": "createthrusters:block/ship_docking_connector/dock_2"
+  }
+}

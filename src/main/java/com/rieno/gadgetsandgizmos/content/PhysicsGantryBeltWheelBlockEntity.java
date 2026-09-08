@@ -10,8 +10,8 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.kinetics.LinkedKineticBlockEntity;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
-import com.simibubi.create.content.kinetics.base.GeneratingKineticBlockEntity;
 import dev.ryanhcode.sable.api.block.BlockEntitySubLevelActor;
 import dev.ryanhcode.sable.api.schematic.SubLevelSchematicSerializationContext;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
@@ -31,7 +31,7 @@ import java.util.List;
 import java.util.UUID;
 
 // Drive a gantry cable while keeping its remote wheel loaded without joining both ships structurally
-public class PhysicsGantryBeltWheelBlockEntity extends GeneratingKineticBlockEntity
+public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
         implements BlockEntitySubLevelActor {
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -61,12 +61,6 @@ public class PhysicsGantryBeltWheelBlockEntity extends GeneratingKineticBlockEnt
     private UUID linkedSubLevelId;
     // Tracks whether receives from linked wheel is set
     private boolean receivesFromLinkedWheel;
-    // Generated link speed
-    private float generatedLinkSpeed;
-    // Current reported link capacity
-    private float reportedLinkCapacity;
-    // Current reported link stress
-    private float reportedLinkStress;
     // Cached linked wheel
     @Nullable
     private transient PhysicsGantryBeltWheelBlockEntity cachedLinkedWheel;
@@ -102,38 +96,11 @@ public class PhysicsGantryBeltWheelBlockEntity extends GeneratingKineticBlockEnt
             return;
         }
 
-        boolean nextReceiveFromLink = false;
-        float nextSpeed = 0.0f;
-        PhysicsGantryBeltWheelBlockEntity linkedWheel = null;
-        if (hasLinkedTarget()) {
-            linkedWheel = resolveLinkedWheel();
-            if (linkedWheel == null || linkedWheel.isRemoved()) {
-                nextReceiveFromLink = receivesFromLinkedWheel;
-                nextSpeed = receivesFromLinkedWheel ? generatedLinkSpeed : 0.0f;
-            } else {
-                UUID thisSubLevel = SimulatedHelper.getContainingSubLevelId(this);
-                if (thisSubLevel == null || linkedWheel.references(worldPosition, thisSubLevel)) {
-                    TransferDecision transferDecision = resolveTransferDecision(linkedWheel);
-                    nextReceiveFromLink = transferDecision.receiveFromLinkedWheel;
-                    if (nextReceiveFromLink) {
-                        nextSpeed = linkedWheel.getTheoreticalSpeed();
-                    }
-                } else {
-                    nextReceiveFromLink = receivesFromLinkedWheel;
-                    nextSpeed = receivesFromLinkedWheel ? generatedLinkSpeed : 0.0f;
-                }
-            }
-        }
-
-        if (receivesFromLinkedWheel != nextReceiveFromLink || Math.abs(nextSpeed - generatedLinkSpeed) > 0.01f) {
+        boolean nextReceiveFromLink = linkedPos != null && linkedPos.equals(source);
+        if (receivesFromLinkedWheel != nextReceiveFromLink) {
             receivesFromLinkedWheel = nextReceiveFromLink;
-            generatedLinkSpeed = nextSpeed;
-            updateGeneratedRotation();
-            setChanged();
             sendData();
         }
-
-        refreshLinkedStressNetworkValues(linkedWheel);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -144,63 +111,13 @@ public class PhysicsGantryBeltWheelBlockEntity extends GeneratingKineticBlockEnt
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Get the generated speed
+    // Resolve the saved spline endpoint for the library's reciprocal kinetic connection
     @Override
-    public float getGeneratedSpeed() {
-        return receivesFromLinkedWheel ? generatedLinkSpeed : 0.0f;
-    }
-
-    // Calculate the added stress capacity
-    @Override
-    public float calculateAddedStressCapacity() {
-        return calculateAddedStressCapacity(resolveLinkedWheel());
-    }
-
-    // Calculate the added stress capacity
-    private float calculateAddedStressCapacity(@Nullable PhysicsGantryBeltWheelBlockEntity linkedWheel) {
-        if (!receivesFromLinkedWheel) {
-            return 0.0f;
-        }
-
-        if (linkedWheel == null || linkedWheel.isRemoved()) {
-            return 0.0f;
-        }
-
-        float generatedSpeed = Math.abs(getGeneratedSpeed());
-        if (generatedSpeed <= 1.0E-4f) {
-            return 0.0f;
-        }
-
-        lastCapacityProvided = Math.max(0.0f, linkedWheel.capacity) / generatedSpeed;
-        return lastCapacityProvided;
-    }
-
-    // Calculate the stress applied
-    @Override
-    public float calculateStressApplied() {
-        return calculateStressApplied(resolveLinkedWheel());
-    }
-
-    // Calculate the stress applied
-    private float calculateStressApplied(@Nullable PhysicsGantryBeltWheelBlockEntity linkedWheel) {
-        if (receivesFromLinkedWheel) {
-            lastStressApplied = 0.0f;
-            return 0.0f;
-        }
-
-        if (linkedWheel == null || linkedWheel.isRemoved()) {
-            lastStressApplied = 0.0f;
-            return 0.0f;
-        }
-
-        float speed = Math.abs(getTheoreticalSpeed());
-        if (speed <= 1.0E-4f) {
-            lastStressApplied = 0.0f;
-            return 0.0f;
-        }
-
-        lastStressApplied = Math.max(0.0f, linkedWheel.stress) / speed;
-        return lastStressApplied;
+    @Nullable
+    protected LinkedKineticBlockEntity resolveKineticLink() {
+        PhysicsGantryBeltWheelBlockEntity other = resolveLinkedWheel();
+        UUID subLevelId = SimulatedHelper.getContainingSubLevelId(this);
+        return other != null && other.references(worldPosition, subLevelId) ? other : null;
     }
 
     // Check if this has linked target
@@ -210,7 +127,8 @@ public class PhysicsGantryBeltWheelBlockEntity extends GeneratingKineticBlockEnt
 
     // Check if this should render link from this endpoint
     public boolean shouldRenderLinkFromThisEndpoint() {
-        return hasLinkedTarget() && !receivesFromLinkedWheel;
+        PhysicsGantryBeltWheelBlockEntity other = resolveLinkedWheel();
+        return other != null && endpointKey(this).compareTo(endpointKey(other)) < 0;
     }
 
     // Set the linked target
@@ -219,8 +137,7 @@ public class PhysicsGantryBeltWheelBlockEntity extends GeneratingKineticBlockEnt
         linkedSubLevelId = targetSubLevelId;
         invalidateLinkedWheelCache();
         receivesFromLinkedWheel = false;
-        generatedLinkSpeed = 0.0f;
-        updateGeneratedRotation();
+        refreshKineticLink();
         setChanged();
         sendData();
     }
@@ -242,8 +159,7 @@ public class PhysicsGantryBeltWheelBlockEntity extends GeneratingKineticBlockEnt
         linkedSubLevelId = null;
         invalidateLinkedWheelCache();
         receivesFromLinkedWheel = false;
-        generatedLinkSpeed = 0.0f;
-        updateGeneratedRotation();
+        refreshKineticLink();
         setChanged();
         sendData();
 
@@ -253,7 +169,8 @@ public class PhysicsGantryBeltWheelBlockEntity extends GeneratingKineticBlockEnt
 
         PhysicsGantryBeltWheelBlockEntity other = SimulatedHelper.findBlockEntity(level, previousSubLevelId, previousPos,
                 PhysicsGantryBeltWheelBlockEntity.class);
-        if (other != null && !other.isRemoved()) {
+        if (other != null && !other.isRemoved()
+                && other.references(worldPosition, SimulatedHelper.getContainingSubLevelId(this))) {
             other.breakLink(false);
         }
     }
@@ -266,7 +183,8 @@ public class PhysicsGantryBeltWheelBlockEntity extends GeneratingKineticBlockEnt
         }
 
         if (cachedLinkedWheel != null) {
-            if (!cachedLinkedWheel.isRemoved() && linkedPos.equals(cachedLinkedWheel.getBlockPos())) {
+            if (!cachedLinkedWheel.isRemoved() && linkedPos.equals(cachedLinkedWheel.getBlockPos())
+                    && level.isLoaded(linkedPos)) {
                 return cachedLinkedWheel;
             }
             invalidateLinkedWheelCache();
@@ -291,6 +209,8 @@ public class PhysicsGantryBeltWheelBlockEntity extends GeneratingKineticBlockEnt
                     SimulatedHelper.findBlockEntityIncludingSubLevels(
                             level, linkedPos, PhysicsGantryBeltWheelBlockEntity.class);
             if (migratedTarget != null && migratedTarget != this && !migratedTarget.isRemoved()) {
+                linkedSubLevelId = SimulatedHelper.getContainingSubLevelId(migratedTarget);
+                if (!level.isClientSide) setChanged();
                 cachedLinkedWheel = migratedTarget;
                 return migratedTarget;
             }
@@ -366,68 +286,10 @@ public class PhysicsGantryBeltWheelBlockEntity extends GeneratingKineticBlockEnt
                 .withStyle(ChatFormatting.AQUA);
     }
 
-    // Resolve the transfer decision
-    private TransferDecision resolveTransferDecision(PhysicsGantryBeltWheelBlockEntity linkedWheel) {
-        boolean thisHasIndependentSource = hasIndependentKineticSource(this);
-        boolean linkedHasIndependentSource = hasIndependentKineticSource(linkedWheel);
-
-        if (!thisHasIndependentSource && !linkedHasIndependentSource) {
-            return TransferDecision.NONE;
-        }
-        if (!thisHasIndependentSource) {
-            return TransferDecision.RECEIVE;
-        }
-        if (!linkedHasIndependentSource) {
-            return TransferDecision.DRIVE;
-        }
-
-        double thisSpeed = Math.abs(getTheoreticalSpeed());
-        double linkedSpeed = Math.abs(linkedWheel.getTheoreticalSpeed());
-        final double epsilon = 1.0E-4D;
-        if (linkedSpeed > thisSpeed + epsilon) {
-            return TransferDecision.RECEIVE;
-        }
-        if (thisSpeed > linkedSpeed + epsilon) {
-            return TransferDecision.DRIVE;
-        }
-
-        String thisKey = endpointKey(this);
-        String linkedKey = endpointKey(linkedWheel);
-        return thisKey.compareTo(linkedKey) > 0 ? TransferDecision.RECEIVE : TransferDecision.DRIVE;
-    }
-
-    // Refresh the linked stress network values
-    private void refreshLinkedStressNetworkValues(
-            @Nullable PhysicsGantryBeltWheelBlockEntity linkedWheel) {
-        if (level == null || level.isClientSide || !hasNetwork()) {
-            return;
-        }
-
-        float nextCapacity = calculateAddedStressCapacity(linkedWheel);
-        float nextStress = calculateStressApplied(linkedWheel);
-        if (Math.abs(nextCapacity - reportedLinkCapacity) <= 0.01f
-                && Math.abs(nextStress - reportedLinkStress) <= 0.01f) {
-            return;
-        }
-
-        reportedLinkCapacity = nextCapacity;
-        reportedLinkStress = nextStress;
-        if (isSource()) {
-            notifyStressCapacityChange(nextCapacity);
-        }
-        getOrCreateNetwork().updateStressFor(this, nextStress);
-        getOrCreateNetwork().updateNetwork();
-    }
-
     // Invalidate the linked wheel cache
     private void invalidateLinkedWheelCache() {
         cachedLinkedWheel = null;
         nextLinkedWheelResolveTick = Long.MIN_VALUE;
-    }
-
-    // Check if this has independent kinetic source
-    private static boolean hasIndependentKineticSource(PhysicsGantryBeltWheelBlockEntity be) {
-        return be.hasSource();
     }
 
     // Get the endpoint key
@@ -473,7 +335,6 @@ public class PhysicsGantryBeltWheelBlockEntity extends GeneratingKineticBlockEnt
             tag.putUUID("LinkedSubLevelId", savedLinkedSubLevelId);
         }
         tag.putBoolean("ReceivesFromLinkedWheel", receivesFromLinkedWheel);
-        tag.putFloat("GeneratedLinkSpeed", generatedLinkSpeed);
     }
 
     // Read the physics gantry belt wheel
@@ -506,7 +367,9 @@ public class PhysicsGantryBeltWheelBlockEntity extends GeneratingKineticBlockEnt
             invalidateLinkedWheelCache();
         }
         receivesFromLinkedWheel = tag.getBoolean("ReceivesFromLinkedWheel");
-        generatedLinkSpeed = tag.contains("GeneratedLinkSpeed") ? tag.getFloat("GeneratedLinkSpeed") : 0.0f;
+        if (!clientPacket && tag.contains("GeneratedLinkSpeed")) {
+            rebuildKineticNetworkOnLoad();
+        }
     }
 
     // Get the loading dependencies
@@ -519,18 +382,4 @@ public class PhysicsGantryBeltWheelBlockEntity extends GeneratingKineticBlockEnt
         return subLevel == null || subLevel.isRemoved() ? List.of() : List.of(subLevel);
     }
 
-    // Define the transfer decision values
-    private enum TransferDecision {
-        NONE(false),
-        DRIVE(false),
-        RECEIVE(true);
-
-        // Tracks whether receive from linked wheel is set
-        private final boolean receiveFromLinkedWheel;
-
-        // Initialize the transfer decision
-        TransferDecision(boolean receiveFromLinkedWheel) {
-            this.receiveFromLinkedWheel = receiveFromLinkedWheel;
-        }
-    }
 }

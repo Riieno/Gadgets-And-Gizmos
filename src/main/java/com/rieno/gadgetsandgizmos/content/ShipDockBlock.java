@@ -106,7 +106,9 @@ public class ShipDockBlock extends HorizontalDirectionalBlock implements IBE<Shi
             PacketDistributor.sendToPlayer(serverPlayer, new ShipDockOpenPayload(
                     pos, SimulatedHelper.getContainingSubLevelId(dock),
                     dock.getDockName(), dock.canRefuel(), dock.canRestock(),
-                    dock.canHandlePackages()));
+                    dock.canHandlePackages(), dock.isDoorControlEnabled(), dock.getDoorControlMask(),
+                    dock.linkedConnectorReferences(), dock.refuelConnectorReferences(),
+                    dock.restockConnectorReferences(), dock.packageConnectorReferences()));
         }
         return InteractionResult.CONSUME;
     }
@@ -116,6 +118,7 @@ public class ShipDockBlock extends HorizontalDirectionalBlock implements IBE<Shi
     public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
         if (state.getBlock() != newState.getBlock() && level.getBlockEntity(pos) instanceof ShipDockBlockEntity dock) {
             if (!level.isClientSide) {
+                dock.clearLinkedConnectorBindings();
                 for (ItemStack stack : dock.bufferedItems()) {
                     net.minecraft.world.Containers.dropItemStack(
                             level, pos.getX(), pos.getY(), pos.getZ(), stack);

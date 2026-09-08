@@ -160,6 +160,10 @@ External machine types currently include `laser_pointer`, `laser_sensor`, `analo
 
 The complete method list is intentionally generated rather than duplicated by hand. Run `ctdocs <type or method>` inside CC:Tweaked to inspect every installed method.
 
+### Vector Bearing stabilization
+
+ACC Set Data accepts `stabilize_axis` as `X Axis`, `Y Axis`, `Z Axis`, `XZ Axis`, `XY Axis` or `ZY Axis`; `keep_stable` enables the selected world-space axis or plane. The `Max Tilt` setting limits the combined stabilization correction and manual head offset, so a bearing follows its parent once the required correction exceeds that angle. The `vector_bearing` peripheral exposes the same values through `getStabilizeAxis()` and `setStabilizeAxis(...)`. Existing saved single-axis selections continue to load as their matching single-axis option.
+
 ## Advanced Contraption Controller
 
 The `advanced_contraption_controller` peripheral inherits the normal analogue controller surface and adds the graph bridge. Existing controller scripts can continue to use input, channel, alias, key, binding and direct-target methods.

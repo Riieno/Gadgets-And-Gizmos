@@ -84,7 +84,7 @@ public class VectorBearingPeripheral extends GadgetsPeripheral<VectorBearingBloc
     // Get the max tilt angle
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getMaxTiltAngle", signature = "getMaxTiltAngle(): number",
-            description = "Returns the max tilt angle.")
+            description = "Returns the maximum combined stabilization and manual tilt angle.")
     public final double getMaxTiltAngle() {
         return blockEntity.getMaxTiltDegrees();
     }
@@ -92,7 +92,7 @@ public class VectorBearingPeripheral extends GadgetsPeripheral<VectorBearingBloc
     // Set the max tilt angle
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "setMaxTiltAngle", signature = "setMaxTiltAngle(angleDegrees: number)",
-            description = "Sets the max tilt angle.")
+            description = "Sets the maximum combined stabilization and manual tilt angle.")
     public final void setMaxTiltAngle(double angleDegrees) throws LuaException {
         if (!Double.isFinite(angleDegrees)) {
             throw new LuaException("angleDegrees must be finite");
@@ -135,18 +135,18 @@ public class VectorBearingPeripheral extends GadgetsPeripheral<VectorBearingBloc
     // Get the stabilization axis
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getStabilizeAxis", signature = "getStabilizeAxis(): string",
-            description = "Returns the world axis used as the zero-tilt pose when stabilization is enabled.")
+            description = "Returns the selected world-space stabilization axis or plane.")
     public final String getStabilizeAxis() {
         return blockEntity.getStabilizeAxis();
     }
 
     // Set the stabilization axis
     @LuaFunction(mainThread = true)
-    @PeripheralDoc(name = "setStabilizeAxis", signature = "setStabilizeAxis('X-Axis'|'Y-Axis'|'Z-Axis')",
-            description = "Sets the world axis used as the zero-tilt pose when stabilization is enabled.")
+    @PeripheralDoc(name = "setStabilizeAxis", signature = "setStabilizeAxis('X Axis'|'Y Axis'|'Z Axis'|'XZ Axis'|'XY Axis'|'ZY Axis')",
+            description = "Sets the world-space axis or plane held when stabilization is enabled.")
     public final void setStabilizeAxis(String axis) throws LuaException {
         if (!blockEntity.setStabilizeAxis(axis)) {
-            throw new LuaException("axis must be 'X-Axis', 'Y-Axis' or 'Z-Axis'");
+            throw new LuaException("axis must be 'X Axis', 'Y Axis', 'Z Axis', 'XZ Axis', 'XY Axis' or 'ZY Axis'");
         }
     }
 

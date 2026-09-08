@@ -144,6 +144,9 @@ public final class CTClientRenderers {
     public static void modifyBakingResult(ModelEvent.ModifyBakingResult evt) {
         ResourceLocation blockId = ResourceLocation.fromNamespaceAndPath(
                 CreateThrusters.MOD_ID, "copycat_double_button");
+        ResourceLocation dockingConnectorId = ResourceLocation.fromNamespaceAndPath("simulated", "docking_connector");
+        ResourceLocation pairedDockingConnectorId = ResourceLocation.fromNamespaceAndPath(
+                "simulated", "paired_docking_connector");
         evt.getModels().replaceAll((location, model) -> {
             if (!location.id().equals(blockId)
                     || ModelResourceLocation.INVENTORY_VARIANT.equals(location.getVariant())
@@ -151,6 +154,14 @@ public final class CTClientRenderers {
                 return model;
             }
             return new CopycatDoubleButtonModel(model);
+        });
+        evt.getModels().replaceAll((location, model) -> {
+            if ((!location.id().equals(dockingConnectorId) && !location.id().equals(pairedDockingConnectorId))
+                    || ModelResourceLocation.INVENTORY_VARIANT.equals(location.getVariant())
+                    || model instanceof DockingConnectorRetexturedModel) {
+                return model;
+            }
+            return new DockingConnectorRetexturedModel(model);
         });
         AccDisplayConnectedTextures.register();
         if (CTBlocks.ACC_DISPLAY != null) {

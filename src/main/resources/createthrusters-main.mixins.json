@@ -81,6 +81,7 @@
     "RailwayNavigatorShipTelemetryMixin",
     "SableSchematicBlockEntityConfigMixin",
     "ShippingScheduleEditPacketMixin",
+    "DockingConnectorBlockItemPlacementMixin",
     "ShippingDockingConnectorMixin",
     "ShippingDockingConnectorInventoryMixin",
     "ShippingDockingConnectorTankMixin",
@@ -117,7 +118,9 @@
     "ConfigModListScreenSearchMixin",
     "EncryptedMusicDiscSoundBufferMixin",
     "PortableContraptionControllerHeldItemLayerMixin",
-    "PortableContraptionControllerPlayerPoseMixin"
+    "PortableContraptionControllerPlayerPoseMixin",
+    "DockingConnectorModelDataMixin",
+    "DockingConnectorRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1

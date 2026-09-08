@@ -176,8 +176,8 @@ public class PhysicsGantryBeltWheelBlock extends RotatedPillarKineticBlock imple
         }
 
         UUID firstSubLevel = SimulatedHelper.getContainingSubLevelId(firstWheel);
-        firstWheel.breakLink(false);
-        clickedWheel.breakLink(false);
+        firstWheel.breakLink(true);
+        clickedWheel.breakLink(true);
         firstWheel.setLinkedTarget(clickedWheel.getBlockPos(), clickedSubLevel);
         clickedWheel.setLinkedTarget(firstWheel.getBlockPos(), firstSubLevel);
 

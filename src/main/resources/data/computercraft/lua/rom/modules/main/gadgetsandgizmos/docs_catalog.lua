@@ -5672,7 +5672,7 @@ return {
     },
     ["getMaxTiltAngle"] = {
       signature = "getMaxTiltAngle(): number",
-      description = "Returns the max tilt angle.",
+      description = "Returns the maximum combined stabilization and manual tilt angle.",
       since = "2",
       deprecatedBy = "",
       examples = {},
@@ -5693,7 +5693,7 @@ return {
     },
     ["getStabilizeAxis"] = {
       signature = "getStabilizeAxis(): string",
-      description = "Returns the world axis used as the zero-tilt pose when stabilization is enabled.",
+      description = "Returns the selected world-space stabilization axis or plane.",
       since = "2",
       deprecatedBy = "",
       examples = {},
@@ -5749,7 +5749,7 @@ return {
     },
     ["setMaxTiltAngle"] = {
       signature = "setMaxTiltAngle(angleDegrees: number)",
-      description = "Sets the max tilt angle.",
+      description = "Sets the maximum combined stabilization and manual tilt angle.",
       since = "2",
       deprecatedBy = "",
       examples = {},
@@ -5762,8 +5762,8 @@ return {
       examples = {},
     },
     ["setStabilizeAxis"] = {
-      signature = "setStabilizeAxis('X-Axis'|'Y-Axis'|'Z-Axis')",
-      description = "Sets the world axis used as the zero-tilt pose when stabilization is enabled.",
+      signature = "setStabilizeAxis('X Axis'|'Y Axis'|'Z Axis'|'XZ Axis'|'XY Axis'|'ZY Axis')",
+      description = "Sets the world-space axis or plane held when stabilization is enabled.",
       since = "2",
       deprecatedBy = "",
       examples = {},

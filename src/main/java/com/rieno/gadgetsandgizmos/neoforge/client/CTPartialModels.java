@@ -129,6 +129,11 @@ public final class CTPartialModels {
     public static final PartialModel ADVANCED_NAVIGATION_TABLE_INDICATOR = block("advanced_navigation_table/redstone_indicator");
     public static final PartialModel ADVANCED_NAVIGATION_TABLE_POINTER = block("advanced_navigation_table/nav_table_pointer");
     public static final PartialModel SHIP_DOCK_FLAG = block("ship_dock/flag");
+    public static final PartialModel SHIP_DOCKING_CONNECTOR_MAIN_PISTON_BOTTOM = block("ship_docking_connector/main_piston_1");
+    public static final PartialModel SHIP_DOCKING_CONNECTOR_MAIN_PISTON_TOP = block("ship_docking_connector/main_piston_2");
+    public static final PartialModel SHIP_DOCKING_CONNECTOR_SIDE_PISTON_BOTTOM = block("ship_docking_connector/side_piston_1");
+    public static final PartialModel SHIP_DOCKING_CONNECTOR_SIDE_PISTON_TOP = block("ship_docking_connector/side_piston_2");
+    public static final PartialModel SHIP_DOCKING_CONNECTOR_FOOT = block("ship_docking_connector/foot");
 
     /*--------------------------------------------------------##---------------------------------------------------------
 

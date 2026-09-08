@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.content.ShipDockBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ThrusterMenu;
 import com.rieno.gadgetsandgizmos.content.DoubleButtonBlockEntity;
@@ -103,10 +104,18 @@ public final class CTClientScreens {
             String name,
             boolean refuel,
             boolean restock,
-            boolean packages
+            boolean packages,
+            boolean doorControlEnabled,
+            int doorControlMask,
+            java.util.List<ShipDockBlockEntity.ConnectorReference> availableConnectors,
+            java.util.List<ShipDockBlockEntity.ConnectorReference> refuelConnectors,
+            java.util.List<ShipDockBlockEntity.ConnectorReference> restockConnectors,
+            java.util.List<ShipDockBlockEntity.ConnectorReference> packageConnectors
     ) {
         ScreenOpener.open(new ShipDockScreen(
-                pos, subLevelId, name, refuel, restock, packages));
+                pos, subLevelId, name, refuel, restock, packages, doorControlEnabled,
+                doorControlMask, availableConnectors, refuelConnectors, restockConnectors,
+                packageConnectors));
     }
 
     // Register the menu screens

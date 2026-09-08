@@ -248,6 +248,31 @@ public final class ShipDockRegistry {
                 .orElse(null);
     }
 
+    // Remove a connector registration from every Ship Dock that owns it
+    public synchronized boolean removeLinkedDockingConnector(
+            ResourceLocation dimension,
+            @Nullable UUID subLevelId,
+            BlockPos pos
+    ) {
+        if (dimension == null || pos == null) {
+            return false;
+        }
+        ensureLoaded();
+        ConnectorKey key = new ConnectorKey(dimension, subLevelId, pos);
+        Set<UUID> dockIds = Set.copyOf(docksByConnector.getOrDefault(key, Set.of()));
+        boolean removed = false;
+        for (UUID dockId : dockIds) {
+            Dock dock = docks.get(dockId);
+            ShipDockBlockEntity liveDock = findLoadedDock(dock);
+            if (liveDock != null && liveDock.removeLinkedDockingConnector(
+                    new ShipDockBlockEntity.ConnectorReference(subLevelId, pos), false)) {
+                removeConnectorTarget(dock, key);
+                removed = true;
+            }
+        }
+        return removed;
+    }
+
     // Check if this is a refueling connector
     public synchronized boolean isRefuelingConnector(
             ResourceLocation dimension,
@@ -471,6 +496,57 @@ public final class ShipDockRegistry {
         }
         markAvailable(dock.id());
         return resolveStoredPose(level, dock, subLevel, requestSubLevelLoad);
+    }
+
+    // Load and resolve the live block entity for a stored dock
+    private @Nullable ShipDockBlockEntity findLoadedDock(@Nullable Dock dock) {
+        if (dock == null) {
+            return null;
+        }
+        ServerLevel level = server.getLevel(ResourceKey.create(Registries.DIMENSION, dock.dimension()));
+        if (level == null) {
+            return null;
+        }
+        if (dock.subLevelId() == null) {
+            level.getChunkAt(dock.pos());
+        } else if (!SubLevelBlockEntityCollector.ensureTargetLoaded(
+                level, dock.subLevelId(), dock.pos())) {
+            return null;
+        }
+        var blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
+                level, dock.subLevelId(), dock.pos());
+        return blockEntity instanceof ShipDockBlockEntity liveDock
+                && liveDock.getDockId().equals(dock.id()) ? liveDock : null;
+    }
+
+    // Persist the connector removal without probing the still-present breaking block
+    private void removeConnectorTarget(Dock dock, ConnectorKey key) {
+        if (dock == null) {
+            return;
+        }
+        List<ConnectorTarget> connectorTargets = dock.connectorTargets().stream()
+                .filter(target -> !Objects.equals(target.subLevelId(), key.subLevelId())
+                        || !target.pos().equals(key.position()))
+                .toList();
+        if (connectorTargets.size() == dock.connectorTargets().size()) {
+            return;
+        }
+        ConnectorTarget primary = connectorTargets.isEmpty() ? null : connectorTargets.getFirst();
+        Dock updated = new Dock(
+                dock.id(), dock.dimension(), dock.subLevelId(), dock.pos(),
+                dock.worldPosition(), dock.facing(), dock.name(), dock.refuel(),
+                dock.restock(), dock.packages(),
+                primary == null ? null : primary.subLevelId(),
+                primary == null ? null : primary.pos(),
+                primary == null ? null : primary.worldPosition(),
+                primary == null ? null : primary.facing(),
+                primary == null ? null : primary.up(),
+                System.currentTimeMillis(), connectorTargets, dock.landingZones());
+        unindexDock(dock);
+        docks.put(updated.id(), updated);
+        indexDock(updated);
+        revision++;
+        ShippingRouteDatabase.upsert(server, updated);
     }
 
     // Resolve the stored pose
