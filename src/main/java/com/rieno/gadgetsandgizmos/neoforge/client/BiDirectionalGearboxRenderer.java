@@ -13,7 +13,6 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.simibubi.create.AllPartialModels;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntityRenderer;
-import dev.engine_room.flywheel.api.visualization.VisualizationManager;
 import dev.engine_room.flywheel.lib.model.baked.PartialModel;
 import net.createmod.catnip.animation.AnimationTickHolder;
 import net.createmod.catnip.render.CachedBuffers;
@@ -22,7 +21,6 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.core.Direction;
-import net.minecraft.world.level.LevelAccessor;
 
 // Draw the Bidirectional Gearbox
 public class BiDirectionalGearboxRenderer extends KineticBlockEntityRenderer<BiDirectionalGearboxBlockEntity> {
@@ -51,10 +49,6 @@ public class BiDirectionalGearboxRenderer extends KineticBlockEntityRenderer<BiD
     @Override
     protected void renderSafe(BiDirectionalGearboxBlockEntity be, float partialTicks, PoseStack ms,
                               MultiBufferSource buffer, int light, int overlay) {
-        if (VisualizationManager.supportsVisualization((LevelAccessor) be.getLevel())) {
-            return;
-        }
-
         float time = AnimationTickHolder.getRenderTime(be.getLevel());
         Direction.Axis primaryAxis = be.getPrimaryLaneAxis();
         Direction.Axis secondaryAxis = be.getSecondaryLaneAxis();

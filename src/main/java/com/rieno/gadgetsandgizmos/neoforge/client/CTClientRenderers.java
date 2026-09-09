@@ -37,16 +37,6 @@ public final class CTClientRenderers {
 
     // Register the visualizers
     public static void registerVisualizers() {
-        if (CTBlockEntities.BIDIRECTIONAL_GEARBOX != null) {
-            SimpleBlockEntityVisualizer.builder(CTBlockEntities.BIDIRECTIONAL_GEARBOX.get())
-                .factory(BiDirectionalGearboxVisual::new)
-                .apply();
-        }
-        if (CTBlockEntities.BI_DIRECTIONAL_GEARSHIFT != null) {
-            SimpleBlockEntityVisualizer.builder(CTBlockEntities.BI_DIRECTIONAL_GEARSHIFT.get())
-                    .factory(BiDirectionalGearboxVisual::new)
-                    .apply();
-        }
         if (CTBlockEntities.THRUSTER_BEARING != null) {
             SimpleBlockEntityVisualizer.builder(CTBlockEntities.THRUSTER_BEARING.get())
                     .factory(ThrusterBearingVisual::new)

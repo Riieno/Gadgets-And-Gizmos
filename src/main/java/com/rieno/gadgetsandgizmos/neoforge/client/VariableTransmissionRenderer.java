@@ -11,7 +11,6 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 import com.rieno.gadgetsandgizmos.content.VariableTransmissionBlockEntity;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.simibubi.create.AllPartialModels;
-import dev.engine_room.flywheel.api.visualization.VisualizationManager;
 import dev.engine_room.flywheel.lib.model.baked.PartialModel;
 import net.createmod.catnip.render.CachedBuffers;
 import net.createmod.catnip.render.SuperByteBuffer;
@@ -49,10 +48,6 @@ public class VariableTransmissionRenderer extends WhiteKineticBlockEntityRendere
     @Override
     protected void renderSafe(VariableTransmissionBlockEntity be, float partialTicks, PoseStack ms,
                               MultiBufferSource buffer, int light, int overlay) {
-        if (VisualizationManager.supportsVisualization(be.getLevel())) {
-            return;
-        }
-
         BlockState state = getRenderedBlockState(be);
         Direction.Axis axis = state.getValue(BlockStateProperties.AXIS);
         float angle = getAngleForBe(be, be.getBlockPos(), axis);
