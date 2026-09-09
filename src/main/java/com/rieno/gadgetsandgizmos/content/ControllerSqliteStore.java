@@ -202,6 +202,10 @@ final class ControllerSqliteStore {
     private record ControllerIndexData(String id, String dimension, CompoundTag controllerData) {
     }
 
+    // Identify one durable SCM state snapshot and its controller manifest.
+    record ScmPersistenceBinding(UUID scmId, String manifestId) {
+    }
+
     // Store controller write state
     private record ControllerWriteState(
             String kind,
@@ -349,6 +353,99 @@ final class ControllerSqliteStore {
         } catch (SQLException err) {
             Create.LOGGER.warn("Failed to load controller {} from SQLite", manifestId, err);
             return null;
+        }
+    }
+
+    // Find an SCM manifest by its durable SCM id, or unambiguously by its retained sublevel.
+    static synchronized @Nullable ScmPersistenceBinding findScmPersistence(
+            @Nullable Level level,
+            @Nullable UUID subLevelId,
+            @Nullable UUID scmId
+    ) {
+        Connection connection = connection(level);
+        if (connection == null) {
+            return null;
+        }
+        try {
+            if (scmId != null) {
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        SELECT scm_uuid, manifest_id
+                        FROM scm_persistence
+                        WHERE scm_uuid = ?
+                        """)) {
+                    statement.setString(1, scmId.toString());
+                    try (ResultSet res = statement.executeQuery()) {
+                        if (res.next()) {
+                            UUID storedId = parseUuid(res.getString("scm_uuid"));
+                            String manifestId = res.getString("manifest_id");
+                            if (storedId != null && manifestId != null && !manifestId.isBlank()) {
+                                return new ScmPersistenceBinding(storedId, manifestId);
+                            }
+                        }
+                    }
+                }
+            }
+            if (subLevelId == null) {
+                return null;
+            }
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    SELECT scm_uuid, manifest_id
+                    FROM scm_persistence
+                    WHERE sublevel_id = ?
+                    ORDER BY updated_at DESC
+                    LIMIT 2
+                    """)) {
+                statement.setString(1, subLevelId.toString());
+                try (ResultSet res = statement.executeQuery()) {
+                    if (!res.next()) {
+                        return null;
+                    }
+                    UUID storedId = parseUuid(res.getString("scm_uuid"));
+                    String manifestId = res.getString("manifest_id");
+                    // More than one SCM on a hull is ambiguous; never restore
+                    // another module's graph merely because it was most recent.
+                    if (res.next() || storedId == null || manifestId == null || manifestId.isBlank()) {
+                        return null;
+                    }
+                    return new ScmPersistenceBinding(storedId, manifestId);
+                }
+            }
+        } catch (SQLException err) {
+            Create.LOGGER.warn("Failed to find SCM persistence in SQLite", err);
+            return null;
+        }
+    }
+
+    // Bind a durable SCM identity to its current sublevel and SQLite manifest.
+    static synchronized boolean saveScmPersistence(
+            @Nullable Level level,
+            @Nullable UUID subLevelId,
+            @Nullable UUID scmId,
+            String manifestId
+    ) {
+        if (subLevelId == null || scmId == null || manifestId == null || manifestId.isBlank()) {
+            return false;
+        }
+        Connection connection = connection(level);
+        if (connection == null) {
+            return false;
+        }
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO scm_persistence(scm_uuid, sublevel_id, manifest_id, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(scm_uuid) DO UPDATE SET
+                    sublevel_id = excluded.sublevel_id,
+                    manifest_id = excluded.manifest_id,
+                    updated_at = excluded.updated_at
+                """)) {
+            statement.setString(1, scmId.toString());
+            statement.setString(2, subLevelId.toString());
+            statement.setString(3, manifestId);
+            statement.setString(4, Instant.now().toString());
+            return statement.executeUpdate() > 0;
+        } catch (SQLException err) {
+            Create.LOGGER.warn("Failed to save SCM persistence to SQLite", err);
+            return false;
         }
     }
 
@@ -736,7 +833,7 @@ final class ControllerSqliteStore {
                 deleteGraphImages(connection, "linker", linkerId, null);
                 int copied;
                 try (PreparedStatement statement = connection.prepareStatement("""
-                        // ------------------------------------GRAPH COPY------------------------------------
+                        -- ------------------------------------GRAPH COPY------------------------------------
                         INSERT INTO graphs (
                             id, owner_type, owner_id, graph_role, graph_name, revision,
                             graph_json, graph_nbt, content_hash, needs_compilation, updated_at
@@ -760,7 +857,7 @@ final class ControllerSqliteStore {
                     return false;
                 }
                 try (PreparedStatement statement = connection.prepareStatement("""
-                        // ------------------------------------IMAGE COPY------------------------------------
+                        -- ------------------------------------IMAGE COPY------------------------------------
                         INSERT INTO graph_images (
                             owner_type, owner_id, graph_role, asset_id,
                             media_type, base64_data, updated_at
@@ -776,7 +873,7 @@ final class ControllerSqliteStore {
                     statement.executeUpdate();
                 }
                 try (PreparedStatement statement = connection.prepareStatement("""
-                        // ------------------------------------LINKER ASSIGNMENT------------------------------------
+                        -- ------------------------------------LINKER ASSIGNMENT------------------------------------
                         UPDATE linkers
                         SET controller_id = ?, selected_graph_id = ?, revision = revision + 1,
                             updated_at = ?
@@ -1127,6 +1224,18 @@ final class ControllerSqliteStore {
                         manifest_json TEXT NOT NULL DEFAULT '',
                         controller_data_nbt BLOB
                     )
+                    """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS scm_persistence (
+                        scm_uuid TEXT PRIMARY KEY,
+                        sublevel_id TEXT NOT NULL,
+                        manifest_id TEXT NOT NULL,
+                        updated_at TEXT NOT NULL DEFAULT ''
+                    )
+                    """);
+            statement.execute("""
+                    CREATE INDEX IF NOT EXISTS scm_persistence_sublevel
+                    ON scm_persistence(sublevel_id, updated_at DESC)
                     """);
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS linkers (

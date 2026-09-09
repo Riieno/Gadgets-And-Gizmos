@@ -975,6 +975,7 @@
   "createthrusters.advanced_controller.node.ship_follow.summary": "Continuously follows a moving set of world coordinates while maintaining the requested distance, with optional world and sub-level collision avoidance.",
   "createthrusters.advanced_controller.node.ship_stop.summary": "Releases automatic ship control and gives the mapped propulsion inputs back to their normal controllers.",
   "createthrusters.advanced_controller.node.ship_telemetry.summary": "Reports motion plus ship-relative collision clearance against world blocks and other Sable sub-levels.",
+  "createthrusters.advanced_controller.node.scm_brain_debug.summary": "Reports the SCM autopilot's complete live decision state, route ownership, guidance, traffic priority, collision response, speed plan, control demand, and schedule planner data.",
   "createthrusters.advanced_controller.node.shipping_travel_metrics.summary": "Reports the active Shipping Schedule's driver, route, stops, ETA, fuel reserve, and live travel metrics.",
   "createthrusters.advanced_controller.node.shipping_manifest.summary": "Reports the current Shipping Schedule route and its upcoming Ship Dock stops as structured data.",
   "createthrusters.advanced_controller.node.shipping_pause.summary": "Pauses the active Shipping Schedule and stops the autopilot where it is.",

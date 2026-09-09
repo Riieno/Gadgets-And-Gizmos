@@ -16,6 +16,9 @@ import com.rieno.gadgetsandgizmos.content.AccDisplayBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerData;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerItem;
 import com.rieno.gadgetsandgizmos.content.ControllerManifestStore;
+import com.rieno.gadgetsandgizmos.content.ScmConfigurationProfile;
+import com.rieno.gadgetsandgizmos.content.ShippingScheduleGraph;
+import com.rieno.gadgetsandgizmos.content.ShippingScheduleScratchBlocks;
 import com.rieno.gadgetsandgizmos.compat.create.CreateRotationSpeedControllerGraphCompat;
 import com.rieno.gadgetsandgizmos.compat.simulated.ContraptionDiagramControllerCompat;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
@@ -34,6 +37,9 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphSelection;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphTemplates;
 import com.rieno.gadgetsandgizmos.lib.graph.render.GraphWireGeometry;
 import com.rieno.gadgetsandgizmos.lib.graph.edit.GraphNodeAlias;
+import com.rieno.gadgetsandgizmos.lib.client.scratch.ScratchBlockSurface;
+import com.rieno.gadgetsandgizmos.lib.scratch.ScratchBlockDefinition;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmOrientation;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphValidator;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphVersionHistory;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementStyle;
@@ -47,6 +53,7 @@ import com.rieno.gadgetsandgizmos.lib.display.DisplayWidgetProjection;
 import com.rieno.gadgetsandgizmos.lib.display.ShipInformationDisplayModes;
 import com.rieno.gadgetsandgizmos.neoforge.ControllerGraphWebServer;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedContraptionControllerGraphPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphSnapshotPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerProfilerPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedHudImageUploadPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AnalogueContraptionControllerDiscoveryRequestPayload;
@@ -71,9 +78,11 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtUtils;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
@@ -86,6 +95,7 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.items.SlotItemHandler;
@@ -102,8 +112,10 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -187,7 +199,32 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private static final int SHARE_MODAL_HEIGHT = 238;
     private static final int TOOLS_MENU_WIDTH = 148;
     private static final int TOOLS_MENU_ROW_HEIGHT = 20;
-    private static final int TOOLS_MENU_ROWS = 8;
+    private static final int TOOLS_MENU_ROWS = 9;
+    private static final int SCM_CONFIGURATION_MODAL_WIDTH = 920;
+    private static final int SCM_CONFIGURATION_MODAL_HEIGHT = 536;
+    private static final int SCM_CONFIGURATION_VIEW_WIDTH = 560;
+    private static final int SCM_CONFIGURATION_VIEW_HEIGHT = 404;
+    private static final int SCM_CONFIGURATION_FILTER_HEIGHT = 24;
+    private static final int SCM_CONFIGURATION_DROPDOWN_VISIBLE_ROWS = 8;
+    private static final int SCM_SIMULATION_SIDEBAR_WIDTH = 286;
+    private static final int SCHEDULE_PALETTE_ROW_HEIGHT = 23;
+    // ACC screens use a deliberately readable working scale. This only
+    // changes the in-memory option and is restored when the ACC UI closes.
+    // This is intentionally independent of the current Main Graph contents.
+    // Configuration must expose every physical command channel even before the
+    // matching graph node has been authored. Auto is an explicit group whose
+    // members remain eligible for automatic allocation on every SCM action.
+    private static final List<String> SCM_CALIBRATION_ACTIONS = List.of(
+            ScmConfigurationProfile.AUTO_ACTION,
+            ScmConfigurationProfile.ACCELERATION_ACTION,
+            "ship_forward", "ship_backward",
+            "ship_strafe", "ship_strafe_left", "ship_strafe_right",
+            "ship_ascend", "ship_descend",
+            "ship_yaw", "ship_yaw_right", "ship_yaw_left",
+            "ship_pitch", "ship_pitch_up", "ship_pitch_down",
+            "ship_roll", "ship_roll_right", "ship_roll_left",
+            "ship_decelerate", "ship_brake");
+    private static final String SCM_BLACKLISTED_GROUP_ID = "__scm_blacklisted";
     private static final int FREQUENCY_MODAL_WIDTH = 228;
     private static final int FREQUENCY_MODAL_HEIGHT = 336;
     private static final int FREQUENCY_MODAL_BASE_X = 34;
@@ -401,6 +438,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private EditBox optionDropdownSearch;
     // Current inspector value
     private EditBox inspectorValue;
+    // Inline SCM workspace vehicle-name editor
+    private EditBox scmVehicleName;
     // Current pan x
     private double panX = 150;
     // Current pan y
@@ -417,8 +456,70 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private int inspectorOptionsScroll;
     // Current inspector targets scroll
     private int inspectorTargetsScroll;
+    // Current inspector variable browser scroll. Options and targets each
+    // have independent scroll positions because their panes are resizable.
+    private int inspectorVariablesScroll;
     // Active function id
     private String activeFunctionId;
+    // Dedicated SCM graph overview. It is a separate authoring surface which
+    // exposes the action-function bindings invoked by SCM nodes in Main Graph.
+    private boolean scmGraphOverview;
+    // The Schedule tab is a host-only Scratch presentation over a separate
+    // AdvancedGraphDocument. It never becomes a global graph-editor mode.
+    private boolean scheduleGraphOverview;
+    private AdvancedGraphDocument scheduleDraft;
+    private AdvancedGraphDocument savedScheduleDraft;
+    private String selectedScheduleBlock;
+    // The Schedule workspace keeps its own complete selection set. The
+    // ordinary graph selection belongs to Main Graph and must not leak into
+    // this host-only Scratch presentation.
+    private final Set<String> selectedScheduleBlocks = new LinkedHashSet<>();
+    private final List<AdvancedGraphDocument.Node> scheduleClipboard = new ArrayList<>();
+    private final List<AdvancedGraphDocument.Edge> scheduleClipboardEdges = new ArrayList<>();
+    private int schedulePaletteScroll;
+    private ScratchBlockSurface.Layout scheduleLayout;
+    private EditBox schedulePropertyValue;
+    private EditBox scheduleInlinePropertyValue;
+    private String selectedScheduleProperty;
+    private boolean syncingScheduleProperty;
+    private String schedulePropertyEditorNode = "";
+    private String schedulePropertyEditorKey = "";
+    private String scheduleInlinePropertyEditorNode = "";
+    private String scheduleInlinePropertyEditorKey = "";
+    private boolean editingScheduleInlineProperty;
+    private boolean scheduleParameterEditor;
+    private UiRect schedulePropertyDropdownBounds;
+    private List<SchedulePropertyChoice> schedulePropertyDropdownChoices = List.of();
+    private String schedulePropertyDropdownNode = "";
+    private String schedulePropertyDropdownKey = "";
+    private int schedulePropertyScroll;
+    // Height of the Schedule property section; this uses the same draggable
+    // divider treatment as the main graph inspector.
+    private int scheduleInspectorPropertiesHeight;
+    private double schedulePanX = 24.0D;
+    private double schedulePanY = 12.0D;
+    private double scheduleZoom = 1.0D;
+    private boolean schedulePanning;
+    private String draggingScheduleBlock;
+    private boolean draggingScheduleBlockMoved;
+    private boolean scheduleMarquee;
+    private boolean scheduleMarqueeAdditive;
+    private double scheduleMarqueeStartX;
+    private double scheduleMarqueeStartY;
+    private double scheduleMarqueeCurrentX;
+    private double scheduleMarqueeCurrentY;
+    private boolean draggingScheduleMinimapViewport;
+    private double scheduleMinimapDragOffsetX;
+    private double scheduleMinimapDragOffsetY;
+    private AdvancedControllerMinimapGeometry.Transform scheduleMinimapDragTransform;
+    // SCM owns its two workspace sidebars. These are intentionally separate
+    // from the Main Graph node-library and inspector collapse preferences.
+    private boolean scmSimulationSidebarCollapsed;
+    private boolean scmConfigurationSidebarCollapsed;
+    // Full simulation readout scroll position and live-preview marker toggles.
+    private int scmSimulationSidebarScroll;
+    private boolean scmShowCenterOfMass;
+    private boolean scmShowCenterOfLift;
     // Current function tab scroll
     private int functionTabScroll;
     // Current editing function id
@@ -465,6 +566,86 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private boolean shareModalOpen;
     // Tracks whether tools menu is open
     private boolean toolsMenuOpen;
+    // Tracks whether the SCM calibration/configuration modal is open.
+    private boolean scmConfigurationOpen;
+    // A focused live-assembly picker for the two data nodes. Its result is
+    // stored as ordinary TargetData on the node, so it persists with the ACC
+    // graph and remaps with schematics/sub-level moves.
+    private boolean scmBlockPickerOpen;
+    private String scmBlockPickerNodeId = "";
+    private ScmLiveSubLevelPreviewRenderer.PickTarget scmBlockPickerSelected;
+    private final Set<ScmLiveSubLevelPreviewRenderer.Filter> scmBlockPickerFilters =
+            EnumSet.of(ScmLiveSubLevelPreviewRenderer.Filter.ALL);
+    private final Set<ScmLiveSubLevelPreviewRenderer.Filter> scmBlockPickerWireframeExcludedFilters =
+            EnumSet.noneOf(ScmLiveSubLevelPreviewRenderer.Filter.class);
+    private boolean scmBlockPickerFiltersDropdownOpen;
+    private boolean scmBlockPickerWireframeFiltersDropdownOpen;
+    private boolean scmBlockPickerWireframe;
+    // Whether the server is currently performing a discovery-only SCM scan.
+    private boolean scmConfigurationScanning;
+    // Server supplied status for the SCM configuration workflow.
+    private String scmConfigurationStatus = "";
+    // Server-authoritative live simulation values displayed on the SCM tab.
+    // Each entry uses the same { Type, Payload } shape as a graph value.
+    private final Map<String, CompoundTag> scmSimulationTelemetry = new LinkedHashMap<>();
+    // Working copy of the persistent configuration profile.
+    private ScmConfigurationProfile scmConfigurationProfile = ScmConfigurationProfile.empty();
+    private ScmOrientation scmDefaultOrientation = ScmOrientation.fromMount(Direction.NORTH, Direction.UP);
+    private static final int SCM_ORIENTATION_HEIGHT = 48;
+    private static final int SCM_FORWARD_COLOR = 0xFF529BFF;
+    private static final int SCM_UP_COLOR = 0xFF65EB91;
+    // Local profile edits wait for the explicit Save calibration action. Polling
+    // snapshots must not replace that working copy with the older server copy.
+    private boolean scmConfigurationDirty;
+    // A save is acknowledged by the next matching authoritative snapshot.
+    private boolean scmConfigurationSavePending;
+    // Known SCM bindings. The live preview supplies all other selectable
+    // blocks, which are added here as the player selects them.
+    private final List<ScmConfigurationProfile.UnitReference> scmConfigurationCandidates = new ArrayList<>();
+    // Temporary visual selection used to form one action group or blacklist.
+    private final Set<ScmConfigurationProfile.UnitReference> scmConfigurationSelection = new LinkedHashSet<>();
+    // Current action to receive the selected unit group.
+    private int scmConfigurationActionIndex;
+    // Auto dynamically keeps a directional-redstone side when appropriate;
+    // Block always binds the whole target; Face makes one physical side
+    // independently addressable.
+    private ScmControlBindingMode scmConfigurationControlBindingMode = ScmControlBindingMode.AUTO;
+    private Direction scmConfigurationInputFace;
+    private boolean scmConfigurationControlModeDropdownOpen;
+    private boolean scmConfigurationFaceDropdownOpen;
+    // Root plus every connected body that makes up the live calibration craft.
+    private UUID scmConfigurationRootSubLevelId;
+    private final List<UUID> scmConfigurationViewSubLevelIds = new ArrayList<>();
+    // Raw block-model preview of the actual loaded Sable bodies. This is not a
+    // schematic or a contraption diagram.
+    private final ScmLiveSubLevelPreviewRenderer scmLivePreviewRenderer =
+            new ScmLiveSubLevelPreviewRenderer();
+    // Calibration selection browser state.
+    private boolean scmConfigurationTargetDropdownOpen;
+    private int scmConfigurationTargetDropdownScroll;
+    private int scmConfigurationListScroll;
+    // The SCM assignment sidebar becomes a vertically scrollable document on
+    // small GUI resolutions. Its actuator-group list retains its own row
+    // scroll for large craft once the surrounding controls fit.
+    private int scmConfigurationSidebarScroll;
+    // Specific preview filters compose as a union. All is the default complete
+    // view and is mutually exclusive with the specific filters.
+    private final Set<ScmLiveSubLevelPreviewRenderer.Filter> scmConfigurationFilters =
+            EnumSet.of(ScmLiveSubLevelPreviewRenderer.Filter.ALL);
+    // The compact filter menu owns its own raised layer above the 3D preview.
+    private boolean scmConfigurationFiltersDropdownOpen;
+    private boolean scmConfigurationWireframe;
+    private final Set<ScmLiveSubLevelPreviewRenderer.Filter> scmConfigurationWireframeExcludedFilters =
+            EnumSet.noneOf(ScmLiveSubLevelPreviewRenderer.Filter.class);
+    private boolean scmConfigurationWireframeFiltersDropdownOpen;
+    // Group summaries start collapsed so a large calibrated craft remains
+    // readable; expanding one reveals its actual assigned blocks.
+    private final Set<String> scmConfigurationCollapsedGroups = new LinkedHashSet<>();
+    private boolean scmConfigurationGroupStateInitialized;
+    private int scmConfigurationLastSelectionIndex = -1;
+    // Snapshot polling makes initial automatic discovery appear in-place without
+    // a player-facing scan or refresh button.
+    private int scmConfigurationSnapshotTicks;
     // Current linker x
     private int linkerX;
     // Current linker y
@@ -738,6 +919,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             collapsedCategories.remove("core");
         }
         draft = menu.getInitialDraft();
+        scheduleDraft = menu.getInitialShippingScheduleDraft();
+        ShippingScheduleGraph.ensureTemplate(scheduleDraft);
+        savedScheduleDraft = scheduleDraft.copy();
         restoreViewport();
         migrateSplitListNodes(draft);
         migrateHudNodes(draft);
@@ -831,6 +1015,20 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     @Override
     protected void containerTick() {
         super.containerTick();
+        applyAccGuiScale();
+        refreshShippingScheduleSnapshot();
+        if (scmGraphOverview && !hasScmWorkspace()) {
+            selectGraphTab(null);
+        }
+        if (scheduleGraphOverview && !hasShippingScheduleWorkspace()) {
+            selectGraphTab(null);
+        }
+        if ((scmConfigurationOpen || scmGraphOverview)
+                && (++scmConfigurationSnapshotTicks >= 10)) {
+            scmConfigurationSnapshotTicks = 0;
+            sendScmConfiguration(scmConfigurationRootSubLevelId == null
+                    ? "scm_configuration_open" : "scm_configuration_refresh", new CompoundTag());
+        }
         detectLinkerSlotChanges();
         reportProfilerSample();
         syncFrequencyNode();
@@ -931,6 +1129,39 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         ControllerGraphWebServer.publishOpenGraph(name, draft, draft.simulationFingerprint());
     }
 
+    // Adopt the asynchronous schedule part of the same graph snapshot used by
+    // Main Graph. A menu can be constructed before its compressed snapshot has
+    // arrived; without this refresh, a valid legacy schedule remained blank
+    // for the entire open screen.
+    private void refreshShippingScheduleSnapshot() {
+        AdvancedControllerGraphSnapshotPayload.GraphSnapshot snapshot =
+                AdvancedControllerGraphSnapshotPayload.latestClientSnapshot(
+                        menu.getContentPos(), menu.getContentSubLevelId());
+        if (snapshot == null) return;
+        AdvancedGraphDocument incoming = AdvancedGraphDocument.fromTag(snapshot.scheduleDraft());
+        if (incoming.nodes().isEmpty()) return;
+        ShippingScheduleGraph.ensureTemplate(incoming);
+        int currentRevision = savedScheduleDraft == null ? Integer.MIN_VALUE : savedScheduleDraft.revision();
+        if (scheduleDraft != null && !scheduleDraft.nodes().isEmpty()
+                && incoming.revision() < currentRevision) {
+            return;
+        }
+        if (scheduleDraft != null && !scheduleDraft.nodes().isEmpty()
+                && incoming.revision() == currentRevision) {
+            return;
+        }
+        scheduleDraft = incoming;
+        savedScheduleDraft = incoming.copy();
+        if (selectedScheduleBlock != null && scheduleNode(selectedScheduleBlock) == null) {
+            selectedScheduleBlock = null;
+        }
+        selectedScheduleBlocks.removeIf(id -> scheduleNode(id) == null);
+        if (selectedScheduleBlock == null) {
+            selectedScheduleBlock = selectedScheduleBlocks.stream().findFirst().orElse(null);
+        }
+        clearGraphRenderCache();
+    }
+
     // Initialize the advanced contraption controller
     @Override
     protected void init() {
@@ -960,7 +1191,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             nodeSearch.setTextColor(AdvancedControllerV2Theme.PRIMARY);
             nodeSearch.setTextColorUneditable(AdvancedControllerV2Theme.MUTED);
         }
-        nodeSearch.setVisible(!leftSidebarCollapsed && !blockBrowserOpen);
+        nodeSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview
+                && !leftSidebarCollapsed && !blockBrowserOpen);
         nodeSearch.setResponder(val -> browserScroll = 0);
         addRenderableWidget(nodeSearch);
 
@@ -971,7 +1203,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             blockSearch.setTextColor(AdvancedControllerV2Theme.PRIMARY);
             blockSearch.setTextColorUneditable(AdvancedControllerV2Theme.MUTED);
         }
-        blockSearch.setVisible(!leftSidebarCollapsed && blockBrowserOpen);
+        blockSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview
+                && !leftSidebarCollapsed && blockBrowserOpen);
         blockSearch.setResponder(val -> blockBrowserScroll = 0);
         addRenderableWidget(blockSearch);
 
@@ -1004,6 +1237,30 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         inspectorValue.setVisible(false);
         inspectorValue.setResponder(this::updateNodeProperty);
         addRenderableWidget(inspectorValue);
+
+        scmVehicleName = new EditBox(font, 0, 0, 120, 18, Component.literal("Vehicle name"));
+        scmVehicleName.setMaxLength(64);
+        scmVehicleName.setVisible(false);
+        addRenderableWidget(scmVehicleName);
+
+        // The Schedule tab uses the same ACC inspector shell. Its value editor
+        // writes the selected block's real ScheduleDataEntry data, rather than
+        // maintaining a separate Scratch-only property store.
+        schedulePropertyValue = new EditBox(font, graphRight() + 8, 118,
+                Math.max(48, RIGHT_WIDTH - 16), 18, Component.literal("Schedule property"));
+        schedulePropertyValue.setMaxLength(256);
+        schedulePropertyValue.setVisible(false);
+        schedulePropertyValue.setResponder(this::updateScheduleProperty);
+        addRenderableWidget(schedulePropertyValue);
+
+        scheduleInlinePropertyValue = new EditBox(font, 0, 0, 70, 16,
+                Component.literal("Block property"));
+        scheduleInlinePropertyValue.setMaxLength(128);
+        scheduleInlinePropertyValue.setBordered(false);
+        scheduleInlinePropertyValue.setTextColor(0xFF263545);
+        scheduleInlinePropertyValue.setVisible(false);
+        scheduleInlinePropertyValue.setResponder(this::updateScheduleProperty);
+        addRenderableWidget(scheduleInlinePropertyValue);
 
         hudText = new EditBox(font, 0, 0, 160, 18, Component.literal("Widget text"));
         hudText.setVisible(false);
@@ -1148,7 +1405,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
         List<String> labels = List.of(
                 "Validate", "Revert", "Reset Graph", saveOnCloseLabel(), graphV2Label(),
-                "Function Plotter", "Templates", "Versions");
+                "Function Plotter", "SCM Workspace", "Templates", "Versions");
         for (int row = 0; row < labels.size(); row++) {
             UiRect item = toolsMenuRowBounds(row);
             renderAdvancedButton(graphics, font, item.x(), item.y(), item.width(), item.height(),
@@ -1178,8 +1435,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 }
                 case 4 -> setGraphV2Enabled(!v2Ui);
                 case 5 -> openFunctionPlotter();
-                case 6 -> templatePicker = true;
-                case 7 -> toggleGraphHistory();
+                case 6 -> openScmConfiguration();
+                case 7 -> templatePicker = true;
+                case 8 -> toggleGraphHistory();
                 default -> {
                 }
             }
@@ -1199,6 +1457,35 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Open the function plotter from tablet
     public void openFunctionPlotterFromTablet() {
         openFunctionPlotter();
+    }
+
+    // Open the persistent SCM workspace and request its current
+    // server-authoritative profile and live body metadata. Opening this view
+    // never scans, freezes, or pulses an assembled ship.
+    private void openScmConfiguration() {
+        selectScmGraphTab();
+    }
+
+    private void beginScmConfigurationWorkspace() {
+        scmConfigurationOpen = false;
+        scmConfigurationSelection.clear();
+        scmConfigurationListScroll = 0;
+        scmConfigurationSidebarScroll = 0;
+        scmConfigurationTargetDropdownScroll = 0;
+        scmConfigurationFilters.clear();
+        scmConfigurationFilters.add(ScmLiveSubLevelPreviewRenderer.Filter.ALL);
+        scmLivePreviewRenderer.setVisibleFilters(scmConfigurationFilters);
+        scmConfigurationWireframeExcludedFilters.clear();
+        scmConfigurationWireframeFiltersDropdownOpen = false;
+        scmLivePreviewRenderer.setWireframeExcludedFilters(scmConfigurationWireframeExcludedFilters);
+        scmConfigurationCollapsedGroups.clear();
+        scmConfigurationGroupStateInitialized = false;
+        scmConfigurationControlBindingMode = ScmControlBindingMode.AUTO;
+        scmConfigurationInputFace = null;
+        scmConfigurationControlModeDropdownOpen = false;
+        scmConfigurationFaceDropdownOpen = false;
+        scmConfigurationSnapshotTicks = 0;
+        sendScmConfiguration("scm_configuration_open", new CompoundTag());
     }
 
     // Toggle the graph history panel
@@ -1733,9 +2020,20 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         prepareGraphRenderCache();
         layoutHudWidgets();
         ensureSidebarFit();
+        if (scmVehicleName != null && !scmGraphOverview && !scmConfigurationOpen) {
+            scmVehicleName.setVisible(false);
+        }
         graphics.fill(layoutLeft(), 0, layoutRight(), height,
                 v2Ui ? AdvancedControllerV2Theme.CANVAS_BACKGROUND : 0xFF10141C);
-        if (graphRight() > graphLeft()) {
+        if (scmGraphOverview) {
+            drawScmGraphWorkspace(graphics, mouseX, mouseY);
+        } else if (scheduleGraphOverview) {
+            graphics.enableScissor(graphLeft(), graphTop(), graphRight(), graphBottom());
+            drawScheduleGrid(graphics);
+            drawShippingScheduleWorkspace(graphics, mouseX, mouseY);
+            graphics.disableScissor();
+            drawScheduleCanvasOverlay(graphics);
+        } else if (graphRight() > graphLeft()) {
             graphics.enableScissor(graphLeft(), graphTop(), graphRight(), graphBottom());
             drawGrid(graphics);
             drawGroups(graphics);
@@ -1746,16 +2044,25 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             drawGraphFps(graphics);
             graphics.disableScissor();
         }
-        if (v2Ui) {
+        // The minimap, zoom/NODES readout and canvas reset controls belong to
+        // the editable graph canvas only. SCM is a live 3D workspace.
+        if (v2Ui && !scmGraphOverview && !scheduleGraphOverview) {
             drawV2CanvasOverlay(graphics);
         }
 
         drawToolbar(graphics);
         drawGraphTabs(graphics, mouseX, mouseY);
-        drawLeftBrowser(graphics, mouseX, mouseY);
-        drawInspector(graphics);
-        drawSidebarHandles(graphics);
-        if (toolsMenuOpen) drawToolsMenu(graphics, mouseX, mouseY);
+        if (scmGraphOverview) {
+            drawScmSimulationSidebar(graphics);
+        } else if (scheduleGraphOverview) {
+            drawScheduleLibrary(graphics, mouseX, mouseY);
+            drawScheduleInspector(graphics, mouseX, mouseY);
+            drawSidebarHandles(graphics);
+        } else {
+            drawLeftBrowser(graphics, mouseX, mouseY);
+            drawInspector(graphics);
+            drawSidebarHandles(graphics);
+        }
         if (linkerOpen) drawLinkerWindow(graphics, mouseX, mouseY);
         if (shareModalOpen) drawShareWindow(graphics, mouseX, mouseY);
         if (templatePicker) drawTemplatePicker(graphics, mouseX, mouseY);
@@ -1764,6 +2071,1539 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (miniBrowser != null) drawMiniBrowser(graphics, mouseX, mouseY);
         if (hudOpen) drawHud(graphics, mouseX, mouseY);
         if (frequencyModalOpen) drawFrequencyModal(graphics, mouseX, mouseY);
+    }
+
+    // Draw the SCM calibration workspace around the actual loaded Sable bodies.
+    private void drawScmConfiguration(GuiGraphics graphics, int mouseX, int mouseY) {
+        UiRect bounds = scmConfigurationBounds();
+        boolean workspace = scmConfigurationWorkspace();
+        if (!workspace) {
+            graphics.fill(0, 0, width, height, 0xA8000000);
+        }
+        if (workspace) {
+            graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(), v2Ui
+                    ? AdvancedControllerV2Theme.CANVAS_BACKGROUND : 0xFF10141C);
+        } else if (v2Ui) {
+            AdvancedControllerV2Theme.drawRoundedRect(graphics, bounds.x(), bounds.y(),
+                    bounds.width(), bounds.height(), 8, AdvancedControllerV2Theme.BORDER_STRONG);
+            AdvancedControllerV2Theme.drawRoundedRect(graphics, bounds.x() + 1, bounds.y() + 1,
+                    bounds.width() - 2, bounds.height() - 2, 7,
+                    AdvancedControllerV2Theme.PANEL_BACKGROUND);
+            AdvancedControllerV2Theme.drawRoundedRect(graphics, bounds.x() + 1, bounds.y() + 1,
+                    bounds.width() - 2, 34, 7, AdvancedControllerV2Theme.PANEL_RAISED);
+        } else {
+            renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        }
+        if (!workspace) {
+        graphics.drawString(font, "SCM Calibration", bounds.x() + 16, bounds.y() + 12,
+                v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFFE0EDF4, false);
+        graphics.drawString(font, "Configure groups, then let the SCM graph drive them.",
+                bounds.x() + 16, bounds.y() + 24,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
+        graphics.drawString(font, "×", bounds.x() + bounds.width() - 20, bounds.y() + 11,
+                v2Ui ? AdvancedControllerV2Theme.DANGER : 0xFFE0A0A0, false);
+
+        }
+        UiRect viewBounds = scmConfigurationViewBounds(bounds);
+        int viewX = viewBounds.x();
+        int viewY = viewBounds.y();
+        int viewWidth = viewBounds.width();
+        int viewHeight = viewBounds.height();
+        UiRect previewBounds = scmConfigurationPreviewBounds(bounds);
+        graphics.fill(viewX, viewY, viewX + viewWidth,
+                viewY + viewHeight, 0xFF081017);
+        drawScmPreviewFilters(graphics, viewX, viewY, viewWidth, mouseX, mouseY);
+        drawScmOrientationControls(graphics, viewBounds, mouseX, mouseY);
+        scmLivePreviewRenderer.setBodies(scmConfigurationRootSubLevelId,
+                scmConfigurationViewSubLevelIds);
+        scmLivePreviewRenderer.setVisibleFilters(scmConfigurationFilters);
+        scmLivePreviewRenderer.setWireframe(scmConfigurationWireframe);
+        scmLivePreviewRenderer.setWireframeExcludedFilters(scmConfigurationWireframeExcludedFilters);
+        if (scmConfigurationRootSubLevelId == null
+                || !scmLivePreviewRenderer.render(graphics, previewBounds.x(), previewBounds.y(),
+                previewBounds.width(), previewBounds.height(),
+                minecraft == null ? 0.0F : minecraft.getTimer().getGameTimeDeltaPartialTick(false),
+                scmConfigurationHighlights(), scmConfigurationMarkers())) {
+            graphics.drawCenteredString(font, scmConfigurationScanning
+                            ? "Loading the live craft view…"
+                            : "The parent sub-level is not loaded on this client.",
+                    previewBounds.x() + previewBounds.width() / 2,
+                    previewBounds.y() + previewBounds.height() / 2 - 6,
+                    v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8);
+            graphics.drawCenteredString(font, "Open this while the assembled craft is in range.",
+                    previewBounds.x() + previewBounds.width() / 2,
+                    previewBounds.y() + previewBounds.height() / 2 + 8,
+                    v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF637A8C);
+        }
+        graphics.renderOutline(viewX, viewY, viewWidth,
+                viewHeight,
+                v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF344A5C);
+        graphics.drawString(font, "Live 3D sub-level • left-drag orbit • right-drag pan • scroll zoom • click "
+                        + (scmConfigurationControlBindingMode == ScmControlBindingMode.FACE
+                        ? "block faces to select" : "blocks to select"),
+                viewX + 8, viewY + viewHeight - 14,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
+
+        if (scmConfigurationFiltersDropdownOpen) {
+            drawScmPreviewFilterDropdown(graphics, viewX, viewY, mouseX, mouseY);
+        }
+        if (scmConfigurationWireframeFiltersDropdownOpen) {
+            drawScmWireframeFilterDropdown(graphics, viewX, viewY, mouseX, mouseY,
+                    scmConfigurationWireframeExcludedFilters);
+        }
+
+        // The right SCM sidebar can collapse independently from the normal
+        // graph inspector, giving the 3D craft view the whole workspace.
+        if (!workspace || !scmConfigurationSidebarCollapsed) {
+        int panelX = viewBounds.right() + 14;
+        int panelWidth = bounds.right() - panelX - (workspace ? 8 : 14);
+        ScmConfigurationSidebarLayout sidebarLayout = scmConfigurationSidebarLayout(bounds, viewBounds);
+        int sidebarY = sidebarLayout.contentTop();
+        int controlsY = sidebarY + 94;
+        AdvancedContraptionControllerBlockEntity controller = activeScmController();
+        UiRect vehicleName = scmVehicleNameBounds(panelX, sidebarY, panelWidth);
+        if (controller != null && !scmVehicleName.isFocused()) {
+            scmVehicleName.setValue(controller.getShipName());
+        }
+        scmVehicleName.setPosition(vehicleName.x(), vehicleName.y());
+        scmVehicleName.setWidth(vehicleName.width());
+        scmVehicleName.setVisible(true);
+        graphics.enableScissor(panelX, sidebarLayout.viewportTop(), bounds.right(), sidebarLayout.viewportBottom());
+        graphics.drawString(font, "Vehicle Name", panelX, sidebarY + 2,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
+        drawScmButton(graphics, panelX, sidebarY + 36, panelWidth,
+                "Apply Vehicle Name", mouseX, mouseY);
+        boolean displayProgress = controller != null && controller.scmDisplayProgress();
+        graphics.drawString(font, "Display Progress", panelX, sidebarY + 61,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
+        drawScmButton(graphics, panelX, sidebarY + 74, panelWidth,
+                displayProgress ? "On" : "Off", mouseX, mouseY);
+        graphics.drawString(font, "Assign selected blocks", panelX, controlsY + 2,
+                v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFF91D9FF, false);
+        graphics.drawString(font, "SCM node / function", panelX, controlsY + 19,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
+        drawScmButton(graphics, panelX, controlsY + 33, panelWidth,
+                scmConfigurationTargetLabel(activeScmConfigurationAction()) + " ▾", mouseX, mouseY);
+        int controlModeY = controlsY + 71;
+        boolean faceMode = scmConfigurationControlBindingMode == ScmControlBindingMode.FACE;
+        graphics.drawString(font, "Control mode", panelX, controlsY + 57,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
+        drawScmButton(graphics, panelX, controlModeY, panelWidth,
+                scmConfigurationControlBindingMode.label() + " ▾", mouseX, mouseY);
+        int assignY = controlsY + 95;
+        int blacklistY = controlsY + 119;
+        int groupsLabelY = controlsY + 151;
+        int groupsY = controlsY + 164;
+        int saveY = sidebarY + sidebarLayout.contentHeight() - 26;
+        int groupsHeight = Math.max(72, saveY - groupsY - 30);
+        if (faceMode) {
+            graphics.drawString(font, "Control face", panelX, controlsY + 95,
+                    v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
+            drawScmButton(graphics, panelX, controlsY + 109, panelWidth,
+                    scmConfigurationFaceLabel() + " ▾", mouseX, mouseY);
+            assignY = controlsY + 133;
+            blacklistY = controlsY + 157;
+            groupsLabelY = controlsY + 189;
+            groupsY = controlsY + 202;
+            groupsHeight = Math.max(72, saveY - groupsY - 30);
+        }
+        drawScmButton(graphics, panelX, assignY, panelWidth,
+                "Assign " + scmConfigurationSelection.size() + " selected", mouseX, mouseY);
+        drawScmButton(graphics, panelX, blacklistY, panelWidth,
+                selectionIsBlacklisted() ? "Restore selected" : "Blacklist selected", mouseX, mouseY);
+        graphics.drawString(font, "Calibrated actuator groups", panelX, groupsLabelY,
+                v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFF91D9FF, false);
+        drawScmGroupList(graphics, panelX, groupsY, panelWidth, groupsHeight, mouseX, mouseY);
+        graphics.drawString(font, "Saved with ACC Save (Ctrl+S)", panelX, saveY + 5, 0xFF91A9B8, false);
+        if (!workspace) {
+            drawScmButton(graphics, panelX, saveY + 24, panelWidth, "Close", mouseX, mouseY);
+        }
+        graphics.disableScissor();
+        drawSidebarScrollTrack(graphics, bounds.right() - 5, sidebarLayout.viewportTop() + 2, 3,
+                Math.max(1, sidebarLayout.viewportBottom() - sidebarLayout.viewportTop() - 4),
+                sidebarLayout.contentHeight(), sidebarLayout.viewportHeight(),
+                scmConfigurationSidebarScroll);
+
+        // Dropdowns are a raised modal layer, not ordinary panel content. This
+        // keeps their rows above labels and buttons they temporarily cover.
+        graphics.pose().pushPose();
+        graphics.pose().translate(0.0F, 0.0F, 20.0F);
+        if (scmConfigurationTargetDropdownOpen) {
+            drawScmTargetDropdown(graphics, panelX, controlsY + 51, panelWidth, mouseX, mouseY);
+        }
+        if (scmConfigurationControlModeDropdownOpen) {
+            drawScmControlModeDropdown(graphics, panelX, controlsY + 89, panelWidth, mouseX, mouseY);
+        }
+        if (faceMode && scmConfigurationFaceDropdownOpen) {
+            drawScmFaceDropdown(graphics, panelX, controlsY + 127, panelWidth, mouseX, mouseY);
+        }
+        graphics.pose().popPose();
+        } else if (scmVehicleName != null) {
+            scmVehicleName.setVisible(false);
+        }
+        if (workspace) {
+            drawScmConfigurationSidebarHandle(graphics, bounds, viewBounds);
+        }
+        String previewStatus = scmLivePreviewRenderer.visibleBlockCount() + " / "
+                + scmLivePreviewRenderer.blockCount() + " craft blocks"
+                + (scmLivePreviewRenderer.truncated() ? " (preview limit reached)" : "")
+                + "  Gold = selected  Red = blacklisted";
+        graphics.drawString(font, previewStatus, viewX,
+                bounds.bottom() - 22, v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
+        graphics.drawString(font, trim(scmConfigurationStatus, 110), viewX,
+                bounds.bottom() - 10, v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFFB9CCD9, false);
+    }
+
+    private void drawScmButton(GuiGraphics graphics, int x, int y, int buttonWidth,
+                               String label, int mouseX, int mouseY) {
+        renderAdvancedButton(graphics, font, x, y, buttonWidth, 18,
+                Component.literal(label), inside(mouseX, mouseY, x, y, buttonWidth, 18), true);
+    }
+
+    private UiRect scmVehicleNameBounds(int panelX, int sidebarY, int panelWidth) {
+        return new UiRect(panelX, sidebarY + 14, panelWidth, 18);
+    }
+
+    // Draw the direct SCM block picker used by Get/Set Block Data.  This uses
+    // the same live sub-level renderer and ray picker as SCM calibration, but
+    // writes the selected block directly into the graph node's persisted target.
+    private void drawScmBlockPicker(GuiGraphics graphics, int mouseX, int mouseY) {
+        UiRect bounds = scmBlockPickerBounds();
+        UiRect preview = scmBlockPickerPreviewBounds(bounds);
+        graphics.fill(0, 0, width, height, 0xB8000000);
+        if (v2Ui) {
+            AdvancedControllerV2Theme.drawRoundedRect(graphics, bounds.x(), bounds.y(),
+                    bounds.width(), bounds.height(), 8, AdvancedControllerV2Theme.BORDER_STRONG);
+            AdvancedControllerV2Theme.drawRoundedRect(graphics, bounds.x() + 1, bounds.y() + 1,
+                    bounds.width() - 2, bounds.height() - 2, 7, AdvancedControllerV2Theme.PANEL_BACKGROUND);
+        } else {
+            renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        }
+        graphics.drawString(font, "Select Assembled Block", bounds.x() + 14, bounds.y() + 11,
+                v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFFE0EDF4, false);
+        graphics.drawString(font, "Select a block, then confirm the binding. Wireframe blocks click through.",
+                bounds.x() + 14, bounds.y() + 25,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
+        graphics.drawString(font, "x", bounds.right() - 17, bounds.y() + 11,
+                v2Ui ? AdvancedControllerV2Theme.DANGER : 0xFFE0A0A0, false);
+
+        UiRect toolbar = scmBlockPickerToolbarBounds(bounds);
+        drawScmBlockPickerFilters(graphics, toolbar.x(), toolbar.y(), toolbar.width(), mouseX, mouseY);
+        graphics.fill(preview.x(), preview.y(), preview.right(), preview.bottom(), 0xFF081017);
+        UUID rootSubLevelId = blockPickerRootSubLevelId();
+        scmLivePreviewRenderer.setBodies(rootSubLevelId,
+                rootSubLevelId == null ? List.of() : List.of(rootSubLevelId));
+        scmLivePreviewRenderer.setVisibleFilters(scmBlockPickerFilters);
+        scmLivePreviewRenderer.setWireframe(scmBlockPickerWireframe);
+        scmLivePreviewRenderer.setWireframeExcludedFilters(scmBlockPickerWireframeExcludedFilters);
+        List<ScmLiveSubLevelPreviewRenderer.Highlight> highlights = scmBlockPickerSelected == null ? List.of()
+                : List.of(new ScmLiveSubLevelPreviewRenderer.Highlight(scmBlockPickerSelected.subLevelId(),
+                        scmBlockPickerSelected.position(), 0xFFFFD44D));
+        if (rootSubLevelId == null || !scmLivePreviewRenderer.render(graphics,
+                preview.x(), preview.y(), preview.width(), preview.height(),
+                minecraft == null ? 0.0F : minecraft.getTimer().getGameTimeDeltaPartialTick(false), highlights)) {
+            graphics.drawCenteredString(font, scmConfigurationScanning
+                            ? "Loading the live craft view..."
+                            : "The assembled sub-level is not loaded on this client.",
+                    preview.x() + preview.width() / 2, preview.y() + preview.height() / 2 - 5,
+                    v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8);
+        }
+        graphics.renderOutline(preview.x(), preview.y(), preview.width(), preview.height(),
+                v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF344A5C);
+        String status = scmLivePreviewRenderer.visibleBlockCount() + " / "
+                + scmLivePreviewRenderer.blockCount() + " live blocks";
+        graphics.drawString(font, status, preview.x() + 7, preview.bottom() - 14,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
+        if (scmBlockPickerFiltersDropdownOpen) {
+            drawScmBlockPickerFilterDropdown(graphics, toolbar.x(), toolbar.y(), mouseX, mouseY);
+        }
+        if (scmBlockPickerWireframeFiltersDropdownOpen) {
+            drawScmWireframeFilterDropdown(graphics, toolbar.x(), toolbar.y(), mouseX, mouseY,
+                    scmBlockPickerWireframeExcludedFilters);
+        }
+        String selectedLabel = scmBlockPickerSelected == null ? "No block selected"
+                : "Selected: " + scmLivePreviewRenderer.blockName(scmBlockPickerSelected.subLevelId(),
+                scmBlockPickerSelected.position());
+        graphics.drawString(font, trim(selectedLabel, 52), bounds.x() + 14, bounds.bottom() - 19,
+                scmBlockPickerSelected == null
+                        ? (v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF91A9B8)
+                        : (v2Ui ? AdvancedControllerV2Theme.ACCENT_LIGHT : 0xFFFFD44D), false);
+        UiRect confirm = scmBlockPickerConfirmBounds(bounds);
+        renderAdvancedButton(graphics, font, confirm.x(), confirm.y(), confirm.width(), confirm.height(),
+                Component.literal("Use selected block"), confirm.contains(mouseX, mouseY),
+                scmBlockPickerSelected != null);
+        UiRect cancel = scmBlockPickerCancelBounds(bounds);
+        renderAdvancedButton(graphics, font, cancel.x(), cancel.y(), cancel.width(), cancel.height(),
+                Component.literal("Cancel"), cancel.contains(mouseX, mouseY), true);
+    }
+
+    private UiRect scmBlockPickerBounds() {
+        int modalWidth = Math.min(760, Math.max(320, width - 32));
+        int modalHeight = Math.min(540, Math.max(280, height - 48));
+        return new UiRect((width - modalWidth) / 2, (height - modalHeight) / 2,
+                modalWidth, modalHeight);
+    }
+
+    private static UiRect scmBlockPickerPreviewBounds(UiRect bounds) {
+        return new UiRect(bounds.x() + 12, bounds.y() + 66, bounds.width() - 24,
+                Math.max(150, bounds.height() - 104));
+    }
+
+    private static UiRect scmBlockPickerToolbarBounds(UiRect bounds) {
+        return new UiRect(bounds.x() + 12, bounds.y() + 42, bounds.width() - 24,
+                SCM_CONFIGURATION_FILTER_HEIGHT);
+    }
+
+    private static UiRect scmBlockPickerConfirmBounds(UiRect bounds) {
+        return new UiRect(bounds.right() - 242, bounds.bottom() - 26, 148, 18);
+    }
+
+    private static UiRect scmBlockPickerCancelBounds(UiRect bounds) {
+        return new UiRect(bounds.right() - 84, bounds.bottom() - 26, 72, 18);
+    }
+
+    private void openScmBlockPicker(AdvancedGraphDocument.Node node) {
+        if (!canOpenScmBlockPicker(node)) return;
+        scmBlockPickerNodeId = node.id();
+        scmBlockPickerSelected = null;
+        scmBlockPickerFilters.clear();
+        scmBlockPickerFilters.add(ScmLiveSubLevelPreviewRenderer.Filter.ALL);
+        scmBlockPickerWireframeExcludedFilters.clear();
+        scmBlockPickerFiltersDropdownOpen = false;
+        scmBlockPickerWireframeFiltersDropdownOpen = false;
+        scmBlockPickerWireframe = false;
+        scmBlockPickerOpen = true;
+        scmLivePreviewRenderer.invalidate();
+    }
+
+    private void closeScmBlockPicker() {
+        scmBlockPickerOpen = false;
+        scmBlockPickerNodeId = "";
+        scmBlockPickerSelected = null;
+        scmBlockPickerFiltersDropdownOpen = false;
+        scmBlockPickerWireframeFiltersDropdownOpen = false;
+        // Restore the SCM workspace preferences if the user returns to it.
+        scmLivePreviewRenderer.setVisibleFilters(scmConfigurationFilters);
+        scmLivePreviewRenderer.setWireframe(scmConfigurationWireframe);
+        scmLivePreviewRenderer.setWireframeExcludedFilters(scmConfigurationWireframeExcludedFilters);
+        scmLivePreviewRenderer.invalidate();
+    }
+
+    private void selectScmBlockPickerTarget(ScmLiveSubLevelPreviewRenderer.PickTarget picked) {
+        AdvancedGraphDocument.Node node = findNode(scmBlockPickerNodeId);
+        if (node == null || !supportsScmBlockPicker(node) || picked == null || picked.subLevelId() == null) return;
+        String label = scmLivePreviewRenderer.blockName(picked.subLevelId(), picked.position());
+        String targetId = "scm_picker:" + picked.subLevelId() + ":" + picked.position().asLong();
+        ControllerDiscoveryNode target = new ControllerDiscoveryNode(targetId, ControllerDiscoveryKind.MACHINE,
+                "scm_picker", "", label, picked.subLevelId(), picked.position());
+        checkpoint();
+        node.data().putString("Target", target.nodeId());
+        node.data().putString("TargetLabel", label.isBlank() ? target.nodeId() : label);
+        node.data().put("TargetData", target.toTag());
+        node.data().remove(AeroworksControllerCompat.GRAPH_SECTION_ID_KEY);
+        node.data().remove(AeroworksControllerCompat.GRAPH_SECTION_LABEL_KEY);
+        configureDataPorts(node, target);
+        syncInspector();
+        showGraphToast("Bound " + (label.isBlank() ? "assembled block" : label), GraphActionToastSeverity.SUCCESS);
+        closeScmBlockPicker();
+    }
+
+    private boolean clickScmBlockPicker(double mouseX, double mouseY, int button) {
+        UiRect bounds = scmBlockPickerBounds();
+        UiRect preview = scmBlockPickerPreviewBounds(bounds);
+        if (scmBlockPickerCancelBounds(bounds).contains(mouseX, mouseY)
+                || (mouseX >= bounds.right() - 28 && mouseY >= bounds.y() && mouseY < bounds.y() + 36)) {
+            closeScmBlockPicker();
+            return true;
+        }
+        if (scmBlockPickerConfirmBounds(bounds).contains(mouseX, mouseY)
+                && scmBlockPickerSelected != null) {
+            selectScmBlockPickerTarget(scmBlockPickerSelected);
+            return true;
+        }
+        if (!bounds.contains(mouseX, mouseY)) return true;
+        if (clickScmBlockPickerToolbar(mouseX, mouseY, scmBlockPickerToolbarBounds(bounds))) return true;
+        if (preview.contains(mouseX, mouseY) && blockPickerRootSubLevelId() != null) {
+            scmLivePreviewRenderer.mousePressed(mouseX, mouseY, button);
+        }
+        return true;
+    }
+
+    private boolean clickScmBlockPickerToolbar(double mouseX, double mouseY, UiRect toolbar) {
+        if (scmConfigurationFiltersButtonBounds(toolbar.x(), toolbar.y()).contains(mouseX, mouseY)) {
+            scmBlockPickerFiltersDropdownOpen = !scmBlockPickerFiltersDropdownOpen;
+            scmBlockPickerWireframeFiltersDropdownOpen = false;
+            return true;
+        }
+        if (scmConfigurationWireframeButtonBounds(toolbar.x(), toolbar.y()).contains(mouseX, mouseY)) {
+            scmBlockPickerWireframe = !scmBlockPickerWireframe;
+            if (!scmBlockPickerWireframe) scmBlockPickerWireframeFiltersDropdownOpen = false;
+            scmBlockPickerFiltersDropdownOpen = false;
+            scmLivePreviewRenderer.setWireframe(scmBlockPickerWireframe);
+            return true;
+        }
+        if (scmBlockPickerWireframe
+                && scmConfigurationWireframeFiltersButtonBounds(toolbar.x(), toolbar.y()).contains(mouseX, mouseY)) {
+            scmBlockPickerWireframeFiltersDropdownOpen = !scmBlockPickerWireframeFiltersDropdownOpen;
+            scmBlockPickerFiltersDropdownOpen = false;
+            return true;
+        }
+        if (scmBlockPickerWireframeFiltersDropdownOpen) {
+            UiRect dropdown = scmWireframeFilterDropdownBounds(toolbar.x(), toolbar.y());
+            if (!dropdown.contains(mouseX, mouseY)) {
+                scmBlockPickerWireframeFiltersDropdownOpen = false;
+                return true;
+            }
+            if (toggleWireframeExcludedFilter(mouseX, mouseY, dropdown,
+                    scmBlockPickerWireframeExcludedFilters)) {
+                scmLivePreviewRenderer.setWireframeExcludedFilters(scmBlockPickerWireframeExcludedFilters);
+            }
+            return true;
+        }
+        if (scmBlockPickerFiltersDropdownOpen) {
+            UiRect dropdown = scmConfigurationFilterDropdownBounds(toolbar.x(), toolbar.y());
+            if (!dropdown.contains(mouseX, mouseY)) {
+                scmBlockPickerFiltersDropdownOpen = false;
+                return true;
+            }
+            int selected = (int) ((mouseY - dropdown.y() - 3) / 20);
+            ScmLiveSubLevelPreviewRenderer.Filter[] filters = ScmLiveSubLevelPreviewRenderer.Filter.values();
+            if (selected >= 0 && selected < filters.length) {
+                toggleVisibleScmFilter(scmBlockPickerFilters, filters[selected]);
+                scmLivePreviewRenderer.setVisibleFilters(scmBlockPickerFilters);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private static void toggleVisibleScmFilter(Set<ScmLiveSubLevelPreviewRenderer.Filter> filters,
+                                               ScmLiveSubLevelPreviewRenderer.Filter filter) {
+        if (filter == ScmLiveSubLevelPreviewRenderer.Filter.ALL) {
+            filters.clear();
+            filters.add(filter);
+            return;
+        }
+        filters.remove(ScmLiveSubLevelPreviewRenderer.Filter.ALL);
+        if (!filters.add(filter)) filters.remove(filter);
+        if (filters.isEmpty()) filters.add(ScmLiveSubLevelPreviewRenderer.Filter.ALL);
+    }
+
+    private boolean scmConfigurationWorkspace() {
+        return scmGraphOverview && !scmConfigurationOpen;
+    }
+
+    private UiRect scmConfigurationViewBounds(UiRect bounds) {
+        if (!scmConfigurationWorkspace()) {
+            return new UiRect(bounds.x() + 14, bounds.y() + 46,
+                    SCM_CONFIGURATION_VIEW_WIDTH, SCM_CONFIGURATION_VIEW_HEIGHT);
+        }
+        int panelWidth = scmConfigurationSidebarCollapsed ? SIDEBAR_HANDLE_WIDTH
+                : Math.min(350, Math.max(270, bounds.width() / 4));
+        int viewWidth = Math.max(300, bounds.width() - panelWidth - 22);
+        return new UiRect(bounds.x() + 8, bounds.y() + 6, viewWidth,
+                Math.max(250, bounds.height() - 34));
+    }
+
+    private UiRect scmConfigurationPreviewBounds(UiRect bounds) {
+        UiRect viewBounds = scmConfigurationViewBounds(bounds);
+        return new UiRect(viewBounds.x(), viewBounds.y() + SCM_CONFIGURATION_FILTER_HEIGHT + SCM_ORIENTATION_HEIGHT,
+                viewBounds.width(), viewBounds.height() - SCM_CONFIGURATION_FILTER_HEIGHT - SCM_ORIENTATION_HEIGHT);
+    }
+
+    private String scmDetectedVehicleType = "airship";
+
+    private UiRect scmOrientationButton(UiRect view, int index){
+        if(index == 3) return new UiRect(view.x() + 4,
+                view.y() + SCM_CONFIGURATION_FILTER_HEIGHT + 27, view.width() - 8, 18);
+        int buttonWidth = (view.width() - 16) / 3;
+        return new UiRect(view.x() + 4 + index * (buttonWidth + 4),
+                view.y() + SCM_CONFIGURATION_FILTER_HEIGHT + 3, buttonWidth, 18);
+    }
+
+    private void drawScmOrientationControls(GuiGraphics graphics, UiRect view, int mouseX, int mouseY){
+        ScmOrientation orientation = scmConfigurationProfile.resolveOrientation(scmDefaultOrientation);
+        String[] labels = {"Forward: " + orientation.forward().getName(),
+                "Up: " + orientation.up().getName(),
+scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use ACC defaults",
+                "Vehicle: " + ("auto".equals(scmConfigurationProfile.vehicleType())
+                        ? "Auto (" + scmDetectedVehicleType + ")" : scmConfigurationProfile.vehicleType())};
+        for(int index = 0; index < labels.length; index++){
+            UiRect button = scmOrientationButton(view, index);
+            drawScmButton(graphics, button.x(), button.y(), button.width(), labels[index], mouseX, mouseY);
+            if(index < 2){
+                graphics.fill(button.x() + 2, button.bottom() - 2, button.right() - 2, button.bottom(),
+                        index == 0 ? SCM_FORWARD_COLOR : SCM_UP_COLOR);
+            }
+        }
+    }
+
+    // Cycle only perpendicular local axes; changing a selection never silently flips the other axis.
+    private boolean clickScmOrientation(UiRect view, double mouseX, double mouseY){
+        for(int index = 0; index < 4; index++){
+            if(!scmOrientationButton(view, index).contains(mouseX, mouseY)) continue;
+            ScmOrientation orientation = scmConfigurationProfile.resolveOrientation(scmDefaultOrientation);
+            if(index == 3){
+                List<String> modes = new ArrayList<>();
+                modes.add("auto");
+                modes.addAll(com.rieno.gadgetsandgizmos.lib.scm.ScmControlModeRegistry.serializedIds());
+                int next = (modes.indexOf(scmConfigurationProfile.vehicleType()) + 1) % modes.size();
+                scmConfigurationProfile.setVehicleType(modes.get(next));
+            } else if(index == 2){
+                scmConfigurationProfile.setOrientationOverride(null);
+            } else {
+                Direction selected = index == 0 ? orientation.forward() : orientation.up();
+                Direction fixed = index == 0 ? orientation.up() : orientation.forward();
+                Direction[] directions = Direction.values();
+                do {
+                    selected = directions[(selected.ordinal() + 1) % directions.length];
+                } while(!ScmOrientation.isValid(selected, fixed));
+                scmConfigurationProfile.setOrientationOverride(index == 0
+                        ? new ScmOrientation(selected, fixed) : new ScmOrientation(fixed, selected));
+            }
+            scmConfigurationDirty = true;
+            scmConfigurationSavePending = false;
+            scmConfigurationStatus = "SCM changed. Use ACC Save to apply. Blue = forward; green = up.";
+            scmLivePreviewRenderer.invalidate();
+            return true;
+        }
+        return false;
+    }
+
+    private void drawScmPreviewFilters(GuiGraphics graphics, int x, int y, int viewWidth,
+                                       int mouseX, int mouseY) {
+        if (drawCompactScmPreviewFilters(graphics, x, y, viewWidth, mouseX, mouseY)) return;
+        graphics.fill(x + 1, y + 1, x + viewWidth - 1,
+                y + SCM_CONFIGURATION_FILTER_HEIGHT, v2Ui
+                        ? AdvancedControllerV2Theme.PANEL_RAISED : 0xFF101B25);
+        graphics.drawString(font, "Show:", x + 8, y + 8,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
+        int cursor = x + 45;
+        for (ScmLiveSubLevelPreviewRenderer.Filter filter
+                : ScmLiveSubLevelPreviewRenderer.Filter.values()) {
+            UiRect checkbox = scmConfigurationFilterBounds(cursor, y, filter);
+            boolean enabled = scmConfigurationFilters.contains(filter);
+            boolean hovered = checkbox.contains(mouseX, mouseY);
+            graphics.fill(checkbox.x(), checkbox.y() + 4, checkbox.x() + 10, checkbox.y() + 14,
+                    enabled ? (v2Ui ? AdvancedControllerV2Theme.ACCENT : 0xFF55D6BE)
+                            : (v2Ui ? AdvancedControllerV2Theme.PANEL_BACKGROUND : 0xFF081017));
+            graphics.renderOutline(checkbox.x(), checkbox.y() + 4, 10, 10,
+                    hovered ? (v2Ui ? AdvancedControllerV2Theme.ACCENT_LIGHT : 0xFF91D9FF)
+                            : (v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF344A5C));
+            if (enabled) {
+                graphics.drawString(font, "✓", checkbox.x() + 2, checkbox.y() + 5,
+                        0xFF071219, false);
+            }
+            graphics.drawString(font, filter.label(), checkbox.x() + 14, checkbox.y() + 7,
+                    hovered ? (v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFFE0EDF4)
+                            : (v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFFB9CCD9), false);
+            cursor = checkbox.right() + 8;
+        }
+    }
+
+    private boolean drawCompactScmPreviewFilters(GuiGraphics graphics, int x, int y, int viewWidth,
+                                                 int mouseX, int mouseY) {
+        graphics.fill(x + 1, y + 1, x + viewWidth - 1,
+                y + SCM_CONFIGURATION_FILTER_HEIGHT, v2Ui
+                        ? AdvancedControllerV2Theme.PANEL_RAISED : 0xFF101B25);
+        UiRect filters = scmConfigurationFiltersButtonBounds(x, y);
+        UiRect wireframe = scmConfigurationWireframeButtonBounds(x, y);
+        int activeFilters = scmConfigurationFilters.contains(ScmLiveSubLevelPreviewRenderer.Filter.ALL)
+                ? ScmLiveSubLevelPreviewRenderer.Filter.values().length : scmConfigurationFilters.size();
+        drawScmButton(graphics, filters.x(), filters.y(), filters.width(),
+                "Filters (" + activeFilters + ") v", mouseX, mouseY);
+        drawScmButton(graphics, wireframe.x(), wireframe.y(), wireframe.width(),
+                "Wireframe: " + (scmConfigurationWireframe ? "On" : "Off"), mouseX, mouseY);
+        if (scmConfigurationWireframe) {
+            UiRect wireframeFilters = scmConfigurationWireframeFiltersButtonBounds(x, y);
+            drawScmButton(graphics, wireframeFilters.x(), wireframeFilters.y(), wireframeFilters.width(),
+                    "Solid filters (" + scmConfigurationWireframeExcludedFilters.size() + ") v",
+                    mouseX, mouseY);
+        }
+        return true;
+    }
+
+    private UiRect scmConfigurationFiltersButtonBounds(int x, int y) {
+        return new UiRect(x + 7, y + 3, 102, 18);
+    }
+
+    private UiRect scmConfigurationWireframeButtonBounds(int x, int y) {
+        return new UiRect(x + 115, y + 3, 116, 18);
+    }
+
+    private UiRect scmConfigurationWireframeFiltersButtonBounds(int x, int y) {
+        return new UiRect(x + 237, y + 3, 144, 18);
+    }
+
+    private UiRect scmConfigurationFilterDropdownBounds(int x, int y) {
+        return new UiRect(x + 7, y + SCM_CONFIGURATION_FILTER_HEIGHT, 190,
+                ScmLiveSubLevelPreviewRenderer.Filter.values().length * 20 + 6);
+    }
+
+    private void drawScmPreviewFilterDropdown(GuiGraphics graphics, int x, int y, int mouseX, int mouseY) {
+        UiRect dropdown = scmConfigurationFilterDropdownBounds(x, y);
+        graphics.pose().pushPose();
+        graphics.pose().translate(0.0F, 0.0F, 30.0F);
+        graphics.fill(dropdown.x(), dropdown.y(), dropdown.right(), dropdown.bottom(),
+                v2Ui ? AdvancedControllerV2Theme.PANEL_RAISED : 0xFF152330);
+        graphics.renderOutline(dropdown.x(), dropdown.y(), dropdown.width(), dropdown.height(),
+                v2Ui ? AdvancedControllerV2Theme.BORDER_STRONG : 0xFF4A687F);
+        int rowY = dropdown.y() + 3;
+        for (ScmLiveSubLevelPreviewRenderer.Filter filter
+                : ScmLiveSubLevelPreviewRenderer.Filter.values()) {
+            UiRect row = new UiRect(dropdown.x() + 4, rowY, dropdown.width() - 8, 20);
+            if (row.contains(mouseX, mouseY)) {
+                graphics.fill(row.x(), row.y(), row.right(), row.bottom(),
+                        v2Ui ? 0x664BAFBC : 0x663A718C);
+            }
+            boolean enabled = scmConfigurationFilters.contains(filter);
+            graphics.drawString(font, enabled ? "[x]" : "[ ]", row.x() + 7, row.y() + 6,
+                    enabled ? (v2Ui ? AdvancedControllerV2Theme.ACCENT_LIGHT : 0xFF55D6BE)
+                            : (v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF91A9B8), false);
+            graphics.drawString(font, filter.label(), row.x() + 34, row.y() + 6,
+                    v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFFE0EDF4, false);
+            rowY += 20;
+        }
+        graphics.pose().popPose();
+    }
+
+    // In wireframe mode these categories remain ordinary block models. The
+    // shared preview renderer treats the wireframe lines as click-through, so
+    // only these solid blocks participate in block picking.
+    private UiRect scmWireframeFilterDropdownBounds(int x, int y) {
+        return new UiRect(x + 237, y + SCM_CONFIGURATION_FILTER_HEIGHT, 190,
+                (ScmLiveSubLevelPreviewRenderer.Filter.values().length - 1) * 20 + 6);
+    }
+
+    private void drawScmWireframeFilterDropdown(GuiGraphics graphics, int x, int y,
+                                                int mouseX, int mouseY,
+                                                Set<ScmLiveSubLevelPreviewRenderer.Filter> selectedFilters) {
+        UiRect dropdown = scmWireframeFilterDropdownBounds(x, y);
+        graphics.pose().pushPose();
+        graphics.pose().translate(0.0F, 0.0F, 31.0F);
+        graphics.fill(dropdown.x(), dropdown.y(), dropdown.right(), dropdown.bottom(),
+                v2Ui ? AdvancedControllerV2Theme.PANEL_RAISED : 0xFF152330);
+        graphics.renderOutline(dropdown.x(), dropdown.y(), dropdown.width(), dropdown.height(),
+                v2Ui ? AdvancedControllerV2Theme.BORDER_STRONG : 0xFF4A687F);
+        int rowY = dropdown.y() + 3;
+        for (ScmLiveSubLevelPreviewRenderer.Filter filter
+                : ScmLiveSubLevelPreviewRenderer.Filter.values()) {
+            if (filter == ScmLiveSubLevelPreviewRenderer.Filter.ALL) continue;
+            UiRect row = new UiRect(dropdown.x() + 4, rowY, dropdown.width() - 8, 20);
+            if (row.contains(mouseX, mouseY)) {
+                graphics.fill(row.x(), row.y(), row.right(), row.bottom(),
+                        v2Ui ? 0x664BAFBC : 0x663A718C);
+            }
+            boolean enabled = selectedFilters.contains(filter);
+            graphics.drawString(font, enabled ? "[x]" : "[ ]", row.x() + 7, row.y() + 6,
+                    enabled ? (v2Ui ? AdvancedControllerV2Theme.ACCENT_LIGHT : 0xFF55D6BE)
+                            : (v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF91A9B8), false);
+            graphics.drawString(font, filter.label() + " (solid)", row.x() + 34, row.y() + 6,
+                    v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFFE0EDF4, false);
+            rowY += 20;
+        }
+        graphics.pose().popPose();
+    }
+
+    private void drawScmBlockPickerFilters(GuiGraphics graphics, int x, int y, int toolbarWidth,
+                                           int mouseX, int mouseY) {
+        graphics.fill(x + 1, y + 1, x + toolbarWidth - 1, y + SCM_CONFIGURATION_FILTER_HEIGHT,
+                v2Ui ? AdvancedControllerV2Theme.PANEL_RAISED : 0xFF101B25);
+        UiRect filters = scmConfigurationFiltersButtonBounds(x, y);
+        UiRect wireframe = scmConfigurationWireframeButtonBounds(x, y);
+        int activeFilters = scmBlockPickerFilters.contains(ScmLiveSubLevelPreviewRenderer.Filter.ALL)
+                ? ScmLiveSubLevelPreviewRenderer.Filter.values().length : scmBlockPickerFilters.size();
+        drawScmButton(graphics, filters.x(), filters.y(), filters.width(),
+                "Filters (" + activeFilters + ") v", mouseX, mouseY);
+        drawScmButton(graphics, wireframe.x(), wireframe.y(), wireframe.width(),
+                "Wireframe: " + (scmBlockPickerWireframe ? "On" : "Off"), mouseX, mouseY);
+        if (scmBlockPickerWireframe) {
+            UiRect wireframeFilters = scmConfigurationWireframeFiltersButtonBounds(x, y);
+            drawScmButton(graphics, wireframeFilters.x(), wireframeFilters.y(), wireframeFilters.width(),
+                    "Solid filters (" + scmBlockPickerWireframeExcludedFilters.size() + ") v",
+                    mouseX, mouseY);
+        }
+    }
+
+    private void drawScmBlockPickerFilterDropdown(GuiGraphics graphics, int x, int y,
+                                                  int mouseX, int mouseY) {
+        UiRect dropdown = scmConfigurationFilterDropdownBounds(x, y);
+        graphics.pose().pushPose();
+        graphics.pose().translate(0.0F, 0.0F, 32.0F);
+        graphics.fill(dropdown.x(), dropdown.y(), dropdown.right(), dropdown.bottom(),
+                v2Ui ? AdvancedControllerV2Theme.PANEL_RAISED : 0xFF152330);
+        graphics.renderOutline(dropdown.x(), dropdown.y(), dropdown.width(), dropdown.height(),
+                v2Ui ? AdvancedControllerV2Theme.BORDER_STRONG : 0xFF4A687F);
+        int rowY = dropdown.y() + 3;
+        for (ScmLiveSubLevelPreviewRenderer.Filter filter
+                : ScmLiveSubLevelPreviewRenderer.Filter.values()) {
+            UiRect row = new UiRect(dropdown.x() + 4, rowY, dropdown.width() - 8, 20);
+            if (row.contains(mouseX, mouseY)) {
+                graphics.fill(row.x(), row.y(), row.right(), row.bottom(),
+                        v2Ui ? 0x664BAFBC : 0x663A718C);
+            }
+            boolean enabled = scmBlockPickerFilters.contains(filter);
+            graphics.drawString(font, enabled ? "[x]" : "[ ]", row.x() + 7, row.y() + 6,
+                    enabled ? (v2Ui ? AdvancedControllerV2Theme.ACCENT_LIGHT : 0xFF55D6BE)
+                            : (v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF91A9B8), false);
+            graphics.drawString(font, filter.label(), row.x() + 34, row.y() + 6,
+                    v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFFE0EDF4, false);
+            rowY += 20;
+        }
+        graphics.pose().popPose();
+    }
+
+    private UiRect scmConfigurationFilterBounds(int x, int y, ScmLiveSubLevelPreviewRenderer.Filter filter) {
+        return new UiRect(x, y, 14 + font.width(filter.label()), SCM_CONFIGURATION_FILTER_HEIGHT);
+    }
+
+    private boolean toggleScmPreviewFilter(double mouseX, double mouseY, int viewX, int viewY) {
+        if (scmConfigurationFiltersButtonBounds(viewX, viewY).contains(mouseX, mouseY)) {
+            scmConfigurationFiltersDropdownOpen = !scmConfigurationFiltersDropdownOpen;
+            scmConfigurationWireframeFiltersDropdownOpen = false;
+            return true;
+        }
+        if (scmConfigurationWireframeButtonBounds(viewX, viewY).contains(mouseX, mouseY)) {
+            scmConfigurationWireframe = !scmConfigurationWireframe;
+            if (!scmConfigurationWireframe) scmConfigurationWireframeFiltersDropdownOpen = false;
+            scmConfigurationFiltersDropdownOpen = false;
+            scmLivePreviewRenderer.setWireframe(scmConfigurationWireframe);
+            return true;
+        }
+        if (scmConfigurationWireframe
+                && scmConfigurationWireframeFiltersButtonBounds(viewX, viewY).contains(mouseX, mouseY)) {
+            scmConfigurationWireframeFiltersDropdownOpen = !scmConfigurationWireframeFiltersDropdownOpen;
+            scmConfigurationFiltersDropdownOpen = false;
+            return true;
+        }
+        if (scmConfigurationWireframeFiltersDropdownOpen) {
+            UiRect dropdown = scmWireframeFilterDropdownBounds(viewX, viewY);
+            if (!dropdown.contains(mouseX, mouseY)) {
+                scmConfigurationWireframeFiltersDropdownOpen = false;
+                return true;
+            }
+            if (toggleWireframeExcludedFilter(mouseX, mouseY, dropdown,
+                    scmConfigurationWireframeExcludedFilters)) {
+                scmLivePreviewRenderer.setWireframeExcludedFilters(scmConfigurationWireframeExcludedFilters);
+            }
+            return true;
+        }
+        if (scmConfigurationFiltersDropdownOpen) {
+            UiRect dropdown = scmConfigurationFilterDropdownBounds(viewX, viewY);
+            if (!dropdown.contains(mouseX, mouseY)) {
+                scmConfigurationFiltersDropdownOpen = false;
+                return false;
+            }
+            int selected = (int) ((mouseY - dropdown.y() - 3) / 20);
+            ScmLiveSubLevelPreviewRenderer.Filter[] filters = ScmLiveSubLevelPreviewRenderer.Filter.values();
+            if (selected < 0 || selected >= filters.length) return true;
+            ScmLiveSubLevelPreviewRenderer.Filter filter = filters[selected];
+            if (filter == ScmLiveSubLevelPreviewRenderer.Filter.ALL) {
+                scmConfigurationFilters.clear();
+                scmConfigurationFilters.add(filter);
+            } else {
+                scmConfigurationFilters.remove(ScmLiveSubLevelPreviewRenderer.Filter.ALL);
+                if (!scmConfigurationFilters.add(filter)) scmConfigurationFilters.remove(filter);
+                if (scmConfigurationFilters.isEmpty()) {
+                    scmConfigurationFilters.add(ScmLiveSubLevelPreviewRenderer.Filter.ALL);
+                }
+            }
+            scmLivePreviewRenderer.setVisibleFilters(scmConfigurationFilters);
+            return true;
+        }
+        int cursor = viewX + 45;
+        for (ScmLiveSubLevelPreviewRenderer.Filter filter
+                : ScmLiveSubLevelPreviewRenderer.Filter.values()) {
+            UiRect checkbox = scmConfigurationFilterBounds(cursor, viewY, filter);
+            if (checkbox.contains(mouseX, mouseY)) {
+                if (filter == ScmLiveSubLevelPreviewRenderer.Filter.ALL) {
+                    if (scmConfigurationFilters.size() == 1
+                            && scmConfigurationFilters.contains(filter)) {
+                        scmConfigurationFilters.clear();
+                    } else {
+                        scmConfigurationFilters.clear();
+                        scmConfigurationFilters.add(filter);
+                    }
+                } else {
+                    // Selecting a category enters filtered-view mode. Several
+                    // categories may still be combined, but All must be off.
+                    scmConfigurationFilters.remove(ScmLiveSubLevelPreviewRenderer.Filter.ALL);
+                    if (!scmConfigurationFilters.add(filter)) {
+                        scmConfigurationFilters.remove(filter);
+                    }
+                }
+                scmLivePreviewRenderer.setVisibleFilters(scmConfigurationFilters);
+                return true;
+            }
+            cursor = checkbox.right() + 8;
+        }
+        return false;
+    }
+
+    private static boolean toggleWireframeExcludedFilter(double mouseX, double mouseY, UiRect dropdown,
+                                                         Set<ScmLiveSubLevelPreviewRenderer.Filter> selectedFilters) {
+        int selected = (int) ((mouseY - dropdown.y() - 3) / 20);
+        int row = 0;
+        for (ScmLiveSubLevelPreviewRenderer.Filter filter
+                : ScmLiveSubLevelPreviewRenderer.Filter.values()) {
+            if (filter == ScmLiveSubLevelPreviewRenderer.Filter.ALL) continue;
+            if (row++ != selected) continue;
+            if (!selectedFilters.add(filter)) selectedFilters.remove(filter);
+            return true;
+        }
+        return false;
+    }
+
+    private UiRect scmConfigurationBounds() {
+        if (scmConfigurationWorkspace()) {
+            return new UiRect(graphLeft(), graphTop(),
+                    Math.max(0, graphRight() - graphLeft()),
+                    Math.max(0, graphBottom() - graphTop()));
+        }
+        int modalWidth = Math.min(SCM_CONFIGURATION_MODAL_WIDTH, Math.max(540, width - 24));
+        int modalHeight = Math.min(SCM_CONFIGURATION_MODAL_HEIGHT,
+                Math.max(360, height - TOOLBAR_HEIGHT - 16));
+        return new UiRect((width - modalWidth) / 2,
+                Math.max(TOOLBAR_HEIGHT + 5, (height - modalHeight) / 2), modalWidth, modalHeight);
+    }
+
+    // Calculate the virtual vertical document used by the SCM assignment
+    // sidebar. On a roomy display it exactly fills the available panel and
+    // keeps Save pinned at the bottom; at smaller GUI sizes it exposes the
+    // same complete control set through ordinary wheel scrolling.
+    private ScmConfigurationSidebarLayout scmConfigurationSidebarLayout(UiRect bounds, UiRect viewBounds) {
+        boolean faceMode = scmConfigurationControlBindingMode == ScmControlBindingMode.FACE;
+        int viewportTop = viewBounds.y();
+        int viewportBottom = Math.max(viewportTop + 1, bounds.bottom());
+        int availableHeight = viewportBottom - viewportTop;
+        int minimumContentHeight = faceMode ? 424 : 386;
+        int contentHeight = Math.max(availableHeight, minimumContentHeight);
+        int maximumScroll = Math.max(0, contentHeight - availableHeight);
+        scmConfigurationSidebarScroll = Mth.clamp(scmConfigurationSidebarScroll, 0, maximumScroll);
+        return new ScmConfigurationSidebarLayout(viewportTop - scmConfigurationSidebarScroll,
+                viewportTop, viewportBottom, contentHeight, maximumScroll);
+    }
+
+    private boolean clickScmConfiguration(double mouseX, double mouseY, int button) {
+        UiRect bounds = scmConfigurationBounds();
+        if (!bounds.contains(mouseX, mouseY)) {
+            return true;
+        }
+        UiRect viewBounds = scmConfigurationViewBounds(bounds);
+        int viewX = viewBounds.x();
+        int viewY = viewBounds.y();
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT
+                && toggleScmPreviewFilter(mouseX, mouseY, viewX, viewY)) {
+            return true;
+        }
+        if(button == GLFW.GLFW_MOUSE_BUTTON_LEFT && clickScmOrientation(viewBounds, mouseX, mouseY)){
+            return true;
+        }
+        UiRect previewBounds = scmConfigurationPreviewBounds(bounds);
+        if (previewBounds.contains(mouseX, mouseY) && scmConfigurationRootSubLevelId != null) {
+            scmLivePreviewRenderer.mousePressed(mouseX, mouseY, button);
+            return true;
+        }
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
+        if (!scmConfigurationWorkspace()
+                && inside(mouseX, mouseY, bounds.x() + bounds.width() - 28, bounds.y() + 4, 24, 20)) {
+            closeScmConfiguration();
+            return true;
+        }
+        int panelX = viewBounds.right() + 14;
+        int panelWidth = bounds.right() - panelX - (scmConfigurationWorkspace() ? 8 : 14);
+        ScmConfigurationSidebarLayout sidebarLayout = scmConfigurationSidebarLayout(bounds, viewBounds);
+        int sidebarY = sidebarLayout.contentTop();
+        int controlsY = sidebarY + 94;
+        if (scmVehicleNameBounds(panelX, sidebarY, panelWidth).contains(mouseX, mouseY)) {
+            scmVehicleName.mouseClicked(mouseX, mouseY, button);
+            scmVehicleName.setFocused(true);
+            setFocused(scmVehicleName);
+            return true;
+        }
+        if (inside(mouseX, mouseY, panelX, sidebarY + 36, panelWidth, 18)) {
+            sendScmVehicleName(scmVehicleName.getValue());
+            return true;
+        }
+        if (inside(mouseX, mouseY, panelX, sidebarY + 74, panelWidth, 18)) {
+            AdvancedContraptionControllerBlockEntity controller = activeScmController();
+            sendScmDisplayProgress(controller == null || !controller.scmDisplayProgress());
+            return true;
+        }
+        // An open popup owns its entire layer. Do not let the controls below
+        // it consume clicks from later rows in the popup.
+        if (scmConfigurationTargetDropdownOpen) {
+            if (selectScmConfigurationTarget(mouseX, mouseY, panelX, controlsY + 51, panelWidth)) {
+                scmConfigurationTargetDropdownOpen = false;
+            } else if (!scmConfigurationTargetDropdownBounds(panelX, controlsY + 51, panelWidth)
+                    .contains(mouseX, mouseY)) {
+                scmConfigurationTargetDropdownOpen = false;
+            }
+            return true;
+        }
+        if (scmConfigurationControlModeDropdownOpen) {
+            if (selectScmConfigurationControlMode(mouseX, mouseY, panelX, controlsY + 89, panelWidth)) {
+                scmConfigurationControlModeDropdownOpen = false;
+            } else if (!scmConfigurationControlModeDropdownBounds(panelX, controlsY + 89, panelWidth)
+                    .contains(mouseX, mouseY)) {
+                scmConfigurationControlModeDropdownOpen = false;
+            }
+            return true;
+        }
+        if (scmConfigurationControlBindingMode == ScmControlBindingMode.FACE
+                && scmConfigurationFaceDropdownOpen) {
+            if (selectScmConfigurationFace(mouseX, mouseY, panelX, controlsY + 127, panelWidth)) {
+                scmConfigurationFaceDropdownOpen = false;
+            } else if (!scmConfigurationFaceDropdownBounds(panelX, controlsY + 127, panelWidth)
+                    .contains(mouseX, mouseY)) {
+                scmConfigurationFaceDropdownOpen = false;
+            }
+            return true;
+        }
+        boolean faceMode = scmConfigurationControlBindingMode == ScmControlBindingMode.FACE;
+        int assignY = controlsY + (faceMode ? 133 : 95);
+        int blacklistY = controlsY + (faceMode ? 157 : 119);
+        int groupsY = controlsY + (faceMode ? 202 : 164);
+        int saveY = sidebarY + sidebarLayout.contentHeight() - 26;
+        int groupsHeight = Math.max(72, saveY - groupsY - 30);
+        if (inside(mouseX, mouseY, panelX, controlsY + 33, panelWidth, 18)) {
+            scmConfigurationTargetDropdownOpen = !scmConfigurationTargetDropdownOpen;
+            scmConfigurationTargetDropdownScroll = 0;
+            scmConfigurationControlModeDropdownOpen = false;
+            scmConfigurationFaceDropdownOpen = false;
+        } else if (inside(mouseX, mouseY, panelX, controlsY + 71, panelWidth, 18)) {
+            scmConfigurationControlModeDropdownOpen = !scmConfigurationControlModeDropdownOpen;
+            scmConfigurationTargetDropdownOpen = false;
+            scmConfigurationFaceDropdownOpen = false;
+        } else if (faceMode && inside(mouseX, mouseY, panelX, controlsY + 109, panelWidth, 18)) {
+            scmConfigurationFaceDropdownOpen = !scmConfigurationFaceDropdownOpen;
+            scmConfigurationTargetDropdownOpen = false;
+            scmConfigurationControlModeDropdownOpen = false;
+        } else if (inside(mouseX, mouseY, panelX, assignY, panelWidth, 18)) {
+            assignScmConfigurationSelection();
+        } else if (inside(mouseX, mouseY, panelX, blacklistY, panelWidth, 18)) {
+            toggleScmConfigurationBlacklist();
+        } else if (clickScmGroupList(mouseX, mouseY, panelX, groupsY, panelWidth, groupsHeight)) {
+            return true;
+        } else if (!scmConfigurationWorkspace()
+                && inside(mouseX, mouseY, panelX, saveY + 24, panelWidth, 18)) {
+            closeScmConfiguration();
+        }
+        return true;
+    }
+
+    private void closeScmConfiguration() {
+        scmConfigurationOpen = false;
+        scmConfigurationTargetDropdownOpen = false;
+        scmConfigurationControlModeDropdownOpen = false;
+        scmConfigurationFaceDropdownOpen = false;
+        scmConfigurationFiltersDropdownOpen = false;
+        scmConfigurationWireframeFiltersDropdownOpen = false;
+        scmConfigurationSidebarScroll = 0;
+        scmLivePreviewRenderer.close();
+    }
+
+    private List<String> scmConfigurationActions() {
+        LinkedHashSet<String> actions = new LinkedHashSet<>(SCM_CALIBRATION_ACTIONS);
+        if (draft != null) {
+            // The binding palette is intentionally limited to the direct
+            // physical controls. Legacy autonomous action functions remain
+            // executable for compatibility but must not reappear here.
+            draft.scmActionFunctions().keySet().stream()
+                    .filter(SCM_CALIBRATION_ACTIONS::contains)
+                    .forEach(actions::add);
+        }
+        return List.copyOf(actions);
+    }
+
+    private String activeScmConfigurationAction() {
+        List<String> actions = scmConfigurationActions();
+        if (actions.isEmpty()) return "";
+        scmConfigurationActionIndex = Math.floorMod(scmConfigurationActionIndex, actions.size());
+        return actions.get(scmConfigurationActionIndex);
+    }
+
+    private Set<ScmConfigurationProfile.UnitReference> scmUnitsForAction(String action) {
+        String groupId = scmConfigurationProfile.actionGroups().get(action);
+        if (groupId == null) return Set.of();
+        return scmConfigurationProfile.groups().stream()
+                .filter(group -> groupId.equals(group.id())).findFirst()
+                .map(ScmConfigurationProfile.Group::units).orElse(Set.of());
+    }
+
+    private String scmConfigurationTargetLabel(String action) {
+        if (action == null || action.isBlank()) return "No SCM action available";
+        if (ScmConfigurationProfile.isAutoAction(action)) {
+            return "Auto - automatic allocation";
+        }
+        if (ScmConfigurationProfile.isAccelerationAction(action)) {
+            return "Acceleration - analogue speed control";
+        }
+        AdvancedGraphDocument.FunctionGraph function = draft == null ? null
+                : draft.function(draft.scmActionFunction(action));
+        String label = scmConfigurationActionLabel(action);
+        return trim(function == null ? label + " (built-in)" : label + " → " + function.name(), 31);
+    }
+
+    private static String scmConfigurationActionLabel(String action) {
+        if (ScmConfigurationProfile.isAutoAction(action)) {
+            return "Auto";
+        }
+        if (ScmConfigurationProfile.isAccelerationAction(action)) {
+            return "Acceleration";
+        }
+        return AdvancedGraphCatalog.displayName(action);
+    }
+
+    private void drawScmTargetDropdown(GuiGraphics graphics, int x, int y, int width,
+                                       int mouseX, int mouseY) {
+        List<String> actions = scmConfigurationActions();
+        UiRect bounds = scmConfigurationTargetDropdownBounds(x, y, width);
+        int visible = Math.min(SCM_CONFIGURATION_DROPDOWN_VISIBLE_ROWS, actions.size());
+        int maximum = Math.max(0, actions.size() - visible);
+        scmConfigurationTargetDropdownScroll = Mth.clamp(scmConfigurationTargetDropdownScroll, 0, maximum);
+        renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        for (int row = 0; row < visible; row++) {
+            int idx = scmConfigurationTargetDropdownScroll + row;
+            int rowY = y + 2 + row * 18;
+            boolean selected = actions.get(idx).equals(activeScmConfigurationAction());
+            renderAdvancedButton(graphics, font, x + 2, rowY, width - 4, 17,
+                    Component.literal(scmConfigurationTargetLabel(actions.get(idx))),
+                    selected || inside(mouseX, mouseY, x + 2, rowY, width - 4, 17), true);
+        }
+        if (maximum > 0) {
+            int thumb = Math.max(12, (bounds.height() - 4) * visible / actions.size());
+            int thumbY = bounds.y() + 2 + ((bounds.height() - 4) - thumb)
+                    * scmConfigurationTargetDropdownScroll / maximum;
+            graphics.fill(bounds.right() - 4, bounds.y() + 2, bounds.right() - 2,
+                    bounds.bottom() - 2, 0x55445A6B);
+            graphics.fill(bounds.right() - 4, thumbY, bounds.right() - 2, thumbY + thumb,
+                    v2Ui ? AdvancedControllerV2Theme.ACCENT : 0xFF91D9FF);
+        }
+    }
+
+    private UiRect scmConfigurationTargetDropdownBounds(int x, int y, int width) {
+        return new UiRect(x, y, width,
+                Math.min(SCM_CONFIGURATION_DROPDOWN_VISIBLE_ROWS, scmConfigurationActions().size()) * 18 + 4);
+    }
+
+    private void drawScmControlModeDropdown(GuiGraphics graphics, int x, int y, int width,
+                                            int mouseX, int mouseY) {
+        renderAdvancedPanel(graphics, x, y, width, ScmControlBindingMode.values().length * 18 + 4);
+        for (int index = 0; index < ScmControlBindingMode.values().length; index++) {
+            ScmControlBindingMode mode = ScmControlBindingMode.values()[index];
+            int rowY = y + 2 + index * 18;
+            renderAdvancedButton(graphics, font, x + 2, rowY, width - 4, 17,
+                    Component.literal(mode.label()), mode == scmConfigurationControlBindingMode
+                            || inside(mouseX, mouseY, x + 2, rowY, width - 4, 17), true);
+        }
+    }
+
+    private UiRect scmConfigurationControlModeDropdownBounds(int x, int y, int width) {
+        return new UiRect(x, y, width, ScmControlBindingMode.values().length * 18 + 4);
+    }
+
+    private boolean selectScmConfigurationControlMode(double mouseX, double mouseY,
+                                                      int x, int y, int width) {
+        ScmControlBindingMode[] modes = ScmControlBindingMode.values();
+        for (int index = 0; index < modes.length; index++) {
+            if (!inside(mouseX, mouseY, x + 2, y + 2 + index * 18, width - 4, 17)) continue;
+            scmConfigurationControlBindingMode = modes[index];
+            if (scmConfigurationControlBindingMode != ScmControlBindingMode.FACE) {
+                scmConfigurationFaceDropdownOpen = false;
+            }
+            scmLivePreviewRenderer.invalidate();
+            return true;
+        }
+        return false;
+    }
+
+    private String scmConfigurationFaceLabel() {
+        return scmConfigurationInputFace == null ? "Auto - use clicked face"
+                : "Bind " + scmConfigurationInputFace.getSerializedName().toUpperCase(Locale.ROOT)
+                + " face";
+    }
+
+    private List<Direction> scmConfigurationFaces() {
+        List<Direction> faces = new ArrayList<>(7);
+        faces.add(null);
+        faces.add(Direction.NORTH);
+        faces.add(Direction.SOUTH);
+        faces.add(Direction.EAST);
+        faces.add(Direction.WEST);
+        faces.add(Direction.UP);
+        faces.add(Direction.DOWN);
+        return faces;
+    }
+
+    private void drawScmFaceDropdown(GuiGraphics graphics, int x, int y, int width,
+                                     int mouseX, int mouseY) {
+        List<Direction> faces = scmConfigurationFaces();
+        renderAdvancedPanel(graphics, x, y, width, faces.size() * 18 + 4);
+        for (int index = 0; index < faces.size(); index++) {
+            Direction face = faces.get(index);
+            int rowY = y + 2 + index * 18;
+            String label = face == null ? "Auto - use clicked face"
+                    : "Bind " + face.getSerializedName().toUpperCase(Locale.ROOT) + " face";
+            renderAdvancedButton(graphics, font, x + 2, rowY, width - 4, 17,
+                    Component.literal(label), face == scmConfigurationInputFace
+                            || inside(mouseX, mouseY, x + 2, rowY, width - 4, 17), true);
+        }
+    }
+
+    private UiRect scmConfigurationFaceDropdownBounds(int x, int y, int width) {
+        return new UiRect(x, y, width, scmConfigurationFaces().size() * 18 + 4);
+    }
+
+    private boolean selectScmConfigurationFace(double mouseX, double mouseY,
+                                               int x, int y, int width) {
+        List<Direction> faces = scmConfigurationFaces();
+        for (int index = 0; index < faces.size(); index++) {
+            if (!inside(mouseX, mouseY, x + 2, y + 2 + index * 18, width - 4, 17)) continue;
+            setScmConfigurationInputFace(faces.get(index));
+            return true;
+        }
+        return false;
+    }
+
+    private void setScmConfigurationInputFace(Direction face) {
+        scmConfigurationInputFace = face;
+        if (face == null || scmConfigurationSelection.isEmpty()) {
+            scmLivePreviewRenderer.invalidate();
+            return;
+        }
+        Set<ScmConfigurationProfile.UnitReference> updated = scmConfigurationSelection.stream()
+                .map(unit -> unit.withFace(face))
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        scmConfigurationSelection.clear();
+        scmConfigurationSelection.addAll(updated);
+        scmLivePreviewRenderer.invalidate();
+    }
+
+    private boolean selectScmConfigurationTarget(double mouseX, double mouseY,
+                                                  int x, int y, int width) {
+        List<String> actions = scmConfigurationActions();
+        int visible = Math.min(SCM_CONFIGURATION_DROPDOWN_VISIBLE_ROWS, actions.size());
+        for (int row = 0; row < visible; row++) {
+            int idx = scmConfigurationTargetDropdownScroll + row;
+            if (!inside(mouseX, mouseY, x + 2, y + 2 + row * 18, width - 4, 17)) continue;
+            scmConfigurationActionIndex = idx;
+            // Changing the destination must never discard the live 3D
+            // selection. It is normal to select blocks first, then decide
+            // which SCM action/function receives that group.
+            scmLivePreviewRenderer.invalidate();
+            return true;
+        }
+        return false;
+    }
+
+    private void drawScmGroupList(GuiGraphics graphics, int x, int y, int width, int height,
+                                  int mouseX, int mouseY) {
+        graphics.fill(x, y, x + width, y + height, v2Ui
+                ? AdvancedControllerV2Theme.PANEL_RAISED : 0xFF0B1118);
+        graphics.renderOutline(x, y, width, height,
+                v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF344A5C);
+        List<ScmConfigurationGroupRow> rows = scmConfigurationGroupRows();
+        int visible = Math.max(1, (height - 4) / 18);
+        int maximum = Math.max(0, rows.size() - visible);
+        scmConfigurationListScroll = Mth.clamp(scmConfigurationListScroll, 0, maximum);
+        for (int row = 0; row < visible && scmConfigurationListScroll + row < rows.size(); row++) {
+            int index = scmConfigurationListScroll + row;
+            ScmConfigurationGroupRow entry = rows.get(index);
+            int rowY = y + 2 + row * 18;
+            if (entry.header()) {
+                boolean hovered = inside(mouseX, mouseY, x + 2, rowY, width - 4, 17);
+                if (hovered) {
+                    graphics.fill(x + 2, rowY, x + width - 2, rowY + 17, 0x332C4152);
+                }
+                boolean collapsed = scmConfigurationCollapsedGroups.contains(entry.groupId());
+                graphics.drawString(font, collapsed ? ">" : "v", x + 6, rowY + 5,
+                        v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91D9FF, false);
+                graphics.fill(x + 17, rowY + 4, x + 21, rowY + 13, entry.color());
+                String label = entry.label() + " (" + entry.memberCount() + ")";
+                graphics.drawString(font, trim(label, Math.max(12, (width - 54) / 6)), x + 26, rowY + 5,
+                        v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFFE0EDF4, false);
+                if (!SCM_BLACKLISTED_GROUP_ID.equals(entry.groupId())) {
+                    drawScmGroupRemoveControl(graphics, scmConfigurationGroupRemoveBounds(x, rowY, width),
+                            mouseX, mouseY, "-");
+                }
+                continue;
+            }
+            ScmConfigurationProfile.UnitReference unit = entry.unit();
+            if (unit == null) {
+                continue;
+            }
+            boolean selected = containsSameScmBlock(scmConfigurationSelection, unit);
+            if (selected || inside(mouseX, mouseY, x + 2, rowY, width - 4, 17)) {
+                graphics.fill(x + 2, rowY, x + width - 2, rowY + 17,
+                        selected ? 0x553B617C : 0x332C4152);
+            }
+            graphics.fill(x + 20, rowY + 4, x + 24, rowY + 13, entry.color());
+            String label = scmConfigurationUnitLabel(unit);
+            graphics.drawString(font, trim(label, Math.max(12, (width - 52) / 6)), x + 29, rowY + 5,
+                    v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFFE0EDF4, false);
+            if (!SCM_BLACKLISTED_GROUP_ID.equals(entry.groupId())) {
+                drawScmGroupRemoveControl(graphics, scmConfigurationGroupRemoveBounds(x, rowY, width),
+                        mouseX, mouseY, "x");
+            }
+        }
+        if (maximum > 0) {
+            int thumb = Math.max(12, (height - 4) * visible / rows.size());
+            int thumbY = y + 2 + ((height - 4) - thumb) * scmConfigurationListScroll / maximum;
+            graphics.fill(x + width - 4, y + 2, x + width - 2, y + height - 2, 0x55445A6B);
+            graphics.fill(x + width - 4, thumbY, x + width - 2, thumbY + thumb,
+                    v2Ui ? AdvancedControllerV2Theme.ACCENT : 0xFF91D9FF);
+        }
+    }
+
+    private UiRect scmConfigurationGroupRemoveBounds(int x, int rowY, int width) {
+        // Keep this left of the scroll track. Headers remove the current 3D
+        // selection from that group, while member rows remove just that exact
+        // block/face binding.
+        return new UiRect(x + width - 23, rowY + 1, 16, 15);
+    }
+
+    private void drawScmGroupRemoveControl(GuiGraphics graphics, UiRect bounds,
+                                           int mouseX, int mouseY, String symbol) {
+        boolean hovered = bounds.contains(mouseX, mouseY);
+        graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(),
+                hovered ? 0x885F2832 : 0x553A2028);
+        graphics.renderOutline(bounds.x(), bounds.y(), bounds.width(), bounds.height(),
+                hovered ? 0xFFFF8C99 : 0xFF9A5761);
+        graphics.drawCenteredString(font, symbol, bounds.x() + bounds.width() / 2,
+                bounds.y() + 4, 0xFFFFCDD2);
+    }
+
+    private List<ScmConfigurationGroupRow> scmConfigurationGroupRows() {
+        List<ScmConfigurationGroupRow> rows = new ArrayList<>();
+        List<ScmConfigurationProfile.Group> groups = scmConfigurationProfile.groups();
+        if (!scmConfigurationGroupStateInitialized && scmConfigurationProfile.mapId() != null) {
+            groups.forEach(group -> scmConfigurationCollapsedGroups.add(group.id()));
+            if (!scmConfigurationProfile.excludedUnits().isEmpty()) {
+                scmConfigurationCollapsedGroups.add(SCM_BLACKLISTED_GROUP_ID);
+            }
+            scmConfigurationGroupStateInitialized = true;
+        }
+        for (int index = 0; index < groups.size(); index++) {
+            ScmConfigurationProfile.Group group = groups.get(index);
+            int groupColor = scmGroupColor(index);
+            String actions = scmActionsForGroup(group.id());
+            String label = group.label().isBlank() ? group.id() : group.label();
+            if (!actions.isBlank()) label += " — " + actions;
+            rows.add(new ScmConfigurationGroupRow(group.id(), label, null,
+                    groupColor, group.units().size()));
+            if (scmConfigurationCollapsedGroups.contains(group.id())) continue;
+            group.units().stream().sorted(Comparator
+                            .comparing((ScmConfigurationProfile.UnitReference unit) -> unit.subLevelId().toString())
+                            .thenComparing(ScmConfigurationProfile.UnitReference::blockPosition)
+                            .thenComparing(unit -> unit.face() == null ? "" : unit.face().getSerializedName()))
+                    .forEach(unit -> rows.add(new ScmConfigurationGroupRow(group.id(), "", unit,
+                            groupColor, group.units().size())));
+        }
+        Set<ScmConfigurationProfile.UnitReference> blacklisted = scmConfigurationProfile.excludedUnits();
+        if (!blacklisted.isEmpty()) {
+            String id = SCM_BLACKLISTED_GROUP_ID;
+            rows.add(new ScmConfigurationGroupRow(id, "Blacklisted", null, 0xFFE15B64,
+                    blacklisted.size()));
+            if (!scmConfigurationCollapsedGroups.contains(id)) {
+                blacklisted.stream().sorted(Comparator
+                                .comparing((ScmConfigurationProfile.UnitReference unit) -> unit.subLevelId().toString())
+                                .thenComparing(ScmConfigurationProfile.UnitReference::blockPosition)
+                                .thenComparing(unit -> unit.face() == null ? "" : unit.face().getSerializedName()))
+                        .forEach(unit -> rows.add(new ScmConfigurationGroupRow(id, "", unit,
+                                0xFFE15B64, blacklisted.size())));
+            }
+        }
+        return rows;
+    }
+
+    private String scmActionsForGroup(String groupId) {
+        return scmConfigurationProfile.actionGroups().entrySet().stream()
+                .filter(entry -> groupId.equals(entry.getValue()))
+                .map(Map.Entry::getKey)
+                .map(AdvancedContraptionControllerScreen::scmConfigurationActionLabel)
+                .sorted()
+                .collect(java.util.stream.Collectors.joining(", "));
+    }
+
+    private boolean clickScmGroupList(double mouseX, double mouseY,
+                                      int x, int y, int width, int height) {
+        if (!inside(mouseX, mouseY, x, y, width, height)) return false;
+        int index = scmConfigurationListScroll + ((int) mouseY - y - 2) / 18;
+        List<ScmConfigurationGroupRow> rows = scmConfigurationGroupRows();
+        if (index < 0 || index >= rows.size()) return true;
+        ScmConfigurationGroupRow entry = rows.get(index);
+        int rowY = y + 2 + (index - scmConfigurationListScroll) * 18;
+        if (!SCM_BLACKLISTED_GROUP_ID.equals(entry.groupId())
+                && scmConfigurationGroupRemoveBounds(x, rowY, width).contains(mouseX, mouseY)) {
+            if (entry.header()) {
+                removeScmConfigurationSelectionFromGroup(entry.groupId());
+            } else {
+                removeScmConfigurationUnitFromGroup(entry.groupId(), entry.unit());
+            }
+            return true;
+        }
+        if (entry.header()) {
+            if (!scmConfigurationCollapsedGroups.add(entry.groupId())) {
+                scmConfigurationCollapsedGroups.remove(entry.groupId());
+            }
+            scmConfigurationListScroll = 0;
+        }
+        return true;
+    }
+
+    private static boolean containsSameScmBlock(
+            Collection<ScmConfigurationProfile.UnitReference> units,
+            ScmConfigurationProfile.UnitReference target
+    ) {
+        return units != null && units.stream().anyMatch(unit -> unit != null && unit.sameBlock(target));
+    }
+
+    private String scmConfigurationUnitLabel(ScmConfigurationProfile.UnitReference unit) {
+        if (unit == null) return "Unknown block";
+        float partialTick = minecraft == null ? 0.0F
+                : minecraft.getTimer().getGameTimeDeltaPartialTick(false);
+        String name = scmLivePreviewRenderer.blockName(unit.subLevelId(), unit.blockPosition());
+        BlockPos relative = scmLivePreviewRenderer.relativePosition(
+                unit.subLevelId(), unit.blockPosition(), partialTick);
+        String face = unit.face() == null ? "" : " [" + unit.face().getSerializedName().toUpperCase(Locale.ROOT)
+                + " face]";
+        return name + face + " @ " + relative.toShortString();
+    }
+
+    private static int scmGroupColor(int index) {
+        int[] colors = {0xFF55D6BE, 0xFF9A7CFF, 0xFFFFA957, 0xFF62B6FF, 0xFFEF76C8, 0xFFB9D75A};
+        return colors[Math.floorMod(index, colors.length)];
+    }
+
+    // Highlight only selected or configured bindings. The live renderer still
+    // picks every block in the body chain; drawing an outline on every block
+    // would obscure the craft and make calibration harder.
+    private List<ScmLiveSubLevelPreviewRenderer.Highlight> scmConfigurationHighlights() {
+        Map<ScmBlockKey, Integer> colors = new LinkedHashMap<>();
+        boolean faceMode = scmConfigurationControlBindingMode == ScmControlBindingMode.FACE;
+        List<ScmConfigurationProfile.Group> groups = scmConfigurationProfile.groups();
+        for (int index = 0; index < groups.size(); index++) {
+            for (ScmConfigurationProfile.UnitReference unit : groups.get(index).units()) {
+                Direction face = faceMode ? unit.face() : null;
+                if (faceMode && face == null) continue;
+                colors.putIfAbsent(new ScmBlockKey(unit.subLevelId(), unit.blockPosition(), face),
+                        scmGroupColor(index));
+            }
+        }
+        for (ScmConfigurationProfile.UnitReference unit : scmConfigurationProfile.excludedUnits()) {
+            Direction face = faceMode ? unit.face() : null;
+            if (faceMode && face == null) continue;
+            colors.put(new ScmBlockKey(unit.subLevelId(), unit.blockPosition(), face), 0xFFE15B64);
+        }
+        for (ScmConfigurationProfile.UnitReference unit : scmConfigurationSelection) {
+            Direction face = faceMode ? unit.face() : null;
+            if (faceMode && face == null) continue;
+            colors.put(new ScmBlockKey(unit.subLevelId(), unit.blockPosition(), face), 0xFFF6D365);
+        }
+        List<ScmLiveSubLevelPreviewRenderer.Highlight> highlights = new ArrayList<>();
+        for (Map.Entry<ScmBlockKey, Integer> entry : colors.entrySet()) {
+            ScmBlockKey block = entry.getKey();
+            highlights.add(new ScmLiveSubLevelPreviewRenderer.Highlight(
+                    block.subLevelId(), block.blockPosition(), block.face(), entry.getValue()));
+        }
+        return highlights;
+    }
+
+    private List<ScmLiveSubLevelPreviewRenderer.PickTarget> scmConfigurationPickTargets() {
+        return scmLivePreviewRenderer.pickTargets();
+    }
+
+    // Apply one click from the live 3D view. It is intentionally not limited
+    // to discovery candidates: a player may bind any real block and let the
+    // chosen SCM function validate the available control path at initialization.
+    private void selectScmConfigurationBlock(ScmLiveSubLevelPreviewRenderer.PickTarget target) {
+        if (target == null || target.subLevelId() == null) return;
+        ScmControlBindingMode controlMode = scmConfigurationControlBindingMode;
+        Direction selectedFace = switch (controlMode) {
+            case AUTO -> scmLivePreviewRenderer.automaticControlFace(target);
+            case BLOCK -> null;
+            case FACE -> target.face();
+        };
+        if (selectedFace != null) {
+            scmConfigurationInputFace = selectedFace;
+        }
+        ScmConfigurationProfile.UnitReference selectedTarget =
+                new ScmConfigurationProfile.UnitReference(target.subLevelId(), target.position(), "", selectedFace);
+        int index = ensureScmConfigurationCandidate(selectedTarget);
+        if (hasShiftDown() && scmConfigurationLastSelectionIndex >= 0) {
+            int from = Math.min(scmConfigurationLastSelectionIndex, index);
+            int to = Math.max(scmConfigurationLastSelectionIndex, index);
+            if (!hasControlDown()) scmConfigurationSelection.clear();
+            for (int selected = from; selected <= to; selected++) {
+                ScmConfigurationProfile.UnitReference candidate = scmConfigurationCandidates.get(selected);
+                scmConfigurationSelection.add(switch (controlMode) {
+                    case AUTO -> candidate.withFace(scmLivePreviewRenderer.automaticControlFace(
+                            new ScmLiveSubLevelPreviewRenderer.PickTarget("", candidate.subLevelId(),
+                                    candidate.blockPosition(), selectedFace == null ? target.face() : selectedFace)));
+                    case BLOCK -> candidate.withFace(null);
+                    case FACE -> candidate.withFace(selectedFace == null
+                            ? scmConfigurationInputFace : selectedFace);
+                });
+            }
+        } else if (hasControlDown()) {
+            if (!scmConfigurationSelection.add(selectedTarget)) {
+                scmConfigurationSelection.remove(selectedTarget);
+            }
+        } else {
+            scmConfigurationSelection.clear();
+            scmConfigurationSelection.add(selectedTarget);
+        }
+        scmConfigurationLastSelectionIndex = index;
+        scmLivePreviewRenderer.invalidate();
+    }
+
+    private int ensureScmConfigurationCandidate(ScmConfigurationProfile.UnitReference target) {
+        int index = scmConfigurationCandidates.indexOf(target);
+        if (index >= 0) return index;
+        if (scmConfigurationCandidates.size() < 2048) {
+            scmConfigurationCandidates.add(target);
+            return scmConfigurationCandidates.size() - 1;
+        }
+        return Math.max(0, scmConfigurationCandidates.size() - 1);
+    }
+
+    private void assignScmConfigurationSelection() {
+        if (scmConfigurationProfile.mapId() == null || scmConfigurationSelection.isEmpty()) {
+            scmConfigurationStatus = "Wait for the live craft view, then select one or more blocks";
+            return;
+        }
+        String action = activeScmConfigurationAction();
+        String groupId = "action_" + action;
+        Map<String, ScmConfigurationProfile.Group> groups = new LinkedHashMap<>();
+        scmConfigurationProfile.groups().forEach(group -> groups.put(group.id(), group));
+        boolean faceMode = scmConfigurationControlBindingMode == ScmControlBindingMode.FACE;
+        boolean missingFace = faceMode && scmConfigurationSelection.stream()
+                .anyMatch(unit -> unit.face() == null && scmConfigurationInputFace == null);
+        if (missingFace) {
+            scmConfigurationStatus = "Face mode: click a block face or choose a direction first";
+            return;
+        }
+        Set<ScmConfigurationProfile.UnitReference> bindings = scmConfigurationSelection.stream()
+                .map(unit -> switch (scmConfigurationControlBindingMode) {
+                    case AUTO -> unit;
+                    case BLOCK -> unit.withFace(null);
+                    case FACE -> unit.withFace(unit.face() == null
+                            ? scmConfigurationInputFace : unit.face());
+                })
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        bindings.forEach(this::ensureScmConfigurationCandidate);
+        ScmConfigurationProfile.Group existing = groups.get(groupId);
+        Set<ScmConfigurationProfile.UnitReference> members = new LinkedHashSet<>();
+        if (existing != null) {
+            members.addAll(existing.units());
+        }
+        // Assignment is additive. A selected actuator can therefore belong to
+        // Forward and Yaw Right (or Auto) without removing either binding.
+        members.addAll(bindings);
+        groups.put(groupId, new ScmConfigurationProfile.Group(groupId,
+                scmConfigurationActionLabel(action), members));
+        Map<String, String> actions = new LinkedHashMap<>(scmConfigurationProfile.actionGroups());
+        actions.put(action, groupId);
+        Set<ScmConfigurationProfile.UnitReference> excluded = new LinkedHashSet<>(
+                scmConfigurationProfile.excludedUnits());
+        excluded.removeIf(excludedUnit -> bindings.stream().anyMatch(binding ->
+                binding.sameBlock(excludedUnit) && (binding.face() == null
+                        || binding.face() == excludedUnit.face())));
+        scmConfigurationProfile.replace(scmConfigurationProfile.mapId(), new ArrayList<>(groups.values()),
+                actions, excluded);
+        scmConfigurationDirty = true;
+        scmConfigurationSelection.clear();
+        scmConfigurationSelection.addAll(bindings);
+        scmConfigurationStatus = "Assigned " + bindings.size() + " block(s) to "
+                + scmConfigurationActionLabel(action);
+        scmLivePreviewRenderer.invalidate();
+    }
+
+    private void removeScmConfigurationSelectionFromGroup(String groupId) {
+        if (scmConfigurationProfile.mapId() == null || scmConfigurationSelection.isEmpty()) {
+            scmConfigurationStatus = "Select one or more blocks in the live craft view first";
+            return;
+        }
+        Map<String, ScmConfigurationProfile.Group> groups = new LinkedHashMap<>();
+        scmConfigurationProfile.groups().forEach(group -> groups.put(group.id(), group));
+        ScmConfigurationProfile.Group group = groups.get(groupId);
+        if (group == null) {
+            scmConfigurationStatus = "That actuator group no longer exists";
+            return;
+        }
+        Set<ScmConfigurationProfile.UnitReference> members = new LinkedHashSet<>(group.units());
+        int before = members.size();
+        // A block click in the 3D view selects a block, not a particular
+        // redstone face. Removing through a group header therefore removes
+        // every binding of the selected block from this one group only. Its
+        // memberships in every other group remain intact.
+        members.removeIf(member -> scmConfigurationSelection.stream().anyMatch(selected ->
+                selected.sameBlock(member)));
+        groups.put(groupId, new ScmConfigurationProfile.Group(group.id(), group.label(), members));
+        scmConfigurationProfile.replace(scmConfigurationProfile.mapId(), new ArrayList<>(groups.values()),
+                scmConfigurationProfile.actionGroups(), scmConfigurationProfile.excludedUnits());
+        scmConfigurationDirty = true;
+        int removed = before - members.size();
+        scmConfigurationStatus = removed == 0
+                ? "The selected blocks are not assigned to " + scmConfigurationGroupLabel(group)
+                : "Removed " + removed + " block" + (removed == 1 ? "" : "s") + " from "
+                + scmConfigurationGroupLabel(group);
+        scmLivePreviewRenderer.invalidate();
+    }
+
+    private void removeScmConfigurationUnitFromGroup(String groupId,
+                                                     ScmConfigurationProfile.UnitReference unit) {
+        if (scmConfigurationProfile.mapId() == null || unit == null) {
+            scmConfigurationStatus = "That actuator binding is no longer available";
+            return;
+        }
+        Map<String, ScmConfigurationProfile.Group> groups = new LinkedHashMap<>();
+        scmConfigurationProfile.groups().forEach(group -> groups.put(group.id(), group));
+        ScmConfigurationProfile.Group group = groups.get(groupId);
+        if (group == null) {
+            scmConfigurationStatus = "That actuator group no longer exists";
+            return;
+        }
+        Set<ScmConfigurationProfile.UnitReference> members = new LinkedHashSet<>(group.units());
+        if (!members.remove(unit)) {
+            scmConfigurationStatus = "That actuator is not assigned to " + scmConfigurationGroupLabel(group);
+            return;
+        }
+        groups.put(groupId, new ScmConfigurationProfile.Group(group.id(), group.label(), members));
+        scmConfigurationProfile.replace(scmConfigurationProfile.mapId(), new ArrayList<>(groups.values()),
+                scmConfigurationProfile.actionGroups(), scmConfigurationProfile.excludedUnits());
+        scmConfigurationDirty = true;
+        scmConfigurationStatus = "Removed " + scmConfigurationUnitLabel(unit) + " from "
+                + scmConfigurationGroupLabel(group);
+        scmLivePreviewRenderer.invalidate();
+    }
+
+    private static String scmConfigurationGroupLabel(ScmConfigurationProfile.Group group) {
+        return group.label().isBlank() ? group.id() : group.label();
+    }
+
+    private boolean selectionIsBlacklisted() {
+        return !scmConfigurationSelection.isEmpty()
+                && scmConfigurationProfile.excludedUnits().containsAll(scmConfigurationSelection);
+    }
+
+    private void toggleScmConfigurationBlacklist() {
+        if (scmConfigurationProfile.mapId() == null || scmConfigurationSelection.isEmpty()) {
+            scmConfigurationStatus = "Select one or more blocks in the live craft view first";
+            return;
+        }
+        Set<ScmConfigurationProfile.UnitReference> excluded = new LinkedHashSet<>(
+                scmConfigurationProfile.excludedUnits());
+        boolean clear = excluded.containsAll(scmConfigurationSelection);
+        if (clear) excluded.removeAll(scmConfigurationSelection);
+        else excluded.addAll(scmConfigurationSelection);
+        scmConfigurationProfile.replace(scmConfigurationProfile.mapId(), scmConfigurationProfile.groups(),
+                scmConfigurationProfile.actionGroups(), excluded);
+        scmConfigurationDirty = true;
+        scmConfigurationStatus = (clear ? "Removed " : "Blacklisted ")
+                + scmConfigurationSelection.size() + " block(s)";
+        scmLivePreviewRenderer.invalidate();
     }
 
     // Draw the graph fps
@@ -1994,7 +3834,16 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         graphics.enableScissor(left, top, right, top + GRAPH_TAB_HEIGHT);
         int x = left + 5 - functionTabScroll;
         x = drawGraphTab(graphics, x, top + 3, "Main Graph",
-                activeFunctionId == null, mouseX, mouseY, false, false);
+                !scmGraphOverview && !scheduleGraphOverview && activeFunctionId == null,
+                mouseX, mouseY, false, false);
+        if (hasScmWorkspace()) {
+            x = drawGraphTab(graphics, x, top + 3, "SCM Graph",
+                    scmGraphOverview, mouseX, mouseY, false, false);
+        }
+        if (hasShippingScheduleWorkspace()) {
+            x = drawGraphTab(graphics, x, top + 3, "Schedule",
+                    scheduleGraphOverview, mouseX, mouseY, false, false);
+        }
         for (AdvancedGraphDocument.FunctionGraph function : draft.functions()) {
             x = drawGraphTab(graphics, x, top + 3, function.name(),
                     function.id().equals(activeFunctionId), mouseX, mouseY, true,
@@ -2054,6 +3903,12 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Get the graph tabs content width
     private int graphTabsContentWidth() {
         int width = graphTabWidth("Main Graph", false) + 3;
+        if (hasScmWorkspace()) {
+            width += graphTabWidth("SCM Graph", false) + 3;
+        }
+        if (hasShippingScheduleWorkspace()) {
+            width += graphTabWidth("Schedule", false) + 3;
+        }
         for (AdvancedGraphDocument.FunctionGraph function : draft.functions()) {
             width += graphTabWidth(function.name(), true) + 3;
         }
@@ -2074,6 +3929,22 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return true;
         }
         x += width + 3;
+        if (hasScmWorkspace()) {
+            width = graphTabWidth("SCM Graph", false);
+            if (mouseX >= x && mouseX < x + width) {
+                selectScmGraphTab();
+                return true;
+            }
+            x += width + 3;
+        }
+        if (hasShippingScheduleWorkspace()) {
+            width = graphTabWidth("Schedule", false);
+            if (mouseX >= x && mouseX < x + width) {
+                selectShippingScheduleTab();
+                return true;
+            }
+            x += width + 3;
+        }
         for (AdvancedGraphDocument.FunctionGraph function : draft.functions()) {
             width = graphTabWidth(function.name(), true);
             if (mouseX >= x && mouseX < x + width) {
@@ -2296,13 +4167,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Draw the tooltip
     @Override
     protected void renderTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
-        if (!hudOpen) super.renderTooltip(graphics, mouseX, mouseY);
+        if (!hudOpen && !scmConfigurationOpen && !scmGraphOverview && !scheduleGraphOverview) {
+            super.renderTooltip(graphics, mouseX, mouseY);
+        }
     }
 
     // Draw the slot
     @Override
     protected void renderSlot(GuiGraphics graphics, Slot slot) {
-        if (shouldHideGhostSlot(slot)) return;
+        if (scmConfigurationOpen || scmGraphOverview || scheduleGraphOverview || shouldHideGhostSlot(slot)) return;
         if (!ContraptionNetworkLinkerSlotRenderer.renderControllerSlot(graphics, slot)) {
             super.renderSlot(graphics, slot);
         }
@@ -2311,7 +4184,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Draw the slot highlight
     @Override
     protected void renderSlotHighlight(GuiGraphics graphics, Slot slot, int mouseX, int mouseY, float partialTick) {
-        if (shouldHideGhostSlot(slot)) return;
+        if (scmConfigurationOpen || scmGraphOverview || scheduleGraphOverview || shouldHideGhostSlot(slot)) return;
         super.renderSlotHighlight(graphics, slot, mouseX, mouseY, partialTick);
     }
 
@@ -2324,7 +4197,1559 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Check if the blocking overlay is open
     private boolean blockingOverlayOpen() {
         return linkerOpen || shareModalOpen || templatePicker || optionDropdown != null || contextMenu != null
-                || miniBrowser != null || hudOpen || graphHistoryOpen || toolsMenuOpen;
+                || miniBrowser != null || hudOpen || graphHistoryOpen || toolsMenuOpen || scmConfigurationOpen
+                || scmBlockPickerOpen;
+    }
+
+    // Draw the host-only Scratch presentation inside the normal ACC canvas.
+    // The graph shell, tab bar, sidebars and theme stay shared with Main Graph;
+    // only the schedule document's visual grammar changes.
+    private void drawShippingScheduleWorkspace(GuiGraphics graphics, int mouseX, int mouseY) {
+        UiRect canvas = scheduleCanvasBounds();
+        int canvasColour = v2Ui ? AdvancedControllerV2Theme.CANVAS_BACKGROUND : 0xFF10141C;
+        graphics.drawString(font, "SCHEDULE", canvas.x() + 12, canvas.y() + 10,
+                v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF91D9FF, false);
+        scheduleLayout = ScratchBlockSurface.renderFreeform(graphics, font, ShippingScheduleScratchBlocks.registry(),
+                ShippingScheduleGraph.orderedBlocks(scheduleDraft), canvas.x(), canvas.y(), canvas.width(), canvas.height(),
+                node -> node instanceof AdvancedGraphDocument.Node scheduleNode
+                        ? new ScratchBlockSurface.Position(scheduleNode.x(), scheduleNode.y())
+                        : ScratchBlockSurface.Position.ORIGIN,
+                schedulePanX, schedulePanY, scheduleZoom, selectedScheduleBlocks, canvasColour,
+                node -> node instanceof AdvancedGraphDocument.Node scheduleNode
+                        ? ShippingScheduleGraph.scratchParent(scheduleNode) : "",
+                node -> node instanceof AdvancedGraphDocument.Node scheduleNode
+                        ? scheduleInlineDetail(scheduleNode) : null);
+        drawScheduleMarquee(graphics);
+        drawScheduleInlineEditorBackdrop(graphics);
+        syncScheduleInlinePropertyEditor();
+        if (scheduleLayout.blocks().isEmpty()) {
+            graphics.drawString(font, "Choose a schedule step from the shared library to begin.",
+                    canvas.x() + 18, canvas.y() + 38,
+                    v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFFAAB8C6, false);
+        }
+    }
+
+    // Draw the current drag-selection rectangle over the shared ACC canvas.
+    private void drawScheduleMarquee(GuiGraphics graphics) {
+        if (!scheduleMarquee) return;
+        int left = (int) Math.floor(Math.min(scheduleMarqueeStartX, scheduleMarqueeCurrentX));
+        int top = (int) Math.floor(Math.min(scheduleMarqueeStartY, scheduleMarqueeCurrentY));
+        int right = (int) Math.ceil(Math.max(scheduleMarqueeStartX, scheduleMarqueeCurrentX));
+        int bottom = (int) Math.ceil(Math.max(scheduleMarqueeStartY, scheduleMarqueeCurrentY));
+        if (right <= left || bottom <= top) return;
+        int colour = v2Ui ? AdvancedControllerV2Theme.ACCENT : 0xFF91D9FF;
+        graphics.fill(left, top, right, bottom, (colour & 0x00FFFFFF) | 0x2E000000);
+        graphics.renderOutline(left, top, right - left, bottom - top, colour);
+    }
+
+    // Read the selected block's real Create/Scratch configuration for its
+    // inline input pill. The graph remains the one source of truth.
+    private String schedulePrimaryProperty(AdvancedGraphDocument.Node node) {
+        if (minecraft == null || minecraft.level == null || scheduleDraft == null) return "";
+        return ShippingScheduleGraph.primaryProperty(scheduleDraft, node, minecraft.level.registryAccess());
+    }
+
+    // Hide the painted value while the actual inline EditBox owns that one field.
+    private String scheduleInlineDetail(AdvancedGraphDocument.Node node) {
+        if (minecraft == null || minecraft.level == null || scheduleDraft == null) return null;
+        String property = ShippingScheduleGraph.primaryPropertyKey(scheduleDraft, node,
+                minecraft.level.registryAccess());
+        if (property.isBlank()) return null;
+        return editingScheduleInlineProperty && node.id().equals(selectedScheduleBlock)
+                && property.equals(selectedScheduleProperty) ? null : schedulePrimaryProperty(node);
+    }
+
+    // Draw the one pale field behind the real inline editor, avoiding a duplicate static value.
+    private void drawScheduleInlineEditorBackdrop(GuiGraphics graphics) {
+        if (!editingScheduleInlineProperty || scheduleLayout == null || selectedScheduleBlock == null) return;
+        ScratchBlockSurface.BlockBounds block = scheduleBlockBounds(selectedScheduleBlock);
+        if (block == null) return;
+        int fieldWidth = Math.min(76, Math.max(34, block.width() - 98));
+        int x = block.x() + block.width() - fieldWidth - 9;
+        int y = block.y() + Math.max(3, Math.min(7, block.height() / 3 - 4));
+        graphics.fill(x + 3, y, x + fieldWidth - 3, y + 15, 0xFFF7F7F7);
+        graphics.fill(x, y + 3, x + fieldWidth, y + 12, 0xFFF7F7F7);
+        graphics.fill(x + 5, y + 2, x + fieldWidth - 5, y + 13, 0xFFE9EEF3);
+    }
+
+    // The Schedule canvas owns an independent viewport so navigating a large
+    // Scratch program never disturbs the Main Graph's saved camera position.
+    private void drawScheduleGrid(GuiGraphics graphics) {
+        UiRect canvas = scheduleCanvasBounds();
+        if (!v2Ui) {
+            graphics.fill(canvas.x(), canvas.y(), canvas.right(), canvas.bottom(), 0xFF10141C);
+            return;
+        }
+        int spacing = Math.max(8, (int) Math.round(V2_GRID_SPACING * scheduleZoom));
+        int dotSize = scheduleZoom >= 1.35D ? 2 : 1;
+        int xPhase = Math.floorMod((int) Math.round(schedulePanX * scheduleZoom), spacing);
+        int yPhase = Math.floorMod((int) Math.round(schedulePanY * scheduleZoom), spacing);
+        Matrix4f pose = graphics.pose().last().pose();
+        VertexConsumer buffer = graphics.bufferSource().getBuffer(RenderType.gui());
+        addGuiQuad(buffer, pose, canvas.x(), canvas.y(), canvas.right(), canvas.bottom(),
+                AdvancedControllerV2Theme.CANVAS_BACKGROUND);
+        for (int y = canvas.y() + yPhase - spacing; y < canvas.bottom(); y += spacing) {
+            for (int x = canvas.x() + xPhase - spacing; x < canvas.right(); x += spacing) {
+                if (x >= canvas.x() && y >= canvas.y()) {
+                    addGuiQuad(buffer, pose, x, y, x + dotSize, y + dotSize,
+                            AdvancedControllerV2Theme.CANVAS_DOT);
+                }
+            }
+        }
+        graphics.flush();
+    }
+
+    private void drawScheduleCanvasOverlay(GuiGraphics graphics) {
+        UiRect canvas = scheduleCanvasBounds();
+        if (canvas.width() < 170 || canvas.height() < 120) return;
+        UiRect read = scheduleReadItemBounds();
+        UiRect write = scheduleWriteItemBounds();
+        renderAdvancedButton(graphics, font, read.x(), read.y(), read.width(), read.height(),
+                Component.literal("Read Item"), false, false);
+        renderAdvancedButton(graphics, font, write.x(), write.y(), write.width(), write.height(),
+                Component.literal("Write Item"), false, false);
+        for (String action : List.of("start", "pause", "resume", "stop")) {
+            UiRect control = scheduleRuntimeButtonBounds(action);
+            renderAdvancedButton(graphics, font, control.x(), control.y(), control.width(), control.height(),
+                    Component.literal(switch (action) {
+                        case "start" -> "Start";
+                        case "pause" -> "Pause";
+                        case "resume" -> "Resume";
+                        default -> "Stop";
+                    }), false, false);
+        }
+        String zoomLabel = (int) Math.round(scheduleZoom * 100.0D) + "%";
+        String blockLabel = "BLOCKS: " + ShippingScheduleGraph.orderedBlocks(scheduleDraft).size();
+        UiRect status = scheduleCanvasStatusBounds();
+        if (v2Ui) {
+            AdvancedControllerV2Theme.drawPanel(graphics, status.x(), status.y(), status.width(), status.height());
+            graphics.drawString(font, "ZOOM", status.x() + 8, status.y() + 6,
+                    AdvancedControllerV2Theme.MUTED, false);
+            graphics.drawString(font, zoomLabel, status.x() + 41, status.y() + 6,
+                    AdvancedControllerV2Theme.PRIMARY, false);
+            graphics.drawString(font, blockLabel, status.right() - font.width(blockLabel) - 8, status.y() + 6,
+                    AdvancedControllerV2Theme.SECONDARY, false);
+        } else {
+            graphics.fill(status.x(), status.y(), status.right(), status.bottom(), 0xCC17212D);
+            graphics.drawString(font, zoomLabel + "  " + blockLabel, status.x() + 7, status.y() + 6,
+                    0xFFD6E4F2, false);
+        }
+        drawScheduleMinimap(graphics);
+    }
+
+    private UiRect scheduleCanvasStatusBounds() {
+        String zoomLabel = (int) Math.round(scheduleZoom * 100.0D) + "%";
+        String blockLabel = "BLOCKS: " + ShippingScheduleGraph.orderedBlocks(scheduleDraft).size();
+        return new UiRect(graphLeft() + 10, graphBottom() - 27,
+                Math.max(126, font.width(zoomLabel) + font.width(blockLabel) + 48), 19);
+    }
+
+    // Explicit direction controls make the SCM graph authoritative while still
+    // supporting a legacy shipping schedule held by the attached pilot.
+    private UiRect scheduleReadItemBounds() {
+        UiRect canvas = scheduleCanvasBounds();
+        return new UiRect(canvas.x() + 78, canvas.y() + 4, 68, 18);
+    }
+
+    private UiRect scheduleWriteItemBounds() {
+        UiRect read = scheduleReadItemBounds();
+        return new UiRect(read.right() + 4, read.y(), 72, read.height());
+    }
+
+    // Runtime controls belong to the SCM-owned schedule. They remain useful
+    // when the pilot is not holding a physical shipping-schedule item.
+    private UiRect scheduleRuntimeButtonBounds(String action) {
+        UiRect write = scheduleWriteItemBounds();
+        int x = write.right() + 5;
+        return switch (action) {
+            case "start" -> new UiRect(x, write.y(), 43, write.height());
+            case "pause" -> new UiRect(x + 47, write.y(), 45, write.height());
+            case "resume" -> new UiRect(x + 96, write.y(), 54, write.height());
+            default -> new UiRect(x + 154, write.y(), 40, write.height());
+        };
+    }
+
+    private UiRect scheduleMinimapBounds() {
+        return new UiRect(graphRight() - 132, graphBottom() - 92, 122, 82);
+    }
+
+    private void drawScheduleMinimap(GuiGraphics graphics) {
+        List<AdvancedGraphDocument.Node> blocks = ShippingScheduleGraph.orderedBlocks(scheduleDraft);
+        UiRect bounds = scheduleMinimapBounds();
+        if (v2Ui) {
+            AdvancedControllerV2Theme.drawPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+            graphics.drawString(font, "MINIMAP", bounds.x() + 8, bounds.y() + 7,
+                    AdvancedControllerV2Theme.MUTED, false);
+            graphics.drawString(font, "RESET", bounds.right() - font.width("RESET") - 8, bounds.y() + 7,
+                    AdvancedControllerV2Theme.PRIMARY, false);
+            AdvancedControllerV2Theme.fill(graphics, bounds.x() + 1, bounds.y() + 21,
+                    bounds.right() - 1, bounds.y() + 22, AdvancedControllerV2Theme.BORDER_SOFT);
+        } else {
+            graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(), 0xE017212D);
+            graphics.drawString(font, "Minimap", bounds.x() + 6, bounds.y() + 6, 0xFF91D9FF, false);
+        }
+        AdvancedControllerMinimapGeometry.Transform transform = scheduleMinimapDragTransform == null
+                ? scheduleMinimapTransform(blocks) : scheduleMinimapDragTransform;
+        for (AdvancedGraphDocument.Node node : blocks) {
+            int left = (int) Math.round(transform.mapX(node.x()));
+            int top = (int) Math.round(transform.mapY(node.y()));
+            int right = Math.max(left + 2, (int) Math.round(transform.mapX(
+                    node.x() + ScratchBlockSurface.DEFAULT_BLOCK_WIDTH)));
+            int bottom = Math.max(top + 2, (int) Math.round(transform.mapY(node.y() + ScratchBlockSurface.C_BLOCK_HEIGHT)));
+            ScratchBlockDefinition definition = ShippingScheduleScratchBlocks.registry().get(node.type());
+            int colour = definition == null ? AdvancedControllerV2Theme.MUTED : definition.colour();
+            if (v2Ui) {
+                AdvancedControllerV2Theme.fill(graphics, left, top, right, bottom,
+                        (colour & 0x00FFFFFF) | 0xAA000000);
+                AdvancedControllerV2Theme.drawOutline(graphics, left, top, Math.max(1, right - left),
+                        Math.max(1, bottom - top), colour);
+            } else {
+                graphics.fill(left, top, right, bottom, colour);
+            }
+        }
+        AdvancedControllerMinimapGeometry.Rect viewport = scheduleMinimapViewport(transform);
+        if (viewport.width() <= 0.0D || viewport.height() <= 0.0D) return;
+        int left = (int) Math.floor(viewport.left());
+        int top = (int) Math.floor(viewport.top());
+        int right = Math.max(left + 2, (int) Math.ceil(viewport.right()));
+        int bottom = Math.max(top + 2, (int) Math.ceil(viewport.bottom()));
+        int colour = v2Ui ? AdvancedControllerV2Theme.ACCENT : 0xFF91D9FF;
+        graphics.fill(left, top, right, bottom, (colour & 0x00FFFFFF) | 0x33000000);
+        graphics.renderOutline(left, top, right - left, bottom - top, colour);
+    }
+
+    private AdvancedControllerMinimapGeometry.Transform scheduleMinimapTransform(
+            List<AdvancedGraphDocument.Node> blocks) {
+        UiRect canvas = scheduleCanvasBounds();
+        double minX = scheduleGraphX(canvas.x());
+        double minY = scheduleGraphY(canvas.y());
+        double maxX = scheduleGraphX(canvas.right());
+        double maxY = scheduleGraphY(canvas.bottom());
+        for (AdvancedGraphDocument.Node node : blocks) {
+            minX = Math.min(minX, node.x());
+            minY = Math.min(minY, node.y());
+            maxX = Math.max(maxX, node.x() + ScratchBlockSurface.DEFAULT_BLOCK_WIDTH);
+            maxY = Math.max(maxY, node.y() + ScratchBlockSurface.C_BLOCK_HEIGHT);
+        }
+        double horizontalPadding = Math.max(24.0D, (maxX - minX) * 0.04D);
+        double verticalPadding = Math.max(24.0D, (maxY - minY) * 0.04D);
+        UiRect bounds = scheduleMinimapBounds();
+        return AdvancedControllerMinimapGeometry.fit(minX - horizontalPadding, minY - verticalPadding,
+                maxX + horizontalPadding, maxY + verticalPadding,
+                bounds.x() + 8, bounds.y() + 28, bounds.width() - 16, bounds.height() - 36);
+    }
+
+    private AdvancedControllerMinimapGeometry.Rect scheduleMinimapViewport(
+            AdvancedControllerMinimapGeometry.Transform transform) {
+        UiRect canvas = scheduleCanvasBounds();
+        return AdvancedControllerMinimapGeometry.viewport(transform, scheduleGraphX(canvas.x()),
+                scheduleGraphY(canvas.y()), scheduleGraphX(canvas.right()), scheduleGraphY(canvas.bottom()));
+    }
+
+    private int scheduleScreenX(double graphX) {
+        return scheduleCanvasBounds().x() + (int) Math.round((graphX + schedulePanX) * scheduleZoom);
+    }
+
+    private int scheduleScreenY(double graphY) {
+        return scheduleCanvasBounds().y() + (int) Math.round((graphY + schedulePanY) * scheduleZoom);
+    }
+
+    private double scheduleGraphX(double screenX) {
+        return (screenX - scheduleCanvasBounds().x()) / scheduleZoom - schedulePanX;
+    }
+
+    private double scheduleGraphY(double screenY) {
+        return (screenY - scheduleCanvasBounds().y()) / scheduleZoom - schedulePanY;
+    }
+
+    private boolean clickScheduleCanvasOverlay(double mouseX, double mouseY, int button) {
+        UiRect canvas = scheduleCanvasBounds();
+        if (canvas.width() < 170 || canvas.height() < 120) return false;
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && scheduleReadItemBounds().contains(mouseX, mouseY)) {
+            requestScheduleItemTransfer("schedule_read", "Reading held shipping schedule...");
+            return true;
+        }
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && scheduleWriteItemBounds().contains(mouseX, mouseY)) {
+            requestScheduleItemTransfer("schedule_write", "Writing schedule to pilot...");
+            return true;
+        }
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            for (String action : List.of("start", "pause", "resume", "stop")) {
+                if (scheduleRuntimeButtonBounds(action).contains(mouseX, mouseY)) {
+                    requestScheduleItemTransfer("schedule_" + action,
+                            Character.toUpperCase(action.charAt(0)) + action.substring(1) + " SCM schedule...");
+                    return true;
+                }
+            }
+        }
+        UiRect minimap = scheduleMinimapBounds();
+        if (minimap.contains(mouseX, mouseY)) {
+            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT
+                    && inside(mouseX, mouseY, minimap.right() - 46, minimap.y(), 46, 22)) {
+                schedulePanX = 24.0D;
+                schedulePanY = 12.0D;
+                scheduleZoom = 1.0D;
+                draggingScheduleMinimapViewport = false;
+                scheduleMinimapDragTransform = null;
+                return true;
+            }
+            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                AdvancedControllerMinimapGeometry.Transform transform = scheduleMinimapTransform(
+                        ShippingScheduleGraph.orderedBlocks(scheduleDraft));
+                AdvancedControllerMinimapGeometry.Rect content = transform.contentBounds();
+                if (content.contains(mouseX, mouseY)) {
+                    AdvancedControllerMinimapGeometry.Rect viewport = scheduleMinimapViewport(transform);
+                    if (viewport.contains(mouseX, mouseY)) {
+                        scheduleMinimapDragOffsetX = mouseX - viewport.centerX();
+                        scheduleMinimapDragOffsetY = mouseY - viewport.centerY();
+                    } else {
+                        scheduleMinimapDragOffsetX = 0.0D;
+                        scheduleMinimapDragOffsetY = 0.0D;
+                        panScheduleMinimapViewport(mouseX, mouseY, transform);
+                    }
+                    scheduleMinimapDragTransform = transform;
+                    draggingScheduleMinimapViewport = true;
+                }
+            }
+            return true;
+        }
+        return scheduleCanvasStatusBounds().contains(mouseX, mouseY);
+    }
+
+    private void panScheduleMinimapViewport(double mouseX, double mouseY,
+                                             AdvancedControllerMinimapGeometry.Transform transform) {
+        AdvancedControllerMinimapGeometry.Rect content = transform.contentBounds();
+        double mapCenterX = Mth.clamp(mouseX - scheduleMinimapDragOffsetX, content.left(), content.right());
+        double mapCenterY = Mth.clamp(mouseY - scheduleMinimapDragOffsetY, content.top(), content.bottom());
+        double worldCenterX = transform.worldX(mapCenterX);
+        double worldCenterY = transform.worldY(mapCenterY);
+        UiRect canvas = scheduleCanvasBounds();
+        schedulePanX = AdvancedControllerMinimapGeometry.panForWorldCenter(
+                worldCenterX, scheduleZoom, canvas.width()) / scheduleZoom;
+        schedulePanY = AdvancedControllerMinimapGeometry.panForWorldCenter(
+                worldCenterY, scheduleZoom, canvas.height()) / scheduleZoom;
+    }
+
+    // Draw the normal ACC library sidebar with the shipping schedule registry
+    // in place of ordinary graph nodes.
+    private void drawScheduleLibrary(GuiGraphics graphics, int mouseX, int mouseY) {
+        int left = layoutLeft();
+        if (leftSidebarCollapsed) {
+            renderSidebarPanel(graphics, left, TOOLBAR_HEIGHT, SIDEBAR_HANDLE_WIDTH, height - TOOLBAR_HEIGHT);
+            return;
+        }
+        renderSidebarPanel(graphics, left, TOOLBAR_HEIGHT, activeLeftWidth(), height - TOOLBAR_HEIGHT);
+        graphics.fill(left + activeLeftWidth() - 1, TOOLBAR_HEIGHT, left + activeLeftWidth(), height,
+                v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF344A5C);
+        graphics.drawString(font, v2Ui ? "SCHEDULE LIBRARY" : "Schedule Blocks", left + 8, 62,
+                v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF91D9FF, false);
+
+        int contentHeight = schedulePaletteContentHeight();
+        int viewportHeight = Math.max(1, height - 82);
+        schedulePaletteScroll = Mth.clamp(schedulePaletteScroll, 0, Math.max(0, contentHeight - viewportHeight));
+        int y = 86 - schedulePaletteScroll;
+        graphics.enableScissor(left, 82, left + activeLeftWidth(), height);
+        for (String category : schedulePaletteCategories()) {
+            List<ScratchBlockDefinition> definitions = schedulePaletteDefinitions(category);
+            if (definitions.isEmpty()) continue;
+            String categoryId = schedulePaletteCategoryId(category);
+            boolean collapsed = collapsedCategories.contains(categoryId);
+            int colour = definitions.getFirst().colour();
+            boolean hovered = inside(mouseX, mouseY, left + 4, y - 1, activeLeftWidth() - 8, 25);
+            if (v2Ui) {
+                AdvancedControllerV2Theme.drawBrowserCategory(graphics, left + 4, y - 1,
+                        activeLeftWidth() - 8, 25, colour, collapsed, hovered);
+                graphics.drawString(font, collapsed ? ">" : "v", left + 12, y + 7, colour, false);
+                graphics.drawString(font, schedulePaletteCategoryName(category).toUpperCase(Locale.ROOT),
+                        left + 27, y + 7, AdvancedControllerV2Theme.SECONDARY, false);
+            } else {
+                renderControllerOption(graphics, left + 5, y - 2, activeLeftWidth() - 10, 16,
+                        colour, false, false);
+                graphics.drawString(font, (collapsed ? "> " : "v ") + schedulePaletteCategoryName(category),
+                        left + 12, y + 1, interfacePrimaryColor(), false);
+            }
+            y += 25;
+            if (collapsed) continue;
+            for (ScratchBlockDefinition definition : definitions) {
+                boolean blockHovered = inside(mouseX, mouseY, left + 7, y,
+                        activeLeftWidth() - 14, SCHEDULE_PALETTE_ROW_HEIGHT - 1);
+                if (v2Ui) {
+                    AdvancedControllerV2Theme.drawBrowserNode(graphics, left + 7, y,
+                            activeLeftWidth() - 14, SCHEDULE_PALETTE_ROW_HEIGHT - 1,
+                            definition.colour(), blockHovered);
+                    graphics.drawString(font, trim(definition.title().toUpperCase(Locale.ROOT), 27),
+                            left + 23, y + 4, AdvancedControllerV2Theme.PRIMARY, false);
+                } else {
+                    if (blockHovered) graphics.fill(left + 8, y, left + activeLeftWidth() - 7,
+                            y + SCHEDULE_PALETTE_ROW_HEIGHT - 1, 0x663B617C);
+                    graphics.fill(left + 13, y + 6, left + 18, y + 15, definition.colour());
+                    graphics.drawString(font, trim(definition.title(), 27), left + 24, y + 5,
+                            interfacePrimaryColor(), false);
+                }
+                y += SCHEDULE_PALETTE_ROW_HEIGHT;
+            }
+        }
+        graphics.disableScissor();
+        drawSidebarScrollTrack(graphics, left + activeLeftWidth() - 5, 84, 3,
+                Math.max(1, height - 88), contentHeight, viewportHeight, schedulePaletteScroll);
+    }
+
+    // Draw the normal ACC inspector frame with schedule-specific controls.
+    private void drawScheduleInspector(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (rightSidebarCollapsed) {
+            if (schedulePropertyValue != null) schedulePropertyValue.setVisible(false);
+            return;
+        }
+        int x = graphRight();
+        renderSidebarPanel(graphics, x, TOOLBAR_HEIGHT, layoutRight() - x, height - TOOLBAR_HEIGHT);
+        graphics.fill(x, TOOLBAR_HEIGHT, x + 1, height,
+                v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF344A5C);
+        graphics.drawString(font, v2Ui ? "CONFIG" : "Inspector", x + 10, 38,
+                v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF91D9FF, false);
+
+        drawInspectorSectionHeader(graphics, x, 56, "Schedule", false);
+        AdvancedGraphDocument.Node selected = scheduleNode(selectedScheduleBlock);
+        String selectedLabel = selected == null ? "Select a block" : scheduleBlockLabel(selected);
+        graphics.drawString(font, "Selected", x + 10, 82, interfaceMutedColor(), false);
+        graphics.drawString(font, trim(selectedLabel, 25), x + 10, 96, interfacePrimaryColor(), false);
+
+        List<String> properties = schedulePropertyKeys(selected);
+        int visiblePropertyRows = scheduleVisiblePropertyRows(properties);
+        schedulePropertyScroll = Mth.clamp(schedulePropertyScroll, 0,
+                Math.max(0, properties.size() - visiblePropertyRows));
+        if (selectedScheduleProperty == null || !properties.contains(selectedScheduleProperty)) {
+            selectedScheduleProperty = properties.isEmpty() ? null : properties.getFirst();
+        }
+        if (selected == null) {
+            graphics.drawString(font, "Select a block to configure it.", x + 10, 118,
+                    interfaceMutedColor(), false);
+        } else if (properties.isEmpty()) {
+            graphics.drawString(font, "This block has no editable values.", x + 10, 118,
+                    interfaceMutedColor(), false);
+        } else {
+            graphics.drawString(font, "Properties", x + 10, 118, interfaceSecondaryColor(), false);
+            for (int row = 0; row < visiblePropertyRows; row++) {
+                int propertyIndex = schedulePropertyScroll + row;
+                String property = properties.get(propertyIndex);
+                UiRect bounds = schedulePropertyBounds(row);
+                boolean active = property.equals(selectedScheduleProperty);
+                if (v2Ui) {
+                    AdvancedControllerV2Theme.drawBrowserNode(graphics, bounds.x(), bounds.y(), bounds.width(),
+                            bounds.height(), active ? AdvancedControllerV2Theme.ACCENT : AdvancedControllerV2Theme.BORDER,
+                            bounds.contains(mouseX, mouseY));
+                } else if (active || bounds.contains(mouseX, mouseY)) {
+                    graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(), 0x553B617C);
+                }
+                graphics.drawString(font, trim(ShippingScheduleGraph.propertyLabel(selected, property), 12),
+                        bounds.x() + 6, bounds.y() + 5, interfacePrimaryColor(), false);
+                UiRect field = schedulePropertyValueBounds(bounds);
+                List<SchedulePropertyChoice> choices = schedulePropertyChoices(selected, property);
+                String value = ShippingScheduleGraph.editableProperties(scheduleDraft, selected.id(),
+                        minecraft.level.registryAccess()).getOrDefault(property, "");
+                if (!choices.isEmpty()) {
+                    String label = choices.stream().filter(choice -> choice.value().equals(value))
+                            .map(SchedulePropertyChoice::label).findFirst().orElse(value);
+                    renderAdvancedButton(graphics, font, field.x(), field.y(), field.width(), field.height(),
+                            Component.literal(trim(label, 13)), field.contains(mouseX, mouseY), active);
+                } else if (!(active && schedulePropertyValue != null && schedulePropertyValue.visible)) {
+                    graphics.drawString(font, trim(value, Math.max(14, field.width() - 5)), field.x() + 3,
+                            field.y() + 5, interfaceSecondaryColor(), false);
+                }
+            }
+        }
+        syncSchedulePropertyEditor(selected);
+        drawInspectorDivider(graphics, x, schedulePropertyDividerY());
+
+        boolean hasParameters = scheduleInputSlotCount(selected) > 0;
+        if (hasParameters) {
+            UiRect parameters = scheduleParameterBounds();
+            String label = selected != null && selected.type().endsWith("redstone_link")
+                    ? "Set Frequencies" : "Set Parameters";
+            renderAdvancedButton(graphics, font, parameters.x(), parameters.y(), parameters.width(), parameters.height(),
+                    Component.literal(label), parameters.contains(mouseX, mouseY), false);
+            drawInspectorDivider(graphics, x, parameters.bottom() + 5);
+        }
+        UiRect remove = scheduleRemoveBounds();
+        renderAdvancedButton(graphics, font, remove.x(), remove.y(), remove.width(), remove.height(), Component.literal("Remove"),
+                remove.contains(mouseX, mouseY), selected != null);
+        drawInspectorDivider(graphics, x, remove.bottom() + 5);
+
+        int flowTop = scheduleFlowTop();
+        drawInspectorSectionHeader(graphics, x, flowTop, "Flow", false);
+        boolean cyclic = scheduleDraft != null && scheduleDraft.variables()
+                .getOrDefault(ShippingScheduleGraph.CYCLIC_VARIABLE, AdvancedGraphDocument.Value.bool(false))
+                .asBoolean();
+        graphics.drawString(font, "Route loop", x + 10, flowTop + 26, interfaceSecondaryColor(), false);
+        UiRect cycle = scheduleCycleBounds();
+        renderAdvancedButton(graphics, font, cycle.x(), cycle.y(), cycle.width(), cycle.height(),
+                Component.literal(cyclic ? "Repeat: On" : "Repeat: Off"), cycle.contains(mouseX, mouseY), cyclic);
+        AdvancedContraptionControllerBlockEntity controller = activeScmController();
+        int routePlanningTop = scheduleRoutePlanningTop();
+        drawInspectorSectionHeader(graphics, x, routePlanningTop, "Route Planning", false);
+        UiRect precalculate = schedulePrecalculateRouteBounds();
+        boolean calculating = controller != null && controller.isPrecalculatingShippingScheduleRoute();
+        renderAdvancedButton(graphics, font, precalculate.x(), precalculate.y(), precalculate.width(),
+                precalculate.height(), Component.literal(calculating ? "Calculating Route..." : "Pre-Calculate Route"),
+                precalculate.contains(mouseX, mouseY), calculating);
+        UiRect deleteRoute = scheduleDeleteRouteBounds();
+        renderAdvancedButton(graphics, font, deleteRoute.x(), deleteRoute.y(), deleteRoute.width(),
+                deleteRoute.height(), Component.literal("Delete Route"),
+                deleteRoute.contains(mouseX, mouseY), false);
+        boolean displayProgress = controller != null && controller.scmDisplayProgress();
+        UiRect display = scheduleDisplayProgressBounds();
+        renderAdvancedButton(graphics, font, display.x(), display.y(), display.width(), display.height(),
+                Component.literal(displayProgress ? "Display Progress: On" : "Display Progress: Off"),
+                display.contains(mouseX, mouseY), displayProgress);
+        if (calculating) {
+            graphics.drawString(font, "Progress " + Math.round(
+                    controller.shippingScheduleRoutePrecalculationProgress() * 100.0D) + "%",
+                    x + 10, display.bottom() + 7, interfaceMutedColor(), false);
+        }
+        graphics.drawString(font, ShippingScheduleGraph.orderedNodes(scheduleDraft).size() + " schedule steps",
+                x + 10, height - 14, v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF899CAA, false);
+    }
+
+    // The left and centre regions deliberately use the same dimensions as the
+    // standard graph editor so collapse handles and data-pack UI themes align.
+    private UiRect schedulePaletteBounds() {
+        return new UiRect(layoutLeft(), TOOLBAR_HEIGHT, activeLeftWidth(), height - TOOLBAR_HEIGHT);
+    }
+
+    private UiRect scheduleCanvasBounds() {
+        return new UiRect(graphLeft(), graphTop(), Math.max(0, graphRight() - graphLeft()),
+                graphBottom() - graphTop());
+    }
+
+    private UiRect scheduleCycleBounds() {
+        int x = graphRight() + 9;
+        return new UiRect(x, scheduleFlowTop() + 22, Math.max(60, layoutRight() - x - 18), 18);
+    }
+
+    private int scheduleRoutePlanningTop() {
+        return scheduleFlowTop() + 48;
+    }
+
+    private UiRect schedulePrecalculateRouteBounds() {
+        int x = graphRight() + 9;
+        return new UiRect(x, scheduleRoutePlanningTop() + 22,
+                Math.max(60, layoutRight() - x - 18), 18);
+    }
+
+    private UiRect scheduleDisplayProgressBounds() {
+        UiRect deleteRoute = scheduleDeleteRouteBounds();
+        return new UiRect(deleteRoute.x(), deleteRoute.bottom() + 4,
+                deleteRoute.width(), 18);
+    }
+
+    private UiRect scheduleDeleteRouteBounds() {
+        UiRect precalculate = schedulePrecalculateRouteBounds();
+        return new UiRect(precalculate.x(), precalculate.bottom() + 4,
+                precalculate.width(), 18);
+    }
+
+    private UiRect scheduleRemoveBounds() {
+        int x = graphRight() + 9;
+        return new UiRect(x, scheduleActionTop() + (scheduleInputSlotCount(scheduleNode(selectedScheduleBlock)) > 0 ? 51 : 26),
+                Math.max(60, layoutRight() - x - 18), 18);
+    }
+
+    private UiRect scheduleParameterBounds() {
+        int x = graphRight() + 9;
+        return new UiRect(x, scheduleActionTop() + 26, Math.max(60, layoutRight() - x - 18), 18);
+    }
+
+    private int scheduleFlowTop() {
+        return scheduleRemoveBounds().bottom() + 8;
+    }
+
+    private int scheduleActionTop() {
+        AdvancedGraphDocument.Node selected = scheduleNode(selectedScheduleBlock);
+        return 128 + scheduleVisiblePropertyRows(schedulePropertyKeys(selected)) * 22;
+    }
+
+    private int schedulePropertyDividerY() {
+        return scheduleActionTop() - 5;
+    }
+
+    private int scheduleVisiblePropertyRows(List<String> properties) {
+        if (properties == null || properties.isEmpty()) return 0;
+        int defaultHeight = Math.max(22, (height - 286) / 22 * 22);
+        int propertyHeight = scheduleInspectorPropertiesHeight <= 0
+                ? defaultHeight : scheduleInspectorPropertiesHeight;
+        return Math.max(1, Math.min(properties.size(), Math.max(1, propertyHeight / 22)));
+    }
+
+    private UiRect schedulePropertyBounds(int visibleRow) {
+        int x = graphRight() + 9;
+        return new UiRect(x, 128 + visibleRow * 22,
+                Math.max(60, layoutRight() - x - 18), 18);
+    }
+
+    private UiRect schedulePropertyValueBounds(UiRect row) {
+        int fieldX = row.x() + Math.min(82, Math.max(52, row.width() / 2));
+        return new UiRect(fieldX, row.y() + 1, Math.max(26, row.right() - fieldX - 3), row.height() - 2);
+    }
+
+    private int scheduleInputSlotCount(AdvancedGraphDocument.Node node) {
+        if (node == null || minecraft == null || minecraft.level == null || scheduleDraft == null) return 0;
+        return ShippingScheduleGraph.inputSlotCount(scheduleDraft, node.id(), minecraft.level.registryAccess());
+    }
+
+    private List<String> schedulePropertyKeys(AdvancedGraphDocument.Node node) {
+        if (node == null || minecraft == null || minecraft.level == null || scheduleDraft == null) return List.of();
+        return ShippingScheduleGraph.editableProperties(scheduleDraft, node.id(), minecraft.level.registryAccess())
+                .keySet().stream().sorted(String.CASE_INSENSITIVE_ORDER).toList();
+    }
+
+    // Provide selectors for Create's enum-style schedule settings instead of forcing raw integer entry.
+    private List<SchedulePropertyChoice> schedulePropertyChoices(AdvancedGraphDocument.Node node, String property) {
+        if (property == null) return List.of();
+        return switch (property) {
+            case "TimeUnit" -> List.of(new SchedulePropertyChoice("0", "Ticks"),
+                    new SchedulePropertyChoice("1", "Seconds"), new SchedulePropertyChoice("2", "Minutes"));
+            case "Operator" -> List.of(new SchedulePropertyChoice("0", "Greater than"),
+                    new SchedulePropertyChoice("1", "Less than"), new SchedulePropertyChoice("2", "Equal to"));
+            case "Measure" -> List.of(new SchedulePropertyChoice("0", "Items"),
+                    new SchedulePropertyChoice("1", "Stacks"));
+            case "Inverted" -> List.of(new SchedulePropertyChoice("0", "Powered"),
+                    new SchedulePropertyChoice("1", "Unpowered"));
+            case ShippingScheduleGraph.FLOW_TARGET_TAG -> scheduleDraft == null ? List.of()
+                    : ShippingScheduleGraph.orderedNodes(scheduleDraft).stream()
+                    .map(step -> new SchedulePropertyChoice(step.id(), scheduleBlockLabel(step)))
+                    .toList();
+            default -> List.of();
+        };
+    }
+
+    // Draw and operate the dedicated schedule selector above the shared graph UI.
+    private void drawSchedulePropertyDropdown(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (schedulePropertyDropdownBounds == null || schedulePropertyDropdownChoices.isEmpty()) return;
+        UiRect bounds = schedulePropertyDropdownBounds;
+        int rowHeight = 18;
+        int height = schedulePropertyDropdownChoices.size() * rowHeight + 4;
+        renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), height);
+        for (int index = 0; index < schedulePropertyDropdownChoices.size(); index++) {
+            SchedulePropertyChoice choice = schedulePropertyDropdownChoices.get(index);
+            int y = bounds.y() + 2 + index * rowHeight;
+            boolean hovered = inside(mouseX, mouseY, bounds.x() + 2, y, bounds.width() - 4, rowHeight - 1);
+            if (hovered) renderControllerOption(graphics, bounds.x() + 2, y, bounds.width() - 4,
+                    rowHeight - 1, 0xFF5D9FE3, true);
+            graphics.drawString(font, choice.label(), bounds.x() + 7, y + 5,
+                    hovered ? nodeValueTextColor() : interfacePrimaryColor(), false);
+        }
+    }
+
+    // Open the schedule selector at the actual inspector field rather than a detached text prompt.
+    private void openSchedulePropertyDropdown(AdvancedGraphDocument.Node node, String property, UiRect field,
+                                              List<SchedulePropertyChoice> choices) {
+        if (node == null || property == null || field == null || choices == null || choices.isEmpty()) return;
+        int height = choices.size() * 18 + 4;
+        int y = field.bottom() + 2;
+        if (y + height > this.height - 4) y = field.y() - height - 2;
+        schedulePropertyDropdownBounds = new UiRect(field.x(), Math.max(TOOLBAR_HEIGHT + 2, y), field.width(), height);
+        schedulePropertyDropdownChoices = List.copyOf(choices);
+        schedulePropertyDropdownNode = node.id();
+        schedulePropertyDropdownKey = property;
+    }
+
+    // Apply one selector choice to the same graph-backed ScheduleEntry property used by text fields.
+    private boolean clickSchedulePropertyDropdown(double mouseX, double mouseY, int button) {
+        if (schedulePropertyDropdownBounds == null) return false;
+        UiRect bounds = schedulePropertyDropdownBounds;
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT || !bounds.contains(mouseX, mouseY)) {
+            closeSchedulePropertyDropdown();
+            return true;
+        }
+        int index = (int) ((mouseY - bounds.y() - 2) / 18);
+        if (index >= 0 && index < schedulePropertyDropdownChoices.size() && minecraft != null && minecraft.level != null
+                && scheduleDraft != null) {
+            SchedulePropertyChoice choice = schedulePropertyDropdownChoices.get(index);
+            if (ShippingScheduleGraph.setProperty(scheduleDraft, schedulePropertyDropdownNode,
+                    schedulePropertyDropdownKey, choice.value(), minecraft.level.registryAccess())) {
+                saveShippingScheduleDraft();
+            }
+        }
+        closeSchedulePropertyDropdown();
+        return true;
+    }
+
+    // Close the Schedule-only selector without disturbing Main Graph dropdown state.
+    private void closeSchedulePropertyDropdown() {
+        schedulePropertyDropdownBounds = null;
+        schedulePropertyDropdownChoices = List.of();
+        schedulePropertyDropdownNode = "";
+        schedulePropertyDropdownKey = "";
+    }
+
+    private void syncSchedulePropertyEditor(AdvancedGraphDocument.Node selected) {
+        if (schedulePropertyValue == null) return;
+        if (!scheduleGraphOverview || rightSidebarCollapsed || selected == null || selectedScheduleProperty == null
+                || minecraft == null || minecraft.level == null || scheduleDraft == null) {
+            schedulePropertyValue.setVisible(false);
+            return;
+        }
+        List<String> properties = schedulePropertyKeys(selected);
+        int index = properties.indexOf(selectedScheduleProperty);
+        if (index < schedulePropertyScroll || index >= schedulePropertyScroll + scheduleVisiblePropertyRows(properties)) {
+            schedulePropertyValue.setVisible(false);
+            return;
+        }
+        UiRect row = schedulePropertyBounds(index - schedulePropertyScroll);
+        if (!schedulePropertyChoices(selected, selectedScheduleProperty).isEmpty()) {
+            schedulePropertyValue.setVisible(false);
+            return;
+        }
+        UiRect field = schedulePropertyValueBounds(row);
+        schedulePropertyValue.setX(field.x());
+        schedulePropertyValue.setY(field.y());
+        schedulePropertyValue.setWidth(field.width());
+        String editorKey = selected.id() + "\u0000" + selectedScheduleProperty;
+        if (!editorKey.equals(schedulePropertyEditorNode + "\u0000" + schedulePropertyEditorKey)) {
+            String value = ShippingScheduleGraph.editableProperties(scheduleDraft, selected.id(), minecraft.level.registryAccess())
+                    .getOrDefault(selectedScheduleProperty, "");
+            syncingScheduleProperty = true;
+            schedulePropertyValue.setValue(value);
+            syncingScheduleProperty = false;
+            schedulePropertyEditorNode = selected.id();
+            schedulePropertyEditorKey = selectedScheduleProperty;
+        }
+        schedulePropertyValue.setVisible(true);
+    }
+
+    // When a player clicks the pale field painted on a Scratch block, promote
+    // it to an actual text widget in exactly that field. The same selected key
+    // remains available in the standard ACC config sidebar.
+    private void syncScheduleInlinePropertyEditor() {
+        if (scheduleInlinePropertyValue == null || !editingScheduleInlineProperty || !scheduleGraphOverview
+                || selectedScheduleBlock == null || selectedScheduleProperty == null || scheduleLayout == null
+                || minecraft == null || minecraft.level == null || scheduleDraft == null) {
+            if (scheduleInlinePropertyValue != null) scheduleInlinePropertyValue.setVisible(false);
+            return;
+        }
+        ScratchBlockSurface.BlockBounds block = null;
+        for (ScratchBlockSurface.BlockBounds bounds : scheduleLayout.blocks()) {
+            if (selectedScheduleBlock.equals(bounds.id())) {
+                block = bounds;
+                break;
+            }
+        }
+        AdvancedGraphDocument.Node selected = scheduleNode(selectedScheduleBlock);
+        if (block == null || selected == null) {
+            scheduleInlinePropertyValue.setVisible(false);
+            return;
+        }
+        int fieldWidth = Math.min(76, Math.max(34, block.width() - 98));
+        int fieldX = block.x() + block.width() - fieldWidth - 9;
+        int fieldY = block.y() + Math.max(3, Math.min(7, block.height() / 3 - 4));
+        scheduleInlinePropertyValue.setX(fieldX + 2);
+        scheduleInlinePropertyValue.setY(fieldY + 1);
+        scheduleInlinePropertyValue.setWidth(Math.max(20, fieldWidth - 8));
+        String editorKey = selected.id() + "\u0000" + selectedScheduleProperty;
+        if (!editorKey.equals(scheduleInlinePropertyEditorNode + "\u0000" + scheduleInlinePropertyEditorKey)) {
+            String value = ShippingScheduleGraph.editableProperties(scheduleDraft, selected.id(), minecraft.level.registryAccess())
+                    .getOrDefault(selectedScheduleProperty, "");
+            syncingScheduleProperty = true;
+            scheduleInlinePropertyValue.setValue(value);
+            syncingScheduleProperty = false;
+            scheduleInlinePropertyEditorNode = selected.id();
+            scheduleInlinePropertyEditorKey = selectedScheduleProperty;
+        }
+        scheduleInlinePropertyValue.setVisible(true);
+    }
+
+    private ScratchBlockSurface.BlockBounds scheduleBlockBounds(String id) {
+        if (id == null || scheduleLayout == null) return null;
+        for (ScratchBlockSurface.BlockBounds bounds : scheduleLayout.blocks()) {
+            if (id.equals(bounds.id())) return bounds;
+        }
+        return null;
+    }
+
+    private boolean selectPrimaryScheduleProperty(AdvancedGraphDocument.Node node) {
+        List<String> properties = schedulePropertyKeys(node);
+        if (properties.isEmpty()) return false;
+        for (String preferred : List.of("Text", "Destination", "Dock", "Threshold", "Value", "Time",
+                ShippingScheduleGraph.FLOW_REPEAT_TAG, ShippingScheduleGraph.FLOW_TARGET_TAG)) {
+            if (properties.contains(preferred)) {
+                selectedScheduleProperty = preferred;
+                return true;
+            }
+        }
+        selectedScheduleProperty = properties.getFirst();
+        return true;
+    }
+
+    private void updateScheduleProperty(String value) {
+        if (syncingScheduleProperty || !scheduleGraphOverview || selectedScheduleBlock == null
+                || selectedScheduleProperty == null || minecraft == null || minecraft.level == null) return;
+        if (ShippingScheduleGraph.setProperty(scheduleDraft, selectedScheduleBlock, selectedScheduleProperty, value,
+                minecraft.level.registryAccess())) {
+            saveShippingScheduleDraft();
+        }
+    }
+
+    // Finish a freeform Scratch drag. Dropping on a statement connector
+    // reorders real schedule steps and shifts the following stack; otherwise
+    // the document simply retains the player's chosen graph coordinates.
+    private void completeScheduleBlockDrop(double mouseX, double mouseY) {
+        AdvancedGraphDocument.Node moved = scheduleNode(draggingScheduleBlock);
+        if (moved == null || scheduleLayout == null || minecraft == null || minecraft.level == null) return;
+        ScratchBlockSurface.BlockBounds targetBounds = null;
+        double closest = Double.MAX_VALUE;
+        int cavityArea = Integer.MAX_VALUE;
+        for (ScratchBlockSurface.BlockBounds candidate : scheduleLayout.blocks()) {
+            if (candidate.id().equals(moved.id()) || selectedScheduleBlocks.contains(candidate.id())) continue;
+            AdvancedGraphDocument.Node candidateNode = scheduleNode(candidate.id());
+            if (candidateNode == null || ShippingScheduleGraph.isConditionBlock(candidateNode.type())
+                    && !ShippingScheduleGraph.isDetachedCondition(candidateNode)) continue;
+            boolean horizontal = mouseX >= candidate.x() - 12 && mouseX < candidate.x() + candidate.width() + 12;
+            boolean connector = Math.abs(mouseY - candidate.y()) <= 19
+                    || Math.abs(mouseY - (candidate.y() + candidate.height())) <= 21;
+            boolean cavity = candidate.cBlock() && mouseX >= candidate.x() + 12
+                    && mouseX < candidate.x() + candidate.width() - 4
+                    && mouseY >= candidate.y() + 23 && mouseY < candidate.y() + candidate.height() - 14;
+            if (cavity) {
+                // Nested cavities overlap their parents. Prefer the smallest
+                // one so a block dropped onto an inner loop does not get
+                // captured by a nearby outer step.
+                int area = candidate.width() * candidate.height();
+                if (area < cavityArea) {
+                    targetBounds = candidate;
+                    cavityArea = area;
+                }
+                continue;
+            }
+            if (targetBounds != null && cavityArea != Integer.MAX_VALUE) continue;
+            double distance = Math.min(Math.abs(mouseY - candidate.y()),
+                    Math.abs(mouseY - (candidate.y() + candidate.height())));
+            if (horizontal && connector && distance < closest) {
+                targetBounds = candidate;
+                closest = distance;
+            }
+        }
+        if (targetBounds == null) {
+            if (ShippingScheduleGraph.isConditionBlock(moved.type())
+                    && !ShippingScheduleGraph.isDetachedCondition(moved)) {
+                ShippingScheduleGraph.detachCondition(scheduleDraft, moved.id(), scheduleGraphX(mouseX),
+                        scheduleGraphY(mouseY), minecraft.level.registryAccess());
+            }
+            detachScheduleBlockWhenDroppedOutsideParent(moved, mouseX, mouseY);
+            return;
+        }
+        AdvancedGraphDocument.Node target = scheduleNode(targetBounds.id());
+        if (target == null) return;
+        boolean cavity = targetBounds.cBlock() && mouseX >= targetBounds.x() + 12
+                && mouseX < targetBounds.x() + targetBounds.width() - 4
+                && mouseY >= targetBounds.y() + 23 && mouseY < targetBounds.y() + targetBounds.height() - 14;
+        if (ShippingScheduleGraph.isConditionBlock(moved.type())) {
+            if (ShippingScheduleGraph.isInstructionBlock(target.type())) {
+                String attached = ShippingScheduleGraph.moveConditionToInstruction(scheduleDraft, moved.id(),
+                        target.id(), minecraft.level.registryAccess());
+                if (!attached.isBlank()) setScheduleBlockSelection(attached);
+                return;
+            }
+            if (!ShippingScheduleGraph.isDetachedCondition(moved)) {
+                if (!cavity || !ShippingScheduleGraph.isFlowBlock(target.type())) {
+                    ShippingScheduleGraph.detachCondition(scheduleDraft, moved.id(), scheduleGraphX(mouseX),
+                            scheduleGraphY(mouseY), minecraft.level.registryAccess());
+                    return;
+                }
+                ShippingScheduleGraph.detachCondition(scheduleDraft, moved.id(), scheduleGraphX(mouseX),
+                        scheduleGraphY(mouseY), minecraft.level.registryAccess());
+                moved = scheduleNode(moved.id());
+                if (moved == null) return;
+            }
+        }
+        if (cavity) {
+            // A schedule-step cavity is the real Create wait-condition list;
+            // generic statements belong in Flow C blocks instead. Keeping the
+            // two contracts distinct prevents a visually nested instruction
+            // from silently being ignored by the shipping runtime.
+            if (ShippingScheduleGraph.isInstructionBlock(target.type())) return;
+            int insertion = scheduleCavityInsertionIndex(target.id(), moved.id(), mouseY);
+            if (ShippingScheduleGraph.placeScratchChild(scheduleDraft, moved.id(), target.id(), insertion)) {
+                snapScheduleBlockIntoContainer(moved.id(), targetBounds);
+            }
+            return;
+        }
+        boolean after = mouseY >= targetBounds.y() + targetBounds.height() / 2.0D;
+        if (ShippingScheduleGraph.isInstructionBlock(moved.type())
+                && ShippingScheduleGraph.isInstructionBlock(target.type())) {
+            List<AdvancedGraphDocument.Node> ordered = ShippingScheduleGraph.orderedNodes(scheduleDraft);
+            int sourceIndex = ordered.indexOf(moved);
+            int targetIndex = ordered.indexOf(target);
+            if (sourceIndex >= 0 && targetIndex >= 0) {
+                int insertion = targetIndex + (after ? 1 : 0);
+                if (sourceIndex < insertion) insertion--;
+                ShippingScheduleGraph.moveInstructionToIndex(scheduleDraft, moved.id(), insertion);
+                snapScheduleBlockBeside(moved.id(), targetBounds, after);
+                reflowScheduleStackFrom(moved.id());
+            }
+            return;
+        }
+        if (!ShippingScheduleGraph.isConditionBlock(moved.type())
+                || ShippingScheduleGraph.isDetachedCondition(moved)) {
+            String parent = ShippingScheduleGraph.scratchParent(target);
+            if (!parent.isBlank()) {
+                int insertion = ShippingScheduleGraph.scratchChildInsertionIndex(scheduleDraft, parent,
+                        target.id(), after);
+                if (ShippingScheduleGraph.placeScratchChild(scheduleDraft, moved.id(), parent, insertion)) return;
+            }
+            ShippingScheduleGraph.setScratchParent(scheduleDraft, moved.id(), parent);
+        }
+        if (after) ShippingScheduleGraph.connectScratchBlocks(scheduleDraft, target.id(), moved.id());
+        else ShippingScheduleGraph.insertScratchBlockBefore(scheduleDraft, moved.id(), target.id());
+        snapScheduleBlockBeside(moved.id(), targetBounds, after);
+    }
+
+    // Snap a statement to the top or bottom connector of another block.
+    private void snapScheduleBlockBeside(String id, ScratchBlockSurface.BlockBounds target, boolean after) {
+        AdvancedGraphDocument.Node moved = scheduleNode(id);
+        if (moved == null || target == null) return;
+        double x = scheduleGraphX(target.x());
+        double y = after ? scheduleGraphY(target.y() + target.height())
+                : scheduleGraphY(target.y())
+                - ShippingScheduleGraph.scratchVisualHeight(scheduleDraft, moved.id());
+        ShippingScheduleGraph.moveBlock(scheduleDraft, moved.id(), x, y);
+    }
+
+    // Snap one block into the visible inner channel of a C block.
+    private void snapScheduleBlockIntoContainer(String id, ScratchBlockSurface.BlockBounds container) {
+        if (container == null) return;
+        ShippingScheduleGraph.moveBlock(scheduleDraft, id,
+                scheduleGraphX(container.x() + 23), scheduleGraphY(container.y() + 29));
+    }
+
+    // Convert a cavity drop's vertical position to a stable Scratch sibling
+    // index. The rendered block bounds are the source of truth here, so a
+    // nested C block remains movable and reorderable like any other statement.
+    private int scheduleCavityInsertionIndex(String parentId, String movingId, double mouseY) {
+        if (scheduleLayout == null) return 0;
+        List<ScratchBlockSurface.BlockBounds> siblings = new ArrayList<>();
+        for (ScratchBlockSurface.BlockBounds bounds : scheduleLayout.blocks()) {
+            AdvancedGraphDocument.Node node = scheduleNode(bounds.id());
+            if (node == null || node.id().equals(movingId)
+                    || !parentId.equals(ShippingScheduleGraph.scratchParent(node))
+                    || ShippingScheduleGraph.isConditionBlock(node.type())
+                    && !ShippingScheduleGraph.isDetachedCondition(node)) continue;
+            siblings.add(bounds);
+        }
+        siblings.sort(Comparator.comparingInt(ScratchBlockSurface.BlockBounds::y));
+        int insertion = 0;
+        for (ScratchBlockSurface.BlockBounds sibling : siblings) {
+            if (mouseY >= sibling.y() + sibling.height() * 0.5D) insertion++;
+            else break;
+        }
+        return insertion;
+    }
+
+    // Dragging a nested block beyond its C cavity promotes it back to a root
+    // statement, making nested schedule logic editable in both directions.
+    private void detachScheduleBlockWhenDroppedOutsideParent(AdvancedGraphDocument.Node node,
+                                                              double mouseX, double mouseY) {
+        if (node == null || ShippingScheduleGraph.isConditionBlock(node.type())
+                && !ShippingScheduleGraph.isDetachedCondition(node)) return;
+        String parentId = ShippingScheduleGraph.scratchParent(node);
+        ScratchBlockSurface.BlockBounds parent = scheduleBlockBounds(parentId);
+        if (parent == null) return;
+        boolean insideCavity = parent.cBlock() && mouseX >= parent.x() + 12
+                && mouseX < parent.x() + parent.width() - 4
+                && mouseY >= parent.y() + 23 && mouseY < parent.y() + parent.height() - 14;
+        if (!insideCavity) ShippingScheduleGraph.setScratchParent(scheduleDraft, node.id(), "");
+    }
+
+    // While a nested child is dragged beyond its owning C block, promote it
+    // immediately rather than waiting for release. That lets the player see
+    // it follow the pointer and prevents the canonical C layout from pulling
+    // the child back into the cavity during the drag.
+    private AdvancedGraphDocument.Node promoteDraggedScheduleBlock(AdvancedGraphDocument.Node node,
+                                                                     double mouseX, double mouseY) {
+        if (node == null || minecraft == null || minecraft.level == null) return node;
+        String parentId = ShippingScheduleGraph.scratchParent(node);
+        ScratchBlockSurface.BlockBounds parent = scheduleBlockBounds(parentId);
+        if (parent == null || parent.contains(mouseX, mouseY)) return node;
+        if (ShippingScheduleGraph.isConditionBlock(node.type())
+                && !ShippingScheduleGraph.isDetachedCondition(node)) {
+            ShippingScheduleGraph.detachCondition(scheduleDraft, node.id(), node.x(), node.y(),
+                    minecraft.level.registryAccess());
+        } else {
+            ShippingScheduleGraph.setScratchParent(scheduleDraft, node.id(), "");
+        }
+        return scheduleNode(node.id());
+    }
+
+    private void reflowScheduleStackFrom(String nodeId) {
+        List<AdvancedGraphDocument.Node> ordered = ShippingScheduleGraph.orderedNodes(scheduleDraft);
+        int start = -1;
+        for (int index = 0; index < ordered.size(); index++) {
+            if (ordered.get(index).id().equals(nodeId)) {
+                start = index;
+                break;
+            }
+        }
+        if (start < 0) return;
+        for (int index = Math.max(1, start + 1); index < ordered.size(); index++) {
+            AdvancedGraphDocument.Node previous = ordered.get(index - 1);
+            AdvancedGraphDocument.Node current = ordered.get(index);
+            ShippingScheduleGraph.moveBlock(scheduleDraft, current.id(), previous.x(),
+                    previous.y() + ShippingScheduleGraph.scratchVisualHeight(scheduleDraft, previous.id()));
+        }
+    }
+
+    private static String schedulePaletteCategoryId(String category) {
+        return "schedule:" + category;
+    }
+
+    private static String schedulePaletteCategoryName(String category) {
+        return switch (category) {
+            case "conditions" -> "Wait Conditions";
+            case "flow" -> "Flow Control";
+            default -> "Schedule Steps";
+        };
+    }
+
+    private static List<String> schedulePaletteCategories() {
+        return List.of("instructions", "conditions", "flow");
+    }
+
+    private List<ScratchBlockDefinition> schedulePaletteDefinitions(String category) {
+        return ShippingScheduleScratchBlocks.registry().definitions().stream()
+                .filter(definition -> category.equals(definition.category()))
+                .sorted(Comparator.comparing(ScratchBlockDefinition::title))
+                .toList();
+    }
+
+    private int schedulePaletteContentHeight() {
+        int height = 0;
+        for (String category : schedulePaletteCategories()) {
+            List<ScratchBlockDefinition> definitions = schedulePaletteDefinitions(category);
+            if (definitions.isEmpty()) continue;
+            height += 25;
+            if (!collapsedCategories.contains(schedulePaletteCategoryId(category))) {
+                height += definitions.size() * SCHEDULE_PALETTE_ROW_HEIGHT;
+            }
+        }
+        return height;
+    }
+
+    private String scheduleBlockLabel(AdvancedGraphDocument.Node node) {
+        ScratchBlockDefinition definition = node == null ? null
+                : ShippingScheduleScratchBlocks.registry().get(node.type());
+        return definition == null ? node == null ? "" : node.type() : definition.title();
+    }
+
+    // Look up the selected Scratch graph node.
+    private AdvancedGraphDocument.Node scheduleNode(String id) {
+        if (scheduleDraft == null || id == null) return null;
+        for (AdvancedGraphDocument.Node node : scheduleDraft.nodes()) {
+            if (id.equals(node.id())) return node;
+        }
+        return null;
+    }
+
+    // Replace the Scratch selection with one block.
+    private void setScheduleBlockSelection(String id) {
+        selectedScheduleBlocks.clear();
+        if (id != null && scheduleNode(id) != null) selectedScheduleBlocks.add(id);
+        selectedScheduleBlock = selectedScheduleBlocks.isEmpty() ? null : id;
+    }
+
+    // Toggle one block in the independent Scratch multi-selection.
+    private void toggleScheduleBlockSelection(String id) {
+        if (id == null || scheduleNode(id) == null) return;
+        if (!selectedScheduleBlocks.add(id)) selectedScheduleBlocks.remove(id);
+        selectedScheduleBlock = selectedScheduleBlocks.contains(id)
+                ? id : selectedScheduleBlocks.stream().findFirst().orElse(null);
+    }
+
+    // Clear the host-only Scratch selection without changing Main Graph state.
+    private void clearScheduleBlockSelection() {
+        selectedScheduleBlocks.clear();
+        selectedScheduleBlock = null;
+        selectedScheduleProperty = null;
+    }
+
+    // Complete a marquee selection using the live painted block bounds. Nested
+    // children have their own bounds, so they remain independently selectable.
+    private void finishScheduleMarqueeSelection() {
+        if (scheduleLayout == null) return;
+        int left = (int) Math.floor(Math.min(scheduleMarqueeStartX, scheduleMarqueeCurrentX));
+        int top = (int) Math.floor(Math.min(scheduleMarqueeStartY, scheduleMarqueeCurrentY));
+        int right = (int) Math.ceil(Math.max(scheduleMarqueeStartX, scheduleMarqueeCurrentX));
+        int bottom = (int) Math.ceil(Math.max(scheduleMarqueeStartY, scheduleMarqueeCurrentY));
+        if (right - left < 3 && bottom - top < 3) return;
+        Set<String> selected = new LinkedHashSet<>();
+        for (ScratchBlockSurface.BlockBounds bounds : scheduleLayout.blocks()) {
+            boolean intersects = bounds.x() < right && bounds.x() + bounds.width() > left
+                    && bounds.y() < bottom && bounds.y() + bounds.height() > top;
+            if (intersects) selected.add(bounds.id());
+        }
+        if (!scheduleMarqueeAdditive) selectedScheduleBlocks.clear();
+        selectedScheduleBlocks.addAll(selected);
+        selectedScheduleBlock = selected.isEmpty()
+                ? selectedScheduleBlocks.stream().findFirst().orElse(null)
+                : selected.iterator().next();
+    }
+
+    // Return only the selected roots. Moving a parent already moves its nested
+    // descendants, so this prevents a multi-selection from applying a delta twice.
+    private List<String> scheduleDragRoots() {
+        Set<String> candidates = new LinkedHashSet<>(selectedScheduleBlocks);
+        if (candidates.isEmpty() && draggingScheduleBlock != null) candidates.add(draggingScheduleBlock);
+        List<String> roots = new ArrayList<>();
+        for (String id : candidates) {
+            String parent = ShippingScheduleGraph.scratchParent(scheduleNode(id));
+            Set<String> visited = new LinkedHashSet<>();
+            boolean nestedSelection = false;
+            while (parent != null && !parent.isBlank() && visited.add(parent)) {
+                if (candidates.contains(parent)) {
+                    nestedSelection = true;
+                    break;
+                }
+                parent = ShippingScheduleGraph.scratchParent(scheduleNode(parent));
+            }
+            if (!nestedSelection) roots.add(id);
+        }
+        return roots;
+    }
+
+    // Delete selected schedule blocks through their authoritative graph helpers.
+    private void deleteSelectedScheduleBlocks() {
+        if (scheduleDraft == null || minecraft == null || minecraft.level == null) return;
+        List<String> selected = new ArrayList<>(selectedScheduleBlocks);
+        if (selected.isEmpty() && selectedScheduleBlock != null) selected.add(selectedScheduleBlock);
+        if (selected.isEmpty()) return;
+        boolean changed = false;
+        int remainingInstructions = ShippingScheduleGraph.orderedNodes(scheduleDraft).size();
+        for (String id : selected) {
+            AdvancedGraphDocument.Node node = scheduleNode(id);
+            if (node == null || !ShippingScheduleGraph.isConditionBlock(node.type())) continue;
+            changed |= ShippingScheduleGraph.removeCondition(scheduleDraft, id, minecraft.level.registryAccess());
+        }
+        for (String id : selected) {
+            AdvancedGraphDocument.Node node = scheduleNode(id);
+            if (node == null || !ShippingScheduleGraph.isFlowBlock(node.type())) continue;
+            changed |= ShippingScheduleGraph.removeFlowBlock(scheduleDraft, id);
+        }
+        for (String id : selected) {
+            AdvancedGraphDocument.Node node = scheduleNode(id);
+            if (node == null || !ShippingScheduleGraph.isInstructionBlock(node.type()) || remainingInstructions <= 1) continue;
+            if (ShippingScheduleGraph.removeInstruction(scheduleDraft, id)) {
+                remainingInstructions--;
+                changed = true;
+            }
+        }
+        if (changed) {
+            clearScheduleBlockSelection();
+            saveShippingScheduleDraft();
+        }
+    }
+
+    // Copy selected graph-backed blocks and their Scratch-only chain edges.
+    private void copySelectedScheduleBlocks() {
+        scheduleClipboard.clear();
+        scheduleClipboardEdges.clear();
+        if (scheduleDraft == null) return;
+        Set<String> ids = expandedScheduleClipboardSelection();
+        for (AdvancedGraphDocument.Node node : ShippingScheduleGraph.orderedBlocks(scheduleDraft)) {
+            if (ids.contains(node.id())) {
+                scheduleClipboard.add(new AdvancedGraphDocument.Node(node.id(), node.type(), node.label(),
+                        node.x(), node.y(), node.data().copy()));
+            }
+        }
+        for (AdvancedGraphDocument.Edge edge : scheduleDraft.edges()) {
+            if (edge != null && ids.contains(edge.fromNode()) && ids.contains(edge.toNode())
+                    && "scratch_next".equals(edge.fromPort()) && "scratch_next".equals(edge.toPort())) {
+                scheduleClipboardEdges.add(edge);
+            }
+        }
+    }
+
+    // Copying a C block includes the complete nested branch. Copying a real
+    // schedule step similarly includes its authoritative wait-condition nodes;
+    // copying an attached condition by itself would leave it pointing at an
+    // instruction that is not part of the paste, so it is intentionally skipped.
+    private Set<String> expandedScheduleClipboardSelection() {
+        Set<String> ids = new LinkedHashSet<>(selectedScheduleBlocks);
+        if (ids.isEmpty() && selectedScheduleBlock != null) ids.add(selectedScheduleBlock);
+        if (scheduleDraft == null || ids.isEmpty()) return ids;
+        boolean expanded;
+        do {
+            expanded = false;
+            for (AdvancedGraphDocument.Node node : scheduleDraft.nodes()) {
+                if (node == null || ids.contains(node.id())) continue;
+                boolean attachedCondition = ShippingScheduleGraph.isConditionBlock(node.type())
+                        && !ShippingScheduleGraph.isDetachedCondition(node);
+                String parent = attachedCondition ? ShippingScheduleGraph.conditionParent(node)
+                        : ShippingScheduleGraph.scratchParent(node);
+                AdvancedGraphDocument.Node parentNode = scheduleNode(parent);
+                if (!parent.isBlank() && ids.contains(parent)
+                        && (!attachedCondition || parentNode != null
+                        && ShippingScheduleGraph.isInstructionBlock(parentNode.type()))) {
+                    ids.add(node.id());
+                    expanded = true;
+                }
+            }
+        } while (expanded);
+        ids.removeIf(id -> {
+            AdvancedGraphDocument.Node node = scheduleNode(id);
+            return node != null && ShippingScheduleGraph.isConditionBlock(node.type())
+                    && !ShippingScheduleGraph.isDetachedCondition(node)
+                    && !ids.contains(ShippingScheduleGraph.conditionParent(node));
+        });
+        return ids;
+    }
+
+    // Paste copied document nodes with fresh identity and remapped nested links.
+    private void pasteScheduleBlocks() {
+        if (scheduleDraft == null || scheduleClipboard.isEmpty()) return;
+        Map<String, String> ids = new LinkedHashMap<>();
+        int capacity = AdvancedGraphDocument.maxNodes() - scheduleDraft.nodes().size();
+        for (AdvancedGraphDocument.Node source : scheduleClipboard) {
+            if (ids.size() >= capacity) break;
+            ids.put(source.id(), "shipping_scratch_" + UUID.randomUUID().toString().replace('-', '_'));
+        }
+        Set<String> pasted = new LinkedHashSet<>();
+        for (AdvancedGraphDocument.Node source : scheduleClipboard) {
+            String id = ids.get(source.id());
+            if (id == null) continue;
+            CompoundTag data = source.data().copy();
+            String parent = data.getString(ShippingScheduleGraph.SCRATCH_PARENT_TAG);
+            if (ids.containsKey(parent)) data.putString(ShippingScheduleGraph.SCRATCH_PARENT_TAG, ids.get(parent));
+            else data.remove(ShippingScheduleGraph.SCRATCH_PARENT_TAG);
+            String conditionParent = data.getString(ShippingScheduleGraph.CONDITION_PARENT_TAG);
+            if (!conditionParent.isBlank()) {
+                if (!ids.containsKey(conditionParent)) continue;
+                data.putString(ShippingScheduleGraph.CONDITION_PARENT_TAG, ids.get(conditionParent));
+            }
+            scheduleDraft.nodes().add(new AdvancedGraphDocument.Node(id, source.type(), source.label(),
+                    source.x() + 24.0D, source.y() + 24.0D, data));
+            pasted.add(id);
+        }
+        for (AdvancedGraphDocument.Edge edge : scheduleClipboardEdges) {
+            String from = ids.get(edge.fromNode());
+            String to = ids.get(edge.toNode());
+            if (from != null && to != null && pasted.contains(from) && pasted.contains(to)) {
+                ShippingScheduleGraph.connectScratchBlocks(scheduleDraft, from, to);
+            }
+        }
+        selectedScheduleBlocks.clear();
+        selectedScheduleBlocks.addAll(pasted);
+        selectedScheduleBlock = selectedScheduleBlocks.stream().findFirst().orElse(null);
+        saveShippingScheduleDraft();
+    }
+
+    // Duplicate in place by routing through the same copy/paste contract as shortcuts.
+    private void duplicateSelectedScheduleBlocks() {
+        copySelectedScheduleBlocks();
+        pasteScheduleBlocks();
+    }
+
+    // Handle one host-owned Scratch schedule action. This deliberately never
+    // forwards into the ordinary ACC node editor, despite sharing its document
+    // contract, so the surface cannot be enabled as a general editor mode.
+    private boolean clickShippingScheduleWorkspace(double mouseX, double mouseY, int button) {
+        if (scheduleDraft == null) return true;
+        if (scheduleInlinePropertyValue != null && scheduleInlinePropertyValue.visible
+                && inside(mouseX, mouseY, scheduleInlinePropertyValue.getX(), scheduleInlinePropertyValue.getY(),
+                scheduleInlinePropertyValue.getWidth(), scheduleInlinePropertyValue.getHeight())) {
+            scheduleInlinePropertyValue.mouseClicked(mouseX, mouseY, button);
+            scheduleInlinePropertyValue.setFocused(true);
+            setFocused(scheduleInlinePropertyValue);
+            return true;
+        }
+        if (clickScheduleCanvasOverlay(mouseX, mouseY, button)) return true;
+        UiRect canvas = scheduleCanvasBounds();
+        if ((button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE || button == GLFW.GLFW_MOUSE_BUTTON_RIGHT)
+                && canvas.contains(mouseX, mouseY)) {
+            schedulePanning = true;
+            return true;
+        }
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
+        editingScheduleInlineProperty = false;
+        if (scheduleInlinePropertyValue != null) scheduleInlinePropertyValue.setVisible(false);
+        if (handleSidebarHandleClick(mouseX, mouseY, button)) return true;
+        if (inInspectorDivider(mouseY, schedulePropertyDividerY())) {
+            draggingInspectorDivider = InspectorDivider.SCHEDULE_PROPERTIES;
+            return true;
+        }
+        if (schedulePropertyValue != null && schedulePropertyValue.visible
+                && inside(mouseX, mouseY, schedulePropertyValue.getX(), schedulePropertyValue.getY(),
+                schedulePropertyValue.getWidth(), schedulePropertyValue.getHeight())) {
+            schedulePropertyValue.mouseClicked(mouseX, mouseY, button);
+            schedulePropertyValue.setFocused(true);
+            setFocused(schedulePropertyValue);
+            return true;
+        }
+        UiRect cycle = scheduleCycleBounds();
+        if (cycle.contains(mouseX, mouseY)) {
+            boolean cyclic = scheduleDraft.variables()
+                    .getOrDefault(ShippingScheduleGraph.CYCLIC_VARIABLE, AdvancedGraphDocument.Value.bool(false))
+                    .asBoolean();
+            ShippingScheduleGraph.setCyclic(scheduleDraft, !cyclic);
+            saveShippingScheduleDraft();
+            return true;
+        }
+        if (schedulePrecalculateRouteBounds().contains(mouseX, mouseY)) {
+            requestScheduleItemTransfer("schedule_precalculate_route", "Queueing full schedule route...");
+            return true;
+        }
+        if (scheduleDeleteRouteBounds().contains(mouseX, mouseY)) {
+            requestScheduleItemTransfer("schedule_delete_route", "Deleting schedule route...");
+            return true;
+        }
+        if (scheduleDisplayProgressBounds().contains(mouseX, mouseY)) {
+            AdvancedContraptionControllerBlockEntity controller = activeScmController();
+            sendScmDisplayProgress(controller == null || !controller.scmDisplayProgress());
+            return true;
+        }
+        AdvancedGraphDocument.Node selected = scheduleNode(selectedScheduleBlock);
+        if (scheduleInputSlotCount(selected) > 0 && scheduleParameterBounds().contains(mouseX, mouseY)) {
+            openScheduleParameterEditor(selected);
+            return true;
+        }
+        if (scheduleRemoveBounds().contains(mouseX, mouseY)) {
+            deleteSelectedScheduleBlocks();
+            return true;
+        }
+
+        List<String> properties = schedulePropertyKeys(selected);
+        for (int row = 0; row < scheduleVisiblePropertyRows(properties); row++) {
+            UiRect propertyBounds = schedulePropertyBounds(row);
+            if (!propertyBounds.contains(mouseX, mouseY)) continue;
+            selectedScheduleProperty = properties.get(schedulePropertyScroll + row);
+            schedulePropertyEditorNode = "";
+            schedulePropertyEditorKey = "";
+            UiRect field = schedulePropertyValueBounds(propertyBounds);
+            List<SchedulePropertyChoice> choices = schedulePropertyChoices(selected, selectedScheduleProperty);
+            if (!choices.isEmpty()) {
+                openSchedulePropertyDropdown(selected, selectedScheduleProperty, field, choices);
+            } else {
+                syncSchedulePropertyEditor(selected);
+                if (schedulePropertyValue != null) {
+                    schedulePropertyValue.setFocused(true);
+                    setFocused(schedulePropertyValue);
+                    schedulePropertyValue.moveCursorToEnd(false);
+                }
+            }
+            return true;
+        }
+
+        UiRect palette = schedulePaletteBounds();
+        if (!leftSidebarCollapsed && palette.contains(mouseX, mouseY) && mouseY >= 82) {
+            int y = 86 - schedulePaletteScroll;
+            for (String category : schedulePaletteCategories()) {
+                List<ScratchBlockDefinition> definitions = schedulePaletteDefinitions(category);
+                if (definitions.isEmpty()) continue;
+                if (mouseY >= y - 2 && mouseY < y + 23) {
+                    toggle(collapsedCategories, schedulePaletteCategoryId(category));
+                    schedulePaletteScroll = 0;
+                    return true;
+                }
+                y += 25;
+                if (collapsedCategories.contains(schedulePaletteCategoryId(category))) continue;
+                for (ScratchBlockDefinition definition : definitions) {
+                    if (mouseY >= y && mouseY < y + SCHEDULE_PALETTE_ROW_HEIGHT) {
+                        appendScheduleBlock(definition);
+                        return true;
+                    }
+                    y += SCHEDULE_PALETTE_ROW_HEIGHT;
+                }
+            }
+            return true;
+        }
+
+        if (canvas.contains(mouseX, mouseY)) {
+            String hit = ScratchBlockSurface.blockAt(scheduleLayout, mouseX, mouseY);
+            if (hit != null) {
+                boolean additive = hasControlDown() || hasShiftDown();
+                if (additive) {
+                    toggleScheduleBlockSelection(hit);
+                } else {
+                    // A normal Scratch drag always starts a fresh selection.
+                    // Retaining an old marquee selection here moved unrelated
+                    // blocks with the clicked block and made snapping appear
+                    // to affect a random neighbour.
+                    setScheduleBlockSelection(hit);
+                }
+                selectedScheduleProperty = null;
+                schedulePropertyEditorNode = "";
+                schedulePropertyEditorKey = "";
+                ScratchBlockSurface.BlockBounds bounds = scheduleBlockBounds(hit);
+                int fieldWidth = bounds == null ? 0 : Math.min(76, Math.max(34, bounds.width() - 98));
+                boolean inlineField = bounds != null && mouseX >= bounds.x() + bounds.width() - fieldWidth - 11
+                        && mouseX < bounds.x() + bounds.width() - 5 && mouseY >= bounds.y()
+                        && mouseY < bounds.y() + Math.min(24, bounds.height());
+                if (inlineField && selectedScheduleBlocks.size() == 1
+                        && !ShippingScheduleGraph.primaryPropertyKey(scheduleDraft, scheduleNode(hit),
+                        minecraft.level.registryAccess()).isBlank()
+                        && selectPrimaryScheduleProperty(scheduleNode(hit))) {
+                    editingScheduleInlineProperty = true;
+                    scheduleInlinePropertyEditorNode = "";
+                    scheduleInlinePropertyEditorKey = "";
+                    syncScheduleInlinePropertyEditor();
+                    if (scheduleInlinePropertyValue != null) {
+                        scheduleInlinePropertyValue.setFocused(true);
+                        setFocused(scheduleInlinePropertyValue);
+                        scheduleInlinePropertyValue.moveCursorToEnd(false);
+                    }
+                } else {
+                    editingScheduleInlineProperty = false;
+                    draggingScheduleBlock = hit;
+                    draggingScheduleBlockMoved = false;
+                }
+            } else {
+                scheduleMarquee = true;
+                scheduleMarqueeAdditive = hasControlDown() || hasShiftDown();
+                scheduleMarqueeStartX = mouseX;
+                scheduleMarqueeStartY = mouseY;
+                scheduleMarqueeCurrentX = mouseX;
+                scheduleMarqueeCurrentY = mouseY;
+                if (!scheduleMarqueeAdditive) clearScheduleBlockSelection();
+            }
+            return true;
+        }
+        return true;
+    }
+
+    // Add one registered block while preserving the normal Create schedule
+    // semantics stored in the shared graph document.
+    private void appendScheduleBlock(ScratchBlockDefinition definition) {
+        if (definition == null || minecraft == null || minecraft.level == null) return;
+        if (ShippingScheduleGraph.isFlowBlock(definition.id())) {
+            double x = scheduleGraphX(scheduleCanvasBounds().x() + scheduleCanvasBounds().width() / 2.0D)
+                    - ScratchBlockSurface.DEFAULT_BLOCK_WIDTH * 0.5D;
+            double y = scheduleGraphY(scheduleCanvasBounds().y() + scheduleCanvasBounds().height() / 2.0D)
+                    - ScratchBlockSurface.BLOCK_HEIGHT * 0.5D;
+            if (ShippingScheduleGraph.appendFlowBlock(scheduleDraft, ShippingScheduleGraph.flowKind(definition.id()), x, y)) {
+                setScheduleBlockSelection(scheduleDraft.nodes().getLast().id());
+                selectedScheduleProperty = null;
+                saveShippingScheduleDraft();
+            }
+            return;
+        }
+        ResourceLocation blockId;
+        try {
+            String prefix = ShippingScheduleGraph.isInstructionBlock(definition.id())
+                    ? ShippingScheduleGraph.INSTRUCTION_PREFIX : ShippingScheduleGraph.CONDITION_PREFIX;
+            blockId = ResourceLocation.parse(definition.id().substring(prefix.length()));
+        } catch (RuntimeException ignored) {
+            return;
+        }
+        boolean instruction = ShippingScheduleGraph.isInstructionBlock(definition.id());
+        boolean changed;
+        String addedCondition = "";
+        if (instruction) {
+            changed = ShippingScheduleGraph.appendInstruction(scheduleDraft, blockId, minecraft.level.registryAccess());
+        } else {
+            AdvancedGraphDocument.Node selected = scheduleNode(selectedScheduleBlock);
+            if (selected != null && ShippingScheduleGraph.isInstructionBlock(selected.type())) {
+                changed = ShippingScheduleGraph.appendCondition(scheduleDraft, selected.id(), blockId,
+                        minecraft.level.registryAccess());
+            } else {
+                double x = scheduleGraphX(scheduleCanvasBounds().x() + scheduleCanvasBounds().width() / 2.0D)
+                        - ScratchBlockSurface.DEFAULT_BLOCK_WIDTH * 0.5D;
+                double y = scheduleGraphY(scheduleCanvasBounds().y() + scheduleCanvasBounds().height() / 2.0D)
+                        - ScratchBlockSurface.BLOCK_HEIGHT * 0.5D;
+                addedCondition = ShippingScheduleGraph.appendDetachedCondition(scheduleDraft, blockId, x, y,
+                        minecraft.level.registryAccess());
+                changed = !addedCondition.isBlank();
+            }
+        }
+        if (!changed) return;
+        List<AdvancedGraphDocument.Node> ordered = ShippingScheduleGraph.orderedNodes(scheduleDraft);
+        if (instruction && !ordered.isEmpty()) {
+            setScheduleBlockSelection(ordered.getLast().id());
+            AdvancedGraphDocument.Node inserted = scheduleNode(selectedScheduleBlock);
+            AdvancedGraphDocument.Node previous = ordered.size() < 2 ? null : ordered.get(ordered.size() - 2);
+            if (inserted != null && previous != null) {
+                ShippingScheduleGraph.moveBlock(scheduleDraft, inserted.id(), previous.x(),
+                        previous.y() + ShippingScheduleGraph.scratchVisualHeight(scheduleDraft, previous.id()));
+            }
+        } else if (!addedCondition.isBlank()) {
+            setScheduleBlockSelection(addedCondition);
+        }
+        selectedScheduleProperty = null;
+        saveShippingScheduleDraft();
+    }
+
+    // Persist a schedule document through its own revision gate. Normal graph
+    // revisions are intentionally unrelated, allowing both editors to coexist.
+    private void saveShippingScheduleDraft() {
+        if (scheduleDraft == null || savedScheduleDraft == null) return;
+        ShippingScheduleGraph.ensureTemplate(scheduleDraft);
+        scheduleDraft.setViewport(schedulePanX, schedulePanY, scheduleZoom);
+        int expectedRevision = savedScheduleDraft.revision();
+        scheduleDraft.setRevision(expectedRevision + 1);
+        savedScheduleDraft = scheduleDraft.copy();
+        MenuConfigTarget target = MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId());
+        PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+                target, "schedule_save", expectedRevision, scheduleDraft.toTag(), "", 0L));
+    }
+
+    // Request an explicit controller/item transfer without treating the held
+    // item as an editor draft. The authoritative snapshot follows the result.
+    private void requestScheduleItemTransfer(String action, String progressMessage) {
+        if (savedScheduleDraft == null) return;
+        long requestId = beginGraphActionToast(progressMessage);
+        MenuConfigTarget target = MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId());
+        PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+                target, action, savedScheduleDraft.revision(), new CompoundTag(), "", requestId));
+    }
+
+    // These overlays are rendered after the container's ordinary widgets. Give
+    // the underlying pass an off-screen pointer so hidden buttons, nodes, and
+    // slots cannot light up through a popup or modal.
+    private boolean masksUnderlyingHover() {
+        return scmConfigurationOpen || scmBlockPickerOpen || toolsMenuOpen || optionDropdown != null
+                || scmWorkspaceDropdownOpen();
+    }
+
+    private boolean scmWorkspaceDropdownOpen() {
+        return scmGraphOverview && (scmConfigurationFiltersDropdownOpen
+                || scmConfigurationWireframeFiltersDropdownOpen
+                || !scmConfigurationSidebarCollapsed && (scmConfigurationTargetDropdownOpen
+                || scmConfigurationControlModeDropdownOpen || scmConfigurationFaceDropdownOpen));
+    }
+
+    // The SCM workspace itself is drawn during the normal container pass. When
+    // a dropdown is open that pass intentionally receives an off-screen mouse
+    // position, so redraw just the raised menu at the end with the real cursor.
+    // This preserves menu hover feedback without allowing the graph, sidebars,
+    // or buttons below the popup to react to the cursor.
+    private void drawScmWorkspaceDropdowns(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (!scmWorkspaceDropdownOpen()) return;
+
+        UiRect bounds = scmConfigurationBounds();
+        UiRect viewBounds = scmConfigurationViewBounds(bounds);
+        int viewX = viewBounds.x();
+        int viewY = viewBounds.y();
+
+        graphics.pose().pushPose();
+        graphics.pose().translate(0.0F, 0.0F, 500.0F);
+        if (scmConfigurationFiltersDropdownOpen) {
+            drawScmPreviewFilterDropdown(graphics, viewX, viewY, mouseX, mouseY);
+        }
+        if (scmConfigurationWireframeFiltersDropdownOpen) {
+            drawScmWireframeFilterDropdown(graphics, viewX, viewY, mouseX, mouseY,
+                    scmConfigurationWireframeExcludedFilters);
+        }
+        if (!scmConfigurationSidebarCollapsed) {
+            int panelX = viewBounds.right() + 14;
+            int panelWidth = bounds.right() - panelX - 8;
+            int sidebarY = scmConfigurationSidebarLayout(bounds, viewBounds).contentTop();
+            if (scmConfigurationTargetDropdownOpen) {
+                drawScmTargetDropdown(graphics, panelX, sidebarY + 145, panelWidth, mouseX, mouseY);
+            }
+            if (scmConfigurationControlModeDropdownOpen) {
+                drawScmControlModeDropdown(graphics, panelX, sidebarY + 183, panelWidth, mouseX, mouseY);
+            }
+            if (scmConfigurationControlBindingMode == ScmControlBindingMode.FACE
+                    && scmConfigurationFaceDropdownOpen) {
+                drawScmFaceDropdown(graphics, panelX, sidebarY + 221, panelWidth, mouseX, mouseY);
+            }
+        }
+        graphics.pose().popPose();
     }
 
     // Check if the node item overlay is open
@@ -2350,18 +5775,53 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             RecipeViewerVisibility.setEmiVisible(blockBrowserOpen && !linkerOpen);
         }
         if (!blockBrowserOpen) renderBackground(graphics, mouseX, mouseY, partialTick);
-        super.render(graphics, mouseX, mouseY, partialTick);
+        boolean maskUnderlyingHover = masksUnderlyingHover();
+        int baseMouseX = maskUnderlyingHover ? Integer.MIN_VALUE : mouseX;
+        int baseMouseY = maskUnderlyingHover ? Integer.MIN_VALUE : mouseY;
+        super.render(graphics, baseMouseX, baseMouseY, partialTick);
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         RenderSystem.enableDepthTest();
+        // The SCM calibration dialog is a true modal. It must render after
+        // vanilla/container widgets, graph overlays, and their tooltips; drawing
+        // it in renderBg left later UI passes (chevrons and hover tooltips) on top.
+        if (scmConfigurationOpen) {
+            graphics.pose().pushPose();
+            // Container/sidebar controls may have already emitted GUI vertices
+            // with a positive depth. Give the entire calibration dialog its own
+            // high layer so no graph chevron or tooltip can win the depth test.
+            graphics.pose().translate(0.0F, 0.0F, 500.0F);
+            drawScmConfiguration(graphics, mouseX, mouseY);
+            graphics.pose().popPose();
+            return;
+        }
+        if (scmBlockPickerOpen) {
+            graphics.pose().pushPose();
+            graphics.pose().translate(0.0F, 0.0F, 500.0F);
+            drawScmBlockPicker(graphics, mouseX, mouseY);
+            graphics.pose().popPose();
+            return;
+        }
         if (optionDropdown != null) {
             drawOptionDropdown(graphics);
             if (optionDropdown.searchable() && optionDropdownSearch != null) {
                 optionDropdownSearch.render(graphics, mouseX, mouseY, partialTick);
             }
         }
+        drawSchedulePropertyDropdown(graphics, mouseX, mouseY);
         drawGraphActionToast(graphics);
-        if (!hudOpen && !blockingOverlayOpen() && !frequencyModalOpen) {
+        if (toolsMenuOpen) {
+            graphics.pose().pushPose();
+            // Tool choices are an interaction overlay, so render them after
+            // all container widgets, graph text, and other transient UI.
+            graphics.pose().translate(0.0F, 0.0F, 500.0F);
+            drawToolsMenu(graphics, mouseX, mouseY);
+            graphics.pose().popPose();
+        }
+        if (scmWorkspaceDropdownOpen()) {
+            drawScmWorkspaceDropdowns(graphics, mouseX, mouseY);
+        }
+        if (!scmGraphOverview && !scheduleGraphOverview && !hudOpen && !blockingOverlayOpen() && !frequencyModalOpen) {
             List<Component> nodeBrowserTooltip = nodeBrowserTooltip(mouseX, mouseY);
             if (nodeBrowserTooltip != null) {
                 if (!nodeBrowserTooltip.isEmpty()) {
@@ -2427,6 +5887,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         return function == null ? draft.nodes() : function.nodes();
     }
 
+    // Return the current node stack in the same order it is painted. Selected
+    // nodes intentionally occupy the front of that stack, without mutating the
+    // saved graph's node order.
+    private List<AdvancedGraphDocument.Node> activeNodesInRenderOrder() {
+        List<AdvancedGraphDocument.Node> nodes = new ArrayList<>(activeNodes());
+        nodes.sort(Comparator.comparing(node -> selectedNodes.contains(node.id())));
+        return nodes;
+    }
+
     // Get the active edges
     private List<AdvancedGraphDocument.Edge> activeEdges() {
         AdvancedGraphDocument.FunctionGraph function = activeFunction();
@@ -2441,23 +5910,391 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Select the graph tab
     private void selectGraphTab(String functionId) {
-        if (Objects.equals(activeFunctionId, functionId)) {
+        if (!scmGraphOverview && !scheduleGraphOverview && Objects.equals(activeFunctionId, functionId)) {
             return;
         }
+        boolean leavingScmWorkspace = scmGraphOverview;
         storeViewport();
+        scmGraphOverview = false;
+        scheduleGraphOverview = false;
+        if (schedulePropertyValue != null) schedulePropertyValue.setVisible(false);
+        editingScheduleInlineProperty = false;
+        if (scheduleInlinePropertyValue != null) scheduleInlinePropertyValue.setVisible(false);
         activeFunctionId = functionId;
         restoreViewport();
         clearSelection();
         clearGraphRenderCache();
+        if (leavingScmWorkspace) {
+            scmLivePreviewRenderer.close();
+        }
+    }
+
+    // Select the persistent SCM calibration/control surface.
+    private void selectScmGraphTab() {
+        if (scmGraphOverview || !hasScmWorkspace()) return;
+        storeViewport();
+        scmGraphOverview = true;
+        scheduleGraphOverview = false;
+        if (schedulePropertyValue != null) schedulePropertyValue.setVisible(false);
+        editingScheduleInlineProperty = false;
+        if (scheduleInlinePropertyValue != null) scheduleInlinePropertyValue.setVisible(false);
+        activeFunctionId = null;
+        clearSelection();
+        clearGraphRenderCache();
+        beginScmConfigurationWorkspace();
+    }
+
+    // SCM-specific screens are only meaningful while this controller has its
+    // actual SCM module attached. The normal graph editor remains available
+    // on every controller.
+    private boolean hasScmWorkspace() {
+        AdvancedContraptionControllerBlockEntity controller = menu.getMenuConfigTargetBlockEntity();
+        return controller != null && controller.isMountedOnShipControlModule();
+    }
+
+    // The Schedule tab is host-only. The server repeats this check when a
+    // Scratch document is saved, so client state can never expose it elsewhere.
+    private boolean hasShippingScheduleWorkspace() {
+        AdvancedContraptionControllerBlockEntity controller = menu.getMenuConfigTargetBlockEntity();
+        return controller != null && controller.hasShippingScheduleWorkspace();
+    }
+
+    // Select the conditional host-owned Scratch schedule surface.
+    private void selectShippingScheduleTab() {
+        if (scheduleGraphOverview || !hasShippingScheduleWorkspace()) return;
+        storeViewport();
+        scheduleGraphOverview = true;
+        scmGraphOverview = false;
+        activeFunctionId = null;
+        if (scheduleDraft == null) {
+            scheduleDraft = menu.getInitialShippingScheduleDraft();
+        }
+        ShippingScheduleGraph.ensureTemplate(scheduleDraft);
+        if (savedScheduleDraft == null) {
+            savedScheduleDraft = scheduleDraft.copy();
+        }
+        if (scheduleDraft.viewportZoom() >= 0.20F) {
+            schedulePanX = scheduleDraft.viewportX();
+            schedulePanY = scheduleDraft.viewportY();
+            scheduleZoom = Mth.clamp(scheduleDraft.viewportZoom(), 0.20F, 2.50F);
+        }
+        selectedScheduleProperty = null;
+        schedulePropertyEditorNode = "";
+        schedulePropertyEditorKey = "";
+        clearSelection();
+        clearGraphRenderCache();
+        scmLivePreviewRenderer.close();
+    }
+
+    // Apply the shared ACC editor GUI-scale override after initial layout.
+    private void applyAccGuiScale() {
+        AccGuiScaleOverride.apply();
+    }
+
+    // Queue restoration after the active GUI layer has finished changing.
+    private void restoreAccGuiScale() {
+        AccGuiScaleOverride.restoreAfterExit();
+    }
+
+    // Draw the SCM calibration workspace directly in its graph tab. This is
+    // intentionally not an action-card launcher or a modal: the live craft,
+    // its explicit routing groups, and simulation fields remain visible while
+    // the player configures control bindings.
+    private void drawScmGraphWorkspace(GuiGraphics graphics, int mouseX, int mouseY) {
+        drawScmConfiguration(graphics, mouseX, mouseY);
+    }
+
+    // The ordinary node library becomes a read-only, server-authoritative live
+    // simulation summary on the SCM tab. These are values from the same SCM
+    // runtime ports graph nodes consume, not labels copied from the mockup.
+    private void drawScmSimulationSidebar(GuiGraphics graphics) {
+        int left = layoutLeft();
+        int sidebarWidth = scmSimulationSidebarWidth();
+        renderSidebarPanel(graphics, left, TOOLBAR_HEIGHT, sidebarWidth,
+                height - TOOLBAR_HEIGHT);
+        graphics.fill(left + sidebarWidth - 1, TOOLBAR_HEIGHT, left + sidebarWidth, height,
+                v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF314657);
+        if (scmSimulationSidebarCollapsed) {
+            drawScmSidebarChevron(graphics, scmSimulationSidebarHandleX(), true, true);
+            return;
+        }
+        graphics.drawString(font, "SIMULATION", left + 14, TOOLBAR_HEIGHT + 16,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFFB9CCD9, false);
+        UiRect centerMass = scmCenterMassButtonBounds(left, sidebarWidth);
+        UiRect centerLift = scmCenterLiftButtonBounds(left, sidebarWidth);
+        drawScmButton(graphics, centerMass.x(), centerMass.y(), centerMass.width(),
+                "Center of Mass" + (scmShowCenterOfMass ? " *" : ""), 0, 0);
+        drawScmButton(graphics, centerLift.x(), centerLift.y(), centerLift.width(),
+                "Center of Lift" + (scmShowCenterOfLift ? " *" : ""), 0, 0);
+        List<ScmSimulationField> fields = scmSimulationFields();
+        int firstFieldY = TOOLBAR_HEIGHT + 62;
+        int visibleRows = Math.max(1, (height - firstFieldY - 30) / 17);
+        int maximumScroll = Math.max(0, fields.size() - visibleRows);
+        scmSimulationSidebarScroll = Mth.clamp(scmSimulationSidebarScroll, 0, maximumScroll);
+        int y = firstFieldY - scmSimulationSidebarScroll * 17;
+        graphics.enableScissor(left + 2, firstFieldY, left + sidebarWidth - 2, height - 28);
+        for (ScmSimulationField field : fields) {
+            if (y + font.lineHeight < firstFieldY || y >= height - 28) {
+                y += 17;
+                continue;
+            }
+            int labelColor = v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF91A9B8;
+            int valueColor = v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFFE0EDF4;
+            String value = scmSimulationValue(field.port());
+            graphics.drawString(font, field.label(), left + 12, y, labelColor, false);
+            graphics.drawString(font, trim(value, 22), left + sidebarWidth - 12
+                    - font.width(trim(value, 22)), y, valueColor, false);
+            y += 17;
+        }
+        graphics.disableScissor();
+        drawSidebarScrollTrack(graphics, left + sidebarWidth - 5, firstFieldY, 3,
+                Math.max(1, height - firstFieldY - 30), fields.size() * 17,
+                visibleRows * 17, scmSimulationSidebarScroll * 17);
+        if (!scmConfigurationStatus.isBlank()) {
+            graphics.drawString(font, trim(scmConfigurationStatus, 34), left + 12,
+                    height - 18, v2Ui ? AdvancedControllerV2Theme.ACCENT_LIGHT : 0xFF91D9FF,
+                    false);
+        }
+        drawScmSidebarChevron(graphics, scmSimulationSidebarHandleX(), true, false);
+    }
+
+    private List<ScmSimulationField> scmSimulationFields() {
+        return List.of(
+                new ScmSimulationField("Runtime Status", "status"),
+                new ScmSimulationField("Ready", "ready"),
+                new ScmSimulationField("Attached", "attached"),
+                new ScmSimulationField("Initialized", "initialized"),
+                new ScmSimulationField("Initialization", "progress"),
+                new ScmSimulationField("Map ID", "map_id"),
+                new ScmSimulationField("Units", "unit_count"),
+                new ScmSimulationField("Controllable Units", "controllable_count"),
+                new ScmSimulationField("Bearings", "bearing_count"),
+                new ScmSimulationField("Vector Thrusters", "vector_thruster_count"),
+                new ScmSimulationField("Docking Connectors", "docking_connector_count"),
+                new ScmSimulationField("Mass", "mass"),
+                new ScmSimulationField("Weight", "weight"),
+                new ScmSimulationField("Facing", "facing"),
+                new ScmSimulationField("Center Mass X", "center_of_mass_x"),
+                new ScmSimulationField("Center Mass Y", "center_of_mass_y"),
+                new ScmSimulationField("Center Mass Z", "center_of_mass_z"),
+                new ScmSimulationField("Center Lift X", "center_of_lift_x"),
+                new ScmSimulationField("Center Lift Y", "center_of_lift_y"),
+                new ScmSimulationField("Center Lift Z", "center_of_lift_z"),
+                new ScmSimulationField("Position X", "x"),
+                new ScmSimulationField("Position Y", "y"),
+                new ScmSimulationField("Position Z", "z"),
+                new ScmSimulationField("Velocity X", "velocity_x"),
+                new ScmSimulationField("Velocity Y", "velocity_y"),
+                new ScmSimulationField("Velocity Z", "velocity_z"),
+                new ScmSimulationField("Speed", "speed"),
+                new ScmSimulationField("Angular Velocity X", "angular_velocity_x"),
+                new ScmSimulationField("Angular Velocity Y", "angular_velocity_y"),
+                new ScmSimulationField("Angular Velocity Z", "angular_velocity_z"),
+                new ScmSimulationField("Yaw", "yaw"),
+                new ScmSimulationField("Pitch", "pitch"),
+                new ScmSimulationField("Roll", "roll"),
+                new ScmSimulationField("Collision Forward", "collision_distance_forward"),
+                new ScmSimulationField("Collision Backward", "collision_distance_backward"),
+                new ScmSimulationField("Collision Left", "collision_distance_left"),
+                new ScmSimulationField("Collision Right", "collision_distance_right"),
+                new ScmSimulationField("Collision Up", "collision_distance_up"),
+                new ScmSimulationField("Collision Down", "collision_distance_down"),
+                new ScmSimulationField("Nearest Collision", "nearest_collision_distance"),
+                new ScmSimulationField("Collision Scan Range", "collision_scan_range"),
+                new ScmSimulationField("Navigation Distance", "navigation_target_distance"),
+                new ScmSimulationField("Inertia Tensor", "inertia_tensor"));
+    }
+
+    private UiRect scmCenterMassButtonBounds(int left, int sidebarWidth) {
+        int buttonWidth = Math.max(72, (sidebarWidth - 30) / 2);
+        return new UiRect(left + 12, TOOLBAR_HEIGHT + 30, buttonWidth, 18);
+    }
+
+    private UiRect scmCenterLiftButtonBounds(int left, int sidebarWidth) {
+        UiRect mass = scmCenterMassButtonBounds(left, sidebarWidth);
+        return new UiRect(mass.right() + 6, mass.y(), Math.max(72, sidebarWidth - 12 - mass.right() + left - 6), 18);
+    }
+
+    private int scmSimulationSidebarWidth() {
+        if (scmSimulationSidebarCollapsed) {
+            return SIDEBAR_HANDLE_WIDTH;
+        }
+        return Math.min(SCM_SIMULATION_SIDEBAR_WIDTH,
+                Math.max(180, layoutRight() - layoutLeft() - 420));
+    }
+
+    private int scmSimulationSidebarHandleX() {
+        // Keep the collapse control out in the 3D workspace rather than
+        // recessed into the simulation panel itself.
+        return graphLeft() + 4;
+    }
+
+    private int scmSimulationMaximumScroll() {
+        int firstFieldY = TOOLBAR_HEIGHT + 62;
+        int visibleRows = Math.max(1, (height - firstFieldY - 30) / 17);
+        return Math.max(0, scmSimulationFields().size() - visibleRows);
+    }
+
+    private String scmSimulationValue(String port) {
+        CompoundTag encoded = scmSimulationTelemetry.get(port);
+        if (encoded == null || encoded.isEmpty()) {
+            return "—";
+        }
+        CompoundTag payload = encoded.getCompound("Payload");
+        return switch (encoded.getString("Type")) {
+            case "number" -> formatScmSimulationNumber(payload.getDouble("Value"));
+            case "boolean" -> payload.getBoolean("Value") ? "true" : "false";
+            case "string", "direction" -> payload.getString("Value");
+            case "map" -> "inertia_tensor".equals(port) ? formatScmInertiaTensor(payload) : "—";
+            default -> "—";
+        };
+    }
+
+    private List<ScmLiveSubLevelPreviewRenderer.Marker> scmConfigurationMarkers() {
+        if (scmConfigurationRootSubLevelId == null) return List.of();
+        List<ScmLiveSubLevelPreviewRenderer.Marker> markers = new ArrayList<>();
+        if(menu.getContentPos() != null && menu.getContentSubLevelId() != null){
+            ScmOrientation orientation = scmConfigurationProfile.resolveOrientation(scmDefaultOrientation);
+            Vec3 origin = Vec3.atCenterOf(menu.getContentPos());
+            markers.add(new ScmLiveSubLevelPreviewRenderer.Marker(menu.getContentSubLevelId(),
+                    origin, orientation.forwardVector(), SCM_FORWARD_COLOR));
+            markers.add(new ScmLiveSubLevelPreviewRenderer.Marker(menu.getContentSubLevelId(),
+                    origin, orientation.upVector(), SCM_UP_COLOR));
+        }
+        if (scmShowCenterOfMass) {
+            markers.add(new ScmLiveSubLevelPreviewRenderer.Marker(scmConfigurationRootSubLevelId,
+                    scmSimulationVector("center_of_mass"), new Vec3(0.0D, 1.0D, 0.0D), 0xFFFF5A5A));
+        }
+        if (scmShowCenterOfLift) {
+            markers.add(new ScmLiveSubLevelPreviewRenderer.Marker(scmConfigurationRootSubLevelId,
+                    scmSimulationVector("center_of_lift"), new Vec3(0.0D, 1.0D, 0.0D), 0xFF57D8FF));
+        }
+        return markers;
+    }
+
+    private Vec3 scmSimulationVector(String prefix) {
+        return new Vec3(scmSimulationNumber(prefix + "_x"), scmSimulationNumber(prefix + "_y"),
+                scmSimulationNumber(prefix + "_z"));
+    }
+
+    private double scmSimulationNumber(String port) {
+        CompoundTag encoded = scmSimulationTelemetry.get(port);
+        if (encoded == null || !"number".equals(encoded.getString("Type"))) return 0.0D;
+        double value = encoded.getCompound("Payload").getDouble("Value");
+        return Double.isFinite(value) ? value : 0.0D;
+    }
+
+    private static String formatScmSimulationNumber(double value) {
+        if (!Double.isFinite(value)) {
+            return "—";
+        }
+        double magnitude = Math.abs(value);
+        if (magnitude >= 1000.0D || (magnitude > 0.0D && magnitude < 0.01D)) {
+            return String.format(Locale.ROOT, "%.3g", value);
+        }
+        return String.format(Locale.ROOT, "%.2f", value);
+    }
+
+    private static String formatScmInertiaTensor(CompoundTag values) {
+        if (values == null || values.isEmpty()) {
+            return "—";
+        }
+        return "[" + formatScmSimulationNumber(scmTensorValue(values, "m00"))
+                + ", " + formatScmSimulationNumber(scmTensorValue(values, "m11"))
+                + ", " + formatScmSimulationNumber(scmTensorValue(values, "m22")) + "]";
+    }
+
+    private static double scmTensorValue(CompoundTag values, String key) {
+        return values.getCompound(key).getCompound("Payload").getDouble("Value");
+    }
+
+    private void drawScmConfigurationSidebarHandle(GuiGraphics graphics, UiRect bounds, UiRect viewBounds) {
+        int x = scmConfigurationSidebarHandleX(bounds, viewBounds);
+        drawScmSidebarChevron(graphics, x, false, scmConfigurationSidebarCollapsed);
+    }
+
+    private int scmConfigurationSidebarHandleX(UiRect bounds, UiRect viewBounds) {
+        // The right sidebar's chevron mirrors the simulation one: it sits in
+        // the 3D view just outside the panel, never inside the panel content.
+        return viewBounds.right() - SIDEBAR_HANDLE_WIDTH - 4;
+    }
+
+    private void drawScmSidebarChevron(GuiGraphics graphics, int x, boolean left, boolean collapsed) {
+        UiRect handle = scmSidebarChevronBounds(x);
+        if (v2Ui) {
+            AdvancedControllerV2Theme.drawHandle(graphics, handle.x(), handle.y(),
+                    handle.width(), handle.height(), false);
+        } else {
+            drawSidebarChevron(graphics, handle.x(), handle.y(), handle.width(), handle.height());
+            graphics.fill(handle.x(), handle.y(), handle.right(), handle.bottom(), 0x66101820);
+            graphics.renderOutline(handle.x(), handle.y(), handle.width(), handle.height(), 0xFF344A5C);
+        }
+        String arrow = left ? (collapsed ? ">" : "<") : (collapsed ? "<" : ">");
+        graphics.drawCenteredString(font, arrow, handle.x() + handle.width() / 2, handle.y() + 18,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFFE0EDF4);
+    }
+
+    private UiRect scmSidebarChevronBounds(int x) {
+        return new UiRect(x, Math.max(TOOLBAR_HEIGHT + 8, height / 2 - 22),
+                SIDEBAR_HANDLE_WIDTH, 44);
+    }
+
+    private boolean clickScmWorkspaceSidebarHandle(double mouseX, double mouseY, int button) {
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            return false;
+        }
+        int leftX = scmSimulationSidebarHandleX();
+        if (scmSidebarChevronBounds(leftX).contains(mouseX, mouseY)) {
+            scmSimulationSidebarCollapsed = !scmSimulationSidebarCollapsed;
+            return true;
+        }
+        UiRect bounds = scmConfigurationBounds();
+        UiRect viewBounds = scmConfigurationViewBounds(bounds);
+        int rightX = scmConfigurationSidebarHandleX(bounds, viewBounds);
+        if (scmSidebarChevronBounds(rightX).contains(mouseX, mouseY)) {
+            scmConfigurationSidebarCollapsed = !scmConfigurationSidebarCollapsed;
+            scmConfigurationTargetDropdownOpen = false;
+            scmConfigurationControlModeDropdownOpen = false;
+            scmConfigurationFaceDropdownOpen = false;
+            return true;
+        }
+        return false;
+    }
+
+    private boolean clickScmGraphWorkspace(double mouseX, double mouseY, int button) {
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && !scmSimulationSidebarCollapsed) {
+            int left = layoutLeft();
+            int sidebarWidth = scmSimulationSidebarWidth();
+            if (scmCenterMassButtonBounds(left, sidebarWidth).contains(mouseX, mouseY)) {
+                scmShowCenterOfMass = !scmShowCenterOfMass;
+                scmLivePreviewRenderer.invalidate();
+                return true;
+            }
+            if (scmCenterLiftButtonBounds(left, sidebarWidth).contains(mouseX, mouseY)) {
+                scmShowCenterOfLift = !scmShowCenterOfLift;
+                scmLivePreviewRenderer.invalidate();
+                return true;
+            }
+        }
+        if (clickScmWorkspaceSidebarHandle(mouseX, mouseY, button)) {
+            return true;
+        }
+        return clickScmConfiguration(mouseX, mouseY, button);
     }
 
     // Get the graph left
     private int graphLeft() {
+        if (scmGraphOverview) {
+            return layoutLeft() + scmSimulationSidebarWidth();
+        }
         return layoutLeft() + activeLeftWidth();
     }
 
     // Get the graph right
     private int graphRight() {
+        if (scmGraphOverview) {
+            return layoutRight();
+        }
         return Math.max(graphLeft(), layoutRight() - activeRightWidth());
     }
 
@@ -2511,15 +6348,23 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             leftSidebarCollapsed = true;
         }
         if (nodeSearch != null) {
-            nodeSearch.setVisible(!leftSidebarCollapsed && !blockBrowserOpen);
+            nodeSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview
+                    && !leftSidebarCollapsed && !blockBrowserOpen);
             nodeSearch.setWidth(Math.max(48, activeLeftWidth() - 16));
         }
         if (blockSearch != null) {
-            blockSearch.setVisible(!leftSidebarCollapsed && blockBrowserOpen);
+            blockSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview
+                    && !leftSidebarCollapsed && blockBrowserOpen);
             blockSearch.setWidth(Math.max(48, activeLeftWidth() - 16));
         }
         if (inspectorValue != null && rightSidebarCollapsed) {
             inspectorValue.setVisible(false);
+        }
+        if (schedulePropertyValue != null && (!scheduleGraphOverview || rightSidebarCollapsed)) {
+            schedulePropertyValue.setVisible(false);
+        }
+        if (scheduleInlinePropertyValue != null && !scheduleGraphOverview) {
+            scheduleInlinePropertyValue.setVisible(false);
         }
     }
 
@@ -2955,7 +6800,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private void drawNodes(GuiGraphics graphics, double mouseX, double mouseY) {
         AdvancedGraphDocument.Node hoveredNode = Screen.hasControlDown() ? nodeAt(mouseX, mouseY) : null;
         String hoveredVariable = variableNodeName(hoveredNode);
-        for (AdvancedGraphDocument.Node node : activeNodes()) {
+        for (AdvancedGraphDocument.Node node : activeNodesInRenderOrder()) {
             int x = screenX(node.x());
             int y = screenY(node.y());
             int w = (int) (nodeWidth(node) * zoom);
@@ -3212,15 +7057,26 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         UiRect bounds = frequencyModalBounds();
         graphics.fill(layoutLeft(), 0, layoutRight(), height, 0x99000000);
         renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
-        graphics.drawCenteredString(font, "Redstone Link Frequency", bounds.x() + bounds.width() / 2, bounds.y() + 12, 0xFFFFFFFF);
+        graphics.drawCenteredString(font, scheduleParameterEditor ? "Schedule Parameters" : "Redstone Link Frequency",
+                bounds.x() + bounds.width() / 2, bounds.y() + 12, 0xFFFFFFFF);
 
         int firstX = leftPos + AdvancedContraptionControllerMenu.GHOST_SLOT_OUTPUT_FIRST_X;
         int secondX = leftPos + AdvancedContraptionControllerMenu.GHOST_SLOT_OUTPUT_SECOND_X;
         int slotY = topPos + AdvancedContraptionControllerMenu.GHOST_SLOTS_Y;
         drawPlayerInv(graphics);
         drawFreqSlotBgs(graphics);
-        graphics.drawString(font, "A", firstX + 6, slotY - 11, 0xFFE45B67, false);
-        graphics.drawString(font, "B", secondX + 6, slotY - 11, 0xFF5D9FE3, false);
+        if (scheduleParameterEditor) {
+            AdvancedGraphDocument.Node node = scheduleNode(frequencyNode);
+            graphics.drawString(font, ShippingScheduleGraph.inputSlotLabel(node, 0), firstX - 7, slotY - 11,
+                    0xFFE45B67, false);
+            if (scheduleParameterSlotCount() > 1) {
+                graphics.drawString(font, ShippingScheduleGraph.inputSlotLabel(node, 1), secondX - 7, slotY - 11,
+                        0xFF5D9FE3, false);
+            }
+        } else {
+            graphics.drawString(font, "A", firstX + 6, slotY - 11, 0xFFE45B67, false);
+            graphics.drawString(font, "B", secondX + 6, slotY - 11, 0xFF5D9FE3, false);
+        }
 
         UiRect clear = freqClearBtnBounds();
         renderAdvancedButton(graphics, font, clear.x(), clear.y(), clear.width(), clear.height(),
@@ -3904,6 +7760,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         int left = layoutLeft();
         String query = nodeSearch == null ? "" : nodeSearch.getValue().trim().toLowerCase(Locale.ROOT);
         List<BrowserEntry> entries = nodeBrowserEntries(query);
+        int viewportHeight = Math.max(1, height - 82);
+        int contentHeight = browserContentHeight(entries);
+        browserScroll = Mth.clamp(browserScroll, 0,
+                Math.max(0, contentHeight - viewportHeight));
         int y = 86 - browserScroll;
         graphics.enableScissor(left, 82, left + activeLeftWidth(), height);
         for (BrowserEntry entry : entries) {
@@ -3934,6 +7794,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             y += entry.category() ? 19 : 15;
         }
         graphics.disableScissor();
+        drawSidebarScrollTrack(graphics, left + activeLeftWidth() - 5, 84, 3,
+                Math.max(1, height - 88), contentHeight, viewportHeight, browserScroll);
     }
 
     // Draw the V2 node browser
@@ -3941,6 +7803,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         int left = layoutLeft();
         String query = nodeSearch == null ? "" : nodeSearch.getValue().trim().toLowerCase(Locale.ROOT);
         List<BrowserEntry> entries = nodeBrowserEntries(query);
+        int viewportHeight = Math.max(1, height - 82);
+        int contentHeight = browserContentHeight(entries);
+        browserScroll = Mth.clamp(browserScroll, 0,
+                Math.max(0, contentHeight - viewportHeight));
         int y = 86 - browserScroll;
         graphics.enableScissor(left, 82, left + activeLeftWidth(), height);
         for (BrowserEntry entry : entries) {
@@ -3990,6 +7856,19 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             y += rowHeight;
         }
         graphics.disableScissor();
+        drawSidebarScrollTrack(graphics, left + activeLeftWidth() - 5, 84, 3,
+                Math.max(1, height - 88), contentHeight, viewportHeight, browserScroll);
+    }
+
+    // Get the pixel height of the current node library, including category
+    // rows. Browser scroll positions are pixels rather than entry indices so
+    // classic and V2 layouts scroll at the same rate.
+    private int browserContentHeight(List<BrowserEntry> entries) {
+        int height = 0;
+        for (BrowserEntry entry : entries) {
+            height += browserEntryRowHeight(entry);
+        }
+        return height;
     }
 
     // Get the browser entry row height
@@ -4061,6 +7940,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Draw the block browser
     private void drawBlockBrowser(GuiGraphics graphics, int mouseX, int mouseY) {
         List<RegistryEntry> entries = registryEntries();
+        int viewportHeight = Math.max(1, height - 82);
+        int contentHeight = blockBrowserContentHeight(entries);
+        blockBrowserScroll = Mth.clamp(blockBrowserScroll, 0,
+                Math.max(0, contentHeight - viewportHeight));
         int y = 86 - blockBrowserScroll;
         int left = layoutLeft();
         graphics.enableScissor(left, 82, left + activeLeftWidth(), height);
@@ -4080,6 +7963,32 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             y += entry.header() ? 19 : 20;
         }
         graphics.disableScissor();
+        drawSidebarScrollTrack(graphics, left + activeLeftWidth() - 5, 84, 3,
+                Math.max(1, height - 88), contentHeight, viewportHeight, blockBrowserScroll);
+    }
+
+    private static int blockBrowserContentHeight(List<RegistryEntry> entries) {
+        int height = 0;
+        for (RegistryEntry entry : entries) {
+            height += entry.header() ? 19 : 20;
+        }
+        return height;
+    }
+
+    // Draw the small, non-interactive position indicator shared by scrollable
+    // graph sidebars. Wheel scrolling remains the input mechanism; the track
+    // simply makes overflow and the current viewport immediately obvious.
+    private void drawSidebarScrollTrack(GuiGraphics graphics, int x, int y, int width, int height,
+                                        int contentHeight, int viewportHeight, int scroll) {
+        if (width <= 0 || height <= 0 || contentHeight <= viewportHeight) return;
+        int maximum = Math.max(1, contentHeight - viewportHeight);
+        int thumbHeight = Math.max(12, height * viewportHeight / Math.max(1, contentHeight));
+        thumbHeight = Math.min(height, thumbHeight);
+        int thumbY = y + (height - thumbHeight) * Mth.clamp(scroll, 0, maximum) / maximum;
+        graphics.fill(x, y, x + width, y + height,
+                v2Ui ? 0x664B6375 : 0x55445A6B);
+        graphics.fill(x, thumbY, x + width, thumbY + thumbHeight,
+                v2Ui ? AdvancedControllerV2Theme.ACCENT : 0xFF91D9FF);
     }
 
     // Get the registry entries
@@ -4225,6 +8134,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 inspectorOptionsCollapsed);
         if (selectedNode != null && !inspectorOptionsCollapsed
                 && sections.optionsBottom() > sections.optionsTop()) {
+            inspectorOptionsScroll = Mth.clamp(inspectorOptionsScroll, 0,
+                    inspectorOptionsMaximumScroll(selectedNode, sections));
             int y = sections.optionsTop() - inspectorOptionsScroll;
             graphics.enableScissor(x, sections.optionsTop(), layoutRight(), sections.optionsBottom());
             String property = editableProperty(selectedNode);
@@ -4275,6 +8186,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                         AdvancedGraphCatalog.categoryColor("functions"), false);
             }
             graphics.disableScissor();
+            drawSidebarScrollTrack(graphics, layoutRight() - 5, sections.optionsTop() + 1, 3,
+                    Math.max(1, sections.optionsBottom() - sections.optionsTop() - 2),
+                    inspectorOptionsContentHeight(selectedNode),
+                    Math.max(1, sections.optionsBottom() - sections.optionsTop()), inspectorOptionsScroll);
         }
         drawInspectorDivider(graphics, x, sections.optionsDividerTop());
 
@@ -4282,6 +8197,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 inspectorTargetsCollapsed);
         if (selectedNode != null && !inspectorTargetsCollapsed
                 && sections.targetsBottom() > sections.targetsTop()) {
+            inspectorTargetsScroll = Mth.clamp(inspectorTargetsScroll, 0,
+                    inspectorTargetsMaximumScroll(selectedNode, sections));
             int y = sections.targetsTop() + 8 - inspectorTargetsScroll;
             graphics.enableScissor(x, sections.targetsTop(), layoutRight(), sections.targetsBottom());
             if (usesBinding(selectedNode)) {
@@ -4299,6 +8216,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
             if (usesTarget(selectedNode)) {
                 y += 5;
+                if (canOpenScmBlockPicker(selectedNode)) {
+                    renderAdvancedButton(graphics, font, x + 7, y - 3, layoutRight() - x - 14, 18,
+                            Component.literal("Pick block from assembled 3D view"), false, true);
+                    y += 22;
+                }
                 graphics.drawString(font, "Available Targets", x + 10, y,
                         interfaceAccentTextColor(), false);
                 y += 15;
@@ -4361,13 +8283,19 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 }
             }
             graphics.disableScissor();
+            drawSidebarScrollTrack(graphics, layoutRight() - 5, sections.targetsTop() + 1, 3,
+                    Math.max(1, sections.targetsBottom() - sections.targetsTop() - 2),
+                    inspectorTargetsContentHeight(selectedNode),
+                    Math.max(1, sections.targetsBottom() - sections.targetsTop()), inspectorTargetsScroll);
         }
         drawInspectorDivider(graphics, x, sections.targetsDividerTop());
 
         drawInspectorSectionHeader(graphics, x, sections.variablesHeaderTop(), "Variables",
                 inspectorVariablesCollapsed);
         if (!inspectorVariablesCollapsed && sections.variablesBottom() > sections.variablesTop()) {
-            int y = sections.variablesTop() + 3;
+            inspectorVariablesScroll = Mth.clamp(inspectorVariablesScroll, 0,
+                    inspectorVariablesMaximumScroll(sections));
+            int y = sections.variablesTop() + 3 - inspectorVariablesScroll;
             graphics.enableScissor(x, sections.variablesTop(), layoutRight(), sections.variablesBottom());
             if (draft.variables().isEmpty()) {
                 graphics.drawString(font, "No variables", x + 10, y + 3, interfaceMutedColor(), false);
@@ -4385,6 +8313,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 }
             }
             graphics.disableScissor();
+            drawSidebarScrollTrack(graphics, layoutRight() - 5, sections.variablesTop() + 1, 3,
+                    Math.max(1, sections.variablesBottom() - sections.variablesTop() - 2),
+                    inspectorVariablesContentHeight(),
+                    Math.max(1, sections.variablesBottom() - sections.variablesTop()), inspectorVariablesScroll);
         }
         graphics.drawString(font, activeNodes().size() + " nodes / " + activeEdges().size() + " wires",
                 x + 10, height - 14,
@@ -4613,6 +8545,64 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return maximum;
         }
         return Mth.clamp(preferred, INSPECTOR_SECTION_MIN_CONTENT_HEIGHT, maximum);
+    }
+
+    private int inspectorOptionsContentHeight(AdvancedGraphDocument.Node node) {
+        if (node == null) return 0;
+        int height = 17; // Alias
+        if (hasSwitchTypeControl(node)) height += 17;
+        if (hasPropertyControl(node)) height += 17;
+        for (var port : AdvancedGraphCatalog.inputs(node).entrySet()) {
+            if ("exec".equals(port.getValue())
+                    || ("curve".equals(node.type()) && "value".equals(port.getKey()))) continue;
+            height += "frequency".equals(port.getValue()) ? 22 : 17;
+        }
+        if (isConstructorNode(node) || isFunctionInterfaceNode(node)) height += 17;
+        return height;
+    }
+
+    private int inspectorOptionsMaximumScroll(AdvancedGraphDocument.Node node, InspectorSections sections) {
+        return Math.max(0, inspectorOptionsContentHeight(node)
+                - Math.max(1, sections.optionsBottom() - sections.optionsTop()));
+    }
+
+    private int inspectorTargetsContentHeight(AdvancedGraphDocument.Node node) {
+        if (node == null || (!usesBinding(node) && !usesTarget(node))) return 0;
+        int height = 8;
+        if (usesBinding(node)) {
+            height += 15 + bindingOptions(node).size() * 14;
+        }
+        if (!usesTarget(node)) return height;
+        height += 5;
+        if (canOpenScmBlockPicker(node)) height += 22;
+        height += 15; // Available Targets label
+        for (ControllerDiscoveryNode target : graphTargetOptions(node)) {
+            height += 14;
+            if (target.nodeId().equals(node.data().getString("Target"))) {
+                height += aeroworksSectionsForTarget(node, target).size() * 14;
+            }
+        }
+        List<ControllerDiscoveryNode> scmTargets = graphScmTargetOptions(node);
+        if (!scmTargets.isEmpty()) height += 5 + 15 + scmTargets.size() * 14;
+        if ("acc_display_external".equals(node.type())) {
+            List<ControllerDiscoveryNode> sources = graphDisplaySourceOptions();
+            if (!sources.isEmpty()) height += 5 + 15 + sources.size() * 14;
+        }
+        return height;
+    }
+
+    private int inspectorTargetsMaximumScroll(AdvancedGraphDocument.Node node, InspectorSections sections) {
+        return Math.max(0, inspectorTargetsContentHeight(node)
+                - Math.max(1, sections.targetsBottom() - sections.targetsTop()));
+    }
+
+    private int inspectorVariablesContentHeight() {
+        return draft.variables().isEmpty() ? 16 : 3 + draft.variables().size() * VARIABLE_BROWSER_ROW_HEIGHT;
+    }
+
+    private int inspectorVariablesMaximumScroll(InspectorSections sections) {
+        return Math.max(0, inspectorVariablesContentHeight()
+                - Math.max(1, sections.variablesBottom() - sections.variablesTop()));
     }
 
     // Check if the pointer is in the inspector header
@@ -4919,8 +8909,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         imageWidth = layoutRight() - layoutLeft();
         leftPos = layoutLeft();
         resize(minecraft, width, height);
-        if (nodeSearch != null) nodeSearch.setVisible(!leftSidebarCollapsed && !blockBrowserOpen);
-        if (blockSearch != null) blockSearch.setVisible(!leftSidebarCollapsed && blockBrowserOpen);
+        if (nodeSearch != null) nodeSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview
+                && !leftSidebarCollapsed && !blockBrowserOpen);
+        if (blockSearch != null) blockSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview
+                && !leftSidebarCollapsed && blockBrowserOpen);
         RecipeViewerVisibility.recalculateEmi();
     }
 
@@ -5066,7 +9058,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                             && "switch".equals(node.type())) {
                         configureSwitchType(node, String.valueOf(val), true);
                     } else if (dropdown.property()) {
-                        if ("acc_display_crn".equals(node.type())
+                        if (isShippingInformationNodeType(node.type())
                                 && "DisplayMode".equals(dropdown.port())) {
                             configAccCrnMode(node, String.valueOf(val));
                         } else {
@@ -5295,7 +9287,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if ("PulseBehavior".equals(property)) {
             return PULSE_BEHAVIOR_OPTIONS.contains(val) ? val : "both";
         }
-        if ("acc_display_crn".equals(node.type()) && "DisplayMode".equals(property)) {
+        if (isShippingInformationNodeType(node.type()) && "DisplayMode".equals(property)) {
             return ShipInformationDisplayModes.normalize(val);
         }
         return val;
@@ -5310,7 +9302,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if ("event_variable_change".equals(node.type()) && "Variable".equals(property)) {
             return option;
         }
-        if ("acc_display_crn".equals(node.type()) && "DisplayMode".equals(property)) {
+        if (isShippingInformationNodeType(node.type()) && "DisplayMode".equals(property)) {
             return crnDisplayModeLabel(option);
         }
         return humanPort(option);
@@ -5485,6 +9477,12 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
         // ------------------------------------OVERLAY INPUT------------------------------------
 
+        if (scmBlockPickerOpen) {
+            return clickScmBlockPicker(mouseX, mouseY, button);
+        }
+        if (scmConfigurationOpen) {
+            return clickScmConfiguration(mouseX, mouseY, button);
+        }
         if (hudOpen) {
             if (clickHud(mouseX, mouseY, button)) {
                 clearHudFieldFocus();
@@ -5512,6 +9510,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         if (graphHistoryOpen) return handleGraphHistoryClick(mouseX, mouseY, button);
         if (templatePicker && handleTemplateClick(mouseX, mouseY, button)) return true;
+        if (schedulePropertyDropdownBounds != null && clickSchedulePropertyDropdown(mouseX, mouseY, button)) return true;
         if (optionDropdown != null && clickOptionDropdown(mouseX, mouseY, button)) return true;
         if (contextMenu != null && handleContextMenuClick(mouseX, mouseY, button)) return true;
         if (miniBrowser != null && handleMiniBrowserClick(mouseX, mouseY, button)) return true;
@@ -5528,6 +9527,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return true;
         }
         if (handleGraphTabClick(mouseX, mouseY, button)) return true;
+        if (scmGraphOverview) return clickScmGraphWorkspace(mouseX, mouseY, button);
+        if (scheduleGraphOverview) return clickShippingScheduleWorkspace(mouseX, mouseY, button);
 
         AdvancedGraphDocument.Node activeSticky = findNode(editingStickyNode);
         if (activeSticky != null && button == GLFW.GLFW_MOUSE_BUTTON_LEFT
@@ -5852,6 +9853,74 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
         wireMouseX = mouseX;
         wireMouseY = mouseY;
+        if (scmBlockPickerOpen) {
+            UiRect preview = scmBlockPickerPreviewBounds(scmBlockPickerBounds());
+            if (blockPickerRootSubLevelId() != null && preview.contains(mouseX, mouseY)) {
+                scmLivePreviewRenderer.mouseDragged(dragX, dragY);
+            }
+            return true;
+        }
+        if (scheduleGraphOverview) {
+            if (draggingInspectorDivider == InspectorDivider.SCHEDULE_PROPERTIES
+                    && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                // Keep the Schedule inspector's property list genuinely
+                // resizable. This used to clear the drag immediately, which
+                // made the painted handle look decorative rather than usable.
+                scheduleInspectorPropertiesHeight = Mth.clamp((int) mouseY - 128,
+                        22, Math.max(22, height - 230));
+                return true;
+            }
+            if (draggingScheduleMinimapViewport && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                AdvancedControllerMinimapGeometry.Transform transform = scheduleMinimapDragTransform == null
+                        ? scheduleMinimapTransform(ShippingScheduleGraph.orderedBlocks(scheduleDraft))
+                        : scheduleMinimapDragTransform;
+                panScheduleMinimapViewport(mouseX, mouseY, transform);
+                return true;
+            }
+            if (schedulePanning && (button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE
+                    || button == GLFW.GLFW_MOUSE_BUTTON_RIGHT)) {
+                schedulePanX += dragX / scheduleZoom;
+                schedulePanY += dragY / scheduleZoom;
+                return true;
+            }
+            if (scheduleMarquee && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                scheduleMarqueeCurrentX = mouseX;
+                scheduleMarqueeCurrentY = mouseY;
+                return true;
+            }
+            if (draggingScheduleBlock != null && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                for (String id : scheduleDragRoots()) {
+                    AdvancedGraphDocument.Node dragged = scheduleNode(id);
+                    if (dragged == null) continue;
+                    if (id.equals(draggingScheduleBlock)) {
+                        dragged = promoteDraggedScheduleBlock(dragged, mouseX, mouseY);
+                        if (dragged == null) continue;
+                    }
+                    ShippingScheduleGraph.moveBlock(scheduleDraft, dragged.id(),
+                            dragged.x() + dragX / scheduleZoom, dragged.y() + dragY / scheduleZoom);
+                }
+                draggingScheduleBlockMoved |= dragX != 0.0D || dragY != 0.0D;
+            }
+            return true;
+        }
+        if (scmConfigurationOpen || scmGraphOverview) {
+            if (scmGraphOverview && !scmSimulationSidebarCollapsed
+                    && mouseX >= layoutLeft() && mouseX < layoutLeft() + scmSimulationSidebarWidth()
+                    && mouseY >= TOOLBAR_HEIGHT) {
+                int visibleRows = Math.max(1, (height - (TOOLBAR_HEIGHT + 62) - 30) / 17);
+                int maximum = Math.max(0, scmSimulationFields().size() - visibleRows);
+                scmSimulationSidebarScroll = Mth.clamp(scmSimulationSidebarScroll - (int) Math.signum(dragY),
+                        0, maximum);
+                return true;
+            }
+            UiRect bounds = scmConfigurationBounds();
+            UiRect previewBounds = scmConfigurationPreviewBounds(bounds);
+            if (scmConfigurationRootSubLevelId != null
+                    && previewBounds.contains(mouseX, mouseY)) {
+                scmLivePreviewRenderer.mouseDragged(dragX, dragY);
+            }
+            return true;
+        }
         // ------------------------------------OVERLAY DRAGGING------------------------------------
         if (draggingV2MinimapViewport && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             AdvancedControllerMinimapGeometry.Transform transform = v2MinimapDragTransform == null
@@ -5881,9 +9950,12 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             if (draggingInspectorDivider == InspectorDivider.OPTIONS) {
                 inspectorOptionsHeight = Mth.clamp((int) mouseY - sections.optionsTop(),
                         INSPECTOR_SECTION_MIN_CONTENT_HEIGHT, 800);
-            } else {
+            } else if (draggingInspectorDivider == InspectorDivider.TARGETS) {
                 inspectorTargetsHeight = Mth.clamp((int) mouseY - sections.targetsTop(),
                         INSPECTOR_SECTION_MIN_CONTENT_HEIGHT, 800);
+            } else {
+                scheduleInspectorPropertiesHeight = Mth.clamp((int) mouseY - 128,
+                        22, Math.max(22, height - 230));
             }
             return true;
         }
@@ -5951,6 +10023,65 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         draggingOptionDropdownThumb = false;
+        if (scmBlockPickerOpen) {
+            UiRect preview = scmBlockPickerPreviewBounds(scmBlockPickerBounds());
+            if (blockPickerRootSubLevelId() != null && preview.contains(mouseX, mouseY)) {
+                ScmLiveSubLevelPreviewRenderer.PickTarget picked = scmLivePreviewRenderer.mouseReleased(
+                        mouseX, mouseY, button, preview.x(), preview.y(), preview.width(), preview.height(),
+                        minecraft == null ? 0.0F : minecraft.getTimer().getGameTimeDeltaPartialTick(false),
+                        scmLivePreviewRenderer.pickTargets());
+                if (picked != null) {
+                    scmBlockPickerSelected = picked;
+                    scmLivePreviewRenderer.invalidate();
+                }
+            }
+            return true;
+        }
+        if (scheduleGraphOverview) {
+            if (draggingInspectorDivider == InspectorDivider.SCHEDULE_PROPERTIES
+                    && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                draggingInspectorDivider = null;
+                return true;
+            }
+            if (draggingScheduleMinimapViewport && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                draggingScheduleMinimapViewport = false;
+                scheduleMinimapDragTransform = null;
+                return true;
+            }
+            if (scheduleMarquee && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                scheduleMarqueeCurrentX = mouseX;
+                scheduleMarqueeCurrentY = mouseY;
+                finishScheduleMarqueeSelection();
+                scheduleMarquee = false;
+                return true;
+            }
+            if (draggingScheduleBlock != null && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                if (draggingScheduleBlockMoved) {
+                    completeScheduleBlockDrop(mouseX, mouseY);
+                    saveShippingScheduleDraft();
+                }
+                draggingScheduleBlock = null;
+                draggingScheduleBlockMoved = false;
+                return true;
+            }
+            if (button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE || button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+                schedulePanning = false;
+            }
+            return true;
+        }
+        if (scmConfigurationOpen || scmGraphOverview) {
+            UiRect bounds = scmConfigurationBounds();
+            UiRect previewBounds = scmConfigurationPreviewBounds(bounds);
+            if (scmConfigurationRootSubLevelId != null
+                    && previewBounds.contains(mouseX, mouseY)) {
+                ScmLiveSubLevelPreviewRenderer.PickTarget picked = scmLivePreviewRenderer.mouseReleased(mouseX, mouseY, button,
+                        previewBounds.x(), previewBounds.y(), previewBounds.width(), previewBounds.height(),
+                        minecraft == null ? 0.0F : minecraft.getTimer().getGameTimeDeltaPartialTick(false),
+                        scmConfigurationPickTargets());
+                selectScmConfigurationBlock(picked);
+            }
+            return true;
+        }
         if (draggingV2MinimapViewport && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             draggingV2MinimapViewport = false;
             v2MinimapDragTransform = null;
@@ -6066,6 +10197,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 "Collapse Input to MAP", "Collapse Output to MAP"));
         if (selectedNodes.size() == 1) {
             actions.add("Copy Node ID");
+            AdvancedGraphDocument.Node selected = selectedNode();
+            if (activeFunctionId == null && selected != null
+                    && AdvancedGraphCatalog.isPublicScmActionDispatchType(selected.type())) {
+                AdvancedGraphDocument.FunctionGraph bound = draft == null ? null
+                        : draft.function(draft.scmActionFunction(selected.type()));
+                actions.add(bound == null ? "Create SCM Action Function"
+                        : "Open SCM Action Function");
+            }
         }
         if (selectedNodes.size() > 1) {
             actions.add("Convert to Function");
@@ -6109,6 +10248,75 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         // -----------------------------------------------------MODAL WINDOWS-----------------------------------------------------
+        if (scmBlockPickerOpen) {
+            UiRect preview = scmBlockPickerPreviewBounds(scmBlockPickerBounds());
+            if (blockPickerRootSubLevelId() != null && preview.contains(mouseX, mouseY)) {
+                scmLivePreviewRenderer.mouseScrolled(scrollY);
+            }
+            return true;
+        }
+        if (scmConfigurationOpen || scmGraphOverview) {
+            UiRect bounds = scmConfigurationBounds();
+            UiRect previewBounds = scmConfigurationPreviewBounds(bounds);
+            UiRect viewBounds = scmConfigurationViewBounds(bounds);
+            if (scmGraphOverview && !scmSimulationSidebarCollapsed
+                    && mouseX >= layoutLeft() && mouseX < layoutLeft() + scmSimulationSidebarWidth()
+                    && mouseY >= TOOLBAR_HEIGHT) {
+                scmSimulationSidebarScroll = Mth.clamp(scmSimulationSidebarScroll
+                        - (int) Math.signum(scrollY), 0, scmSimulationMaximumScroll());
+                return true;
+            }
+            int viewX = viewBounds.x();
+            int viewY = viewBounds.y();
+            int panelX = viewBounds.right() + 14;
+            int panelWidth = bounds.right() - panelX - (scmConfigurationWorkspace() ? 8 : 14);
+            ScmConfigurationSidebarLayout sidebarLayout = scmConfigurationSidebarLayout(bounds, viewBounds);
+            if (scmConfigurationTargetDropdownOpen
+                    && scmConfigurationTargetDropdownBounds(panelX, sidebarLayout.contentTop() + 145, panelWidth)
+                    .contains(mouseX, mouseY)) {
+                int visible = Math.min(SCM_CONFIGURATION_DROPDOWN_VISIBLE_ROWS,
+                        scmConfigurationActions().size());
+                int maximum = Math.max(0, scmConfigurationActions().size() - visible);
+                scmConfigurationTargetDropdownScroll = Mth.clamp(
+                        scmConfigurationTargetDropdownScroll - (int) Math.signum(scrollY), 0, maximum);
+                return true;
+            }
+            if (scmConfigurationRootSubLevelId != null
+                    && previewBounds.contains(mouseX, mouseY)) {
+                scmLivePreviewRenderer.mouseScrolled(scrollY);
+            } else if (!scmConfigurationSidebarCollapsed
+                    && mouseX >= viewBounds.right() && mouseX < bounds.right()) {
+                if (sidebarLayout.maximumScroll() > 0) {
+                    scmConfigurationSidebarScroll = Mth.clamp(scmConfigurationSidebarScroll
+                            - (int) Math.round(scrollY * 18.0D), 0, sidebarLayout.maximumScroll());
+                } else {
+                    scmConfigurationListScroll = Math.max(0, scmConfigurationListScroll
+                            - (int) Math.signum(scrollY));
+                }
+            }
+            return true;
+        }
+        if (scheduleGraphOverview) {
+            UiRect palette = schedulePaletteBounds();
+            if (!leftSidebarCollapsed && palette.contains(mouseX, mouseY)) {
+                int maximum = Math.max(0, schedulePaletteContentHeight() - Math.max(1, height - 82));
+                schedulePaletteScroll = Mth.clamp(schedulePaletteScroll - (int) Math.round(scrollY * 34.0D),
+                        0, maximum);
+            } else if (!rightSidebarCollapsed && mouseX >= graphRight() && mouseX < layoutRight()) {
+                AdvancedGraphDocument.Node selected = scheduleNode(selectedScheduleBlock);
+                int maximum = Math.max(0, schedulePropertyKeys(selected).size()
+                        - scheduleVisiblePropertyRows(schedulePropertyKeys(selected)));
+                schedulePropertyScroll = Mth.clamp(schedulePropertyScroll - (int) Math.signum(scrollY), 0, maximum);
+            } else if (inGraph(mouseX, mouseY)) {
+                double graphMouseX = scheduleGraphX(mouseX);
+                double graphMouseY = scheduleGraphY(mouseY);
+                scheduleZoom = Mth.clamp(scheduleZoom + scrollY * 0.1D, 0.20D, 2.50D);
+                UiRect canvas = scheduleCanvasBounds();
+                schedulePanX = (mouseX - canvas.x()) / scheduleZoom - graphMouseX;
+                schedulePanY = (mouseY - canvas.y()) / scheduleZoom - graphMouseY;
+            }
+            return true;
+        }
         if (frequencyModalOpen) {
             return true;
         }
@@ -6123,6 +10331,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             int maximum = Math.max(0, graphTabsContentWidth() - (graphRight() - graphLeft()));
             functionTabScroll = Mth.clamp(
                     functionTabScroll - (int) Math.round(scrollY * 32.0D), 0, maximum);
+            return true;
+        }
+        if ((scmGraphOverview || scheduleGraphOverview) && inGraph(mouseX, mouseY)) {
             return true;
         }
         // ------------------------------------DROPDOWN SCROLL------------------------------------
@@ -6199,10 +10410,16 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             InspectorSections sections = inspectorSections(node);
             if (!inspectorOptionsCollapsed && mouseY >= sections.optionsTop()
                     && mouseY < sections.optionsBottom()) {
-                inspectorOptionsScroll = Math.max(0, inspectorOptionsScroll - (int) (scrollY * 34));
+                inspectorOptionsScroll = Mth.clamp(inspectorOptionsScroll - (int) (scrollY * 34), 0,
+                        inspectorOptionsMaximumScroll(node, sections));
             } else if (!inspectorTargetsCollapsed && mouseY >= sections.targetsTop()
                     && mouseY < sections.targetsBottom()) {
-                inspectorTargetsScroll = Math.max(0, inspectorTargetsScroll - (int) (scrollY * 34));
+                inspectorTargetsScroll = Mth.clamp(inspectorTargetsScroll - (int) (scrollY * 34), 0,
+                        inspectorTargetsMaximumScroll(node, sections));
+            } else if (!inspectorVariablesCollapsed && mouseY >= sections.variablesTop()
+                    && mouseY < sections.variablesBottom()) {
+                inspectorVariablesScroll = Mth.clamp(inspectorVariablesScroll - (int) (scrollY * 34), 0,
+                        inspectorVariablesMaximumScroll(sections));
             }
             return true;
         }
@@ -6222,7 +10439,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle key pressed
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if ((scmConfigurationOpen || scmGraphOverview) && hasControlDown() && keyCode == GLFW.GLFW_KEY_S) {
+            saveAndApplyDraft("save_apply", beginGraphActionToast("Saving ACC and SCM..."));
+            return true;
+        }
         // -----------------------------------------------------EDITOR MODALS-----------------------------------------------------
+        if (scmBlockPickerOpen) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) closeScmBlockPicker();
+            return true;
+        }
         if (functionNameEditor != null && functionNameEditor.visible) {
             if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
                 finishFunctionRename(false);
@@ -6305,6 +10530,64 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 return true;
             }
             return super.keyPressed(keyCode, scanCode, modifiers);
+        }
+        if (scheduleGraphOverview) {
+            if (schedulePropertyDropdownBounds != null && keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                closeSchedulePropertyDropdown();
+                return true;
+            }
+            if (getFocused() instanceof EditBox editBox && editBox.visible) {
+                if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_ENTER
+                        || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                    editBox.setFocused(false);
+                    setFocused(null);
+                    editingScheduleInlineProperty = false;
+                    if (scheduleInlinePropertyValue != null) scheduleInlinePropertyValue.setVisible(false);
+                    return true;
+                }
+                editBox.keyPressed(keyCode, scanCode, modifiers);
+                return true;
+            }
+            if (hasControlDown() && keyCode == GLFW.GLFW_KEY_S) {
+                saveShippingScheduleDraft();
+                return true;
+            }
+            if (hasControlDown() && keyCode == GLFW.GLFW_KEY_A) {
+                selectedScheduleBlocks.clear();
+                for (AdvancedGraphDocument.Node node : ShippingScheduleGraph.orderedBlocks(scheduleDraft)) {
+                    selectedScheduleBlocks.add(node.id());
+                }
+                selectedScheduleBlock = selectedScheduleBlocks.stream().findFirst().orElse(null);
+                return true;
+            }
+            if (hasControlDown() && keyCode == GLFW.GLFW_KEY_C) {
+                copySelectedScheduleBlocks();
+                return true;
+            }
+            if (hasControlDown() && keyCode == GLFW.GLFW_KEY_X) {
+                copySelectedScheduleBlocks();
+                deleteSelectedScheduleBlocks();
+                return true;
+            }
+            if (hasControlDown() && keyCode == GLFW.GLFW_KEY_V) {
+                pasteScheduleBlocks();
+                return true;
+            }
+            if (hasControlDown() && keyCode == GLFW.GLFW_KEY_D) {
+                duplicateSelectedScheduleBlocks();
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_DELETE || keyCode == GLFW.GLFW_KEY_BACKSPACE) {
+                deleteSelectedScheduleBlocks();
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                clearScheduleBlockSelection();
+                editingScheduleInlineProperty = false;
+                if (scheduleInlinePropertyValue != null) scheduleInlinePropertyValue.setVisible(false);
+                return true;
+            }
+            return true;
         }
         if (contextMenu != null) {
             if (keyCode == GLFW.GLFW_KEY_BACKSPACE && !contextMenu.query().isEmpty()) {
@@ -6558,7 +10841,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     syncInspector();
                     return true;
                 }
-                if ("acc_display_crn".equals(node.type())) {
+                if (isShippingInformationNodeType(node.type())) {
                     selectedInputPort = "DisplayMode";
                     openPropertyDropdown(node, "DisplayMode", x + 5, mouseY + 8,
                             NODE_WIDTH * zoom - 10, ACC_DISPLAY_CRN_MODES);
@@ -6784,6 +11067,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         if (inInspectorHeader(mouseY, sections.variablesHeaderTop())) {
             inspectorVariablesCollapsed = !inspectorVariablesCollapsed;
+            inspectorVariablesScroll = 0;
             saveUiPreferences();
             return true;
         }
@@ -6874,7 +11158,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     syncInspector();
                     return true;
                 }
-                if ("acc_display_crn".equals(node.type())) {
+                if (isShippingInformationNodeType(node.type())) {
                     selectedInputPort = "DisplayMode";
                     openPropertyDropdown(node, "DisplayMode", graphRight() + 7, mouseY + 8,
                             RIGHT_WIDTH - 14, ACC_DISPLAY_CRN_MODES);
@@ -6950,6 +11234,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
         }
         if (usesTarget(node)) {
+            if (canOpenScmBlockPicker(node)) {
+                if (inTargets && mouseY >= y + 2 && mouseY < y + 20) {
+                    openScmBlockPicker(node);
+                    return true;
+                }
+                y += 22;
+            }
             y += 20;
             for (ControllerDiscoveryNode target : graphTargetOptions(node)) {
                 boolean selected = target.nodeId().equals(node.data().getString("Target"));
@@ -7027,7 +11318,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private boolean clickVarBrowser(double mouseX, double mouseY, InspectorSections sections) {
         if (inspectorVariablesCollapsed || mouseY < sections.variablesTop()
                 || mouseY >= sections.variablesBottom()) return false;
-        int y = sections.variablesTop() + 3;
+        int y = sections.variablesTop() + 3 - inspectorVariablesScroll;
         for (String variable : draft.variables().keySet()) {
             if (mouseY >= y && mouseY < y + VARIABLE_BROWSER_ROW_HEIGHT) {
                 if (inside(mouseX, mouseY, variableGetButtonX(), y + 1,
@@ -7087,7 +11378,76 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             case "Convert to Function" -> selectionToFunction();
             case "Collapse Input to MAP" -> toggleSelectedPortMap(false);
             case "Collapse Output to MAP" -> toggleSelectedPortMap(true);
+            case "Create SCM Action Function", "Open SCM Action Function" ->
+                    createOrOpenScmActionFunction();
         }
+    }
+
+    // Give every public SCM action a function graph with an exact matching
+    // interface. The body begins with the raw built-in action, so it behaves
+    // identically until the player inserts ADRC/PID/filter logic around it.
+    private void createOrOpenScmActionFunction() {
+        AdvancedGraphDocument.Node actionNode = selectedNode();
+        if (draft == null || activeFunctionId != null || actionNode == null
+                || !AdvancedGraphCatalog.isPublicScmActionDispatchType(actionNode.type())) {
+            return;
+        }
+        createOrOpenScmActionFunction(actionNode.type());
+    }
+
+    // Open one SCM action function from either the action-node context menu or
+    // the dedicated SCM Graph tab.
+    private void createOrOpenScmActionFunction(String action) {
+        if (draft == null || action == null
+                || !AdvancedGraphCatalog.isPublicScmActionDispatchType(action)) {
+            return;
+        }
+        AdvancedGraphDocument.FunctionGraph existing =
+                draft.function(draft.scmActionFunction(action));
+        if (existing != null) {
+            selectGraphTab(existing.id());
+            return;
+        }
+
+        AdvancedGraphCatalog.Definition definition = AdvancedGraphCatalog.get(action);
+        if (definition == null) {
+            return;
+        }
+        checkpoint();
+        String functionId = UUID.randomUUID().toString();
+        String actionName = AdvancedGraphCatalog.displayName(action);
+        AdvancedGraphDocument.FunctionGraph function = new AdvancedGraphDocument.FunctionGraph(
+                functionId, nextFunctionName("SCM " + actionName));
+        CompoundTag inputData = new CompoundTag();
+        CompoundTag inputPorts = new CompoundTag();
+        definition.inputs().forEach(inputPorts::putString);
+        inputData.put("DynamicOutputs", inputPorts);
+        CompoundTag outputData = new CompoundTag();
+        CompoundTag outputPorts = new CompoundTag();
+        definition.outputs().forEach(outputPorts::putString);
+        outputData.put("DynamicInputs", outputPorts);
+        AdvancedGraphDocument.Node input = new AdvancedGraphDocument.Node(
+                UUID.randomUUID().toString(), AdvancedGraphFunctions.INPUT_TYPE,
+                "Inputs", 40.0D, 110.0D, inputData);
+        AdvancedGraphDocument.Node builtin = new AdvancedGraphDocument.Node(
+                UUID.randomUUID().toString(), action, "Built-in " + actionName,
+                270.0D, 110.0D, new CompoundTag());
+        AdvancedGraphDocument.Node output = new AdvancedGraphDocument.Node(
+                UUID.randomUUID().toString(), AdvancedGraphFunctions.OUTPUT_TYPE,
+                "Outputs", 510.0D, 110.0D, outputData);
+        function.nodes().add(input);
+        function.nodes().add(builtin);
+        function.nodes().add(output);
+        definition.inputs().forEach((port, ignored) -> function.edges().add(
+                AdvancedGraphFunctions.edge(input.id(), port, builtin.id(), port)));
+        definition.outputs().forEach((port, ignored) -> function.edges().add(
+                AdvancedGraphFunctions.edge(builtin.id(), port, output.id(), port)));
+        draft.functions().add(function);
+        draft.setScmActionFunction(action, functionId);
+        AdvancedGraphFunctions.synchronizeCalls(draft);
+        selectGraphTab(functionId);
+        showGraphToast("Created SCM action function for " + actionName,
+                GraphActionToastSeverity.SUCCESS);
     }
 
     // Toggle the structured MAP view for the selected node side without deleting its ports or wires.
@@ -8596,7 +12956,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Check if the node available is in the editor
     private boolean isNodeAvailableInEditor(String type) {
-        if (type == null || DISABLED_NODE_TYPES.contains(type)) {
+        if (type == null || DISABLED_NODE_TYPES.contains(type)
+                || AdvancedGraphCatalog.isRetiredScmActionType(type)) {
             return false;
         }
         if (type.startsWith("function:")) {
@@ -8606,11 +12967,21 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 || AdvancedGraphFunctions.OUTPUT_TYPE.equals(type)) {
             return activeFunction() != null;
         }
+        if (activeFunction() != null && AdvancedGraphCatalog.isShipControlType(type)
+                && !AdvancedGraphCatalog.isScmFunctionPrimitiveType(type)) {
+            return false;
+        }
         if (activeFunction() != null && isStandaloneExecSource(type)) {
             return false;
         }
         AdvancedContraptionControllerBlockEntity controller = menu.getMenuConfigTargetBlockEntity();
+        if (AdvancedGraphCatalog.isShippingScheduleControlType(type)) {
+            return controller != null && controller.hasShippingScheduleWorkspace();
+        }
         if (AdvancedGraphCatalog.isShipControlType(type)) {
+            return controller != null && controller.hasShipControlModule();
+        }
+        if ("acc_display_scm_information".equals(type)) {
             return controller != null && controller.hasShipControlModule();
         }
         return switch (type) {
@@ -8681,7 +13052,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Get the port
     private PortHit portAt(double mouseX, double mouseY) {
         prepareGraphRenderCache();
-        List<AdvancedGraphDocument.Node> nodes = activeNodes();
+        List<AdvancedGraphDocument.Node> nodes = activeNodesInRenderOrder();
         for (int nodeIndex = nodes.size() - 1; nodeIndex >= 0; nodeIndex--) {
             AdvancedGraphDocument.Node node = nodes.get(nodeIndex);
             int nodeX = screenX(node.x());
@@ -9048,7 +13419,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the node
     private AdvancedGraphDocument.Node nodeAt(double mouseX, double mouseY) {
-        List<AdvancedGraphDocument.Node> reverse = new ArrayList<>(activeNodes());
+        List<AdvancedGraphDocument.Node> reverse = activeNodesInRenderOrder();
         Collections.reverse(reverse);
         for (AdvancedGraphDocument.Node node : reverse) {
             if (containsNode(node, mouseX, mouseY)) return node;
@@ -9138,10 +13509,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (frequencyModalOpen && settleCarriedStack && !settleCarriedStackForModal()) {
             return false;
         }
-        if (frequencyModalOpen && syncNode && findNode(frequencyNode) != null) {
+        if (frequencyModalOpen && syncNode && (scheduleParameterEditor || findNode(frequencyNode) != null)) {
             syncFrequencyNode();
         }
         frequencyNode = null;
+        scheduleParameterEditor = false;
         frequencyModalOpen = false;
         menu.ghostSlotsActive = false;
         menu.playerSlotsActive = linkerOpen;
@@ -9309,7 +13681,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             case "portable_tracker" -> gogglesTrackerPairs().size() > 1 ? "GogglesPair" : null;
             case "image_reference" -> "Source";
             case "acc_display_widget", "acc_hologram_widget" -> "WidgetType";
-            case "acc_display_crn" -> "DisplayMode";
+            case "acc_display_crn", "acc_display_shipping_information" -> "DisplayMode";
             default -> null;
         };
     }
@@ -9402,7 +13774,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             String type = node.data().getString("WidgetType");
             return humanPort(type.isBlank() ? "text" : type);
         }
-        if ("acc_display_crn".equals(node.type())) {
+        if (isShippingInformationNodeType(node.type())) {
             return crnDisplayModeLabel(propertyOptionValue(node, property));
         }
         if ("OutputCount".equals(property)) return Integer.toString(executionOutputCount(node));
@@ -9504,7 +13876,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Configure the ACC CRN mode
     private void configAccCrnMode(AdvancedGraphDocument.Node node, String displayMode) {
-        if (node == null || !"acc_display_crn".equals(node.type())) {
+        if (node == null || !isShippingInformationNodeType(node.type())) {
             return;
         }
         String mode = ShipInformationDisplayModes.normalize(displayMode);
@@ -10278,6 +14650,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return;
         }
         frequencyNode = node.id();
+        scheduleParameterEditor = false;
         frequencyModalOpen = true;
         contextMenu = null;
         closeOptionDropdown();
@@ -10289,9 +14662,64 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         positionFrequencySlots();
     }
 
+    // Open Create's ordinary item-parameter slots for a graph-backed schedule block.
+    private void openScheduleParameterEditor(AdvancedGraphDocument.Node node) {
+        if (node == null || minecraft == null || minecraft.level == null || scheduleDraft == null
+                || ShippingScheduleGraph.inputSlotCount(scheduleDraft, node.id(), minecraft.level.registryAccess()) <= 0) {
+            return;
+        }
+        if (linkerOpen && !setLinkerOpen(false)) return;
+        frequencyNode = node.id();
+        scheduleParameterEditor = true;
+        frequencyModalOpen = true;
+        contextMenu = null;
+        closeOptionDropdown();
+        closeMiniBrowser();
+        templatePicker = false;
+        menu.ghostInventory.setStackInSlot(0, ShippingScheduleGraph.inputSlot(scheduleDraft, node.id(), 0,
+                minecraft.level.registryAccess()));
+        menu.ghostInventory.setStackInSlot(1, ShippingScheduleGraph.inputSlot(scheduleDraft, node.id(), 1,
+                minecraft.level.registryAccess()));
+        setLinkerOpen(false);
+        positionFrequencySlots();
+    }
+
+    // Get the active schedule parameter count while the shared ghost-slot modal is open.
+    private int scheduleParameterSlotCount() {
+        if (!scheduleParameterEditor || minecraft == null || minecraft.level == null || scheduleDraft == null) return 0;
+        return ShippingScheduleGraph.inputSlotCount(scheduleDraft, frequencyNode, minecraft.level.registryAccess());
+    }
+
+    // Commit ScheduleDataEntry item parameters through the exact owning ScheduleEntry tag.
+    private void syncScheduleParameterEditor() {
+        if (!frequencyModalOpen || !scheduleParameterEditor || minecraft == null || minecraft.level == null
+                || scheduleDraft == null) return;
+        AdvancedGraphDocument.Node node = scheduleNode(frequencyNode);
+        int slots = scheduleParameterSlotCount();
+        if (node == null || slots <= 0) {
+            closeFrequencyEditor(true, false);
+            return;
+        }
+        boolean changed = false;
+        for (int slot = 0; slot < slots; slot++) {
+            ItemStack requested = copySingle(menu.ghostInventory.getStackInSlot(slot));
+            ItemStack current = ShippingScheduleGraph.inputSlot(scheduleDraft, node.id(), slot,
+                    minecraft.level.registryAccess());
+            if (!ItemStack.isSameItemSameComponents(requested, current)) {
+                changed |= ShippingScheduleGraph.setInputSlot(scheduleDraft, node.id(), slot, requested,
+                        minecraft.level.registryAccess());
+            }
+        }
+        if (changed) saveShippingScheduleDraft();
+    }
+
     // Sync the frequency node
     private void syncFrequencyNode() {
         if (!frequencyModalOpen) {
+            return;
+        }
+        if (scheduleParameterEditor) {
+            syncScheduleParameterEditor();
             return;
         }
         AdvancedGraphDocument.Node node = findNode(frequencyNode);
@@ -10325,7 +14753,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         topPos = bounds.y() - FREQUENCY_MODAL_BASE_Y;
         menu.playerSlotsActive = true;
         menu.ghostSlotsActive = true;
-        menu.ghostSlotMask = 0x3;
+        menu.ghostSlotMask = scheduleParameterEditor && scheduleParameterSlotCount() < 2 ? 0x1 : 0x3;
     }
 
     // Get the frequency body y
@@ -10592,7 +15020,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 ? sortedGraphTargets(currentGraphTargetSeeds())
                 : List.copyOf(liveGraphTargets);
         if (node == null) return opts;
-        if ("acc_display_crn".equals(node.type())) {
+        if (isShippingInformationNodeType(node.type())) {
             opts = opts.stream().filter(target ->
                     isAccDisplayTarget(target) || isDisplayAdapterTarget(target)).toList();
         } else if (node.type().startsWith("acc_display_") || isAccDisplayWidgetType(node.type())) {
@@ -10602,6 +15030,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         } else if ("linker_face_output".equals(node.type()) || "direct_target_output".equals(node.type())
                 || "set_block_data".equals(node.type())) {
             opts = opts.stream().filter(target -> target.kind() != ControllerDiscoveryKind.LINKER_FACE_INPUT).toList();
+        }
+        if (supportsScmBlockPicker(node)) {
+            ControllerDiscoveryNode saved = ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
+            if (saved != null && saved.nodeId().startsWith("scm_picker:")
+                    && opts.stream().noneMatch(target -> saved.nodeId().equals(target.nodeId()))) {
+                List<ControllerDiscoveryNode> withSaved = new ArrayList<>(opts);
+                withSaved.add(saved);
+                opts = List.copyOf(withSaved);
+            }
         }
         return opts;
     }
@@ -10795,6 +15232,92 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         AccDisplayGuiProjection.applyGraphActionResult(controllerPos, controllerSubLevelId,
                 requestId, success, message, serverRevision, saveAttempted, graphSaved, diagnostics);
+    }
+
+    // Receive the authoritative configuration snapshot used by the SCM modal.
+    public static void applyScmConfigurationSnapshot(BlockPos controllerPos, UUID controllerSubLevelId,
+                                                     UUID rootSubLevelId, boolean scanning, String status,
+                                                     CompoundTag profile, CompoundTag candidates) {
+        Screen current = Minecraft.getInstance().screen;
+        if (current instanceof AdvancedContraptionControllerScreen screen
+                && screen.matchesController(controllerPos, controllerSubLevelId)) {
+            screen.applyScmConfigurationSnapshot(rootSubLevelId, scanning, status, profile, candidates);
+        }
+    }
+
+    private void applyScmConfigurationSnapshot(UUID rootSubLevelId, boolean scanning, String status,
+                                               CompoundTag profile, CompoundTag candidates) {
+        scmConfigurationRootSubLevelId = rootSubLevelId;
+        scmConfigurationScanning = scanning;
+        scmConfigurationStatus = status == null ? "" : status;
+        scmDetectedVehicleType = candidates == null ? "airship" : candidates.getString("DetectedVehicleType");
+        scmDefaultOrientation = ScmOrientation.fromTag(candidates == null ? null
+                : candidates.getCompound("DefaultOrientation"))
+                .orElse(ScmOrientation.fromMount(Direction.NORTH, Direction.UP));
+        ScmConfigurationProfile authoritativeProfile = ScmConfigurationProfile.fromTag(profile);
+        boolean mapChanged = scmConfigurationDirty
+                && !Objects.equals(scmConfigurationProfile.mapId(), authoritativeProfile.mapId());
+        boolean savedProfileAcknowledged = scmConfigurationSavePending
+                && scmConfigurationProfile.toTag().equals(authoritativeProfile.toTag());
+        if (!scmConfigurationDirty || mapChanged || savedProfileAcknowledged) {
+            scmConfigurationProfile = authoritativeProfile;
+            scmConfigurationDirty = false;
+            scmConfigurationSavePending = false;
+        }
+        scmSimulationTelemetry.clear();
+        CompoundTag telemetry = candidates == null ? new CompoundTag()
+                : candidates.getCompound("Telemetry");
+        for (String port : telemetry.getAllKeys()) {
+            CompoundTag value = telemetry.getCompound(port);
+            if (!value.isEmpty()) {
+                scmSimulationTelemetry.put(port, value.copy());
+            }
+        }
+        scmConfigurationCandidates.clear();
+        scmConfigurationViewSubLevelIds.clear();
+        if (rootSubLevelId != null) scmConfigurationViewSubLevelIds.add(rootSubLevelId);
+        ListTag bodies = candidates == null ? new ListTag()
+                : candidates.getList("ViewSubLevels", Tag.TAG_COMPOUND);
+        for (int index = 0; index < bodies.size(); index++) {
+            CompoundTag body = bodies.getCompound(index);
+            if (body.hasUUID("Id") && !scmConfigurationViewSubLevelIds.contains(body.getUUID("Id"))) {
+                scmConfigurationViewSubLevelIds.add(body.getUUID("Id"));
+            }
+        }
+        if (candidates != null && candidates.contains("PreviewBlocks", Tag.TAG_LIST)) {
+            List<ScmLiveSubLevelPreviewRenderer.SnapshotBlock> snapshotBlocks = new ArrayList<>();
+            ListTag preview = candidates.getList("PreviewBlocks", Tag.TAG_COMPOUND);
+            for (int index = 0; index < preview.size() && snapshotBlocks.size() < 16_384; index++) {
+                CompoundTag block = preview.getCompound(index);
+                if (!block.hasUUID("SubLevelId") || !block.contains("Position", Tag.TAG_LONG)
+                        || !block.contains("State", Tag.TAG_COMPOUND)) {
+                    continue;
+                }
+                try {
+                    snapshotBlocks.add(new ScmLiveSubLevelPreviewRenderer.SnapshotBlock(
+                            block.getUUID("SubLevelId"), BlockPos.of(block.getLong("Position")),
+                            NbtUtils.readBlockState(BuiltInRegistries.BLOCK.asLookup(), block.getCompound("State")),
+                            new Vec3(block.getDouble("RootX"), block.getDouble("RootY"), block.getDouble("RootZ"))));
+                } catch (RuntimeException ignored) {
+                    // A server may omit a block state from an optional mod the
+                    // client does not have; keep the rest of the preview usable.
+                }
+            }
+            scmLivePreviewRenderer.setSnapshotBlocks(snapshotBlocks);
+        }
+        ListTag units = candidates == null ? new ListTag() : candidates.getList("Units", Tag.TAG_COMPOUND);
+        for (int index = 0; index < units.size() && scmConfigurationCandidates.size() < 2048; index++) {
+            CompoundTag unitTag = units.getCompound(index);
+            ScmConfigurationProfile.UnitReference unit =
+                    ScmConfigurationProfile.UnitReference.fromTag(unitTag);
+            if (unit.isValid() && !scmConfigurationCandidates.contains(unit)) {
+                scmConfigurationCandidates.add(unit);
+            }
+        }
+        scmConfigurationProfile.groups().forEach(group -> group.units().forEach(
+                this::ensureScmConfigurationCandidate));
+        scmConfigurationProfile.excludedUnits().forEach(this::ensureScmConfigurationCandidate);
+        scmLivePreviewRenderer.invalidate();
     }
 
     // Apply the graph history
@@ -14670,7 +19193,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Check if this has unsaved draft
     private boolean hasUnsavedDraft() {
-        return draftDirty;
+        return draftDirty || scmConfigurationDirty;
     }
 
     // Save the draft on close
@@ -14700,8 +19223,48 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         syncHudPorts(draft);
         clearGraphRenderCache();
         MenuConfigTarget target = MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId());
+        CompoundTag graph = draft.toTag();
+        if (scmConfigurationDirty && List.of("save", "save_apply", "apply_save", "save_apply_close").contains(action)) {
+            graph.put("ScmConfiguration", scmConfigurationProfile.toTag());
+            scmConfigurationSavePending = true;
+        }
         PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
-                target, action, savedDraft.revision(), draft.toTag(), argument, requestId));
+                target, action, savedDraft.revision(), graph, argument, requestId));
+    }
+
+    // SCM configuration has an independent persistent model, so it deliberately
+    // does not serialize or overwrite the graph draft while the modal is open.
+    private void sendScmConfiguration(String action, CompoundTag profile) {
+        if ("scm_configuration_save".equals(action)) {
+            scmConfigurationSavePending = true;
+        }
+        MenuConfigTarget target = MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId());
+        PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+                target, action, savedDraft.revision(),
+                profile == null ? new CompoundTag() : profile.copy(), "", 0L));
+    }
+
+    // Get the menu's synchronized SCM controller when this client has it loaded.
+    private AdvancedContraptionControllerBlockEntity activeScmController() {
+        return menu.getMenuConfigTargetBlockEntity() instanceof AdvancedContraptionControllerBlockEntity controller
+                ? controller : null;
+    }
+
+    // Persist the shared SCM and Schedule route-progress preference.
+    private void sendScmDisplayProgress(boolean enabled) {
+        CompoundTag settings = new CompoundTag();
+        settings.putBoolean("DisplayProgress", enabled);
+        MenuConfigTarget target = MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId());
+        PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+                target, "scm_set_display_progress", savedDraft.revision(), settings, "", 0L));
+    }
+
+    // Persist the inline SCM workspace vehicle name.
+    private void sendScmVehicleName(String name) {
+        MenuConfigTarget target = MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId());
+        PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+                target, "scm_set_vehicle_name", savedDraft.revision(), new CompoundTag(),
+                name == null ? "" : name, 0L));
     }
 
     // Check if this is a pause screen
@@ -14724,6 +19287,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     @Override
     public void onClose() {
         if (frequencyModalOpen) closeFrequencyEditor(false);
+        restoreAccGuiScale();
+        scmLivePreviewRenderer.close();
         saveDraftOnClose();
         super.onClose();
     }
@@ -14741,6 +19306,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         activeGraphKeyBindings.clear();
         if (frequencyModalOpen) closeFrequencyEditor(false);
+        restoreAccGuiScale();
+        scmLivePreviewRenderer.close();
         if (openingFunctionPlotter) {
             openingFunctionPlotter = false;
         } else {
@@ -15084,7 +19651,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (!hit.output()) return wiredInputValueLabel(hit.node(), hit.port(), type);
         if (controller == null) return "...";
         AdvancedGraphLiveValue liveValue = controller.getGraphLiveOutput(hit.node().id(), hit.port());
-        if (!hasUnsavedDraft() && liveValue != null) return graphValueLabel(liveValue, type);
+        if (liveValue != null && (!hasUnsavedDraft()
+                || "scm_brain_debug".equals(hit.node().type()))) {
+            return graphValueLabel(liveValue, type);
+        }
         AdvancedGraphLiveValue simulatedValue = simulatedLiveOutput(hit.node().id(), hit.port());
         if (simulatedValue != null) return graphValueLabel(simulatedValue, type);
         if (liveValue != null) return graphValueLabel(liveValue, type);
@@ -15190,6 +19760,25 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 || "direct_target_output".equals(node.type()));
     }
 
+    private static boolean supportsScmBlockPicker(AdvancedGraphDocument.Node node) {
+        return node != null && ("get_block_data".equals(node.type())
+                || "set_block_data".equals(node.type()));
+    }
+
+    // Direct block data access is available on any assembled sub-level. It is
+    // deliberately independent of SCM, which only powers ship control.
+    private boolean canOpenScmBlockPicker(AdvancedGraphDocument.Node node) {
+        return supportsScmBlockPicker(node) && blockPickerRootSubLevelId() != null;
+    }
+
+    private UUID blockPickerRootSubLevelId() {
+        return menu.getContentSubLevelId();
+    }
+
+    private static boolean isShippingInformationNodeType(String type) {
+        return "acc_display_crn".equals(type) || "acc_display_shipping_information".equals(type);
+    }
+
     // Check if this is an ACC display target
     private static boolean isAccDisplayTarget(ControllerDiscoveryNode target) {
         if (target == null) {
@@ -15258,6 +19847,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Store the registry entry
     private record RegistryEntry(String id, ItemStack stack, boolean header) {
+    }
+
+    // One scroll-aware layout pass for the SCM assignment sidebar.
+    private record ScmConfigurationSidebarLayout(int contentTop, int viewportTop, int viewportBottom,
+                                                 int contentHeight, int maximumScroll) {
+        private int viewportHeight() {
+            return Math.max(1, viewportBottom - viewportTop);
+        }
     }
 
     // Store the port hit
@@ -15408,7 +20005,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Define the inspector divider values
     private enum InspectorDivider {
         OPTIONS,
-        TARGETS
+        TARGETS,
+        SCHEDULE_PROPERTIES
     }
 
     // Define the HUD designer color control values
@@ -15441,6 +20039,49 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
     }
 
+    // One projected selectable block in the SCM calibration viewport.
+    private record ScmCalibrationPoint(int x, int y) {
+    }
+
+    // One visible row in the compact SCM calibration group browser. A null
+    // unit denotes the collapsible group header; child rows name its assigned
+    // live blocks without turning the modal back into a flat actuator dump.
+    private record ScmConfigurationGroupRow(String groupId, String label,
+                                            ScmConfigurationProfile.UnitReference unit,
+                                            int color, int memberCount) {
+        private boolean header() {
+            return unit == null;
+        }
+    }
+
+    // Face mode keeps a side as part of the visual identity so different SCM
+    // functions on one block remain independently visible. The other modes
+    // intentionally collapse to the whole block.
+    private record ScmBlockKey(UUID subLevelId, BlockPos blockPosition, Direction face) {
+        private ScmBlockKey {
+            blockPosition = blockPosition == null ? BlockPos.ZERO : blockPosition.immutable();
+        }
+    }
+
+    private record ScmSimulationField(String label, String port) {
+    }
+
+    private enum ScmControlBindingMode {
+        AUTO("Auto"),
+        BLOCK("Block"),
+        FACE("Face");
+
+        private final String label;
+
+        ScmControlBindingMode(String label) {
+            this.label = label;
+        }
+
+        private String label() {
+            return label;
+        }
+    }
+
     // Store the context menu
     private record ContextMenu(int x, int y, List<String> items, String query,
                                PortContext port) {
@@ -15454,6 +20095,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private record OptionDropdown(int x, int y, int width, String nodeId, String port, String type,
                                   List<String> options, boolean property, int scroll,
                                   boolean searchable) {
+    }
+
+    // One explicit value/label pair for a Create schedule enum selector.
+    private record SchedulePropertyChoice(String value, String label) {
     }
 
     // Store the dropdown scrollbar

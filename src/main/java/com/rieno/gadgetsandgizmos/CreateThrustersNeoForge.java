@@ -24,6 +24,7 @@ import com.rieno.gadgetsandgizmos.neoforge.ControllerGraphWebServer;
 import com.rieno.gadgetsandgizmos.neoforge.CTMobHeadDrops;
 import com.rieno.gadgetsandgizmos.neoforge.CTSableTrackingCommands;
 import com.rieno.gadgetsandgizmos.neoforge.CTServerFeatureCleanup;
+import com.rieno.gadgetsandgizmos.neoforge.PathfinderDebugRenderService;
 import com.rieno.gadgetsandgizmos.registry.CTFeatureToggles;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
 import net.neoforged.bus.api.IEventBus;
@@ -52,6 +53,7 @@ public final class CreateThrustersNeoForge {
         NeoForge.EVENT_BUS.addListener(WirelessDockingTransfer::onServerStarted);
         NeoForge.EVENT_BUS.addListener(WirelessDockingTransfer::onServerStopped);
         NeoForge.EVENT_BUS.addListener(CTServerFeatureCleanup::onServerTick);
+        NeoForge.EVENT_BUS.addListener(PathfinderDebugRenderService::onServerTick);
         NeoForge.EVENT_BUS.addListener(PortableContraptionControllerRuntime::postServerTick);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletRedstoneLinkRuntime::onServerTick);
         NeoForge.EVENT_BUS.addListener(PortableContraptionControllerRuntime::onChunkLoad);
@@ -65,6 +67,7 @@ public final class CreateThrustersNeoForge {
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletFriendDatabase::onServerStarted);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletFriendDatabase::onServerStopped);
         NeoForge.EVENT_BUS.addListener(CTServerFeatureCleanup::onServerStopped);
+        NeoForge.EVENT_BUS.addListener(PathfinderDebugRenderService::onServerStopped);
         NeoForge.EVENT_BUS.addListener(ControllerGraphWebServer::onServerStarted);
         NeoForge.EVENT_BUS.addListener(ControllerGraphWebServer::onServerStopped);
         NeoForge.EVENT_BUS.addListener(PlayerMannequinCrafting::onAnvilUpdate);

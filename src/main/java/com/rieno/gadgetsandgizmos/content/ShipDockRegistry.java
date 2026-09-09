@@ -125,12 +125,20 @@ public final class ShipDockRegistry {
 
     // Update the ship dock
     public synchronized void update(ShipDockBlockEntity blockEntity) {
+        update(blockEntity, false);
+    }
+
+    // Update the ship dock. An explicit connector edit is authoritative; load-time discovery is
+    // allowed to retain a previously persisted connector when its linked sublevel is still loading.
+    synchronized void update(ShipDockBlockEntity blockEntity, boolean connectorBindingsAuthoritative) {
         ensureLoaded();
-        Dock dock = blockEntity.createRouteRecord();
-        if (dock == null) {
+        Dock observed = blockEntity.createRouteRecord();
+        if (observed == null) {
             return;
         }
-        Dock prev = docks.get(dock.id());
+        Dock prev = docks.get(observed.id());
+        Dock dock = preserveLoadingConnectorTargets(
+                prev, observed, connectorBindingsAuthoritative);
         boolean definitionChanged = !sameDefinition(prev, dock);
         boolean becameAvailable = unavailableDocks.remove(dock.id());
         if (!definitionChanged && !becameAvailable) {
@@ -464,16 +472,21 @@ public final class ShipDockRegistry {
         }
         ServerLevel level = server.getLevel(ResourceKey.create(Registries.DIMENSION, dock.dimension()));
         if (level == null) {
-            markUnavailable(dock, false);
-            return null;
+            // The persisted registry is authoritative across world-load ordering. Explicit block
+            // removal deletes the record, so a dimension which has not attached yet is not evidence
+            // that the destination disappeared.
+            return dock;
         }
         if (dock.subLevelId() == null) {
             if (level.isLoaded(dock.pos())) {
                 var blockEntity = level.getBlockEntity(dock.pos());
                 if (!(blockEntity instanceof ShipDockBlockEntity liveDock)
                         || !liveDock.getDockId().equals(dock.id())) {
-                    markUnavailable(dock, true);
-                    return null;
+                    // Chunk/block-entity initialization is not atomic with every schedule or
+                    // registry lookup. The block removal path deletes a dock explicitly, so a
+                    // transient loaded-chunk miss must not erase its SQLite record or hide it
+                    // from schedule restoration.
+                    return resolveStoredPose(level, dock, null, requestSubLevelLoad);
                 }
             }
             markAvailable(dock.id());
@@ -586,6 +599,27 @@ public final class ShipDockRegistry {
                 dock.updatedAt(), connectorTargets, landingZones);
     }
 
+    // Keep a durable connector target while its linked chunk or sublevel has not supplied a
+    // fresh block entity yet. Applying an explicit empty connector list still removes it.
+    static Dock preserveLoadingConnectorTargets(
+            @Nullable Dock previous,
+            Dock observed,
+            boolean connectorBindingsAuthoritative
+    ) {
+        if (previous == null || connectorBindingsAuthoritative
+                || !observed.connectorTargets().isEmpty()
+                || previous.connectorTargets().isEmpty()) {
+            return observed;
+        }
+        ConnectorTarget primary = previous.connectorTargets().getFirst();
+        return new Dock(
+                observed.id(), observed.dimension(), observed.subLevelId(), observed.pos(),
+                observed.worldPosition(), observed.facing(), observed.name(), observed.refuel(),
+                observed.restock(), observed.packages(), primary.subLevelId(), primary.pos(),
+                primary.worldPosition(), primary.facing(), primary.up(), observed.updatedAt(),
+                previous.connectorTargets(), observed.landingZones());
+    }
+
     // Resolve the landing zone target
     private LandingZoneTarget resolveLandingZoneTarget(
             ServerLevel level,
@@ -643,7 +677,9 @@ public final class ShipDockRegistry {
         }
         BlockState state = targetLevel.getBlockState(target.pos());
         if (!isDockingConnector(state)) {
-            return null;
+            // Connector chunks and block entities become visible in separate load phases. Explicit
+            // connector removal updates the registry, so retain the durable target during reload.
+            return target;
         }
         Direction dir = state.hasProperty(BlockStateProperties.FACING)
                 ? state.getValue(BlockStateProperties.FACING) : Direction.NORTH;

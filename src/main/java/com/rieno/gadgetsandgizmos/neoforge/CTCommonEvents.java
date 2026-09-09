@@ -30,6 +30,7 @@ import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedContraptionController
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphActionResultPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphHistoryPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphSnapshotPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.ScmConfigurationSnapshotPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerPublicSharePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerSharedGraphsPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimePayload;
@@ -66,6 +67,7 @@ import com.rieno.gadgetsandgizmos.neoforge.network.DiagnosticTabletRemoteOpenPay
 import com.rieno.gadgetsandgizmos.neoforge.network.DiagnosticTabletReopenPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.FeatureToggleSyncPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.GizmosLinkHighlightPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.PathfinderDebugRendererPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.GraphV2ThemeSyncPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.GraphSoundPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.HardwareControllerInputPayload;
@@ -311,6 +313,9 @@ public final class CTCommonEvents {
                 registrar.playToClient(AdvancedControllerGraphSnapshotPayload.TYPE,
                                 AdvancedControllerGraphSnapshotPayload.STREAM_CODEC,
                                 AdvancedControllerGraphSnapshotPayload::handle);
+                registrar.playToClient(ScmConfigurationSnapshotPayload.TYPE,
+                                ScmConfigurationSnapshotPayload.STREAM_CODEC,
+                                ScmConfigurationSnapshotPayload::handle);
                 registrar.playToClient(AdvancedControllerRuntimePayload.TYPE, AdvancedControllerRuntimePayload.STREAM_CODEC,
                                 AdvancedControllerRuntimePayload::handle);
                 registrar.playToClient(FunctionPlotterDataPayload.TYPE,
@@ -324,6 +329,9 @@ public final class CTCommonEvents {
                                 AccDisplayTextInputOpenPayload::handle);
                 registrar.playToClient(GizmosLinkHighlightPayload.TYPE, GizmosLinkHighlightPayload.STREAM_CODEC,
                                 GizmosLinkHighlightPayload::handle);
+                registrar.playToClient(PathfinderDebugRendererPayload.TYPE,
+                                PathfinderDebugRendererPayload.STREAM_CODEC,
+                                PathfinderDebugRendererPayload::handle);
                 // ------------------------------------CLIENT RUNTIME / CONFIG------------------------------------
                 registrar.playToClient(ControllerRuntimeSyncPayload.TYPE, ControllerRuntimeSyncPayload.STREAM_CODEC,
                                 ControllerRuntimeSyncPayload::handle);

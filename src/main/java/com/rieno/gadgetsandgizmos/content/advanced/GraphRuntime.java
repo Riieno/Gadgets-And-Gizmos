@@ -3906,7 +3906,8 @@ public final class GraphRuntime {
                             profilerNodes.add(node);
                     case "hud_element", "advanced_hud_element", "acc_display_widget", "acc_hologram_widget",
                             "acc_display_graph", "acc_display_plotter", "acc_display_external",
-                            "acc_display_crn" ->
+                            "acc_display_crn", "acc_display_shipping_information",
+                            "acc_display_scm_information" ->
                             hudNodes.add(node);
                     default -> {
                     }
@@ -4365,6 +4366,10 @@ public final class GraphRuntime {
                     AdvancedGraphDocument.Value.bool(false);
             case "status", "map_id", "coupler_status" ->
                     AdvancedGraphDocument.Value.string("");
+            case "scm_brain_available" -> AdvancedGraphDocument.Value.bool(false);
+            case "scm_brain_state", "scm_brain_reason", "scm_brain_vehicle_name",
+                 "scm_brain_vehicle_id" -> AdvancedGraphDocument.Value.string("");
+            case "scm_brain_data" -> AdvancedGraphDocument.Value.map(new CompoundTag());
             case "shipping_active", "shipping_pilot_present", "shipping_docked",
                  "shipping_waiting", "shipping_diverted", "shipping_needs_refuel",
                  "shipping_target_has_connector", "shipping_manifest_is_cyclic" ->

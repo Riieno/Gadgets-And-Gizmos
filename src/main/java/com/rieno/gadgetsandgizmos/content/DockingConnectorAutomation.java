@@ -113,7 +113,6 @@ public final class DockingConnectorAutomation {
             access.createthrusters$clearShipControlModuleBinding();
         }
     }
-
     // Resolve the docking connector automation
     public static @Nullable DockingConnectorBlockEntity resolve(
             @Nullable Level level,

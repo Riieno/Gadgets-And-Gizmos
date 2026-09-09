@@ -740,7 +740,8 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
         }
         if (contentNode != null && ("acc_display_graph".equals(contentNode.type())
                 || "acc_display_plotter".equals(contentNode.type())
-                || "acc_display_crn".equals(contentNode.type()))) {
+                || isShippingInformationNode(contentNode)
+                || "acc_display_scm_information".equals(contentNode.type()))) {
             return false;
         }
         List<AdvancedGraphDocument.Node> nodes = graph.nodes();
@@ -1425,7 +1426,8 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
                 .filter(node -> "acc_display_graph".equals(node.type())
                         || "acc_display_plotter".equals(node.type())
                         || "acc_display_external".equals(node.type())
-                        || "acc_display_crn".equals(node.type()))
+                        || isShippingInformationNode(node)
+                        || "acc_display_scm_information".equals(node.type()))
                 .toList();
         boolean sharedValuesRequired = widgetsVisible || standaloneNodes.stream()
                 .anyMatch(node -> "acc_display_graph".equals(node.type())
@@ -1482,9 +1484,15 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
                     Math.max(1, (int) Math.round(frame.getDouble("ContentHeight")))));
             return frame;
         }
-        if (contentNode != null && "acc_display_crn".equals(contentNode.type())) {
+        if (isShippingInformationNode(contentNode)) {
             frame.putString("State", "crn");
             populateCrnFrame(frame, controller, contentNode, inputs, outputs);
+            putContentLayout(frame, contentNode, inputs, outputs);
+            return frame;
+        }
+        if (contentNode != null && "acc_display_scm_information".equals(contentNode.type())) {
+            frame.putString("State", "crn");
+            populateScmFrame(frame, controller, contentNode, inputs, outputs);
             putContentLayout(frame, contentNode, inputs, outputs);
             return frame;
         }
@@ -1562,6 +1570,8 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
             case "acc_display_plotter" -> "Plotter";
             case "acc_display_external" -> "External";
             case "acc_display_crn" -> "ACC Display Ship Information";
+            case "acc_display_shipping_information" -> "ACC Display Shipping Information";
+            case "acc_display_scm_information" -> "ACC Display SCM Information";
             default -> "ACC";
         };
         return typeTotal > 1 ? base + " " + typeIndex : base;
@@ -1669,6 +1679,106 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
         if (AdvancedGraphCatalog.isCrnStaticTextMode(mode)) {
             frame.putString("Text", runtimeString(node, "text", inputs, outputs, ""));
         }
+    }
+
+    // Keep the legacy CRN node and the explicit new shipping node equivalent.
+    static boolean isShippingInformationNode(@Nullable AdvancedGraphDocument.Node node) {
+        return node != null && ("acc_display_crn".equals(node.type())
+                || "acc_display_shipping_information".equals(node.type()));
+    }
+
+    // Populate the selected server-authoritative SCM metrics as a CRN rich-text
+    // presentation. This deliberately uses the existing ship-information
+    // display state so the normal display chooser and network arbitration work.
+    static void populateScmFrame(
+            CompoundTag frame,
+            AdvancedContraptionControllerBlockEntity controller,
+            AdvancedGraphDocument.Node node,
+            Map<String, AdvancedGraphDocument.Value> inputs,
+            Map<String, AdvancedGraphDocument.Value> outputs
+    ) {
+        frame.putString("Mode", "static_text/rich_text");
+        frame.put("CrnData", RailwayNavigatorGraphCompat.shipDisplayFrame(
+                controller.getCrnShipDisplayData()));
+        List<String> lines = new ArrayList<>();
+        if (scmMetricEnabled(node, inputs, outputs, "show_status")) {
+            lines.add("Status: " + controller.getShipControlGraphValue("status").asString());
+        }
+        if (scmMetricEnabled(node, inputs, outputs, "show_ready")) {
+            lines.add("Ready: " + controller.getShipControlGraphValue("ready").asString());
+        }
+        if (scmMetricEnabled(node, inputs, outputs, "show_initialization")) {
+            lines.add("Initialization: " + scmNumber(controller, "progress") + "%");
+        }
+        if (scmMetricEnabled(node, inputs, outputs, "show_mass")) {
+            lines.add("Mass: " + scmNumber(controller, "mass"));
+        }
+        if (scmMetricEnabled(node, inputs, outputs, "show_weight")) {
+            lines.add("Weight: " + scmNumber(controller, "weight"));
+        }
+        if (scmMetricEnabled(node, inputs, outputs, "show_facing")) {
+            lines.add("Facing: " + controller.getShipControlGraphValue("facing").asString());
+        }
+        if (scmMetricEnabled(node, inputs, outputs, "show_center_of_mass")) {
+            lines.add("Center mass: " + scmVector(controller, "center_of_mass"));
+        }
+        if (scmMetricEnabled(node, inputs, outputs, "show_center_of_lift")) {
+            lines.add("Center lift: " + scmVector(controller, "center_of_lift"));
+        }
+        if (scmMetricEnabled(node, inputs, outputs, "show_position")) {
+            lines.add("Position: " + scmVector(controller, ""));
+        }
+        if (scmMetricEnabled(node, inputs, outputs, "show_velocity")) {
+            lines.add("Velocity: " + scmVector(controller, "velocity"));
+        }
+        if (scmMetricEnabled(node, inputs, outputs, "show_speed")) {
+            lines.add("Speed: " + scmNumber(controller, "speed"));
+        }
+        if (scmMetricEnabled(node, inputs, outputs, "show_angular_velocity")) {
+            lines.add("Angular velocity: " + scmVector(controller, "angular_velocity"));
+        }
+        if (scmMetricEnabled(node, inputs, outputs, "show_orientation")) {
+            lines.add("Yaw/Pitch/Roll: " + scmNumber(controller, "yaw") + " / "
+                    + scmNumber(controller, "pitch") + " / " + scmNumber(controller, "roll"));
+        }
+        if (scmMetricEnabled(node, inputs, outputs, "show_collision")) {
+            lines.add("Collision: " + scmNumber(controller, "nearest_collision_distance")
+                    + " (scan " + scmNumber(controller, "collision_scan_range") + ")");
+        }
+        if (scmMetricEnabled(node, inputs, outputs, "show_navigation")) {
+            lines.add("Navigation distance: " + scmNumber(controller, "navigation_target_distance"));
+        }
+        if (scmMetricEnabled(node, inputs, outputs, "show_inertia")) {
+            lines.add("Inertia: " + controller.getShipControlGraphValue("inertia_tensor").asString());
+        }
+        frame.putString("Text", lines.isEmpty() ? "No SCM metrics selected" : String.join("\n", lines));
+    }
+
+    private static boolean scmMetricEnabled(AdvancedGraphDocument.Node node,
+                                            Map<String, AdvancedGraphDocument.Value> inputs,
+                                            Map<String, AdvancedGraphDocument.Value> outputs,
+                                            String port) {
+        AdvancedGraphDocument.Value value = outputs.get(node.id() + ":" + port);
+        if (value == null) value = inputs.get(node.id() + ":" + port);
+        if (value == null) {
+            CompoundTag stored = node.data().getCompound("Defaults").getCompound(port);
+            if (!stored.isEmpty()) value = new AdvancedGraphDocument.Value(
+                    stored.getString("Type"), stored.getCompound("Payload"));
+        }
+        return value != null && value.asBoolean();
+    }
+
+    private static String scmNumber(AdvancedContraptionControllerBlockEntity controller, String port) {
+        double value = controller.getShipControlGraphValue(port).asNumber();
+        return Double.isFinite(value) ? String.format(java.util.Locale.ROOT, "%.2f", value) : "-";
+    }
+
+    private static String scmVector(AdvancedContraptionControllerBlockEntity controller, String prefix) {
+        String x = prefix.isBlank() ? "x" : prefix + "_x";
+        String y = prefix.isBlank() ? "y" : prefix + "_y";
+        String z = prefix.isBlank() ? "z" : prefix + "_z";
+        return "(" + scmNumber(controller, x) + ", " + scmNumber(controller, y)
+                + ", " + scmNumber(controller, z) + ")";
     }
 
     // Forward the ship information source

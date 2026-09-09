@@ -589,7 +589,7 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
         normalizeConnectorSelections();
         storageChanged();
         if (level != null && level.getServer() != null) {
-            ShipDockRegistry.get(level.getServer()).update(this);
+            ShipDockRegistry.get(level.getServer()).update(this, true);
         }
         refreshLinkedConnectorBindings();
         return true;
@@ -607,7 +607,7 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
         storageChanged();
         refreshLinkedConnectorBindings();
         if (updateRegistry && level != null && level.getServer() != null) {
-            ShipDockRegistry.get(level.getServer()).update(this);
+            ShipDockRegistry.get(level.getServer()).update(this, true);
         }
         return true;
     }
@@ -768,7 +768,7 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
             // An item-applied connector list is an explicit edit, including an intentional
             // empty list. Normal load-time registry refreshes retain persisted links until their
             // linked sublevels finish restoring.
-            ShipDockRegistry.get(level.getServer()).update(this);
+            ShipDockRegistry.get(level.getServer()).update(this, true);
         }
     }
 
@@ -793,7 +793,6 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
                             level, connector.subLevelId(), connector.blockPosition()), dockId);
         }
     }
-
     // Handle the storage changed
     private void storageChanged() {
         setChanged();

@@ -105,6 +105,24 @@ public final class CTSableTrackingCommands {
                 .then(Commands.literal("hide_links")
                         .requires(src -> src.hasPermission(OP_PERMISSION_LEVEL))
                         .executes(ctx -> hideLinks(ctx.getSource())))
+                .then(Commands.literal("pathfinder_debug_renderer")
+                        .requires(src -> src.hasPermission(OP_PERMISSION_LEVEL))
+                        .executes(ctx -> togglePathfinderDebugRenderer(ctx.getSource()))
+                        .then(Commands.literal("on")
+                                .executes(ctx -> setPathfinderDebugRenderer(
+                                        ctx.getSource(), true)))
+                        .then(Commands.literal("off")
+                                .executes(ctx -> setPathfinderDebugRenderer(
+                                        ctx.getSource(), false))))
+                .then(Commands.literal("debug_scm_ai_brain")
+                        .requires(src -> src.hasPermission(OP_PERMISSION_LEVEL))
+                        .executes(ctx -> toggleScmAiBrainDebug(ctx.getSource()))
+                        .then(Commands.literal("on")
+                                .executes(ctx -> setScmAiBrainDebug(
+                                        ctx.getSource(), true)))
+                        .then(Commands.literal("off")
+                                .executes(ctx -> setScmAiBrainDebug(
+                                        ctx.getSource(), false))))
                 .then(Commands.literal("remove_disabled_items")
                         .requires(src -> src.hasPermission(OP_PERMISSION_LEVEL))
                         .then(Commands.literal("range")
@@ -136,6 +154,49 @@ public final class CTSableTrackingCommands {
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
+
+    // Toggle the operator Sable pathfinder debug renderer.
+    private static int togglePathfinderDebugRenderer(CommandSourceStack src) throws CommandSyntaxException {
+        ServerPlayer player = src.getPlayerOrException();
+        boolean enabled = PathfinderDebugRenderService.toggle(player);
+        src.sendSuccess(() -> Component.literal("Pathfinder debug renderer "
+                + (enabled ? "enabled." : "disabled.")), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    // Set the operator Sable pathfinder debug renderer state.
+    private static int setPathfinderDebugRenderer(
+            CommandSourceStack src,
+            boolean enabled
+    ) throws CommandSyntaxException {
+        ServerPlayer player = src.getPlayerOrException();
+        PathfinderDebugRenderService.setEnabled(player, enabled);
+        src.sendSuccess(() -> Component.literal("Pathfinder debug renderer "
+                + (enabled ? "enabled." : "disabled.")), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    // Toggle the operator SCM autopilot brain nameplates.
+    private static int toggleScmAiBrainDebug(CommandSourceStack src)
+            throws CommandSyntaxException {
+        ServerPlayer player = src.getPlayerOrException();
+        boolean enabled = PathfinderDebugRenderService.toggleBrain(player);
+        src.sendSuccess(() -> Component.literal("SCM AI brain debug "
+                + (enabled ? "enabled." : "disabled.")), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    // Set the operator SCM autopilot brain nameplate state.
+    private static int setScmAiBrainDebug(
+            CommandSourceStack src,
+            boolean enabled
+    ) throws CommandSyntaxException {
+        ServerPlayer player = src.getPlayerOrException();
+        PathfinderDebugRenderService.setBrainEnabled(player, enabled);
+        src.sendSuccess(() -> Component.literal("SCM AI brain debug "
+                + (enabled ? "enabled." : "disabled.")), false);
+        return Command.SINGLE_SUCCESS;
+    }
 
     // Queue the disabled item cleanup
     private static int queueDisabledItemCleanup(CommandSourceStack src, int chunkRange) {

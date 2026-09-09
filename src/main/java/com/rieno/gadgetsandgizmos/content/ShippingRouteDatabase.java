@@ -118,6 +118,7 @@ final class ShippingRouteDatabase {
                     bindDock(statement, dock);
                     statement.executeUpdate();
                 }
+                replaceConnectorTargets(connection, dock);
                 replaceLandingZones(connection, dock);
                 connection.commit();
                 return true;
@@ -320,6 +321,27 @@ final class ShippingRouteDatabase {
                     )
                     """);
             statement.execute("""
+                    CREATE TABLE IF NOT EXISTS ship_dock_connectors (
+                        dock_id TEXT NOT NULL,
+                        connector_order INTEGER NOT NULL,
+                        sublevel_uuid TEXT,
+                        local_x INTEGER NOT NULL,
+                        local_y INTEGER NOT NULL,
+                        local_z INTEGER NOT NULL,
+                        world_x REAL NOT NULL,
+                        world_y REAL NOT NULL,
+                        world_z REAL NOT NULL,
+                        facing_x REAL NOT NULL,
+                        facing_y REAL NOT NULL,
+                        facing_z REAL NOT NULL,
+                        up_x REAL NOT NULL,
+                        up_y REAL NOT NULL,
+                        up_z REAL NOT NULL,
+                        PRIMARY KEY (dock_id, connector_order),
+                        FOREIGN KEY (dock_id) REFERENCES ship_docks(dock_id) ON DELETE CASCADE
+                    )
+                    """);
+            statement.execute("""
                     CREATE TABLE IF NOT EXISTS ship_dock_landing_zones (
                         dock_id TEXT NOT NULL,
                         zone_id TEXT NOT NULL,
@@ -358,10 +380,55 @@ final class ShippingRouteDatabase {
                     + "ON ship_docks(dimension, packages)");
             statement.execute("CREATE INDEX IF NOT EXISTS ship_docks_sublevel "
                     + "ON ship_docks(sublevel_uuid)");
+            statement.execute("CREATE INDEX IF NOT EXISTS ship_dock_connectors_order "
+                    + "ON ship_dock_connectors(dock_id, connector_order)");
             statement.execute("CREATE INDEX IF NOT EXISTS ship_dock_landing_zones_order "
                     + "ON ship_dock_landing_zones(dock_id, queue_order, zone_id)");
         }
         installLandingZoneAirborneColumn(connection);
+    }
+
+    // Replace every persisted connector target for one dock
+    private static void replaceConnectorTargets(
+            Connection connection,
+            ShipDockRegistry.Dock dock
+    ) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "DELETE FROM ship_dock_connectors WHERE dock_id = ?")) {
+            statement.setString(1, dock.id().toString());
+            statement.executeUpdate();
+        }
+        if (dock.connectorTargets().isEmpty()) return;
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO ship_dock_connectors (
+                    dock_id, connector_order, sublevel_uuid,
+                    local_x, local_y, local_z,
+                    world_x, world_y, world_z,
+                    facing_x, facing_y, facing_z,
+                    up_x, up_y, up_z
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """)) {
+            for (int idx = 0; idx < dock.connectorTargets().size(); idx++) {
+                ShipDockRegistry.ConnectorTarget target = dock.connectorTargets().get(idx);
+                statement.setString(1, dock.id().toString());
+                statement.setInt(2, idx);
+                nullableUuid(statement, 3, target.subLevelId());
+                statement.setInt(4, target.pos().getX());
+                statement.setInt(5, target.pos().getY());
+                statement.setInt(6, target.pos().getZ());
+                statement.setDouble(7, target.worldPosition().x);
+                statement.setDouble(8, target.worldPosition().y);
+                statement.setDouble(9, target.worldPosition().z);
+                statement.setDouble(10, target.facing().x);
+                statement.setDouble(11, target.facing().y);
+                statement.setDouble(12, target.facing().z);
+                statement.setDouble(13, target.up().x);
+                statement.setDouble(14, target.up().y);
+                statement.setDouble(15, target.up().z);
+                statement.addBatch();
+            }
+            statement.executeBatch();
+        }
     }
 
     // Install the landing zone airborne column
@@ -500,7 +567,47 @@ final class ShippingRouteDatabase {
                 nullableVec3(res, "connector_world_x", "connector_world_y", "connector_world_z"),
                 nullableVec3(res, "connector_facing_x", "connector_facing_y", "connector_facing_z"),
                 res.getLong("updated_at"));
+        List<ShipDockRegistry.ConnectorTarget> connectorTargets =
+                readConnectorTargets(connection, dockId);
+        if (!connectorTargets.isEmpty()) {
+            ShipDockRegistry.ConnectorTarget primary = connectorTargets.getFirst();
+            dock = new ShipDockRegistry.Dock(
+                    dock.id(), dock.dimension(), dock.subLevelId(), dock.pos(),
+                    dock.worldPosition(), dock.facing(), dock.name(), dock.refuel(),
+                    dock.restock(), dock.packages(), primary.subLevelId(), primary.pos(),
+                    primary.worldPosition(), primary.facing(), primary.up(), dock.updatedAt(),
+                    connectorTargets, List.of());
+        }
         return dock.withLandingZones(readLandingZones(connection, dockId));
+    }
+
+    // Read every persisted connector target for one dock
+    private static List<ShipDockRegistry.ConnectorTarget> readConnectorTargets(
+            Connection connection,
+            UUID dockId
+    ) throws SQLException {
+        List<ShipDockRegistry.ConnectorTarget> targets = new ArrayList<>();
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT * FROM ship_dock_connectors
+                WHERE dock_id = ? ORDER BY connector_order
+                """)) {
+            statement.setString(1, dockId.toString());
+            try (ResultSet res = statement.executeQuery()) {
+                while (res.next()) {
+                    targets.add(new ShipDockRegistry.ConnectorTarget(
+                            nullableUuid(res, "sublevel_uuid"),
+                            new BlockPos(res.getInt("local_x"), res.getInt("local_y"),
+                                    res.getInt("local_z")),
+                            new Vec3(res.getDouble("world_x"), res.getDouble("world_y"),
+                                    res.getDouble("world_z")),
+                            new Vec3(res.getDouble("facing_x"), res.getDouble("facing_y"),
+                                    res.getDouble("facing_z")),
+                            new Vec3(res.getDouble("up_x"), res.getDouble("up_y"),
+                                    res.getDouble("up_z"))));
+                }
+            }
+        }
+        return List.copyOf(targets);
     }
 
     // Read the landing zones

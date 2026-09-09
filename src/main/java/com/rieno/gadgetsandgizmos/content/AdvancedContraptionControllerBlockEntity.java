@@ -53,8 +53,10 @@ import com.rieno.gadgetsandgizmos.lib.control.ControllerBindingOwner;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryKind;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmFlightBehavior;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlMode;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmOrientation;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlModeRegistry;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
+import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ContraptionNetworkLinkerSnapshotPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphSnapshotPayload;
@@ -151,11 +153,16 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private static final int ACC_DISPLAY_UPDATE_INTERVAL = 2;
     private static final long CLIENT_PROFILER_SAMPLE_TIMEOUT_TICKS = 40L;
     private static final String GRAPH_VERSIONS_TAG = "AdvancedGraphVersions";
+    private static final String SHIPPING_SCHEDULE_DRAFT_GRAPH_TAG = "ShippingScheduleDraftGraph";
+    private static final String SHIPPING_SCHEDULE_ACTIVE_GRAPH_TAG = "ShippingScheduleActiveGraph";
     private static final String GOGGLES_TRACKER_PAIRS_TAG = "GogglesTrackerPairs";
     private static final String SHIP_CONTROL_MAP_ID_TAG = "ShipControlMapId";
     private static final String SHIP_NAME_TAG = "ShipName";
+    private static final String SCM_PERSISTENCE_UUID_TAG = "ScmPersistenceUuid";
+    private static final String SCM_DISPLAY_PROGRESS_TAG = "ScmDisplayProgress";
     private static final String SHIP_FLIGHT_BEHAVIOR_TAG = "ShipFlightBehavior";
     private static final String SHIP_CONTROL_MODE_TAG = "ShipControlMode";
+    private static final String SCM_CONFIGURATION_PROFILE_TAG = "ScmConfigurationProfile";
     private static final String SCHEMATIC_SHIP_CONTROL_MAP_TAG = "ShipControlMap";
     private static final String SHIP_INITIALIZATION_VISIBLE_TAG = "ShipInitializationVisible";
     private static final String SHIP_INITIALIZATION_PERCENT_TAG = "ShipInitializationPercent";
@@ -179,6 +186,11 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private AdvancedGraphDocument draftGraph = new AdvancedGraphDocument();
     // Active graph
     private AdvancedGraphDocument activeGraph = new AdvancedGraphDocument();
+    // Hidden host-only Scratch schedule graph. It deliberately uses the same
+    // document/node/edge contract as the normal ACC graph rather than a
+    // second ad-hoc schedule format.
+    private AdvancedGraphDocument shippingScheduleDraftGraph = new AdvancedGraphDocument();
+    private AdvancedGraphDocument shippingScheduleActiveGraph = new AdvancedGraphDocument();
     // Graph runtime
     private final GraphRuntime graphRuntime = new GraphRuntime(this);
     // Ship stock network cache
@@ -189,12 +201,25 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private final ShipControlModuleRuntime shipControlRuntime = new ShipControlModuleRuntime(this);
     // Shipping schedule runtime
     private final ShippingScheduleRuntime shippingScheduleRuntime = new ShippingScheduleRuntime(this);
+    // Last shipping status sent to the client block entity. Schedule state is
+    // server-authoritative, but goggles build their tooltip from the client
+    // copy and otherwise keep displaying the transient load message.
+    private String lastSyncedShippingScheduleStatus = "";
     // Current ship name
     private String shipName = "Unnamed Ship";
+    // Stable across relocation so an SCM can recover its SQLite manifest after the hull id changes.
+    private UUID scmPersistenceId = UUID.randomUUID();
+    private @Nullable UUID scmPersistenceSubLevelId;
+    private boolean scmPersistenceRestoreAttempted;
+    // Whether SCM and schedule route preparation broadcasts its progress to operators
+    private boolean scmDisplayProgress;
     // Current ship flight behavior
     private ScmFlightBehavior shipFlightBehavior = ScmFlightBehavior.DEFAULT;
     // Current ship control mode
     private ScmControlMode shipControlMode = ScmControlModeRegistry.resolve("airship");
+    // Player-authored group, blacklist and action assignment data. It is separate
+    // from the measured map so a rescan never silently overwrites player intent.
+    private ScmConfigurationProfile scmConfigurationProfile = ScmConfigurationProfile.empty();
     // Graph versions
     private final AdvancedGraphVersionHistory graphVersions = new AdvancedGraphVersionHistory();
     // Tracked goggles tracker pairs
@@ -326,6 +351,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private @Nullable CompoundTag pendingServerShutdownSnapshot;
     // Tracks whether graph owned binding channels are verified
     private boolean graphOwnedBindingChannelsVerified;
+    // Tracks whether the current manifest read came from a client update packet
+    private boolean readingClientUpdatePacket;
     // Tracked mouse input values
     private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     // Active mouse inputs
@@ -480,6 +507,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         super.initialize();
         if (getLevel() != null && !getLevel().isClientSide
                 && !AccDisplayControllerRegistry.isStopping(getLevel())) {
+            restoreScmPersistenceIfAvailable();
             serverRuntimeInitialized = true;
             AccDisplayControllerRegistry.register(this);
             AdvancedControllerNamedEventBus.register(this);
@@ -516,9 +544,17 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             return;
         }
         super.tick();
+        restoreScmPersistenceIfAvailable();
+        syncScmPersistenceSubLevel();
         shipControlRuntime.tick();
         syncShipInit();
         shippingScheduleRuntime.tick();
+        String shippingStatus = shippingScheduleRuntime.status();
+        if (!Objects.equals(lastSyncedShippingScheduleStatus, shippingStatus)) {
+            lastSyncedShippingScheduleStatus = shippingStatus;
+            setChanged();
+            sendData();
+        }
         if (getLevel() != null && !getLevel().isClientSide
                 && Math.floorMod(getLevel().getGameTime() + getBlockPos().asLong(), 4L) == 0L
                 && shipLogisticsRuns.stream().anyMatch(run ->
@@ -588,6 +624,30 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return shipControlRuntime.isModuleAttached();
     }
 
+    // Check if this ACC is physically mounted on an SCM. The broader runtime
+    // attachment check intentionally accepts an ACC Display Slab for legacy
+    // control/display behaviour; the dedicated SCM editor must only appear
+    // when the controller is actually on a Ship Control Module.
+    public boolean isMountedOnShipControlModule() {
+        if (CTBlocks.SHIP_CONTROL_MODULE == null) {
+            return false;
+        }
+        var module = CTBlocks.SHIP_CONTROL_MODULE.get();
+        if (getEmbeddedBlockState() != null && getEmbeddedBlockState().is(module)) {
+            return true;
+        }
+        Level level = getLevel();
+        return level != null && level.getBlockState(getBlockPos().below()).is(module);
+    }
+
+    // Check whether the hidden Schedule Scratch surface is available. This is
+    // deliberately server-authoritative and combines the physical SCM mount,
+    // completed SCM attachment, and the pilot immediately beside the ACC.
+    public boolean hasShippingScheduleWorkspace() {
+        return isMountedOnShipControlModule() && hasShipControlModule()
+                && ShippingSchedulePilot.hasScheduleWorkspacePilot(this);
+    }
+
     // Get the configured ship flight behavior
     public ScmFlightBehavior getConfiguredShipFlightBehavior() {
         return shipFlightBehavior;
@@ -602,6 +662,139 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Get the ship control mode
     public ScmControlMode getShipControlMode() {
         return shipControlMode;
+    }
+
+    // Get the persisted SCM configuration profile
+    public ScmConfigurationProfile getScmConfigurationProfile() {
+        return scmConfigurationProfile;
+    }
+
+    // Replace the SCM configuration profile after it has been validated by the
+    // server-side configuration workflow.
+    public void setScmConfigurationProfile(ScmConfigurationProfile profile) {
+        scmConfigurationProfile = profile == null ? ScmConfigurationProfile.empty() : profile;
+        setChanged();
+        sendData();
+    }
+
+    // Get optional control-capable suggestions from the last discovery pass.
+    // The configuration screen itself may select any live block on the craft.
+    public List<ScmConfigurationProfile.UnitReference> getScmConfigurationCandidates() {
+        List<ScmConfigurationProfile.UnitReference> discovered =
+                shipControlRuntime.configurationCandidates();
+        if (!discovered.isEmpty()) {
+            return discovered;
+        }
+        ShipControlMap stored = storedShipControlMap();
+        if (stored == null) {
+            return List.of();
+        }
+        return stored.units().stream().map(ScmConfigurationProfile.UnitReference::of)
+                .distinct().toList();
+    }
+
+    // Get the parent Sable body used by the live calibration viewer.
+    public @Nullable UUID getScmConfigurationRootSubLevelId() {
+        return shipControlRuntime.configurationRootSubLevelId();
+    }
+
+    // Get the connected Sable bodies that make up the live SCM calibration view.
+    public List<UUID> getScmConfigurationViewSubLevelIds() {
+        return shipControlRuntime.configurationViewSubLevelIds();
+    }
+
+    // Get the detached SCM preview scene used when the owning craft is not
+    // currently streamed to the client that opened this controller.
+    public List<ShipControlModuleRuntime.ConfigurationPreviewBlock> getScmConfigurationPreviewBlocks(
+            int maximumBlocks
+    ) {
+        return shipControlRuntime.configurationPreviewBlocks(maximumBlocks);
+    }
+
+    // Begin the discovery-only SCM pass used by the configuration modal. It
+    // reads the assembled craft but deliberately never freezes or pulses it.
+    public boolean scanScmConfiguration() {
+        return shipControlRuntime.scanConfiguration("scm_configuration", Map.of(), Map.of());
+    }
+
+    // Return the stable configuration identity without requiring a discovery
+    // scan. It is persisted with the controller and becomes the subsequent
+    // profile-driven initialization map id.
+    public UUID getScmConfigurationMapId() {
+        return shipControlRuntime.ensureConfigurationMapId();
+    }
+
+    public boolean isScmConfigurationScanning() {
+        return shipControlRuntime.isConfigurationScanning();
+    }
+
+    public String getScmConfigurationStatus() {
+        return shipControlRuntime.initializationStatus();
+    }
+
+    // Validate a player-authored profile against live Sable body membership.
+    // The player may select every real block in the craft; whether an action
+    // can control it is resolved through the safe SCM adaptor/probe API during
+    // profile-driven initialization.
+    public boolean replaceScmConfigurationProfile(ScmConfigurationProfile requested) {
+        UUID targetMapId = getScmConfigurationMapId();
+        if (requested == null) {
+            return false;
+        }
+        List<ScmConfigurationProfile.Group> groups = requested.groups().stream()
+                .map(group -> new ScmConfigurationProfile.Group(group.id(), group.label(),
+                        group.units().stream().filter(shipControlRuntime::isConfigurationTarget)
+                                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new))))
+                .filter(group -> !group.id().isBlank())
+                .toList();
+        Map<String, String> actions = new LinkedHashMap<>();
+        requested.actionGroups().forEach((action, group) -> {
+            if (AdvancedGraphCatalog.isScmActionDispatchType(action)
+                    || ScmConfigurationProfile.isAutoAction(action)
+                    || ScmConfigurationProfile.isAccelerationAction(action)) {
+                actions.put(action, group);
+            }
+        });
+        ScmConfigurationProfile sanitized = ScmConfigurationProfile.empty();
+        sanitized.setOrientationOverride(requested.orientationOverride());
+        sanitized.setVehicleType(requested.vehicleType());
+        sanitized.replace(targetMapId, groups, actions,
+                requested.excludedUnits().stream().filter(shipControlRuntime::isConfigurationTarget)
+                        .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new)));
+        CompoundTag previousBindings = scmConfigurationProfile.toTag();
+        CompoundTag nextBindings = sanitized.toTag();
+        previousBindings.remove("Orientation");
+        nextBindings.remove("Orientation");
+        previousBindings.remove("MapId");
+        nextBindings.remove("MapId");
+        setScmConfigurationProfile(sanitized);
+        shipControlRuntime.refreshVehicleType();
+        // A profile is the live control declaration, not deferred calibration
+        // UI state. Rebuild the allocator map immediately so newly assigned
+        // blocks/faces can be driven by graph, pilot and schedule commands.
+        if(!previousBindings.equals(nextBindings)){
+            shipControlRuntime.rebuildConfiguredControlMap();
+        }
+        shipControlRuntime.refreshOrientation();
+        return true;
+    }
+
+    // The ACC above the SCM owns the craft frame, not its propulsion or current velocity.
+    public ScmOrientation getScmDefaultOrientation(){
+        BlockState state = getBlockState();
+        Direction forward = state.hasProperty(AnalogueContraptionControllerBlock.HORIZONTAL_FACING)
+                ? state.getValue(AnalogueContraptionControllerBlock.HORIZONTAL_FACING) : Direction.NORTH;
+        Direction up = state.hasProperty(AnalogueContraptionControllerBlock.FACING)
+                ? state.getValue(AnalogueContraptionControllerBlock.FACING) : Direction.UP;
+        return ScmOrientation.fromMount(forward, up);
+    }
+
+    public ScmOrientation getScmOrientation(){
+        return scmConfigurationProfile.resolveOrientation(getScmDefaultOrientation());
+    }
+
+    public String getScmDetectedVehicleType() {
+        return shipControlRuntime.detectedVehicleType();
     }
 
     // Set the ship control mode
@@ -693,14 +886,18 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Install the shipping schedule
     public boolean installShippingSchedule(com.simibubi.create.content.trains.schedule.Schedule schedule,
                                            @Nullable UUID pilotId) {
-        return shippingScheduleRuntime.install(schedule, pilotId);
+        boolean installed = shippingScheduleRuntime.install(schedule, pilotId);
+        if (installed) syncShippingScheduleGraphFromRuntime();
+        return installed;
     }
 
     // Install the shipping schedule
     public boolean installShippingSchedule(com.simibubi.create.content.trains.schedule.Schedule schedule,
                                            @Nullable UUID pilotId,
                                            ShippingAutoRefuelSettings autoRefuel) {
-        return shippingScheduleRuntime.install(schedule, pilotId, autoRefuel);
+        boolean installed = shippingScheduleRuntime.install(schedule, pilotId, autoRefuel);
+        if (installed) syncShippingScheduleGraphFromRuntime();
+        return installed;
     }
 
     // Install the blaze burner shipping schedule
@@ -708,7 +905,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                                            UUID pilotId,
                                            ShippingAutoRefuelSettings autoRefuel,
                                            boolean blazeBurnerPilot) {
-        return shippingScheduleRuntime.install(schedule, pilotId, autoRefuel, blazeBurnerPilot);
+        boolean installed = shippingScheduleRuntime.install(schedule, pilotId, autoRefuel, blazeBurnerPilot);
+        if (installed) syncShippingScheduleGraphFromRuntime();
+        return installed;
     }
 
     // Remove the shipping schedule
@@ -748,6 +947,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Run the shipping schedule graph command
     public boolean executeShippingScheduleGraphCommand(String nodeType) {
+        if ("shipping_start".equals(nodeType)) {
+            return startShippingScheduleGraph();
+        }
         return shippingScheduleRuntime.executeGraphCommand(nodeType);
     }
 
@@ -787,6 +989,20 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             return;
         }
         shipName = normalized;
+        setChanged();
+        sendData();
+    }
+
+    // Check whether SCM progress messages are enabled from its workspace.
+    public boolean scmDisplayProgress() {
+        return scmDisplayProgress;
+    }
+
+    // Set SCM progress messages without requiring the retired Initialize node.
+    public void setScmDisplayProgress(boolean enabled) {
+        if (scmDisplayProgress == enabled) return;
+        scmDisplayProgress = enabled;
+        shipControlRuntime.setDisplayProgressPreference(enabled);
         setChanged();
         sendData();
     }
@@ -1074,10 +1290,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                                            Map<String, AdvancedGraphDocument.Value> inputs,
                                            Map<String, AdvancedGraphDocument.Value> outputs) {
         if (graph == null) return;
-        if (graph.edges().isEmpty()) {
-            graphObserverSampleCursor = 0;
-            return;
-        }
         graphRuntime.beginPreviewSample(graph);
         Map<String, AdvancedGraphDocument.Node> nodes = new LinkedHashMap<>();
         for (AdvancedGraphDocument.Node node : graph.nodes()) {
@@ -1085,6 +1297,31 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         Set<String> sampledInputs = new HashSet<>();
         Set<String> sampledOutputs = new HashSet<>();
+        // This diagnostic has no outgoing wires by design. Sample its complete
+        // server-owned state so an unconnected node is still useful in the editor.
+        Map<String, AdvancedGraphDocument.Value> brainValues = null;
+        for (AdvancedGraphDocument.Node node : graph.nodes()) {
+            if (!"scm_brain_debug".equals(node.type())) continue;
+            if (brainValues == null) {
+                brainValues = new LinkedHashMap<>();
+                for (Map.Entry<String, String> output :
+                        AdvancedGraphCatalog.outputs(node).entrySet()) {
+                    if ("exec".equals(output.getValue())) continue;
+                    brainValues.put(output.getKey(),
+                            graphRuntime.previewOutput(graph, node, output.getKey()));
+                }
+            }
+            for (Map.Entry<String, AdvancedGraphDocument.Value> output :
+                    brainValues.entrySet()) {
+                String outputKey = node.id() + ":" + output.getKey();
+                outputs.put(outputKey, output.getValue());
+                sampledOutputs.add(outputKey);
+            }
+        }
+        if (graph.edges().isEmpty()) {
+            graphObserverSampleCursor = 0;
+            return;
+        }
         int edgeCount = graph.edges().size();
         int examined = 0;
         int edgeIndex = Math.floorMod(graphObserverSampleCursor, edgeCount);
@@ -1299,7 +1536,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 continue;
             }
             AdvancedControllerGraphSnapshotPayload.send(
-                    observer.player(), getBlockPos(), subLevelId, draftGraph, activeGraph);
+                    observer.player(), getBlockPos(), subLevelId, draftGraph, activeGraph,
+                    shippingScheduleDraftGraph, shippingScheduleActiveGraph);
             newlySyncedObservers.add(observer);
         }
         gogglesGraphSnapshotFingerprints.keySet().removeIf(
@@ -1405,6 +1643,213 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Get the active graph
     public AdvancedGraphDocument getActiveGraph() {
         return activeGraph.copy();
+    }
+
+    // Get the hidden Schedule Scratch graph draft. Callers must still pass the
+    // Schedule-workspace check before displaying or editing this document.
+    public AdvancedGraphDocument getShippingScheduleDraftGraph() {
+        hydrateShippingScheduleGraphFromRuntime();
+        return shippingScheduleDraftGraph.copy();
+    }
+
+    // Get the active Schedule Scratch graph.
+    public AdvancedGraphDocument getShippingScheduleActiveGraph() {
+        hydrateShippingScheduleGraphFromRuntime();
+        return shippingScheduleActiveGraph.copy();
+    }
+
+    // Save one controller-owned Scratch schedule graph. An already-running
+    // SCM receives the updated route; an inactive SCM waits for Start.
+    public boolean saveShippingScheduleGraph(AdvancedGraphDocument graph, int expectedRevision) {
+        hydrateShippingScheduleGraphFromRuntime();
+        if (!hasShippingScheduleWorkspace() || graph == null
+                || expectedRevision != shippingScheduleDraftGraph.revision()
+                || getLevel() == null || getLevel().isClientSide) {
+            return false;
+        }
+        AdvancedGraphDocument candidate = graph.copy();
+        ShippingScheduleGraph.ensureTemplate(candidate);
+        com.simibubi.create.content.trains.schedule.Schedule schedule =
+                ShippingScheduleGraph.toSchedule(candidate, getLevel().registryAccess());
+        // Saving is not a hidden start button. A live SCM runtime receives
+        // the edited schedule immediately, while an inactive controller keeps
+        // the graph ready for the explicit Start control.
+        if (shippingScheduleRuntime.hasSchedule() && (schedule == null || schedule.entries.isEmpty()
+                || !shippingScheduleRuntime.replaceSchedule(schedule))) {
+            return false;
+        }
+        candidate.setRevision(shippingScheduleDraftGraph.revision() + 1);
+        shippingScheduleDraftGraph = candidate;
+        shippingScheduleActiveGraph = candidate.copy();
+        setChanged();
+        sendData();
+        return true;
+    }
+
+    // Explicitly import the physical schedule held by the attached pilot. Once
+    // materialised, the SCM's stored Scratch graph remains authoritative until
+    // the player deliberately reads the item again.
+    public boolean readShippingScheduleFromPilot() {
+        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
+        com.simibubi.create.content.trains.schedule.Schedule schedule = ShippingSchedulePilot.adjacentPilotSchedule(this);
+        if (schedule == null || schedule.entries.isEmpty()) return false;
+        syncShippingScheduleGraphFromSchedule(schedule);
+        sendData();
+        return true;
+    }
+
+    // Explicitly write the SCM-owned Scratch graph to its live Create runtime
+    // and paired held schedule item. This is intentionally separate from a
+    // Read so an old item cannot silently overwrite an edited controller graph.
+    public boolean writeShippingScheduleToPilot() {
+        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
+        AdvancedGraphDocument candidate = shippingScheduleDraftGraph.copy();
+        ShippingScheduleGraph.ensureTemplate(candidate);
+        com.simibubi.create.content.trains.schedule.Schedule schedule =
+                ShippingScheduleGraph.toSchedule(candidate, getLevel().registryAccess());
+        if (schedule == null || schedule.entries.isEmpty()) return false;
+        if (shippingScheduleRuntime.hasSchedule() && !shippingScheduleRuntime.replaceSchedule(schedule)) return false;
+        boolean wroteItem = ShippingSchedulePilot.writeAdjacentPilotSchedule(this, schedule);
+        if (!wroteItem) return false;
+        shippingScheduleActiveGraph = candidate.copy();
+        setChanged();
+        sendData();
+        return true;
+    }
+
+    // Start the controller-owned Scratch schedule without depending on a
+    // physical shipping-schedule item. A seated pilot (or blaze pilot) is
+    // still required because it is the runtime actor, but the document stored
+    // by this SCM is the authority.
+    public boolean startShippingScheduleGraph() {
+        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
+        AdvancedGraphDocument candidate = shippingScheduleDraftGraph.copy();
+        ShippingScheduleGraph.ensureTemplate(candidate);
+        com.simibubi.create.content.trains.schedule.Schedule schedule =
+                ShippingScheduleGraph.toSchedule(candidate, getLevel().registryAccess());
+        if (schedule == null || schedule.entries.isEmpty()) return false;
+        boolean updated = shippingScheduleRuntime.hasSchedule()
+                ? shippingScheduleRuntime.replaceSchedule(schedule)
+                : installScheduleGraphRuntime(schedule);
+        if (!updated) return false;
+        shippingScheduleActiveGraph = candidate.copy();
+        if (!shippingScheduleRuntime.restartFromController()) return false;
+        setChanged();
+        sendData();
+        return true;
+    }
+
+    // Route the visible SCM controls through the same server-authoritative
+    // runtime commands as schedule graph nodes.
+    public boolean controlShippingScheduleGraph(String command) {
+        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
+        return shippingScheduleRuntime.executeGraphCommand(command);
+    }
+
+    // Queue the complete visible schedule route without starting or changing the schedule.
+    public boolean precalculateShippingScheduleRoute() {
+        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
+        AdvancedGraphDocument graph = shippingScheduleDraftGraph.copy();
+        ShippingScheduleGraph.ensureTemplate(graph);
+        com.simibubi.create.content.trains.schedule.Schedule schedule =
+                ShippingScheduleGraph.toSchedule(graph, getLevel().registryAccess());
+        return schedule != null && !schedule.entries.isEmpty()
+                && shippingScheduleRuntime.precalculateRoutes(schedule);
+    }
+
+    // Delete prepared schedule-route geometry without changing the schedule graph.
+    public boolean deleteShippingScheduleRoute() {
+        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
+        return shipControlRuntime.deleteScheduledRoutes();
+    }
+
+    // Queue resolved schedule legs through the SCM route planner with their schedule entry identity.
+    boolean queueShippingScheduleRoutes(
+            List<ShipControlModuleRuntime.ScheduledRouteDestination> destinations
+    ) {
+        return shipControlRuntime.queueScheduledRouteDestinations(destinations);
+    }
+
+    // Get detached retained route geometry used to place schedule-owned dock queues.
+    List<List<Vec3>> shippingScheduleRoutePolylines(
+            int scheduleEntry,
+            Vec3 target,
+            double targetTolerance
+    ) {
+        return shipControlRuntime.scheduledRoutePolylines(
+                scheduleEntry, target, targetTolerance);
+    }
+
+    // Check whether a schedule-route calculation is currently queued.
+    public boolean isPrecalculatingShippingScheduleRoute() {
+        return shipControlRuntime.isPrecalculatingScheduledRoutes();
+    }
+
+    // Get the live queued schedule-route calculation progress.
+    public double shippingScheduleRoutePrecalculationProgress() {
+        return shipControlRuntime.scheduledRoutePrecalculationProgress();
+    }
+
+    // Start a schedule graph without requiring the retired schedule item.
+    private boolean installScheduleGraphRuntime(com.simibubi.create.content.trains.schedule.Schedule schedule) {
+        if (schedule == null || getLevel() == null) {
+            return false;
+        }
+        if (ShippingSchedulePilot.isBlazeBurnerPilot(this)) {
+            String identity = getLevel().dimension().location() + "|" + getBlockPos().asLong();
+            UUID pilot = UUID.nameUUIDFromBytes(("shipping_schedule_blaze|" + identity)
+                    .getBytes(StandardCharsets.UTF_8));
+            return shippingScheduleRuntime.install(schedule, pilot,
+                    ShippingAutoRefuelSettings.fromSchedule(schedule), true);
+        }
+        LivingEntity pilot = ShippingSchedulePilot.findAdjacentSeatedPilot(this);
+        return pilot != null && shippingScheduleRuntime.install(schedule, pilot.getUUID(),
+                ShippingAutoRefuelSettings.fromSchedule(schedule));
+    }
+
+    // Convert an installed legacy item schedule to its graph representation.
+    private void syncShippingScheduleGraphFromRuntime() {
+        if (getLevel() == null) {
+            return;
+        }
+        com.simibubi.create.content.trains.schedule.Schedule schedule = shippingScheduleRuntime.scheduleCopy();
+        if (schedule == null) return;
+        syncShippingScheduleGraphFromSchedule(schedule);
+    }
+
+    // Materialize a live or legacy held schedule into the reusable graph
+    // contract. Keeping this separate from the runtime reader lets older
+    // pilots populate Schedule immediately without first being reassigned.
+    private void syncShippingScheduleGraphFromSchedule(
+            com.simibubi.create.content.trains.schedule.Schedule schedule
+    ) {
+        if (getLevel() == null || schedule == null) return;
+        AdvancedGraphDocument graph = ShippingScheduleGraph.fromSchedule(schedule, getLevel().registryAccess());
+        int nextRevision = Math.max(shippingScheduleDraftGraph.revision(), shippingScheduleActiveGraph.revision()) + 1;
+        graph.setRevision(nextRevision);
+        shippingScheduleDraftGraph = graph;
+        shippingScheduleActiveGraph = graph.copy();
+        setChanged();
+    }
+
+    // Older worlds can already have a schedule runtime in memory while the
+    // new graph tags are absent. Menu creation and snapshots must repair that
+    // state too; relying only on the NBT read path left a valid held schedule
+    // looking like an empty Schedule tab until the controller reloaded.
+    private void hydrateShippingScheduleGraphFromRuntime() {
+        if (getLevel() == null || getLevel().isClientSide) {
+            return;
+        }
+        com.simibubi.create.content.trains.schedule.Schedule schedule = shippingScheduleRuntime.scheduleCopy();
+        if (schedule == null) schedule = ShippingSchedulePilot.adjacentPilotSchedule(this);
+        if (schedule == null || schedule.entries.isEmpty()) return;
+        // A populated graph is controller-owned. It must never be silently
+        // replaced just because the held item/runtime has changed; the explicit
+        // Read action handles that direction. Empty legacy state still imports
+        // automatically so existing pilots open with a useful Schedule tab.
+        if (shippingScheduleDraftGraph.nodes().isEmpty()) {
+            syncShippingScheduleGraphFromSchedule(schedule);
+        }
     }
 
     // Get the active graph view
@@ -2491,7 +2936,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Get the notation SCM model
     public NotationScmModel getNotationScmModel() {
-        return NotationScmModel.from(storedShipControlMap());
+        return NotationScmModel.from(storedShipControlMap(), scmConfigurationProfile);
     }
 
     // Get the notation draft owner id
@@ -3040,7 +3485,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (graphRevision != accDisplayStructureRevision) {
             publishesShipInformation = false;
             for (AdvancedGraphDocument.Node node : activeGraph.nodes()) {
-                if (node != null && "acc_display_crn".equals(node.type())) {
+                if (AccDisplayBlockEntity.isShippingInformationNode(node)) {
                     publishesShipInformation = true;
                     break;
                 }
@@ -3078,7 +3523,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         boolean frameChanged = graphChanged
                 || runtimeChanged
                 || statusHash != lastAccDisplayStatusHash
-                || accDisplayFramesDirty;
+                || accDisplayFramesDirty
+                // SCM telemetry changes independently from graph variables.
+                // Refresh it on the existing bounded display cadence.
+                || updateDue;
         if (!frameChanged && !refreshTargets) {
             return;
         }
@@ -3107,7 +3555,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         Set<UniversalDisplayAdapterBlockEntity> current =
                 Collections.newSetFromMap(new IdentityHashMap<>());
         for (AdvancedGraphDocument.Node node : activeGraph.nodes()) {
-            if (node == null || !"acc_display_crn".equals(node.type())
+            if (node == null || (!AccDisplayBlockEntity.isShippingInformationNode(node)
+                    && !"acc_display_scm_information".equals(node.type()))
                     || !AccDisplayBlockEntity.contentNodeVisible(node, inputs, outputs)) {
                 continue;
             }
@@ -3117,8 +3566,14 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 continue;
             }
             CompoundTag frame = new CompoundTag();
-            frame.putString("Source", "ACC Display Ship Information");
-            AccDisplayBlockEntity.populateCrnFrame(frame, this, node, inputs, outputs);
+            boolean shipping = AccDisplayBlockEntity.isShippingInformationNode(node);
+            frame.putString("Source", shipping ? "ACC Display Shipping Information"
+                    : "ACC Display SCM Information");
+            if (shipping) {
+                AccDisplayBlockEntity.populateCrnFrame(frame, this, node, inputs, outputs);
+            } else {
+                AccDisplayBlockEntity.populateScmFrame(frame, this, node, inputs, outputs);
+            }
             adapter.acceptAccDisplayPresentation(this, frame);
             current.add(adapter);
         }
@@ -5863,6 +6318,60 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return "advanced_controller";
     }
 
+    // Keep the SCM's durable identity bound to the current hull and SQLite manifest.
+    @Override
+    protected void onControllerManifestSaved(ControllerManifestStore.ManifestSnapshot snapshot) {
+        UUID subLevelId = SimulatedHelper.getContainingSubLevelId(this);
+        if (snapshot == null || subLevelId == null || scmPersistenceId == null) {
+            return;
+        }
+        if (ControllerSqliteStore.saveScmPersistence(
+                getLevel(), subLevelId, scmPersistenceId, snapshot.id())) {
+            scmPersistenceSubLevelId = subLevelId;
+        }
+    }
+
+    // Retain an SCM manifest after its block is broken so a replacement on the same hull can recover it.
+    @Override
+    protected boolean retainControllerManifestAfterDestroy() {
+        return SimulatedHelper.getContainingSubLevelId(this) != null;
+    }
+
+    // Restore a replacement SCM only when the sublevel has exactly one retained SCM state.
+    private void restoreScmPersistenceIfAvailable() {
+        if (scmPersistenceRestoreAttempted || getLevel() == null || getLevel().isClientSide
+                || !controllerManifestId().isBlank()) {
+            return;
+        }
+        UUID subLevelId = SimulatedHelper.getContainingSubLevelId(this);
+        if (subLevelId == null) {
+            return;
+        }
+        scmPersistenceRestoreAttempted = true;
+        ControllerSqliteStore.ScmPersistenceBinding binding =
+                ControllerSqliteStore.findScmPersistence(getLevel(), subLevelId, scmPersistenceId);
+        if (binding == null) {
+            return;
+        }
+        if (restoreControllerManifest(binding.manifestId(), getLevel().registryAccess())) {
+            scmPersistenceId = binding.scmId();
+            scmPersistenceSubLevelId = subLevelId;
+            setChanged();
+            sendData();
+        }
+    }
+
+    // Persist a surviving SCM when only its Sable sublevel id has changed.
+    private void syncScmPersistenceSubLevel() {
+        if (getLevel() == null || getLevel().isClientSide || controllerManifestId().isBlank()) {
+            return;
+        }
+        UUID subLevelId = SimulatedHelper.getContainingSubLevelId(this);
+        if (subLevelId != null && !subLevelId.equals(scmPersistenceSubLevelId)) {
+            saveControllerManifestNow();
+        }
+    }
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -5876,6 +6385,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     protected void writeAdditionalControllerManifestData(CompoundTag tag, HolderLookup.Provider provider) {
         tag.put("AdvancedDraftGraph", draftGraph.toTag());
         tag.put("AdvancedActiveGraph", activeGraph.toTag());
+        tag.put(SHIPPING_SCHEDULE_DRAFT_GRAPH_TAG, shippingScheduleDraftGraph.toTag());
+        tag.put(SHIPPING_SCHEDULE_ACTIVE_GRAPH_TAG, shippingScheduleActiveGraph.toTag());
         tag.put(GRAPH_VERSIONS_TAG, graphVersions.toTag());
         ListTag trackerPairs = new ListTag();
         gogglesTrackerPairs.forEach((id, label) -> {
@@ -5889,10 +6400,14 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             tag.putUUID(SHIP_CONTROL_MAP_ID_TAG, shipControlRuntime.mapId());
         }
         tag.putString(SHIP_NAME_TAG, shipName);
+        tag.putUUID(SCM_PERSISTENCE_UUID_TAG, scmPersistenceId);
+        tag.putBoolean(SCM_DISPLAY_PROGRESS_TAG, scmDisplayProgress);
         tag.putString(SHIP_FLIGHT_BEHAVIOR_TAG, shipFlightBehavior.id());
         tag.putString(SHIP_CONTROL_MODE_TAG,
                 ScmControlModeRegistry.serialize(shipControlMode.id()));
+        tag.put(SCM_CONFIGURATION_PROFILE_TAG, scmConfigurationProfile.toTag());
         shippingScheduleRuntime.write(tag, provider);
+        shipControlRuntime.writePrecalculatedRouteCache(tag);
         if (pendingServerShutdownSnapshot != null) {
             tag.put(SERVER_SHUTDOWN_SNAPSHOT_TAG,
                     pendingServerShutdownSnapshot.copy());
@@ -5926,6 +6441,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 ControllerSchematicPayload.CONTROLLER_DATA_TAG);
         removeGraphOwnedCustomEntries(controllerData);
         controllerData.remove(SHIP_CONTROL_MAP_ID_TAG);
+        controllerData.remove(SCM_PERSISTENCE_UUID_TAG);
+        controllerData.remove("ScmPrecalculatedRoutes");
         controllerData.remove(SERVER_SHUTDOWN_SNAPSHOT_TAG);
         ShippingScheduleRuntime.sanitizeSchematicPayload(controllerData);
         ShipControlMap map = storedShipControlMap();
@@ -6019,6 +6536,18 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         } else {
             activeGraph = draftGraph.copy();
         }
+        if (tag.contains(SHIPPING_SCHEDULE_DRAFT_GRAPH_TAG, Tag.TAG_COMPOUND)) {
+            shippingScheduleDraftGraph = AdvancedGraphDocument.fromTag(
+                    tag.getCompound(SHIPPING_SCHEDULE_DRAFT_GRAPH_TAG));
+        } else {
+            shippingScheduleDraftGraph = new AdvancedGraphDocument();
+        }
+        if (tag.contains(SHIPPING_SCHEDULE_ACTIVE_GRAPH_TAG, Tag.TAG_COMPOUND)) {
+            shippingScheduleActiveGraph = AdvancedGraphDocument.fromTag(
+                    tag.getCompound(SHIPPING_SCHEDULE_ACTIVE_GRAPH_TAG));
+        } else {
+            shippingScheduleActiveGraph = shippingScheduleDraftGraph.copy();
+        }
         graphVersions.fromTag(tag.getList(GRAPH_VERSIONS_TAG, Tag.TAG_COMPOUND));
         gogglesTrackerPairs.clear();
         ListTag trackerPairs = tag.getList(GOGGLES_TRACKER_PAIRS_TAG, Tag.TAG_COMPOUND);
@@ -6035,13 +6564,25 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         gogglesTrackingSnapshots.clear();
         shipControlRuntime.setMapId(tag.hasUUID(SHIP_CONTROL_MAP_ID_TAG)
                 ? tag.getUUID(SHIP_CONTROL_MAP_ID_TAG) : null);
+        scmPersistenceId = tag.hasUUID(SCM_PERSISTENCE_UUID_TAG)
+                ? tag.getUUID(SCM_PERSISTENCE_UUID_TAG) : scmPersistenceId;
         String restoredShipName = tag.getString(SHIP_NAME_TAG).strip();
         shipName = restoredShipName.isBlank() ? "Unnamed Ship" : restoredShipName;
+        scmDisplayProgress = tag.getBoolean(SCM_DISPLAY_PROGRESS_TAG);
+        shipControlRuntime.setDisplayProgressPreference(scmDisplayProgress);
         shipFlightBehavior = ScmFlightBehavior.fromId(
                 tag.getString(SHIP_FLIGHT_BEHAVIOR_TAG));
         shipControlMode = ScmControlModeRegistry.resolve(
                 tag.getString(SHIP_CONTROL_MODE_TAG));
-        shippingScheduleRuntime.read(tag, provider);
+        scmConfigurationProfile = tag.contains(SCM_CONFIGURATION_PROFILE_TAG, Tag.TAG_COMPOUND)
+                ? ScmConfigurationProfile.fromTag(tag.getCompound(SCM_CONFIGURATION_PROFILE_TAG))
+                : ScmConfigurationProfile.empty();
+        shippingScheduleRuntime.read(tag, provider, !readingClientUpdatePacket);
+        shipControlRuntime.readPrecalculatedRouteCache(tag);
+        if (!readingClientUpdatePacket && shippingScheduleDraftGraph.nodes().isEmpty()
+                && shippingScheduleRuntime.hasSchedule()) {
+            syncShippingScheduleGraphFromRuntime();
+        }
         pendingServerShutdownSnapshot = tag.contains(
                 SERVER_SHUTDOWN_SNAPSHOT_TAG, Tag.TAG_COMPOUND)
                 ? tag.getCompound(SERVER_SHUTDOWN_SNAPSHOT_TAG).copy() : null;
@@ -6063,6 +6604,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (clientPacket) {
             tag.remove("AdvancedDraftGraph");
             tag.remove("AdvancedActiveGraph");
+            tag.remove(SHIPPING_SCHEDULE_DRAFT_GRAPH_TAG);
+            tag.remove(SHIPPING_SCHEDULE_ACTIVE_GRAPH_TAG);
             tag.remove(GRAPH_VERSIONS_TAG);
             tag.putBoolean(SHIP_INITIALIZATION_VISIBLE_TAG, shipInitializationProgressVisible);
             tag.putInt(SHIP_INITIALIZATION_PERCENT_TAG, shipInitializationProgressPercent);
@@ -6080,7 +6623,15 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     protected void read(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         AdvancedGraphDocument retainedClientDraft = clientPacket ? draftGraph : null;
         AdvancedGraphDocument retainedClientActive = clientPacket ? activeGraph : null;
-        super.read(tag, provider, clientPacket);
+        AdvancedGraphDocument retainedClientScheduleDraft = clientPacket ? shippingScheduleDraftGraph : null;
+        AdvancedGraphDocument retainedClientScheduleActive = clientPacket ? shippingScheduleActiveGraph : null;
+        boolean previousClientUpdateRead = readingClientUpdatePacket;
+        readingClientUpdatePacket = clientPacket;
+        try {
+            super.read(tag, provider, clientPacket);
+        } finally {
+            readingClientUpdatePacket = previousClientUpdateRead;
+        }
         if (!clientPacket) {
             shipControlRuntime.readPersistentCouplerState(tag);
         }
@@ -6120,6 +6671,12 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         if (clientPacket && !tag.contains("AdvancedActiveGraph", Tag.TAG_COMPOUND)) {
             activeGraph = retainedClientActive;
+        }
+        if (clientPacket && !tag.contains(SHIPPING_SCHEDULE_DRAFT_GRAPH_TAG, Tag.TAG_COMPOUND)) {
+            shippingScheduleDraftGraph = retainedClientScheduleDraft;
+        }
+        if (clientPacket && !tag.contains(SHIPPING_SCHEDULE_ACTIVE_GRAPH_TAG, Tag.TAG_COMPOUND)) {
+            shippingScheduleActiveGraph = retainedClientScheduleActive;
         }
         if (clientPacket) {
             shipInitializationProgressVisible = tag.getBoolean(SHIP_INITIALIZATION_VISIBLE_TAG);
@@ -6180,13 +6737,16 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Create the menu
     @Override
     public AbstractContainerMenu createMenu(int containerId, Inventory playerInventory, Player player) {
+        hydrateShippingScheduleGraphFromRuntime();
         if (player instanceof ServerPlayer serverPlayer) {
             AdvancedControllerGraphSnapshotPayload.send(
                     serverPlayer,
                     getBlockPos(),
                     SimulatedHelper.getContainingSubLevelId(this),
                     draftGraph,
-                    activeGraph);
+                    activeGraph,
+                    shippingScheduleDraftGraph,
+                    shippingScheduleActiveGraph);
             ItemStack linker = getStoredLinker();
             ContraptionNetworkLinkerData.migrateLegacyStorage(linker);
             ContraptionNetworkLinkerSnapshotPayload.sendIfChanged(serverPlayer, linker);
