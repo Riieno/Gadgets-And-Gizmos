@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.mixin;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.compat.simulated.PhysicsAssemblerAssemblyState;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.ScissorPistonBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ScissorPistonLinkBlockEntity;
@@ -27,6 +28,7 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -34,7 +36,10 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 // Let Physics Assemblers build and remove Scissor Piston heads
 @Mixin(PhysicsAssemblerBlockEntity.class)
-public abstract class PhysicsAssemblerScissorPistonMixin extends SmartBlockEntity {
+public abstract class PhysicsAssemblerScissorPistonMixin extends SmartBlockEntity implements PhysicsAssemblerAssemblyState {
+    @Shadow
+    private boolean disassembling;
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -55,6 +60,13 @@ public abstract class PhysicsAssemblerScissorPistonMixin extends SmartBlockEntit
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
+
+    // Check whether the Physics Assembler is completing a disassembly
+    @Override
+    @Unique
+    public boolean createthrusters$isAssemblyTransitioning() {
+        return disassembling;
+    }
 
     // Handle the redirect scissor piston assembly
     @Inject(method = "assembleOrDisassemble", at = @At("HEAD"), cancellable = true)
