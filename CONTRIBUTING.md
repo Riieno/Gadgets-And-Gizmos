@@ -185,7 +185,7 @@ When reporting a bug, include as much information as possible:
 If the issue involves another mod, include that mod and version as well.
 
 ## Licensing
-By contributing code to this repository, you agree that your contribution may be distributed under the repository's MIT license.
+By contributing code to this repository, you agree that your contribution may be distributed under the repository's ARR (All rights reserved) license.
 
 Do not submit code or assets that you do not own or have permission to redistribute.
 
