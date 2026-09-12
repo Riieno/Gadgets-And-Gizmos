@@ -1,5 +1,3 @@
-ARR License
-
 Copyright (c) 2026 Rieno
 
 All Rights Reserved.
