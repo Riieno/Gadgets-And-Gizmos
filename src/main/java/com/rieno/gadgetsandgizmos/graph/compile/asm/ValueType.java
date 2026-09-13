@@ -5,6 +5,8 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import lombok.Getter;
 import net.minecraft.resources.ResourceLocation;
 import org.objectweb.asm.MethodVisitor;
@@ -26,6 +28,7 @@ public class ValueType {
     public final ResourceLocation name;
     public final Type innerType;
     private final InsnList defaultValueMaker;
+    private static final Object2ObjectMap<ResourceLocation,ValueType> allTypes=new Object2ObjectOpenHashMap<>();
 
     public ValueType(ResourceLocation name, Class<?> innerType, AbstractInsnNode AbstractInsnNode_first, AbstractInsnNode... defaultValueInsn) {
         this.innerType = Type.getType(innerType);
@@ -34,6 +37,9 @@ public class ValueType {
         nodes.add(AbstractInsnNode_first);
         for(AbstractInsnNode node : defaultValueInsn) nodes.add(node);
         this.defaultValueMaker = nodes;
+        synchronized(ValueType.class){
+            allTypes.put(name,this);
+        }
     }
 
     ValueType(String name, Class<?> innerType, AbstractInsnNode AbstractInsnNode_first, AbstractInsnNode... defaultValueInsn) {
@@ -45,7 +51,7 @@ public class ValueType {
     private final int id = staticId++;
 
     public static ValueType byName(ResourceLocation resource) {
-
+        return allTypes.get(resource);
     }
 
     public void convertViaOpcode(ValueType other, int opcode) {

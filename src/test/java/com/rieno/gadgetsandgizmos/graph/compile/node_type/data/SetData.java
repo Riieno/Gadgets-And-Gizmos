@@ -18,7 +18,7 @@ public class SetData extends JVMNodeType {
     }
 
     @Override
-    public Object2ObjectMap<String, ValueType> getInputPort(CompoundTag data, int nodeI) {
+    public Object2ObjectMap<String, ValueType> inputPorts(CompoundTag data, int nodeI) {
         return BlockData.mergePorts(super.inputPorts(data, nodeI), data);
 
     }
