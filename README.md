@@ -129,4 +129,4 @@ Inclusion of `Gadgets & Gizmos` the `Gadgets & Gizmos Library` or any other mods
 
 ## Developers
 
-People looking to expand `Gadgets and Gizmos` or build against it should build against `Main` or `InDev`, Use `main` if you want to be compatible with the current stable release, and `InDev` if you want to be ahead of the curve and build against new features being added in the next release. Experimental branches should not be pulled or built against.
+People looking to expand `Gadgets and Gizmos` or build against it should target `Main` or `InDev`, Use `main` if you want to be compatible with the current stable release, and `InDev` if you want to be ahead of the curve and build against new features being added in the next release. Experimental branches should not be pulled or built against.
