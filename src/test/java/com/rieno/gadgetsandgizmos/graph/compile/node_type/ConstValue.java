@@ -1,9 +1,8 @@
-package com.rieno.gadgetsandgizmos.graph.compile;
+package com.rieno.gadgetsandgizmos.graph.compile.node_type;
 
-import com.rieno.gadgetsandgizmos.graph.compile.asm.JVMNodeType;
-import com.rieno.gadgetsandgizmos.graph.compile.asm.Inputs;
-import com.rieno.gadgetsandgizmos.graph.compile.asm.Outputs;
-import com.rieno.gadgetsandgizmos.graph.compile.asm.ValueType;
+import com.rieno.gadgetsandgizmos.graph.compile.CompilationContext;
+import com.rieno.gadgetsandgizmos.graph.compile.asm.*;
+import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapNode;
 import com.rieno.gadgetsandgizmos.graph.compile.util.GeneratorHelper;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.minecraft.nbt.*;
@@ -13,12 +12,12 @@ import org.objectweb.asm.commons.Method;
 
 import java.util.Map;
 
-class ConstValue extends JVMNodeType {
+public class ConstValue extends JVMNodeType {
 
-    public ConstValue() {super(Map.of(), Map.of("value", ValueType.VALUE));}
+    public ConstValue() {super(Map.of(), Map.of("value", ValueTypes.VALUE));}
 
     @Override
-    public void compile(GeneratorHelper mv, Inputs inputs, Outputs outputs, CompoundTag data) {
+    public void compileOutputPortCalculations(GeneratorHelper mv, SnapNode node, Inputs inputs, Outputs outputs, CompoundTag data, CompilationContext context) {
         data.get("value").accept(new MyTagVisitor(mv));
         outputs.store(mv,"value");
     }

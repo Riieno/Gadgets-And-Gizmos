@@ -1,12 +1,15 @@
-package com.rieno.gadgetsandgizmos.graph.compile;
+package com.rieno.gadgetsandgizmos.graph.compile.node_type;
 
+import com.rieno.gadgetsandgizmos.graph.compile.CompilationContext;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.Inputs;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.Outputs;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.ValueType;
+import com.rieno.gadgetsandgizmos.graph.compile.asm.ValueTypes;
+import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapNode;
 import com.rieno.gadgetsandgizmos.graph.compile.util.GeneratorHelper;
 import net.minecraft.nbt.CompoundTag;
 
-class BinOpNode extends BinaryNode {
+public class BinOpNode extends BinaryNode {
     private final int opcodeOr;
     public BinOpNode(int opcode) {
         super();
@@ -14,7 +17,7 @@ class BinOpNode extends BinaryNode {
     }
 
     @Override
-    public void compile(GeneratorHelper mv, Inputs inputs, Outputs outputs, CompoundTag data) {
+    public void compileOutputPortCalculations(GeneratorHelper mv, SnapNode node, Inputs inputs, Outputs outputs, CompoundTag data, CompilationContext context) {
         inputs.load(mv, "a");
         inputs.load(mv, "b");
         mv.visitInsn(opcodeOr);
@@ -23,6 +26,6 @@ class BinOpNode extends BinaryNode {
 
     @Override
     public ValueType type() {
-        return ValueType.NUMBER;
+        return ValueTypes.NUMBER;
     }
 }

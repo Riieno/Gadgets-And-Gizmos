@@ -3166,7 +3166,7 @@ public final class GraphRuntime extends AbstractGraphRuntime {
     }
 
     // Convert a graph value to the requested port type
-    static AdvancedGraphDocument.Value convertValue(
+    public static AdvancedGraphDocument.Value convertValue(
             AdvancedGraphDocument.Value val,
             String targetType
     ) {
@@ -3217,7 +3217,7 @@ public final class GraphRuntime extends AbstractGraphRuntime {
     }
 
     // Read a graph value as a finite Number
-    private static double numberValue(AdvancedGraphDocument.Value val) {
+    public static double numberValue(AdvancedGraphDocument.Value val) {
         if ("number".equals(val.type())) {
             return Double.isFinite(val.asNumber()) ? val.asNumber() : 0.0D;
         }
@@ -4258,9 +4258,11 @@ public final class GraphRuntime extends AbstractGraphRuntime {
 
         // Check if the event matches the binding
         private static boolean eventMatchesBinding(String eventId, String prefix, String binding) {
-            return binding != null && !binding.isBlank() && eventId.startsWith(prefix + binding)
-                    && (eventId.length() == prefix.length() + binding.length()
-                    || eventId.charAt(prefix.length() + binding.length()) == ':');
+            if(binding == null || binding.isBlank()) return false;
+            String concat = prefix + binding;
+            if(!eventId.startsWith(concat)) return false;
+            return eventId.length() == concat.length()
+                   || eventId.charAt(concat.length()) == ':';
         }
 
         // Add the compiled program

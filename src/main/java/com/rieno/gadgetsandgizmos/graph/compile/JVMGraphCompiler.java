@@ -1,19 +1,21 @@
 package com.rieno.gadgetsandgizmos.graph.compile;
 
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
+import com.rieno.gadgetsandgizmos.graph.compile.asm.AsmExpression;
+import com.rieno.gadgetsandgizmos.graph.compile.asm.FieldInitExpr;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.JVMNodeType;
-import com.rieno.gadgetsandgizmos.graph.compile.asm.Outputs;
-import com.rieno.gadgetsandgizmos.graph.compile.asm.ValueType;
+import com.rieno.gadgetsandgizmos.graph.compile.debug.DebugProps;
 import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapEdge;
 import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapNode;
 import com.rieno.gadgetsandgizmos.graph.compile.util.GeneratorHelper;
-import com.rieno.gadgetsandgizmos.graph.struct.Calculator;
-import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
-import it.unimi.dsi.fastutil.ints.IntArrayList;
+import com.rieno.gadgetsandgizmos.graph.compile.util.UnboundStateField;
+import com.rieno.gadgetsandgizmos.graph.init.GNG_Events;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import lombok.AllArgsConstructor;
 import lombok.Lombok;
+import lombok.NonNull;
 import lombok.SneakyThrows;
 import org.jetbrains.annotations.NotNull;
 import org.objectweb.asm.ClassReader;
@@ -21,23 +23,39 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.commons.Method;
-import org.objectweb.asm.tree.ClassNode;
-import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.*;
 
-import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
+import java.util.Map;
 
-import static com.rieno.gadgetsandgizmos.graph.compile.util.GeneratorHelper.PortVarEntry;
-
+/**
+ * @see com.rieno.gadgetsandgizmos.graph.compile.subsystem.CalculatorGenerator
+ * @see com.rieno.gadgetsandgizmos.graph.compile.subsystem.NodeFlowGenerator
+ *
+ */
 public class JVMGraphCompiler {
+    public static final Map<String, EventMethodCompiler> eventCompilers = new Object2ObjectOpenHashMap<>();
+    static {
+        GNG_Events.register();
+    }
+    public static class DuplicatedCompiler extends RuntimeException {
+        public DuplicatedCompiler(String eventId) {
+            super("Compiler for event '%s' already exists".formatted(eventId));
+        }
+    }
+
+    public static void registerEventCompiler(@NonNull String eventId, @NonNull EventMethodCompiler compiler) throws DuplicatedCompiler {
+        EventMethodCompiler exists = eventCompilers.get(eventId);
+        if(exists != null) throw new DuplicatedCompiler(eventId);
+        eventCompilers.put(eventId, compiler);
+    }
 
     static final int classNodeVersion;
     private static final Type abstractGraph = Type.getType(AbstractJVMGraph.class);
-    private static final Type calculatorType = Type.getType(Calculator.class);
+
     private static final Type documentType = Type.getType(AdvancedGraphDocument.class);
 
     static {
@@ -52,9 +70,8 @@ public class JVMGraphCompiler {
     }
 
     @SneakyThrows
-    public static AbstractJVMGraph compile(AdvancedGraphDocument document, File debugDir) {
-        var nodesGroupedByEvent = new Object2ObjectOpenHashMap<String, ObjectArrayList<AdvancedGraphDocument.Node>>();
-        var passive = new ObjectArrayList<AdvancedGraphDocument.Node>();
+    public static AbstractJVMGraph compile(AdvancedGraphDocument document, DebugProps debugProps) {
+        var nodesGroupedByEvent = new Object2ObjectOpenHashMap<String, ObjectArrayList<EventNode>>();
         JVMRegistry instance = JVMRegistry.instance;
         List<AdvancedGraphDocument.Node> nodes = document.nodes();
         Object2ObjectOpenHashMap<AbstractJVMGraph.PortKey, AbstractJVMGraph.PortIndex> portToIndex = new Object2ObjectOpenHashMap<>();
@@ -67,8 +84,8 @@ public class JVMGraphCompiler {
             JVMNodeType nodeType = instance.entries.get(node.type());
 
             nodeToIndex.put(node.id(), nodeI);
-            var input = nodeType.getInput();
-            var outputs = nodeType.getOutputs();
+            var input = nodeType.inputPorts(node.data(), nodeI);
+            var outputs = nodeType.outputPorts(node.data(), nodeI);
 
             SnapNode snapNode = new SnapNode(
                 nodeI,
@@ -82,12 +99,11 @@ public class JVMGraphCompiler {
             Iterable<String> supportedEvents = nodeType.supportedEvents(node.type(), node.data());
             if(supportedEvents != null) {
                 for(String event : supportedEvents) {
-                    nodesGroupedByEvent.computeIfAbsent(event, it -> new ObjectArrayList<>()).add(node);
+                    int i = event.indexOf(':');
+                    nodesGroupedByEvent.computeIfAbsent(i == -1 ? event : event.substring(0, i), it -> new ObjectArrayList<>())
+                                       .add(new EventNode(i == -1 ? null : event.substring(i + 1), node)
+                                       );
                 }
-            }
-
-            if(nodeType.isPassive(node.type(), node.data())) {
-                passive.add(node);
             }
 
             for(var portEntry : input.entrySet()) {
@@ -104,6 +120,8 @@ public class JVMGraphCompiler {
                 ), new AbstractJVMGraph.PortIndex(nodeI, calculatorTracker, snapNode.outputPort(portName)));
             }
             calculatorTracker += snapNode.portIndexer.size();
+
+
         }
 
         var edges = document.edges();
@@ -123,18 +141,31 @@ public class JVMGraphCompiler {
             snapEdges[i] = snapEdge;
         }
 
-        Cache cache = new Cache(snapNodes, snapEdges, portToIndex, nodeToIndex);
 
-        ClassNode node = new ClassNode(Opcodes.ASM9);
-        node.superName = abstractGraph.getInternalName();
-        node.name = "Impl$" + hexHash(node);
-        defineCtor(calculatorTracker, node);
+        ClassNode classNode = new ClassNode(Opcodes.ASM9);
+        classNode.superName = abstractGraph.getInternalName();
+        classNode.name = "Impl$" + hexHash(classNode);
+
+        Cache cache = new Cache(classNode.name, snapNodes, snapEdges, portToIndex, nodeToIndex);
+        ObjectArrayList<Map.Entry<SnapNode,Iterable<UnboundStateField>>> fields=new ObjectArrayList<>();
+        for(SnapNode snapNode : snapNodes) {
+            var iterable = snapNode.type.stateFields(snapNode, cache);
+            if(iterable==null)continue;
+            fields.add(Map.entry(snapNode,iterable));
+        }
+        defineCtorAndStateFields(calculatorTracker, classNode,fields);
+        for(Map.Entry<String, EventMethodCompiler> entry : eventCompilers.entrySet()) {
+            var eventNodes = nodesGroupedByEvent.remove(entry.getKey());
+            entry.getValue().compile(
+                classNode, cache, eventNodes, nodesGroupedByEvent
+            );
+        }
         {
-            processTickEvent(nodesGroupedByEvent, node, cache);
+            processRestEvent(nodesGroupedByEvent, classNode, cache);
         }
 
         try {
-            return (AbstractJVMGraph) defineClass(new JVMGraphLoader(debugDir), node).getDeclaredConstructor(
+            return (AbstractJVMGraph) defineClass(new JVMGraphLoader(debugProps), classNode).getDeclaredConstructor(
                 AdvancedGraphDocument.class,
                 Cache.class
             ).newInstance(document, cache);
@@ -144,52 +175,73 @@ public class JVMGraphCompiler {
         }
     }
 
-    private static @NotNull String hexHash(ClassNode node) {
+    private static void processRestEvent(Object2ObjectOpenHashMap<String, ObjectArrayList<EventNode>> nodesGroupedByEvent, ClassNode classNode, Cache cache) {
+        //
+    }
+
+    public static @NotNull String hexHash(ClassNode node) {
         return Integer.toHexString(System.identityHashCode(node));
     }
 
-    private static void defineCtor(int calculatorTracker, ClassNode node) {
+    private static void defineCtorAndStateFields(int calculatorTracker, ClassNode node, ObjectArrayList<Map.Entry<SnapNode, Iterable<UnboundStateField>>> fields) {
         MethodNode ctor = new MethodNode(Opcodes.ACC_PUBLIC, "<init>", Type.getMethodDescriptor(
             Type.VOID_TYPE,
             documentType,
             Type.getType(Cache.class)
         ), null, null);
-        var adapter = adapter(ctor);
+        var adapter = adapter(ctor, node);
         adapter.loadThis();
         adapter.push(calculatorTracker);
-        adapter.newArray(calculatorType);
         adapter.loadArg(0);
         adapter.loadArg(1);
         adapter.invokeConstructor(abstractGraph, Method.getMethod(AbstractJVMGraph.class.getDeclaredConstructors()[0]));
+
+        for(Map.Entry<SnapNode, Iterable<UnboundStateField>> fieldDefs : fields) {
+            SnapNode fieldOwner = fieldDefs.getKey();
+            for(UnboundStateField stateField : fieldDefs.getValue()) {
+                var bound = stateField.bind(fieldOwner);
+                FieldNode fieldDef = new FieldNode(Opcodes.ACC_PUBLIC, bound.name(), bound.type().getDescriptor(), null, null);
+                node.fields.add(fieldDef);
+                FieldInitExpr initExpr = stateField.initExpression();
+                if(initExpr==null)continue;
+                switch(initExpr) {
+                    case AsmExpression.ReflectionMethod(java.lang.reflect.Method method) -> {
+                        adapter.loadThis();
+
+                        adapter.invoke(method);
+
+                        adapter.storeField(node.name,fieldDef);
+                    }
+                    case AsmExpression.InsnListAsm(AbstractInsnNode[] init)  -> {
+
+                        adapter.loadThis();
+                        for(AbstractInsnNode insnNode : init) insnNode.accept(adapter);
+                        adapter.storeField(node.name,fieldDef);
+                    }
+                    case AsmExpression.ReflectionConstructor(Constructor<?> init)-> {
+                        adapter.loadThis();
+
+                        adapter.newInstance(Type.getType(init.getDeclaringClass()));
+                        adapter.dup();
+                        adapter.invoke(init);
+
+                        adapter.storeField(node.name,fieldDef);
+                    }
+                    case FieldInitExpr.Value value->fieldDef.value=value.getValue();
+                }
+            }
+        }
+
         adapter.returnValue();
         adapter.visitEnd();
         node.methods.add(ctor);
     }
 
-    private static void processTickEvent(
-        Object2ObjectOpenHashMap<String, ObjectArrayList<AdvancedGraphDocument.Node>> nodesGroupedByEvent,
-        ClassNode node,
-        Cache cache
-    ) throws NoSuchMethodException {
-        ObjectArrayList<AdvancedGraphDocument.Node> tickers = nodesGroupedByEvent.get("tick");
 
-        Method tick1 = Method.getMethod(AbstractJVMGraph.class.getDeclaredMethod("tick"));
-        MethodNode tickEventMethod = new MethodNode(Opcodes.ACC_PUBLIC, tick1.getName(), tick1.getDescriptor(), null, null);
-        node.methods.add(tickEventMethod);
-        if(tickers == null) {
-            tickEventMethod.visitInsn(Opcodes.RETURN);
-        } else {
-            var adapter = adapter(tickEventMethod);
-            for(AdvancedGraphDocument.Node ticker : tickers) {
-                cache.buildNodeCallTree(adapter, cache.nodeToIndex.getInt(ticker.id()));
-            }
-            adapter.visitEnd();
-        }
-    }
-
-    private static Class<?> defineClass(JVMGraphLoader loader, ClassNode node) throws ClassNotFoundException {
+    public static Class<?> defineClass(JVMGraphLoader loader, ClassNode node) throws ClassNotFoundException {
         node.version = classNodeVersion;
-        node.access|=Opcodes.ACC_PUBLIC;
+        node.access |= Opcodes.ACC_PUBLIC;
+        if(loader.debugProps != null) {loader.debugProps.onClassDefine(loader, node);}
         ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS | ClassWriter.COMPUTE_FRAMES);
         node.accept(writer);
         loader.defineClass(node.name, writer.toByteArray());
@@ -197,176 +249,31 @@ public class JVMGraphCompiler {
         return aClass;
     }
 
-    private static @NotNull GeneratorHelper adapter(MethodNode method) {
-        return new GeneratorHelper(method);
+    public static @NotNull GeneratorHelper adapter(MethodNode method, ClassNode declaredNode) {
+        return new GeneratorHelper(declaredNode, method);
     }
 
-    public record Cache(
-        SnapNode[] nodes,
-        SnapEdge[] edges,
-        Object2ObjectOpenHashMap<AbstractJVMGraph.PortKey, AbstractJVMGraph.PortIndex> portToIndex,
-        Object2IntOpenHashMap<String> nodeToIndex
-    ) {
+    @AllArgsConstructor
 
-        private static final Type calculator = Type.getType(Calculator.class);
-        private static final Method method;
+    public static final class Cache {
+        public final String className;
+        public final SnapNode[] nodes;
+        public final SnapEdge[] edges;
+        public final Object2ObjectOpenHashMap<AbstractJVMGraph.PortKey, AbstractJVMGraph.PortIndex> portToIndex;
+        public final Object2IntOpenHashMap<String> nodeToIndex;
 
-        static {
-            try {
-                method = Method.getMethod(Calculator.class.getDeclaredMethod("calculate"));
-            } catch(NoSuchMethodException e) {
-                throw Lombok.sneakyThrow(e);
-            }
+        public Object2ObjectOpenHashMap<AbstractJVMGraph.PortKey, AbstractJVMGraph.PortIndex> portToIndex() {
+            return portToIndex;
         }
 
-        public Calculator defineCalculator(JVMGraphLoader loader, AbstractJVMGraph.PortIndex index) {
-            ClassNode classNode = new ClassNode();
-            classNode.name = Calculator.class.getSimpleName() + "$" + hexHash(classNode);
-            classNode.superName = calculator.getInternalName();
-
-            MethodNode ctor = new MethodNode(Opcodes.ACC_PUBLIC, "<init>", "()V", null, null);
-            classNode.methods.add(ctor);
-            ctor.visitVarInsn(Opcodes.ALOAD, 0);
-            ctor.visitMethodInsn(Opcodes.INVOKESPECIAL, calculatorType.getInternalName(), "<init>", "()V", false);
-            ctor.visitInsn(Opcodes.RETURN);
-
-            MethodNode calculateMethod = new MethodNode(Opcodes.ACC_PUBLIC, method.getName(), method.getDescriptor(), null, null);
-            GeneratorHelper adapter = adapter(calculateMethod);
-            SnapNode snapNode = nodes[index.nodeIndex()];
-            buildNodeCallTree(
-                adapter,
-                index.nodeIndex(),
-                (mv, portName) -> {
-                    int outputPort = snapNode.outputPort(portName);
-                    var portType = snapNode.portTypes[outputPort];
-                    if(outputPort == index.localIndex()) {
-                        portType.convertTo(mv, ValueType.VALUE);
-                        mv.returnValue();
-                        return;
-                    }
-                    mv.visitInsn(Opcodes.POP + portType.getSize() - 1);
-                }
-            );
-            adapter.visitEnd();
-
-            classNode.methods.add(calculateMethod);
-
-
-            try {
-                Class<?> aClass = defineClass(loader, classNode);
-                return (Calculator) aClass.getConstructor().newInstance();
-            } catch(ClassNotFoundException | InvocationTargetException | InstantiationException |
-                    IllegalAccessException | NoSuchMethodException e) {
-                throw Lombok.sneakyThrow(e);
-            }
-
-
+        public Object2IntOpenHashMap<String> nodeToIndex() {
+            return nodeToIndex;
         }
 
-        public void buildNodeCallTree(GeneratorHelper adapter, int rootNodeID, Outputs outputs) {
-
-            var nodesWithDepth = collectNodesWithDepth(rootNodeID);
-            for(IntArrayList list : nodesWithDepth) {
-                for(int i = 0; i < list.size(); i++) {
-                    int nodeI = list.getInt(i);
-                    SnapNode node = nodes[nodeI];
-                    compileNode(adapter, defaultOutputs(node), node);
-                }
-            }
-            SnapNode node = nodes[rootNodeID];
-
-            compileNode(adapter, outputs, node);
-        }
-
-
-        private @NotNull IntArrayList[] collectNodesWithDepth(int nodeID) {
-            var nodesWithDepth = new Int2IntOpenHashMap();
-            IntArrayList a = new IntArrayList();
-            IntArrayList b = new IntArrayList();
-            ObjectArrayList<IntArrayList> perDepth = new ObjectArrayList<>();
-            a.add(nodeID);
-            int depth = 0;
-
-            while(!a.isEmpty()) {
-                IntArrayList currentDepth = new IntArrayList();
-                perDepth.add(currentDepth);
-                int[] elements = a.elements();
-                for(int i = 0; i < a.size(); i++) {
-                    SnapNode node = nodes[elements[i]];
-                    int curDepth = nodesWithDepth.getOrDefault(node.id, -1);
-                    if(curDepth < depth) {
-                        currentDepth.add(node.id);
-                        if(curDepth >= 0) {
-                            perDepth.get(curDepth).removeInt(node.id);
-                        }
-                        nodesWithDepth.put(node.id, depth);
-                    }
-                    for(SnapEdge edge : node.inputs) b.add(edge.nodeA.id);
-                }
-
-
-                var a1 = a;
-                a = b;
-                b = a1;
-                b.clear();
-                depth++;
-            }
-
-            IntArrayList[] out = new IntArrayList[perDepth.size()];
-            int outI = 0;
-            for(int i = perDepth.size() - 1; i >= 1; i--) {
-                IntArrayList list = perDepth.get(i);
-                if(list.isEmpty()) continue;
-                out[outI++] = list;
-            }
-            return outI == out.length ? out : Arrays.copyOf(out, outI);
-        }
-
-        private void compileNode(GeneratorHelper adapter, Outputs outputs, SnapNode node) {
-            node.type.compile(adapter,
-                (mv, inputPortName) -> {
-                    int portIndex = node.inputPort(inputPortName);
-                    PortVarEntry existedEntry = mv.findEntry(node, portIndex);
-                    if(existedEntry != null) {
-                        mv.loadLocal(existedEntry.index());
-                        return;
-                    }
-
-                    SnapEdge edge = node.inputs[portIndex];
-                    PortVarEntry entry = mv.findEntry(edge.nodeA, edge.portA);
-                    Objects.requireNonNull(entry, "variable is not allocated");
-
-                    mv.loadLocal(entry.index());
-                    if(entry.type().equals(node.portTypes[portIndex])) {
-                        return;
-                    }
-
-                    existedEntry = mv.localOrNew(node, portIndex);
-                    entry.type().convertTo(mv,existedEntry.type());
-                    if(existedEntry.type().getSize() == 2) {
-                        mv.dup2();
-                    } else {
-                        mv.dup();
-                    }
-                    mv.storeLocal(existedEntry.index());
-                },
-                outputs,
-                node.data
-            );
-        }
-
-        private @NotNull Outputs defaultOutputs(SnapNode node) {
-            return (mv, port) -> {
-                PortVarEntry entry = mv.localOrNew(node, node.outputPort(port));
-                mv.storeLocal(entry.index());
-
-            };
-        }
-        public void buildNodeCallTree(GeneratorHelper adapter, int nodeID) {
-            buildNodeCallTree(adapter, nodeID, defaultOutputs(nodes[nodeID]));
-
-        }
 
     }
 
+    public interface EventMethodCompiler {
+        MethodNode compile(ClassNode classNode, Cache cache, ObjectArrayList<EventNode> eventNodes, Object2ObjectOpenHashMap<String, ObjectArrayList<EventNode>> nodesGroupedByEvent) throws Exception;
+    }
 }

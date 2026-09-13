@@ -30,6 +30,7 @@ import com.rieno.gadgetsandgizmos.registry.CTRecipeSerializers;
 import com.rieno.gadgetsandgizmos.registry.CTSoundEvents;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import dev.simulated_team.simulated.util.extra_kinetics.ExtraKinetics;
+import net.minecraft.resources.ResourceLocation;
 import net.neoforged.bus.api.IEventBus;
 
 // Register common addon content and optional integrations
@@ -95,5 +96,9 @@ public final class CreateThrusters {
     private static boolean isThrusterBearingExtraCog(KineticBlockEntity blockEntity) {
         return blockEntity instanceof ExtraKinetics.ExtraKineticsBlockEntity extraKinetics
                 && extraKinetics.getParentBlockEntity() instanceof ThrusterBearingBlockEntity;
+    }
+
+    public static ResourceLocation resource(String string) {
+        return ResourceLocation.fromNamespaceAndPath(MOD_ID,string);
     }
 }

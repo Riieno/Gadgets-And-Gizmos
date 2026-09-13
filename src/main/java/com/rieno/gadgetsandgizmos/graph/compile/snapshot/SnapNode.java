@@ -81,10 +81,27 @@ public final class SnapNode {
     }
 
     public int inputPort(String port) {
-        return portIndexer.getInt(port + INPUT_POSTFIX);
+        return portIndexer.getOrDefault(port + INPUT_POSTFIX,-1);
     }
 
     public int port(String port, boolean output) {
-        return portIndexer.getInt(port + (output ? OUTPUT_POSTFIX : INPUT_POSTFIX));
+        return portIndexer.getOrDefault(port + (output ? OUTPUT_POSTFIX : INPUT_POSTFIX),-1);
+    }
+
+    @Override
+    public String toString() {
+        return "SnapNode{" +
+               "id=" + id +
+               '}';
+    }
+
+    public ValueType outputType(int outputPortLocalIndex) {
+        return portTypes[outputPortLocalIndex+inputs.length];
+    }
+    public ValueType outputType(String port) {
+        return portTypes[outputPort(port)];
+    }
+    public ValueType inputType(int inputPortLocalIndex) {
+        return portTypes[inputPortLocalIndex];
     }
 }

@@ -1,25 +1,25 @@
 package com.rieno.gadgetsandgizmos.graph.compile;
 
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
-import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import com.rieno.gadgetsandgizmos.graph.compile.debug.DebugProps;
 import lombok.RequiredArgsConstructor;
 
 import java.io.File;
 
 @RequiredArgsConstructor
 public class JVMGraphRuntime extends DummyRuntime {
-    public final File debugDir;
+    public final DebugProps debugProps;
     public AbstractJVMGraph compiledGraph;
     public AbstractJVMGraph previewGraph;
     public AbstractJVMGraph previewGraphOr(AdvancedGraphDocument document){
         if(previewGraph==null || previewGraph.graphRevision!=document.revision()){
-            previewGraph=JVMGraphCompiler.compile(document,debugDir);
+            previewGraph=JVMGraphCompiler.compile(document, debugProps);
         }
         return previewGraph;
     }
     public AbstractJVMGraph compiledGraphOr(AdvancedGraphDocument document){
         if(compiledGraph==null || compiledGraph.graphRevision!=document.revision()){
-            compiledGraph=JVMGraphCompiler.compile(document,debugDir);
+            compiledGraph=JVMGraphCompiler.compile(document, debugProps);
         }
         return compiledGraph;
     }

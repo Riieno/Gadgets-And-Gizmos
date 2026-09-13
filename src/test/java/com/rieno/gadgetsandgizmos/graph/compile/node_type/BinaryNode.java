@@ -1,9 +1,11 @@
-package com.rieno.gadgetsandgizmos.graph.compile;
+package com.rieno.gadgetsandgizmos.graph.compile.node_type;
 
+import com.rieno.gadgetsandgizmos.graph.compile.CompilationContext;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.Inputs;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.JVMNodeType;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.Outputs;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.ValueType;
+import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapNode;
 import com.rieno.gadgetsandgizmos.graph.compile.util.GeneratorHelper;
 import net.minecraft.nbt.CompoundTag;
 
@@ -12,9 +14,9 @@ import java.util.Map;
 public abstract class BinaryNode extends JVMNodeType {
     public BinaryNode() {
         super(Map.of(), Map.of());
-        input.put("a",type());
-        input.put("b",type());
-        outputs.put("c",type());
+        declaredInputPort.put("a",type());
+        declaredInputPort.put("b",type());
+        declaredOutputPort.put("c",type());
     }
 
     public static JVMNodeType impl(ValueType valueType, Compiler compiler) {
@@ -25,7 +27,7 @@ public abstract class BinaryNode extends JVMNodeType {
             }
 
             @Override
-            public void compile(GeneratorHelper mv, Inputs inputs, Outputs outputs, CompoundTag data) {
+            public void compileOutputPortCalculations(GeneratorHelper mv, SnapNode node, Inputs inputs, Outputs outputs, CompoundTag data, CompilationContext context) {
                 compiler.compile(mv, inputs, outputs, data);
             }
         };

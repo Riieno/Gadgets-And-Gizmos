@@ -1,154 +1,120 @@
 package com.rieno.gadgetsandgizmos.graph.compile.asm;
 
+import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
-import com.rieno.gadgetsandgizmos.graph.compile.util.GeneratorHelper;
-import lombok.RequiredArgsConstructor;
+import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import lombok.Getter;
+import net.minecraft.resources.ResourceLocation;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
+import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 
-public enum ValueType {
-    NUMBER(double.class) {
-        @Override
-        public AbstractInsnNode convertTo(ValueType other) {
-            return switch(other) {
-                case NUMBER -> null;
-                case BOOL -> new MethodInsnNode(
-                    Opcodes.INVOKESTATIC,
-                    Type.getInternalName(ValueType.class),
-                    "num2bool", Type.getMethodDescriptor(Type.BOOLEAN_TYPE, Type.DOUBLE_TYPE),
-                    false
-                );
-                case STRING -> new MethodInsnNode(
-                    Opcodes.INVOKESTATIC,
-                    Type.getInternalName(Double.class),
-                    "toString", Type.getMethodDescriptor(Type.getType(String.class), Type.DOUBLE_TYPE),
-                    false
-                );
-                case VALUE -> new MethodInsnNode(
-                    Opcodes.INVOKESTATIC,
-                    Type.getInternalName(AdvancedGraphDocument.Value.class),
-                    "number", Type.getMethodDescriptor(Type.getType(AdvancedGraphDocument.Value.class), Type.DOUBLE_TYPE),
-                    false
-                );
-            };
-        }
-    },
-    BOOL(boolean.class) {
-        @Override
-        public AbstractInsnNode convertTo(ValueType other) {
-            return switch(other) {
-                case NUMBER -> new InsnNode(Opcodes.I2D);
-                case BOOL -> null;
-                case STRING -> new MethodInsnNode(
-                    Opcodes.INVOKESTATIC,
-                    Type.getInternalName(Boolean.class),
-                    "toString", Type.getMethodDescriptor(Type.getType(String.class), Type.BOOLEAN_TYPE),
-                    false
-                );
-                case VALUE -> new MethodInsnNode(
-                    Opcodes.INVOKESTATIC,
-                    Type.getInternalName(AdvancedGraphDocument.Value.class),
-                    "bool", Type.getMethodDescriptor(Type.getType(AdvancedGraphDocument.Value.class), Type.BOOLEAN_TYPE),
-                    false
-                );
-            };
-        }
-    },
-    STRING (String.class){
-        @Override
-        public AbstractInsnNode convertTo(ValueType other) {
-            return switch(other) {
-                case NUMBER -> new MethodInsnNode(
-                    Opcodes.INVOKESTATIC,
-                    Type.getInternalName(ValueType.class),
-                    "str2num", Type.getMethodDescriptor(Type.DOUBLE_TYPE, Type.getType(String.class)),
-                    false
-                );
-                case BOOL -> new MethodInsnNode(
-                    Opcodes.INVOKESTATIC,
-                    Type.getInternalName(ValueType.class),
-                    "str2bool", Type.getMethodDescriptor(Type.BOOLEAN_TYPE, Type.getType(String.class)),
-                    false
-                );
-                case STRING -> null;
-                case VALUE -> new MethodInsnNode(
-                    Opcodes.INVOKESTATIC,
-                    Type.getInternalName(AdvancedGraphDocument.Value.class),
-                    "string", Type.getMethodDescriptor(Type.getType(AdvancedGraphDocument.Value.class), Type.getType(String.class)),
-                    false
-                );
-            };
-        }
-    },
-    VALUE(AdvancedGraphDocument.Value.class) {
+/**
+ * TODO not an enum
+ *
+ * @see GraphRuntime#convertValue(AdvancedGraphDocument.Value, String)
+ *
+ */
+public class ValueType {
 
-        private final Type type = Type.getType(AdvancedGraphDocument.Value.class);
-
-        @Override
-        public AbstractInsnNode convertTo(ValueType other) {
-            return switch(other) {
-                case NUMBER -> new MethodInsnNode(
-                    Opcodes.INVOKEVIRTUAL,
-                    type.getInternalName(),
-                    "asNumber", Type.getMethodDescriptor(Type.BOOLEAN_TYPE, type),
-                    false
-                );
-                case BOOL -> new MethodInsnNode(
-                    Opcodes.INVOKEVIRTUAL,
-                    type.getInternalName(),
-                    "asBoolean", Type.getMethodDescriptor(Type.BOOLEAN_TYPE, type),
-                    false
-                );
-
-                case STRING -> new MethodInsnNode(
-                    Opcodes.INVOKEVIRTUAL,
-                    type.getInternalName(),
-                    "asString", Type.getMethodDescriptor(Type.BOOLEAN_TYPE, type),
-                    false
-                );
-
-                case VALUE -> null;
-            };
-        }
-    },
-    ;
-
+    public final ResourceLocation name;
     public final Type innerType;
+    private final InsnList defaultValueMaker;
 
-    ValueType(Class<?> innerType) {
+    public ValueType(ResourceLocation name, Class<?> innerType, AbstractInsnNode AbstractInsnNode_first, AbstractInsnNode... defaultValueInsn) {
         this.innerType = Type.getType(innerType);
+        this.name = name;
+        var nodes = new InsnList();
+        nodes.add(AbstractInsnNode_first);
+        for(AbstractInsnNode node : defaultValueInsn) nodes.add(node);
+        this.defaultValueMaker = nodes;
     }
 
-    public static boolean num2bool(double x) {return x != 0;}
+    ValueType(String name, Class<?> innerType, AbstractInsnNode AbstractInsnNode_first, AbstractInsnNode... defaultValueInsn) {
+        this(ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID, name), innerType, AbstractInsnNode_first, defaultValueInsn);
+    }
 
-    public static boolean str2bool(String x) {return x.equals("true");}
+    protected final Int2ObjectMap<InsnList> convertNodes = new Int2ObjectOpenHashMap<>();
+    private static int staticId = 0;
+    private final int id = staticId++;
 
-    public static double str2num(String x) {
+    public static ValueType byName(ResourceLocation resource) {
+
+    }
+
+    public void convertViaOpcode(ValueType other, int opcode) {
+        setConvertExpression(other, new InsnNode(opcode));
+    }
+
+    public void convertViaStaticMethod(ValueType other, Class<?> methodOwner, String methodName) {
+        setConvertExpression(other, new MethodInsnNode(
+            Opcodes.INVOKESTATIC,
+            Type.getInternalName(methodOwner),
+            methodName, Type.getMethodDescriptor(other.innerType, innerType),
+            methodOwner.isInterface()
+        ));
+    }
+
+    public void convertViaInstanceMethod(ValueType other, String methodName) {
+        boolean anInterface = false;
         try {
-            return Double.parseDouble(x);
-        } catch(NumberFormatException e) {
-            return 0;
+            anInterface = Class.forName(innerType.getClassName()).isInterface();
+        } catch(ClassNotFoundException e) {
         }
-    }
-    protected final AbstractInsnNode[] convertNode=new AbstractInsnNode[4];
-    public final static ValueType[] all=values();
-    public final int id=ordinal();
-    static {
-        for(ValueType type : all) {
-            for(ValueType subtype : all) {
-                type.convertNode[subtype.id]=type.convertTo(subtype);
-            }
-        }
+        setConvertExpression(other, new MethodInsnNode(
+            Opcodes.INVOKEVIRTUAL,
+            innerType.getInternalName(),
+            methodName, Type.getMethodDescriptor(other.innerType),
+            //innerType.isInterface()
+            anInterface
+        ));
     }
 
-    protected abstract AbstractInsnNode convertTo(ValueType other);
+    public void setConvertExpression(ValueType other, AbstractInsnNode... nodes) {
+        InsnList value = new InsnList();
+        for(AbstractInsnNode node : nodes) value.add(node);
+        convertNodes.put(other.id, value);
+    }
 
-    public void convertTo(MethodVisitor mv, ValueType valueType) {
-        convertNode[valueType.id].accept(mv);
+
+    public void convertTo(MethodVisitor mv, ValueType other) {
+        if(id == other.id || other==ValueTypes.ANY) return;
+        var nodes = convertNodes.get(other.id);
+
+        if(nodes != null) {
+            nodes.accept(mv);
+            return;
+
+        }
+        mv.visitInsn(Opcodes.POP + getSize() - 1);
+        other.defaultValueMaker.accept(mv);
+        /*if(other == ValueTypes.VALUE) return;
+        var toValueNodes = convertNodes.get(ValueTypes.VALUE.id);
+        if(tryConvertThrowValue(mv, other, toValueNodes)) {
+            mv.visitInsn(Opcodes.POP + getSize() - 1);
+            other.defaultValue().accept(mv);
+            return;
+        }*/
+        return;
+    }
+
+    private boolean tryConvertThrowValue(MethodVisitor mv, ValueType other, InsnList toValueNodes) {
+        if(toValueNodes == null) return false;
+        var valueToOther = ValueTypes.VALUE.convertNodes.get(other.id);
+        if(valueToOther == null) return false;
+        toValueNodes.accept(mv);
+        valueToOther.accept(mv);
+        return true;
+    }
+
+    public void wrapToValue(MethodVisitor mv) {
+        convertTo(mv, ValueTypes.VALUE);
     }
 
     public int getSize() {
@@ -157,5 +123,18 @@ public enum ValueType {
 
     public String getDescriptor() {
         return innerType.getDescriptor();
+    }
+
+    @Getter
+    private boolean cannotBeSaved = false;
+
+    public ValueType unsavable() {
+        cannotBeSaved = true;
+        return this;
+    }
+
+    @Override
+    public String toString() {
+        return "ValueType(" + name + ")";
     }
 }

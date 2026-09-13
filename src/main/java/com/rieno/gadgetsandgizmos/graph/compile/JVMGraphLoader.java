@@ -1,5 +1,6 @@
 package com.rieno.gadgetsandgizmos.graph.compile;
 
+import com.rieno.gadgetsandgizmos.graph.compile.debug.DebugProps;
 import lombok.RequiredArgsConstructor;
 
 import java.io.File;
@@ -17,16 +18,12 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class JVMGraphLoader extends ClassLoader {
     ConcurrentHashMap<String,byte[]> nameToBytes =new ConcurrentHashMap<>();
-    final File debugDir;
+    final DebugProps debugProps;
 
     public void defineClass(String className, byte[] bytecode){
         nameToBytes.put(className, bytecode);
-        if(debugDir!=null){
-            debugDir.mkdir();
-            try(FileOutputStream stream = new FileOutputStream(new File(debugDir, className + ".class"))) {
-                stream.write(bytecode,0,bytecode.length);
-            } catch(IOException e) {
-            }
+        if(debugProps!=null){
+            debugProps.onDefineClass(className,bytecode);
         }
     }
     @Override

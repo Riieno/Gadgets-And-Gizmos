@@ -988,7 +988,7 @@ public final class AdvancedGraphDocument
         }
 
         // Write the value data
-        CompoundTag toTag() {
+        public CompoundTag toTag() {
             CompoundTag tag = new CompoundTag();
             tag.putString("Type", type);
             tag.put("Payload", payload.copy());
@@ -996,7 +996,7 @@ public final class AdvancedGraphDocument
         }
 
         // Read the value data
-        static Value fromTag(CompoundTag tag) {
+        public static Value fromTag(CompoundTag tag) {
             return new Value(tag.getString("Type"), tag.getCompound("Payload"));
         }
     }
