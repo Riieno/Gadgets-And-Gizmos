@@ -8,15 +8,11 @@ package com.rieno.gadgetsandgizmos.lib.graph;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.PriorityQueue;
-import java.util.Queue;
+import java.util.*;
 import java.util.function.Predicate;
 
 // Queue immediate and delayed graph events while keeping both queues safely bounded
-public final class GraphEventScheduler<E> {
+public final class GraphEventScheduler<E extends GraphEventScheduler.Event> {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -34,7 +30,7 @@ public final class GraphEventScheduler<E> {
     // Tracked immediate
     private final Queue<E> immediate = new ArrayDeque<>();
     // Tracked scheduled
-    private final Queue<Scheduled<E>> scheduled = new PriorityQueue<>((a, b) -> Long.compare(a.tick(), b.tick()));
+    private final Queue<Scheduled<E>> scheduled = new PriorityQueue<>(Comparator.comparingLong(Scheduled::tick));
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -126,6 +122,9 @@ public final class GraphEventScheduler<E> {
     public void removeScheduledIf(Predicate<E> predicate) {
         scheduled.removeIf(entry -> predicate.test(entry.event()));
     }
+    public void removeScheduledIf(String id) {
+        scheduled.removeIf(entry -> entry.event().id().equals(id));
+    }
 
     // Get the immediate snapshot
     public List<E> immediateSnapshot() {
@@ -143,7 +142,11 @@ public final class GraphEventScheduler<E> {
         scheduled.clear();
     }
 
+    public interface Event {
+        String id();
+    }
+
     // Store the scheduled
-    public record Scheduled<E>(long tick, E event) {
+    public record Scheduled<E extends Event>(long tick, E event) {
     }
 }

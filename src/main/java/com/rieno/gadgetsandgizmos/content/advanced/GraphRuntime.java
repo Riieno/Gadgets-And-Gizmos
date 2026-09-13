@@ -1576,7 +1576,7 @@ public final class GraphRuntime extends AbstractGraphRuntime {
             }
             // ------------------------------------TIMING------------------------------------
             case "timer" -> {
-                eventScheduler.removeScheduledIf(evt -> evt.id().equals("timer:" + node.id()));
+                eventScheduler.removeScheduledIf("timer:" + node.id());
                 if ("stop".equals(incomingPort)) {
                     state.put(node.id() + ":elapsed", AdvancedGraphDocument.Value.number(timerElapsed(node)));
                     state.put(node.id() + ":running", AdvancedGraphDocument.Value.bool(false));
@@ -1635,7 +1635,7 @@ public final class GraphRuntime extends AbstractGraphRuntime {
                     throw new IllegalStateException("Graph exceeded the 1024 scheduled event limit");
                 }
                 if ("debounce".equals(node.type())) {
-                    eventScheduler.removeScheduledIf(evt -> evt.id().equals("delayed:" + node.id()));
+                    eventScheduler.removeScheduledIf("delayed:" + node.id());
                 }
                 eventScheduler.schedule(gameTime() + ticks,
                         new RuntimeEvent("delayed:" + node.id(),
@@ -2765,7 +2765,7 @@ public final class GraphRuntime extends AbstractGraphRuntime {
         if (eventScheduler.scheduledSize() >= MAX_SCHEDULED_EVENTS) {
             throw new IllegalStateException("Graph exceeded the 1024 scheduled event limit");
         }
-        eventScheduler.removeScheduledIf(evt -> evt.id().equals(prefix + nodeId));
+        eventScheduler.removeScheduledIf(prefix + nodeId);
         eventScheduler.schedule(gameTime() + Math.max(1, ticks),
                 new RuntimeEvent(prefix + nodeId, AdvancedGraphDocument.Value.number(0), null));
     }
@@ -4313,7 +4313,7 @@ public final class GraphRuntime extends AbstractGraphRuntime {
 
     // Store the runtime event
     private record RuntimeEvent(String id, AdvancedGraphDocument.Value data,
-                                @Nullable UUID triggeringPlayerId) {
+                                @Nullable UUID triggeringPlayerId) implements GraphEventScheduler.Event {
     }
 
     // Create the default portable tracking value
