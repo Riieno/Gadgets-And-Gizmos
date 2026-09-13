@@ -291,7 +291,7 @@ public final class CTBlocks {
     // Register the CT blocks
     @Nullable
     private static <T extends net.minecraft.world.level.block.Block> DeferredBlock<T> register(String id, Supplier<T> supplier) {
-        return CTFeatureToggles.shouldRegisterBlock(id) ? REGISTRAR.register(id, supplier) : null;
+        return REGISTRAR.register(id, supplier);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------

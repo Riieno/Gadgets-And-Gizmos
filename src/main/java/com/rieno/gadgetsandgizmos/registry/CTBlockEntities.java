@@ -262,14 +262,6 @@ public final class CTBlockEntities {
     @Nullable
     private static <T extends net.minecraft.world.level.block.entity.BlockEntity> DeferredHolder<BlockEntityType<?>, BlockEntityType<T>> register(
             String id, Supplier<BlockEntityType<T>> supplier, String... additionalBlockIds) {
-        if (!CTFeatureToggles.shouldRegisterBlock(id)) {
-            return null;
-        }
-        for (String additionalBlockId : additionalBlockIds) {
-            if (!CTFeatureToggles.shouldRegisterBlock(additionalBlockId)) {
-                return null;
-            }
-        }
         return REGISTRAR.register(id, supplier);
     }
 

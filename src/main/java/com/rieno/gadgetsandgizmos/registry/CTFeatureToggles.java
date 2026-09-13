@@ -393,24 +393,6 @@ public final class CTFeatureToggles {
         dedicatedServerRegistrationPrepared = true;
     }
 
-    // Check if this should register block
-    public static boolean shouldRegisterBlock(String id) {
-        if (!FMLEnvironment.dist.isDedicatedServer()) {
-            return true;
-        }
-        prepareDedicatedServerRegistration();
-        return isBlockEnabled(id);
-    }
-
-    // Check if this should register item
-    public static boolean shouldRegisterItem(String id) {
-        if (!FMLEnvironment.dist.isDedicatedServer()) {
-            return true;
-        }
-        prepareDedicatedServerRegistration();
-        return isItemEnabled(id);
-    }
-
     // Apply the server overrides
     public static void applyServerOverrides(Map<String, Boolean> blockValues,
                                             Map<String, Boolean> itemValues,

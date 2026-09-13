@@ -300,7 +300,7 @@ public final class CTItems {
     // Register the CT items
     @Nullable
     private static <T extends Item> DeferredItem<T> register(String id, Supplier<T> supplier) {
-        return CTFeatureToggles.shouldRegisterItem(id) ? REGISTRAR.register(id, supplier) : null;
+        return REGISTRAR.register(id, supplier);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
