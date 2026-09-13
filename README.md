@@ -85,12 +85,23 @@ Join the [Discord](https://discord.gg/zhvuEMEpZR)!
 ## Ship Control Module
 The `Ship Control Module` is a new multiblock that requires an `Advanced Contraption Controller` to be placed directly on top of it.
 It enables create train style automation using the `Shipping Schedule` and `Ship Docks`, it does it's own live path finding and sub-level/world collision avoidance.
-Currently it only supports ships that are steared and propelled by `Thrusters` added by this mod, `Create Propulsion Simulated` thrusters do work to a degree but not fully.
+Currently it only supports ships that are steered and propelled by `Thrusters` added by this mod, `Create Propulsion Simulated` thrusters do work to a degree but not fully.
 > Known issues with the `Ship Control Module`:
 - Doesn't work correctly with planes, boats, ground vehicles or sail like blocks on bearings.
 - Most features are only fully supported with the thrusters added by G&G, other propulsion mod support is being worked on.
 
-`Gadgets and Gizmos` update 1.2.1 is already being worked on and was being worked on side-by-side with the 1.2.0 release, 1.2.1 will bring better usablility to the `Ship Control Module` including a full GUI and better ground vehicle, plane, and boat support.
+`Gadgets and Gizmos` update 1.3.0 is already being worked on and was being worked on side-by-side with the 1.2.0 release, 1.3.0 will bring better usability to the `Ship Control Module` including a full GUI and better ground vehicle, plane, and boat support.
+
+## Versioning Guide
+
+|               |                         |                      |
+| ------------- |------------------------ |--------------------- |
+| Version Number |Version Type |Purpose |
+|  | | |
+| x.0.0 |Major Version           |Reserved for codebase rewrites and major breaking changes.       |
+| 1.x.0 |Minor Version |New features, blocks, and mechanics. |
+| 1.0.x          |Patch Version          |Reserved for bug fixes, patches, and hotfixes.       |
+|               |                         |                      |               |
 
 ---
 
@@ -115,3 +126,7 @@ Currently it only supports ships that are steared and propelled by `Thrusters` a
 ## Pack Authors
 
 Inclusion of `Gadgets & Gizmos` the `Gadgets & Gizmos Library` or any other mods by me are allowed to be included in mod packs without limitation, this is perpetual permission.
+
+## Developers
+
+People looking to expand `Gadgets and Gizmos` or build against it should build against `Main` or `InDev`, Use `main` if you want to be compatible with the current stable release, and `InDev` if you want to be ahead of the curve and build against new features being added in the next release. Experimental branches should not be pulled or built against.
