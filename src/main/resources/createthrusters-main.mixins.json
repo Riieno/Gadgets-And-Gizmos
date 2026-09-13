@@ -120,7 +120,8 @@
     "PortableContraptionControllerHeldItemLayerMixin",
     "PortableContraptionControllerPlayerPoseMixin",
     "DockingConnectorModelDataMixin",
-    "DockingConnectorRendererMixin"
+    "DockingConnectorRendererMixin",
+    "PhysicsStaffAnchorPlacementMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -2812,26 +2812,20 @@ public final class GraphRuntime {
         }
 
         activePorts.addAll(setDataForceWritePorts(node));
-        return expandGroupedDataPorts(node, activePorts);
+        return retainGroupedDataPorts(node, activePorts);
     }
 
-    // Expand one generated MAP write into its retained data ports
-    private static Set<String> expandGroupedDataPorts(AdvancedGraphDocument.Node node,
+    // Retain generated MAP writes until their present keys can be expanded safely
+    private static Set<String> retainGroupedDataPorts(AdvancedGraphDocument.Node node,
                                                       Set<String> requestedPorts) {
-        Set<String> expanded = new LinkedHashSet<>();
+        Set<String> retained = new LinkedHashSet<>();
         if (requestedPorts == null || requestedPorts.isEmpty()) {
-            return expanded;
+            return retained;
         }
         for (String requestedPort : requestedPorts) {
-            String port = inlineMapInputSource(node, requestedPort);
-            CompoundTag fields = AdvancedContraptionControllerBlockEntity.dataPortGroup(node, port);
-            if (fields.isEmpty()) {
-                expanded.add(port);
-            } else {
-                expanded.addAll(fields.getAllKeys());
-            }
+            retained.add(inlineMapInputSource(node, requestedPort));
         }
-        return expanded;
+        return retained;
     }
 
     // Get the parent MAP input for one exposed inline field

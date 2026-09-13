@@ -149,7 +149,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private static final int GRAPH_OBSERVER_EDGE_BUDGET = 32;
     private static final int GRAPH_RUNTIME_SEND_INTERVAL = 5;
     private static final int ACC_DISPLAY_UPDATE_INTERVAL = 2;
+    private static final int GRAPH_DATA_SCHEMA_REFRESH_INTERVAL = 4;
     private static final long CLIENT_PROFILER_SAMPLE_TIMEOUT_TICKS = 40L;
+    private static final String GRAPH_DATA_SCHEMA_REVISION_TAG = "GraphDataSchemaRevision";
     private static final String GRAPH_VERSIONS_TAG = "AdvancedGraphVersions";
     private static final String GOGGLES_TRACKER_PAIRS_TAG = "GogglesTrackerPairs";
     private static final String SHIP_CONTROL_MAP_ID_TAG = "ShipControlMapId";
@@ -516,6 +518,12 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             return;
         }
         super.tick();
+        Level currentLevel = getLevel();
+        if (currentLevel != null && !currentLevel.isClientSide
+                && Math.floorMod(currentLevel.getGameTime() + getBlockPos().asLong(),
+                GRAPH_DATA_SCHEMA_REFRESH_INTERVAL) == 0L) {
+            refreshChangedGraphDataSchemas();
+        }
         shipControlRuntime.tick();
         syncShipInit();
         shippingScheduleRuntime.tick();
@@ -3540,6 +3548,24 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             if (!isSafeGraphWriteValue(val)) {
                 return false;
             }
+            CompoundTag groupedFields = dataPortGroup(node, port);
+            if (!groupedFields.isEmpty()) {
+                if (!"map".equals(val.type())) {
+                    return false;
+                }
+                for (String field : groupedFields.getAllKeys()) {
+                    if (!val.payload().contains(field, Tag.TAG_COMPOUND)) continue;
+                    CompoundTag encodedValue = val.payload().getCompound(field);
+                    AdvancedGraphDocument.Value groupedValue = new AdvancedGraphDocument.Value(
+                            encodedValue.getString("Type"), encodedValue.getCompound("Payload"));
+                    if (!isSafeGraphWriteValue(groupedValue)) {
+                        return false;
+                    }
+                    safePorts.add(field);
+                    safeValues.put(field, groupedValue);
+                }
+                continue;
+            }
             safePorts.add(port);
             safeValues.put(port, val);
         }
@@ -3620,12 +3646,13 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         Map<String, String> registeredWritableData =
                 BlockEntityDataAdapterRegistry.writableData(blockEntity);
+        Map<String, GraphValue> registeredWrites = new LinkedHashMap<>();
         for (String port : activePorts) {
             if (registeredWritableData.containsKey(port)) {
-                changed |= BlockEntityDataAdapterRegistry.write(
-                        blockEntity, port, GraphRuntime.toLibraryValue(values.apply(port)));
+                registeredWrites.put(port, GraphRuntime.toLibraryValue(values.apply(port)));
             }
         }
+        changed |= BlockEntityDataAdapterRegistry.writeAll(blockEntity, registeredWrites);
         for (String port : activePorts) {
             if (ExternalBlockEntityDirectControlCompat.writableData(blockEntity).containsKey(port)) {
                 changed |= ExternalBlockEntityDirectControlCompat.writeData(blockEntity, port, values.apply(port));
@@ -3766,6 +3793,34 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return List.of();
     }
 
+    // Refresh graph data schemas whose target provider changed
+    private void refreshChangedGraphDataSchemas() {
+        boolean activeChanged = graphDataSchemaChanged(activeGraph);
+        boolean draftChanged = graphDataSchemaChanged(draftGraph);
+        if (!activeChanged && !draftChanged) return;
+        if (activeChanged) refreshDataPorts(activeGraph);
+        if (draftChanged) refreshDataPorts(draftGraph);
+        setChanged();
+        sendData();
+    }
+
+    // Check whether one graph has a changed target data schema
+    private boolean graphDataSchemaChanged(AdvancedGraphDocument graph) {
+        for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)) {
+            if (!"get_block_data".equals(node.type()) && !"set_block_data".equals(node.type())) continue;
+            TargetAccess target = resolveGraphTarget(node);
+            if (target == null) continue;
+            BlockEntity blockEntity = target.level().getBlockEntity(target.pos());
+            if (!BlockEntityDataAdapterRegistry.isDataSchemaReady(blockEntity)) continue;
+            long revision = BlockEntityDataAdapterRegistry.dataSchemaRevision(blockEntity);
+            if (!node.data().contains(GRAPH_DATA_SCHEMA_REVISION_TAG, Tag.TAG_LONG)
+                    || node.data().getLong(GRAPH_DATA_SCHEMA_REVISION_TAG) != revision) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Refresh the data ports
     private void refreshDataPorts(AdvancedGraphDocument graph) {
         for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)) {
@@ -3794,6 +3849,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             TargetAccess target = resolveGraphTarget(node);
             if (target == null) continue;
             BlockEntity blockEntity = target.level().getBlockEntity(target.pos());
+            if ((getData || setData) && !BlockEntityDataAdapterRegistry.isDataSchemaReady(blockEntity)) {
+                continue;
+            }
             String aeroworksSection = getData || setData
                     ? configureAeroworksGraphSection(node, blockEntity)
                     : null;
@@ -3801,7 +3859,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                     ? graphDataPorts(target.level(), target.pos(), writable, aeroworksSection)
                     : graphDirectAxisPorts(blockEntity, writable);
             if (getData || setData) {
-                ports = configureDataPortGroups(node, ports);
+                ports = configureDataPortGroups(node, ports, blockEntity, writable);
             } else {
                 clearDataPortGroups(node);
             }
@@ -3813,6 +3871,13 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             node.data().put(writable ? "DynamicInputs" : "DynamicOutputs", ports);
             node.data().put(writable ? "InputOptions" : "OutputOptions",
                     graphDataPortOptions(target.level(), target.pos(), writable));
+            if (writable) {
+                restoreInlineMapInputOptions(node);
+            }
+            if (getData || setData) {
+                node.data().putLong(GRAPH_DATA_SCHEMA_REVISION_TAG,
+                        BlockEntityDataAdapterRegistry.dataSchemaRevision(blockEntity));
+            }
             if (!labels.isEmpty()) {
                 node.data().put("OutputLabels", labels);
             }
@@ -3830,8 +3895,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     }
 
     // Keep valid inline MAP breakout ports when a target refresh replaces its derived port schema.
-    private static void restoreInlineMapPorts(AdvancedGraphDocument.Node node, CompoundTag ports,
-                                              boolean output) {
+    public static void restoreInlineMapPorts(AdvancedGraphDocument.Node node, CompoundTag ports,
+                                             boolean output) {
         if (node == null || ports == null) {
             return;
         }
@@ -3867,6 +3932,28 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         } else {
             node.data().put(mappingsKey, retainedMappings);
         }
+    }
+
+    // Restore selectable values for retained inline MAP input ports
+    public static void restoreInlineMapInputOptions(AdvancedGraphDocument.Node node) {
+        if (node == null) return;
+        CompoundTag mappings = node.data().getCompound(AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG);
+        if (mappings.isEmpty()) return;
+        CompoundTag options = node.data().getCompound("InputOptions").copy();
+        for (String inlinePort : mappings.getAllKeys()) {
+            CompoundTag mapping = mappings.getCompound(inlinePort);
+            String source = mapping.getString(AdvancedGraphCatalog.INLINE_MAP_SOURCE_TAG);
+            String key = mapping.getString(AdvancedGraphCatalog.INLINE_MAP_KEY_TAG);
+            if (source.isBlank() || key.isBlank()
+                    || !dataPortGroup(node, source).contains(key)
+                    || !options.contains(key, Tag.TAG_LIST)) {
+                options.remove(inlinePort);
+                continue;
+            }
+            options.put(inlinePort, options.get(key).copy());
+        }
+        if (options.isEmpty()) node.data().remove("InputOptions");
+        else node.data().put("InputOptions", options);
     }
 
     // Configure the aeroworks graph section
@@ -4240,6 +4327,21 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Add generated MAP ports while retaining the underlying data-port schema
     public static CompoundTag configureDataPortGroups(AdvancedGraphDocument.Node node, CompoundTag ports) {
+        return configureDataPortGroups(node, ports, Map.of());
+    }
+
+    // Add generated MAP ports and provider-defined groups
+    public static CompoundTag configureDataPortGroups(AdvancedGraphDocument.Node node, CompoundTag ports,
+                                                      BlockEntity blockEntity, boolean writable) {
+        Map<String, Map<String, String>> groups = writable
+                ? BlockEntityDataAdapterRegistry.writableDataPortGroups(blockEntity)
+                : BlockEntityDataAdapterRegistry.readableDataPortGroups(blockEntity);
+        return configureDataPortGroups(node, ports, groups);
+    }
+
+    // Add generated MAP ports and the supplied explicit groups
+    public static CompoundTag configureDataPortGroups(AdvancedGraphDocument.Node node, CompoundTag ports,
+                                                      Map<String, Map<String, String>> explicitGroups) {
         CompoundTag resolved = ports == null ? new CompoundTag() : ports.copy();
         if (node == null || (!"get_block_data".equals(node.type())
                 && !"set_block_data".equals(node.type()))) {
@@ -4249,7 +4351,29 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
         Map<String, String> rawPorts = new LinkedHashMap<>();
         resolved.getAllKeys().forEach(port -> rawPorts.put(port, resolved.getString(port)));
-        Map<String, Map<String, String>> groups = BlockEntityDataPortGroups.group(rawPorts);
+        Map<String, Map<String, String>> groups = new LinkedHashMap<>();
+        Set<String> explicitlyGroupedPorts = new HashSet<>();
+        if (explicitGroups != null) {
+            explicitGroups.forEach((group, entries) -> {
+                if (group == null || group.isBlank() || entries == null || entries.isEmpty()) return;
+                Map<String, String> fields = new LinkedHashMap<>();
+                entries.forEach((port, type) -> {
+                    if (rawPorts.containsKey(port) && explicitlyGroupedPorts.add(port)) {
+                        fields.put(port, rawPorts.get(port));
+                    }
+                });
+                if (!fields.isEmpty()) {
+                    groups.put(group, fields);
+                }
+            });
+        }
+        Map<String, Map<String, String>> inferredGroups = BlockEntityDataPortGroups.group(rawPorts);
+        inferredGroups.forEach((group, entries) -> {
+            boolean overlapsExplicitGroup = entries.keySet().stream().anyMatch(explicitlyGroupedPorts::contains);
+            if (!overlapsExplicitGroup) {
+                groups.putIfAbsent(group, entries);
+            }
+        });
         if (groups.isEmpty()) {
             clearDataPortGroups(node);
             return resolved;

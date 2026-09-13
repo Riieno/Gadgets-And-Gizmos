@@ -131,6 +131,7 @@ public final class CTFeatureToggles {
         define(blocks, "physics_gantry_carriage", true);
         define(blocks, "physics_gantry_shaft", true);
         define(blocks, "physics_gantry_belt_wheel", true);
+        define(blocks, "physics_staff_anchor", true);
         BLOCK_DEFAULTS = immutableCopy(blocks);
 
         LinkedHashMap<String, Boolean> items = new LinkedHashMap<>();

@@ -7181,7 +7181,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Expose the current keys of a MAP output as direct ports on the same node.
     private void inlineBreakoutMapOutput(AdvancedGraphDocument.Node node, String sourcePort) {
-        CompoundTag entries = GraphRuntime.splitListOutputsFor(currentPortValue(node, sourcePort, true));
+        CompoundTag entries = mapBreakoutEntries(node, sourcePort, true);
         if (entries.isEmpty()) {
             showGraphToast("MAP has no readable entries to break out", GraphActionToastSeverity.WARNING);
             return;
@@ -7206,7 +7206,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Expose the current keys of a MAP input as editable direct inputs on the same node.
     private void inlineBreakoutMapInput(AdvancedGraphDocument.Node node, String sourcePort) {
-        CompoundTag entries = GraphRuntime.splitListOutputsFor(currentPortValue(node, sourcePort, false));
+        CompoundTag entries = mapBreakoutEntries(node, sourcePort, false);
         if (entries.isEmpty()) {
             showGraphToast("MAP has no readable entries to break out", GraphActionToastSeverity.WARNING);
             return;
@@ -7214,6 +7214,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         checkpoint();
         CompoundTag mappings = node.data().getCompound(AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG).copy();
         CompoundTag dynamicInputs = node.data().getCompound("DynamicInputs").copy();
+        CompoundTag inputOptions = node.data().getCompound("InputOptions").copy();
         for (String key : entries.getAllKeys()) {
             String inlinePort = inlineMapPortName(node, sourcePort, key, false, mappings);
             CompoundTag mapping = new CompoundTag();
@@ -7221,14 +7222,26 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             mapping.putString(AdvancedGraphCatalog.INLINE_MAP_KEY_TAG, key);
             mappings.put(inlinePort, mapping);
             dynamicInputs.putString(inlinePort, entries.getString(key));
+            if (inputOptions.contains(key, Tag.TAG_LIST)) {
+                inputOptions.put(inlinePort, inputOptions.get(key).copy());
+            }
             putInputDefault(node, inlinePort, entries.getString(key),
                     GraphRuntime.structuredValue(currentPortValue(node, sourcePort, false), key));
         }
         node.data().put(AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG, mappings);
         node.data().put("DynamicInputs", dynamicInputs);
+        if (inputOptions.isEmpty()) node.data().remove("InputOptions");
+        else node.data().put("InputOptions", inputOptions);
         clearGraphRenderCache();
         syncInspector();
         showGraphToast("MAP fields added to node inputs", GraphActionToastSeverity.SUCCESS);
+    }
+
+    // Get typed MAP breakout entries from a generated data-port schema or the current MAP value
+    private CompoundTag mapBreakoutEntries(AdvancedGraphDocument.Node node, String sourcePort, boolean output) {
+        CompoundTag schema = AdvancedContraptionControllerBlockEntity.dataPortGroup(node, sourcePort);
+        return schema.isEmpty() ? GraphRuntime.splitListOutputsFor(
+                currentPortValue(node, sourcePort, output)) : schema;
     }
 
     // Collapse an unwired MAP breakout back into its parent port
@@ -10497,6 +10510,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return;
         }
         blockEntity = targetLevel.getBlockEntity(targetPos);
+        if ((getData || setData) && !com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataAdapterRegistry
+                .isDataSchemaReady(blockEntity)) {
+            return;
+        }
         String aeroworksSection = getData || setData
                 ? AdvancedContraptionControllerBlockEntity.configureAeroworksGraphSection(node, blockEntity)
                 : null;
@@ -10505,10 +10522,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                         targetLevel, targetPos, writable, aeroworksSection)
                 : AdvancedContraptionControllerBlockEntity.graphDirectAxisPorts(blockEntity, writable);
         if (getData || setData) {
-            ports = AdvancedContraptionControllerBlockEntity.configureDataPortGroups(node, ports);
+            ports = AdvancedContraptionControllerBlockEntity.configureDataPortGroups(node, ports, blockEntity, writable);
         } else {
             AdvancedContraptionControllerBlockEntity.clearDataPortGroups(node);
         }
+        AdvancedContraptionControllerBlockEntity.restoreInlineMapPorts(node, ports, !writable);
         CompoundTag options = AdvancedContraptionControllerBlockEntity.graphDataPortOptions(
                 targetLevel, targetPos, writable);
         CompoundTag labels = getData && !writable
@@ -10521,6 +10539,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         node.data().remove("OutputLabels");
         node.data().put(writable ? "DynamicInputs" : "DynamicOutputs", ports);
         node.data().put(writable ? "InputOptions" : "OutputOptions", options);
+        if (writable) {
+            AdvancedContraptionControllerBlockEntity.restoreInlineMapInputOptions(node);
+        }
         if (!labels.isEmpty()) {
             node.data().put("OutputLabels", labels);
         }

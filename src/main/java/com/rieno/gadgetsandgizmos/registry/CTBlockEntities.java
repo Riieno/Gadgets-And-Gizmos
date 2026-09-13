@@ -33,6 +33,7 @@ import com.rieno.gadgetsandgizmos.content.LauncherEndpointBlockEntity;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryCarriageBlockEntity;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryBeltWheelBlockEntity;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryShaftBlockEntity;
+import com.rieno.gadgetsandgizmos.content.PhysicsStaffAnchorBlockEntity;
 import com.rieno.gadgetsandgizmos.content.PoweredZiplineBlockEntity;
 import com.rieno.gadgetsandgizmos.content.RopeKnotBlockEntity;
 import com.rieno.gadgetsandgizmos.content.RcsThrusterBlockEntity;
@@ -244,6 +245,10 @@ public final class CTBlockEntities {
     @Nullable
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<PhysicsGantryBeltWheelBlockEntity>> PHYSICS_GANTRY_BELT_WHEEL = register("physics_gantry_belt_wheel",
             () -> BlockEntityType.Builder.of(PhysicsGantryBeltWheelBlockEntity::new, CTBlocks.PHYSICS_GANTRY_BELT_WHEEL.get()).build(null));
+
+    @Nullable
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<PhysicsStaffAnchorBlockEntity>> PHYSICS_STAFF_ANCHOR = register("physics_staff_anchor",
+            () -> BlockEntityType.Builder.of(PhysicsStaffAnchorBlockEntity::new, CTBlocks.PHYSICS_STAFF_ANCHOR.get()).build(null));
 
     /*--------------------------------------------------------##---------------------------------------------------------
 

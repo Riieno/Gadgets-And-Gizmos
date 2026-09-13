@@ -36,6 +36,7 @@ import com.rieno.gadgetsandgizmos.content.LauncherEndpointBlock;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryCarriageBlock;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryBeltWheelBlock;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryShaftBlock;
+import com.rieno.gadgetsandgizmos.content.PhysicsStaffAnchorBlock;
 import com.rieno.gadgetsandgizmos.content.PoweredZiplineBlock;
 import com.rieno.gadgetsandgizmos.content.RopeKnotBlock;
 import com.rieno.gadgetsandgizmos.content.RcsThrusterBlock;
@@ -274,6 +275,10 @@ public final class CTBlocks {
     @Nullable
     public static final DeferredBlock<PhysicsGantryBeltWheelBlock> PHYSICS_GANTRY_BELT_WHEEL = register("physics_gantry_belt_wheel",
             () -> new PhysicsGantryBeltWheelBlock(BlockBehaviour.Properties.of().mapColor(MapColor.COLOR_GRAY).strength(3.0f).requiresCorrectToolForDrops().noOcclusion()));
+
+    @Nullable
+    public static final DeferredBlock<PhysicsStaffAnchorBlock> PHYSICS_STAFF_ANCHOR = register("physics_staff_anchor",
+            () -> new PhysicsStaffAnchorBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(1.0f).noOcclusion().pushReaction(PushReaction.BLOCK)));
 
     /*--------------------------------------------------------##---------------------------------------------------------
 

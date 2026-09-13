@@ -122,6 +122,12 @@ public class PortableAnalogueContraptionControllerMenu extends AnalogueContrapti
         saveToStack();
     }
 
+    // Keep goggles in the portable controller's serialized menu data
+    @Override
+    protected boolean shouldPersistGogglesContainerOnClose() {
+        return true;
+    }
+
     // Handle screen removal
     @Override
     public void removed(Player player) {

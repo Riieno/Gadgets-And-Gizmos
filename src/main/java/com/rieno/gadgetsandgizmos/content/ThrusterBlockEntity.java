@@ -17,7 +17,9 @@ import com.rieno.gadgetsandgizmos.particle.worldspace.WorldSpaceParticleEmitter;
 import com.rieno.gadgetsandgizmos.lib.physics.SubLevelParticleOcclusion;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDataProvider;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
+import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
 import com.rieno.gadgetsandgizmos.lib.physics.SablePointImpulseApi;
 import com.rieno.gadgetsandgizmos.particle.ColoredCloudParticleOptions;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
@@ -187,10 +189,20 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
     @Deprecated public static final int SLOT_MODIFIER = SLOT_LENS;
     private static final double DEFAULT_MAX_THRUST = 960.0;
     private static final double DEFAULT_BEAM_THRUST_MULTIPLIER = 1.5D;
-    private static final Map<String, String> GRAPH_CONTROL_DATA = Map.of(
-            "throttle", "number",
-            "plume_color_ratio", "number",
-            "beam_max_opacity", "number");
+    private static final Map<String, String> GRAPH_CONTROL_DATA = createGraphControlData();
+
+    // Create the graph-controllable thruster configuration schema
+    private static Map<String, String> createGraphControlData() {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("throttle", "number");
+        fields.put("min_throttle", "number");
+        fields.put("max_throttle", "number");
+        fields.put("beam_max_opacity", "number");
+        fields.put("plume_color_ratio", "number");
+        fields.put("enabled", "boolean");
+        fields.put("control_mode", "string");
+        return Collections.unmodifiableMap(fields);
+    }
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -1038,10 +1050,20 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         return GRAPH_CONTROL_DATA;
     }
 
+    // Get the graph writable options
+    @Override
+    public Map<String, List<String>> graphWritableOptions() {
+        return Map.of("control_mode", List.of("auto", "redstone", "computer"));
+    }
+
     // Read the graph data
     @Override
     public AdvancedGraphDocument.Value readGraphData(String field) {
         return switch (field) {
+            case "enabled" -> AdvancedGraphDocument.Value.bool(isEnabled());
+            case "min_throttle" -> AdvancedGraphDocument.Value.number(getMinThrottle());
+            case "max_throttle" -> AdvancedGraphDocument.Value.number(getMaxThrottle());
+            case "control_mode" -> AdvancedGraphDocument.Value.string(getControlMode().name().toLowerCase());
             case "throttle" -> AdvancedGraphDocument.Value.number(getThrottle());
             case "plume_color_ratio" -> AdvancedGraphDocument.Value.number(getPlumeColorRatio());
             case "beam_max_opacity" -> AdvancedGraphDocument.Value.number(getBeamMaxOpacity());
@@ -1052,23 +1074,95 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
     // Write the graph data
     @Override
     public boolean writeGraphData(String field, AdvancedGraphDocument.Value value) {
-        if (!GRAPH_CONTROL_DATA.containsKey(field) || value == null) {
+        if (field == null || value == null || !GRAPH_CONTROL_DATA.containsKey(field)) {
             return false;
         }
-        double requested = value.asNumber();
-        if (!Double.isFinite(requested)) {
-            return false;
-        }
-        float normalized = (float) Mth.clamp(requested, 0.0D, 1.0D);
-        switch (field) {
-            case "throttle" -> setThrottle(normalized);
-            case "plume_color_ratio" -> setPlumeColorRatio(normalized);
-            case "beam_max_opacity" -> setBeamMaxOpacity(normalized);
-            default -> {
-                return false;
+        return writeGraphValues(Map.of(field, GraphRuntime.toLibraryValue(value)));
+    }
+
+    // Apply coordinated graph controls in one thruster configuration update
+    @Override
+    public boolean writeGraphValues(Map<String, GraphValue> values) {
+        if (values == null || values.isEmpty()) return false;
+        boolean enabled = isEnabled();
+        float minThrottle = getMinThrottle();
+        float maxThrottle = getMaxThrottle();
+        ControlMode mode = getControlMode();
+        float beamMaxOpacity = getBeamMaxOpacity();
+        float plumeColorRatio = getPlumeColorRatio();
+        boolean filterSound = isFilterSoundEnabled();
+        boolean filterParticles = isFilterParticlesEnabled();
+        boolean filterDamage = isFilterDamageEnabled();
+        boolean focusedRejectAirPressure = isFocusedAirPressureRejectionEnabled();
+        Float throttle = null;
+        boolean hasConfiguration = false;
+        for (Map.Entry<String, GraphValue> entry : values.entrySet()) {
+            String field = entry.getKey();
+            GraphValue graphValue = entry.getValue();
+            if (field == null || graphValue == null || !GRAPH_CONTROL_DATA.containsKey(field)) continue;
+            AdvancedGraphDocument.Value value = GraphRuntime.fromLibraryValue(graphValue);
+            switch (field) {
+                case "enabled" -> {
+                    enabled = value.asBoolean();
+                    hasConfiguration = true;
+                }
+                case "min_throttle" -> {
+                    float requested = graphThrottle(value);
+                    if (!Float.isNaN(requested)) {
+                        minThrottle = requested;
+                        hasConfiguration = true;
+                    }
+                }
+                case "max_throttle" -> {
+                    float requested = graphThrottle(value);
+                    if (!Float.isNaN(requested)) {
+                        maxThrottle = requested;
+                        hasConfiguration = true;
+                    }
+                }
+                case "control_mode" -> {
+                    try {
+                        mode = ControlMode.valueOf(value.asString().trim().toUpperCase());
+                        hasConfiguration = true;
+                    } catch (IllegalArgumentException ignored) {
+                    }
+                }
+                case "plume_color_ratio" -> {
+                    float requested = graphThrottle(value);
+                    if (!Float.isNaN(requested)) {
+                        plumeColorRatio = requested;
+                        hasConfiguration = true;
+                    }
+                }
+                case "beam_max_opacity" -> {
+                    float requested = graphThrottle(value);
+                    if (!Float.isNaN(requested)) {
+                        beamMaxOpacity = requested;
+                        hasConfiguration = true;
+                    }
+                }
+                case "throttle" -> {
+                    float requested = graphThrottle(value);
+                    if (!Float.isNaN(requested)) throttle = requested;
+                }
+                default -> {
+                }
             }
         }
-        return true;
+        if (hasConfiguration) {
+            applyConfiguration(enabled, minThrottle, maxThrottle, mode, beamMaxOpacity, plumeColorRatio,
+                    filterSound, filterParticles, filterDamage, focusedRejectAirPressure);
+        }
+        if (throttle != null) {
+            setThrottle(throttle);
+        }
+        return hasConfiguration || throttle != null;
+    }
+
+    // Read one normalized throttle value from a graph input
+    private static float graphThrottle(AdvancedGraphDocument.Value value) {
+        double requested = value.asNumber();
+        return Double.isFinite(requested) ? (float) Mth.clamp(requested, 0.0D, 1.0D) : Float.NaN;
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------

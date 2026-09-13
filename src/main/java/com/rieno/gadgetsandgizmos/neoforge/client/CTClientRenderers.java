@@ -116,6 +116,7 @@ public final class CTClientRenderers {
         if (CTBlockEntities.PHYSICS_GANTRY_SHAFT != null) evt.registerBlockEntityRenderer(CTBlockEntities.PHYSICS_GANTRY_SHAFT.get(), PhysicsGantryShaftRenderer::new);
         if (CTBlockEntities.PHYSICS_GANTRY_BELT_WHEEL != null) evt.registerBlockEntityRenderer(CTBlockEntities.PHYSICS_GANTRY_BELT_WHEEL.get(), PhysicsGantryBeltWheelRenderer::new);
         if (CTBlockEntities.RCS_THRUSTER != null) evt.registerBlockEntityRenderer(CTBlockEntities.RCS_THRUSTER.get(), RcsThrusterRenderer::new);
+        if (CTBlockEntities.PHYSICS_STAFF_ANCHOR != null) evt.registerBlockEntityRenderer(CTBlockEntities.PHYSICS_STAFF_ANCHOR.get(), PhysicsStaffAnchorRenderer::new);
         evt.registerBlockEntityRenderer(BlockEntityType.LECTERN, PortableLecternControllerRenderer::new);
 
         BuiltInRegistries.BLOCK_ENTITY_TYPE.getOptional(ResourceLocation.parse("simulated:swivel_bearing_link_block"))

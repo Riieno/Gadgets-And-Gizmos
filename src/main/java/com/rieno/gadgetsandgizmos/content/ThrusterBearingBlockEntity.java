@@ -14,6 +14,7 @@ import com.rieno.gadgetsandgizmos.config.CTConfigs;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDataProvider;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
 import com.rieno.gadgetsandgizmos.lib.control.IDirectControlReceiver;
 import com.rieno.gadgetsandgizmos.lib.control.LinkedOrientationSource;
 import com.rieno.gadgetsandgizmos.lib.control.OrientationMath;
@@ -138,6 +139,9 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
             "dev.ryanhcode.sable.api.physics.constraint.RotaryConstraintConfiguration",
             "dev.ryanhcode.sable.api.physics.constraint.rotary.RotaryConstraintConfiguration"
     };
+    private static final String ALL_THRUSTERS_GRAPH_PORT = "all_thrusters";
+    private static final List<String> THRUSTER_GRAPH_CONTROL_FIELDS =
+            List.copyOf(ThrusterBlockEntity.graphControlData().keySet());
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -3080,6 +3084,177 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
         }
     }
 
+    // Get the graph thrusters by alias
+    private Map<String, ThrusterGraphTarget> graphThrustersByAlias() {
+        Map<String, ThrusterGraphTarget> thrusters = new LinkedHashMap<>();
+        for (Map.Entry<String, ThrusterBlockEntity> entry : getAttachedThrustersById().entrySet()) {
+            ThrusterBlockEntity thruster = entry.getValue();
+            String alias = getThrusterAlias(thruster);
+            if (alias == null || alias.isBlank()) continue;
+            alias = alias.strip();
+            if (alias.isEmpty() || ALL_THRUSTERS_GRAPH_PORT.equals(alias)) continue;
+            thrusters.putIfAbsent(alias, new ThrusterGraphTarget(entry.getKey(), alias, thruster));
+        }
+        return thrusters;
+    }
+
+    // Add the attached thruster status MAP ports
+    private void addThrusterGraphReadablePorts(Map<String, String> fields) {
+        Map<String, ThrusterGraphTarget> thrusters = graphThrustersByAlias();
+        if (thrusters.isEmpty()) return;
+        fields.put(ALL_THRUSTERS_GRAPH_PORT, "map");
+        thrusters.keySet().forEach(alias -> fields.putIfAbsent(alias, "map"));
+    }
+
+    // Add the attached thruster control ports
+    private void addThrusterGraphWritablePorts(Map<String, String> fields) {
+        Map<String, ThrusterGraphTarget> thrusters = graphThrustersByAlias();
+        if (thrusters.isEmpty()) return;
+        Map<String, String> controls = ThrusterBlockEntity.graphControlData();
+        for (String control : THRUSTER_GRAPH_CONTROL_FIELDS) {
+            fields.put(allThrusterGraphControlPort(control), controls.get(control));
+        }
+        for (ThrusterGraphTarget target : thrusters.values()) {
+            for (String control : THRUSTER_GRAPH_CONTROL_FIELDS) {
+                fields.putIfAbsent(thrusterGraphControlPort(target.alias(), control), controls.get(control));
+            }
+        }
+    }
+
+    // Get the shared thruster control port
+    private static String allThrusterGraphControlPort(String control) {
+        return ALL_THRUSTERS_GRAPH_PORT + "_" + control;
+    }
+
+    // Get one aliased thruster control port
+    private static String thrusterGraphControlPort(String alias, String control) {
+        return alias + "_" + control;
+    }
+
+    // Get one thruster status MAP
+    private AdvancedGraphDocument.Value thrusterGraphStatus(ThrusterGraphTarget target) {
+        ThrusterBlockEntity thruster = target.thruster();
+        CompoundTag values = new CompoundTag();
+        putGraphValue(values, "id", AdvancedGraphDocument.Value.string(target.id()));
+        putGraphValue(values, "alias", AdvancedGraphDocument.Value.string(target.alias()));
+        putGraphValue(values, "enabled", AdvancedGraphDocument.Value.bool(thruster.isEnabled()));
+        putGraphValue(values, "minThrottle", AdvancedGraphDocument.Value.number(thruster.getMinThrottle()));
+        putGraphValue(values, "maxThrottle", AdvancedGraphDocument.Value.number(thruster.getMaxThrottle()));
+        putGraphValue(values, "throttle", AdvancedGraphDocument.Value.number(thruster.getThrottle()));
+        putGraphValue(values, "computerThrottle", AdvancedGraphDocument.Value.number(thruster.getComputerThrottle()));
+        putGraphValue(values, "controlMode", AdvancedGraphDocument.Value.string(
+                thruster.getControlMode().name().toLowerCase()));
+        putGraphValue(values, "plumeColorRatio", AdvancedGraphDocument.Value.number(thruster.getPlumeColorRatio()));
+        putGraphValue(values, "beamMaxOpacity", AdvancedGraphDocument.Value.number(thruster.getBeamMaxOpacity()));
+        putGraphValue(values, "filterSound", AdvancedGraphDocument.Value.bool(thruster.isFilterSoundEnabled()));
+        putGraphValue(values, "filterParticles", AdvancedGraphDocument.Value.bool(thruster.isFilterParticlesEnabled()));
+        putGraphValue(values, "filterDamage", AdvancedGraphDocument.Value.bool(thruster.isFilterDamageEnabled()));
+        putGraphValue(values, "focusedRejectAirPressure", AdvancedGraphDocument.Value.bool(
+                thruster.isFocusedAirPressureRejectionEnabled()));
+        putGraphValue(values, "fuel", AdvancedGraphDocument.Value.number(thruster.getFuelAmount()));
+        putGraphValue(values, "fuelCapacity", AdvancedGraphDocument.Value.number(thruster.getFuelCapacity()));
+        putGraphValue(values, "fuelType", AdvancedGraphDocument.Value.string(thruster.getFuelTypeId()));
+        putGraphValue(values, "burnTimeSeconds", AdvancedGraphDocument.Value.number(thruster.getEstimatedBurnSeconds()));
+        putGraphValue(values, "thrust", AdvancedGraphDocument.Value.number(thruster.getThrust()));
+        putGraphValue(values, "realThrust", AdvancedGraphDocument.Value.number(thruster.getRealThrust()));
+        putGraphValue(values, "liftCapacity", AdvancedGraphDocument.Value.number(thruster.getLiftCapacity()));
+        putGraphValue(values, "airflow", AdvancedGraphDocument.Value.number(thruster.getAirflow()));
+        putGraphValue(values, "active", AdvancedGraphDocument.Value.bool(thruster.isActive()));
+        putGraphValue(values, "soulMode", AdvancedGraphDocument.Value.bool(thruster.isSoulThruster()));
+        putGraphValue(values, "redstoneSignal", AdvancedGraphDocument.Value.number(thruster.getSignalStrength()));
+        return AdvancedGraphDocument.Value.map(values);
+    }
+
+    // Read one attached thruster MAP port
+    private AdvancedGraphDocument.Value readThrusterGraphData(String field) {
+        Map<String, ThrusterGraphTarget> thrusters = graphThrustersByAlias();
+        if (ALL_THRUSTERS_GRAPH_PORT.equals(field)) {
+            CompoundTag values = new CompoundTag();
+            thrusters.forEach((alias, target) -> putGraphValue(values, alias, thrusterGraphStatus(target)));
+            return AdvancedGraphDocument.Value.map(values);
+        }
+        ThrusterGraphTarget target = thrusters.get(field);
+        return target == null ? AdvancedGraphDocument.Value.number(0.0D) : thrusterGraphStatus(target);
+    }
+
+    // Write one attached thruster control port
+    private boolean writeThrusterGraphControl(String field, AdvancedGraphDocument.Value value) {
+        if (value == null) return false;
+        Map<String, ThrusterGraphTarget> thrusters = graphThrustersByAlias();
+        if (thrusters.isEmpty()) return false;
+        for (String control : THRUSTER_GRAPH_CONTROL_FIELDS) {
+            if (allThrusterGraphControlPort(control).equals(field)) {
+                return writeThrusterGraphControl(thrusters.values(), control, value);
+            }
+        }
+        for (ThrusterGraphTarget target : thrusters.values()) {
+            for (String control : THRUSTER_GRAPH_CONTROL_FIELDS) {
+                if (thrusterGraphControlPort(target.alias(), control).equals(field)) {
+                    return writeThrusterGraphControl(List.of(target), control, value);
+                }
+            }
+        }
+        return false;
+    }
+
+    // Apply one control to the supplied thrusters
+    private static boolean writeThrusterGraphControl(Iterable<ThrusterGraphTarget> targets, String control,
+                                                     AdvancedGraphDocument.Value value) {
+        boolean changed = false;
+        for (ThrusterGraphTarget target : targets) {
+            changed |= target.thruster().writeGraphData(control, value);
+        }
+        return changed;
+    }
+
+    // Check whether a port controls one attached thruster
+    private static boolean isThrusterGraphControlPort(String field,
+                                                       Map<String, ThrusterGraphTarget> thrusters) {
+        if (field == null || field.isBlank()) return false;
+        for (String control : THRUSTER_GRAPH_CONTROL_FIELDS) {
+            if (allThrusterGraphControlPort(control).equals(field)) return true;
+        }
+        for (ThrusterGraphTarget target : thrusters.values()) {
+            for (String control : THRUSTER_GRAPH_CONTROL_FIELDS) {
+                if (thrusterGraphControlPort(target.alias(), control).equals(field)) return true;
+            }
+        }
+        return false;
+    }
+
+    // Store one graph value in a MAP payload
+    private static void putGraphValue(CompoundTag values, String key, AdvancedGraphDocument.Value value) {
+        CompoundTag tag = new CompoundTag();
+        tag.putString("Type", value.type());
+        tag.put("Payload", value.payload().copy());
+        values.put(key, tag);
+    }
+
+    // Track one attached thruster for graph data
+    private record ThrusterGraphTarget(String id, String alias, ThrusterBlockEntity thruster) {
+    }
+
+    // Check whether the assembled sub-level is available for graph schema discovery
+    @Override
+    public boolean isGraphDataSchemaReady() {
+        if (!isAssembled()) return true;
+        BlockPos platePos = getPlatePos();
+        return level != null && platePos != null
+                && SubLevelBlockEntityCollector.isTargetLoaded(level, getSubLevelID(), platePos);
+    }
+
+    // Get the current attached-thruster schema revision
+    @Override
+    public long graphDataSchemaRevision() {
+        long revision = 1125899906842597L;
+        List<String> aliases = new ArrayList<>(graphThrustersByAlias().keySet());
+        aliases.sort(String::compareTo);
+        for (String alias : aliases) {
+            revision = 31L * revision + alias.hashCode();
+        }
+        return revision;
+    }
+
     // Get the graph readable data
     @Override
     public Map<String, String> graphReadableData() {
@@ -3090,6 +3265,7 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
         fields.put("max_angle", "number");
         fields.put("control_mode", "string");
         fields.put("angle_mode", "string");
+        addThrusterGraphReadablePorts(fields);
         return fields;
     }
 
@@ -3102,15 +3278,46 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
         fields.put("max_angle", "number");
         fields.put("control_mode", "string");
         fields.put("angle_mode", "string");
+        addThrusterGraphWritablePorts(fields);
         return fields;
     }
 
     // Get the graph writable options
     @Override
     public Map<String, List<String>> graphWritableOptions() {
-        return Map.of(
-                "control_mode", List.of("auto", "redstone", "computer", "servo"),
-                "angle_mode", List.of("range", "swivel"));
+        Map<String, List<String>> options = new LinkedHashMap<>();
+        options.put("control_mode", List.of("auto", "redstone", "computer", "servo"));
+        options.put("angle_mode", List.of("range", "swivel"));
+        Map<String, ThrusterGraphTarget> thrusters = graphThrustersByAlias();
+        if (thrusters.isEmpty()) return Collections.unmodifiableMap(options);
+        List<String> controlModes = List.of("auto", "redstone", "computer");
+        options.put(allThrusterGraphControlPort("control_mode"), controlModes);
+        for (ThrusterGraphTarget target : thrusters.values()) {
+            options.put(thrusterGraphControlPort(target.alias(), "control_mode"), controlModes);
+        }
+        return Collections.unmodifiableMap(options);
+    }
+
+    // Group shared and per-thruster controls into explicit MAP ports
+    @Override
+    public Map<String, Map<String, String>> graphWritableDataPortGroups() {
+        Map<String, ThrusterGraphTarget> thrusters = graphThrustersByAlias();
+        if (thrusters.isEmpty()) return Map.of();
+        Map<String, String> controls = ThrusterBlockEntity.graphControlData();
+        Map<String, Map<String, String>> groups = new LinkedHashMap<>();
+        Map<String, String> shared = new LinkedHashMap<>();
+        for (String control : THRUSTER_GRAPH_CONTROL_FIELDS) {
+            shared.put(allThrusterGraphControlPort(control), controls.get(control));
+        }
+        groups.put(ALL_THRUSTERS_GRAPH_PORT, Collections.unmodifiableMap(shared));
+        for (ThrusterGraphTarget target : thrusters.values()) {
+            Map<String, String> fields = new LinkedHashMap<>();
+            for (String control : THRUSTER_GRAPH_CONTROL_FIELDS) {
+                fields.put(thrusterGraphControlPort(target.alias(), control), controls.get(control));
+            }
+            groups.put(target.alias(), Collections.unmodifiableMap(fields));
+        }
+        return Collections.unmodifiableMap(groups);
     }
 
     // Read the graph data
@@ -3123,7 +3330,7 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
             case "max_angle" -> AdvancedGraphDocument.Value.number(getMaxAngleDegrees());
             case "control_mode" -> AdvancedGraphDocument.Value.string(getControlMode().name().toLowerCase());
             case "angle_mode" -> AdvancedGraphDocument.Value.string(getAngleMode().name().toLowerCase());
-            default -> AdvancedGraphDocument.Value.number(0);
+            default -> readThrusterGraphData(field);
         };
     }
 
@@ -3131,20 +3338,66 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
     @Override
     public boolean writeGraphData(String field, AdvancedGraphDocument.Value value) {
         try {
-            switch (field) {
-                case "pivot_angle" -> setPivotAngleDegrees(value.asNumber());
-                case "min_angle" -> setMinAngleDegrees(value.asNumber());
-                case "max_angle" -> setMaxAngleDegrees(value.asNumber());
-                case "control_mode" -> setControlMode(ControlMode.valueOf(value.asString().trim().toUpperCase()));
-                case "angle_mode" -> setAngleMode(AngleMode.valueOf(value.asString().trim().toUpperCase()));
-                default -> {
-                    return false;
+            return switch (field) {
+                case "pivot_angle" -> {
+                    setPivotAngleDegrees(value.asNumber());
+                    yield true;
                 }
-            }
-            return true;
+                case "min_angle" -> {
+                    setMinAngleDegrees(value.asNumber());
+                    yield true;
+                }
+                case "max_angle" -> {
+                    setMaxAngleDegrees(value.asNumber());
+                    yield true;
+                }
+                case "control_mode" -> {
+                    setControlMode(ControlMode.valueOf(value.asString().trim().toUpperCase()));
+                    yield true;
+                }
+                case "angle_mode" -> {
+                    setAngleMode(AngleMode.valueOf(value.asString().trim().toUpperCase()));
+                    yield true;
+                }
+                default -> writeThrusterGraphControl(field, value);
+            };
         } catch (IllegalArgumentException ignored) {
             return false;
         }
+    }
+
+    // Apply shared controls before individual control overrides
+    @Override
+    public boolean writeGraphValues(Map<String, GraphValue> values) {
+        if (values == null || values.isEmpty()) return false;
+        Map<String, ThrusterGraphTarget> thrusters = graphThrustersByAlias();
+        boolean changed = false;
+        for (Map.Entry<String, GraphValue> entry : values.entrySet()) {
+            if (!isThrusterGraphControlPort(entry.getKey(), thrusters)) {
+                changed |= AdvancedGraphDataProvider.super.writeGraphValue(entry.getKey(), entry.getValue());
+            }
+        }
+        Map<String, GraphValue> sharedValues = new LinkedHashMap<>();
+        for (String control : THRUSTER_GRAPH_CONTROL_FIELDS) {
+            GraphValue value = values.get(allThrusterGraphControlPort(control));
+            if (value != null) sharedValues.put(control, value);
+        }
+        if (!sharedValues.isEmpty()) {
+            for (ThrusterGraphTarget target : thrusters.values()) {
+                changed |= target.thruster().writeGraphValues(sharedValues);
+            }
+        }
+        for (ThrusterGraphTarget target : thrusters.values()) {
+            Map<String, GraphValue> overrides = new LinkedHashMap<>();
+            for (String control : THRUSTER_GRAPH_CONTROL_FIELDS) {
+                GraphValue value = values.get(thrusterGraphControlPort(target.alias(), control));
+                if (value != null) overrides.put(control, value);
+            }
+            if (!overrides.isEmpty()) {
+                changed |= target.thruster().writeGraphValues(overrides);
+            }
+        }
+        return changed;
     }
 
     // Define the control mode values

@@ -30,6 +30,7 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.world.Container;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.inventory.DataSlot;
 import net.minecraft.world.inventory.MenuType;
@@ -571,6 +572,34 @@ public class AnalogueContraptionControllerMenu extends GhostItemMenu<AnalogueCon
         contentHolder.setChannelInputFrequency(currentChannelId,
                 copySingle(ghostInventory.getStackInSlot(2)),
                 copySingle(ghostInventory.getStackInSlot(3)));
+    }
+
+    // Return transient goggles slots when this placed-controller menu closes
+    @Override
+    public void removed(Player player) {
+        if (!shouldPersistGogglesContainerOnClose()) {
+            returnGogglesToPlayer(player);
+        }
+        super.removed(player);
+    }
+
+    // Check if the menu owns the goggles container after it closes
+    protected boolean shouldPersistGogglesContainerOnClose() {
+        return false;
+    }
+
+    // Return goggles held by a placed-controller menu
+    private void returnGogglesToPlayer(Player player) {
+        if (player == null || player.level().isClientSide || gogglesContainer == null) {
+            return;
+        }
+        for (int slot = 0; slot < gogglesContainer.getContainerSize(); slot++) {
+            ItemStack stack = gogglesContainer.removeItemNoUpdate(slot);
+            if (!stack.isEmpty()) {
+                player.getInventory().placeItemBackInInventory(stack);
+            }
+        }
+        gogglesLinkProgress = 0;
     }
 
     // Check if repeated input is allowed
