@@ -4,7 +4,7 @@ import com.rieno.gadgetsandgizmos.graph.compile.CompilationContext;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.Inputs;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.JVMNodeType;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.Outputs;
-import com.rieno.gadgetsandgizmos.graph.compile.asm.ValueTypes;
+import com.rieno.gadgetsandgizmos.graph.type.ValueTypes;
 import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapNode;
 import com.rieno.gadgetsandgizmos.graph.compile.util.GeneratorHelper;
 import net.minecraft.nbt.CompoundTag;

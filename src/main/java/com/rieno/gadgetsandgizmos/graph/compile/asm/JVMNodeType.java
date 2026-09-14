@@ -7,6 +7,8 @@ import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapEdge;
 import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapNode;
 import com.rieno.gadgetsandgizmos.graph.compile.util.GeneratorHelper;
 import com.rieno.gadgetsandgizmos.graph.compile.util.UnboundStateField;
+import com.rieno.gadgetsandgizmos.graph.type.ValueType;
+import com.rieno.gadgetsandgizmos.graph.type.ValueTypes;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -21,13 +23,13 @@ import java.util.function.Consumer;
 
 public abstract class JVMNodeType {
     @Getter
-    public final Object2ObjectLinkedOpenHashMap<String, ValueType> declaredInputPort;
+    public final Object2ObjectLinkedOpenHashMap<String, ValueType<?>> declaredInputPort;
     @Getter
-    public final Object2ObjectLinkedOpenHashMap<String, ValueType> declaredOutputPort;
+    public final Object2ObjectLinkedOpenHashMap<String, ValueType<?>> declaredOutputPort;
 
     public final LazyNodeProperties lazyProps=new LazyNodeProperties(getClass());
 
-    public JVMNodeType(Map<String, ValueType> input, Map<String, ValueType> outputs) {
+    public JVMNodeType(Map<String, ValueType<?>> input, Map<String, ValueType<?>> outputs) {
         this.declaredInputPort = new Object2ObjectLinkedOpenHashMap<>(input);
         this.declaredOutputPort = new Object2ObjectLinkedOpenHashMap<>(outputs);
     }
@@ -36,21 +38,21 @@ public abstract class JVMNodeType {
         this(Map.of(), Map.of());
     }
 
-    public JVMNodeType input(String port, ValueType type) {
+    public JVMNodeType input(String port, ValueType<?> type) {
         declaredInputPort.put(port, type);
         return this;
     }
 
-    public JVMNodeType output(String port, ValueType type) {
+    public JVMNodeType output(String port, ValueType<?> type) {
         declaredOutputPort.put(port, type);
         return this;
     }
 
-    public Object2ObjectMap<String, ValueType> inputPorts(CompoundTag data, int nodeI) {
+    public Object2ObjectMap<String, ValueType<?>> inputPorts(CompoundTag data, int nodeI) {
         return declaredInputPort;
     }
 
-    public Object2ObjectMap<String, ValueType> outputPorts(CompoundTag data, int nodeI) {
+    public Object2ObjectMap<String, ValueType<?>> outputPorts(CompoundTag data, int nodeI) {
         return declaredOutputPort;
     }
 

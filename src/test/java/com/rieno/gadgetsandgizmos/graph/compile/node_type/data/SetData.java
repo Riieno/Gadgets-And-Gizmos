@@ -5,6 +5,8 @@ import com.rieno.gadgetsandgizmos.graph.compile.asm.*;
 import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapNode;
 import com.rieno.gadgetsandgizmos.graph.compile.util.GeneratorHelper;
 import com.rieno.gadgetsandgizmos.graph.compile.util.Handle;
+import com.rieno.gadgetsandgizmos.graph.type.ValueType;
+import com.rieno.gadgetsandgizmos.graph.type.ValueTypes;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import net.minecraft.nbt.CompoundTag;
 import org.objectweb.asm.Opcodes;
@@ -18,7 +20,7 @@ public class SetData extends JVMNodeType {
     }
 
     @Override
-    public Object2ObjectMap<String, ValueType> inputPorts(CompoundTag data, int nodeI) {
+    public Object2ObjectMap<String, ValueType<?>> inputPorts(CompoundTag data, int nodeI) {
         return BlockData.mergePorts(super.inputPorts(data, nodeI), data);
 
     }

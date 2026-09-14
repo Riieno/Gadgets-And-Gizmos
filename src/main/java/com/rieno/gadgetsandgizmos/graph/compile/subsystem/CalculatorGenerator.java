@@ -7,8 +7,7 @@ import com.rieno.gadgetsandgizmos.graph.compile.JVMGraphCompiler;
 import com.rieno.gadgetsandgizmos.graph.compile.JVMGraphLoader;
 import com.rieno.gadgetsandgizmos.graph.compile.annotations.StateHolder;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.Inputs;
-import com.rieno.gadgetsandgizmos.graph.compile.asm.ValueType;
-import com.rieno.gadgetsandgizmos.graph.compile.asm.ValueTypes;
+import com.rieno.gadgetsandgizmos.graph.type.ValueType;
 import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapNode;
 import com.rieno.gadgetsandgizmos.graph.compile.util.GeneratorHelper;
 import com.rieno.gadgetsandgizmos.graph.struct.NodeCalculator;
@@ -167,7 +166,7 @@ public class CalculatorGenerator {
             adapter.dup();
             adapter.push(i);
 
-            ValueType portType = targetNode.portTypes[i];
+            ValueType<?> portType = targetNode.portTypes[i];
             if(portType.isCannotBeSaved()){
                 adapter.pushNull();
             }else{
@@ -183,7 +182,7 @@ public class CalculatorGenerator {
             adapter.push(i);
 
 
-            ValueType portType = targetNode.portTypes[i];
+            ValueType<?> portType = targetNode.portTypes[i];
             if(portType.isCannotBeSaved()){
                 adapter.pushNull();
             }else{

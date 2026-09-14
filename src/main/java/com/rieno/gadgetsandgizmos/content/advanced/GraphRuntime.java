@@ -4044,7 +4044,7 @@ public final class GraphRuntime extends AbstractGraphRuntime {
         }
 
         // Create the default value
-        private static AdvancedGraphDocument.Value defaultValue(AdvancedGraphDocument.Node node, String port) {
+        public static AdvancedGraphDocument.Value defaultValue(AdvancedGraphDocument.Node node, String port) {
             CompoundTag defaults = node.data().getCompound("Defaults");
             if (defaults.contains(port)) {
                 return AdvancedGraphDocument.Value.fromTag(defaults.getCompound(port));

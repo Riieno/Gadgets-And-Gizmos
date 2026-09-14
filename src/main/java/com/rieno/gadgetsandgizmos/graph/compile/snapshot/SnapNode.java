@@ -1,7 +1,7 @@
 package com.rieno.gadgetsandgizmos.graph.compile.snapshot;
 
 import com.rieno.gadgetsandgizmos.graph.compile.asm.JVMNodeType;
-import com.rieno.gadgetsandgizmos.graph.compile.asm.ValueType;
+import com.rieno.gadgetsandgizmos.graph.type.ValueType;
 import it.unimi.dsi.fastutil.objects.*;
 import lombok.RequiredArgsConstructor;
 import net.minecraft.nbt.CompoundTag;
@@ -19,7 +19,7 @@ public final class SnapNode {
     public final CompoundTag data;
     public final SnapEdge[] inputs;
     public final @Nullable ObjectArrayList<SnapEdge>[] outputs;
-    public final ValueType[] portTypes;
+    public final ValueType<?>[] portTypes;
     public Object2IntMap<String> portIndexer;
     public String[] portIndexerInverse;
 
@@ -27,8 +27,8 @@ public final class SnapNode {
         int nodeI,
         JVMNodeType nodeType,
         CompoundTag data,
-        Object2ObjectMap<String, ValueType> input,
-        Object2ObjectMap<String, ValueType> outputs
+        Object2ObjectMap<String, ValueType<?>> input,
+        Object2ObjectMap<String, ValueType<?>> outputs
     ) {
         this(
             nodeI,
@@ -36,14 +36,14 @@ public final class SnapNode {
             data,
             new SnapEdge[input.size()],
             new ObjectArrayList[outputs.size()],
-            new ValueType[input.size() + outputs.size()]
+            new ValueType<?>[input.size() + outputs.size()]
         );
         indexPorts(input, outputs);
         addTypes(input, false);
         addTypes(outputs, true);
     }
 
-    private void addTypes(Object2ObjectMap<String, ValueType> ports, boolean isOutput) {
+    private void addTypes(Object2ObjectMap<String, ValueType<?>> ports, boolean isOutput) {
         for(var entry : ports.entrySet()) {
             int port = port(entry.getKey(), isOutput);
             portTypes[port] = entry.getValue();
@@ -95,13 +95,13 @@ public final class SnapNode {
                '}';
     }
 
-    public ValueType outputType(int outputPortLocalIndex) {
+    public ValueType<?> outputType(int outputPortLocalIndex) {
         return portTypes[outputPortLocalIndex+inputs.length];
     }
-    public ValueType outputType(String port) {
+    public ValueType<?> outputType(String port) {
         return portTypes[outputPort(port)];
     }
-    public ValueType inputType(int inputPortLocalIndex) {
+    public ValueType<?> inputType(int inputPortLocalIndex) {
         return portTypes[inputPortLocalIndex];
     }
 }

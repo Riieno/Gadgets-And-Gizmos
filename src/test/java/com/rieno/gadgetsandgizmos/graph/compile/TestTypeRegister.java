@@ -1,6 +1,6 @@
 package com.rieno.gadgetsandgizmos.graph.compile;
 
-import com.rieno.gadgetsandgizmos.graph.compile.asm.ValueTypes;
+import com.rieno.gadgetsandgizmos.graph.type.ValueTypes;
 import com.rieno.gadgetsandgizmos.graph.compile.node_type.BinOpNode;
 import com.rieno.gadgetsandgizmos.graph.compile.node_type.BinaryNode;
 import com.rieno.gadgetsandgizmos.graph.compile.node_type.ConstDValue;

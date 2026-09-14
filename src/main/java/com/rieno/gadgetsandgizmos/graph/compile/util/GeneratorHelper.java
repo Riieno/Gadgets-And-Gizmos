@@ -2,14 +2,13 @@ package com.rieno.gadgetsandgizmos.graph.compile.util;
 
 import com.rieno.gadgetsandgizmos.graph.compile.AbstractJVMGraph;
 import com.rieno.gadgetsandgizmos.graph.compile.annotations.StateHolder;
-import com.rieno.gadgetsandgizmos.graph.compile.asm.ValueType;
 import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapNode;
+import com.rieno.gadgetsandgizmos.graph.type.ValueType;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.objectweb.asm.Label;
-import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.commons.GeneratorAdapter;
@@ -20,7 +19,6 @@ import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.MethodNode;
 
 import java.lang.reflect.Constructor;
-import java.lang.reflect.Executable;
 import java.lang.reflect.Modifier;
 import java.util.Objects;
 
@@ -64,9 +62,11 @@ public class GeneratorHelper extends GeneratorAdapter {
     public void ifFalse(Label label) {
         super.ifZCmp(Opcodes.IFEQ, label);
     }
-    public void ifPlainEquals(Type type,Label label) {
-        super.ifCmp(type,Opcodes.IFEQ, label);
+
+    public void ifPlainEquals(Type type, Label label) {
+        super.ifCmp(type, Opcodes.IFEQ, label);
     }
+
     public void objectEquals(boolean nullable) {
         invoke(nullable ? Handle.NULLABLE_OBJECT_EQUALS : Handle.NOT_NULL_OBJECT_EQUALS);
     }
@@ -102,40 +102,11 @@ public class GeneratorHelper extends GeneratorAdapter {
 
 
     public void invoke(java.lang.reflect.Method method) {
-        invoke(this, method);
-    }
-
-    public static void invoke(MethodVisitor mv, java.lang.reflect.Method method) {
-        invoke(mv, method, Type.getMethodDescriptor(method), method.getName());
+        InsnAdapter.invoke(this, method);
     }
 
     public void invoke(Constructor<?> method) {
-        invoke(this, method);
-    }
-
-    public static void invoke(MethodVisitor mv, Constructor<?> method) {
-        invoke(mv, method, Type.getConstructorDescriptor(method), "<init>");
-    }
-
-    private static void invoke(MethodVisitor mv, Executable method, String methodDescriptor, String name) {
-
-        Class<?> declaringClass = method.getDeclaringClass();
-        boolean isInterface = declaringClass.isInterface();
-        int opcode = Modifier.isStatic(method.getModifiers()) ? Opcodes.INVOKESTATIC :
-            Modifier.isPrivate(method.getModifiers()) || method instanceof Constructor<?> ? Opcodes.INVOKESPECIAL :
-                isInterface ? Opcodes.INVOKEINTERFACE :
-                    Opcodes.INVOKEVIRTUAL;
-
-        mv.visitMethodInsn(
-            opcode,
-            Type.getInternalName(declaringClass),
-            name,
-
-            methodDescriptor,
-            isInterface
-
-
-        );
+        InsnAdapter.invoke(this, method);
     }
 
     public void get(java.lang.reflect.Field field) {
@@ -233,7 +204,7 @@ public class GeneratorHelper extends GeneratorAdapter {
     //endregion
 
     //region port variables
-    public PortVarEntry localOrNew(String name, ValueType type) {
+    public PortVarEntry localOrNew(String name, ValueType<?> type) {
         PortVarEntry entry = findEntry(name, type);
         if(entry != null) return entry;
         int i = newLocal(type.innerType);
@@ -258,12 +229,12 @@ public class GeneratorHelper extends GeneratorAdapter {
         storeInsn(entry.realType, entry.index);
     }
 
-    public PortVarEntry findEntry(String name, ValueType type) {
+    public PortVarEntry findEntry(String name, ValueType<?> type) {
         entryInsertPos[0] = -1;
         return findEntry(name, type, entryInsertPos);
     }
 
-    public PortVarEntry findEntry(String name, ValueType type, int @Nullable [] insertPos) {
+    public PortVarEntry findEntry(String name, ValueType<?> type, int @Nullable [] insertPos) {
         PortVarEntry entry = portVariables.get(name);
         if(entry == null) return null;
         if(entry.type.equals(type)) return entry;
@@ -301,7 +272,7 @@ public class GeneratorHelper extends GeneratorAdapter {
     }
 
 
-    public record PortVarEntry(int index, ValueType type, Type realType) {}
+    public record PortVarEntry(int index, ValueType<?> type, Type realType) {}
     //endregion
 
 

@@ -4,7 +4,7 @@ import com.rieno.gadgetsandgizmos.graph.compile.CompilationContext;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.Inputs;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.JVMNodeType;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.Outputs;
-import com.rieno.gadgetsandgizmos.graph.compile.asm.ValueType;
+import com.rieno.gadgetsandgizmos.graph.type.ValueType;
 import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapNode;
 import com.rieno.gadgetsandgizmos.graph.compile.util.GeneratorHelper;
 import net.minecraft.nbt.CompoundTag;
@@ -19,10 +19,10 @@ public abstract class BinaryNode extends JVMNodeType {
         declaredOutputPort.put("c",type());
     }
 
-    public static JVMNodeType impl(ValueType valueType, Compiler compiler) {
+    public static JVMNodeType impl(ValueType<?> valueType, Compiler compiler) {
         return new BinaryNode() {
             @Override
-            public ValueType type() {
+            public ValueType<?> type() {
                 return valueType;
             }
 
@@ -33,7 +33,7 @@ public abstract class BinaryNode extends JVMNodeType {
         };
     }
 
-    public abstract ValueType type();
+    public abstract ValueType<?> type();
     public interface Compiler{
          void compile(GeneratorHelper mv, Inputs inputs, Outputs outputs, CompoundTag data) ;
     }

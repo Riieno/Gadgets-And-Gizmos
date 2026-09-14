@@ -1,8 +1,9 @@
-package com.rieno.gadgetsandgizmos.graph.compile.asm;
+package com.rieno.gadgetsandgizmos.graph.type;
 
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
+import com.rieno.gadgetsandgizmos.graph.compile.util.InsnAdapter;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
@@ -14,8 +15,6 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.InsnList;
-import org.objectweb.asm.tree.InsnNode;
-import org.objectweb.asm.tree.MethodInsnNode;
 
 /**
  * TODO not an enum
@@ -23,12 +22,12 @@ import org.objectweb.asm.tree.MethodInsnNode;
  * @see GraphRuntime#convertValue(AdvancedGraphDocument.Value, String)
  *
  */
-public class ValueType {
+public class ValueType<T> implements ConvertHelpers<T>{
 
     public final ResourceLocation name;
     public final Type innerType;
     private final InsnList defaultValueMaker;
-    private static final Object2ObjectMap<ResourceLocation,ValueType> allTypes=new Object2ObjectOpenHashMap<>();
+    private static final Object2ObjectMap<ResourceLocation,ValueType<?>> allTypes=new Object2ObjectOpenHashMap<>();
 
     public ValueType(ResourceLocation name, Class<?> innerType, AbstractInsnNode AbstractInsnNode_first, AbstractInsnNode... defaultValueInsn) {
         this.innerType = Type.getType(innerType);
@@ -50,46 +49,20 @@ public class ValueType {
     private static int staticId = 0;
     private final int id = staticId++;
 
-    public static ValueType byName(ResourceLocation resource) {
+    public static ValueType<?> byName(ResourceLocation resource) {
         return allTypes.get(resource);
     }
 
-    public void convertViaOpcode(ValueType other, int opcode) {
-        setConvertExpression(other, new InsnNode(opcode));
-    }
-
-    public void convertViaStaticMethod(ValueType other, Class<?> methodOwner, String methodName) {
-        setConvertExpression(other, new MethodInsnNode(
-            Opcodes.INVOKESTATIC,
-            Type.getInternalName(methodOwner),
-            methodName, Type.getMethodDescriptor(other.innerType, innerType),
-            methodOwner.isInterface()
-        ));
-    }
-
-    public void convertViaInstanceMethod(ValueType other, String methodName) {
-        boolean anInterface = false;
-        try {
-            anInterface = Class.forName(innerType.getClassName()).isInterface();
-        } catch(ClassNotFoundException e) {
-        }
-        setConvertExpression(other, new MethodInsnNode(
-            Opcodes.INVOKEVIRTUAL,
-            innerType.getInternalName(),
-            methodName, Type.getMethodDescriptor(other.innerType),
-            //innerType.isInterface()
-            anInterface
-        ));
-    }
-
-    public void setConvertExpression(ValueType other, AbstractInsnNode... nodes) {
+    public void setConvertExpression(ValueType<?> other, AbstractInsnNode... nodes) {
         InsnList value = new InsnList();
-        for(AbstractInsnNode node : nodes) value.add(node);
+        InsnAdapter.LabelCloner clonedLabels = InsnAdapter.labelCloner();
+        for(AbstractInsnNode node : nodes) value.add(node.clone(clonedLabels));
+        value.toArray();
         convertNodes.put(other.id, value);
     }
 
 
-    public void convertTo(MethodVisitor mv, ValueType other) {
+    public void convertTo(MethodVisitor mv, ValueType<?> other) {
         if(id == other.id || other==ValueTypes.ANY) return;
         var nodes = convertNodes.get(other.id);
 
@@ -110,7 +83,7 @@ public class ValueType {
         return;
     }
 
-    private boolean tryConvertThrowValue(MethodVisitor mv, ValueType other, InsnList toValueNodes) {
+    private boolean tryConvertThrowValue(MethodVisitor mv, ValueType<?> other, InsnList toValueNodes) {
         if(toValueNodes == null) return false;
         var valueToOther = ValueTypes.VALUE.convertNodes.get(other.id);
         if(valueToOther == null) return false;
@@ -134,7 +107,7 @@ public class ValueType {
     @Getter
     private boolean cannotBeSaved = false;
 
-    public ValueType unsavable() {
+    public ValueType<T> unsavable() {
         cannotBeSaved = true;
         return this;
     }
@@ -143,4 +116,5 @@ public class ValueType {
     public String toString() {
         return "ValueType(" + name + ")";
     }
+
 }

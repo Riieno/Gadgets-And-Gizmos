@@ -1,6 +1,6 @@
 package com.rieno.gadgetsandgizmos.graph.compile.asm;
 
-import com.rieno.gadgetsandgizmos.graph.compile.util.GeneratorHelper;
+import com.rieno.gadgetsandgizmos.graph.compile.util.InsnAdapter;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.MethodNode;
@@ -15,7 +15,7 @@ public sealed interface AsmExpression extends FieldInitExpr {
         public InsnListAsm bindToThis() {
             MethodNode node = new MethodNode();
             node.visitVarInsn(Opcodes.ALOAD, 0);
-            GeneratorHelper.invoke(node, init);
+            InsnAdapter.invoke(node, init);
             return new InsnListAsm(node.instructions.toArray());
         }
     }

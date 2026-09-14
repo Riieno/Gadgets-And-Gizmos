@@ -4,6 +4,7 @@ import com.rieno.gadgetsandgizmos.graph.compile.CompilationContext;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.*;
 import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapNode;
 import com.rieno.gadgetsandgizmos.graph.compile.util.GeneratorHelper;
+import com.rieno.gadgetsandgizmos.graph.type.ValueTypes;
 import net.minecraft.nbt.*;
 
 import java.util.Map;

@@ -10,6 +10,7 @@ import com.rieno.gadgetsandgizmos.graph.compile.util.Handle;
 import com.rieno.gadgetsandgizmos.graph.compile.util.UnboundStateField;
 import com.rieno.gadgetsandgizmos.graph.init.GNG_Events;
 import com.rieno.gadgetsandgizmos.graph.struct.NodeCalculator;
+import com.rieno.gadgetsandgizmos.graph.type.ValueType;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import net.minecraft.nbt.CompoundTag;
@@ -37,7 +38,7 @@ public class GetData extends JVMNodeType {
     }
 
     @Override
-    public Object2ObjectMap<String, ValueType> outputPorts(CompoundTag data, int nodeI) {
+    public Object2ObjectMap<String, ValueType<?>> outputPorts(CompoundTag data, int nodeI) {
         return BlockData.mergePorts(super.outputPorts(data, nodeI), data);
     }
 

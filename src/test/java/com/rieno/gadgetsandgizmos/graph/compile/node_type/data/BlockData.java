@@ -1,8 +1,8 @@
 package com.rieno.gadgetsandgizmos.graph.compile.node_type.data;
 
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
-import com.rieno.gadgetsandgizmos.graph.compile.asm.ValueType;
-import com.rieno.gadgetsandgizmos.graph.compile.asm.ValueTypes;
+import com.rieno.gadgetsandgizmos.graph.type.ValueType;
+import com.rieno.gadgetsandgizmos.graph.type.ValueTypes;
 import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -43,12 +43,12 @@ public class BlockData {
         return ports;
     }
 
-    static Object2ObjectMap<String, ValueType> mergePorts(Object2ObjectMap<String, ValueType> declared, CompoundTag data) {
+    static Object2ObjectMap<String, ValueType<?>> mergePorts(Object2ObjectMap<String, ValueType<?>> declared, CompoundTag data) {
         String string = data.getString(blockPosKey);
         CompoundTag tag = WORLD.get(string);
         ListTag ports = getPorts(tag);
         if(ports == null) return declared;
-        Object2ObjectArrayMap<String, ValueType> outPorts = new Object2ObjectArrayMap<>();
+        Object2ObjectArrayMap<String, ValueType<?>> outPorts = new Object2ObjectArrayMap<>();
         outPorts.putAll(declared);
         for(Tag portEntry0 : ports) {
             outPorts.put(portEntry0.getAsString(), ValueTypes.VALUE);
