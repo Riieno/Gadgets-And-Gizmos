@@ -273,7 +273,7 @@ public class ThrusterBlock extends CTDirectionalBlock implements EntityBlock, Sp
         }
 
         if (tryInsertFluidFuel(level, player, hand, stack, thruster)) {
-            return ItemInteractionResult.SUCCESS;
+            return ItemInteractionResult.sidedSuccess(level.isClientSide);
         }
 
         if (ThrusterBlockEntity.canUseAsSolidFuel(stack)) {
@@ -371,18 +371,18 @@ public class ThrusterBlock extends CTDirectionalBlock implements EntityBlock, Sp
 
         java.util.Optional<IFluidHandlerItem> maybeHandler = FluidUtil.getFluidHandler(heldStack.copy());
         if (maybeHandler.isEmpty()) {
-            return false;
+            return true;
         }
 
         IFluidHandlerItem handler = maybeHandler.get();
         FluidStack drained = handler.drain(contained.copy(), IFluidHandler.FluidAction.EXECUTE);
         if (drained.isEmpty() || drained.getAmount() < contained.getAmount()) {
-            return false;
+            return true;
         }
 
         int filled = thruster.getFuelTank().fill(drained, IFluidHandler.FluidAction.EXECUTE);
         if (filled < drained.getAmount()) {
-            return false;
+            return true;
         }
 
         if (!player.getAbilities().instabuild) {

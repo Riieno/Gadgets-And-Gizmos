@@ -702,6 +702,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private int profilerReportTicks;
     // Tracks whether advanced contraption is projection rendering
     private boolean projectionRendering;
+    // Tracks whether this screen is an off-screen display projection
+    private boolean projectionScreen;
     // Current projection graph fingerprint
     private int projectionGraphFingerprint;
     // Current projected mouse button
@@ -751,6 +753,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         lastObservedGogglesOutput = copySingle(menu.getGogglesOutputStack());
         liveGraphTargets.addAll(sortedGraphTargets(currentGraphTargetSeeds()));
         templatePicker = activeNodes().isEmpty() && draft.templateId().isBlank();
+    }
+
+    // Mark this screen as an off-screen display projection before it is initialized
+    void configureForProjection() {
+        projectionScreen = true;
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -831,6 +838,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     @Override
     protected void containerTick() {
         super.containerTick();
+        if (!projectionScreen) AccGuiScaleOverride.apply();
         detectLinkerSlotChanges();
         reportProfilerSample();
         syncFrequencyNode();
@@ -934,6 +942,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Initialize the advanced contraption controller
     @Override
     protected void init() {
+        if (!projectionScreen && AccGuiScaleOverride.apply()) {
+            return;
+        }
         // -----------------------------------------------------LAYOUT STATE-----------------------------------------------------
         boolean preserveLinkerOpen = linkerOpen && !setLinkerOpen(false);
         boolean preserveShareOpen = shareModalOpen;
@@ -7225,8 +7236,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             if (inputOptions.contains(key, Tag.TAG_LIST)) {
                 inputOptions.put(inlinePort, inputOptions.get(key).copy());
             }
-            putInputDefault(node, inlinePort, entries.getString(key),
-                    GraphRuntime.structuredValue(currentPortValue(node, sourcePort, false), key));
+            AdvancedGraphDocument.Value initialValue = GraphRuntime.structuredValue(
+                    currentPortValue(node, sourcePort, false), key);
+            ListTag options = inputOptions.getList(key, Tag.TAG_STRING);
+            if ("string".equals(entries.getString(key)) && !options.isEmpty()
+                    && options.stream().map(Tag::getAsString)
+                    .noneMatch(initialValue.asString()::equals)) {
+                initialValue = AdvancedGraphDocument.Value.string(options.getString(0));
+            }
+            putInputDefault(node, inlinePort, entries.getString(key), initialValue);
         }
         node.data().put(AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG, mappings);
         node.data().put("DynamicInputs", dynamicInputs);
@@ -11040,7 +11058,16 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return soundEventOptions;
         }
         List<String> opts = new ArrayList<>();
-        var values = node.data().getCompound("InputOptions").getList(port, net.minecraft.nbt.Tag.TAG_STRING);
+        CompoundTag configuredOptions = node.data().getCompound("InputOptions");
+        var values = configuredOptions.getList(port, net.minecraft.nbt.Tag.TAG_STRING);
+        if (values.isEmpty()) {
+            CompoundTag mapping = node.data().getCompound(AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG)
+                    .getCompound(port);
+            String sourceKey = mapping.getString(AdvancedGraphCatalog.INLINE_MAP_KEY_TAG);
+            if (!sourceKey.isBlank()) {
+                values = configuredOptions.getList(sourceKey, net.minecraft.nbt.Tag.TAG_STRING);
+            }
+        }
         for (int idx = 0; idx < values.size(); idx++) opts.add(values.getString(idx));
         return opts;
     }
@@ -11271,6 +11298,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the graph default
     private static CompoundTag graphDefault(String type, Object val) {
+        if (val instanceof AdvancedGraphDocument.Value graphValue) {
+            return graphDefault(type, graphValue);
+        }
         CompoundTag entry = new CompoundTag();
         CompoundTag payload = new CompoundTag();
         entry.putString("Type", type);
@@ -14745,6 +14775,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     @Override
     public void onClose() {
         if (frequencyModalOpen) closeFrequencyEditor(false);
+        AccGuiScaleOverride.restoreAfterExit();
         saveDraftOnClose();
         super.onClose();
     }
@@ -14771,6 +14802,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (initialEmiVisibility != null) RecipeViewerVisibility.setEmiVisible(initialEmiVisibility);
         setLinkerOpen(false, false);
         super.removed();
+        AccGuiScaleOverride.restoreAfterExit();
     }
 
     // Define the graph action toast severity values
@@ -14905,6 +14937,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Get the human port
     private static String humanPort(String val) {
         if (val == null || val.isBlank()) return "Unset";
+        String specialized = switch (val) {
+            case "primary_orange_cw", "secondary_cyan_cw" -> "Clockwise";
+            case "primary_orange_ccw", "secondary_cyan_ccw" -> "Counter Clockwise";
+            case "primary_orange_operation_mode", "secondary_cyan_operation_mode" -> "Control Mode";
+            default -> "";
+        };
+        if (!specialized.isBlank()) return specialized;
         String[] words = val.split("_");
         StringBuilder res = new StringBuilder();
         for (String word : words) {

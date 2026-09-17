@@ -327,10 +327,10 @@ public class BiDirectionalGearshiftBlock extends BiDirectionalGearboxBlock {
     // Get the axis role for face
     private BiDirectionalGearshiftBlockEntity.AxisRole axisRoleForFace(
             BiDirectionalGearshiftBlockEntity gearshift, Direction face) {
-        if (face.getAxis() == gearshift.getPrimaryLaneAxis()) {
+        if (face.getAxis() == gearshift.getLaneAxis(BiDirectionalGearshiftBlockEntity.AxisRole.PRIMARY)) {
             return BiDirectionalGearshiftBlockEntity.AxisRole.PRIMARY;
         }
-        if (face.getAxis() == gearshift.getSecondaryLaneAxis()) {
+        if (face.getAxis() == gearshift.getLaneAxis(BiDirectionalGearshiftBlockEntity.AxisRole.SECONDARY)) {
             return BiDirectionalGearshiftBlockEntity.AxisRole.SECONDARY;
         }
         return null;

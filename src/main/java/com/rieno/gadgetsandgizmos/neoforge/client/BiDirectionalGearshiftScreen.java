@@ -36,10 +36,10 @@ public class BiDirectionalGearshiftScreen extends AbstractSimiContainerScreen<Bi
     private static final int HEIGHT = 256;
     private static final int TITLE_CENTER_X = 128;
     private static final int TITLE_Y = 31;
-    private static final int SECONDARY_MODE_X = 63;
-    private static final int SECONDARY_LOCK_X = 94;
-    private static final int PRIMARY_MODE_X = 148;
-    private static final int PRIMARY_LOCK_X = 179;
+    private static final int PRIMARY_MODE_X = 63;
+    private static final int PRIMARY_LOCK_X = 94;
+    private static final int SECONDARY_MODE_X = 148;
+    private static final int SECONDARY_LOCK_X = 179;
     private static final int TOP_BUTTON_Y = 48;
     private static final int TOP_BUTTON_SIZE = 13;
     private static final int ICON_TEX_SIZE = 256;
@@ -109,9 +109,9 @@ public class BiDirectionalGearshiftScreen extends AbstractSimiContainerScreen<Bi
             guiGraphics.drawCenteredString(font, title, x + TITLE_CENTER_X, y + TITLE_Y,
                     CTCreateScreenHelper.BANNER_TITLE_COLOR);
             drawAxisControls(guiGraphics, x, y, mouseX, mouseY,
-                    BiDirectionalGearshiftBlockEntity.AxisRole.SECONDARY, secondaryMode);
-            drawAxisControls(guiGraphics, x, y, mouseX, mouseY,
                     BiDirectionalGearshiftBlockEntity.AxisRole.PRIMARY, primaryMode);
+            drawAxisControls(guiGraphics, x, y, mouseX, mouseY,
+                    BiDirectionalGearshiftBlockEntity.AxisRole.SECONDARY, secondaryMode);
         } finally {
             scalableGui.pop(guiGraphics);
         }
@@ -146,16 +146,16 @@ public class BiDirectionalGearshiftScreen extends AbstractSimiContainerScreen<Bi
         mouseX = scalableGui.mouseX(mouseX);
         mouseY = scalableGui.mouseY(mouseY);
         if (btn == 0) {
-            if (clickMode(mouseX, mouseY, BiDirectionalGearshiftBlockEntity.AxisRole.SECONDARY)) {
-                return true;
-            }
             if (clickMode(mouseX, mouseY, BiDirectionalGearshiftBlockEntity.AxisRole.PRIMARY)) {
                 return true;
             }
-            if (clickLocalLock(mouseX, mouseY, BiDirectionalGearshiftBlockEntity.AxisRole.SECONDARY)) {
+            if (clickMode(mouseX, mouseY, BiDirectionalGearshiftBlockEntity.AxisRole.SECONDARY)) {
                 return true;
             }
             if (clickLocalLock(mouseX, mouseY, BiDirectionalGearshiftBlockEntity.AxisRole.PRIMARY)) {
+                return true;
+            }
+            if (clickLocalLock(mouseX, mouseY, BiDirectionalGearshiftBlockEntity.AxisRole.SECONDARY)) {
                 return true;
             }
         }

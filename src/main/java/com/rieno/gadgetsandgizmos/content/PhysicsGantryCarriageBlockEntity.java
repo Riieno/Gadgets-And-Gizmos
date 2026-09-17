@@ -97,6 +97,8 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
 
     private static final Logger CT_LOGGER = LogUtils.getLogger();
     private static final boolean ENABLE_GANTRY_DEBUG_VISUALS = false;
+    private static final int MAX_SHAFT_SCAN_BLOCKS = 2048;
+    private static final int MAX_TRACKED_CARRIAGE_CHUNK_RADIUS = 8;
     private static final Set<ConstraintJointAxis> LOCKED_CONSTRAINT_AXES =
             EnumSet.allOf(ConstraintJointAxis.class);
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -1655,16 +1657,20 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
             return false;
         }
 
-        int signedDistance = switch (shaftDirection.getAxis()) {
+        long signedDistance = switch (shaftDirection.getAxis()) {
             case X -> second.getX() - first.getX();
             case Y -> second.getY() - first.getY();
             case Z -> second.getZ() - first.getZ();
         };
+        long absoluteDistance = Math.abs(signedDistance);
+        if (absoluteDistance > MAX_SHAFT_SCAN_BLOCKS) {
+            return false;
+        }
         Direction step = signedDistance * shaftDirection.getAxisDirection().getStep() >= 0
                 ? shaftDirection
                 : shaftDirection.getOpposite();
         BlockPos cursor = first;
-        for (int distance = 0; distance <= Math.abs(signedDistance); distance++) {
+        for (int distance = 0; distance <= absoluteDistance; distance++) {
             BlockState state = findShaftState(level, cursor, shaftSubLevelId);
             if (state == null
                     || state.getBlock() != CTBlocks.PHYSICS_GANTRY_SHAFT.get()
@@ -1682,15 +1688,15 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
             return null;
         }
         if (shaftSubLevelId != null) {
-            PhysicsGantryShaftBlockEntity shaft = SimulatedHelper.findBlockEntity(
-                    level,
-                    shaftSubLevelId,
-                    shaftPos,
-                    PhysicsGantryShaftBlockEntity.class);
-            return shaft == null ? null : shaft.getBlockState();
+            if (!SubLevelBlockEntityCollector.isTargetLoaded(level, shaftSubLevelId, shaftPos)) {
+                return null;
+            }
+            Level shaftLevel = SubLevelBlockEntityCollector.resolveTargetLevel(level, shaftSubLevelId);
+            return shaftLevel == null ? null : shaftLevel.getBlockState(shaftPos);
         }
         Level lookupLevel = resolveRootLevel(level);
-        return lookupLevel == null ? null : lookupLevel.getBlockState(shaftPos);
+        return lookupLevel == null || !lookupLevel.isLoaded(shaftPos)
+                ? null : lookupLevel.getBlockState(shaftPos);
     }
 
     // Collect the tracked carriages
@@ -1707,7 +1713,8 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
             int forwardSpan = measureShaftSpan(lookupLevel, shaftPos, shaftDirection, shaftDirection, null);
             int backwardSpan = measureShaftSpan(lookupLevel, shaftPos, shaftDirection.getOpposite(), shaftDirection,
                     null);
-            chunkRadius = Math.max(1, (forwardSpan + backwardSpan) / 16 + 1);
+            chunkRadius = Mth.clamp((forwardSpan + backwardSpan) / 16 + 1,
+                    1, MAX_TRACKED_CARRIAGE_CHUNK_RADIUS);
         }
 
         BlockPos center = shaftPos == null ? BlockPos.ZERO : shaftPos;
@@ -1735,7 +1742,7 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
                                         Direction shaftDirection, UUID shaftSubLevelId) {
         int distance = 0;
         BlockPos cursor = origin;
-        while (true) {
+        while (distance < MAX_SHAFT_SCAN_BLOCKS) {
             cursor = cursor.relative(stepDirection);
             BlockState state = findShaftState(lookupLevel, cursor, shaftSubLevelId);
             if (state == null
@@ -1751,11 +1758,14 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
     // Find the block state
     private static BlockState findBlockState(Level level, BlockPos pos, UUID subLevelId) {
         if (subLevelId != null) {
-            BlockEntity blockEntity = SimulatedHelper.findBlockEntity(level, subLevelId, pos);
-            return blockEntity == null ? null : blockEntity.getBlockState();
+            if (!SubLevelBlockEntityCollector.isTargetLoaded(level, subLevelId, pos)) {
+                return null;
+            }
+            Level targetLevel = SubLevelBlockEntityCollector.resolveTargetLevel(level, subLevelId);
+            return targetLevel == null ? null : targetLevel.getBlockState(pos);
         }
         Level lookupLevel = resolveRootLevel(level);
-        return lookupLevel == null ? null : lookupLevel.getBlockState(pos);
+        return lookupLevel == null || !lookupLevel.isLoaded(pos) ? null : lookupLevel.getBlockState(pos);
     }
 
     // Resolve the root level
@@ -2383,15 +2393,19 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
 
     // Get the measure shaft span
     private int measureShaftSpan(Level lookupLevel, BlockPos origin, Direction dir) {
+        Level shaftLevel = attachedShaftSubLevelId == null
+                ? lookupLevel
+                : SubLevelBlockEntityCollector.resolveTargetLevel(level, attachedShaftSubLevelId);
+        if (shaftLevel == null) return 0;
         int distance = 0;
         BlockPos cursor = origin;
-        while (true) {
+        while (distance < MAX_SHAFT_SCAN_BLOCKS) {
             cursor = cursor.relative(dir);
-            BlockState state = findAttachedShaftState(cursor, attachedShaftSubLevelId);
-            if (state == null) {
-                state = lookupLevel.getBlockState(cursor);
-            }
-            if (state.getBlock() != CTBlocks.PHYSICS_GANTRY_SHAFT.get()) {
+            boolean loaded = attachedShaftSubLevelId == null
+                    ? shaftLevel.isLoaded(cursor)
+                    : SubLevelBlockEntityCollector.isTargetLoaded(level, attachedShaftSubLevelId, cursor);
+            BlockState state = loaded ? shaftLevel.getBlockState(cursor) : null;
+            if (state == null || state.getBlock() != CTBlocks.PHYSICS_GANTRY_SHAFT.get()) {
                 break;
             }
             if (state.getValue(PhysicsGantryShaftBlock.FACING) != attachedShaftDirection) {
@@ -2410,10 +2424,11 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
         }
 
         BlockState shaftState = findAttachedShaftState(attachedShaftPos, attachedShaftSubLevelId);
-        if (shaftState == null) {
+        if (shaftState == null && attachedShaftSubLevelId == null && lookupLevel.isLoaded(attachedShaftPos)) {
             shaftState = lookupLevel.getBlockState(attachedShaftPos);
         }
-        return shaftState.getBlock() == CTBlocks.PHYSICS_GANTRY_SHAFT.get()
+        return shaftState != null
+                && shaftState.getBlock() == CTBlocks.PHYSICS_GANTRY_SHAFT.get()
                 && shaftState.getValue(PhysicsGantryShaftBlock.FACING) == attachedShaftDirection;
     }
 
@@ -2423,19 +2438,17 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
             return null;
         }
 
-        PhysicsGantryShaftBlockEntity scoped = SimulatedHelper.findBlockEntity(
-                level,
-                preferredSubLevelId,
-                shaftPos,
-                PhysicsGantryShaftBlockEntity.class);
+        BlockEntity scopedBlockEntity = SimulatedHelper.findLoadedBlockEntityExact(
+                level, preferredSubLevelId, shaftPos);
+        PhysicsGantryShaftBlockEntity scoped = scopedBlockEntity instanceof PhysicsGantryShaftBlockEntity found
+                ? found : null;
         if (scoped != null) {
             return scoped;
         }
 
-        PhysicsGantryShaftBlockEntity includingSubLevels = SimulatedHelper.findBlockEntityIncludingSubLevels(
-                level,
-                shaftPos,
-                PhysicsGantryShaftBlockEntity.class);
+        PhysicsGantryShaftBlockEntity includingSubLevels =
+                SubLevelBlockEntityCollector.findLoadedIncludingSubLevels(
+                        level, shaftPos, PhysicsGantryShaftBlockEntity.class);
         if (includingSubLevels != null) {
             return includingSubLevels;
         }
@@ -2445,6 +2458,9 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
             return null;
         }
 
+        if (!lookupLevel.isLoaded(shaftPos)) {
+            return null;
+        }
         BlockEntity fallback = lookupLevel.getBlockEntity(shaftPos);
         return fallback instanceof PhysicsGantryShaftBlockEntity shaft ? shaft : null;
     }

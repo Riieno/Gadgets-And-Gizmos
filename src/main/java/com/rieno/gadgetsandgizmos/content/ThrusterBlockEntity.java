@@ -402,6 +402,8 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
     private boolean persistentTickStateDirty;
     // Tracks whether client sync is pending
     private boolean clientSyncPending;
+    // Server-calculated fuel consumption synchronized for client tooltips
+    private double syncedFuelConsumptionMbPerTick;
     // Tracks whether update air flow is set
     private boolean updateAirFlow = true;
     // Last airflow direction
@@ -1653,6 +1655,14 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
 
     // Get the fuel consumption mb per tick
     public double getFuelConsumptionMbPerTick() {
+        if (level == null || level.isClientSide) {
+            return syncedFuelConsumptionMbPerTick;
+        }
+        return calculateFuelConsumptionMbPerTick();
+    }
+
+    // Calculate the current server-authoritative fuel consumption
+    private double calculateFuelConsumptionMbPerTick() {
         if (focusedMode || !isActive() || infiniteSolidFuel || solidFuelTicks > 0) {
             return 0.0D;
         }
@@ -3134,6 +3144,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         tag.putString("AssemblyComputerCraftAlias", ccAlias);
         tag.putString("ControlMode", controlMode.name());
         tag.putDouble("FuelDrainAccumulator", fractionalFuelDrain);
+        tag.putDouble("FuelConsumptionMbPerTick", calculateFuelConsumptionMbPerTick());
         tag.putBoolean("SoulThruster", soulThruster);
         tag.putBoolean("PeacefulMode", peacefulMode);
         tag.putBoolean("FilterSound", filterSound);
@@ -3242,6 +3253,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         }
         // ------------------------------------FUEL AND EFFECT SETTINGS------------------------------------
         fractionalFuelDrain = tag.getDouble("FuelDrainAccumulator");
+        syncedFuelConsumptionMbPerTick = tag.getDouble("FuelConsumptionMbPerTick");
         soulThruster = tag.getBoolean("SoulThruster");
         peacefulMode = tag.getBoolean("PeacefulMode");
         filterSound = !tag.contains("FilterSound") || tag.getBoolean("FilterSound");
@@ -3388,9 +3400,12 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         if (!focusedMode) {
             tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.goggle.thruster.fuel_stored"),
                     CTTooltipHelper.value(getFuelAmount() + " / " + getFuelCapacity(), ChatFormatting.BLUE)));
+            double consumption = getFuelConsumptionMbPerTick();
+            String consumptionText = consumption > 0.0D && consumption < 0.001D
+                    ? String.format(java.util.Locale.ROOT, "%.6f mB/t", consumption)
+                    : String.format(java.util.Locale.ROOT, "%.3f mB/t", consumption);
             tooltip.add(CTTooltipHelper.line(Component.literal("Fuel Consumption"),
-                    CTTooltipHelper.value(String.format(java.util.Locale.ROOT, "%.3f mB/t",
-                            getFuelConsumptionMbPerTick()), ChatFormatting.GOLD)));
+                    CTTooltipHelper.value(consumptionText, ChatFormatting.GOLD)));
         } else {
             int requiredFePerTick = getRequiredBeamFePerTick();
             tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.goggle.thruster.fe_stored"),

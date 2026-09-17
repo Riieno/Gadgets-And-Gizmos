@@ -5269,6 +5269,13 @@ return {
       deprecatedBy = "",
       examples = {},
     },
+    ["clearRcsThrottle"] = {
+      signature = "clearRcsThrottle(id|'all', nozzle)",
+      description = "Clears one nozzle throttle on an attached RCS thruster.",
+      since = "2",
+      deprecatedBy = "",
+      examples = {},
+    },
     ["clearThrottleOverride"] = {
       signature = "clearThrottleOverride(id|'all')",
       description = "Clears the throttle override.",
@@ -5409,6 +5416,27 @@ return {
       deprecatedBy = "",
       examples = {},
     },
+    ["getRcsThrottle"] = {
+      signature = "getRcsThrottle(id, nozzle): number",
+      description = "Returns one nozzle throttle from an attached RCS thruster.",
+      since = "2",
+      deprecatedBy = "",
+      examples = {},
+    },
+    ["getRcsThrusterCount"] = {
+      signature = "getRcsThrusterCount(): number",
+      description = "Returns the attached RCS thruster count.",
+      since = "2",
+      deprecatedBy = "",
+      examples = {},
+    },
+    ["getRcsThrusterStatus"] = {
+      signature = "getRcsThrusterStatus(id): table",
+      description = "Returns the status of one attached RCS thruster.",
+      since = "2",
+      deprecatedBy = "",
+      examples = {},
+    },
     ["getRealThrust"] = {
       signature = "getRealThrust(id|'all'): number|table",
       description = "Returns the real thrust.",
@@ -5535,6 +5563,13 @@ return {
       deprecatedBy = "",
       examples = {},
     },
+    ["listRcsThrusters"] = {
+      signature = "listRcsThrusters(): table",
+      description = "Returns the RCS thrusters attached to the bearing head.",
+      since = "2",
+      deprecatedBy = "",
+      examples = {},
+    },
     ["listThrusters"] = {
       signature = "listThrusters(): table",
       description = "Returns the list thrusters.",
@@ -5601,6 +5636,13 @@ return {
     ["setPivotAngle"] = {
       signature = "setPivotAngle(angleDeg: number)",
       description = "Sets the pivot angle.",
+      since = "2",
+      deprecatedBy = "",
+      examples = {},
+    },
+    ["setRcsThrottle"] = {
+      signature = "setRcsThrottle(id|'all', nozzle, throttle: number 0..1 or 0..100)",
+      description = "Sets one nozzle throttle on an attached RCS thruster.",
       since = "2",
       deprecatedBy = "",
       examples = {},

@@ -47,6 +47,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.fml.ModList;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3d;
 
@@ -139,6 +140,10 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
     private BlockPos receiverLocation;
     // Current backtank drain remainder
     private double backtankDrainRemainder;
+    // Assembly ComputerCraft id
+    private String ccId = "";
+    // Assembly ComputerCraft alias
+    private String ccAlias = "";
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -288,6 +293,38 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
     // Clear the computer throttle
     public void clearComputerThrottle(Direction nozzle) {
         clearControllerThrottle(nozzle, COMPUTER_SOURCE);
+    }
+
+    // Get the assembly ComputerCraft id
+    public String getCcId() {
+        return ccId;
+    }
+
+    // Set the assembly ComputerCraft id
+    public void setCcId(String id) {
+        String normalized = id == null ? "" : id;
+        if (ccId.equals(normalized)) return;
+        ccId = normalized;
+        bindingChanged();
+    }
+
+    // Get the assembly ComputerCraft alias
+    public String getAssemblyComputerCraftAlias() {
+        return ccAlias;
+    }
+
+    // Set the assembly ComputerCraft alias
+    public void setAssemblyComputerCraftAlias(String alias) {
+        String normalized = alias == null ? "" : alias;
+        if (ccAlias.equals(normalized)) return;
+        ccAlias = normalized;
+        bindingChanged();
+    }
+
+    // Persist and synchronize an assembly binding change
+    private void bindingChanged() {
+        setChanged();
+        if (level != null && !level.isClientSide) sendData();
     }
 
     // Check if this has computer throttle
@@ -665,6 +702,11 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
                                 ChatFormatting.YELLOW)));
             }
         }
+        if (ModList.get().isLoaded("computercraft") && !ccAlias.isBlank()) {
+            tooltip.add(CTTooltipHelper.line(
+                    Component.translatable("createthrusters.goggle.thruster.cc_alias"),
+                    CTTooltipHelper.value(ccAlias, ChatFormatting.AQUA)));
+        }
         return true;
     }
 
@@ -689,6 +731,8 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
     @Override
     protected void write(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.write(tag, provider, clientPacket);
+        tag.putString("AssemblyComputerCraftId", ccId);
+        tag.putString("AssemblyComputerCraftAlias", ccAlias);
         for (Direction nozzle : NOZZLES) {
             writeFrequency(tag, provider, nozzle);
             Map<String, Float> sources = exactThrottleSources.get(nozzle);
@@ -705,6 +749,8 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
     @Override
     protected void read(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.read(tag, provider, clientPacket);
+        ccId = tag.getString("AssemblyComputerCraftId");
+        ccAlias = tag.getString("AssemblyComputerCraftAlias");
         unregisterReceivers();
         for (Direction nozzle : Direction.Plane.HORIZONTAL) {
             frequencyBindings.put(nozzle, readFrequency(tag, provider, nozzle));

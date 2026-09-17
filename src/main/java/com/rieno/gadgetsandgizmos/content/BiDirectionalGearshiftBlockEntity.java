@@ -35,6 +35,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -42,6 +43,14 @@ import java.util.Set;
 
 // Add configurable redstone direction changes to the bidirectional gearbox control path
 public class BiDirectionalGearshiftBlockEntity extends BiDirectionalGearboxBlockEntity implements MenuProvider {
+    private static final int AXIS_ROLE_COLOR_MAPPING_VERSION = 1;
+    private static final String PRIMARY_CW_PORT = "primary_orange_cw";
+    private static final String PRIMARY_CCW_PORT = "primary_orange_ccw";
+    private static final String SECONDARY_CW_PORT = "secondary_cyan_cw";
+    private static final String SECONDARY_CCW_PORT = "secondary_cyan_ccw";
+    private static final String PRIMARY_MODE_PORT = "primary_orange_operation_mode";
+    private static final String SECONDARY_MODE_PORT = "secondary_cyan_operation_mode";
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -58,6 +67,11 @@ public class BiDirectionalGearshiftBlockEntity extends BiDirectionalGearboxBlock
     private AxisControlMode secondaryMode = AxisControlMode.PASSTHROUGH;
     // Local mode
     private LocalControlMode localMode = LocalControlMode.BOTH;
+    // Persistent ACC direction controls
+    private boolean graphPrimaryClockwise;
+    private boolean graphPrimaryCounterClockwise;
+    private boolean graphSecondaryClockwise;
+    private boolean graphSecondaryCounterClockwise;
     // Tracked frequency bindings
     private final EnumMap<AxisRole, EnumMap<RotationChannel, FrequencyBinding>> frequencyBindings = createFrequencyBindings();
 
@@ -143,6 +157,12 @@ public class BiDirectionalGearshiftBlockEntity extends BiDirectionalGearboxBlock
                 getLocalSignal(role, RotationChannel.CLOCKWISE));
         int reverseSignal = Math.max(queryWirelessSignal(getFrequencyBinding(role, RotationChannel.COUNTER_CLOCKWISE)),
                 getLocalSignal(role, RotationChannel.COUNTER_CLOCKWISE));
+        if (isGraphChannelActive(role, RotationChannel.CLOCKWISE)) {
+            forwardSignal = 15;
+        }
+        if (isGraphChannelActive(role, RotationChannel.COUNTER_CLOCKWISE)) {
+            reverseSignal = 15;
+        }
         LaneMode targetMode;
         if (forwardSignal <= 0 && reverseSignal <= 0) {
             targetMode = LaneMode.DISABLED;
@@ -235,9 +255,38 @@ public class BiDirectionalGearshiftBlockEntity extends BiDirectionalGearboxBlock
         return maxSignal;
     }
 
+    // Check whether one ACC direction control is active
+    private boolean isGraphChannelActive(AxisRole role, RotationChannel channel) {
+        if (role == AxisRole.PRIMARY) {
+            return channel == RotationChannel.CLOCKWISE
+                    ? graphPrimaryClockwise
+                    : graphPrimaryCounterClockwise;
+        }
+        return channel == RotationChannel.CLOCKWISE
+                ? graphSecondaryClockwise
+                : graphSecondaryCounterClockwise;
+    }
+
+    // Set one ACC direction control
+    private void setGraphChannelActive(AxisRole role, RotationChannel channel, boolean active) {
+        if (role == AxisRole.PRIMARY) {
+            if (channel == RotationChannel.CLOCKWISE) {
+                graphPrimaryClockwise = active;
+            } else {
+                graphPrimaryCounterClockwise = active;
+            }
+        } else if (channel == RotationChannel.CLOCKWISE) {
+            graphSecondaryClockwise = active;
+        } else {
+            graphSecondaryCounterClockwise = active;
+        }
+        setChanged();
+        sendData();
+    }
+
     // Get the lane axis
     public Direction.Axis getLaneAxis(AxisRole role) {
-        return role == AxisRole.SECONDARY ? getSecondaryLaneAxis() : getPrimaryLaneAxis();
+        return role == AxisRole.PRIMARY ? getSecondaryLaneAxis() : getPrimaryLaneAxis();
     }
 
     // Get the axis mode
@@ -310,9 +359,11 @@ public class BiDirectionalGearshiftBlockEntity extends BiDirectionalGearboxBlock
     @Override
     public void writeSafe(CompoundTag tag, HolderLookup.Provider provider) {
         super.writeSafe(tag, provider);
+        tag.putInt("AxisRoleColorMappingVersion", AXIS_ROLE_COLOR_MAPPING_VERSION);
         tag.putString("PrimaryAxisMode", primaryMode.name());
         tag.putString("SecondaryAxisMode", secondaryMode.name());
         tag.putString("LocalControlMode", localMode.name());
+        writeGraphControls(tag);
         for (AxisRole role : AxisRole.values()) {
             for (RotationChannel channel : RotationChannel.values()) {
                 tag.put(frequencyKey(role, channel), getFrequencyBinding(role, channel).toTag(provider));
@@ -324,9 +375,11 @@ public class BiDirectionalGearshiftBlockEntity extends BiDirectionalGearboxBlock
     @Override
     protected void write(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.write(tag, provider, clientPacket);
+        tag.putInt("AxisRoleColorMappingVersion", AXIS_ROLE_COLOR_MAPPING_VERSION);
         tag.putString("PrimaryAxisMode", primaryMode.name());
         tag.putString("SecondaryAxisMode", secondaryMode.name());
         tag.putString("LocalControlMode", localMode.name());
+        writeGraphControls(tag);
         for (AxisRole role : AxisRole.values()) {
             for (RotationChannel channel : RotationChannel.values()) {
                 FrequencyBinding binding = getFrequencyBinding(role, channel);
@@ -341,13 +394,19 @@ public class BiDirectionalGearshiftBlockEntity extends BiDirectionalGearboxBlock
     @Override
     protected void read(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.read(tag, provider, clientPacket);
-        primaryMode = readEnum(tag, "PrimaryAxisMode", AxisControlMode.PASSTHROUGH);
-        secondaryMode = readEnum(tag, "SecondaryAxisMode", AxisControlMode.PASSTHROUGH);
-        localMode = readEnum(tag, "LocalControlMode", LocalControlMode.BOTH);
+        boolean legacyRoleMapping = tag.getInt("AxisRoleColorMappingVersion") < AXIS_ROLE_COLOR_MAPPING_VERSION;
+        AxisControlMode storedPrimaryMode = readEnum(tag, "PrimaryAxisMode", AxisControlMode.PASSTHROUGH);
+        AxisControlMode storedSecondaryMode = readEnum(tag, "SecondaryAxisMode", AxisControlMode.PASSTHROUGH);
+        primaryMode = legacyRoleMapping ? storedSecondaryMode : storedPrimaryMode;
+        secondaryMode = legacyRoleMapping ? storedPrimaryMode : storedSecondaryMode;
+        localMode = migrateLocalControlMode(
+                readEnum(tag, "LocalControlMode", LocalControlMode.BOTH), legacyRoleMapping);
+        readGraphControls(tag);
         for (AxisRole role : AxisRole.values()) {
             for (RotationChannel channel : RotationChannel.values()) {
                 FrequencyBinding binding = getFrequencyBinding(role, channel);
-                String key = frequencyKey(role, channel);
+                AxisRole storedRole = legacyRoleMapping ? oppositeRole(role) : role;
+                String key = frequencyKey(storedRole, channel);
                 if (tag.contains(key)) {
                     binding.read(tag.getCompound(key), provider);
                 } else {
@@ -355,6 +414,39 @@ public class BiDirectionalGearshiftBlockEntity extends BiDirectionalGearboxBlock
                 }
             }
         }
+    }
+
+    // Write the persistent ACC direction controls
+    private void writeGraphControls(CompoundTag tag) {
+        tag.putBoolean("GraphPrimaryClockwise", graphPrimaryClockwise);
+        tag.putBoolean("GraphPrimaryCounterClockwise", graphPrimaryCounterClockwise);
+        tag.putBoolean("GraphSecondaryClockwise", graphSecondaryClockwise);
+        tag.putBoolean("GraphSecondaryCounterClockwise", graphSecondaryCounterClockwise);
+    }
+
+    // Read the persistent ACC direction controls
+    private void readGraphControls(CompoundTag tag) {
+        graphPrimaryClockwise = tag.getBoolean("GraphPrimaryClockwise");
+        graphPrimaryCounterClockwise = tag.getBoolean("GraphPrimaryCounterClockwise");
+        graphSecondaryClockwise = tag.getBoolean("GraphSecondaryClockwise");
+        graphSecondaryCounterClockwise = tag.getBoolean("GraphSecondaryCounterClockwise");
+    }
+
+    // Migrate the old cyan-primary and orange-secondary user-facing role mapping
+    private static LocalControlMode migrateLocalControlMode(LocalControlMode mode, boolean legacyRoleMapping) {
+        if (!legacyRoleMapping) {
+            return mode;
+        }
+        return switch (mode) {
+            case PRIMARY_AXIS -> LocalControlMode.SECONDARY_AXIS;
+            case SECONDARY_AXIS -> LocalControlMode.PRIMARY_AXIS;
+            case BOTH -> LocalControlMode.BOTH;
+        };
+    }
+
+    // Get the opposite user-facing role
+    private static AxisRole oppositeRole(AxisRole role) {
+        return role == AxisRole.PRIMARY ? AxisRole.SECONDARY : AxisRole.PRIMARY;
     }
 
     // Read the enum
@@ -412,10 +504,107 @@ public class BiDirectionalGearshiftBlockEntity extends BiDirectionalGearboxBlock
                         Mth.abs(getNorthSouthSpeed()), Mth.abs(getEastWestSpeed())), ChatFormatting.GOLD)));
         if (showDetails) {
             tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.goggle.gearbox.lanes"),
-                    CTTooltipHelper.value(getLaneMode(getPrimaryLaneAxis()).name().toLowerCase(Locale.ROOT) + " / "
-                            + getLaneMode(getSecondaryLaneAxis()).name().toLowerCase(Locale.ROOT), ChatFormatting.YELLOW)));
+                    CTTooltipHelper.value(getLaneMode(getLaneAxis(AxisRole.PRIMARY)).name().toLowerCase(Locale.ROOT)
+                            + " / " + getLaneMode(getLaneAxis(AxisRole.SECONDARY)).name().toLowerCase(Locale.ROOT),
+                            ChatFormatting.YELLOW)));
         }
         return true;
+    }
+
+    // Get the graph readable data
+    @Override
+    public Map<String, String> graphReadableData() {
+        Map<String, String> data = new LinkedHashMap<>(super.graphReadableData());
+        data.putAll(graphControlData());
+        return data;
+    }
+
+    // Get the graph writable data
+    @Override
+    public Map<String, String> graphWritableData() {
+        return graphControlData();
+    }
+
+    // Get the graph control data
+    private static Map<String, String> graphControlData() {
+        Map<String, String> data = new LinkedHashMap<>();
+        data.put(PRIMARY_CW_PORT, "boolean");
+        data.put(PRIMARY_CCW_PORT, "boolean");
+        data.put(SECONDARY_CW_PORT, "boolean");
+        data.put(SECONDARY_CCW_PORT, "boolean");
+        data.put(PRIMARY_MODE_PORT, "string");
+        data.put(SECONDARY_MODE_PORT, "string");
+        return data;
+    }
+
+    // Get the graph writable options
+    @Override
+    public Map<String, List<String>> graphWritableOptions() {
+        List<String> modes = List.of("passthrough", "directional");
+        return Map.of(PRIMARY_MODE_PORT, modes, SECONDARY_MODE_PORT, modes);
+    }
+
+    // Read the graph data
+    @Override
+    public com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument.Value readGraphData(String field) {
+        return switch (field) {
+            case PRIMARY_CW_PORT -> com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument.Value.bool(
+                    graphPrimaryClockwise);
+            case PRIMARY_CCW_PORT -> com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument.Value.bool(
+                    graphPrimaryCounterClockwise);
+            case SECONDARY_CW_PORT -> com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument.Value.bool(
+                    graphSecondaryClockwise);
+            case SECONDARY_CCW_PORT -> com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument.Value.bool(
+                    graphSecondaryCounterClockwise);
+            case PRIMARY_MODE_PORT -> com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument.Value.string(
+                    modeName(primaryMode));
+            case SECONDARY_MODE_PORT -> com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument.Value.string(
+                    modeName(secondaryMode));
+            default -> super.readGraphData(field);
+        };
+    }
+
+    // Write the graph data
+    @Override
+    public boolean writeGraphData(String field,
+                                  com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument.Value value) {
+        if (field == null || value == null) {
+            return false;
+        }
+        switch (field) {
+            case PRIMARY_CW_PORT -> setGraphChannelActive(AxisRole.PRIMARY, RotationChannel.CLOCKWISE,
+                    value.asBoolean());
+            case PRIMARY_CCW_PORT -> setGraphChannelActive(AxisRole.PRIMARY, RotationChannel.COUNTER_CLOCKWISE,
+                    value.asBoolean());
+            case SECONDARY_CW_PORT -> setGraphChannelActive(AxisRole.SECONDARY, RotationChannel.CLOCKWISE,
+                    value.asBoolean());
+            case SECONDARY_CCW_PORT -> setGraphChannelActive(AxisRole.SECONDARY, RotationChannel.COUNTER_CLOCKWISE,
+                    value.asBoolean());
+            case PRIMARY_MODE_PORT -> {
+                AxisControlMode mode = graphAxisMode(value.asString());
+                if (mode == null) return false;
+                setAxisMode(AxisRole.PRIMARY, mode);
+            }
+            case SECONDARY_MODE_PORT -> {
+                AxisControlMode mode = graphAxisMode(value.asString());
+                if (mode == null) return false;
+                setAxisMode(AxisRole.SECONDARY, mode);
+            }
+            default -> {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // Parse one graph axis mode
+    private static AxisControlMode graphAxisMode(String mode) {
+        if (mode == null) return null;
+        try {
+            return AxisControlMode.valueOf(mode.trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
     }
 
     // Get the mode name

@@ -142,6 +142,8 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
     private static final String ALL_THRUSTERS_GRAPH_PORT = "all_thrusters";
     private static final List<String> THRUSTER_GRAPH_CONTROL_FIELDS =
             List.copyOf(ThrusterBlockEntity.graphControlData().keySet());
+    private static final List<String> RCS_GRAPH_CONTROL_FIELDS = List.of(
+            "north_throttle", "east_throttle", "south_throttle", "west_throttle");
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -2300,6 +2302,17 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
         return thrusters;
     }
 
+    // Get the attached RCS thrusters by id
+    public Map<String, RcsThrusterBlockEntity> getAttachedRcsThrustersById() {
+        if (level != null && !level.isClientSide) refreshThrusterBindings();
+        Map<String, RcsThrusterBlockEntity> thrusters = new LinkedHashMap<>();
+        for (RcsThrusterBlockEntity thruster : attachedRcsThrustersByPos().values()) {
+            String id = getRcsThrusterId(thruster);
+            if (!id.isEmpty()) thrusters.put(id, thruster);
+        }
+        return thrusters;
+    }
+
     // Get the thruster id
     public String getThrusterId(ThrusterBlockEntity thruster) {
         return UUID.nameUUIDFromBytes(("thruster:" + thruster.getBlockPos().asLong())
@@ -2309,6 +2322,17 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
     // Get the thruster alias
     public String getThrusterAlias(ThrusterBlockEntity thruster) {
         return thrusterAliases.getOrDefault(getThrusterId(thruster), "");
+    }
+
+    // Get the RCS thruster id
+    public String getRcsThrusterId(RcsThrusterBlockEntity thruster) {
+        return UUID.nameUUIDFromBytes(("rcs_thruster:" + thruster.getBlockPos().asLong())
+                .getBytes(StandardCharsets.UTF_8)).toString();
+    }
+
+    // Get the RCS thruster alias
+    public String getRcsThrusterAlias(RcsThrusterBlockEntity thruster) {
+        return thrusterAliases.getOrDefault(getRcsThrusterId(thruster), "");
     }
 
     // Set the thruster alias
@@ -2378,14 +2402,29 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
         return currentThrusters;
     }
 
+    // Get the attached RCS thrusters by position
+    private Map<BlockPos, RcsThrusterBlockEntity> attachedRcsThrustersByPos() {
+        Map<BlockPos, RcsThrusterBlockEntity> currentThrusters = new LinkedHashMap<>();
+        Set<RcsThrusterBlockEntity> seenThrusters = Collections.newSetFromMap(new IdentityHashMap<>());
+        Object attachedSubLevel = getAttachedSubLevelHandle();
+        if (attachedSubLevel != null) {
+            for (BlockEntity blockEntity : getAttachedBlockEntities(attachedSubLevel)) {
+                if (blockEntity instanceof RcsThrusterBlockEntity thruster && seenThrusters.add(thruster)) {
+                    currentThrusters.put(thruster.getBlockPos().immutable(), thruster);
+                }
+            }
+        }
+        return currentThrusters;
+    }
+
     // Get the next thruster alias
-    private String nextThrusterAlias() {
+    private String nextThrusterAlias(String prefix) {
         Set<String> usedAliases = new java.util.HashSet<>(thrusterAliases.values());
         int idx = 0;
-        while (usedAliases.contains("thruster_" + idx)) {
+        while (usedAliases.contains(prefix + idx)) {
             idx++;
         }
-        return "thruster_" + idx;
+        return prefix + idx;
     }
 
     // Refresh the thruster bindings
@@ -2398,7 +2437,7 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
             currentThrusterIds.add(thrusterId);
             String alias = thrusterAliases.get(thrusterId);
             if (alias == null || alias.isBlank()) {
-                alias = nextThrusterAlias();
+                alias = nextThrusterAlias("thruster_");
                 thrusterAliases.put(thrusterId, alias);
                 changed = true;
             }
@@ -2412,6 +2451,23 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
             if (!alias.equals(previousAlias)) {
                 changed = true;
             }
+        }
+
+        for (Map.Entry<BlockPos, RcsThrusterBlockEntity> entry : attachedRcsThrustersByPos().entrySet()) {
+            RcsThrusterBlockEntity thruster = entry.getValue();
+            String thrusterId = getRcsThrusterId(thruster);
+            currentThrusterIds.add(thrusterId);
+            String alias = thrusterAliases.get(thrusterId);
+            if (alias == null || alias.isBlank()) {
+                alias = nextThrusterAlias("rcs_thruster_");
+                thrusterAliases.put(thrusterId, alias);
+                changed = true;
+            }
+            String previousId = thruster.getCcId();
+            String previousAlias = thruster.getAssemblyComputerCraftAlias();
+            thruster.setCcId(thrusterId);
+            thruster.setAssemblyComputerCraftAlias(alias);
+            if (!thrusterId.equals(previousId) || !alias.equals(previousAlias)) changed = true;
         }
 
         if (thrusterAliases.keySet().removeIf(id -> !currentThrusterIds.contains(id))) {
@@ -3098,25 +3154,49 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
         return thrusters;
     }
 
+    // Get the graph RCS thrusters by alias
+    private Map<String, RcsThrusterGraphTarget> graphRcsThrustersByAlias() {
+        Map<String, RcsThrusterGraphTarget> thrusters = new LinkedHashMap<>();
+        for (Map.Entry<String, RcsThrusterBlockEntity> entry : getAttachedRcsThrustersById().entrySet()) {
+            RcsThrusterBlockEntity thruster = entry.getValue();
+            String alias = getRcsThrusterAlias(thruster);
+            if (alias == null || alias.isBlank()) continue;
+            alias = alias.strip();
+            if (alias.isEmpty() || ALL_THRUSTERS_GRAPH_PORT.equals(alias)) continue;
+            thrusters.putIfAbsent(alias, new RcsThrusterGraphTarget(entry.getKey(), alias, thruster));
+        }
+        return thrusters;
+    }
+
     // Add the attached thruster status MAP ports
     private void addThrusterGraphReadablePorts(Map<String, String> fields) {
         Map<String, ThrusterGraphTarget> thrusters = graphThrustersByAlias();
-        if (thrusters.isEmpty()) return;
-        fields.put(ALL_THRUSTERS_GRAPH_PORT, "map");
+        Map<String, RcsThrusterGraphTarget> rcsThrusters = graphRcsThrustersByAlias();
+        if (thrusters.isEmpty() && rcsThrusters.isEmpty()) return;
+        if (!thrusters.isEmpty()) fields.put(ALL_THRUSTERS_GRAPH_PORT, "map");
         thrusters.keySet().forEach(alias -> fields.putIfAbsent(alias, "map"));
+        rcsThrusters.keySet().forEach(alias -> fields.putIfAbsent(alias, "map"));
     }
 
     // Add the attached thruster control ports
     private void addThrusterGraphWritablePorts(Map<String, String> fields) {
         Map<String, ThrusterGraphTarget> thrusters = graphThrustersByAlias();
-        if (thrusters.isEmpty()) return;
+        Map<String, RcsThrusterGraphTarget> rcsThrusters = graphRcsThrustersByAlias();
+        if (thrusters.isEmpty() && rcsThrusters.isEmpty()) return;
         Map<String, String> controls = ThrusterBlockEntity.graphControlData();
-        for (String control : THRUSTER_GRAPH_CONTROL_FIELDS) {
-            fields.put(allThrusterGraphControlPort(control), controls.get(control));
+        if (!thrusters.isEmpty()) {
+            for (String control : THRUSTER_GRAPH_CONTROL_FIELDS) {
+                fields.put(allThrusterGraphControlPort(control), controls.get(control));
+            }
         }
         for (ThrusterGraphTarget target : thrusters.values()) {
             for (String control : THRUSTER_GRAPH_CONTROL_FIELDS) {
                 fields.putIfAbsent(thrusterGraphControlPort(target.alias(), control), controls.get(control));
+            }
+        }
+        for (RcsThrusterGraphTarget target : rcsThrusters.values()) {
+            for (String control : RCS_GRAPH_CONTROL_FIELDS) {
+                fields.putIfAbsent(thrusterGraphControlPort(target.alias(), control), "number");
             }
         }
     }
@@ -3165,6 +3245,24 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
         return AdvancedGraphDocument.Value.map(values);
     }
 
+    // Get one RCS thruster status MAP
+    private AdvancedGraphDocument.Value rcsThrusterGraphStatus(RcsThrusterGraphTarget target) {
+        CompoundTag values = new CompoundTag();
+        putGraphValue(values, "id", AdvancedGraphDocument.Value.string(target.id()));
+        putGraphValue(values, "alias", AdvancedGraphDocument.Value.string(target.alias()));
+        putGraphValue(values, "rpm", AdvancedGraphDocument.Value.number(target.thruster().getSpeed()));
+        putGraphValue(values, "maxNozzleThrust",
+                AdvancedGraphDocument.Value.number(target.thruster().getMaxNozzleThrust()));
+        for (Direction nozzle : Direction.Plane.HORIZONTAL) {
+            String name = nozzle.getSerializedName();
+            putGraphValue(values, name + "Throttle",
+                    AdvancedGraphDocument.Value.number(target.thruster().getThrottle(nozzle)));
+            putGraphValue(values, name + "Thrust",
+                    AdvancedGraphDocument.Value.number(target.thruster().getNozzleThrust(nozzle)));
+        }
+        return AdvancedGraphDocument.Value.map(values);
+    }
+
     // Read one attached thruster MAP port
     private AdvancedGraphDocument.Value readThrusterGraphData(String field) {
         Map<String, ThrusterGraphTarget> thrusters = graphThrustersByAlias();
@@ -3174,14 +3272,16 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
             return AdvancedGraphDocument.Value.map(values);
         }
         ThrusterGraphTarget target = thrusters.get(field);
-        return target == null ? AdvancedGraphDocument.Value.number(0.0D) : thrusterGraphStatus(target);
+        if (target != null) return thrusterGraphStatus(target);
+        RcsThrusterGraphTarget rcsTarget = graphRcsThrustersByAlias().get(field);
+        return rcsTarget == null ? AdvancedGraphDocument.Value.number(0.0D)
+                : rcsThrusterGraphStatus(rcsTarget);
     }
 
     // Write one attached thruster control port
     private boolean writeThrusterGraphControl(String field, AdvancedGraphDocument.Value value) {
         if (value == null) return false;
         Map<String, ThrusterGraphTarget> thrusters = graphThrustersByAlias();
-        if (thrusters.isEmpty()) return false;
         for (String control : THRUSTER_GRAPH_CONTROL_FIELDS) {
             if (allThrusterGraphControlPort(control).equals(field)) {
                 return writeThrusterGraphControl(thrusters.values(), control, value);
@@ -3191,6 +3291,13 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
             for (String control : THRUSTER_GRAPH_CONTROL_FIELDS) {
                 if (thrusterGraphControlPort(target.alias(), control).equals(field)) {
                     return writeThrusterGraphControl(List.of(target), control, value);
+                }
+            }
+        }
+        for (RcsThrusterGraphTarget target : graphRcsThrustersByAlias().values()) {
+            for (String control : RCS_GRAPH_CONTROL_FIELDS) {
+                if (thrusterGraphControlPort(target.alias(), control).equals(field)) {
+                    return target.thruster().writeGraphData(control, value);
                 }
             }
         }
@@ -3209,13 +3316,19 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
 
     // Check whether a port controls one attached thruster
     private static boolean isThrusterGraphControlPort(String field,
-                                                       Map<String, ThrusterGraphTarget> thrusters) {
+                                                       Map<String, ThrusterGraphTarget> thrusters,
+                                                       Map<String, RcsThrusterGraphTarget> rcsThrusters) {
         if (field == null || field.isBlank()) return false;
         for (String control : THRUSTER_GRAPH_CONTROL_FIELDS) {
             if (allThrusterGraphControlPort(control).equals(field)) return true;
         }
         for (ThrusterGraphTarget target : thrusters.values()) {
             for (String control : THRUSTER_GRAPH_CONTROL_FIELDS) {
+                if (thrusterGraphControlPort(target.alias(), control).equals(field)) return true;
+            }
+        }
+        for (RcsThrusterGraphTarget target : rcsThrusters.values()) {
+            for (String control : RCS_GRAPH_CONTROL_FIELDS) {
                 if (thrusterGraphControlPort(target.alias(), control).equals(field)) return true;
             }
         }
@@ -3232,6 +3345,10 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
 
     // Track one attached thruster for graph data
     private record ThrusterGraphTarget(String id, String alias, ThrusterBlockEntity thruster) {
+    }
+
+    // Track one attached RCS thruster for graph data
+    private record RcsThrusterGraphTarget(String id, String alias, RcsThrusterBlockEntity thruster) {
     }
 
     // Check whether the assembled sub-level is available for graph schema discovery
@@ -3252,6 +3369,9 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
         for (String alias : aliases) {
             revision = 31L * revision + alias.hashCode();
         }
+        List<String> rcsAliases = new ArrayList<>(graphRcsThrustersByAlias().keySet());
+        rcsAliases.sort(String::compareTo);
+        for (String alias : rcsAliases) revision = 31L * revision + alias.hashCode();
         return revision;
     }
 
@@ -3302,18 +3422,28 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
     @Override
     public Map<String, Map<String, String>> graphWritableDataPortGroups() {
         Map<String, ThrusterGraphTarget> thrusters = graphThrustersByAlias();
-        if (thrusters.isEmpty()) return Map.of();
+        Map<String, RcsThrusterGraphTarget> rcsThrusters = graphRcsThrustersByAlias();
+        if (thrusters.isEmpty() && rcsThrusters.isEmpty()) return Map.of();
         Map<String, String> controls = ThrusterBlockEntity.graphControlData();
         Map<String, Map<String, String>> groups = new LinkedHashMap<>();
         Map<String, String> shared = new LinkedHashMap<>();
-        for (String control : THRUSTER_GRAPH_CONTROL_FIELDS) {
-            shared.put(allThrusterGraphControlPort(control), controls.get(control));
+        if (!thrusters.isEmpty()) {
+            for (String control : THRUSTER_GRAPH_CONTROL_FIELDS) {
+                shared.put(allThrusterGraphControlPort(control), controls.get(control));
+            }
         }
-        groups.put(ALL_THRUSTERS_GRAPH_PORT, Collections.unmodifiableMap(shared));
+        if (!shared.isEmpty()) groups.put(ALL_THRUSTERS_GRAPH_PORT, Collections.unmodifiableMap(shared));
         for (ThrusterGraphTarget target : thrusters.values()) {
             Map<String, String> fields = new LinkedHashMap<>();
             for (String control : THRUSTER_GRAPH_CONTROL_FIELDS) {
                 fields.put(thrusterGraphControlPort(target.alias(), control), controls.get(control));
+            }
+            groups.put(target.alias(), Collections.unmodifiableMap(fields));
+        }
+        for (RcsThrusterGraphTarget target : rcsThrusters.values()) {
+            Map<String, String> fields = new LinkedHashMap<>();
+            for (String control : RCS_GRAPH_CONTROL_FIELDS) {
+                fields.put(thrusterGraphControlPort(target.alias(), control), "number");
             }
             groups.put(target.alias(), Collections.unmodifiableMap(fields));
         }
@@ -3371,9 +3501,10 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
     public boolean writeGraphValues(Map<String, GraphValue> values) {
         if (values == null || values.isEmpty()) return false;
         Map<String, ThrusterGraphTarget> thrusters = graphThrustersByAlias();
+        Map<String, RcsThrusterGraphTarget> rcsThrusters = graphRcsThrustersByAlias();
         boolean changed = false;
         for (Map.Entry<String, GraphValue> entry : values.entrySet()) {
-            if (!isThrusterGraphControlPort(entry.getKey(), thrusters)) {
+            if (!isThrusterGraphControlPort(entry.getKey(), thrusters, rcsThrusters)) {
                 changed |= AdvancedGraphDataProvider.super.writeGraphValue(entry.getKey(), entry.getValue());
             }
         }
@@ -3396,6 +3527,14 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
             if (!overrides.isEmpty()) {
                 changed |= target.thruster().writeGraphValues(overrides);
             }
+        }
+        for (RcsThrusterGraphTarget target : rcsThrusters.values()) {
+            Map<String, GraphValue> controls = new LinkedHashMap<>();
+            for (String control : RCS_GRAPH_CONTROL_FIELDS) {
+                GraphValue value = values.get(thrusterGraphControlPort(target.alias(), control));
+                if (value != null) controls.put(control, value);
+            }
+            if (!controls.isEmpty()) changed |= target.thruster().writeGraphValues(controls);
         }
         return changed;
     }

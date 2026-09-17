@@ -3759,7 +3759,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Get the graph direct signal source id
     private String graphDirectSignalSourceId(AdvancedGraphDocument.Node node) {
-        return worldPosition.asLong() + ":graph_output";
+        String nodeId = node == null || node.id() == null ? "unknown" : node.id();
+        return worldPosition.asLong() + ":graph:output:" + nodeId;
     }
 
     // Get the graph direct target reference
@@ -3951,9 +3952,38 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 continue;
             }
             options.put(inlinePort, options.get(key).copy());
+            normalizeInlineMapOptionDefault(node, inlinePort,
+                    dataPortGroup(node, source).getString(key), options.getList(key, Tag.TAG_STRING));
         }
         if (options.isEmpty()) node.data().remove("InputOptions");
         else node.data().put("InputOptions", options);
+    }
+
+    // Repair defaults created before typed MAP fields retained their value type
+    private static void normalizeInlineMapOptionDefault(AdvancedGraphDocument.Node node, String port,
+                                                        String type, ListTag options) {
+        if (!"string".equals(type) || options == null || options.isEmpty()) return;
+        CompoundTag defaults = node.data().getCompound("Defaults");
+        String current = defaults.getCompound(port).getCompound("Payload").getString("Value");
+        for (int index = 0; index < options.size(); index++) {
+            if (options.getString(index).equals(current)) return;
+        }
+        String selected = options.getString(0);
+        for (int index = 0; index < options.size(); index++) {
+            String candidate = options.getString(index);
+            if (!candidate.isBlank() && current.contains(candidate)) {
+                selected = candidate;
+                break;
+            }
+        }
+        CompoundTag payload = new CompoundTag();
+        payload.putString("Value", selected);
+        CompoundTag encoded = new CompoundTag();
+        encoded.putString("Type", "string");
+        encoded.put("Payload", payload);
+        defaults.put(port, encoded);
+        node.data().put("Defaults", defaults);
+        AdvancedGraphPortState.updatePersistentValueTag(node, port, false, encoded);
     }
 
     // Configure the aeroworks graph section
@@ -4726,12 +4756,15 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         BlockEntity blockEntity =
                 SimulatedHelper.findLoadedBlockEntityExact(level, discovery.subLevelId(), discovery.blockPos());
+        Level targetLevel = blockEntity != null && blockEntity.getLevel() != null
+                ? blockEntity.getLevel()
+                : SubLevelBlockEntityCollector.resolveTargetLevel(level, discovery.subLevelId());
         boolean targetLoaded = blockEntity != null || SubLevelBlockEntityCollector.isTargetLoaded(
                 level, discovery.subLevelId(), discovery.blockPos());
-        if (!targetLoaded) {
+        if (!targetLoaded || targetLevel == null) {
             return null;
         }
-        if (blockEntity == null && level.getBlockState(discovery.blockPos()).isAir()) {
+        if (blockEntity == null && targetLevel.getBlockState(discovery.blockPos()).isAir()) {
             ControllerDiscoveryNode current = findCurrentTarget(discovery);
             if (current != null && current.blockPos() != null) {
                 node.data().putString("Target", current.nodeId());
@@ -4741,14 +4774,16 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 blockEntity =
                         SimulatedHelper.findLoadedBlockEntityExact(
                                 level, discovery.subLevelId(), discovery.blockPos());
+                targetLevel = blockEntity != null && blockEntity.getLevel() != null
+                        ? blockEntity.getLevel()
+                        : SubLevelBlockEntityCollector.resolveTargetLevel(level, discovery.subLevelId());
                 targetLoaded = blockEntity != null || SubLevelBlockEntityCollector.isTargetLoaded(
                         level, discovery.subLevelId(), discovery.blockPos());
             }
         }
-        if (!targetLoaded) {
+        if (!targetLoaded || targetLevel == null) {
             return null;
         }
-        Level targetLevel = blockEntity != null && blockEntity.getLevel() != null ? blockEntity.getLevel() : level;
         BlockPos targetPos = blockEntity != null ? blockEntity.getBlockPos() : discovery.blockPos();
         TargetAccess target = new TargetAccess(targetLevel, targetPos, configuredDirection(node, "face"));
         return resolveAttachedDataTarget(node, target);
@@ -4871,9 +4906,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 level, candidate.subLevelId(), candidate.blockPos()) != null) {
             return true;
         }
-        return SubLevelBlockEntityCollector.isTargetLoaded(
-                level, candidate.subLevelId(), candidate.blockPos())
-                && !level.getBlockState(candidate.blockPos()).isAir();
+        return loadedGraphTargetBlockExists(candidate);
     }
 
     // Check if the stored graph target exists
@@ -4886,9 +4919,17 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 level, candidate.subLevelId(), candidate.blockPos()) != null) {
             return true;
         }
-        return SubLevelBlockEntityCollector.isTargetLoaded(
-                level, candidate.subLevelId(), candidate.blockPos())
-                && !level.getBlockState(candidate.blockPos()).isAir();
+        return loadedGraphTargetBlockExists(candidate);
+    }
+
+    // Check a block-only target in the level that actually owns it
+    private boolean loadedGraphTargetBlockExists(ControllerDiscoveryNode candidate) {
+        if (!SubLevelBlockEntityCollector.isTargetLoaded(
+                level, candidate.subLevelId(), candidate.blockPos())) {
+            return false;
+        }
+        Level targetLevel = SubLevelBlockEntityCollector.resolveTargetLevel(level, candidate.subLevelId());
+        return targetLevel != null && !targetLevel.getBlockState(candidate.blockPos()).isAir();
     }
 
     // Refresh the current target
