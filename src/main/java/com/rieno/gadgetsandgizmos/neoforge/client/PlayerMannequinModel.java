@@ -84,7 +84,7 @@ public class PlayerMannequinModel extends PlayerModel<PlayerMannequinEntity> {
         this.leftPants.copyFrom(this.leftLeg);
         this.rightPants.copyFrom(this.rightLeg);
 
-        showAllLayers(entity);
+        showBaseOnly(entity);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -110,6 +110,12 @@ public class PlayerMannequinModel extends PlayerModel<PlayerMannequinEntity> {
         this.rightSleeve.visible = renderSkinLayers && showArms;
         this.leftPants.visible = renderSkinLayers;
         this.rightPants.visible = renderSkinLayers;
+        this.hat.skipDraw = !renderSkinLayers;
+        this.jacket.skipDraw = !renderSkinLayers;
+        this.leftSleeve.skipDraw = !renderSkinLayers || !showArms;
+        this.rightSleeve.skipDraw = !renderSkinLayers || !showArms;
+        this.leftPants.skipDraw = !renderSkinLayers;
+        this.rightPants.skipDraw = !renderSkinLayers;
     }
 
     // Configure the detail
@@ -132,6 +138,12 @@ public class PlayerMannequinModel extends PlayerModel<PlayerMannequinEntity> {
         this.rightSleeve.visible = false;
         this.leftPants.visible = false;
         this.rightPants.visible = false;
+        this.hat.skipDraw = true;
+        this.jacket.skipDraw = true;
+        this.leftSleeve.skipDraw = true;
+        this.rightSleeve.skipDraw = true;
+        this.leftPants.skipDraw = true;
+        this.rightPants.skipDraw = true;
     }
 
     // Show the skin layers only
@@ -149,6 +161,12 @@ public class PlayerMannequinModel extends PlayerModel<PlayerMannequinEntity> {
         this.rightSleeve.visible = renderSkinLayers && showArms;
         this.leftPants.visible = renderSkinLayers;
         this.rightPants.visible = renderSkinLayers;
+        this.hat.skipDraw = !renderSkinLayers;
+        this.jacket.skipDraw = !renderSkinLayers;
+        this.leftSleeve.skipDraw = !renderSkinLayers || !showArms;
+        this.rightSleeve.skipDraw = !renderSkinLayers || !showArms;
+        this.leftPants.skipDraw = !renderSkinLayers;
+        this.rightPants.skipDraw = !renderSkinLayers;
     }
 
     // Apply the pose

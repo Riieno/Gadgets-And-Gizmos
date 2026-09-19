@@ -11,6 +11,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 import com.rieno.gadgetsandgizmos.lib.client.render.AreaHighlightRenderTypes;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientRegistry;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletData;
+import com.rieno.gadgetsandgizmos.content.IonThrusterStacks;
 import com.rieno.gadgetsandgizmos.content.ZiplineRidingController;
 import com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps.AppStore;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
@@ -21,6 +22,8 @@ import com.simibubi.create.foundation.block.render.ReducedDestroyEffects;
 import com.simibubi.create.foundation.item.render.SimpleCustomRenderer;
 import net.minecraft.client.renderer.ItemBlockRenderTypes;
 import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.item.ItemProperties;
+import net.minecraft.resources.ResourceLocation;
 import com.simibubi.create.content.decoration.copycat.CopycatBlock;
 import net.createmod.ponder.foundation.PonderIndex;
 import net.neoforged.bus.api.IEventBus;
@@ -73,6 +76,7 @@ public final class CTClientBootstrap {
                 TabletAppClientRegistry.registerIfAbsent(DiagnosticTabletData.appId("app_store"), new AppStore());
                 AccDisplayConnectedTextures.register();
                 registerAccDisplayRenderLayers();
+                registerIonThrusterItemModel();
                 CTClientRenderers.registerVisualizers();
             });
         });
@@ -111,6 +115,16 @@ public final class CTClientBootstrap {
         ItemBlockRenderTypes.setRenderLayer(CTBlocks.ACC_DISPLAY_PANEL.get(), RenderType.cutoutMipped());
         ItemBlockRenderTypes.setRenderLayer(CTBlocks.ACC_DISPLAY_HALF_PANEL.get(), RenderType.cutoutMipped());
         ItemBlockRenderTypes.setRenderLayer(CTBlocks.ACC_DISPLAY_SLAB.get(), RenderType.cutoutMipped());
+    }
+
+    // Select the focused-engine model for Thrusters with an installed Lens
+    private static void registerIonThrusterItemModel() {
+        if (CTItems.THRUSTER == null) {
+            return;
+        }
+        ItemProperties.register(CTItems.THRUSTER.get(),
+                ResourceLocation.fromNamespaceAndPath("createthrusters", "ion_thruster"),
+                (stack, level, entity, seed) -> IonThrusterStacks.isIonThruster(stack) ? 1.0F : 0.0F);
     }
 
     // Register the client extensions

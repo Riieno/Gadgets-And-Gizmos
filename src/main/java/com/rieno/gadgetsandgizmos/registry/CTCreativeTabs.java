@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.registry;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.CreateThrusters;
+import com.rieno.gadgetsandgizmos.content.IonThrusterStacks;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariant;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariants;
 import com.rieno.gadgetsandgizmos.content.SupporterHeads;
@@ -113,6 +114,7 @@ public final class CTCreativeTabs {
         row = addSectionBanner(displayItems, BLOCKS_SECTION, row);
         int blockCount = 0;
         blockCount += accept(displayItems, searchItems, CTItems.THRUSTER);
+        blockCount += acceptStack(displayItems, searchItems, IonThrusterStacks.create());
         blockCount += accept(displayItems, searchItems, CTItems.SMALL_THRUSTER);
         blockCount += accept(displayItems, searchItems, CTItems.RCS_THRUSTER);
         blockCount += accept(displayItems, searchItems, CTItems.BLACKSTONE_ALLOY_BLOCK);

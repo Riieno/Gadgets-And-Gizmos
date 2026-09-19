@@ -1,3 +1,11 @@
 {
-	"parent": "createthrusters:block/thruster/item"
+  "parent": "createthrusters:block/thruster/item",
+  "overrides": [
+    {
+      "predicate": {
+        "createthrusters:ion_thruster": 1
+      },
+      "model": "createthrusters:item/ion_thruster"
+    }
+  ]
 }

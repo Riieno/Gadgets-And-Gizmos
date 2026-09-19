@@ -1,0 +1,15 @@
+{
+  "parent": "createthrusters:gadgets_and_gizmos",
+  "display": {
+    "icon": { "id": "createthrusters:claw" },
+    "title": { "translate": "advancement.createthrusters.claw.title" },
+    "description": { "translate": "advancement.createthrusters.claw.description" },
+    "frame": "task", "show_toast": true, "announce_to_chat": true, "hidden": false
+  },
+  "criteria": {
+    "has_claw": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": { "items": [{ "items": ["createthrusters:claw"] }] }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "parent": "createthrusters:thruster",
+  "display": {
+    "icon": { "id": "createthrusters:processing_upgrade_smelting_t1" },
+    "title": { "translate": "advancement.createthrusters.processing_upgrade.smelting_t1.title" },
+    "description": { "translate": "advancement.createthrusters.processing_upgrade.description" },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "has_processing_upgrade_smelting_t1": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": { "items": [{ "items": ["createthrusters:processing_upgrade_smelting_t1"] }] }
+    }
+  }
+}

@@ -19,7 +19,9 @@ import com.rieno.gadgetsandgizmos.neoforge.client.AnalogueJoystickConfigScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.ClawConfigScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.GyroscopeLinkConfigScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.DiagnosticTabletScreen;
+import com.rieno.gadgetsandgizmos.content.IonThrusterStacks;
 import com.rieno.gadgetsandgizmos.registry.CTFeatureToggles;
+import com.rieno.gadgetsandgizmos.registry.CTItems;
 import com.mojang.logging.LogUtils;
 import com.simibubi.create.compat.jei.GhostIngredientHandler;
 import com.simibubi.create.foundation.gui.menu.AbstractSimiContainerScreen;
@@ -39,6 +41,10 @@ import mezz.jei.api.recipe.RecipeIngredientRole;
 import mezz.jei.api.recipe.RecipeType;
 import mezz.jei.api.recipe.category.IRecipeCategory;
 import mezz.jei.api.registration.IGuiHandlerRegistration;
+import mezz.jei.api.registration.IExtraIngredientRegistration;
+import mezz.jei.api.registration.ISubtypeRegistration;
+import mezz.jei.api.ingredients.subtypes.ISubtypeInterpreter;
+import mezz.jei.api.ingredients.subtypes.UidContext;
 import mezz.jei.api.registration.IRecipeRegistration;
 import mezz.jei.api.runtime.IJeiRuntime;
 import net.minecraft.client.Minecraft;
@@ -105,6 +111,36 @@ public class CTJeiPlugin implements IModPlugin {
     @Override
     public ResourceLocation getPluginUid() {
         return ID;
+    }
+
+    // Register the ion thruster as a distinct Thruster subtype
+    @Override
+    public void registerItemSubtypes(ISubtypeRegistration registration) {
+        if (CTItems.THRUSTER != null) {
+            registration.registerSubtypeInterpreter(CTItems.THRUSTER.get(), new ISubtypeInterpreter<>() {
+                @Override
+                public Object getSubtypeData(ItemStack stack, UidContext context) {
+                    return IonThrusterStacks.isIonThruster(stack) ? "ion_thruster" : null;
+                }
+
+                @Override
+                public String getLegacyStringSubtypeInfo(ItemStack stack, UidContext context) {
+                    return IonThrusterStacks.isIonThruster(stack) ? "ion_thruster" : "";
+                }
+            });
+        }
+    }
+
+    // Add the pre-equipped ion thruster stack to JEI's item list
+    @Override
+    public void registerExtraIngredients(IExtraIngredientRegistration registration) {
+        if (!CTFeatureToggles.isItemEnabled("thruster")) {
+            return;
+        }
+        ItemStack ionThruster = IonThrusterStacks.create();
+        if (!ionThruster.isEmpty()) {
+            registration.addExtraItemStacks(List.of(ionThruster));
+        }
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
