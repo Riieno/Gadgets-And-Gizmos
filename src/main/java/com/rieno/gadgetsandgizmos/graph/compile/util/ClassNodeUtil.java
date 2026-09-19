@@ -12,6 +12,13 @@ import java.io.InputStream;
 import java.lang.reflect.Field;
 
 public class ClassNodeUtil {
+    public static ClassNode getClassNodeOrNull(String name) {
+        try {
+            return getClassNode(name);
+        } catch(ClassNotFoundException | IOException e) {
+         return null;
+        }
+    }
     public static ClassNode getClassNode(String name) throws ClassNotFoundException, IOException {
         ClassNode classNode;
         int options = 0;

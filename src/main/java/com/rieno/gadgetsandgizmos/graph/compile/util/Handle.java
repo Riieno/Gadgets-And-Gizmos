@@ -6,6 +6,8 @@ import com.rieno.gadgetsandgizmos.graph.struct.NodeCalculator;
 import lombok.Lombok;
 import lombok.SneakyThrows;
 
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -22,6 +24,12 @@ public class Handle {
     @SneakyThrows
     public static Method method(ThrowingSupplier<Method> getter) {
         return getter.get();
+    }
+    @SneakyThrows
+    public static MethodHandle method(MethodHandles.Lookup lookup, ThrowingSupplier<Method> getter) {
+        Method m = getter.get();
+        m.setAccessible(true);
+        return lookup.unreflect(m);
     }
     @SneakyThrows
     public static Constructor<?> constructor(ThrowingSupplier<Constructor<?>> getter) {

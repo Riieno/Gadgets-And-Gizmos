@@ -14,6 +14,7 @@ import java.io.FileOutputStream;
 import java.io.PrintStream;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 class AbstractJVMGraphCompilerTest {
 
@@ -31,7 +32,22 @@ class AbstractJVMGraphCompilerTest {
         }
     }
 
-    public JVMGraphRuntime runtime = new JVMGraphRuntime(new DebugProps(debugDir));
+    String graphClassSubName = null;
+    protected void setClassSubName(String subName){
+        this.graphClassSubName=subName;
+    }
+
+    public JVMGraphRuntime runtime = new JVMGraphRuntime(new DebugProps(debugDir) {
+        static AtomicInteger counter = new AtomicInteger();
+
+        @Override
+        public String transformGraphName(String className, String hash) {
+            String classPrefix = graphClassSubName;
+            if(classPrefix == null) classPrefix = "";
+            else classPrefix = "$" + classPrefix;
+            return className + classPrefix + "$_" + counter.incrementAndGet()+"_";
+        }
+    });
 
     static {
         System.setOut(new PrintStream(new FileOutputStream(FileDescriptor.out)));
@@ -51,7 +67,7 @@ class AbstractJVMGraphCompilerTest {
 
         if(expected != null) Assertions.assertNotNull(actual, "Actual is null");
         if(expected == null) {
-            Assertions.assertNull( "Actual isnot null");
+            Assertions.assertNull("Actual isnot null");
             return;
         }
         if(expected.type().equals("number")) {
@@ -129,7 +145,8 @@ class AbstractJVMGraphCompilerTest {
     }
 
     public AdvancedGraphDocument.Value output(AdvancedGraphDocument.Node node, String port) {
-        return runtime.previewOutput(doc, node, port);
+
+        return runtime.previewOutput(doc, node, port, true);
     }
 
     public String uuid() {

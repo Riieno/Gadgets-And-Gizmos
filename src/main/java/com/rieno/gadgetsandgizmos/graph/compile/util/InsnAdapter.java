@@ -6,6 +6,8 @@ import org.jetbrains.annotations.NotNull;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
+import org.objectweb.asm.tree.AbstractInsnNode;
+import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.LabelNode;
 
 import java.lang.reflect.Constructor;
@@ -301,6 +303,16 @@ public class InsnAdapter {
             LabelNode labelNode = super.get(k);
             if(labelNode==null)put((LabelNode) k,labelNode=new LabelNode());
             return labelNode;
+        }
+
+        public InsnList clone(InsnList oldList, boolean doCleanup) {
+            InsnList newList = new InsnList();
+            for(AbstractInsnNode insnNode : oldList) {
+                newList.add(insnNode.clone(this));
+            }
+            if(doCleanup) clear();
+            return newList;
+
         }
     }
 }

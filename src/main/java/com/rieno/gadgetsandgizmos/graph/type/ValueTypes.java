@@ -32,6 +32,11 @@ public interface ValueTypes {
     @SneakyThrows
     static Integer afterAll() {
         if(afterAll != null) return 1;
+        NUMBER.defaultForInnerType();
+        BOOL.defaultForInnerType();
+        STRING.defaultForInnerType();
+        VALUE.defaultForInnerType();
+        VOID.defaultForInnerType();
         NUMBER.convertViaLambda(BOOL, ValueTypes::num2bool);
         NUMBER.convertViaLambda(STRING, (Double2ObjectFunction<String>)Double::toString);
         NUMBER.convertViaLambda(VALUE, AdvancedGraphDocument.Value::number);

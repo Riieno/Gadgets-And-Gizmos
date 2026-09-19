@@ -35,23 +35,36 @@ public abstract class AbstractJVMGraph {
         nodeToIndex = cache.nodeToIndex();
     }
 
-    public abstract void passive(double deltaTime,String eventId);
+    public abstract void passive(double deltaTime, String eventId);
 
-    public abstract void tick(double deltaTime,String eventId);
-    public abstract void delayed(double deltaTime,String eventId);
+    public abstract void tick(double deltaTime, String eventId);
 
-    public abstract void onEvent(double deltaTime,String eventId);
+    public abstract void delayed(double deltaTime, String eventId);
+
+    public abstract void onEvent(double deltaTime, String eventId);
 
     public final Object2IntOpenHashMap<String> nodeToIndex;
     public final Object2ObjectOpenHashMap<PortKey, PortIndex> portToIndex;
 
     public AdvancedGraphDocument.Value outputOf(AdvancedGraphDocument.Node node, String port) {
-        return calculatePort(new PortKey(node.id(), port, true));
+        return calculatePort(new PortKey(node.id(), port, true), false);
     }
 
-    public AdvancedGraphDocument.@Nullable Value calculatePort(PortKey k) {
+    public AdvancedGraphDocument.Value outputOf(AdvancedGraphDocument.Node node, String port, boolean throwError) {
+        return calculatePort(new PortKey(node.id(), port, true), throwError);
+    }
+
+    public AdvancedGraphDocument.@Nullable Value calculatePort(PortKey k, boolean throwError) {
         PortIndex index = portToIndex.get(k);
-        if(index == null) return null;
+        if(index == null) {
+            if(throwError) {
+                if(!nodeToIndex.containsKey(k.nodeId)){
+                    throw new IllegalArgumentException("No such node: " + k.nodeId);
+                }
+                throw new IllegalArgumentException("No such port: " + k);
+            }
+            return null;
+        }
         int nodeIndex = index.nodeIndex();
         NodeCalculator calculator = getOrCreateNodeCalculator(nodeIndex);
         ;
@@ -72,7 +85,7 @@ public abstract class AbstractJVMGraph {
             synchronized(cache) {
                 calculator = nodeCalculators[nodeIndex];
                 if(calculator == null) {
-                    calculator = nodeCalculators[nodeIndex] = CalculatorGenerator.defineCalculator(cache, loader,this, nodeIndex);
+                    calculator = nodeCalculators[nodeIndex] = CalculatorGenerator.defineCalculator(cache, loader, this, nodeIndex);
                 }
             }
         }
@@ -81,7 +94,12 @@ public abstract class AbstractJVMGraph {
 
     public AdvancedGraphDocument.Value inputOf(AdvancedGraphDocument.Node node, String port) {
         //Or calculatePort(redirectInput.get(new PortKey(node,port)))
-        return calculatePort(new PortKey(node.id(), port, false));
+        return calculatePort(new PortKey(node.id(), port, false), false);
+    }
+
+    public AdvancedGraphDocument.Value inputOf(AdvancedGraphDocument.Node node, String port, boolean throwError) {
+        //Or calculatePort(redirectInput.get(new PortKey(node,port)))
+        return calculatePort(new PortKey(node.id(), port, false), throwError);
     }
 
     public record PortKey(String nodeId, String portName, boolean isOutput) {}

@@ -9,6 +9,7 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.objectweb.asm.Label;
+import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.commons.GeneratorAdapter;
@@ -39,6 +40,19 @@ public class GeneratorHelper extends GeneratorAdapter {
         this.node = node;
         visitCode();
         visitLabel(startLabel);
+    }
+
+    @Override
+    public int newLocalMapping(Type type) {
+        return super.newLocalMapping(type);
+    }
+
+    public int nextLocal() {
+        return nextLocal;
+    }
+
+    public void nextLocal(int nextLocal) {
+        this.nextLocal = nextLocal;
     }
 
     @Override
@@ -198,8 +212,10 @@ public class GeneratorHelper extends GeneratorAdapter {
         );
     }
 
-    public void newLocal(String name, Type type) {
-        nameLocal(newLocal(type), name, type);
+    public int newLocal(String name, Type type) {
+        int localI = newLocal(type);
+        nameLocal(localI, name, type);
+        return localI;
     }
     //endregion
 
@@ -269,6 +285,10 @@ public class GeneratorHelper extends GeneratorAdapter {
 
     public boolean hasLocal(String name) {
         return variables.containsKey(name);
+    }
+
+    public MethodVisitor mv() {
+        return mv;
     }
 
 

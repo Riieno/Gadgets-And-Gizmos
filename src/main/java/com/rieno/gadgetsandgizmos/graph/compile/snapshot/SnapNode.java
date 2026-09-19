@@ -16,6 +16,7 @@ public final class SnapNode {
 
     public final int id;
     public final JVMNodeType type;
+    public final String typeStr;
     public final CompoundTag data;
     public final SnapEdge[] inputs;
     public final @Nullable ObjectArrayList<SnapEdge>[] outputs;
@@ -26,6 +27,7 @@ public final class SnapNode {
     public SnapNode(
         int nodeI,
         JVMNodeType nodeType,
+        String typeStr,
         CompoundTag data,
         Object2ObjectMap<String, ValueType<?>> input,
         Object2ObjectMap<String, ValueType<?>> outputs
@@ -33,6 +35,7 @@ public final class SnapNode {
         this(
             nodeI,
             nodeType,
+            typeStr,
             data,
             new SnapEdge[input.size()],
             new ObjectArrayList[outputs.size()],
@@ -61,6 +64,7 @@ public final class SnapNode {
 
     public void indexPorts(Map<String, ?> input, Map<String, ?> output) {
         var indexer = new Object2IntOpenHashMap<String>();
+        indexer.defaultReturnValue(-1);
         int index = 0;
         portIndexerInverse = new String[input.size() + output.size()];
         index = indexPorts(input, indexer, INPUT_POSTFIX, index);
@@ -77,7 +81,7 @@ public final class SnapNode {
     }
 
     public int outputPort(String port) {
-        return portIndexer.getInt(port + OUTPUT_POSTFIX);
+        return portIndexer.getOrDefault(port + OUTPUT_POSTFIX,-1);
     }
 
     public int inputPort(String port) {

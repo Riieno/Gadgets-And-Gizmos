@@ -41,6 +41,11 @@ class SimpleCompilerTest extends AbstractJVMGraphCompilerTest {
         test(2, 3, "pow", 8);
     }
     @Test
+    void math0() {
+        test(1, 2, "math0", 1);
+        test(2, 3, "math0", 512);
+    }
+    @Test
     void multiple() {
         doc.setRevision(doc.revision() + 1);
         var one = value(1);

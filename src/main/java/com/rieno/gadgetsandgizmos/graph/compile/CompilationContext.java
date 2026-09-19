@@ -5,6 +5,9 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import lombok.RequiredArgsConstructor;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+
+import java.util.function.Supplier;
+
 @RequiredArgsConstructor
 public class CompilationContext {
     public static CompilationContext NULL;
@@ -18,6 +21,9 @@ public class CompilationContext {
 
     public <T> T getProp(String key, T def){
         return ((T) map.getOrDefault(key, def));
+    }
+    public <T> T getPropOrSet(String key, Supplier<T> def){
+        return ((T) map.computeIfAbsent(key, key0 -> def.get()));
     }
     public <T> void setProp(String key, T value){
         map.put(key, value);

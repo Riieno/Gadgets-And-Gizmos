@@ -4,21 +4,24 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.graph.compile.debug.DebugProps;
 import lombok.RequiredArgsConstructor;
 
-import java.io.File;
-
 @RequiredArgsConstructor
 public class JVMGraphRuntime extends DummyRuntime {
     public final DebugProps debugProps;
     public AbstractJVMGraph compiledGraph;
     public AbstractJVMGraph previewGraph;
     public AbstractJVMGraph previewGraphOr(AdvancedGraphDocument document){
-        if(previewGraph==null || previewGraph.graphRevision!=document.revision()){
+        if(previewGraph == null || hasDifference(previewGraph, document)){
             previewGraph=JVMGraphCompiler.compile(document, debugProps);
         }
         return previewGraph;
     }
+
+    private boolean hasDifference(AbstractJVMGraph jvmGraph, AdvancedGraphDocument document) {
+        return jvmGraph.graphRevision != document.revision() || jvmGraph.graph!=document;
+    }
+
     public AbstractJVMGraph compiledGraphOr(AdvancedGraphDocument document){
-        if(compiledGraph==null || compiledGraph.graphRevision!=document.revision()){
+        if(compiledGraph==null || hasDifference(compiledGraph,document)){
             compiledGraph=JVMGraphCompiler.compile(document, debugProps);
         }
         return compiledGraph;
@@ -36,9 +39,13 @@ public class JVMGraphRuntime extends DummyRuntime {
 
     @Override
     public AdvancedGraphDocument.Value previewOutput(AdvancedGraphDocument graph, AdvancedGraphDocument.Node node, String port) {
+        return previewOutput(graph, node, port,false);
+    }
+    //@Override
+    public AdvancedGraphDocument.Value previewOutput(AdvancedGraphDocument graph, AdvancedGraphDocument.Node node, String port,boolean checkPort) {
         AbstractJVMGraph jvmGraph = previewGraphOr(graph);
         if(jvmGraph ==null)return null;
-        return jvmGraph.outputOf(node,port);
+        return jvmGraph.outputOf(node,port,checkPort);
     }
 
     @Override

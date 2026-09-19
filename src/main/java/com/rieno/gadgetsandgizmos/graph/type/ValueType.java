@@ -28,9 +28,12 @@ public class ValueType<T> implements ConvertHelpers<T>{
     public final Type innerType;
     private final InsnList defaultValueMaker;
     private static final Object2ObjectMap<ResourceLocation,ValueType<?>> allTypes=new Object2ObjectOpenHashMap<>();
+    private static final Object2ObjectMap<Class<?>,ValueType<?>> allTypesByClass=new Object2ObjectOpenHashMap<>();
+    private final Class<?> innerClass;
 
     public ValueType(ResourceLocation name, Class<?> innerType, AbstractInsnNode AbstractInsnNode_first, AbstractInsnNode... defaultValueInsn) {
         this.innerType = Type.getType(innerType);
+        this.innerClass=innerType;
         this.name = name;
         var nodes = new InsnList();
         nodes.add(AbstractInsnNode_first);
@@ -39,6 +42,10 @@ public class ValueType<T> implements ConvertHelpers<T>{
         synchronized(ValueType.class){
             allTypes.put(name,this);
         }
+    }
+    public ValueType<T> defaultForInnerType(){
+        allTypesByClass.put(innerClass,this);
+        return this;
     }
 
     ValueType(String name, Class<?> innerType, AbstractInsnNode AbstractInsnNode_first, AbstractInsnNode... defaultValueInsn) {
@@ -51,6 +58,20 @@ public class ValueType<T> implements ConvertHelpers<T>{
 
     public static ValueType<?> byName(ResourceLocation resource) {
         return allTypes.get(resource);
+    }
+    public static ValueType<?> byClass(Class<?> type, boolean allowSuperTypes) {
+        Class<?> curType = type;
+        do{
+            ValueType<?> valueType = allTypes.get(curType);
+            if(valueType != null || !allowSuperTypes) return valueType;
+            curType=curType.getSuperclass();
+        }while(curType != null);
+        for(ValueType<?> value : allTypes.values()) {
+            if(value.innerClass.isAssignableFrom(type)) {
+                return value;
+            }
+        }
+        return null;
     }
 
     public void setConvertExpression(ValueType<?> other, AbstractInsnNode... nodes) {

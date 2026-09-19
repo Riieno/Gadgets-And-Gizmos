@@ -23,7 +23,10 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.commons.Method;
-import org.objectweb.asm.tree.*;
+import org.objectweb.asm.tree.AbstractInsnNode;
+import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldNode;
+import org.objectweb.asm.tree.MethodNode;
 
 import java.io.IOException;
 import java.lang.reflect.Constructor;
@@ -38,9 +41,11 @@ import java.util.Map;
  */
 public class JVMGraphCompiler {
     public static final Map<String, EventMethodCompiler> eventCompilers = new Object2ObjectOpenHashMap<>();
+
     static {
         GNG_Events.register();
     }
+
     public static class DuplicatedCompiler extends RuntimeException {
         public DuplicatedCompiler(String eventId) {
             super("Compiler for event '%s' already exists".formatted(eventId));
@@ -90,6 +95,7 @@ public class JVMGraphCompiler {
             SnapNode snapNode = new SnapNode(
                 nodeI,
                 nodeType,
+                node.type(),
                 node.data(),
                 input, outputs
             );
@@ -136,6 +142,12 @@ public class JVMGraphCompiler {
                 nodeB,
                 nodeB.inputPort(edge.toPort())
             );
+            if(snapEdge.portA == -1) {
+                throw new IllegalArgumentException("Node %s with type `%s` has no %s port".formatted(edge.fromNode(), nodeA.typeStr, edge.fromPort()));
+            }
+            if(snapEdge.portB == -1) {
+                throw new IllegalArgumentException("Node %s with type `%s` has no %s port".formatted(edge.toNode(), nodeB.typeStr, edge.toPort()));
+            }
             nodeA.outputEdge(snapEdge.portA, snapEdge);
             nodeB.inputs[snapEdge.portB] = snapEdge;
             snapEdges[i] = snapEdge;
@@ -144,16 +156,16 @@ public class JVMGraphCompiler {
 
         ClassNode classNode = new ClassNode(Opcodes.ASM9);
         classNode.superName = abstractGraph.getInternalName();
-        classNode.name = "Impl$" + hexHash(classNode);
+        classNode.name = debugProps == null ? "Impl$" + hexHash(classNode) : debugProps.transformGraphName("Impl", hexHash(classNode));
 
         Cache cache = new Cache(classNode.name, snapNodes, snapEdges, portToIndex, nodeToIndex);
-        ObjectArrayList<Map.Entry<SnapNode,Iterable<UnboundStateField>>> fields=new ObjectArrayList<>();
+        ObjectArrayList<Map.Entry<SnapNode, Iterable<UnboundStateField>>> fields = new ObjectArrayList<>();
         for(SnapNode snapNode : snapNodes) {
             var iterable = snapNode.type.stateFields(snapNode, cache);
-            if(iterable==null)continue;
-            fields.add(Map.entry(snapNode,iterable));
+            if(iterable == null) continue;
+            fields.add(Map.entry(snapNode, iterable));
         }
-        defineCtorAndStateFields(calculatorTracker, classNode,fields);
+        defineCtorAndStateFields(calculatorTracker, classNode, fields);
         for(Map.Entry<String, EventMethodCompiler> entry : eventCompilers.entrySet()) {
             var eventNodes = nodesGroupedByEvent.remove(entry.getKey());
             entry.getValue().compile(
@@ -203,31 +215,31 @@ public class JVMGraphCompiler {
                 FieldNode fieldDef = new FieldNode(Opcodes.ACC_PUBLIC, bound.name(), bound.type().getDescriptor(), null, null);
                 node.fields.add(fieldDef);
                 FieldInitExpr initExpr = stateField.initExpression();
-                if(initExpr==null)continue;
+                if(initExpr == null) continue;
                 switch(initExpr) {
                     case AsmExpression.ReflectionMethod(java.lang.reflect.Method method) -> {
                         adapter.loadThis();
 
                         adapter.invoke(method);
 
-                        adapter.storeField(node.name,fieldDef);
+                        adapter.storeField(node.name, fieldDef);
                     }
-                    case AsmExpression.InsnListAsm(AbstractInsnNode[] init)  -> {
+                    case AsmExpression.InsnListAsm(AbstractInsnNode[] init) -> {
 
                         adapter.loadThis();
                         for(AbstractInsnNode insnNode : init) insnNode.accept(adapter);
-                        adapter.storeField(node.name,fieldDef);
+                        adapter.storeField(node.name, fieldDef);
                     }
-                    case AsmExpression.ReflectionConstructor(Constructor<?> init)-> {
+                    case AsmExpression.ReflectionConstructor(Constructor<?> init) -> {
                         adapter.loadThis();
 
                         adapter.newInstance(Type.getType(init.getDeclaringClass()));
                         adapter.dup();
                         adapter.invoke(init);
 
-                        adapter.storeField(node.name,fieldDef);
+                        adapter.storeField(node.name, fieldDef);
                     }
-                    case FieldInitExpr.Value value->fieldDef.value=value.getValue();
+                    case FieldInitExpr.Value value -> fieldDef.value = value.getValue();
                 }
             }
         }

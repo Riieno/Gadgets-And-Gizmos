@@ -14,6 +14,7 @@ import org.objectweb.asm.tree.analysis.Analyzer;
 import org.objectweb.asm.tree.analysis.AnalyzerException;
 import org.objectweb.asm.tree.analysis.BasicValue;
 import org.objectweb.asm.tree.analysis.SimpleVerifier;
+import org.objectweb.asm.util.Printer;
 import org.objectweb.asm.util.Textifier;
 import org.objectweb.asm.util.TraceMethodVisitor;
 
@@ -28,6 +29,9 @@ import java.util.List;
 public class DebugProps {
 
     public File debugDir;
+    public String transformGraphName(String className,String hash){
+        return className+"$"+hash;
+    }
 
     public void onClassDefine(JVMGraphLoader loader, ClassNode node) {
         SimpleVerifier simpleVerifier = verifier(loader, node);
@@ -53,7 +57,7 @@ public class DebugProps {
             }
             AnalyzerException t = new AnalyzerException(
                 e.node,
-                e.getMessage() + ": " + node.name,
+                e.getMessage() + ": " + node.name + " + " + Printer.OPCODES[e.node.getOpcode()]+" "+e.node.getClass(),
                 e.getCause()
             );
             t.setStackTrace(e.getStackTrace());

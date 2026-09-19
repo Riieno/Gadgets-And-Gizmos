@@ -265,6 +265,7 @@ def validateMixinConfig = tasks.register('validateMixinConfig') {
 
 sourceSets.test.compileClasspath+=sourceSets.main.compileClasspath
 sourceSets.test.runtimeClasspath+=sourceSets.main.runtimeClasspath
+sourceSets.test.runtimeClasspath+=sourceSets.main.compileClasspath
 test {
     useJUnitPlatform()
 }
@@ -302,7 +303,9 @@ dependencies {
     compileOnly "dev.ryanhcode.sable-companion:sable-companion-common-${minecraft_version}:$sable_companion_version"
 
 //    compileOnly ("dev.ryanhcode.sable:sable-common-$minecraft_version:$aeronautics_version")
-    implementation ("dev.ryanhcode.sable:sable-neoforge-$minecraft_version:$sable_version")
+    implementation ("dev.ryanhcode.sable:sable-neoforge-$minecraft_version:$sable_version"){
+        exclude group: "org.ow2.asm"
+    }
 
 
     runtimeOnly ("dev.ryanhcode.sable:sable-neoforge-$minecraft_version:$sable_version")
