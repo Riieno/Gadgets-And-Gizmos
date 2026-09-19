@@ -30,7 +30,7 @@ public class Math extends AdvancedGraphCatalog {
                 "vector3",
                 "quaternion"
             )
-        )).defaultData();
+        ));
         register("unpack_vector", of("vector", "map"), of("x", "number", "y", "number", "z", "number"), (ctx, inputs, sink) -> {
             var vector = vector(inputs.get("vector"));
             sink
