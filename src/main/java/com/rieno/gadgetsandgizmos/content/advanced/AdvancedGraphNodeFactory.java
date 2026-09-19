@@ -9,6 +9,8 @@ package com.rieno.gadgetsandgizmos.content.advanced;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.content.AccDisplayBlockEntity;
+import com.rieno.gadgetsandgizmos.content.advanced.runtime.NodeExtraRegistrar;
+import com.rieno.gadgetsandgizmos.content.advanced.runtime.NodeExtra;
 import com.rieno.gadgetsandgizmos.lib.control.hardware.HardwareControllerBindings;
 import com.rieno.gadgetsandgizmos.lib.display.ShipInformationDisplayModes;
 import net.minecraft.nbt.CompoundTag;
@@ -65,6 +67,8 @@ public final class AdvancedGraphNodeFactory {
 
     public static CompoundTag createDefaultData(String type, Context context) {
         Context safeContext = context == null ? Context.EMPTY : context;
+        NodeExtra.DefaultDataMaker dataMaker = NodeExtraRegistrar.defaultDataMakers.get(type);
+        if(dataMaker!=null)return dataMaker.defaultData(context);
         CompoundTag data = new CompoundTag();
         if ("sticky_note".equals(type)) {
             data.putString("Text", "# Note");

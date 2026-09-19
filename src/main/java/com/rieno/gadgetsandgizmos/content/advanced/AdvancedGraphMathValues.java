@@ -14,7 +14,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 
 // Normalize graph values before vector, quaternion and number operations
-final class AdvancedGraphMathValues {
+public interface AdvancedGraphMathValues {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -23,9 +23,6 @@ final class AdvancedGraphMathValues {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Initialize the advanced graph math values
-    private AdvancedGraphMathValues() {
-    }
 
     /*--------------------------------------------------------##---------------------------------------------------------
 

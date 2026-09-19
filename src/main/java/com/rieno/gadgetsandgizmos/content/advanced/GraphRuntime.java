@@ -15,6 +15,7 @@ import com.rieno.gadgetsandgizmos.compat.create.CreateRotationSpeedControllerGra
 import com.rieno.gadgetsandgizmos.compat.create.NavigationTableGraphCompat;
 import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEntity;
 import com.rieno.gadgetsandgizmos.content.AccDisplayBlockEntity;
+import com.rieno.gadgetsandgizmos.content.advanced.runtime.AdvancedGraphNodeExecutor;
 import com.rieno.gadgetsandgizmos.lib.control.math.PidControllerMath;
 import com.rieno.gadgetsandgizmos.lib.control.math.AdrcControllerMath;
 import com.rieno.gadgetsandgizmos.lib.control.math.AdrcControllerNthOrderMath;
@@ -27,6 +28,7 @@ import com.rieno.gadgetsandgizmos.lib.graph.GraphHostServices;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphNodeExecutor;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphServiceKey;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
+import it.unimi.dsi.fastutil.objects.Object2ObjectArrayMap;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ByteTag;
 import net.minecraft.nbt.DoubleTag;
@@ -2213,10 +2215,7 @@ public final class GraphRuntime {
                 : state.getOrDefault(node.id() + ":" + requestedPort,
                 persistentOutputOr(node, requestedPort, AdvancedGraphDocument.Value.number(0)));
         if (executor == null) return fallback;
-        Map<String, GraphValue> inputs = new LinkedHashMap<>();
-        AdvancedGraphCatalog.inputs(node.source()).forEach((name, type) -> {
-            if (!"exec".equals(type)) inputs.put(name, toLibraryValue(frame.value(node, name, operations)));
-        });
+
         String statePrefix = node.id() + ":library:";
         GraphExecutionContext ctx = new GraphExecutionContext() {
             // Update the graph
@@ -2237,8 +2236,22 @@ public final class GraphRuntime {
                 return Optional.of(key.type().cast(controller));
             }
         };
-        Map<String, GraphValue> outputs = executor.execute(ctx, Map.copyOf(inputs));
-        if (outputs != null) outputs.forEach((name, val) -> frame.seedOutput(node, name, fromLibraryValue(val)));
+        if(executor instanceof AdvancedGraphNodeExecutor advancedExecutor) {
+            var inputs = new Object2ObjectArrayMap<String, AdvancedGraphDocument.Value>();
+            AdvancedGraphCatalog.inputs(node.source()).forEach((name, type) -> {
+                if(!"exec".equals(type)) inputs.put(name, frame.value(node, name, operations));
+            });
+            advancedExecutor.executeAdvanced(ctx, inputs, (port, value) -> {
+                frame.seedOutput(node, port, value);
+            });
+        } else {
+            Map<String, GraphValue> inputs = new LinkedHashMap<>();
+            AdvancedGraphCatalog.inputs(node.source()).forEach((name, type) -> {
+                if (!"exec".equals(type)) inputs.put(name, toLibraryValue(frame.value(node, name, operations)));
+            });
+            Map<String, GraphValue> outputs = executor.execute(ctx, Map.copyOf(inputs));
+            if (outputs != null) outputs.forEach((name, val) -> frame.seedOutput(node, name, fromLibraryValue(val)));
+        }
         AdvancedGraphDocument.Value res = requestedPort == null ? null : frame.cachedOutput(node, requestedPort);
         return res == null ? fallback : res;
     }

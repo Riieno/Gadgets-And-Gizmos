@@ -19,6 +19,7 @@ import com.rieno.gadgetsandgizmos.content.ControllerManifestStore;
 import com.rieno.gadgetsandgizmos.compat.create.CreateRotationSpeedControllerGraphCompat;
 import com.rieno.gadgetsandgizmos.compat.simulated.ContraptionDiagramControllerCompat;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
+import com.rieno.gadgetsandgizmos.content.advanced.runtime.NodeExtraRegistrar;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryKind;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphCatalog;
@@ -114,6 +115,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 
 // Edit ACC graphs and manifests without normal menu sync
 public class AdvancedContraptionControllerScreen extends AbstractContainerScreen<AdvancedContraptionControllerMenu> {
@@ -9323,6 +9325,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Get the editable property
     private String editableProperty(AdvancedGraphDocument.Node node) {
         if (node == null) return null;
+        var supplier = NodeExtraRegistrar.editableProperty(node.type());
+        if(supplier!=null)return supplier.apply(node);
         return switch (node.type()) {
             case "event_trigger", "event_named_controller", "send_named_controller_event" -> "Event";
             case "mouse_input" -> "MouseInput";

@@ -9,22 +9,18 @@ package com.rieno.gadgetsandgizmos.content.advanced;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.content.ShipTargetPoint;
+import com.rieno.gadgetsandgizmos.content.advanced.runtime.AdvancedGraphCatalogExt;
+import com.rieno.gadgetsandgizmos.content.advanced.runtime.AdvancedGraphNodeExecutor;
 import com.rieno.gadgetsandgizmos.lib.display.ShipInformationDisplayModes;
+import com.rieno.gadgetsandgizmos.lib.graph.*;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmFlightBehavior;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlModeRegistry;
-import com.rieno.gadgetsandgizmos.lib.graph.GraphNodeDefinition;
-import com.rieno.gadgetsandgizmos.lib.graph.GraphNodeRegistry;
-import com.rieno.gadgetsandgizmos.lib.graph.GraphApi;
 import net.minecraft.nbt.CompoundTag;
 
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Locale;
-import java.util.Comparator;
+import java.util.*;
 
 // Define every ACC graph node and the ports exposed to the editor and runtime
-public final class AdvancedGraphCatalog {
+public class AdvancedGraphCatalog implements AdvancedGraphCatalogExt {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -73,9 +69,14 @@ public final class AdvancedGraphCatalog {
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
+    static String __category = "";
 
+    protected static void _category(String category) {
+        __category = category;
+    }
     // Initialize the shared state
     static {
+        _category("events");
         register("event_tick", "events", Map.of(), Map.of("exec", "exec"), false);
         register("event_graph_ready", "events", Map.of(),
                 Map.of("exec", "exec", "ready", "boolean"), false);
@@ -93,15 +94,21 @@ public final class AdvancedGraphCatalog {
         register("send_named_controller_event", "events",
                 Map.of("exec", "exec", "data", "any", "distance", "number"),
                 Map.of("exec", "exec"), false);
+        _category("profiler");
         register("profiler_fps", "profiler", Map.of(), Map.of("value", "number"), false);
         register("profiler_mspt", "profiler", Map.of(), Map.of("value", "number"), false);
         register("profiler_tps", "profiler", Map.of(), Map.of("value", "number"), false);
         register("profiler_frametime", "profiler", Map.of(), Map.of("value", "number"), false);
+        _category("core");
         register("constant_number", "core", Map.of(), Map.of("value", "number"), false);
         register("constant_boolean", "core", Map.of(), Map.of("value", "boolean"), false);
         register("constant_string", "core", Map.of(), Map.of("value", "string"), false);
+
+        _category("variables");
         register("variable_get", "variables", Map.of(), Map.of("value", "any"), false);
         register("variable_set", "variables", Map.of("exec", "exec", "type", "string", "default", "any", "value", "any"), Map.of("exec", "exec", "value", "any"), true);
+
+        _category("logic");
         register("branch", "logic", Map.of("exec", "exec", "condition", "boolean"), Map.of("true", "exec", "false", "exec"), false);
         register("data_branch", "logic", Map.of("condition", "boolean", "true", "any", "false", "any"), Map.of("value", "any"), false);
         register("switch", "logic", Map.of("exec", "exec", "selector", "number"),
@@ -115,6 +122,8 @@ public final class AdvancedGraphCatalog {
         register("pulse_on_change", "logic", Map.of("value", "any"), Map.of("exec", "exec"), true);
         register("gate", "logic", Map.of("exec", "exec", "open", "boolean"), Map.of("exec", "exec"), true);
         register("flip_flop", "logic", Map.of("exec", "exec"), Map.of("exec", "exec", "value", "boolean"), true);
+
+        _category("flow");
         register("do_once", "flow", Map.of("exec", "exec", "reset", "boolean"), Map.of("exec", "exec"), true);
         register("do_n", "flow", Map.of("exec", "exec", "count", "number", "reset", "exec"), Map.of("exec", "exec", "index", "number"), true);
         register("bounded_loop", "flow", Map.of("exec", "exec", "iterations", "number"), Map.of("body", "exec", "complete", "exec", "index", "number"), true);
@@ -124,6 +133,8 @@ public final class AdvancedGraphCatalog {
         register("parallel_execution", "flow", Map.of("exec", "exec"), Map.of(), false);
         register("sequenced_execution", "flow", Map.of("exec", "exec"), Map.of(), false);
         register("exec_combine", "flow", Map.of(), Map.of("exec", "exec"), false);
+
+        _category("math");
         register("add", "math", Map.of("a", "number", "b", "number"), Map.of("value", "number"), false);
         register("subtract", "math", Map.of("a", "number", "b", "number"), Map.of("value", "number"), false);
         register("multiply", "math", Map.of("a", "number", "b", "number"), Map.of("value", "number"), false);
@@ -163,6 +174,8 @@ public final class AdvancedGraphCatalog {
         register("curve", "math",
                 Map.of("exec", "exec", "value", "number", "min", "number", "max", "number", "speed", "number"),
                 Map.of("exec", "exec", "value", "number"), true);
+
+        _category("response");
         register("ramp", "response", Map.of("exec", "exec", "value", "number", "rise", "number", "fall", "number", "reset_delay", "number"), Map.of("exec", "exec", "value", "number"), true);
         register("step_response", "response", Map.of("value", "number", "step", "number"), Map.of("value", "number"), true);
         register("deadzone", "response",
@@ -186,6 +199,8 @@ public final class AdvancedGraphCatalog {
                 Map.entry("plant_gain", "number"),
                 Map.entry("output_limit", "number")),
                 Map.of("value", "number", "disturbance", "number"), true);
+
+        _category("math");
         register("vector_multiply", "math", Map.of("a", "map", "b", "map"), Map.of("value", "map"), false);
         register("vector_subtract", "math", Map.of("a", "map", "b", "map"), Map.of("value", "map"), false);
         register("vector_add", "math", Map.of("a", "map", "b", "map"), Map.of("value", "map"), false);
@@ -203,6 +218,8 @@ public final class AdvancedGraphCatalog {
         register("random_int", "math", Map.of("max", "number"), Map.of("value", "number"), false);
         register("random_float_in_range", "math", Map.of("min", "number", "max", "number"), Map.of("value", "number"), false);
         register("random_int_in_range", "math", Map.of("min", "number", "max", "number"), Map.of("value", "number"), false);
+
+        _category("data");
         register("string_concat", "data", Map.of("a", "string", "b", "string"), Map.of("value", "string"), false);
         register("split_string", "data",
                 Map.of("string", "string", "delimiter", "string"), Map.of("list", "list"), false);
@@ -213,6 +230,8 @@ public final class AdvancedGraphCatalog {
                 Map.of("string", "string", "search", "string"), Map.of("index", "number"), false);
         register("str_split", "string", Map.of("In", "string", "Split On", "string"),
                 Map.of("Out", "list"), false);
+
+        _category("string");
         register("str_reverse", "string", Map.of("In", "string"), Map.of("Out", "string"), false);
         register("str_append", "string",
                 Map.of("Source", "string", "Text", "string", "Separator", "string"),
@@ -239,11 +258,15 @@ public final class AdvancedGraphCatalog {
                 Map.of("String", "string"), false);
         register("str_regex", "string", Map.of("In", "string", "Pattern", "string"),
                 Map.of("Matches", "list", "Found", "boolean"), false);
+
+        _category("data");
         register("convert_type", "data", Map.of("value", "any"), Map.of("value", "string"), false);
         register("list_create", "data", Map.of("value", "any"), Map.of("list", "list"), false);
         register("list_get", "data", Map.of("list", "list", "index", "number"), Map.of("value", "any"), false);
         register("map_create", "data", Map.of("key", "string", "value", "any"), Map.of("map", "map"), false);
         register("map_get", "data", Map.of("map", "map", "key", "string"), Map.of("value", "any"), false);
+
+        _category("list_map");
         register("arr_get", "list_map", Map.of("Arr", "list", "Index", "number"),
                 Map.of("Item", "any"), false);
         register("arr_shuffle", "list_map", Map.of("exec", "exec", "Arr", "list"),
@@ -281,10 +304,14 @@ public final class AdvancedGraphCatalog {
         register("arr_filter", "list_map",
                 Map.of("Array", "list", "Key", "string", "Value", "any", "Operation", "string"),
                 Map.of("Result", "list"), false);
+
+        _category("data");
         register("split_list", "data", Map.of("value", "any"), Map.of(), false);
         register("break_out", "data", Map.of("value", "any"), Map.of(), false);
         register("get_block_data", "data", Map.of("target", "target"), Map.of("data", "map"), false);
         register("set_block_data", "data", Map.of("exec", "exec", "target", "target"), Map.of("exec", "exec", "success", "boolean"), false);
+
+        _category("hud");
         register("hud_element", "hud", Map.of("label", "string", "visible", "boolean"), Map.of(), true);
         register("advanced_hud_element", "hud", Map.of("label", "string", "visible", "boolean"), Map.of(), true);
         register("acc_display_widget", "hud", Map.ofEntries(
@@ -328,13 +355,21 @@ public final class AdvancedGraphCatalog {
         register("acc_display_mode", "hud",
                 Map.of("exec", "exec", "target", "target", "mode", "string"),
                 Map.of("exec", "exec", "mode", "string", "success", "boolean"), false);
+
+        _category("data");
         register("validate_number", "data", Map.of("value", "number"), Map.of("value", "number", "valid", "boolean"), false);
+
+        _category("core");
         register("reroute", "core", Map.of("value", "any"), Map.of("value", "any"), false);
         register("sticky_note", "core", Map.of(), Map.of(), false);
         register("image_reference", "core", Map.of(), Map.of(), false);
+
+        _category("functions");
         register(AdvancedGraphFunctions.CALL_TYPE, "functions", Map.of(), Map.of(), true);
         register(AdvancedGraphFunctions.INPUT_TYPE, "functions", Map.of(), Map.of(), false);
         register(AdvancedGraphFunctions.OUTPUT_TYPE, "functions", Map.of(), Map.of(), false);
+
+        _category("controller");
         register("play_sound", "controller", Map.of("exec", "exec", "stop", "exec", "sound", "string",
                 "world", "boolean", "x", "number", "y", "number", "z", "number", "volume", "number",
                 "pitch", "number", "loop", "boolean"),
@@ -355,6 +390,8 @@ public final class AdvancedGraphCatalog {
         register("controller_tracker", "controller", Map.of(), trackingOutputs(), false);
         register("portable_tracker", "controller", Map.of(), gogglesTrackingOutputs(), false);
         register("reset_outputs", "controller", Map.of("exec", "exec"), Map.of("exec", "exec"), false);
+
+        _category("ship_control");
         register("ship_initialize", "ship_control", Map.of(
                         "exec", "exec",
                         "ship_name", "string",
@@ -534,6 +571,8 @@ public final class AdvancedGraphCatalog {
                 Map.entry("shipping_manifest_next_entry", "number"),
                 Map.entry("shipping_manifest_is_cyclic", "boolean"),
                 Map.entry("shipping_manifest_stops", "list")), false);
+
+        _category("shipping_schedule");
         register("shipping_pause", "shipping_schedule", Map.of("exec", "exec"),
                 commandOutputs(), false);
         register("shipping_resume", "shipping_schedule", Map.of("exec", "exec"),
@@ -545,13 +584,27 @@ public final class AdvancedGraphCatalog {
     }
 
     // Initialize the advanced graph catalog
-    private AdvancedGraphCatalog() {
+    protected AdvancedGraphCatalog() {
     }
 
     // Register the advanced graph catalog
     private static void register(String id, String category, Map<String, String> inputs, Map<String, String> outputs,
                                  boolean stateful) {
         REGISTRY.register(id, category, inputs, outputs, stateful);
+    }
+
+     String myCategory = null;
+
+    protected void category(String category) {
+        myCategory = category;
+    }
+    @Override
+    public void register(String id, Map<String, String> inputs, Map<String, String> outputs,
+                         boolean stateful, AdvancedGraphNodeExecutor executor) {
+        REGISTRY.register(id, Objects.requireNonNull(myCategory,"use category(\"categoryName\")"), inputs, outputs, stateful);
+        if(executor!=null){
+            GraphApi.runtimes().register(id,executor);
+        }
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -1295,4 +1348,6 @@ public final class AdvancedGraphCatalog {
         }
         return res.toString();
     }
+
+
 }
