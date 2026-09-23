@@ -36,8 +36,10 @@ public class AnalogueJoystickVisual extends AbstractBlockEntityVisual<AnalogueJo
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Handle instance
-    private final TransformedInstance handleInstance;
+    // Stick instance
+    private final TransformedInstance stickInstance;
+    // Skirt instance
+    private final TransformedInstance skirtInstance;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -50,8 +52,11 @@ public class AnalogueJoystickVisual extends AbstractBlockEntityVisual<AnalogueJo
     // Initialize the analogue joystick visual
     public AnalogueJoystickVisual(VisualizationContext ctx, AnalogueJoystickBlockEntity blockEntity, float partialTick) {
         super(ctx, blockEntity, partialTick);
-        this.handleInstance = this.instancerProvider()
-                .instancer(InstanceTypes.TRANSFORMED, Models.partial(CTPartialModels.ANALOGUE_JOYSTICK_HANDLE))
+        this.stickInstance = this.instancerProvider()
+                .instancer(InstanceTypes.TRANSFORMED, Models.partial(CTPartialModels.ANALOGUE_JOYSTICK_STICK))
+                .createInstance();
+        this.skirtInstance = this.instancerProvider()
+                .instancer(InstanceTypes.TRANSFORMED, Models.partial(CTPartialModels.ANALOGUE_JOYSTICK_SKIRT))
                 .createInstance();
         updateTransform(partialTick);
     }
@@ -86,32 +91,41 @@ public class AnalogueJoystickVisual extends AbstractBlockEntityVisual<AnalogueJo
             renderLocalZ = -renderLocalZ;
         }
 
-        this.handleInstance.setIdentityTransform()
+        updatePartialTransform(this.stickInstance, yRotation, renderLocalX, renderLocalZ, 1.0f);
+        updatePartialTransform(this.skirtInstance, yRotation, renderLocalX, renderLocalZ, 0.5f);
+    }
+
+    // Update one moving partial transform
+    private void updatePartialTransform(TransformedInstance instance, float yRotation,
+                                        double renderLocalX, double renderLocalZ, float angleScale) {
+        instance.setIdentityTransform()
                 .translate(this.getVisualPosition())
-                .translate(0.5D, 0.3125D, 0.5D)
+                .translate(0.5D, 0.125D, 0.5D)
                 .rotateYDegrees(yRotation)
                 .rotateXDegrees(AnalogueJoystickBlock.getXRotationDegrees(this.blockState))
-                .rotateZDegrees((float) (renderLocalX * this.blockEntity.getMaxTiltDegrees()))
-                .rotateXDegrees((float) (-renderLocalZ * this.blockEntity.getMaxTiltDegrees()))
-                .translate(-0.5D, -0.3125D, -0.5D)
+                .rotateZDegrees((float) (renderLocalX * this.blockEntity.getMaxTiltDegrees() * angleScale))
+                .rotateXDegrees((float) (-renderLocalZ * this.blockEntity.getMaxTiltDegrees() * angleScale))
+                .translate(-0.5D, -0.125D, -0.5D)
                 .setChanged();
     }
 
     // Update the light
     @Override
     public void updateLight(float partialTick) {
-        relight(new FlatLit[]{this.handleInstance});
+        relight(new FlatLit[]{this.stickInstance, this.skirtInstance});
     }
 
     // Delete the analogue joystick visual
     @Override
     protected void _delete() {
-        this.handleInstance.delete();
+        this.stickInstance.delete();
+        this.skirtInstance.delete();
     }
 
     // Collect the crumbling instances
     @Override
     public void collectCrumblingInstances(Consumer<Instance> consumer) {
-        consumer.accept(this.handleInstance);
+        consumer.accept(this.stickInstance);
+        consumer.accept(this.skirtInstance);
     }
 }

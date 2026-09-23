@@ -1,0 +1,10 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [" B ", "BVB", " B "],
+  "key": {
+    "B": { "item": "create:brass_ingot" },
+    "V": { "item": "create:item_vault" }
+  },
+  "result": { "id": "createthrusters:smart_vault", "count": 1 }
+}

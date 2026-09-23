@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "createthrusters:block/worker_pod" },
+    "facing=east": { "model": "createthrusters:block/worker_pod", "y": 90 },
+    "facing=south": { "model": "createthrusters:block/worker_pod", "y": 180 },
+    "facing=west": { "model": "createthrusters:block/worker_pod", "y": 270 }
+  }
+}

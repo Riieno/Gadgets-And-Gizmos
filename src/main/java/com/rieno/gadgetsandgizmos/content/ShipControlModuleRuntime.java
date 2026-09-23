@@ -17,32 +17,68 @@ import com.rieno.gadgetsandgizmos.compat.computercraft.WheelMountControlBridge;
 import com.rieno.gadgetsandgizmos.compat.controller.ExternalBlockEntityDirectControlCompat;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.physics.SableConstraintApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SableSplineConstraint;
 import com.rieno.gadgetsandgizmos.lib.physics.SubLevelParticleOcclusion;
+import com.rieno.gadgetsandgizmos.lib.navigation.RouteObstacleScan;
+import com.rieno.gadgetsandgizmos.lib.navigation.StaggeredWorkQueue;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphCatalog;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
+import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
 import com.rieno.gadgetsandgizmos.lib.control.IDirectControlReceiver;
 import com.rieno.gadgetsandgizmos.lib.compat.PhysicsStaffInteractionGuard;
 import com.rieno.gadgetsandgizmos.lib.discovery.SableSubLevelResidency;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.display.ShipInformationDisplayModes;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyBoundsApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyArticulationTelemetryApi;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyDynamicsApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyOrientationApi;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyConnection;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyTopologyCache;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyTopologyApi;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyTopologyInvalidation;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SableSubLevelTelemetryApi;
 import com.rieno.gadgetsandgizmos.lib.kinetics.KineticGraphHelper;
+import com.rieno.gadgetsandgizmos.lib.navigation.GroundPathPlanner;
+import com.rieno.gadgetsandgizmos.lib.navigation.GroundSupportSafety;
+import com.rieno.gadgetsandgizmos.lib.navigation.TickWorkBudget;
+import com.rieno.gadgetsandgizmos.lib.probe.LoadedTerrainAccess;
+import com.rieno.gadgetsandgizmos.lib.navigation.OrientedHull;
+import com.rieno.gadgetsandgizmos.lib.navigation.ReactiveCollisionAvoidance;
+import com.rieno.gadgetsandgizmos.lib.navigation.RouteTrafficPriority;
+import com.rieno.gadgetsandgizmos.lib.navigation.SablePathfinder;
+import com.rieno.gadgetsandgizmos.lib.navigation.SplineMagnetism;
+import com.rieno.gadgetsandgizmos.lib.navigation.SplineConstraintFrame;
+import com.rieno.gadgetsandgizmos.lib.navigation.SplineRouteGeometry;
+import com.rieno.gadgetsandgizmos.lib.navigation.WaypointSpline;
+import com.rieno.gadgetsandgizmos.lib.navigation.WaypointProgressTracker;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlProbe;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlProbeRegistry;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmSubLevelRelationRegistry;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlAuthorityApi;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmBuiltinControlModes;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlMode;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlModeRegistry;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmCommandRouting;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmLeggedGait;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmLeggedLocomotion;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmTankSteering;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmSteeringMode;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmSteeringGeometry;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmFlightBehavior;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmMapCompositionApi;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmTarget;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmOrientation;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmControlAxes;
+import com.rieno.gadgetsandgizmos.lib.scm.AutopilotDebugSnapshot;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmSpeedControl;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmControlInfluenceGraph;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmSpeedGroupAllocator;
+import com.rieno.gadgetsandgizmos.lib.seat.MountedSeatRegistry;
+import com.rieno.gadgetsandgizmos.lib.physics.SableTransformApi;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import com.simibubi.create.content.kinetics.speedController.SpeedControllerBlockEntity;
@@ -90,9 +126,11 @@ import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -102,11 +140,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.UUID;
 import java.util.WeakHashMap;
-import java.util.function.BiPredicate;
 
 // Map the ship and handle pilot, graph and schedule control
 public final class ShipControlModuleRuntime {
@@ -120,17 +156,11 @@ public final class ShipControlModuleRuntime {
 
     private static final String CONTROL_CHANNEL = "ship_control_module";
     private static final String DIRECT_ACTUATOR_ADAPTER = "direct_signal_v5";
-    private static final String ENVELOPE_ACTUATOR_ADAPTER = "digital_envelope_v3";
+    private static final String LEGACY_THROTTLE_LIMIT_ACTUATOR_ADAPTER = "digital_envelope_v3";
     private static final String PROPULSION_VECTOR_ADAPTER = "create_propulsion_vector_thruster";
     private static final double[] THROTTLE_STEPS = {0.0D, 0.15D, 0.35D, 0.6D, 0.8D, 1.0D};
-    private static final double[] ENVELOPE_STEPS = {0.0D, 0.25D, 0.5D, 0.75D, 1.0D};
     private static final double[] V2_THROTTLE_STEPS = {
             0.0D, 0.125D, 0.25D, 0.375D, 0.5D, 0.625D, 0.75D, 0.875D, 1.0D};
-    private static final double[] PRECISE_ENVELOPE_EFFECTIVE_STEPS = {
-            0.0001D, 0.001D, 0.01D, 0.05D};
-    private static final double[] V2_ENVELOPE_EFFECTIVE_STEPS = {
-            0.0D, 0.0001D, 0.001D, 0.01D, 0.05D,
-            0.125D, 0.25D, 0.375D, 0.5D, 0.625D, 0.75D, 0.875D, 1.0D};
     private static final double V2_MATRIX_PROBE_THROTTLE = 0.01D;
     private static final int V2_BEARING_SAMPLES_PER_AXIS = 9;
     private static final int BEARING_POSE_TIMEOUT_TICKS = 80;
@@ -140,33 +170,114 @@ public final class ShipControlModuleRuntime {
     private static final double POSITION_TOLERANCE = 0.35D;
     private static final double LINEAR_VELOCITY_TOLERANCE = 0.08D;
     private static final double CONTROL_TICK_SECONDS = 0.05D;
+    private static final double ARTICULATION_YAW_DAMPING_SECONDS = 1.25D;
     private static final double POSITION_INTEGRAL_RANGE = 6.0D;
     private static final double POSITION_INTEGRAL_LIMIT = 8.0D;
     private static final double DOCKING_COLLISION_APPROACH_DISTANCE = 3.0D;
+    private static final double DOCKING_CONTACT_CLEARANCE_ALLOWANCE = 0.125D;
+    private static final double DOCKING_FINAL_ALIGNMENT_TOLERANCE_DEGREES = 10.0D;
+    private static final double DOCKING_FINAL_CAPTURE_MAX_SPEED = 0.5D;
     private static final double POSITION_INTEGRAL_GAIN = 0.04D;
     private static final double POSITION_VELOCITY_GAIN = 0.6D;
+    // Demands below this threshold do not select either side of an opposing
+    // face-bound action pair. This keeps an idle scheduled vehicle neutral
+    // instead of arbitrarily powering one of its two physical inputs.
+    private static final double ACTION_DIRECTION_EPSILON = 1.0E-4D;
+    // Closed-loop rotational face controls are physical position/speed inputs,
+    // not bang-bang selectors. Limit each control tick to one redstone step so
+    // wheel hubs and bearings retain the analogue demand produced by the SCM.
+    private static final double FACE_ROTATION_MAXIMUM_CHANGE = 1.0D / 15.0D;
     private static final double COLLISION_SCAN_RANGE =
             AdvancedGraphCatalog.DEFAULT_COLLISION_DETECTION_DISTANCE;
     private static final double COLLISION_HULL_MARGIN = 0.125D;
+    private static final double SCM_LOADING_SUPPORT_BODY_GAP = 3.0D;
+    private static final long SCM_LOADING_SUPPORT_REFRESH_TICKS = 20L;
+    private static final long EXTERNAL_CONNECTION_PROBE_TICKS = 10L;
+    private static final long DOCKING_CONNECTOR_DISCOVERY_TICKS = 5L;
+    // Navigation scans project the current motion through a braking envelope
+    // instead of using the fixed telemetry range. This keeps the controller
+    // looking far enough ahead as a craft gains speed, without imposing a
+    // synthetic top-speed governor on the propulsion system.
+    private static final double NAVIGATION_BRAKING_ACCELERATION = 2.5D;
+    private static final double NAVIGATION_RESPONSE_SECONDS = 0.35D;
+    private static final double NAVIGATION_LOOKAHEAD_SECONDS = 2.0D;
+    private static final double NAVIGATION_MIN_CAPTURE_APPROACH_SPEED = 0.25D;
+    // Retain one block of stationary awareness, then grow the live scan from
+    // response distance plus the physical braking distance.
+    private static final double NAVIGATION_LIVE_MIN_SCAN_RANGE = 1.0D;
+    private static final int MAX_MAPPED_SEAT_BLOCKS = 65_536;
     // Roll the six hull directions across a few ticks instead of producing one long server hitch.
     private static final int COLLISION_TELEMETRY_DIRECTIONS_PER_TICK = 2;
     // Collision telemetry needs a representative leading face; navigation keeps its denser probe grid.
     private static final int COLLISION_TELEMETRY_PROBES_PER_BOUNDS = 16;
     private static final int MAX_COLLISION_TELEMETRY_CONFIGURATIONS = 16;
     private static final int COLLISION_NAVIGATION_PROBES_PER_BOUNDS = 64;
-    private static final double NAVIGATION_MIN_CLEARANCE = 3.0D;
-    private static final double NAVIGATION_PATH_MAX_LOOKAHEAD = 192.0D;
-    private static final double NAVIGATION_PATH_MIN_STEP = 4.0D;
-    private static final double NAVIGATION_PATH_MAX_STEP = 12.0D;
-    private static final int NAVIGATION_PATH_MAX_FORWARD = 8;
-    private static final int GROUND_NAVIGATION_PATH_MIN_FORWARD = -2;
-    private static final int NAVIGATION_PATH_MAX_SIDE = 4;
-    private static final int NAVIGATION_PATH_MIN_VERTICAL = -2;
-    private static final int NAVIGATION_PATH_MAX_VERTICAL = 4;
-    private static final int NAVIGATION_PATH_MAX_EXPANSIONS = 48;
-    private static final int NAVIGATION_PATH_REPLAN_TICKS = 10;
-    private static final double GROUND_REVERSE_ALIGNMENT = -0.35D;
+    private static final int COLLISION_CARRIAGE_MOTION_DIRECTIONS = 4;
+    // Ground routes only need a dense horizontal leading face after the supported
+    // contact band is removed. Keeping this distinct prevents parked wheels from
+    // multiplying the cost of every schedule tick while retaining sub-block cover.
+    private static final int GROUND_COLLISION_NAVIGATION_PROBES_PER_BOUNDS = 36;
+    private static final double NAVIGATION_EXACT_HULL_SCAN_MAX_RANGE = 8.0D;
+    private static final int NAVIGATION_EXACT_HULL_SCAN_MAX_BLOCKS = 32_768;
+    private static final long NAVIGATION_EXACT_HULL_SCAN_MAX_NANOS = 750_000L;
+    private static final double NAVIGATION_MIN_CLEARANCE = 0.25D;
+    private static final double NAVIGATION_PATH_MIN_STEP = 0.75D;
+    private static final double NAVIGATION_PATH_MAX_STEP = 2.0D;
+    private static final int NAVIGATION_FAILED_RETRY_TICKS = 40;
+    private static final int SABLE_ROUTE_RETRY_TICKS = 20;
+    private static final int SABLE_ROUTE_MAX_EXPANSIONS = 16384;
+    private static final String PRECALCULATED_ROUTE_CACHE_TAG = "ScmPrecalculatedRoutes";
+    private static final String ROUTE_ORIGIN_TAG = "Origin";
+    private static final String ROUTE_TARGET_TAG = "Target";
+    private static final String ROUTE_WAYPOINTS_TAG = "Waypoints";
+    private static final double SCHEDULE_ROUTE_SPLINE_SAMPLE_SPACING = 0.75D;
+    private static final int MAX_SCHEDULE_ROUTE_SPLINE_SAMPLES = 16_384;
+    private static final SableSplineConstraint.CaptureSettings SCHEDULE_ROUTE_SPLINE_CAPTURE =
+            new SableSplineConstraint.CaptureSettings(
+                    8.0D, 1.5D, Math.toRadians(35.0D), 4.0D,
+                    12.0D, 8.0D, 4.0D, 10.0D);
+    private static final double SCHEDULE_ROUTE_HULL_CAPTURE_PADDING = 0.125D;
+    // Multiple cyclic legs can share a schedule entry and target. Keep each departure pose so
+    // cache selection can distinguish the first arrival from the loop-closing return route.
+    private static final double SCHEDULE_ROUTE_ORIGIN_REPLACEMENT_DISTANCE = 4.0D;
+    // Full-route planning is deliberately time-sliced: collision validation is
+    // expensive and the reactive controller remains authoritative while a
+    // queued plan is built. The budgets are server-wide across SCM instances.
+    private static final int SABLE_ROUTE_LIVE_EXPANSIONS_PER_PLAN = 6;
+    // The debug network subscription samples every five ticks. Keep an applied snapshot through
+    // control-loop throttling so the live vehicle route cannot disappear between samples.
+    private static final long LIVE_PATHFINDER_DEBUG_STALE_TICKS = 40L;
+    private static final SablePathfinder.WorkBudget SABLE_ROUTE_LIVE_WORK_BUDGET =
+            new SablePathfinder.WorkBudget(12);
+    private static final SablePathfinder.WorkBudget SABLE_ROUTE_SCHEDULE_WORK_BUDGET =
+            new SablePathfinder.WorkBudget(24);
+    private static final TickWorkBudget GROUND_RECOVERY_WORK_BUDGET =
+            new TickWorkBudget(2_000_000L, 750_000L);
+    // Recheck a clear retained segment often enough to repair its route ahead
+    // of the close reactive envelope without repeating the same full sweep
+    // multiple times while the craft is still on that leg.
+    private static final int SABLE_ROUTE_SEGMENT_VALIDATION_INTERVAL_TICKS = 4;
+    // Bound retained-route suffix validation so one obstructed long route
+    // cannot consume a server tick by scanning every cached waypoint.
+    private static final int SABLE_ROUTE_REJOIN_WAYPOINTS_PER_TICK = 12;
+    private static final double SABLE_ROUTE_MIN_RANGE = 24.0D;
+    private static final int GROUND_NAVIGATION_STUCK_TICKS = 40;
+    // Exact recovery scans are deliberately gated so normal driving stays on cached probes.
+    private static final int GROUND_REVERSE_RECOVERY_STUCK_TICKS = 8;
+    private static final double GROUND_NAVIGATION_MIN_CLEARANCE = 0.5D;
+    private static final double GROUND_NAVIGATION_CORNER_LATERAL_ACCELERATION = 1.0D;
+    private static final double GROUND_NAVIGATION_MIN_CORNER_SPEED = 0.35D;
+    private static final double GROUND_NAVIGATION_AVOIDANCE_SPEED = 1.5D;
+    private static final long ROUTE_TRAFFIC_INTENT_STALE_TICKS = 4L;
+    private static final RouteTrafficPriority.Settings ROUTE_TRAFFIC_SETTINGS =
+            new RouteTrafficPriority.Settings(
+                    32.0D, 32.0D, 2.0D, 0.75D, 0.35D, 0.5D);
+    private static final double GROUND_ALIGNMENT_MANEUVER_THRESHOLD = 0.25D;
     private static final double GROUND_NAVIGATION_CONTACT_CLEARANCE = 0.25D;
+    private static final double GROUND_SUPPORT_SAMPLE_SPACING = 0.75D;
+    private static final double GROUND_SUPPORT_MAX_RISE = 1.5D;
+    private static final double GROUND_SUPPORT_MAX_DROP = 2.25D;
+    private static final double GROUND_NAVIGATION_WAYPOINT_RADIUS_STEPS = 0.5D;
     private static final double GROUND_BRAKING_ACCELERATION = 2.5D;
     private static final double GROUND_SPEED_CONTROL_GAIN = 0.18D;
     private static final double AIRCRAFT_MIN_SAFE_CLEARANCE = 14.0D;
@@ -180,6 +291,10 @@ public final class ShipControlModuleRuntime {
     private static final System.Logger LOGGER = System.getLogger(ShipControlModuleRuntime.class.getName());
     private static final Set<ShipControlModuleRuntime> LIVE_RUNTIMES =
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
+    // Raw SCM decision capture is dormant unless a brain overlay or graph node consumes it.
+    private static boolean autopilotBrainDebugCollectionEnabled;
+    // Temporary file dumps retain the same raw decisions without enabling a world overlay.
+    private static boolean autopilotDebugDumpCollectionEnabled;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -212,6 +327,10 @@ public final class ShipControlModuleRuntime {
             new SableAssemblyTopologyCache(
                     (owner, actor) -> isAssemblyTopologyActor(actor),
                     (owner, actor, target) -> SableAssemblyConnection.Kind.STRUCTURAL);
+    // Last root checked for an external dynamic connection update
+    private @Nullable UUID externalConnectionProbeRootId;
+    // Last external dynamic connection check tick
+    private long lastExternalConnectionProbeTick = Long.MIN_VALUE;
     // Tracked freeze handles
     private final List<PhysicsConstraintHandle> freezeHandles = new ArrayList<>();
     // Tracked nested freeze handles
@@ -233,6 +352,8 @@ public final class ShipControlModuleRuntime {
             new LinkedHashSet<>();
     // Tracked calibration ACC displays
     private final List<ShipControlMap.AccDisplay> calibrationAccDisplays = new ArrayList<>();
+    // Tracked calibration seats
+    private final List<ShipControlMap.Seat> calibrationSeats = new ArrayList<>();
     // Tracked init ACC displays
     private final Set<ShipControlMap.AccDisplay> initAccDisplays =
             new LinkedHashSet<>();
@@ -253,12 +374,30 @@ public final class ShipControlModuleRuntime {
     private final Map<UUID, UUID> initTrackingIds = new LinkedHashMap<>();
     // Tracked control actuators
     private final Map<Integer, Actuator> controlActuators = new LinkedHashMap<>();
+    private final Map<Integer, SpeedControlBranch> speedControlBranches = new LinkedHashMap<>();
+    private final Map<Integer, Double> regulatedSpeedLevels = new HashMap<>();
+    private final Set<Actuator> speedCalibrationSelectors = Collections.newSetFromMap(new IdentityHashMap<>());
+    private String speedControlBranchFingerprint = "";
     // Tracked reversed cal dirs
     private final Map<Integer, Boolean> reversedCalDirs = new HashMap<>();
     // Current cal dir map id
     private @Nullable UUID calDirMapId;
     // Tracked applied control values
     private final Map<Integer, Double> appliedControlValues = new LinkedHashMap<>();
+    // Retained articulated joint targets for the live IK feedback loop
+    private final Map<Integer, Double> ikJointTargetValues = new LinkedHashMap<>();
+    // Tracked closed-loop face values
+    private final Map<String, Double> regulatedFaceControlValues = new HashMap<>();
+    // Cached optional articulated body relations for the current IK control tick
+    private long ikRelationSnapshotTick = Long.MIN_VALUE;
+    private @Nullable UUID ikRelationSnapshotRootId;
+    private List<ScmSubLevelRelationRegistry.Relation> ikRelationSnapshot = List.of();
+    // Latest automatic IK topology discovery counts
+    private int ikAutoCandidateJointCount;
+    private int ikAutoLinkedJointCount;
+    private int ikAutoChainCount;
+    // Retained planted feet for the live procedural IK gait
+    private final ScmLeggedLocomotion.GaitState ikGaitState = new ScmLeggedLocomotion.GaitState();
     // Tracked control bearings
     private final Map<Integer, BearingActuator> controlBearings = new LinkedHashMap<>();
     // Selected bearing poses
@@ -268,11 +407,35 @@ public final class ShipControlModuleRuntime {
             new LinkedHashMap<>();
     // Next dynamic connector idx
     private int nextDynamicConnectorIdx;
+    // Last live docking connector discovery tick
+    private long lastDockingConnectorDiscoveryTick = Long.MIN_VALUE;
     // Pending orphan cleanup units
     private final Map<Integer, ShipControlMap.PropulsionUnit> pendingOrphanCleanupUnits =
             new LinkedHashMap<>();
     // Current initialization filters
     private InitializationFilters initializationFilters = InitializationFilters.NONE;
+    // Route calculations queued from a schedule graph before its transit legs begin
+    private final List<ScheduledRoutePlan> scheduledRoutePlans = new ArrayList<>();
+    // Completed route legs restored from SQLite without reconstructing transient A* frontier state.
+    private final List<CompletedScheduledRoute> completedScheduledRoutes = new ArrayList<>();
+    private static final StaggeredWorkQueue<RouteHazardJob> ROUTE_HAZARD_QUEUE = new StaggeredWorkQueue<>(20);
+    private final Map<UUID, RouteHazardState> routeHazards = new HashMap<>();
+    // Changes whenever prepared schedule spline geometry changes
+    private long scheduledRouteRevision;
+    private int scheduledRoutePlanIndex;
+    // Last operator progress broadcast for schedule route preparation
+    private long lastScheduledRouteProgressDisplayTick = Long.MIN_VALUE;
+    private boolean scheduledRouteProgressCompleteSent;
+    // True only while gathering a player-facing configuration snapshot. This phase
+    // deliberately reuses discovery without adding fixed constraints or pulsing an
+    // actuator, so players can group/blacklist a moving but otherwise idle craft.
+    private boolean configurationScanOnly;
+    // A saved SCM profile already identifies the actuators the player intends
+    // to control. In that case initialization reads those live adapters
+    // directly instead of entering the old freeze-and-probe calibration path.
+    private boolean profileDrivenInitialization;
+    // Stable block identities from the most recent no-actuation configuration scan.
+    private List<ScmConfigurationProfile.UnitReference> configurationCandidates = List.of();
     // Current map id
     private @Nullable UUID mapId;
     // Current map
@@ -298,6 +461,8 @@ public final class ShipControlModuleRuntime {
     // Active SCM actuator owners
     private Map<AssemblyUnitIdentity, AdvancedContraptionControllerBlockEntity>
             activeScmActuatorOwners = Map.of();
+    // Attached carriage units admitted as live automatic capabilities
+    private Set<AssemblyUnitIdentity> activeAutomaticCarriageUnits = Set.of();
     // Active assembly map signature
     private long activeAssemblyMapSignature = Long.MIN_VALUE;
     // Active assembly sub-level ids
@@ -387,8 +552,40 @@ public final class ShipControlModuleRuntime {
             new LinkedHashMap<>();
     // Tracked navigation path states
     private final Map<String, NavigationPathState> navigationPathStates = new LinkedHashMap<>();
+    // Solver attachment belongs only to the active calculated schedule leg
+    private final SableSplineConstraint scheduleSplineConstraint = new SableSplineConstraint();
+    private @Nullable String scheduleSplineConstraintKey;
+    private @Nullable NavigationPathState scheduleSplineConstraintState;
+    private @Nullable Vec3 scheduleSplineConstraintWorldAnchor;
+    private boolean scheduleSplineConstraintHullAnchor;
+    private boolean scheduleSplineConstraintRequested;
+    private String scheduleSplineConstraintDecision = "not requested";
+    private long nextSplineConstraintRetryTick = Long.MIN_VALUE;
+    // Live guidance snapshots are separate from queued planner diagnostics.
+    private final Map<String, TimedDebugRoute> livePathfinderDebugRoutes = new LinkedHashMap<>();
+    // Bounded retained-route intents used only for live vehicle right-of-way.
+    private final Map<String, TimedRouteTrafficIntent> routeTrafficIntents =
+            new LinkedHashMap<>();
+    // Current-tick right-of-way results are reused by guidance and speed control.
+    private final Map<String, TimedRouteTrafficDecision> routeTrafficDecisions =
+            new LinkedHashMap<>();
+    // Raw control decisions retained for debug-only snapshot formatting.
+    private final Map<String, TimedAutopilotCommandState> autopilotDebugStates =
+            new LinkedHashMap<>();
+    // Final merged SCM demand retained for the operator brain snapshot.
+    private @Nullable TimedAutopilotControlDemand autopilotControlDemand;
+    // A connected/live-preview SCM brain node keeps debug capture active without enabling the world overlay.
+    private long autopilotGraphDebugRequestedUntil = Long.MIN_VALUE;
+    // Reuse one formatted snapshot across every output of the same graph node sample.
+    private long cachedAutopilotDebugSnapshotTick = Long.MIN_VALUE;
+    private @Nullable AutopilotDebugSnapshot cachedAutopilotDebugSnapshot;
     // Tracked position integral errors
     private final Map<String, Vec3> positionIntegralErrors = new LinkedHashMap<>();
+    // Attitude references retained by direct-vector airship navigation so a
+    // constant off-centre actuator or external impulse cannot leave the craft
+    // slowly rotating after the translational correction ends.
+    private final Map<String, Vec3> airshipAttitudeHoldTargets = new LinkedHashMap<>();
+    private ScmOrientation lastOrientation;
     // Tracked aircraft navigation states
     private final Map<String, AircraftNavigationState> aircraftNavigationStates =
             new LinkedHashMap<>();
@@ -405,10 +602,19 @@ public final class ShipControlModuleRuntime {
     private long collisionDistanceCacheTick = Long.MIN_VALUE;
     // Cached collision distance
     private final Map<CollisionProbe, Double> collisionDistanceCache = new HashMap<>();
+    // Cached current-tick hull shared by navigation and all directional probes.
+    private long collisionHullCacheTick = Long.MIN_VALUE;
+    private @Nullable CollisionScanContext collisionHullCacheContext;
+    private Vec3 collisionHullCachePosition = Vec3.ZERO;
+    private @Nullable HullBounds collisionHullCache;
     // Path trace cache tick
     private long pathTraceCacheTick = Long.MIN_VALUE;
     // Cached path trace
     private final Map<CollisionProbe, Double> pathTraceCache = new HashMap<>();
+    // Exact near-hull sweeps close the gaps between sparse long-range probe rays.
+    private long safetyCollisionCacheTick = Long.MIN_VALUE;
+    private final Map<CollisionProbe, Double> safetyCollisionCache = new HashMap<>();
+    private final LoadedTerrainAccess groundTerrainAccess = new LoadedTerrainAccess();
     // Collision probe cache tick
     private long collisionProbeCacheTick = Long.MIN_VALUE;
     // Collision probe cache
@@ -420,10 +626,17 @@ public final class ShipControlModuleRuntime {
     private @Nullable UUID telemetryRootId;
     // Cached telemetry
     private Telemetry cachedTelemetry = Telemetry.EMPTY;
+    // Cached structural simulation metrics. The SCM workspace and display
+    // nodes can request many fields in one tick, so sample assembly physics once.
+    private long simulationMetricsTick = Long.MIN_VALUE;
+    private @Nullable UUID simulationMetricsRootId;
+    private SimulationMetrics cachedSimulationMetrics = SimulationMetrics.EMPTY;
     // Connected sub levels tick
     private long connectedSubLevelsTick = Long.MIN_VALUE;
     // Current connected sub levels root id
     private @Nullable UUID connectedSubLevelsRootId;
+    // Loading support refresh tick
+    private long connectedLoadingSupportRefreshTick = Long.MIN_VALUE;
     // Cached connected sub levels
     private List<SubLevel> cachedConnectedSubLevels = List.of();
     // Tracked connected sub-level idx
@@ -439,8 +652,6 @@ public final class ShipControlModuleRuntime {
     // Current navigation residency sync root id
     private @Nullable UUID navigationResidencySyncRootId;
     // Allocation workspace
-    private final ShipControlAllocator.Workspace allocationWorkspace =
-            new ShipControlAllocator.Workspace();
     // Tracked damage protected thrusters
     private final Set<ThrusterBlockEntity> damageProtectedThrusters = new HashSet<>();
     // Last damage protection refresh tick
@@ -450,10 +661,18 @@ public final class ShipControlModuleRuntime {
     // Tracked controlled SCM wheels
     private final Set<WheelMountControlBridge> controlledScmWheels =
             Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+    // Exact linker face bindings which own each wheel's signed inputs
+    private final Map<WheelMountControlBridge, List<ScmTarget>> controlledScmWheelTargets =
+            new java.util.IdentityHashMap<>();
+    // Longitudinal wheel positions relative to the live center of mass
+    private final Map<WheelMountControlBridge, Double> controlledScmWheelLongitudinalPositions =
+            new java.util.IdentityHashMap<>();
     // Last SCM wheel refresh tick
     private long lastScmWheelRefreshTick = Long.MIN_VALUE;
     // Last SCM wheel topology fingerprint
     private String lastScmWheelTopologyFingerprint = "";
+    // Last active SCM profile face-action fingerprint for wheel discovery
+    private String lastScmWheelActionFingerprint = "";
     // Ground drive check tick
     private long groundDriveCheckTick = Long.MIN_VALUE;
     // Current ground drive topology fingerprint
@@ -538,6 +757,1698 @@ public final class ShipControlModuleRuntime {
         }
     }
 
+    // Get detached active Sable route snapshots for an operator diagnostic integration.
+    public static List<SablePathfinder.DebugRoute> pathfinderDebugRoutes(ServerLevel visibleLevel) {
+        return pathfinderDebugRoutes(visibleLevel, Set.of());
+    }
+
+    // Get debug routes while omitting schedule splines already rendered for this viewer.
+    public static List<SablePathfinder.DebugRoute> pathfinderDebugRoutes(
+            ServerLevel visibleLevel,
+            Set<UUID> visibleScheduleRouteOwners
+    ) {
+        if (visibleLevel == null) {
+            return List.of();
+        }
+        Set<UUID> hiddenOwners = visibleScheduleRouteOwners == null
+                ? Set.of() : Set.copyOf(visibleScheduleRouteOwners);
+        List<ShipControlModuleRuntime> runtimes;
+        synchronized (LIVE_RUNTIMES) {
+            runtimes = List.copyOf(LIVE_RUNTIMES);
+        }
+        List<SablePathfinder.DebugRoute> routes = new ArrayList<>();
+        for (ShipControlModuleRuntime runtime : runtimes) {
+            Level level = runtime.controller.getLevel();
+            // Root-world route coordinates only have meaning in the player's
+            // current dimension. Publishing every server dimension made valid
+            // routes render at unrelated locations after a portal transfer.
+            if (SableLevelApi.serverLevel(level) == visibleLevel) {
+                routes.addAll(runtime.pathfinderDebugRoutes(
+                        !hiddenOwners.contains(runtime.controller.getScmPersistenceId())));
+            }
+        }
+        return List.copyOf(routes);
+    }
+
+    // Get detached SCM autopilot brain snapshots for an operator diagnostic integration.
+    public static List<AutopilotDebugSnapshot> autopilotDebugSnapshots(
+            ServerLevel visibleLevel
+    ) {
+        if (visibleLevel == null) return List.of();
+        List<ShipControlModuleRuntime> runtimes;
+        synchronized (LIVE_RUNTIMES) {
+            runtimes = List.copyOf(LIVE_RUNTIMES);
+        }
+        List<AutopilotDebugSnapshot> snapshots = new ArrayList<>();
+        for (ShipControlModuleRuntime runtime : runtimes) {
+            if (SableLevelApi.serverLevel(runtime.controller.getLevel()) != visibleLevel
+                    || !runtime.controller.isMountedOnShipControlModule()) {
+                continue;
+            }
+            AutopilotDebugSnapshot snapshot = runtime.autopilotDebugSnapshot();
+            if (snapshot != null) snapshots.add(snapshot);
+        }
+        return List.copyOf(snapshots);
+    }
+
+    // Enable raw SCM decision capture only while at least one operator watches the brain overlay.
+    public static void setAutopilotBrainDebugCollectionEnabled(boolean enabled) {
+        autopilotBrainDebugCollectionEnabled = enabled;
+        if (enabled) return;
+        List<ShipControlModuleRuntime> runtimes;
+        synchronized (LIVE_RUNTIMES) {
+            runtimes = List.copyOf(LIVE_RUNTIMES);
+        }
+        for (ShipControlModuleRuntime runtime : runtimes) {
+            if (runtime.autopilotGraphDebugRequested()) continue;
+            runtime.autopilotDebugStates.clear();
+            runtime.autopilotControlDemand = null;
+            runtime.invalidateAutopilotDebugSnapshot();
+        }
+    }
+
+    // Enable raw SCM decision capture while a temporary server-side dump is active.
+    public static void setAutopilotDebugDumpCollectionEnabled(boolean enabled) {
+        autopilotDebugDumpCollectionEnabled = enabled;
+        if (enabled || autopilotBrainDebugCollectionEnabled) return;
+        List<ShipControlModuleRuntime> runtimes;
+        synchronized (LIVE_RUNTIMES) {
+            runtimes = List.copyOf(LIVE_RUNTIMES);
+        }
+        for (ShipControlModuleRuntime runtime : runtimes) {
+            if (runtime.autopilotGraphDebugRequested()) continue;
+            runtime.autopilotDebugStates.clear();
+            runtime.autopilotControlDemand = null;
+            runtime.invalidateAutopilotDebugSnapshot();
+        }
+    }
+
+    // Resolve the one live SCM whose connected body chain contains the player.
+    public static @Nullable DebugDumpTarget debugDumpTarget(
+            ServerLevel visibleLevel,
+            UUID playerSubLevelId
+    ) {
+        if (visibleLevel == null || playerSubLevelId == null) return null;
+        List<ShipControlModuleRuntime> runtimes;
+        synchronized (LIVE_RUNTIMES) {
+            runtimes = List.copyOf(LIVE_RUNTIMES);
+        }
+        ShipControlModuleRuntime selected = null;
+        for (ShipControlModuleRuntime runtime : runtimes) {
+            if (SableLevelApi.serverLevel(runtime.controller.getLevel()) != visibleLevel
+                    || !runtime.controller.isMountedOnShipControlModule()
+                    || !runtime.configurationViewSubLevelIds().contains(playerSubLevelId)) {
+                continue;
+            }
+            if (Objects.equals(runtime.configurationRootSubLevelId(), playerSubLevelId)) {
+                selected = runtime;
+                break;
+            }
+            if (selected == null) selected = runtime;
+        }
+        if (selected == null) return null;
+        UUID vehicleId = selected.configurationRootSubLevelId();
+        if (vehicleId == null) vehicleId = selected.mapId;
+        if (vehicleId == null) return null;
+        return new DebugDumpTarget(vehicleId, selected.controller.getShipName());
+    }
+
+    // Snapshot one selected SCM without including any other vehicle in the world.
+    public static @Nullable DebugDumpFrame debugDumpFrame(
+            ServerLevel visibleLevel,
+            UUID vehicleId
+    ) {
+        if (visibleLevel == null || vehicleId == null) return null;
+        List<ShipControlModuleRuntime> runtimes;
+        synchronized (LIVE_RUNTIMES) {
+            runtimes = List.copyOf(LIVE_RUNTIMES);
+        }
+        for (ShipControlModuleRuntime runtime : runtimes) {
+            if (SableLevelApi.serverLevel(runtime.controller.getLevel()) != visibleLevel
+                    || !runtime.controller.isMountedOnShipControlModule()
+                    || !Objects.equals(runtime.configurationRootSubLevelId(), vehicleId)) {
+                continue;
+            }
+            AutopilotDebugSnapshot snapshot = runtime.autopilotDebugSnapshot();
+            if (snapshot == null) return null;
+            return new DebugDumpFrame(snapshot, runtime.debugDumpInternalLines());
+        }
+        return null;
+    }
+
+    // Identify one player-selected SCM dump source.
+    public record DebugDumpTarget(UUID vehicleId, String vehicleName) {
+    }
+
+    // Store one complete formatted SCM tick plus its low-level solver state.
+    public record DebugDumpFrame(
+            AutopilotDebugSnapshot snapshot,
+            List<String> internalLines
+    ) {
+        public DebugDumpFrame {
+            internalLines = internalLines == null ? List.of() : List.copyOf(internalLines);
+        }
+    }
+
+    // Get this module's active route snapshots.
+    private List<SablePathfinder.DebugRoute> pathfinderDebugRoutes(
+            boolean includeScheduleRoutes
+    ) {
+        long gameTime = controller.getLevel() == null ? Long.MIN_VALUE
+                : controller.getLevel().getGameTime();
+        livePathfinderDebugRoutes.entrySet().removeIf(entry -> gameTime == Long.MIN_VALUE
+                || gameTime - entry.getValue().gameTime() > LIVE_PATHFINDER_DEBUG_STALE_TICKS
+                || !activeCommands.containsKey(entry.getKey()));
+        navigationPathStates.entrySet().removeIf(entry ->
+                !activeCommands.containsKey(entry.getKey()));
+        // One active command owns one diagnostic route. A queued search replaces
+        // its retained guidance snapshot, so the live overlay cannot fan out
+        // from stale paths or display the search frontier as parallel routes.
+        Map<String, SablePathfinder.DebugRoute> routesByCommand = new LinkedHashMap<>();
+        for (Map.Entry<String, TimedDebugRoute> entry : livePathfinderDebugRoutes.entrySet()) {
+            NavigationPathState state = navigationPathStates.get(entry.getKey());
+            if (!isScheduleRouteState(state)) {
+                routesByCommand.put(entry.getKey(), entry.getValue().route());
+            }
+        }
+        for (Map.Entry<String, NavigationPathState> entry : navigationPathStates.entrySet()) {
+            NavigationPathState state = entry.getValue();
+            if (state.queuedSableRoute == null || state.pathfinderDebugRoute == null) {
+                continue;
+            }
+            routesByCommand.put(entry.getKey(), state.pathfinderDebugRoute);
+        }
+        List<SablePathfinder.DebugRoute> routes = new ArrayList<>(routesByCommand.values());
+        for (int index = 0; index < scheduledRoutePlans.size(); index++) {
+            ScheduledRoutePlan plan = scheduledRoutePlans.get(index);
+            routes.add(plan.plan().debugRoute("schedule_precalculated_" + index));
+        }
+        if (includeScheduleRoutes) {
+            SablePathfinder.DebugRouteStyle scheduleStyle = scheduledRouteDebugStyle();
+            for (int index = 0; index < completedScheduledRoutes.size(); index++) {
+                CompletedScheduledRoute route = completedScheduledRoutes.get(index);
+                routes.add(new SablePathfinder.DebugRoute(
+                        "schedule_precalculated_restored_" + index, route.origin(), route.target(),
+                        route.splineWaypoints(), SablePathfinder.Outcome.COMPLETE,
+                        List.of(), true, scheduleStyle));
+            }
+        }
+        return List.copyOf(routes);
+    }
+
+    // Check whether one live diagnostic belongs to prepared schedule geometry.
+    private static boolean isScheduleRouteState(@Nullable NavigationPathState state) {
+        return state != null && (state.precomputedScheduleRoute
+                || state.usedPrecomputedScheduleRoute || state.learnedScheduleEntry >= 0);
+    }
+
+    // Resolve this SCM's saved schedule geometry from its active constraint stage.
+    private SablePathfinder.DebugRouteStyle scheduledRouteDebugStyle() {
+        NavigationPathState constrained = scheduleSplineConstraintKey == null
+                ? null : navigationPathStates.get(scheduleSplineConstraintKey);
+        if (constrained != null && constrained.precomputedScheduleRoute) {
+            return switch (scheduleSplineConstraint.stage()) {
+                case DETACHED -> SablePathfinder.DebugRouteStyle.SPLINE_UNLOCKED;
+                case GUIDING -> SablePathfinder.DebugRouteStyle.SPLINE_GUIDING;
+                case RIGID -> SablePathfinder.DebugRouteStyle.SPLINE_RIGID;
+            };
+        }
+        return navigationPathStates.values().stream()
+                .anyMatch(state -> state.precomputedScheduleRoute)
+                ? SablePathfinder.DebugRouteStyle.SPLINE_UNLOCKED
+                : SablePathfinder.DebugRouteStyle.CACHED;
+    }
+
+    // Build one detailed nameplate only while an operator requests the debug snapshot.
+    private @Nullable AutopilotDebugSnapshot autopilotDebugSnapshot() {
+        Level level = controller.getLevel();
+        long gameTime = level == null ? Long.MIN_VALUE : level.getGameTime();
+        if (level == null || gameTime == Long.MIN_VALUE) return null;
+        if (cachedAutopilotDebugSnapshot != null
+                && cachedAutopilotDebugSnapshotTick == gameTime) {
+            return cachedAutopilotDebugSnapshot;
+        }
+        autopilotDebugStates.entrySet().removeIf(entry ->
+                gameTime - entry.getValue().gameTime()
+                        > LIVE_PATHFINDER_DEBUG_STALE_TICKS
+                        || !activeCommands.containsKey(entry.getKey()));
+        Telemetry vehicleTelemetry = telemetry();
+        ServerSubLevel debugRoot = rootSubLevel != null
+                ? rootSubLevel : containingServerSubLevel();
+        if (!vehicleTelemetry.available()) {
+            Vec3 controllerWorld = debugRoot == null
+                    ? controller.getBlockPos().getCenter()
+                    : worldPosition(debugRoot.logicalPose(),
+                    controller.getBlockPos().getCenter());
+            vehicleTelemetry = new Telemetry(
+                    false, controllerWorld, Vec3.ZERO, Vec3.ZERO, Vec3.ZERO);
+        }
+        UUID vehicleId = configurationRootSubLevelId();
+        if (vehicleId == null) vehicleId = mapId;
+        if (vehicleId == null) {
+            vehicleId = new UUID(0L, controller.getBlockPos().asLong());
+        }
+        Vec3 anchor = vehicleTelemetry.position().add(0.0D, 2.5D, 0.0D);
+        CollisionScanContext ctx = vehicleTelemetry.available()
+                ? collisionScanContext() : null;
+        if (ctx != null) {
+            HullBounds hull = cachedShipHullBounds(vehicleTelemetry.position(), ctx);
+            anchor = vehicleTelemetry.position().add(
+                    0.0D, Math.max(2.5D, hull.maxY() + 1.5D), 0.0D);
+        }
+        TimedAutopilotCommandState primary = autopilotDebugStates.values().stream()
+                .max(Comparator.comparingLong(TimedAutopilotCommandState::gameTime))
+                .orElse(null);
+        NavigationPathState pathState = primary == null ? null
+                : navigationPathStates.get(primary.navigationKey());
+        AutopilotDebugSnapshot.State brainState = autopilotDebugState(
+                primary, pathState);
+        List<AutopilotDebugSnapshot.Section> sections = new ArrayList<>();
+        sections.add(autopilotOverviewSection(vehicleId, brainState, primary, pathState));
+        sections.add(autopilotTelemetrySection(vehicleTelemetry));
+        if (!activeCommands.isEmpty()) {
+            sections.add(autopilotActiveCommandsSection());
+        }
+        if (primary != null) {
+            sections.add(autopilotCommandSection(primary.command()));
+            sections.add(autopilotGuidanceSection(primary.guidance()));
+            if (pathState != null) {
+                sections.add(autopilotRouteSection(
+                        primary.telemetry().position(), pathState));
+            }
+            sections.add(autopilotTrafficSection(primary.trafficDecision()));
+            if (primary.modeDemand() != null) {
+                sections.add(autopilotSpeedSection(
+                        primary.telemetry(), primary.command(),
+                        primary.modeDemand().speedPlan()));
+                sections.add(autopilotControlSection(
+                        primary.modeDemand().output()));
+            }
+        }
+        if (autopilotControlDemand != null
+                && gameTime - autopilotControlDemand.gameTime()
+                <= LIVE_PATHFINDER_DEBUG_STALE_TICKS) {
+            sections.add(autopilotFinalDemandSection(autopilotControlDemand));
+        }
+        if(!speedControlBranches.isEmpty()) sections.add(autopilotSpeedOutputsSection());
+        sections.add(autopilotPlannerSection());
+        cachedAutopilotDebugSnapshot = new AutopilotDebugSnapshot(
+                vehicleId, controller.getShipName(), anchor,
+                brainState, gameTime, sections);
+        cachedAutopilotDebugSnapshotTick = gameTime;
+        return cachedAutopilotDebugSnapshot;
+    }
+
+    // Keep per-tick decision capture alive while an SCM brain graph output is sampled.
+    private void requestAutopilotGraphDebug() {
+        Level level = controller.getLevel();
+        if (level == null) return;
+        autopilotGraphDebugRequestedUntil = Math.max(
+                autopilotGraphDebugRequestedUntil,
+                level.getGameTime() + LIVE_PATHFINDER_DEBUG_STALE_TICKS);
+    }
+
+    // Check whether this controller still has an SCM brain graph consumer.
+    private boolean autopilotGraphDebugRequested() {
+        Level level = controller.getLevel();
+        return level != null && level.getGameTime() <= autopilotGraphDebugRequestedUntil;
+    }
+
+    // Check whether either debug consumer needs raw control decisions.
+    private boolean autopilotDebugCollectionRequested(long gameTime) {
+        return autopilotBrainDebugCollectionEnabled
+                || autopilotDebugDumpCollectionEnabled
+                || gameTime != Long.MIN_VALUE
+                && gameTime <= autopilotGraphDebugRequestedUntil;
+    }
+
+    // Capture exact runtime and native spline lifecycle state for a file dump.
+    private List<String> debugDumpInternalLines() {
+        List<String> lines = new ArrayList<>();
+        UUID rootId = configurationRootSubLevelId();
+        SableSplineConstraint.DebugState constraint = scheduleSplineConstraint.debugState();
+        lines.add("controller.position=" + controller.getBlockPos());
+        lines.add("runtime.phase=" + phase);
+        lines.add("runtime.status=" + status);
+        lines.add("runtime.progress=" + progress);
+        lines.add("runtime.map_id=" + mapId);
+        lines.add("runtime.root_sub_level=" + rootId);
+        lines.add("runtime.connected_sub_levels=" + configurationViewSubLevelIds());
+        lines.add("runtime.assembly_sub_levels=" + activeAssemblySubLevelIds);
+        lines.add("runtime.carriages=" + activeCarriageCount);
+        lines.add("runtime.absorbed_scm_maps=" + absorbedScmMapCount);
+        lines.add("runtime.authority_key=" + claimedAssemblyAuthorityKey);
+        lines.add("runtime.authority_id=" + controllerAuthorityId);
+        lines.add("runtime.freeze_handles=" + freezeHandles.size());
+        lines.add("runtime.nested_freeze_handles=" + nestedFreezeHandles.size());
+        lines.add("runtime.magnetic_connector=" + magneticConnectorIdx);
+        lines.add("commands.active=" + activeCommands.keySet());
+        lines.add("commands.completed=" + completedCommands);
+        lines.add("spline.key=" + scheduleSplineConstraintKey);
+        lines.add("spline.requested_by_runtime=" + scheduleSplineConstraintRequested);
+        lines.add("spline.runtime_decision=" + scheduleSplineConstraintDecision);
+        lines.add("spline.state_identity_match=" + (scheduleSplineConstraintKey != null
+                && navigationPathStates.get(scheduleSplineConstraintKey)
+                == scheduleSplineConstraintState));
+        lines.add("spline.world_anchor=" + scheduleSplineConstraintWorldAnchor);
+        lines.add("spline.hull_anchor=" + scheduleSplineConstraintHullAnchor);
+        lines.add("spline.next_retry_tick=" + nextSplineConstraintRetryTick);
+        lines.add("spline.stage=" + constraint.stage());
+        lines.add("spline.request_present=" + constraint.requested());
+        lines.add("spline.handle_valid=" + constraint.handleValid());
+        lines.add("spline.diagnostic=" + constraint.diagnostic());
+        lines.add("spline.queued_updates=" + constraint.queuedUpdates());
+        lines.add("spline.physics_steps=" + constraint.physicsSteps());
+        lines.add("spline.joint_installs=" + constraint.jointInstalls());
+        lines.add("spline.joint_releases=" + constraint.jointReleases());
+        navigationPathStates.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> appendDebugDumpNavigationState(
+                        lines, entry.getKey(), entry.getValue()));
+        return List.copyOf(lines);
+    }
+
+    // Capture the mutable route cursors which decide whether spline attachment is attempted.
+    private static void appendDebugDumpNavigationState(
+            List<String> lines,
+            String key,
+            NavigationPathState state
+    ) {
+        String prefix = "navigation[" + key + "].";
+        lines.add(prefix + "precomputed=" + state.precomputedScheduleRoute);
+        lines.add(prefix + "restored_precomputed=" + state.usedPrecomputedScheduleRoute);
+        lines.add(prefix + "waypoint=" + state.waypointIndex + "/" + state.waypoints.size());
+        lines.add(prefix + "planned_target=" + state.plannedTarget);
+        lines.add(prefix + "spline_present=" + (state.scheduleSpline != null));
+        lines.add(prefix + "spline_segments=" + (state.scheduleSpline == null
+                ? 0 : state.scheduleSpline.segments().size()));
+        lines.add(prefix + "spline_cursor=" + state.scheduleSplineSegment
+                + "/" + state.minimumScheduleSplineFraction);
+        lines.add(prefix + "spline_resume_waypoint=" + state.scheduleSplineResumeWaypoint);
+        lines.add(prefix + "rejoin_active=" + state.scheduleRouteRejoinActive);
+        lines.add(prefix + "rejoin_scan=" + state.routeRejoinSearchIndex);
+        lines.add(prefix + "queued_plan=" + (state.queuedSableRoute != null));
+        lines.add(prefix + "queued_rejoin=" + state.queuedRouteRejoinIndex);
+        lines.add(prefix + "forward_recovery=" + state.forwardRecovery);
+        lines.add(prefix + "ground_recovery=" + state.groundRecoveryAtWaypoint());
+        lines.add(prefix + "next_replan_tick=" + state.nextReplanTick);
+        lines.add(prefix + "next_detour_tick=" + state.nextDetourTick);
+    }
+
+    // Drop the formatted view after its underlying debug state changes.
+    private void invalidateAutopilotDebugSnapshot() {
+        cachedAutopilotDebugSnapshot = null;
+        cachedAutopilotDebugSnapshotTick = Long.MIN_VALUE;
+    }
+
+    // Resolve the primary state from the exact decision currently driving the vehicle.
+    private AutopilotDebugSnapshot.State autopilotDebugState(
+            @Nullable TimedAutopilotCommandState primary,
+            @Nullable NavigationPathState pathState
+    ) {
+        if (primary == null) {
+            return isPrecalculatingScheduledRoutes()
+                    ? AutopilotDebugSnapshot.State.PLANNING
+                    : AutopilotDebugSnapshot.State.IDLE;
+        }
+        if ("ship_dock".equals(primary.command().type())) {
+            return AutopilotDebugSnapshot.State.DOCKING;
+        }
+        if (primary.guidance().reverseRecovery()) {
+            return AutopilotDebugSnapshot.State.RECOVERING;
+        }
+        if (pathState != null && pathState.forwardRecoveryAtWaypoint()) {
+            return AutopilotDebugSnapshot.State.AVOIDING;
+        }
+        if (primary.trafficDecision().yield()) {
+            return AutopilotDebugSnapshot.State.YIELDING;
+        }
+        if (pathState != null && pathState.queuedSableRoute != null
+                && !pathState.queuedSableRoute.finished()) {
+            return AutopilotDebugSnapshot.State.PLANNING;
+        }
+        if (primary.modeDemand() != null
+                && primary.guidance().direction().lengthSqr() <= 1.0E-12D
+                && primary.modeDemand().speedPlan().permittedSpeed() <= 1.0E-4D
+                && primary.telemetry().position().distanceTo(
+                primary.command().targetPosition()) > primary.command().tolerance()) {
+            return AutopilotDebugSnapshot.State.BLOCKED;
+        }
+        if (pathState != null && pathState.precomputedScheduleRoute) {
+            return AutopilotDebugSnapshot.State.FOLLOWING_ROUTE;
+        }
+        return AutopilotDebugSnapshot.State.NAVIGATING;
+    }
+
+    // Describe the controller and schedule owner.
+    private AutopilotDebugSnapshot.Section autopilotOverviewSection(
+            UUID vehicleId,
+            AutopilotDebugSnapshot.State brainState,
+            @Nullable TimedAutopilotCommandState primary,
+            @Nullable NavigationPathState pathState
+    ) {
+        ScmControlMode mode = controller.getShipControlMode();
+        return debugSection("Overview",
+                debugEntry("Decision", brainState.name(), debugStateTone(brainState)),
+                debugEntry("Reason", autopilotDebugReason(brainState, primary, pathState),
+                        debugStateTone(brainState)),
+                debugEntry("SCM", phase.name() + " | " + status,
+                        phase == Phase.READY
+                                ? AutopilotDebugSnapshot.Tone.POSITIVE
+                                : AutopilotDebugSnapshot.Tone.WARNING),
+                debugEntry("Control mode", mode.displayName() + " | " + mode.id(),
+                        AutopilotDebugSnapshot.Tone.ACCENT),
+                debugEntry("Schedule", controller.getShippingScheduleStatus()),
+                debugEntry("Vehicle id", vehicleId.toString()),
+                debugEntry("Active commands", Integer.toString(activeCommands.size())),
+                debugEntry("Mapped actuators", Integer.toString(controlActuators.size())));
+    }
+
+    // Explain which live condition selected the primary behavior.
+    private static String autopilotDebugReason(
+            AutopilotDebugSnapshot.State state,
+            @Nullable TimedAutopilotCommandState primary,
+            @Nullable NavigationPathState pathState
+    ) {
+        return switch (state) {
+            case IDLE -> "no active navigation or docking command";
+            case NAVIGATING -> "live destination guidance owns steering";
+            case FOLLOWING_ROUTE -> "precalculated schedule leg owns steering";
+            case PLANNING -> pathState != null && pathState.queuedSableRoute != null
+                    ? "bounded Sable route search is in progress"
+                    : "schedule route pre-calculation is in progress";
+            case AVOIDING -> "live collision override is following a validated escape curve";
+            case YIELDING -> primary == null ? "traffic right-of-way"
+                    : "yielding to " + debugShortId(
+                    primary.trafficDecision().otherVehicleId()) + " at "
+                    + primary.trafficDecision().encounter().name().toLowerCase(Locale.ROOT);
+            case RECOVERING -> "reverse recovery owns steering until the retained route can resume";
+            case DOCKING -> "schedule-selected live docking approach owns the destination";
+            case BLOCKED -> "no non-zero safe movement demand is currently available";
+        };
+    }
+
+    // Describe physical feedback sampled by the SCM.
+    private static AutopilotDebugSnapshot.Section autopilotTelemetrySection(
+            Telemetry telemetry
+    ) {
+        return debugSection("Telemetry",
+                debugEntry("Physics available", debugBoolean(telemetry.available()),
+                        telemetry.available()
+                                ? AutopilotDebugSnapshot.Tone.POSITIVE
+                                : AutopilotDebugSnapshot.Tone.WARNING),
+                debugEntry("Position", debugVector(telemetry.position())),
+                debugEntry("Velocity", debugVector(telemetry.velocity())),
+                debugEntry("Speed", debugDecimal(telemetry.velocity().length()) + " b/s",
+                        AutopilotDebugSnapshot.Tone.ACCENT),
+                debugEntry("Angular velocity", debugVector(telemetry.angularVelocity())),
+                debugEntry("Attitude", debugVector(telemetry.eulerDegrees())));
+    }
+
+    // List every command contributing to this tick's combined control demand.
+    private AutopilotDebugSnapshot.Section autopilotActiveCommandsSection() {
+        List<AutopilotDebugSnapshot.Entry> entries = new ArrayList<>();
+        for (Map.Entry<String, ActiveShipCommand> entry : activeCommands.entrySet()) {
+            ActiveShipCommand command = entry.getValue();
+            entries.add(debugEntry(entry.getKey(), command.type()
+                    + " | amount " + debugDecimal(command.amount())
+                    + " | strength " + debugDecimal(command.strength()),
+                    isPathfindingTransit(command)
+                            ? AutopilotDebugSnapshot.Tone.ACCENT
+                            : AutopilotDebugSnapshot.Tone.NORMAL));
+        }
+        return new AutopilotDebugSnapshot.Section("Active tasks", entries);
+    }
+
+    // Describe the complete active navigation command.
+    private static AutopilotDebugSnapshot.Section autopilotCommandSection(
+            ActiveShipCommand command
+    ) {
+        return debugSection("Navigation command",
+                debugEntry("Id / type", command.id() + " | " + command.type(),
+                        AutopilotDebugSnapshot.Tone.ACCENT),
+                debugEntry("Destination", debugVector(command.targetPosition())),
+                debugEntry("Target point", command.targetPoint().name()
+                        + " | connector " + command.targetConnectorIndex()),
+                debugEntry("Target direction", debugVector(command.targetDirection())),
+                debugEntry("Target up", debugVector(command.targetUp())),
+                debugEntry("Requested speed", debugDecimal(command.targetSpeed())),
+                debugEntry("Direct throttle", command.driveThrottle() < 0.0D
+                        ? "automatic" : debugDecimal(command.driveThrottle())),
+                debugEntry("Tolerance", debugDecimal(command.tolerance())),
+                debugEntry("Reactive collision avoidance", "always active",
+                        AutopilotDebugSnapshot.Tone.POSITIVE),
+                debugEntry("Rotation lock", debugBoolean(command.lockRotation())),
+                debugEntry("Schedule entry", Integer.toString(command.scheduleRouteEntry())));
+    }
+
+    // Describe the exact steering result passed to the selected control mode.
+    private static AutopilotDebugSnapshot.Section autopilotGuidanceSection(
+            NavigationGuidance guidance
+    ) {
+        return debugSection("Guidance",
+                debugEntry("Control target", debugVector(guidance.controlTarget()),
+                        AutopilotDebugSnapshot.Tone.ACCENT),
+                debugEntry("Steering direction", debugVector(guidance.direction())),
+                debugEntry("Collision direction",
+                        debugVector(guidance.collisionTravelDirection())),
+                debugEntry("Distance response", debugDecimal(guidance.distanceResponse())),
+                debugEntry("Following safe route",
+                        debugBoolean(guidance.obstacleAvoidanceRoute()),
+                        guidance.obstacleAvoidanceRoute()
+                                ? AutopilotDebugSnapshot.Tone.POSITIVE
+                                : AutopilotDebugSnapshot.Tone.MUTED),
+                debugEntry("Brake at target", debugBoolean(guidance.brakeAtControlTarget())),
+                debugEntry("Reverse recovery", debugBoolean(guidance.reverseRecovery()),
+                        guidance.reverseRecovery()
+                                ? AutopilotDebugSnapshot.Tone.WARNING
+                                : AutopilotDebugSnapshot.Tone.NORMAL));
+    }
+
+    // Describe the retained path, cursor, validation and recovery machinery.
+    private AutopilotDebugSnapshot.Section autopilotRouteSection(
+            Vec3 position,
+            NavigationPathState state
+    ) {
+        boolean ground = usesGroundNavigation();
+        int count = state.waypoints.size();
+        int index = Math.max(0, Math.min(state.waypointIndex, count));
+        Vec3 previous = index <= 0 ? state.routeStartPosition
+                : state.waypoints.get(index - 1);
+        Vec3 next = index < count ? state.waypoints.get(index) : state.plannedTarget;
+        double crossTrack = 0.0D;
+        if (next != null && index < count) {
+            SablePathfinder.RouteProjection projection =
+                    SablePathfinder.routeLegProjection(index, previous, next,
+                            position, ground ? SablePathfinder.RouteMode.GROUND
+                                    : SablePathfinder.RouteMode.FLIGHT);
+            crossTrack = projection.found()
+                    ? Math.sqrt(projection.distanceToRouteSqr()) : 0.0D;
+        }
+        if(state.precomputedScheduleRoute && state.scheduleSpline != null
+                && !state.scheduleSpline.isEmpty()){
+            WaypointSpline.Projection projection = state.scheduleSpline.projectSegment(position,
+                    Math.max(0, Math.min(state.scheduleSplineSegment,
+                            state.scheduleSpline.segments().size() - 1)),
+                    state.minimumScheduleSplineFraction);
+            if(projection.found()) crossTrack = ground
+                    ? horizontalDistance(position, projection.position()) : projection.distance();
+        }
+        boolean attached = scheduleSplineConstraint.active() && scheduleSplineConstraintKey != null
+                && navigationPathStates.get(scheduleSplineConstraintKey) == state;
+        String constraintState = !attached ? "unlocked: "
+                + (scheduleSplineConstraintKey == null
+                ? scheduleSplineConstraintDecision : scheduleSplineConstraint.diagnostic())
+                : scheduleSplineConstraint.rigid()
+                ? ground ? "rigid: XZ centreline" : "rigid: XYZ centreline"
+                : ground ? "guiding: XZ centreline" : "guiding: XYZ centreline";
+        String source = state.precomputedScheduleRoute
+                ? "precalculated schedule" : state.usedPrecomputedScheduleRoute
+                ? "restored schedule" : state.forwardRecovery
+                ? "live avoidance" : state.groundRecoveryAtWaypoint()
+                ? "ground recovery" : "live route";
+        String queued = state.queuedSableRoute == null ? "none"
+                : (state.queuedSableRoute.finished() ? "finished " : "searching ")
+                + state.queuedSableRoute.result().outcome().name()
+                + " | " + debugPercent(state.queuedSableRoute.progress())
+                + " | " + state.queuedSableRoute.result().expandedNodes() + " nodes";
+        String validation = state.routeSegmentValidation == null ? "not sampled"
+                : state.routeSegmentValidation.result().name()
+                + " @ waypoint " + state.routeSegmentValidationWaypoint;
+        WaypointProgressTracker.Observation progress = state.lastWaypointProgress;
+        String progressState = progress == null ? "not sampled"
+                : (progress.captured() ? "captured" : progress.stalled() ? "stalled"
+                : progress.regressing() ? "regressing" : "progressing")
+                + " | distance " + debugDecimal(progress.distance())
+                + " | best " + debugDecimal(progress.bestDistance())
+                + " | idle " + progress.ticksWithoutProgress() + "t";
+        return debugSection("Retained route",
+                debugEntry("Source", source,
+                        state.precomputedScheduleRoute
+                                ? AutopilotDebugSnapshot.Tone.POSITIVE
+                                : AutopilotDebugSnapshot.Tone.ACCENT),
+                debugEntry("Spline constraint", constraintState,
+                        attached ? AutopilotDebugSnapshot.Tone.POSITIVE
+                        : AutopilotDebugSnapshot.Tone.MUTED),
+                debugEntry("Planned destination", state.plannedTarget == null
+                        ? "none" : debugVector(state.plannedTarget)),
+                debugEntry("Cursor", index + " / " + count),
+                debugEntry("Active leg", debugVector(previous) + " -> "
+                        + (next == null ? "none" : debugVector(next))),
+                debugEntry("Cross-track", debugDecimal(crossTrack) + " b",
+                        crossTrack <= 1.0D
+                                ? AutopilotDebugSnapshot.Tone.POSITIVE
+                                : AutopilotDebugSnapshot.Tone.WARNING),
+                debugEntry("Remaining distance",
+                        debugDecimal(debugRemainingRouteDistance(position, state, ground)) + " b"),
+                debugEntry("Schedule source", "entry " + state.precomputedScheduleEntry
+                        + " | dock " + debugShortId(state.precomputedScheduleDockId)),
+                debugEntry("Ground curve", state.groundRouteCurves.isEmpty() ? "none"
+                        : state.groundCurveIndex + " / " + state.groundRouteCurves.size()),
+                debugEntry("Forward recovery", debugBoolean(state.forwardRecovery)),
+                debugEntry("Ground recovery", debugBoolean(state.groundRecoveryAtWaypoint())),
+                debugEntry("Recovery gear", state.groundRecoveryAtWaypoint()
+                        ? state.reverseAtWaypoint() ? "reverse" : "forward" : "none"),
+                debugEntry("Recovery continuation",
+                        debugBoolean(state.groundRecoveryNeedsContinuation)),
+                debugEntry("Suspended route", debugBoolean(state.suspendedSableRoute != null)),
+                debugEntry("Queued planner", queued,
+                        state.queuedSableRoute != null && !state.queuedSableRoute.finished()
+                                ? AutopilotDebugSnapshot.Tone.WARNING
+                                : AutopilotDebugSnapshot.Tone.NORMAL),
+                debugEntry("Leg validation", validation),
+                debugEntry("Waypoint progress", progressState,
+                        progress != null && (progress.stalled() || progress.regressing())
+                                ? AutopilotDebugSnapshot.Tone.DANGER
+                                : AutopilotDebugSnapshot.Tone.NORMAL),
+                debugEntry("Rejoin scan", state.routeRejoinSearchIndex < 0
+                        ? "idle" : "next waypoint " + state.routeRejoinSearchIndex),
+                debugEntry("Next replan / detour", debugTick(state.nextReplanTick, levelTime())
+                        + " / " + debugTick(state.nextDetourTick, levelTime())));
+    }
+
+    // Describe deterministic right-of-way without hiding a clear decision.
+    private static AutopilotDebugSnapshot.Section autopilotTrafficSection(
+            RouteTrafficPriority.Decision decision
+    ) {
+        AutopilotDebugSnapshot.Tone decisionTone = decision.yield()
+                ? AutopilotDebugSnapshot.Tone.WARNING
+                : decision.conflict() ? AutopilotDebugSnapshot.Tone.POSITIVE
+                : AutopilotDebugSnapshot.Tone.MUTED;
+        return debugSection("Traffic priority",
+                debugEntry("Encounter", decision.encounter().name(), decisionTone),
+                debugEntry("Conflict", debugBoolean(decision.conflict())),
+                debugEntry("Decision", decision.yield() ? "YIELD / WAIT"
+                                : decision.conflict() ? "HAS PRIORITY" : "CLEAR",
+                        decisionTone),
+                debugEntry("Other vehicle", debugShortId(decision.otherVehicleId())),
+                debugEntry("Conflict point", debugVector(decision.conflictPosition())),
+                debugEntry("Our distance", debugDecimal(decision.distanceToConflict())),
+                debugEntry("Other distance", debugDecimal(decision.otherDistanceToConflict())),
+                debugEntry("Route separation", debugDecimal(decision.routeSeparation())),
+                debugEntry("Brake / yield distance", debugDecimal(decision.yieldDistance())));
+    }
+
+    // Describe the final collision and speed envelope.
+    private static AutopilotDebugSnapshot.Section autopilotSpeedSection(
+            Telemetry telemetry,
+            ActiveShipCommand command,
+            NavigationSpeedPlan speed
+    ) {
+        return debugSection("Collision and speed",
+                debugEntry("Actual / requested", debugDecimal(telemetry.velocity().length())
+                        + " / " + debugDecimal(command.targetSpeed())),
+                debugEntry("Permitted speed", debugDecimal(speed.permittedSpeed()),
+                        speed.permittedSpeed() <= 1.0E-4D
+                                ? AutopilotDebugSnapshot.Tone.WARNING
+                                : AutopilotDebugSnapshot.Tone.POSITIVE),
+                debugEntry("Limiting decision", speed.limitingFactor(),
+                        "requested cruise".equals(speed.limitingFactor())
+                                ? AutopilotDebugSnapshot.Tone.POSITIVE
+                                : AutopilotDebugSnapshot.Tone.WARNING),
+                debugEntry("Destination distance", debugDecimal(speed.targetDistance()) + " b"),
+                debugEntry("Destination speed cap", debugDecimal(speed.targetSpeedLimit())),
+                debugEntry("Corner / maneuver cap", debugDecimal(speed.cornerSpeedLimit())),
+                debugEntry("Traffic cap", debugDecimal(speed.trafficSpeedLimit())),
+                debugEntry("Collision cap", debugDecimal(speed.collisionSpeedLimit())),
+                debugEntry("Collision scan range", debugDecimal(speed.scanRange()) + " b"),
+                debugEntry("Travel clearance", debugDecimal(speed.travelClearance()) + " b"),
+                debugEntry("Forward clearance", debugDecimal(speed.forwardClearance()) + " b"),
+                debugEntry("Reverse clearance", debugDecimal(speed.reverseClearance()) + " b"),
+                debugEntry("Accelerate group", debugDecimal(speed.accelerationStrength()),
+                        speed.accelerationStrength() > 1.0E-4D
+                                ? AutopilotDebugSnapshot.Tone.POSITIVE
+                                : AutopilotDebugSnapshot.Tone.MUTED),
+                debugEntry("Decelerate group", debugDecimal(speed.decelerationStrength()),
+                        speed.decelerationStrength() > 1.0E-4D
+                                ? AutopilotDebugSnapshot.Tone.WARNING
+                                : AutopilotDebugSnapshot.Tone.MUTED),
+                debugEntry("Brake group", debugDecimal(speed.brakeStrength()),
+                        speed.brakeStrength() > 1.0E-4D
+                                ? AutopilotDebugSnapshot.Tone.DANGER
+                                : AutopilotDebugSnapshot.Tone.MUTED));
+    }
+
+    // Describe the selected control-mode output before actuator allocation.
+    private static AutopilotDebugSnapshot.Section autopilotControlSection(
+            ScmControlMode.ControlOutput output
+    ) {
+        return debugSection("Control output",
+                debugEntry("Force", debugVector(output.force())
+                        + " | " + debugDecimal(output.force().length())),
+                debugEntry("Torque", debugVector(output.torque())
+                        + " | " + debugDecimal(output.torque().length())),
+                debugEntry("Drive direction", debugDecimal(output.driveDirection())),
+                debugEntry("Drive strength", debugDecimal(output.driveStrength())),
+                debugEntry("Gravity compensation",
+                        debugBoolean(output.compensateGravity())),
+                debugEntry("Upright stabilization",
+                        debugDecimal(output.uprightStabilization())));
+    }
+
+    // Describe the combined command after navigation, stabilization and every active task are merged.
+    private static AutopilotDebugSnapshot.Section autopilotFinalDemandSection(
+            TimedAutopilotControlDemand timed
+    ) {
+        ControlDemand demand = timed.demand();
+        return debugSection("Final SCM demand",
+                debugEntry("Root force", debugVector(demand.force())
+                        + " | " + debugDecimal(demand.force().length())),
+                debugEntry("Root torque", debugVector(demand.torque())
+                        + " | " + debugDecimal(demand.torque().length())),
+                debugEntry("Preferred direction",
+                        debugVector(demand.preferredDirection())),
+                debugEntry("Drive direction", debugDecimal(demand.driveDirection())),
+                debugEntry("Acceleration group",
+                        debugDecimal(demand.accelerationStrength())),
+                debugEntry("Deceleration group",
+                        debugDecimal(demand.decelerationStrength())),
+                debugEntry("Brake group", debugDecimal(demand.brakeStrength())),
+                debugEntry("Gravity compensation",
+                        debugBoolean(timed.compensateGravity())),
+                debugEntry("Upright stabilization",
+                        debugDecimal(timed.uprightStabilizationStrength())),
+                debugEntry("Attitude lock", timed.attitudeLockActive()
+                        ? debugVector(timed.attitudeLockTarget()) : "off"));
+    }
+
+    // Show applied controls rather than only the navigation's aggregate request
+    private AutopilotDebugSnapshot.Section autopilotSpeedOutputsSection(){
+        List<AutopilotDebugSnapshot.Entry> entries = new ArrayList<>();
+        for(var entry : speedControlBranches.entrySet()){
+            if(entries.size() >= 32) break;
+            SpeedControlBranch branch = entry.getValue();
+            Actuator actuator = controlActuators.get(entry.getKey());
+            double speed = actuator == null || !actuator.isAvailable() ? 0.0D : actuator.read().speed();
+            entries.add(debugEntry("Control " + entry.getKey(),
+                    debugDecimal(appliedControlValues.getOrDefault(entry.getKey(), 0.0D))
+                            + " | RPM " + debugDecimal(speed)
+                            + " | outputs " + branch.search().outputs().size()
+                            + (branch.search().complete() ? " mapped" : " mapping")));
+        }
+        return new AutopilotDebugSnapshot.Section("Speed control outputs", entries);
+    }
+
+    // Describe whole-schedule route planning independently of live navigation.
+    private AutopilotDebugSnapshot.Section autopilotPlannerSection() {
+        List<AutopilotDebugSnapshot.Entry> entries = new ArrayList<>();
+        entries.add(debugEntry("Schedule status", controller.getShippingScheduleStatus()));
+        entries.add(debugEntry("Precalculating", debugBoolean(isPrecalculatingScheduledRoutes()),
+                isPrecalculatingScheduledRoutes()
+                        ? AutopilotDebugSnapshot.Tone.WARNING
+                        : AutopilotDebugSnapshot.Tone.NORMAL));
+        entries.add(debugEntry("Plan progress",
+                debugPercent(scheduledRoutePrecalculationProgress())));
+        entries.add(debugEntry("Queued legs", Integer.toString(scheduledRoutePlans.size())));
+        entries.add(debugEntry("Completed cached legs",
+                Integer.toString(completedScheduledRoutes.size())));
+        entries.add(debugEntry("Planner cursor", Integer.toString(scheduledRoutePlanIndex)));
+        for (int index = 0; index < scheduledRoutePlans.size(); index++) {
+            ScheduledRoutePlan plan = scheduledRoutePlans.get(index);
+            SablePathfinder.Result result = plan.plan().result();
+            entries.add(debugEntry("Plan " + index,
+                    "entry " + plan.scheduleEntry() + " | dock "
+                            + debugShortId(plan.dockId()) + " | "
+                            + result.outcome().name() + " | "
+                            + debugPercent(plan.plan().progress()) + " | "
+                            + result.expandedNodes() + " nodes",
+                    plan.plan().finished()
+                            ? result.reachedDestination()
+                            ? AutopilotDebugSnapshot.Tone.POSITIVE
+                            : AutopilotDebugSnapshot.Tone.DANGER
+                            : AutopilotDebugSnapshot.Tone.WARNING));
+        }
+        return new AutopilotDebugSnapshot.Section("Schedule planner", entries);
+    }
+
+    // Store one applied navigation decision without formatting debug text on normal ticks.
+    private void publishAutopilotDebugState(
+            String activeCommandKey,
+            String navigationKey,
+            Telemetry telemetry,
+            ActiveShipCommand command,
+            NavigationGuidance guidance,
+            @Nullable ModeControlDemand modeDemand
+    ) {
+        Level level = controller.getLevel();
+        long gameTime = level == null ? Long.MIN_VALUE : level.getGameTime();
+        if (!autopilotDebugCollectionRequested(gameTime)) return;
+        RouteTrafficPriority.Decision traffic = navigationPathStates.containsKey(navigationKey)
+                ? routeTrafficDecision(navigationKey)
+                : RouteTrafficPriority.Decision.clear();
+        autopilotDebugStates.put(activeCommandKey,
+                new TimedAutopilotCommandState(gameTime, navigationKey,
+                        telemetry, command, guidance, modeDemand, traffic));
+        invalidateAutopilotDebugSnapshot();
+    }
+
+    // Get the remaining polyline distance from the current route cursor.
+    private static double debugRemainingRouteDistance(
+            Vec3 position,
+            NavigationPathState state,
+            boolean ground
+    ) {
+        if (state.waypointIndex < 0 || state.waypointIndex >= state.waypoints.size()) {
+            return 0.0D;
+        }
+        Vec3 cursor = finite(position);
+        double distance = 0.0D;
+        for (int index = state.waypointIndex; index < state.waypoints.size(); index++) {
+            Vec3 next = state.waypoints.get(index);
+            distance += ground ? horizontalDistance(cursor, next) : cursor.distanceTo(next);
+            cursor = next;
+        }
+        return distance;
+    }
+
+    // Build one structured section from its entries.
+    private static AutopilotDebugSnapshot.Section debugSection(
+            String name,
+            AutopilotDebugSnapshot.Entry... entries
+    ) {
+        return new AutopilotDebugSnapshot.Section(name, List.of(entries));
+    }
+
+    // Build one normal diagnostic entry.
+    private static AutopilotDebugSnapshot.Entry debugEntry(String label, String value) {
+        return new AutopilotDebugSnapshot.Entry(label, value);
+    }
+
+    // Build one toned diagnostic entry.
+    private static AutopilotDebugSnapshot.Entry debugEntry(
+            String label,
+            String value,
+            AutopilotDebugSnapshot.Tone tone
+    ) {
+        return new AutopilotDebugSnapshot.Entry(label, value, tone);
+    }
+
+    // Format one finite scalar compactly.
+    private static String debugDecimal(double value) {
+        return String.format(Locale.ROOT, "%.2f", finite(value));
+    }
+
+    // Format one finite world vector compactly.
+    private static String debugVector(Vec3 value) {
+        Vec3 safe = finite(value);
+        return "(" + debugDecimal(safe.x) + ", " + debugDecimal(safe.y)
+                + ", " + debugDecimal(safe.z) + ")";
+    }
+
+    // Format one ratio as a percentage.
+    private static String debugPercent(double value) {
+        return Math.round(Mth.clamp(finite(value), 0.0D, 1.0D) * 100.0D) + "%";
+    }
+
+    // Format one boolean consistently.
+    private static String debugBoolean(boolean value) {
+        return value ? "yes" : "no";
+    }
+
+    // Format one optional vehicle id compactly.
+    private static String debugShortId(@Nullable UUID id) {
+        if (id == null) return "none";
+        String value = id.toString();
+        return value.substring(0, Math.min(8, value.length()));
+    }
+
+    // Format one future controller tick without exposing sentinel arithmetic.
+    private static String debugTick(long tick, long gameTime) {
+        if (tick == Long.MIN_VALUE) return "now";
+        if (tick == Long.MAX_VALUE) return "held";
+        return tick <= gameTime ? "now" : "+" + (tick - gameTime) + "t";
+    }
+
+    // Get the current level time for one debug-only formatter.
+    private long levelTime() {
+        return controller.getLevel() == null ? 0L : controller.getLevel().getGameTime();
+    }
+
+    // Resolve one nameplate value tone from the primary behavior.
+    private static AutopilotDebugSnapshot.Tone debugStateTone(
+            AutopilotDebugSnapshot.State state
+    ) {
+        return switch (state) {
+            case IDLE -> AutopilotDebugSnapshot.Tone.MUTED;
+            case NAVIGATING, FOLLOWING_ROUTE, DOCKING ->
+                    AutopilotDebugSnapshot.Tone.POSITIVE;
+            case PLANNING, AVOIDING, YIELDING, RECOVERING ->
+                    AutopilotDebugSnapshot.Tone.WARNING;
+            case BLOCKED -> AutopilotDebugSnapshot.Tone.DANGER;
+        };
+    }
+
+    // Write completed schedule legs into the controller manifest stored by SQLite.
+    void writePrecalculatedRouteCache(CompoundTag parent) {
+        ListTag stored = new ListTag();
+        for (CompletedScheduledRoute route : completedScheduledRoutes) {
+            stored.add(route.toTag());
+        }
+        for (ScheduledRoutePlan plan : scheduledRoutePlans) {
+            SablePathfinder.Result result = plan.plan().result();
+            if (!plan.plan().finished() || !result.reachedDestination()) {
+                continue;
+            }
+            stored.add(new CompletedScheduledRoute(
+                    plan.scheduleEntry(), plan.dockId(), plan.origin(), plan.target(),
+                    result.waypoints()).toTag());
+        }
+        parent.put(PRECALCULATED_ROUTE_CACHE_TAG, stored);
+    }
+
+    // Restore only complete route legs; in-progress searches are intentionally restarted from live geometry.
+    void readPrecalculatedRouteCache(CompoundTag parent) {
+        completedScheduledRoutes.clear();
+        routeHazards.clear();
+        if (parent == null) {
+            return;
+        }
+        ListTag stored = parent.getList(PRECALCULATED_ROUTE_CACHE_TAG, Tag.TAG_COMPOUND);
+        for (int index = 0; index < stored.size(); index++) {
+            CompletedScheduledRoute route = CompletedScheduledRoute.fromTag(stored.getCompound(index));
+            if (route != null) {
+                completedScheduledRoutes.add(route);
+            }
+        }
+        scheduledRouteRevision++;
+    }
+
+    // Delete every prepared schedule route without changing the owning schedule.
+    boolean deleteScheduledRoutes() {
+        boolean changed = clearScheduledRouteCache();
+        if (changed) controller.saveControllerManifestNow();
+        return changed;
+    }
+
+    // Clear persistent, queued and actively adopted schedule-route geometry.
+    private boolean clearScheduledRouteCache() {
+        boolean changed = !scheduledRoutePlans.isEmpty()
+                || !completedScheduledRoutes.isEmpty()
+                || navigationPathStates.values().stream()
+                .anyMatch(state -> state.precomputedScheduleRoute
+                        || state.usedPrecomputedScheduleRoute);
+        scheduledRoutePlans.forEach(plan ->
+                SABLE_ROUTE_SCHEDULE_WORK_BUDGET.release(plan.plan()));
+        scheduledRoutePlans.clear();
+        completedScheduledRoutes.clear();
+        navigationPathStates.values().forEach(
+                state -> state.obstacleDetourQueued = false);
+        routeHazards.clear();
+        navigationPathStates.values().forEach(
+                NavigationPathState::discardPrecomputedScheduleRoute);
+        scheduledRoutePlanIndex = 0;
+        lastScheduledRouteProgressDisplayTick = Long.MIN_VALUE;
+        scheduledRouteProgressCompleteSent = false;
+        if (changed) scheduledRouteRevision++;
+        return changed;
+    }
+
+    // Publish retained movement geometry without inventing a direct route for ordinary guidance.
+    private void publishLivePathfinderDebug(
+            String commandKey,
+            Vec3 position,
+            ActiveShipCommand command
+    ) {
+        if (!isPathfindingTransit(command) || controller.getLevel() == null) {
+            livePathfinderDebugRoutes.remove(commandKey);
+            return;
+        }
+        boolean groundVehicle = usesGroundNavigation();
+        SablePathfinder.RouteMode mode = groundVehicle
+                ? SablePathfinder.RouteMode.GROUND : SablePathfinder.RouteMode.FLIGHT;
+        NavigationPathState state = navigationPathStates.get(commandKey);
+        if (state == null || !state.hasSableRoute()) {
+            livePathfinderDebugRoutes.remove(commandKey);
+            return;
+        }
+        List<SablePathfinder.Waypoint> route = state.routeWaypoints(groundVehicle);
+        Vec3 origin = state.routeStartPosition;
+        Vec3 target = state.plannedTarget == null
+                ? command.targetPosition() : state.plannedTarget;
+        livePathfinderDebugRoutes.put(commandKey, new TimedDebugRoute(
+                controller.getLevel().getGameTime(), new SablePathfinder.DebugRoute(
+                "live_guidance_" + commandKey, origin, target, route,
+                SablePathfinder.Outcome.COMPLETE, List.of(), true)));
+    }
+
+    // Publish one bounded future route without giving traffic ownership of it.
+    private void publishRouteTrafficIntent(
+            String commandKey,
+            Telemetry telemetry,
+            ActiveShipCommand command
+    ) {
+        Level level = controller.getLevel();
+        long gameTime = level == null ? Long.MIN_VALUE : level.getGameTime();
+        pruneRouteTrafficIntents(gameTime);
+        routeTrafficDecisions.remove(commandKey);
+        NavigationPathState state = navigationPathStates.get(commandKey);
+        UUID vehicleId = configurationRootSubLevelId();
+        CollisionScanContext ctx = collisionScanContext();
+        if (level == null || gameTime == Long.MIN_VALUE || vehicleId == null
+                || telemetry == null || !telemetry.available() || state == null
+                || !state.hasSableRoute() || ctx == null) {
+            routeTrafficIntents.remove(commandKey);
+            return;
+        }
+        boolean groundVehicle = usesGroundNavigation();
+        SablePathfinder.RouteMode mode = groundVehicle
+                ? SablePathfinder.RouteMode.GROUND : SablePathfinder.RouteMode.FLIGHT;
+        HullBounds hull = cachedShipHullBounds(telemetry.position(), ctx);
+        List<Vec3> route = state.routeTrafficPath(
+                telemetry.position(), mode,
+                ROUTE_TRAFFIC_SETTINGS.lookaheadDistance());
+        if (route.size() < 2) {
+            routeTrafficIntents.remove(commandKey);
+            return;
+        }
+        double clearanceRadius = groundVehicle
+                ? hull.horizontalRadius() : hull.spatialRadius();
+        double verticalClearance = Math.max(0.5D,
+                (hull.maxY - hull.minY) * 0.5D);
+        RouteTrafficPriority.Participant participant =
+                new RouteTrafficPriority.Participant(
+                        vehicleId, telemetry.position(), telemetry.velocity(), route,
+                        mode, Math.max(0.5D, clearanceRadius), verticalClearance,
+                        command.targetSpeed());
+        routeTrafficIntents.put(commandKey,
+                new TimedRouteTrafficIntent(gameTime, participant));
+    }
+
+    // Resolve current right-of-way from recent same-dimension route intents.
+    private RouteTrafficPriority.Decision routeTrafficDecision(
+            String commandKey
+    ) {
+        Level level = controller.getLevel();
+        long gameTime = level == null ? Long.MIN_VALUE : level.getGameTime();
+        TimedRouteTrafficDecision cached = routeTrafficDecisions.get(commandKey);
+        if (cached != null && cached.gameTime() == gameTime) {
+            return cached.decision();
+        }
+        TimedRouteTrafficIntent current = routeTrafficIntents.get(commandKey);
+        if (current == null || gameTime == Long.MIN_VALUE) {
+            return RouteTrafficPriority.Decision.clear();
+        }
+        List<ShipControlModuleRuntime> runtimes;
+        synchronized (LIVE_RUNTIMES) {
+            runtimes = List.copyOf(LIVE_RUNTIMES);
+        }
+        ServerLevel rootLevel = SableLevelApi.serverLevel(level);
+        List<RouteTrafficPriority.Participant> traffic = new ArrayList<>();
+        for (ShipControlModuleRuntime runtime : runtimes) {
+            if (runtime == null
+                    || SableLevelApi.serverLevel(runtime.controller.getLevel()) != rootLevel) continue;
+            runtime.pruneRouteTrafficIntents(gameTime);
+            for (TimedRouteTrafficIntent intent : runtime.routeTrafficIntents.values()) {
+                traffic.add(intent.participant());
+            }
+        }
+        RouteTrafficPriority.Decision decision = RouteTrafficPriority.resolve(
+                current.participant(), traffic, ROUTE_TRAFFIC_SETTINGS);
+        routeTrafficDecisions.put(commandKey,
+                new TimedRouteTrafficDecision(gameTime, decision));
+        return decision;
+    }
+
+    // Drop commands which can no longer reserve live right-of-way.
+    private void pruneRouteTrafficIntents(long gameTime) {
+        routeTrafficIntents.entrySet().removeIf(entry -> gameTime == Long.MIN_VALUE
+                || gameTime - entry.getValue().gameTime()
+                > ROUTE_TRAFFIC_INTENT_STALE_TICKS
+                || !activeCommands.containsKey(entry.getKey()));
+        routeTrafficDecisions.keySet().removeIf(
+                key -> !routeTrafficIntents.containsKey(key));
+    }
+
+    // Queue every supplied schedule leg from its expected predecessor endpoint.
+    boolean queueScheduledRouteDestinations(List<ScheduledRouteDestination> destinations) {
+        CollisionScanContext ctx = collisionScanContext();
+        Telemetry telemetry = telemetry();
+        if (ctx == null || destinations == null || destinations.isEmpty()) {
+            return false;
+        }
+        Vec3 vehicleForward = normalize(rootDirectionToWorld(controllerForwardRoot()),
+                new Vec3(0.0D, 0.0D, 1.0D));
+        boolean groundVehicle = usesGroundNavigation();
+        if (groundVehicle) {
+            vehicleForward = normalize(new Vec3(
+                    vehicleForward.x, 0.0D, vehicleForward.z), vehicleForward);
+        }
+        // Pre-calculation owns explicit route endpoints and must not depend on a transient physics
+        // telemetry handle. The loaded root pose is enough to express the live hull relative to its
+        // center while Sable's route validator handles the supplied world-space legs.
+        Vec3 hullAnchor = telemetry.available() ? telemetry.position() : new Vec3(
+                ctx.containingSubLevel().logicalPose().position().x(),
+                ctx.containingSubLevel().logicalPose().position().y(),
+                ctx.containingSubLevel().logicalPose().position().z());
+        HullBounds hull = shipHullBounds(hullAnchor, ctx.shipSubLevels());
+        List<ScheduledRoutePlan> queued = new ArrayList<>();
+        for (ScheduledRouteDestination destinationEntry : destinations) {
+            if (destinationEntry == null || destinationEntry.origin() == null
+                    || destinationEntry.target() == null) continue;
+            Vec3 origin = finite(destinationEntry.origin());
+            Vec3 destination = finite(destinationEntry.target());
+            if (origin.distanceToSqr(destination) <= 1.0E-8D) continue;
+            Vec3 legForward = normalize(destination.subtract(origin), vehicleForward);
+            if (groundVehicle) {
+                legForward = normalize(new Vec3(
+                        legForward.x, 0.0D, legForward.z), vehicleForward);
+            }
+            queued.add(new ScheduledRoutePlan(destinationEntry.scheduleEntry(), destinationEntry.dockId(),
+                    origin, destination, planSableRoute(
+                    origin, destination, legForward, hull, ctx, groundVehicle)));
+        }
+        if (queued.isEmpty()) return false;
+        // Starting a replacement invalidates the old geometry immediately. Keeping it until the
+        // new search completed left an obsolete route visible and available to live schedules.
+        clearScheduledRouteCache();
+        scheduledRoutePlans.addAll(queued);
+        scheduledRouteRevision++;
+        scheduledRoutePlanIndex = 0;
+        lastScheduledRouteProgressDisplayTick = Long.MIN_VALUE;
+        scheduledRouteProgressCompleteSent = false;
+        showScheduledRoutePrecalculationProgress(false);
+        controller.saveControllerManifestNow();
+        return true;
+    }
+
+    // Keep authored geometry; defaults are only for a schedule without any prepared legs
+    boolean createEditableScheduledRoutes(List<ScheduledRouteDestination> destinations){
+        if(!completedScheduledRoutes.isEmpty() || !scheduledRoutePlans.isEmpty()) return true;
+        if(destinations == null || destinations.isEmpty()) return false;
+        Telemetry current = telemetry();
+        Vec3 position = current.available() ? current.position() : rootSubLevel == null ? null
+                : new Vec3(rootSubLevel.logicalPose().position().x(), rootSubLevel.logicalPose().position().y(),
+                rootSubLevel.logicalPose().position().z());
+        for(ScheduledRouteDestination destination : destinations){
+            Vec3 origin = destination.origin() == null ? position : destination.origin();
+            List<Vec3> controls = SplineRouteGeometry.editableLeg(origin, destination.target(), 4.0D);
+            if(controls.isEmpty()) continue;
+            completedScheduledRoutes.add(new CompletedScheduledRoute(destination.scheduleEntry(), destination.dockId(),
+                    origin, destination.target(), controls.subList(1, controls.size()).stream()
+                    .map(point -> new SablePathfinder.Waypoint(point, null)).toList()));
+        }
+        if(completedScheduledRoutes.isEmpty()) return false;
+        scheduledRouteRevision++;
+        controller.saveControllerManifestNow();
+        return true;
+    }
+
+    // Changing route ownership never changes stored geometry or route-less navigation
+    void resetScheduledRouteFollowing(){
+        releaseScheduleSplineConstraint();
+        navigationPathStates.entrySet().removeIf(entry -> {
+            NavigationPathState state = entry.getValue();
+            if(!state.precomputedScheduleRoute && !state.usedPrecomputedScheduleRoute) return false;
+            state.clearQueuedSableRoute();
+            return true;
+        });
+    }
+
+    // One prepared route across the server receives a bounded loaded-world scan every 20 ticks
+    public static void tickScheduledRouteHazards(net.minecraft.server.MinecraftServer server){
+        if(server.getTickCount() % 20 != 0) return;
+        List<RouteHazardJob> jobs = new ArrayList<>();
+        synchronized(LIVE_RUNTIMES){
+            for(ShipControlModuleRuntime runtime : LIVE_RUNTIMES){
+                if(runtime.shutdownPrepared || runtime.phase != Phase.READY
+                        || !runtime.controller.followsShippingScheduleRoute()
+                        || runtime.controller.getLevel() == null
+                        || runtime.controller.getLevel().getServer() != server) continue;
+                for(CompletedScheduledRoute route : runtime.completedScheduledRoutes){
+                    jobs.add(new RouteHazardJob(runtime, route.routeId(runtime.controller.getScmPersistenceId())));
+                }
+            }
+        }
+        RouteHazardJob job = ROUTE_HAZARD_QUEUE.next(jobs, server.getTickCount());
+        if(job != null) job.runtime().scanScheduledRouteHazards(job.routeId());
+    }
+
+    public static void clearScheduledRouteHazardJobs(){
+        ROUTE_HAZARD_QUEUE.clear();
+    }
+
+    private void scanScheduledRouteHazards(UUID routeId){
+        CompletedScheduledRoute route = completedScheduledRoutes.stream().filter(candidate ->
+                candidate.routeId(controller.getScmPersistenceId()).equals(routeId)).findFirst().orElse(null);
+        CollisionScanContext ctx = collisionScanContext();
+        Telemetry current = telemetry();
+        if(route == null || ctx == null || !current.available()) return;
+        boolean ground = usesGroundNavigation();
+        HullBounds hull = cachedShipHullBounds(current.position(), ctx);
+        double endpointClearance = Math.max(2.0D, (ground
+                ? hull.horizontalRadius() : hull.spatialRadius()) + COLLISION_HULL_MARGIN);
+        RouteHazardState state = routeHazards.get(routeId);
+        if(state == null || state.route != route
+                || Math.abs(state.endpointClearance - endpointClearance) > 0.25D){
+            List<Vec3> points = SplineRouteGeometry.transitInterior(route.curve(),
+                    SCHEDULE_ROUTE_SPLINE_SAMPLE_SPACING, MAX_SCHEDULE_ROUTE_SPLINE_SAMPLES,
+                    endpointClearance);
+            if(points.size() < 2){
+                routeHazards.remove(routeId);
+                return;
+            }
+            state = new RouteHazardState(route, new RouteObstacleScan(points), endpointClearance);
+            routeHazards.put(routeId, state);
+        }
+        Vec3 forward = normalize(rootDirectionToWorld(controllerForwardRoot()), new Vec3(0, 0, 1));
+        Vec3 up = normalize(rootDirectionToWorld(controllerUpRoot()), new Vec3(0, 1, 0));
+        SubLevelParticleOcclusion.ProbeCache cache = new SubLevelParticleOcclusion.ProbeCache();
+        int sweep = state.scan.sweep();
+        RouteObstacleScan.Hit hit = state.scan.advance((start, end) -> {
+            Vec3 direction = end.subtract(start);
+            double distance = direction.length();
+            if(distance <= 1.0E-8D) return distance;
+            return SubLevelParticleOcclusion.findProbedBoundsBlockingDistance(ctx.level(), ctx.containingSubLevel(),
+                    direction.normalize(), distance, hull.worldBoundsAtPose(start, direction.normalize(),
+                    ground ? new Vec3(0, 1, 0) : up, forward, up, COLLISION_HULL_MARGIN, ground),
+                    true, ctx.excludedSubLevelIds(), true, COLLISION_NAVIGATION_PROBES_PER_BOUNDS, cache,
+                    ground ? 0.0D : COLLISION_HULL_MARGIN * 2.0D);
+        }, 32, 1_000_000L);
+        if(hit != null){
+            state.hit = hit;
+            state.sawHit = true;
+        }
+        if(state.scan.sweep() != sweep){
+            if(!state.sawHit) state.hit = null;
+            state.sawHit = false;
+        }
+    }
+
+    // Prepare a vehicle-only detour and retain the authored suffix until the merge is complete
+    private @Nullable NavigationGuidance advanceObstacleDetour(String commandKey, Telemetry telemetry,
+            ActiveShipCommand command, NavigationPathState state, CollisionScanContext ctx, HullBounds hull,
+            Vec3 forward, boolean ground, Vec3 blocker, long gameTime){
+        if(!isPathfindingTransit(command) || state.hasTemporaryRoutePrefix()
+                || state.groundRecoveryAtWaypoint()) return null;
+        Vec3 target = command.targetPosition();
+        if(state.obstacleDetourQueued && state.obstacleDetourBlocker != null){
+            blocker = state.obstacleDetourBlocker;
+        }
+        int rejoin = -1;
+        Vec3 detourTarget = target;
+        int mergeSegment = -1;
+        double mergeFraction = 0.0D;
+        if(state.precomputedScheduleRoute && state.scheduleSpline != null){
+            if(state.obstacleDetourQueued && state.queuedRouteRejoinIndex >= 0
+                    && state.queuedRouteRejoinTarget != null && state.obstacleSplineMergeSegment >= 0){
+                rejoin = state.queuedRouteRejoinIndex;
+                detourTarget = state.queuedRouteRejoinTarget;
+                mergeSegment = state.obstacleSplineMergeSegment;
+                mergeFraction = state.obstacleSplineMergeFraction;
+            }else{
+                double clearance = Math.max(2.0D, (ground
+                        ? hull.horizontalRadius() : hull.spatialRadius()) + COLLISION_HULL_MARGIN);
+                WaypointSpline.Projection current = state.scheduleSplineProjection(
+                        telemetry.position(), Math.max(2.0D, clearance));
+                WaypointSpline.Projection blocked = current.found()
+                        ? state.scheduleSpline.project(blocker, current.segmentIndex(), current.fraction())
+                        : WaypointSpline.Projection.notFound();
+                WaypointSpline.TrackingTarget merge = SplineRouteGeometry.detourMergeTarget(
+                        state.scheduleSpline, current, blocked, clearance,
+                        Math.max(4.0D, hull.maximumSpan() * 2.0D),
+                        Math.max(command.tolerance() * 2.0D, clearance));
+                if(!merge.found()) return null;
+                detourTarget = merge.position();
+                mergeSegment = merge.segmentIndex();
+                mergeFraction = merge.fraction();
+                rejoin = state.scheduleWaypointAtOrAfter(merge.distanceAlongRoute());
+                if(rejoin < 0) return null;
+            }
+        }
+        if(gameTime < state.nextDetourTick && state.queuedSableRoute == null) return null;
+        boolean invalid = state.obstaclePlanInvalid(target, rejoin,
+                rejoin < 0 ? null : detourTarget, navigationPathStep(hull.maximumSpan()));
+        if(invalid){
+            state.queueSableRoute(planSableRoute(telemetry.position(), detourTarget, forward, hull, ctx, ground),
+                    telemetry.position(), target, rejoin, rejoin < 0 ? null : detourTarget);
+            state.obstacleDetourBlocker = blocker;
+            state.obstacleSplineMergeSegment = mergeSegment;
+            state.obstacleSplineMergeFraction = mergeFraction;
+        }
+        state.obstacleDetourQueued = true;
+        int work = SABLE_ROUTE_LIVE_WORK_BUDGET.claim(state.queuedSableRoute, gameTime, SABLE_ROUTE_LIVE_EXPANSIONS_PER_PLAN);
+        if(work > 0) state.queuedSableRoute.advance(work);
+        state.setPathfinderDebug(state.queuedSableRoute.debugRoute(commandKey));
+        SablePathfinder.Result result = state.queuedSableRoute.result();
+        if(state.queuedSableRoute.finished()){
+            if(result.reachedDestination() && !result.waypoints().isEmpty()){
+                List<Vec3> prefix = result.waypoints().stream().map(SablePathfinder.Waypoint::position).toList();
+                if(rejoin >= 0) state.spliceSableRoute(prefix, rejoin, target, telemetry.position(), gameTime,
+                        mergeSegment, mergeFraction);
+                else state.setSableRoute(prefix, target, telemetry.position(), gameTime);
+                releaseScheduleSplineConstraint();
+                Vec3 control = state.sableRouteTrackingTarget(telemetry.position(), ground, 2.0D);
+                Vec3 direction = normalize(control.subtract(telemetry.position()), forward);
+                return new NavigationGuidance(direction, control, 0.6D, false, false, true, direction);
+            }
+            state.clearQueuedSableRoute();
+            state.nextDetourTick = gameTime + SABLE_ROUTE_RETRY_TICKS;
+        }
+        return null;
+    }
+
+    // Check whether any schedule route preparation is still working.
+    public boolean isPrecalculatingScheduledRoutes() {
+        return scheduledRoutePlans.stream().anyMatch(plan -> !plan.plan().finished());
+    }
+
+    // Get complete scheduled-route preparation progress.
+    public double scheduledRoutePrecalculationProgress() {
+        if (scheduledRoutePlans.isEmpty()) return 0.0D;
+        double progress = 0.0D;
+        for (int index = 0; index < scheduledRoutePlans.size(); index++) {
+            ScheduledRoutePlan plan = scheduledRoutePlans.get(index);
+            progress += plan.plan().progress();
+        }
+        return progress / scheduledRoutePlans.size();
+    }
+
+    // Advance all independently resolved schedule legs fairly in the same tick. The shared budget
+    // remains the only world-query limit, so this distributes pre-calculation without multiplying
+    // collision work across a fleet.
+    private void tickScheduledRoutePlans() {
+        if (scheduledRoutePlans.isEmpty()) {
+            return;
+        }
+        int pendingCount = (int) scheduledRoutePlans.stream()
+                .filter(route -> !route.plan().finished())
+                .count();
+        int requestedWork = Math.max(1, SABLE_ROUTE_SCHEDULE_WORK_BUDGET.maximumWorkPerTick()
+                / Math.max(1, pendingCount));
+        Level level = controller.getLevel();
+        for (int checked = 0; checked < scheduledRoutePlans.size(); checked++) {
+            int index = Math.floorMod(scheduledRoutePlanIndex++, scheduledRoutePlans.size());
+            SablePathfinder.QueuedPlan plan = scheduledRoutePlans.get(index).plan();
+            if (plan.finished()) {
+                SABLE_ROUTE_SCHEDULE_WORK_BUDGET.release(plan);
+                continue;
+            }
+            int work = level == null ? 0 : SABLE_ROUTE_SCHEDULE_WORK_BUDGET.claim(
+                    plan, level.getGameTime(), requestedWork);
+            if (work > 0) {
+                plan.advance(work);
+                if (plan.finished()) {
+                    controller.saveControllerManifestNow();
+                }
+            }
+        }
+        cacheFinishedRouteRefreshes();
+        if (!isPrecalculatingScheduledRoutes()) {
+            showScheduledRoutePrecalculationProgress(true);
+            return;
+        }
+        showScheduledRoutePrecalculationProgress(false);
+    }
+
+    // Promote every completed planned leg into the persistent cache and discard its transient
+    // frontier. This makes an ordinary first schedule visit as reusable as an explicit pre-calculation.
+    private void cacheFinishedRouteRefreshes() {
+        boolean changed = false;
+        for (int index = scheduledRoutePlans.size() - 1; index >= 0; index--) {
+            ScheduledRoutePlan plan = scheduledRoutePlans.get(index);
+            if (!plan.plan().finished()) {
+                continue;
+            }
+            scheduledRoutePlans.remove(index);
+            SABLE_ROUTE_SCHEDULE_WORK_BUDGET.release(plan.plan());
+            SablePathfinder.Result result = plan.plan().result();
+            if (result.reachedDestination()) {
+                // Replace this exact edge only. A schedule entry may legitimately have several
+                // candidate docks and several predecessor edges in the retained route graph.
+                completedScheduledRoutes.removeIf(route -> sameScheduledRouteLeg(
+                        route, plan.scheduleEntry(), plan.dockId(), plan.origin(), plan.target()));
+                completedScheduledRoutes.add(0, new CompletedScheduledRoute(
+                        plan.scheduleEntry(), plan.dockId(), plan.origin(), plan.target(),
+                        result.waypoints()));
+            }
+            changed = true;
+        }
+        if (changed) {
+            scheduledRoutePlanIndex = scheduledRoutePlans.isEmpty() ? 0
+                    : Math.floorMod(scheduledRoutePlanIndex, scheduledRoutePlans.size());
+            controller.saveControllerManifestNow();
+            scheduledRouteRevision++;
+        }
+    }
+
+    // Display bounded queued-route work using the same operator-facing SCM progress setting.
+    private void showScheduledRoutePrecalculationProgress(boolean complete) {
+        if (!controller.scmDisplayProgress() || !complete && scheduledRoutePlans.isEmpty()
+                || complete && scheduledRouteProgressCompleteSent) return;
+        Level level = controller.getLevel();
+        if (level == null || level.getServer() == null) return;
+        long gameTime = level.getGameTime();
+        if (!complete && !intervalElapsed(gameTime, lastScheduledRouteProgressDisplayTick, 5L)) return;
+        int percent = complete ? 100 : progressPercent(scheduledRoutePrecalculationProgress());
+        Component message = complete
+                ? Component.literal("Scheduled route calculation finished").withStyle(ChatFormatting.GREEN)
+                : Component.literal("Pre-calculating scheduled route: " + percent + "%")
+                .withStyle(ChatFormatting.GOLD);
+        Vec3 controllerWorld = controller.getBlockPos().getCenter();
+        for (ServerPlayer player : level.getServer().getPlayerList().getPlayers()) {
+            if (player.level().dimension().equals(level.dimension())
+                    && player.distanceToSqr(controllerWorld) <= 128.0D * 128.0D) {
+                player.displayClientMessage(message, true);
+            }
+        }
+        lastScheduledRouteProgressDisplayTick = gameTime;
+        scheduledRouteProgressCompleteSent |= complete;
+    }
+
+    // Snapshot every completed graph edge, including a plan which finished before cache promotion.
+    private List<CompletedScheduledRoute> availableScheduledRoutes() {
+        List<CompletedScheduledRoute> routes = new ArrayList<>(completedScheduledRoutes);
+        for (ScheduledRoutePlan plan : scheduledRoutePlans) {
+            if (!plan.plan().finished() || !plan.plan().result().reachedDestination()) continue;
+            routes.add(new CompletedScheduledRoute(
+                    plan.scheduleEntry(), plan.dockId(), plan.origin(), plan.target(),
+                    plan.plan().result().waypoints()));
+        }
+        return routes;
+    }
+
+    // Get one detached editable schedule spline snapshot by stable SCM id.
+    public static @Nullable ShippingRouteSplineSnapshot shippingRouteSplineSnapshot(
+            ServerLevel visibleLevel,
+            UUID ownerId
+    ) {
+        ShipControlModuleRuntime runtime = routeRuntime(visibleLevel, ownerId);
+        return runtime == null ? null : runtime.shippingRouteSplineSnapshot();
+    }
+
+    // Apply one validated authored-waypoint edit to a prepared schedule spline.
+    public static boolean editShippingRouteSpline(
+            ServerLevel visibleLevel,
+            UUID ownerId,
+            UUID routeId,
+            ShippingRouteSplineSnapshot.EditAction action,
+            int index,
+            Vec3 position
+    ) {
+        ShipControlModuleRuntime runtime = routeRuntime(visibleLevel, ownerId);
+        return runtime != null && runtime.editShippingRouteSpline(
+                routeId, action, index, position);
+    }
+
+    // Resolve one loaded SCM route owner in the visible root level.
+    private static @Nullable ShipControlModuleRuntime routeRuntime(
+            ServerLevel visibleLevel,
+            UUID ownerId
+    ) {
+        if (visibleLevel == null || ownerId == null) return null;
+        List<ShipControlModuleRuntime> runtimes;
+        synchronized (LIVE_RUNTIMES) {
+            runtimes = List.copyOf(LIVE_RUNTIMES);
+        }
+        for (ShipControlModuleRuntime runtime : runtimes) {
+            Level level = runtime.controller.getLevel();
+            if (level != null && ownerId.equals(runtime.controller.getScmPersistenceId())
+                    && SableLevelApi.serverLevel(level) == visibleLevel) return runtime;
+        }
+        return null;
+    }
+
+    // Create one detached route snapshot from completed spline controls.
+    private ShippingRouteSplineSnapshot shippingRouteSplineSnapshot() {
+        List<ShippingRouteSplineSnapshot.Route> routes = completedScheduledRoutes.stream()
+                .filter(route -> route.controlPoints().size() >= 2)
+                .map(route -> new ShippingRouteSplineSnapshot.Route(
+                        route.routeId(controller.getScmPersistenceId()),
+                        route.scheduleEntry(), route.controlPoints()))
+                .toList();
+        return new ShippingRouteSplineSnapshot(
+                controller.getScmPersistenceId(), scheduledRouteRevision, routes);
+    }
+
+    // Add, move or remove one interior authored waypoint.
+    private boolean editShippingRouteSpline(
+            UUID routeId,
+            ShippingRouteSplineSnapshot.EditAction action,
+            int index,
+            Vec3 position
+    ) {
+        if (routeId == null || action == null || position == null
+                || !Double.isFinite(position.x) || !Double.isFinite(position.y)
+                || !Double.isFinite(position.z)) return false;
+        int routeIndex = -1;
+        CompletedScheduledRoute route = null;
+        for (int idx = 0; idx < completedScheduledRoutes.size(); idx++) {
+            CompletedScheduledRoute candidate = completedScheduledRoutes.get(idx);
+            if (routeId.equals(candidate.routeId(controller.getScmPersistenceId()))) {
+                routeIndex = idx;
+                route = candidate;
+                break;
+            }
+        }
+        if (route == null) return false;
+        WaypointSpline spline = WaypointSpline.of(route.controlPoints());
+        WaypointSpline updatedSpline = spline;
+        switch (action) {
+            case ADD -> {
+                if (index < 0 || index >= spline.segments().size()
+                        || spline.waypoints().size() >= 4096) return false;
+                updatedSpline = spline.withWaypointAdded(index, position);
+            }
+            case MOVE -> {
+                if (index <= 0 || index >= spline.waypoints().size() - 1) return false;
+                updatedSpline = spline.withWaypointMoved(index, position);
+            }
+            case REMOVE -> {
+                if (index <= 0 || index >= spline.waypoints().size() - 1) return false;
+                updatedSpline = spline.withWaypointRemoved(index);
+            }
+        }
+        List<Vec3> controls = updatedSpline.waypoints();
+        List<SablePathfinder.Waypoint> updated = controls.subList(1, controls.size()).stream()
+                .map(point -> new SablePathfinder.Waypoint(point, null)).toList();
+        completedScheduledRoutes.set(routeIndex, new CompletedScheduledRoute(
+                route.scheduleEntry(), route.dockId(), route.origin(), route.target(), updated));
+        navigationPathStates.values().forEach(NavigationPathState::discardPrecomputedScheduleRoute);
+        scheduledRouteRevision++;
+        controller.saveControllerManifestNow();
+        return true;
+    }
+
+    // Expose detached cached geometry so the schedule can keep dock queues clear of ingress routes.
+    List<List<Vec3>> scheduledRoutePolylines(
+            int scheduleEntry,
+            Vec3 target,
+            double targetTolerance
+    ) {
+        double toleranceSqr = Math.pow(
+                Math.max(0.0D, finite(targetTolerance)), 2.0D);
+        Vec3 requestedTarget = finite(target);
+        return availableScheduledRoutes().stream()
+                .filter(route -> route.scheduleEntry() == scheduleEntry)
+                .filter(route -> route.target().distanceToSqr(requestedTarget)
+                        <= toleranceSqr)
+                .map(route -> {
+                    List<Vec3> points = new ArrayList<>();
+                    points.add(route.origin());
+                    route.splineWaypoints().stream()
+                            .map(SablePathfinder.Waypoint::position)
+                            .forEach(points::add);
+                    return List.copyOf(points);
+                })
+                .toList();
+    }
+
+    // A completed edge into this exact schedule stop makes retained geometry mandatory. An edge
+    // for another wildcard-matched dock must never capture this command merely because it shares
+    // the same schedule-entry index.
+    private boolean hasScheduledRouteForEntry(
+            int scheduleEntry,
+            Vec3 target,
+            double targetTolerance
+    ) {
+        double toleranceSqr = Math.pow(Math.max(0.5D,
+                Math.max(0.0D, finite(targetTolerance))), 2.0D);
+        Vec3 requested = finite(target);
+        return scheduleEntry >= 0 && availableScheduledRoutes().stream()
+                .anyMatch(route -> route.scheduleEntry() == scheduleEntry
+                        && route.target().distanceToSqr(requested) <= toleranceSqr
+                        && !route.waypoints().isEmpty());
+    }
+
+    // Claim safe graph geometry which terminates at the schedule entry selected by the schedule.
+    // The nearest retained terminal to the live target disambiguates entries with several docks;
+    // graph traversal itself uses that exact cached endpoint and may travel either direction.
+    private @Nullable CompletedScheduledRoute takeCompletedScheduledRoute(
+            Vec3 origin, Vec3 target, int scheduleEntry, double targetTolerance
+    ) {
+        double connectionTolerance = 1.0E-4D;
+        double destinationTolerance = Math.max(0.5D,
+                Math.max(0.0D, finite(targetTolerance)));
+        List<CompletedScheduledRoute> candidates = availableScheduledRoutes();
+        CompletedScheduledRoute terminal = null;
+        double terminalDistanceSqr = Double.POSITIVE_INFINITY;
+        for (CompletedScheduledRoute candidate : candidates) {
+            if (candidate.scheduleEntry() != scheduleEntry || candidate.waypoints().isEmpty()) continue;
+            double distanceSqr = candidate.target().distanceToSqr(target);
+            if (terminal == null || distanceSqr < terminalDistanceSqr) {
+                terminal = candidate;
+                terminalDistanceSqr = distanceSqr;
+            }
+        }
+        if (terminal == null || terminalDistanceSqr
+                > destinationTolerance * destinationTolerance) return null;
+        List<SablePathfinder.RouteLeg> routeGraph = candidates.stream()
+                .filter(route -> !route.waypoints().isEmpty())
+                .map(route -> new SablePathfinder.RouteLeg(
+                        route.origin(), route.target(), route.waypoints()))
+                .toList();
+        SablePathfinder.OrientedRoute route = SablePathfinder.routeGraphPath(
+                routeGraph, origin, terminal.target(), connectionTolerance,
+                destinationTolerance);
+        return route.found() ? new CompletedScheduledRoute(
+                scheduleEntry, terminal.dockId(), route.origin(), route.target(), route.waypoints()) : null;
+    }
+
+    // Identify one directed schedule-graph edge without deleting sibling dock or predecessor edges.
+    private static boolean sameScheduledRouteLeg(
+            CompletedScheduledRoute route, int scheduleEntry, @Nullable UUID dockId,
+            Vec3 origin, Vec3 target
+    ) {
+        return route.scheduleEntry() == scheduleEntry
+                && java.util.Objects.equals(route.dockId(), dockId)
+                && route.origin().distanceToSqr(origin) <= 1.0E-8D
+                && route.target().distanceToSqr(target) <= 1.0E-8D;
+    }
+
+    // Coalesce repeated learned approaches without treating nearby graph branches as identical.
+    private static boolean sameLearnedScheduleRoute(
+            CompletedScheduledRoute route, CompletedScheduledRoute learned
+    ) {
+        double toleranceSqr = SCHEDULE_ROUTE_ORIGIN_REPLACEMENT_DISTANCE
+                * SCHEDULE_ROUTE_ORIGIN_REPLACEMENT_DISTANCE;
+        return route.dockId() == null
+                && route.scheduleEntry() == learned.scheduleEntry()
+                && route.origin().distanceToSqr(learned.origin()) <= toleranceSqr
+                && route.target().distanceToSqr(learned.target()) <= toleranceSqr;
+    }
+
+    // Persist a successfully completed live schedule leg so the next visit uses the retained safe
+    // route instead of paying for the same live search again. Manual pre-calculated routes are never
+    // replaced here unless the vehicle had to navigate without one.
+    private void recordCompletedLiveScheduleRoute(
+            ActiveShipCommand command,
+            @Nullable NavigationPathState state,
+            Vec3 target
+    ) {
+        if (command == null || command.scheduleRouteEntry() < 0 || state == null
+                || state.usedPrecomputedScheduleRoute) {
+            return;
+        }
+        CompletedScheduledRoute learned = state.completedLiveScheduleRoute(target);
+        if (learned == null) {
+            return;
+        }
+        completedScheduledRoutes.removeIf(route -> sameLearnedScheduleRoute(route, learned));
+        completedScheduledRoutes.add(0, learned);
+        scheduledRouteRevision++;
+        controller.saveControllerManifestNow();
+    }
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -561,6 +2472,7 @@ public final class ShipControlModuleRuntime {
         snapshot.putBoolean("IgnoreBearings", initializationFilters.ignoreBearings());
         snapshot.putBoolean("IgnoreSails", initializationFilters.ignoreSails());
         snapshot.putBoolean("IgnoreThrusters", initializationFilters.ignoreThrusters());
+        snapshot.putBoolean("IgnoreDockingConnectors", initializationFilters.ignoreDockingConnectors());
         snapshot.putString("ShipName", controller.getShipName());
         ListTag initializationTrackingPoints = new ListTag();
         initTrackingIds.forEach((subLevelId, trackingPointId) -> {
@@ -620,7 +2532,8 @@ public final class ShipControlModuleRuntime {
                     snapshot.getBoolean("ForceFullInitialization"),
                     snapshot.getBoolean("IgnoreBearings"),
                     snapshot.getBoolean("IgnoreSails"),
-                    snapshot.getBoolean("IgnoreThrusters"));
+                    snapshot.getBoolean("IgnoreThrusters"),
+                    snapshot.getBoolean("IgnoreDockingConnectors"));
             resumedInitializationShipName = snapshot.getString("ShipName");
             resumeInitAfterLoad = true;
             resumeInitTries = 0;
@@ -642,6 +2555,7 @@ public final class ShipControlModuleRuntime {
             tag.putDouble("TargetY", command.targetY());
             putVector(tag, "TargetPosition", command.targetPosition());
             tag.putDouble("TargetSpeed", command.targetSpeed());
+            tag.putDouble("DriveThrottle", command.driveThrottle());
             tag.putDouble("Tolerance", command.tolerance());
             tag.putBoolean("AvoidCollisions", command.avoidCollisions());
             tag.putBoolean("LockRotation", command.lockRotation());
@@ -650,6 +2564,7 @@ public final class ShipControlModuleRuntime {
             tag.putInt("TargetConnector", command.targetConnectorIndex());
             putVector(tag, "TargetDirection", command.targetDirection());
             putVector(tag, "TargetUp", command.targetUp());
+            tag.putInt("ScheduleRouteEntry", command.scheduleRouteEntry());
             res.add(tag);
         }
         return res;
@@ -665,12 +2580,16 @@ public final class ShipControlModuleRuntime {
                     tag.getString("Id"), tag.getString("Type"),
                     tag.getDouble("Amount"), tag.getDouble("Strength"),
                     tag.getDouble("TargetY"), readVector(tag, "TargetPosition"),
-                    tag.getDouble("TargetSpeed"), tag.getDouble("Tolerance"),
+                    tag.getDouble("TargetSpeed"),
+                    tag.contains("DriveThrottle")
+                            ? tag.getDouble("DriveThrottle") : -1.0D,
+                    tag.getDouble("Tolerance"),
                     tag.getBoolean("AvoidCollisions"), tag.getBoolean("LockRotation"),
                     readVector(tag, "TargetAttitude"),
                     ShipTargetPoint.fromSerialized(tag.getString("TargetPoint")),
                     tag.getInt("TargetConnector"),
-                    readVector(tag, "TargetDirection"), readVector(tag, "TargetUp"));
+                    readVector(tag, "TargetDirection"), readVector(tag, "TargetUp"),
+                    tag.contains("ScheduleRouteEntry") ? tag.getInt("ScheduleRouteEntry") : -1);
             destination.put(commandKey(command.id(), command.type()), command);
         }
     }
@@ -709,6 +2628,7 @@ public final class ShipControlModuleRuntime {
         calibrationDockingConnectors.clear();
         calibrationCrnDisplays.clear();
         calibrationAccDisplays.clear();
+        calibrationSeats.clear();
         initCrnDisplays.clear();
         initAccDisplays.clear();
         calibrationSubLevels.clear();
@@ -720,6 +2640,7 @@ public final class ShipControlModuleRuntime {
         reversedCalDirs.clear();
         calDirMapId = null;
         appliedControlValues.clear();
+        regulatedFaceControlValues.clear();
         controlBearings.clear();
         selectedBearingPoses.clear();
         damageProtectedThrusters.clear();
@@ -729,8 +2650,23 @@ public final class ShipControlModuleRuntime {
         lastIssuedCommands.clear();
         completedCommands.clear();
         couplerControlRequests.clear();
+        navigationPathStates.values().forEach(state ->
+                SABLE_ROUTE_LIVE_WORK_BUDGET.release(state.queuedSableRoute));
+        scheduledRoutePlans.forEach(plan ->
+                SABLE_ROUTE_SCHEDULE_WORK_BUDGET.release(plan.plan()));
         navigationPathStates.clear();
+        scheduledRoutePlans.clear();
+        // Completed schedule routes belong to the controller manifest. The block entity may save
+        // after runtime shutdown preparation, so clearing this collection here would overwrite
+        // the SQLite-backed cache with an empty one during every world shutdown.
+        livePathfinderDebugRoutes.clear();
+        routeTrafficIntents.clear();
+        routeTrafficDecisions.clear();
+        autopilotDebugStates.clear();
+        autopilotControlDemand = null;
+        scheduledRoutePlanIndex = 0;
         positionIntegralErrors.clear();
+        airshipAttitudeHoldTargets.clear();
         aircraftNavigationStates.clear();
         collisionTelemetryStates.clear();
         collisionDistanceCache.clear();
@@ -741,14 +2677,15 @@ public final class ShipControlModuleRuntime {
         connectedSubLevelIdx = Map.of();
         cachedAssemblyTopology = null;
         assemblyTopologyCache.invalidate();
-        allocationWorkspace.reset();
         cachedTelemetry = Telemetry.EMPTY;
+        cachedSimulationMetrics = SimulationMetrics.EMPTY;
         rootSubLevel = null;
         map = null;
         activeAssemblyMap = null;
         activeAssemblyPrimaryMap = null;
         activeAssemblyTopology = null;
         activeScmActuatorOwners = Map.of();
+        activeAutomaticCarriageUnits = Set.of();
         reconciliationBaseMap = null;
         prevInitMap = null;
         phase = Phase.IDLE;
@@ -757,6 +2694,7 @@ public final class ShipControlModuleRuntime {
 
     // Stop the actuators
     private void stopActuators() {
+        speedCalibrationSelectors.clear();
         Set<Actuator> actuators = Collections.newSetFromMap(new java.util.IdentityHashMap<>());
         calibrationUnits.forEach(unit -> actuators.add(unit.actuator));
         actuators.addAll(controlActuators.values());
@@ -792,8 +2730,12 @@ public final class ShipControlModuleRuntime {
             }
         }
         controlledScmWheels.clear();
+        controlledScmWheelTargets.clear();
+        controlledScmWheelLongitudinalPositions.clear();
+        clearScmFaceActionControls();
         lastScmWheelRefreshTick = Long.MIN_VALUE;
         lastScmWheelTopologyFingerprint = "";
+        lastScmWheelActionFingerprint = "";
         groundDriveCheckTick = Long.MIN_VALUE;
         groundDriveTopologyFingerprint = "";
     }
@@ -853,6 +2795,8 @@ public final class ShipControlModuleRuntime {
         if (shutdownPrepared || level == null || level.isClientSide) {
             return;
         }
+        refreshOrientation();
+        if (map == null && !isInitializing()) refreshVehicleType();
         if (!isModuleAttached()) {
             if (isInitializing()) {
                 fail("Control module detached during initialization", null);
@@ -865,6 +2809,7 @@ public final class ShipControlModuleRuntime {
         }
         retainNavigationRoot();
         tickCouplerReqs();
+        tickScheduledRoutePlans();
 
         // -----------------------------------------------------MAP RESTORE-----------------------------------------------------
         if (phase == Phase.IDLE && map == null && mapId != null && !mapLoadAttempted) {
@@ -922,6 +2867,7 @@ public final class ShipControlModuleRuntime {
             if (currentRoot != null
                     && map.rootSubLevelId().equals(currentRoot.getUniqueId())) {
                 refreshActiveAssemblyMap(currentRoot);
+                reconcileLiveDockingConnectors(currentRoot);
             }
         }
         if (phase == Phase.READY && map != null
@@ -939,7 +2885,7 @@ public final class ShipControlModuleRuntime {
                 case CALIBRATING -> tickCalibration();
                 case SAVING -> saveCalibrationMap();
                 case READY -> tickControl();
-                case IDLE, ERROR -> {
+                case IDLE, CONFIGURING, ERROR -> {
                 }
             }
         } catch (Exception err) {
@@ -964,7 +2910,233 @@ public final class ShipControlModuleRuntime {
     // Initialize the control module
     public boolean initializeControlModule() {
         return initializeControlModule(
-                "ship_initialize", InitializationFilters.NONE, "", "airship");
+                "ship_initialize", defaultInitializationFilters(), "", "airship");
+    }
+
+    /**
+     * Rebuild the live SCM map after the player changes the persisted control
+     * profile.  This deliberately uses the profile-driven initializer: it
+     * reads the declared adapters and their current geometry/capacity, without
+     * freezing the craft or running the legacy response-curve sweep.
+     */
+    public boolean rebuildConfiguredControlMap() {
+        return initializeControlModule(
+                "ship_initialize", defaultInitializationFilters(),
+                controller.getShipName(),
+                ScmControlModeRegistry.serialize(controller.getShipControlMode().id()));
+    }
+
+    // Update the workspace-owned progress setting without disturbing other active filters.
+    public void setDisplayProgressPreference(boolean enabled) {
+        initializationFilters = new InitializationFilters(enabled,
+                initializationFilters.forceFullInitialization(),
+                initializationFilters.ignoreBearings(), initializationFilters.ignoreSails(),
+                initializationFilters.ignoreThrusters(),
+                initializationFilters.ignoreDockingConnectors());
+    }
+
+    // Create the default filters used by direct SCM initialization flows.
+    private InitializationFilters defaultInitializationFilters() {
+        return new InitializationFilters(controller.scmDisplayProgress(), false,
+                false, false, false, false);
+    }
+
+    private String detectedVehicleType = "airship";
+    private boolean detectedVehicleHasWheels;
+    private long nextVehicleDetectionTick = Long.MIN_VALUE;
+    private ScmSteeringMode cachedDetectedSteeringMode = ScmSteeringMode.CUSTOM;
+    private long nextSteeringDetectionTick = Long.MIN_VALUE;
+
+    String detectedVehicleType() {
+        Level level = controller.getLevel();
+        if (level == null || level.isClientSide || level.getGameTime() < nextVehicleDetectionTick) {
+            return detectedVehicleType;
+        }
+        nextVehicleDetectionTick = level.getGameTime() + 200L;
+        boolean wheels = false;
+        boolean wings = false;
+        // Classification reads only the loaded craft and never pulses actuators.
+        for (ConfigurationPreviewBlock block : configurationPreviewBlocks(2048)) {
+            String id = net.minecraft.core.registries.BuiltInRegistries.BLOCK
+                    .getKey(block.state().getBlock()).getPath();
+            wheels |= id.contains("wheel") || id.contains("track_sprocket");
+            wings |= id.contains("wing") || id.contains("airfoil") || id.contains("flap");
+        }
+        detectedVehicleHasWheels = wheels;
+        detectedVehicleType = com.rieno.gadgetsandgizmos.lib.scm.ScmVehicleClassifier.suggest(wheels, wings);
+        return detectedVehicleType;
+    }
+
+    String detectedSteeringType() {
+        return detectedSteeringMode(effectiveAssemblyMap()).id();
+    }
+
+    // Resolve the saved steering choice without coupling it to vehicle motion mode
+    private ScmSteeringMode resolvedSteeringMode(@Nullable ShipControlMap currentMap) {
+        ScmSteeringMode selected = ScmSteeringMode.fromId(
+                controller.getScmConfigurationProfile().steeringType());
+        return selected == ScmSteeringMode.AUTO
+                ? detectedSteeringMode(currentMap) : selected;
+    }
+
+    // Predict steering from the authored drivetrain and live wheel locations
+    private ScmSteeringMode detectedSteeringMode(@Nullable ShipControlMap currentMap) {
+        Level level = controller.getLevel();
+        long gameTime = level == null ? Long.MIN_VALUE : level.getGameTime();
+        if (gameTime != Long.MIN_VALUE && gameTime < nextSteeringDetectionTick) {
+            return cachedDetectedSteeringMode;
+        }
+        nextSteeringDetectionTick = gameTime == Long.MIN_VALUE
+                ? Long.MIN_VALUE : gameTime + 20L;
+        ScmConfigurationProfile configuration = controller.getScmConfigurationProfile();
+        if (configuration == null) {
+            cachedDetectedSteeringMode = ScmSteeringMode.CUSTOM;
+            return cachedDetectedSteeringMode;
+        }
+        Set<ScmConfigurationProfile.UnitReference> yawUnits =
+                configuration.unitsForExplicitActions(Set.of(
+                        "ship_yaw", "ship_pan", "ship_yaw_left", "ship_yaw_right"));
+        if (currentMap == null) {
+            cachedDetectedSteeringMode = ScmSteeringMode.predict(
+                    false, 0, 0, 0, !yawUnits.isEmpty());
+            return cachedDetectedSteeringMode;
+        }
+        boolean groundMode = isControlMode(ScmBuiltinControlModes.GROUND_SEA_ID);
+        boolean tankSteering = groundMode && hasConfiguredTankSteering(currentMap);
+        Map<WheelMountControlBridge, Double> wheelPositions =
+                wheelLongitudinalPositions(currentMap);
+        detectedVehicleType();
+        boolean steeringWheels = groundMode && detectedVehicleHasWheels;
+        int wheelCount = steeringWheels ? wheelPositions.size() : 0;
+        if (steeringWheels && wheelCount == 0) {
+            wheelCount = 1;
+        }
+        Map<ScmConfigurationProfile.UnitReference, Double> bindingPositions =
+                new LinkedHashMap<>();
+        if (steeringWheels) {
+            for (ScmConfigurationProfile.UnitReference reference : yawUnits) {
+                for (ShipControlMap.PropulsionUnit unit : currentMap.units()) {
+                    if (configurationReferenceMatchesUnit(reference, unit)) {
+                        bindingPositions.put(reference, unit.rootPosition()
+                                .subtract(currentMap.centerOfMass())
+                                .dot(controllerForwardRoot()));
+                        break;
+                    }
+                }
+                if (bindingPositions.containsKey(reference)) continue;
+                for (ShipControlMap.BearingUnit bearing : currentMap.bearings()) {
+                    if (Objects.equals(reference.subLevelId(), bearing.hostSubLevelId())
+                            && reference.blockPosition().equals(bearing.blockPosition())) {
+                        bindingPositions.put(reference,
+                                bearingLongitudinalPosition(currentMap, bearing));
+                        break;
+                    }
+                }
+            }
+        }
+        double trailing = bindingPositions.values().stream()
+                .mapToDouble(Double::doubleValue).min().orElse(0.0D);
+        double leading = bindingPositions.values().stream()
+                .mapToDouble(Double::doubleValue).max().orElse(0.0D);
+        int frontBindings = 0;
+        int rearBindings = 0;
+        for (double position : bindingPositions.values()) {
+            if (Math.abs(ScmSteeringMode.FRONT_WHEEL.wheelDemand(
+                    1.0D, position, trailing, leading)) > 1.0E-6D) {
+                frontBindings++;
+            }
+            if (Math.abs(ScmSteeringMode.REAR_WHEEL.wheelDemand(
+                    1.0D, position, trailing, leading)) > 1.0E-6D) {
+                rearBindings++;
+            }
+        }
+        cachedDetectedSteeringMode = ScmSteeringMode.predict(tankSteering,
+                frontBindings, rearBindings, wheelCount, !yawUnits.isEmpty());
+        return cachedDetectedSteeringMode;
+    }
+
+    // Get one live longitudinal position per wheel hub
+    private Map<WheelMountControlBridge, Double> wheelLongitudinalPositions(
+            ShipControlMap currentMap
+    ) {
+        Map<WheelMountControlBridge, Double> positions = new java.util.IdentityHashMap<>();
+        Level level = controller.getLevel();
+        if (currentMap == null || level == null) return positions;
+        Vec3 centerOfMass = currentMap.centerOfMass();
+        Vec3 forward = controllerForwardRoot();
+        for (ShipControlMap.PropulsionUnit unit : currentMap.units()) {
+            BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
+                    level, unit.subLevelId(), unit.blockPosition());
+            if (blockEntity instanceof WheelMountControlBridge wheel) {
+                positions.putIfAbsent(wheel,
+                        unit.rootPosition().subtract(centerOfMass).dot(forward));
+            }
+        }
+        return positions;
+    }
+
+    void refreshVehicleType() {
+        nextSteeringDetectionTick = Long.MIN_VALUE;
+        String selected = controller.getScmConfigurationProfile().vehicleType();
+        String resolved = "auto".equals(selected) ? detectedVehicleType() : selected;
+        if (controller.getShipControlMode().id().equals(ScmControlModeRegistry.resolve(resolved).id())) return;
+        releaseControlActuators();
+        navigationPathStates.clear();
+        routeTrafficIntents.clear();
+        routeTrafficDecisions.clear();
+        autopilotDebugStates.clear();
+        autopilotControlDemand = null;
+        aircraftNavigationStates.clear();
+        controller.setShipControlMode(resolved);
+    }
+
+    // Discard directional history when a saved frame or the ACC's default mounting changes.
+    public void refreshOrientation(){
+        ScmOrientation orientation = controller.getScmOrientation();
+        if(orientation.equals(lastOrientation)) return;
+        if(lastOrientation != null) releaseControlActuators();
+        lastOrientation = orientation;
+        navigationPathStates.clear();
+        routeTrafficIntents.clear();
+        routeTrafficDecisions.clear();
+        autopilotDebugStates.clear();
+        autopilotControlDemand = null;
+        aircraftNavigationStates.clear();
+        positionIntegralErrors.clear();
+        airshipAttitudeHoldTargets.clear();
+        collisionTelemetryStates.clear();
+        collisionCtxTick = Long.MIN_VALUE;
+        collisionCtx = null;
+        collisionDistanceCacheTick = Long.MIN_VALUE;
+        collisionDistanceCache.clear();
+        pathTraceCacheTick = Long.MIN_VALUE;
+        pathTraceCache.clear();
+        collisionProbeCacheTick = Long.MIN_VALUE;
+        collisionProbeCache.clear();
+        groundDriveCheckTick = Long.MIN_VALUE;
+        invalidateTelemetryCache();
+    }
+
+    // Discover the current controllable blocks for the SCM calibration UI without
+    // freezing the ship or running any physical calibration pulse.
+    public boolean scanConfiguration(
+            String commandId, Map<String, Double> parameters,
+            Map<String, String> textParameters
+    ) {
+        configurationScanOnly = true;
+        boolean started = initializeControlModule(commandId,
+                InitializationFilters.fromParameters(parameters),
+                textParameters == null ? "" : textParameters.get("ship_name"),
+                textParameters == null ? "airship" : textParameters.get("control_mode"));
+        if (started) {
+            phase = Phase.SCANNING;
+            status = "Scanning controllable blocks for SCM configuration";
+            progress = 0.08D;
+            beginCommand(commandId, "ship_scan_configuration");
+        } else {
+            configurationScanOnly = false;
+        }
+        return started;
     }
 
     // Initialize the control module
@@ -997,9 +3169,13 @@ public final class ShipControlModuleRuntime {
         }
 
         // -----------------------------------------------------RUNTIME RESET-----------------------------------------------------
+        if (!configurationScanOnly) {
+            configurationCandidates = List.of();
+        }
         clearThrusterProtection();
         controller.setShipName(requestedShipName);
-        controller.setShipControlMode(requestedControlMode);
+        // Vehicle selection belongs to the SCM profile, not deprecated Initialize nodes.
+        refreshVehicleType();
         syncInitializationDisplays(false, 0, "");
         releaseControlActuators();
         releaseFreezeHandles();
@@ -1028,8 +3204,28 @@ public final class ShipControlModuleRuntime {
         }
         // -----------------------------------------------------MAP REUSE-----------------------------------------------------
         prevInitMap = currentInitMap(serverSubLevel);
-        mapId = prevInitMap != null
-                ? prevInitMap.id() : UUID.randomUUID();
+        mapId = prevInitMap != null ? prevInitMap.id()
+                : mapId == null ? UUID.randomUUID() : mapId;
+        ScmConfigurationProfile scmConfiguration = controller.getScmConfigurationProfile();
+        boolean hasConfiguredBindings = !configurationScanOnly
+                && scmConfiguration.hasActionBindings()
+                && scmConfiguration.groups().stream().anyMatch(group -> !group.units().isEmpty());
+        // A calibration profile is bound to this controller and its live Sable
+        // block identities, not to one disposable generated map UUID. Requiring
+        // that UUID to survive a map reload/rebuild silently sent valid profiles
+        // through the legacy freeze-and-probe initializer. Rebase the profile to
+        // the map about to be produced and use its declared live adapters.
+        if (hasConfiguredBindings && !Objects.equals(scmConfiguration.mapId(), mapId)) {
+            scmConfiguration.replace(mapId, scmConfiguration.groups(),
+                    scmConfiguration.actionGroups(), scmConfiguration.excludedUnits());
+            controller.setScmConfigurationProfile(scmConfiguration);
+        }
+        // A complete player-authored profile is a live control declaration.
+        // Its stable block identities, adapter selections and Sable poses are
+        // sufficient to build allocator geometry without freezing the craft
+        // or pulsing every actuator.
+        profileDrivenInitialization = hasConfiguredBindings
+                && !initializationFilters.forceFullInitialization();
         ShipControlMap reusableLocalMap = initializationV2
                 || initializationFilters.forceFullInitialization()
                 ? null : reusableInitMap(
@@ -1049,6 +3245,7 @@ public final class ShipControlModuleRuntime {
         calibrationDockingConnectors.clear();
         calibrationCrnDisplays.clear();
         calibrationAccDisplays.clear();
+        calibrationSeats.clear();
         calibrationSubLevels.clear();
         calibrationUnitIndex = 0;
         calibrationSampleIndex = 0;
@@ -1067,11 +3264,16 @@ public final class ShipControlModuleRuntime {
         initFinalMsgSent = false;
         lastProgressDisplayTick = Long.MIN_VALUE;
         // ------------------------------------START INITIALIZATION------------------------------------
-        phase = Phase.FREEZING;
-        status = "Freezing connected sub-levels";
+        phase = configurationScanOnly || profileDrivenInitialization
+                ? Phase.SCANNING : Phase.FREEZING;
+        status = configurationScanOnly
+                ? "Scanning controllable blocks for SCM configuration"
+                : profileDrivenInitialization
+                ? "Reading configured SCM control adapters"
+                : "Freezing connected sub-levels";
         progress = 0.02D;
         signalAssemblyMapChanged();
-        beginCommand(commandId, "ship_initialize");
+        beginCommand(commandId, configurationScanOnly ? "ship_scan_configuration" : "ship_initialize");
         showInitProgress(false, false);
         controller.setChanged();
         return true;
@@ -1165,7 +3367,8 @@ public final class ShipControlModuleRuntime {
                 targetMapId, composed.dimension(), composed.rootSubLevelId(),
                 composed.controllerPosition(), composed.centerOfMass(),
                 composed.units(), composed.bearings(), composed.dockingConnectors(),
-                composed.crnDisplays(), composed.accDisplays(), composed.updatedAt());
+                composed.crnDisplays(), composed.accDisplays(), composed.seats(),
+                composed.updatedAt());
     }
 
     // Run the ship control module
@@ -1195,6 +3398,9 @@ public final class ShipControlModuleRuntime {
                     textParameters == null ? "" : textParameters.get("ship_name"),
                     textParameters == null ? "airship" : textParameters.get("control_mode"));
         }
+        if ("ship_scan_configuration".equals(nodeType)) {
+            return scanConfiguration(commandId, parameters, textParameters);
+        }
         if ("ship_stop_initialization".equals(nodeType)) {
             boolean stopped = stopInitialization();
             if (stopped) {
@@ -1221,9 +3427,12 @@ public final class ShipControlModuleRuntime {
         ActiveShipCommand command;
         // -----------------------------------------------------COMMAND BUILD-----------------------------------------------------
         switch (nodeType) {
-            case "ship_yaw", "ship_pan", "ship_pitch", "ship_tilt", "ship_roll",
+            case "ship_yaw", "ship_yaw_right", "ship_yaw_left",
+                 "ship_pan", "ship_pitch", "ship_pitch_up", "ship_pitch_down",
+                 "ship_tilt", "ship_roll", "ship_roll_right", "ship_roll_left",
                  "ship_accelerate", "ship_forward", "ship_reverse", "ship_strafe",
-                 "ship_ascend", "ship_descend" ->
+                 "ship_backward", "ship_strafe_left", "ship_strafe_right",
+                 "ship_ascend", "ship_descend", "ship_jump", "ship_crouch" ->
                     command = ActiveShipCommand.amount(normalizedId, nodeType, amount(values, "amount"));
             case "ship_stabilize" -> {
                 Telemetry telemetry = telemetry();
@@ -1233,7 +3442,7 @@ public final class ShipControlModuleRuntime {
                 command = ActiveShipCommand.attitude(
                         normalizedId, nodeType, strength(values), telemetry.eulerDegrees());
             }
-            case "ship_decelerate" ->
+            case "ship_decelerate", "ship_brake" ->
                     command = ActiveShipCommand.strength(normalizedId, nodeType, strength(values));
             case "ship_hover" -> {
                 Telemetry telemetry = telemetry();
@@ -1264,6 +3473,7 @@ public final class ShipControlModuleRuntime {
                 command = ActiveShipCommand.target(
                         normalizedId, nodeType, coordinates(values),
                         commandSpeed(values, navigate ? 0.6D : 0.35D),
+                        commandDriveThrottle(values),
                         positive(values.getOrDefault("tolerance", 0.75D), 0.75D),
                         collisionAvoidanceRequested(values),
                         lockRotation,
@@ -1278,13 +3488,15 @@ public final class ShipControlModuleRuntime {
                         new Vec3(
                                 finite(values.getOrDefault("target_up_x", 0.0D)),
                                 finite(values.getOrDefault("target_up_y", 0.0D)),
-                                finite(values.getOrDefault("target_up_z", 0.0D))));
+                                finite(values.getOrDefault("target_up_z", 0.0D))),
+                        scheduleRouteEntry(values));
             }
             case "ship_follow" -> command = ActiveShipCommand.target(
                     normalizedId, nodeType, coordinates(values),
                     commandSpeed(values, 0.6D),
+                    commandDriveThrottle(values),
                     Math.max(0.0D, finite(values.getOrDefault("follow_distance", 8.0D))),
-                    collisionAvoidanceRequested(values));
+                    collisionAvoidanceRequested(values), scheduleRouteEntry(values));
             case "ship_stop" -> {
                 resetControlState();
                 releaseControlActuators();
@@ -1322,11 +3534,15 @@ public final class ShipControlModuleRuntime {
             double collisionDetectionDistance,
             double collisionPollRate
     ) {
+        if (port != null && port.startsWith("scm_brain_")) {
+            return autopilotBrainGraphValue(port);
+        }
         // ------------------------------------TELEMETRY SOURCES------------------------------------
         double scanRange = AdvancedGraphCatalog.normalizeCollisionDetectionDistance(
                 collisionDetectionDistance);
         Telemetry telemetry = switch (port) {
             case "x", "y", "z", "velocity_x", "velocity_y", "velocity_z", "speed",
+                 "angular_velocity_x", "angular_velocity_y", "angular_velocity_z",
                  "yaw", "pitch", "roll", "nearest_collision_distance",
                  "collision_distance_forward", "collision_distance_backward",
                  "collision_distance_left", "collision_distance_right",
@@ -1345,6 +3561,12 @@ public final class ShipControlModuleRuntime {
         };
         // ------------------------------------ASSEMBLY STATUS------------------------------------
         ShipControlMap currentMap = effectiveAssemblyMap();
+        SimulationMetrics metrics = switch (port) {
+            case "mass", "weight", "facing", "center_of_mass_x", "center_of_mass_y", "center_of_mass_z",
+                 "center_of_lift_x", "center_of_lift_y", "center_of_lift_z" -> simulationMetrics(currentMap);
+            default -> SimulationMetrics.EMPTY;
+        };
+        ScmConfigurationProfile configuration = controller.getScmConfigurationProfile();
         ShipCouplerService.Status couplerStatus = switch (port) {
             case "coupler_count", "coupled_count", "carriage_count",
                  "any_coupled", "all_coupled", "coupler_status" ->
@@ -1375,6 +3597,16 @@ public final class ShipControlModuleRuntime {
                     : currentMap.controllableUnitCount());
             case "status" -> AdvancedGraphDocument.Value.string(status);
             case "map_id" -> AdvancedGraphDocument.Value.string(mapId == null ? "" : mapId.toString());
+            case "configured" -> AdvancedGraphDocument.Value.bool(
+                    configuration.isConfiguredFor(currentMap));
+            case "scanning" -> AdvancedGraphDocument.Value.bool(isConfigurationScanning());
+            case "candidate_count" -> AdvancedGraphDocument.Value.number(configurationCandidates.size());
+            case "group_count" -> AdvancedGraphDocument.Value.number(configuration.groups().size());
+            case "action_binding_count" -> AdvancedGraphDocument.Value.number(
+                    configuration.actionGroups().size());
+            case "excluded_unit_count" -> AdvancedGraphDocument.Value.number(
+                    configuration.excludedUnits().size());
+            case "action_groups" -> configurationActionGroups(configuration);
             case "coupler_count" -> AdvancedGraphDocument.Value.number(
                     couplerStatus == null ? 0 : couplerStatus.couplerCount());
             case "coupled_count" -> AdvancedGraphDocument.Value.number(
@@ -1389,6 +3621,15 @@ public final class ShipControlModuleRuntime {
             case "coupler_status" -> AdvancedGraphDocument.Value.string(
                     couplerStatus == null ? "none" : couplerStatus.description());
             case "inertia_tensor" -> inertiaTensorValue();
+            case "mass" -> AdvancedGraphDocument.Value.number(metrics.mass());
+            case "weight" -> AdvancedGraphDocument.Value.number(metrics.mass() * 9.80665D);
+            case "facing" -> AdvancedGraphDocument.Value.string(metrics.facing());
+            case "center_of_mass_x" -> AdvancedGraphDocument.Value.number(metrics.centerOfMass().x);
+            case "center_of_mass_y" -> AdvancedGraphDocument.Value.number(metrics.centerOfMass().y);
+            case "center_of_mass_z" -> AdvancedGraphDocument.Value.number(metrics.centerOfMass().z);
+            case "center_of_lift_x" -> AdvancedGraphDocument.Value.number(metrics.centerOfLift().x);
+            case "center_of_lift_y" -> AdvancedGraphDocument.Value.number(metrics.centerOfLift().y);
+            case "center_of_lift_z" -> AdvancedGraphDocument.Value.number(metrics.centerOfLift().z);
             case "x" -> AdvancedGraphDocument.Value.number(telemetry.position().x);
             case "y" -> AdvancedGraphDocument.Value.number(telemetry.position().y);
             case "z" -> AdvancedGraphDocument.Value.number(telemetry.position().z);
@@ -1396,6 +3637,9 @@ public final class ShipControlModuleRuntime {
             case "velocity_y" -> AdvancedGraphDocument.Value.number(telemetry.velocity().y);
             case "velocity_z" -> AdvancedGraphDocument.Value.number(telemetry.velocity().z);
             case "speed" -> AdvancedGraphDocument.Value.number(telemetry.velocity().length());
+            case "angular_velocity_x" -> AdvancedGraphDocument.Value.number(telemetry.angularVelocity().x);
+            case "angular_velocity_y" -> AdvancedGraphDocument.Value.number(telemetry.angularVelocity().y);
+            case "angular_velocity_z" -> AdvancedGraphDocument.Value.number(telemetry.angularVelocity().z);
             case "yaw" -> AdvancedGraphDocument.Value.number(telemetry.eulerDegrees().y);
             case "pitch" -> AdvancedGraphDocument.Value.number(telemetry.eulerDegrees().x);
             case "roll" -> AdvancedGraphDocument.Value.number(telemetry.eulerDegrees().z);
@@ -1418,6 +3662,75 @@ public final class ShipControlModuleRuntime {
                     AdvancedGraphDocument.Value.number(navigationTargetDistance(telemetry));
             default -> AdvancedGraphDocument.Value.number(0.0D);
         };
+    }
+
+    // Expose the same complete debug contract through one passive SCM graph node.
+    private AdvancedGraphDocument.Value autopilotBrainGraphValue(String port) {
+        requestAutopilotGraphDebug();
+        AutopilotDebugSnapshot snapshot = autopilotDebugSnapshot();
+        if (snapshot == null) {
+            return "scm_brain_available".equals(port)
+                    ? AdvancedGraphDocument.Value.bool(false)
+                    : "scm_brain_game_time".equals(port)
+                    || "scm_brain_anchor_x".equals(port)
+                    || "scm_brain_anchor_y".equals(port)
+                    || "scm_brain_anchor_z".equals(port)
+                    ? AdvancedGraphDocument.Value.number(0.0D)
+                    : "scm_brain_data".equals(port)
+                    ? GraphRuntime.fromLibraryValue(GraphValue.map(Map.of()))
+                    : AdvancedGraphDocument.Value.string("");
+        }
+        return switch (port) {
+            case "scm_brain_available" -> AdvancedGraphDocument.Value.bool(true);
+            case "scm_brain_state" -> AdvancedGraphDocument.Value.string(snapshot.state().name());
+            case "scm_brain_reason" -> AdvancedGraphDocument.Value.string(
+                    autopilotDebugEntry(snapshot, "Overview", "Reason"));
+            case "scm_brain_vehicle_name" ->
+                    AdvancedGraphDocument.Value.string(snapshot.vehicleName());
+            case "scm_brain_vehicle_id" ->
+                    AdvancedGraphDocument.Value.string(snapshot.vehicleId().toString());
+            case "scm_brain_game_time" ->
+                    AdvancedGraphDocument.Value.number(snapshot.gameTime());
+            case "scm_brain_anchor_x" ->
+                    AdvancedGraphDocument.Value.number(snapshot.anchor().x);
+            case "scm_brain_anchor_y" ->
+                    AdvancedGraphDocument.Value.number(snapshot.anchor().y);
+            case "scm_brain_anchor_z" ->
+                    AdvancedGraphDocument.Value.number(snapshot.anchor().z);
+            case "scm_brain_data" -> GraphRuntime.fromLibraryValue(snapshot.graphValue());
+            default -> AdvancedGraphDocument.Value.string("");
+        };
+    }
+
+    // Read one labelled value from a structured debug snapshot.
+    private static String autopilotDebugEntry(
+            AutopilotDebugSnapshot snapshot, String sectionName, String label
+    ) {
+        if (snapshot == null) return "";
+        for (AutopilotDebugSnapshot.Section section : snapshot.sections()) {
+            if (!section.name().equals(sectionName)) continue;
+            for (AutopilotDebugSnapshot.Entry entry : section.entries()) {
+                if (entry.label().equals(label)) return entry.value();
+            }
+        }
+        return "";
+    }
+
+    // Convert the profile action assignment table into a graph map without exposing
+    // mutable NBT or server-side profile objects to a graph.
+    private static AdvancedGraphDocument.Value configurationActionGroups(
+            ScmConfigurationProfile configuration
+    ) {
+        CompoundTag values = new CompoundTag();
+        configuration.actionGroups().forEach((action, group) -> {
+            CompoundTag encoded = new CompoundTag();
+            encoded.putString("Type", "string");
+            CompoundTag payload = new CompoundTag();
+            payload.putString("Value", group);
+            encoded.put("Payload", payload);
+            values.put(action, encoded);
+        });
+        return AdvancedGraphDocument.Value.map(values);
     }
 
     // Get the inertia tensor value
@@ -1443,6 +3756,45 @@ public final class ShipControlModuleRuntime {
         putMatrixValue(values, "m21", matrix.m21());
         putMatrixValue(values, "m22", matrix.m22());
         return AdvancedGraphDocument.Value.map(values);
+    }
+
+    // Get the assembly metrics shared by the SCM screen and display nodes.
+    private SimulationMetrics simulationMetrics(@Nullable ShipControlMap currentMap) {
+        ServerSubLevel root = rootSubLevel != null ? rootSubLevel : containingServerSubLevel();
+        if (root == null) return SimulationMetrics.EMPTY;
+        Level level = controller.getLevel();
+        long gameTime = level == null ? Long.MIN_VALUE : level.getGameTime();
+        UUID rootId = root.getUniqueId();
+        if (simulationMetricsTick == gameTime && Objects.equals(simulationMetricsRootId, rootId)) {
+            return cachedSimulationMetrics;
+        }
+        SableAssemblyDynamicsApi.Snapshot dynamics = SableAssemblyDynamicsApi.sample(assemblyTopology(root));
+        Vec3 centerOfMass = dynamics.massAvailable() ? dynamics.centerOfMass()
+                : currentMap == null ? Vec3.ZERO : currentMap.centerOfMass();
+        Vec3 centerOfLift = centerOfLift(currentMap, centerOfMass);
+        Vec3 forward = normalize(rootDirectionToWorld(controllerForwardRoot()), Vec3.ZERO);
+        Direction facing = Direction.getNearest((float) forward.x, (float) forward.y, (float) forward.z);
+        cachedSimulationMetrics = new SimulationMetrics(dynamics.mass(), finite(centerOfMass),
+                finite(centerOfLift), facing == null ? "unknown" : facing.getSerializedName());
+        simulationMetricsTick = gameTime;
+        simulationMetricsRootId = rootId;
+        return cachedSimulationMetrics;
+    }
+
+    // Resolve the force-weighted centre of upward-capable propulsion.
+    private Vec3 centerOfLift(@Nullable ShipControlMap currentMap, Vec3 fallback) {
+        if (currentMap == null || currentMap.units().isEmpty()) return finite(fallback);
+        Vec3 up = normalize(controllerUpRoot(), new Vec3(0.0D, 1.0D, 0.0D));
+        Vec3 weighted = Vec3.ZERO;
+        double totalLift = 0.0D;
+        for (ShipControlMap.PropulsionUnit unit : currentMap.units()) {
+            if (unit == null || !unit.controllable()) continue;
+            double lift = Math.max(0.0D, unit.forceDirection().dot(up)) * unit.maxThrust();
+            if (!Double.isFinite(lift) || lift <= 1.0E-6D) continue;
+            weighted = weighted.add(unit.rootPosition().scale(lift));
+            totalLift += lift;
+        }
+        return totalLift <= 1.0E-6D ? finite(fallback) : finite(weighted.scale(1.0D / totalLift));
     }
 
     // Put the matrix value
@@ -1527,6 +3879,7 @@ public final class ShipControlModuleRuntime {
                     && !completedCommands.contains(key);
         }
         boolean running = "ship_initialize".equals(nodeType)
+                || "ship_scan_configuration".equals(nodeType)
                 ? isInitializing()
                 : phase == Phase.READY && map != null;
         return isModuleAttached()
@@ -1650,10 +4003,12 @@ public final class ShipControlModuleRuntime {
         return switch (port) {
             case "success" -> AdvancedGraphDocument.Value.bool(isCommandComplete(commandId, nodeType));
             case "progress" -> "ship_initialize".equals(nodeType)
+                    || "ship_scan_configuration".equals(nodeType)
                     ? AdvancedGraphDocument.Value.string(initializationStageText())
                     : AdvancedGraphDocument.Value.number(0.0D);
             case "progress_percent" -> AdvancedGraphDocument.Value.number(progressPercent(progress));
             case "current_test" -> "ship_initialize".equals(nodeType)
+                    || "ship_scan_configuration".equals(nodeType)
                     ? AdvancedGraphDocument.Value.string(initCurrentTest())
                     : AdvancedGraphDocument.Value.string("");
             default -> AdvancedGraphDocument.Value.number(0.0D);
@@ -1668,6 +4023,7 @@ public final class ShipControlModuleRuntime {
             case CALIBRATING -> 3;
             case SAVING -> 4;
             case READY -> 5;
+            case CONFIGURING -> 2;
             case ERROR -> Math.max(1, Math.min(INITIALIZATION_STAGES,
                     (int) Math.ceil(progress * INITIALIZATION_STAGES)));
             case IDLE -> 0;
@@ -1679,6 +4035,7 @@ public final class ShipControlModuleRuntime {
     private String initCurrentTest() {
         return switch (phase) {
             case IDLE -> "Not running";
+            case CONFIGURING -> "Awaiting SCM group configuration and calibration";
             case FREEZING -> "Freezing connected sub-levels";
             case SCANNING -> "Scanning propulsion providers, bearings, and aerodynamic surfaces";
             case CALIBRATING -> currentCalibrationTest();
@@ -1816,6 +4173,117 @@ public final class ShipControlModuleRuntime {
                 || phase == Phase.CALIBRATING || phase == Phase.SAVING;
     }
 
+    // Return control-capable suggestions from the most recent optional
+    // discovery pass. These are defaults only: the calibration modal may bind
+    // any loaded block in the connected sub-level chain.
+    public List<ScmConfigurationProfile.UnitReference> configurationCandidates() {
+        return configurationCandidates;
+    }
+
+    // Allocate a stable profile/map identity without starting a discovery or
+    // calibration pass. Configuration is a declaration, not a scan.
+    public UUID ensureConfigurationMapId() {
+        if (mapId == null) {
+            mapId = UUID.randomUUID();
+            controller.setChanged();
+        }
+        return mapId;
+    }
+
+    // Validate that a player-selected target is a real, loaded non-air block
+    // on this SCM's current connected body chain. The actual control adapter is
+    // resolved later, when the chosen SCM function is initialized.
+    public boolean isConfigurationTarget(ScmConfigurationProfile.UnitReference reference) {
+        if (reference == null || !reference.isValid() || controller.getLevel() == null) {
+            return false;
+        }
+        if (!configurationViewSubLevelIds().contains(reference.subLevelId())) {
+            return false;
+        }
+        SubLevel subLevel = SableLevelApi.subLevel(controller.getLevel(), reference.subLevelId());
+        return subLevel != null && !subLevel.isRemoved()
+                && !subLevel.getLevel().getBlockState(reference.blockPosition()).isAir();
+    }
+
+    // Return the live root which owns the SCM configuration view. This is kept
+    // separate from the menu attachment: an ACC may sit on a child body while
+    // the player needs the complete parent sub-level chain in the diagram.
+    public @Nullable UUID configurationRootSubLevelId() {
+        if (rootSubLevel != null && !rootSubLevel.isRemoved()) {
+            return rootSubLevel.getUniqueId();
+        }
+        ServerSubLevel root = containingServerSubLevel();
+        return root == null || root.isRemoved() ? null : root.getUniqueId();
+    }
+
+    /**
+     * A bounded, detached craft scene used by the SCM editor when the player
+     * can open the controller but is not client-tracking the assembled body.
+     * Positions are converted into the root body's frame on the server; this
+     * keeps the client preview visual-only while normal SCM save validation
+     * remains server-authoritative.
+     */
+    public record ConfigurationPreviewBlock(
+            UUID subLevelId, BlockPos position, BlockState state, Vec3 rootPosition
+    ) {
+        public ConfigurationPreviewBlock {
+            position = position == null ? BlockPos.ZERO : position.immutable();
+            state = state == null ? net.minecraft.world.level.block.Blocks.AIR.defaultBlockState() : state;
+            rootPosition = rootPosition == null ? Vec3.atLowerCornerOf(position) : rootPosition;
+        }
+    }
+
+    public List<ConfigurationPreviewBlock> configurationPreviewBlocks(int maximumBlocks) {
+        ServerSubLevel root = rootSubLevel != null && !rootSubLevel.isRemoved()
+                ? rootSubLevel : containingServerSubLevel();
+        if (root == null) return List.of();
+        int limit = Mth.clamp(maximumBlocks, 1, 16_384);
+        List<ConfigurationPreviewBlock> preview = new ArrayList<>();
+        List<ServerSubLevel> bodies = connectedShipSubLevels(root).stream()
+                .filter(ServerSubLevel.class::isInstance)
+                .map(ServerSubLevel.class::cast)
+                .filter(body -> !body.isRemoved())
+                .sorted(Comparator.comparing(body -> body.getUniqueId().toString()))
+                .toList();
+        for (ServerSubLevel body : bodies) {
+            if (preview.size() >= limit) break;
+            int remaining = limit - preview.size();
+            for (SubLevelBlockEntityCollector.LoadedBlock block
+                    : SubLevelBlockEntityCollector.getLoadedBlocks(body, remaining)) {
+                if (block.state().isAir()) continue;
+                Vec3 rootPlotPosition = rootPosition(
+                        root, body, Vec3.atLowerCornerOf(block.position()));
+                BlockPos rootPlotCenter = root.getPlot().getCenterBlock();
+                preview.add(new ConfigurationPreviewBlock(body.getUniqueId(), block.position(), block.state(),
+                        rootPlotPosition.subtract(rootPlotCenter.getX(),
+                                rootPlotCenter.getY(), rootPlotCenter.getZ())));
+            }
+        }
+        return List.copyOf(preview);
+    }
+
+    // Return the complete connected body chain for the client-side live SCM
+    // preview. This is topology metadata only; the client still renders the
+    // currently loaded Sable block states and cannot author control targets.
+    public List<UUID> configurationViewSubLevelIds() {
+        ServerSubLevel root = rootSubLevel != null && !rootSubLevel.isRemoved()
+                ? rootSubLevel : containingServerSubLevel();
+        if (root == null) {
+            return List.of();
+        }
+        return connectedShipSubLevels(root).stream()
+                .filter(subLevel -> subLevel != null && !subLevel.isRemoved())
+                .map(SubLevel::getUniqueId)
+                .distinct()
+                .sorted(Comparator.comparing(UUID::toString))
+                .toList();
+    }
+
+    // Distinguish the harmless discovery pass from a full frozen calibration.
+    public boolean isConfigurationScanning() {
+        return configurationScanOnly && phase == Phase.SCANNING;
+    }
+
     // Check if this can share stored map
     boolean canShareStoredMap() {
         return isModuleAttached() && !isInitializing() && phase != Phase.ERROR
@@ -1938,7 +4406,14 @@ public final class ShipControlModuleRuntime {
                 ids.add(connector.subLevelId()));
         currentMap.crnDisplays().forEach(display -> ids.add(display.subLevelId()));
         currentMap.accDisplays().forEach(display -> ids.add(display.subLevelId()));
+        currentMap.seats().forEach(seat -> ids.add(seat.subLevelId()));
         return Set.copyOf(ids);
+    }
+
+    // Get the mounted seats retained by the effective SCM assembly map
+    public List<ShipControlMap.Seat> mappedSeats() {
+        ShipControlMap currentMap = effectiveAssemblyMap();
+        return currentMap == null ? List.of() : currentMap.seats();
     }
 
     // Get the current ship envelope
@@ -2000,7 +4475,7 @@ public final class ShipControlModuleRuntime {
     public List<MappedDockingConnector> mappedDockingConnectors() {
         ServerSubLevel root = rootSubLevel != null
                 ? rootSubLevel : containingServerSubLevel();
-        if (root == null || effectiveAssemblyMap() == null) {
+        if (root == null) {
             return List.of();
         }
         return availableDockingConnectors(root).stream()
@@ -2014,7 +4489,6 @@ public final class ShipControlModuleRuntime {
             BlockEntity blockEntity = DockingConnectorAutomation.resolve(
                     controller.getLevel(), connector.subLevelId(), connector.blockPosition());
             if (connector.index() == connectorIndex) {
-                DockingConnectorAutomation.resetTransfers(blockEntity);
                 DockingConnectorAutomation.setPowered(blockEntity, true);
             } else {
                 DockingConnectorAutomation.disengage(blockEntity, null);
@@ -2027,48 +4501,73 @@ public final class ShipControlModuleRuntime {
             @Nullable ServerSubLevel root
     ) {
         ShipControlMap currentMap = effectiveAssemblyMap();
-        if (root == null || currentMap == null) {
+        if (root == null) {
             return List.of();
         }
-        List<ShipControlMap.DockingConnector> available =
-                new ArrayList<>(currentMap.dockingConnectors());
+        List<ShipControlMap.DockingConnector> available = new ArrayList<>();
         Set<DynamicConnectorKey> mappedKeys = new HashSet<>();
+        Set<UUID> liveBodyIds = connectedShipSubLevels(root).stream()
+                .filter(subLevel -> subLevel != null && !subLevel.isRemoved())
+                .map(SubLevel::getUniqueId).collect(java.util.stream.Collectors.toSet());
         int nextIdx = 0;
-        for (ShipControlMap.DockingConnector connector : currentMap.dockingConnectors()) {
-            mappedKeys.add(new DynamicConnectorKey(
-                    connector.subLevelId(), connector.blockPosition()));
+        List<ShipControlMap.DockingConnector> mappedConnectors = currentMap == null
+                ? List.of() : currentMap.dockingConnectors();
+        for (ShipControlMap.DockingConnector connector : mappedConnectors) {
+            if (!liveBodyIds.contains(connector.subLevelId())) continue;
+            DynamicConnectorKey key = new DynamicConnectorKey(
+                    connector.subLevelId(), connector.blockPosition());
+            BlockEntity blockEntity = DockingConnectorAutomation.resolve(
+                    controller.getLevel(), connector.subLevelId(), connector.blockPosition());
+            if (blockEntity == null || !isDockingConnector(blockEntity)) continue;
+            mappedKeys.add(key);
+            available.add(connector);
             nextIdx = Math.max(nextIdx, connector.index() + 1);
         }
         nextDynamicConnectorIdx = Math.max(nextDynamicConnectorIdx, nextIdx);
 
-        for (ShipStockNetworkCache.Connector connector
-                : controller.getShipStockNetworkSnapshot().connectors()) {
-            DynamicConnectorKey key = new DynamicConnectorKey(
-                    connector.subLevelId(), connector.position());
-            if (mappedKeys.contains(key)) {
-                continue;
+        for (SubLevel src : connectedShipSubLevels(root)) {
+            if (src == null || src.isRemoved()) continue;
+            for (BlockEntity blockEntity : SubLevelBlockEntityCollector.getBlockEntities(src)) {
+                if (!isDockingConnector(blockEntity)) continue;
+                DynamicConnectorKey key = new DynamicConnectorKey(
+                        src.getUniqueId(), blockEntity.getBlockPos());
+                if (!mappedKeys.add(key)) continue;
+                Direction facing = blockEntity.getBlockState().getValue(
+                        net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING);
+                Vec3 localFacing = Vec3.atLowerCornerOf(facing.getNormal());
+                Vec3 localTip = blockEntity.getBlockPos().getCenter().add(localFacing.scale(1.5D));
+                int idx = dynamicConnectorIndices.computeIfAbsent(
+                        key, ignored -> nextDynamicConnectorIdx++);
+                available.add(new ShipControlMap.DockingConnector(
+                        idx, src.getUniqueId(), blockEntity.getBlockPos(),
+                        rootPosition(root, src, localTip), rootDirection(root, src, localFacing)));
             }
-            Object resolved = SubLevelBlockEntityCollector.getSubLevel(
-                    controller.getLevel(), connector.subLevelId());
-            BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
-                    controller.getLevel(), connector.subLevelId(), connector.position());
-            if (!(resolved instanceof SubLevel src)
-                    || blockEntity == null || !isDockingConnector(blockEntity)) {
-                continue;
-            }
-            Direction facing = blockEntity.getBlockState().getValue(
-                    net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING);
-            Vec3 localFacing = Vec3.atLowerCornerOf(facing.getNormal());
-            Vec3 localTip = blockEntity.getBlockPos().getCenter().add(localFacing.scale(1.5D));
-            int idx = dynamicConnectorIndices.computeIfAbsent(
-                    key, ignored -> nextDynamicConnectorIdx++);
-            available.add(new ShipControlMap.DockingConnector(
-                    idx, connector.subLevelId(), connector.position(),
-                    rootPosition(root, src, localTip),
-                    rootDirection(root, src, localFacing)));
         }
         available.sort(Comparator.comparingInt(ShipControlMap.DockingConnector::index));
+        dynamicConnectorIndices.keySet().removeIf(key -> !mappedKeys.contains(key));
+        controller.reconcileScmDockingConnectors(available);
         return List.copyOf(available);
+    }
+
+    // Reconcile newly placed or removed docking connectors without rebuilding the SCM map.
+    private void reconcileLiveDockingConnectors(ServerSubLevel root) {
+        Level level = controller.getLevel();
+        long gameTime = level == null ? Long.MIN_VALUE : level.getGameTime();
+        if (!intervalElapsed(gameTime, lastDockingConnectorDiscoveryTick,
+                DOCKING_CONNECTOR_DISCOVERY_TICKS)) return;
+        lastDockingConnectorDiscoveryTick = gameTime;
+        availableDockingConnectors(root);
+    }
+
+    // Get live docking connector identities for the SCM configuration view.
+    public List<ScmConfigurationProfile.DockingConnectorReference> configurationDockingConnectors() {
+        ServerSubLevel root = rootSubLevel != null && !rootSubLevel.isRemoved()
+                ? rootSubLevel : containingServerSubLevel();
+        if (root == null) return List.of();
+        return availableDockingConnectors(root).stream()
+                .map(connector -> new ScmConfigurationProfile.DockingConnectorReference(
+                        connector.subLevelId(), connector.blockPosition()))
+                .distinct().toList();
     }
 
     // Clear the dynamic connector registry
@@ -2129,6 +4628,7 @@ public final class ShipControlModuleRuntime {
         this.activeAssemblyPrimaryMap = null;
         this.activeAssemblyTopology = null;
         this.activeScmActuatorOwners = Map.of();
+        this.activeAutomaticCarriageUnits = Set.of();
         this.mainCarriageMaps.clear();
         this.mainCarriageMapValidationTicks.clear();
         this.mainCarriageMapValidationRevisions.clear();
@@ -2166,6 +4666,7 @@ public final class ShipControlModuleRuntime {
             calibrationDockingConnectors.clear();
         calibrationCrnDisplays.clear();
         calibrationAccDisplays.clear();
+        calibrationSeats.clear();
         calibrationSubLevels.clear();
             initializationSubLevels.clear();
             initBodyStates.clear();
@@ -2203,6 +4704,7 @@ public final class ShipControlModuleRuntime {
 
     // Set the docking magnetic capture
     void setDockingMagneticCapture(int connectorIndex, boolean active) {
+        if(active) releaseScheduleSplineConstraint();
         magneticConnectorIdx = active ? connectorIndex : -1;
     }
 
@@ -2243,6 +4745,7 @@ public final class ShipControlModuleRuntime {
         calibrationDockingConnectors.clear();
         calibrationCrnDisplays.clear();
         calibrationAccDisplays.clear();
+        calibrationSeats.clear();
         calibrationSubLevels.clear();
         initializationSubLevels.clear();
         initBodyStates.clear();
@@ -2261,6 +4764,7 @@ public final class ShipControlModuleRuntime {
         if (!isInitializing()) {
             return false;
         }
+        configurationScanOnly = false;
         releaseControlAuthority();
         syncInitializationDisplays(false, 0, "");
         restoreCalActuators();
@@ -2273,14 +4777,17 @@ public final class ShipControlModuleRuntime {
         calibrationDockingConnectors.clear();
         calibrationCrnDisplays.clear();
         calibrationAccDisplays.clear();
+        calibrationSeats.clear();
         calibrationSubLevels.clear();
         initializationSubLevels.clear();
         initBodyStates.clear();
         clearInitMapPlan();
         activeCommands.entrySet().removeIf(entry ->
-                "ship_initialize".equals(entry.getValue().type()));
+                "ship_initialize".equals(entry.getValue().type())
+                        || "ship_scan_configuration".equals(entry.getValue().type()));
         lastIssuedCommands.entrySet().removeIf(entry ->
-                "ship_initialize".equals(entry.getValue().type()));
+                "ship_initialize".equals(entry.getValue().type())
+                        || "ship_scan_configuration".equals(entry.getValue().type()));
         if (prevInitMap != null) {
             map = prevInitMap;
             mapId = prevInitMap.id();
@@ -2507,6 +5014,10 @@ public final class ShipControlModuleRuntime {
     // Scan the propulsion units
     private void scanPropulsionUnits() {
         ServerSubLevel root = requireRootSubLevel();
+        if (profileDrivenInitialization) {
+            readConfiguredPropulsionUnits(root);
+            return;
+        }
         List<SubLevel> allSubLevels =
                 new ArrayList<>(initShipSubLevels(root));
         allSubLevels.sort(Comparator.comparing(subLevel -> subLevel.getUniqueId().toString()));
@@ -2516,7 +5027,9 @@ public final class ShipControlModuleRuntime {
                 .toList();
         calibrationCrnDisplays.clear();
         calibrationAccDisplays.clear();
+        calibrationSeats.clear();
         discoverCrnDisplays(ownedSubLevels);
+        calibrationSeats.addAll(discoverMountedSeats(ownedSubLevels));
         List<SubLevel> subLevels = ownedSubLevels;
         if (!initializationFilters.mapsBearings()) {
             Set<UUID> ignoredSubLevels = new HashSet<>(bearingChildSubLevels(subLevels));
@@ -2529,31 +5042,15 @@ public final class ShipControlModuleRuntime {
         // ------------------------------------PROPULSION UNITS------------------------------------
         calibrationUnits.clear();
         calibrationSubLevels.clear();
-        Level connectorLevel = controller.getLevel();
-        if (connectorLevel != null && !connectorLevel.isClientSide) {
-            for (ShipControlMap.DockingConnector connector : calibrationDockingConnectors) {
-                DockingConnectorAutomation.clearShipControlModuleBinding(
-                        DockingConnectorAutomation.resolve(
-                                connectorLevel, connector.subLevelId(), connector.blockPosition()));
-            }
-        }
         calibrationDockingConnectors.clear();
         Map<PropulsionUnitKey, ShipControlMap.PropulsionUnit> reusableUnits =
                 reusablePropulsionUnits(reconciliationBaseMap);
         subLevels.forEach(subLevel -> calibrationSubLevels.put(subLevel.getUniqueId(), subLevel));
+        if (initializationFilters.mapsDockingConnectors()) {
+            collectCalibrationDockingConnectors(root, subLevels);
+        }
         for (SubLevel subLevel : subLevels) {
             for (BlockEntity blockEntity : SubLevelBlockEntityCollector.getBlockEntities(subLevel)) {
-                if (isDockingConnector(blockEntity)) {
-                    Direction facing = blockEntity.getBlockState().getValue(
-                            net.minecraft.world.level.block.state.properties.BlockStateProperties.FACING);
-                    Vec3 localFacing = Vec3.atLowerCornerOf(facing.getNormal());
-                    Vec3 localTip = blockEntity.getBlockPos().getCenter()
-                            .add(localFacing.scale(1.5D));
-                    calibrationDockingConnectors.add(new ShipControlMap.DockingConnector(
-                            calibrationDockingConnectors.size(), subLevel.getUniqueId(),
-                            blockEntity.getBlockPos(), rootPosition(root, subLevel, localTip),
-                            rootDirection(root, subLevel, localFacing)));
-                }
                 List<Actuator> actuators = actuatorsFor(blockEntity);
                 if (actuators.isEmpty()
                         || !initializationFilters.mapsPropulsion(isThrusterProvider(blockEntity))) {
@@ -2577,6 +5074,13 @@ public final class ShipControlModuleRuntime {
         }
         // ------------------------------------LINKED CONTROLS------------------------------------
         discoverLinkedScmControls(root, ownedSubLevels, reusableUnits);
+        // SCM configuration is an explicit extension of the normal control
+        // surface. Merge its selected probes into this scan before calibration
+        // instead of replacing the calibrated map with a live-adapter snapshot.
+        // This is what makes a selected block face participate in the same
+        // initialization and allocation path as ordinary thrusters and linker
+        // targets.
+        discoverConfiguredScmControls(root, ownedSubLevels, reusableUnits);
         calibrationUnits.sort(Comparator
                 .comparing((CalibrationUnit unit) -> isControlMode(ScmBuiltinControlModes.CAR_ID)
                         && unit.actuator.isWheelControl())
@@ -2588,24 +5092,6 @@ public final class ShipControlModuleRuntime {
         }
         if (initializationV2) {
             configV2CalUnits();
-        }
-        calibrationDockingConnectors.sort(Comparator
-                .comparing((ShipControlMap.DockingConnector connector) ->
-                        connector.subLevelId().toString())
-                .thenComparing(ShipControlMap.DockingConnector::blockPosition));
-        for (int idx = 0; idx < calibrationDockingConnectors.size(); idx++) {
-            ShipControlMap.DockingConnector connector = calibrationDockingConnectors.get(idx);
-            calibrationDockingConnectors.set(idx, new ShipControlMap.DockingConnector(
-                    idx, connector.subLevelId(), connector.blockPosition(),
-                    connector.rootTipPosition(), connector.rootFacing()));
-        }
-        if (connectorLevel != null && !connectorLevel.isClientSide) {
-            for (ShipControlMap.DockingConnector connector : calibrationDockingConnectors) {
-                DockingConnectorAutomation.bindToShipControlModule(
-                        DockingConnectorAutomation.resolve(
-                                connectorLevel, connector.subLevelId(), connector.blockPosition()),
-                        controller.getShipName(), connector.index());
-            }
         }
         List<AerodynamicSurfaceCalibration> aerodynamicSurfaces =
                 initializationFilters.mapsSails()
@@ -2626,6 +5112,30 @@ public final class ShipControlModuleRuntime {
         v2CompletedPropulsionSamples = 0;
         v2TotalPropulsionSamples = 0;
         resetBearingCal();
+        if (configurationScanOnly) {
+            configurationCandidates = calibrationUnits.stream()
+                    .map(unit -> new ScmConfigurationProfile.UnitReference(
+                            unit.subLevelId, unit.blockPosition, unit.actuator.kind()))
+                    .distinct().toList();
+            seedDefaultScmConfigurationGroups();
+            configurationScanOnly = false;
+            // Discovery must not replace an already calibrated control map. A new
+            // craft simply returns to idle until the player has configured groups
+            // and explicitly asks for calibration/activation.
+            map = prevInitMap;
+            mapId = map == null ? mapId : map.id();
+            phase = map == null ? Phase.CONFIGURING : Phase.READY;
+            status = "SCM configuration scan complete: " + configurationCandidates.size()
+                    + " controllable block"
+                    + (configurationCandidates.size() == 1 ? "" : "s") + " discovered";
+            progress = 1.0D;
+            activeCommands.values().stream()
+                    .filter(command -> "ship_scan_configuration".equals(command.type()))
+                    .forEach(this::completeCommand);
+            signalAssemblyMapChanged();
+            controller.setChanged();
+            return;
+        }
         if (isControlMode(ScmBuiltinControlModes.CAR_ID)) {
             releaseNestedFreezeHandles();
         }
@@ -2644,6 +5154,285 @@ public final class ShipControlModuleRuntime {
                     : "Calibrating propulsion, bearing geometry, and aerodynamic control surfaces";
         }
         progress = 0.15D;
+    }
+
+    // Seed visible, adapter-based groups for a newly discovered craft. This is
+    // a starting layout only: it never overwrites an existing player profile
+    // and deliberately does not bind a group to a ship action/function.
+    private void seedDefaultScmConfigurationGroups() {
+        if (mapId == null || configurationCandidates.isEmpty()) {
+            return;
+        }
+        ScmConfigurationProfile existing = controller.getScmConfigurationProfile();
+        if (mapId.equals(existing.mapId()) && !existing.groups().isEmpty()) {
+            return;
+        }
+        Map<String, Set<ScmConfigurationProfile.UnitReference>> byAdapter = new LinkedHashMap<>();
+        for (ScmConfigurationProfile.UnitReference unit : configurationCandidates) {
+            String adapter = unit.adapter().isBlank() ? "actuator" : unit.adapter();
+            byAdapter.computeIfAbsent(adapter, ignored -> new LinkedHashSet<>()).add(unit);
+        }
+        List<ScmConfigurationProfile.Group> groups = new ArrayList<>();
+        Set<String> ids = new HashSet<>();
+        for (Map.Entry<String, Set<ScmConfigurationProfile.UnitReference>> entry : byAdapter.entrySet()) {
+            String baseId = "adapter_" + entry.getKey().replaceAll("[^a-zA-Z0-9_]", "_");
+            if (baseId.length() > 56) {
+                baseId = baseId.substring(0, 56);
+            }
+            String id = baseId;
+            int suffix = 2;
+            while (!ids.add(id)) {
+                id = baseId + "_" + suffix++;
+            }
+            groups.add(new ScmConfigurationProfile.Group(id,
+                    entry.getKey().replace('_', ' '), entry.getValue()));
+        }
+        ScmConfigurationProfile seeded = ScmConfigurationProfile.empty();
+        seeded.setOrientationOverride(existing.orientationOverride());
+        seeded.setVehicleType(existing.vehicleType());
+        seeded.setSteeringType(existing.steeringType());
+        seeded.setIkGait(existing.ikGait());
+        seeded.replace(mapId, groups, Map.of(), existing.excludedUnits());
+        controller.setScmConfigurationProfile(seeded);
+    }
+
+    /**
+     * Build a control map from the explicit SCM configuration. Unlike the
+     * compatibility initializer above this does not crawl the assembled body,
+     * freeze it, or apply any calibration controls. The saved profile is the
+     * player's declaration of the control surface; Sable poses and the block
+     * adapters provide the current geometry and capacity at initialization
+     * time, while ordinary live feedback deals with residual response error.
+     */
+    private void readConfiguredPropulsionUnits(ServerSubLevel root) {
+        ScmConfigurationProfile profile = controller.getScmConfigurationProfile();
+        Set<ScmConfigurationProfile.UnitReference> configured = new LinkedHashSet<>();
+        profile.groups().forEach(group -> configured.addAll(group.units()));
+        if (configured.isEmpty()) {
+            profileDrivenInitialization = false;
+            phase = Phase.CONFIGURING;
+            status = "SCM configuration does not contain any assigned actuators";
+            progress = 0.0D;
+            return;
+        }
+
+        calibrationUnits.clear();
+        calibrationBearings.clear();
+        calibrationDockingConnectors.clear();
+        calibrationSubLevels.clear();
+        calibrationCrnDisplays.clear();
+        calibrationAccDisplays.clear();
+        calibrationSeats.clear();
+        Map<PropulsionUnitKey, ShipControlMap.PropulsionUnit> reusableUnits =
+                reusablePropulsionUnits(reconciliationBaseMap);
+        Set<UUID> visitedSubLevels = new LinkedHashSet<>();
+        Set<ScmConfigurationProfile.UnitReference> resolved = new LinkedHashSet<>();
+        Level lookupLevel = controller.getLevel();
+
+        // Actuator groups are explicit, but docking connectors are passive ship
+        // topology. They must always survive a profile-driven map rebuild or a
+        // scheduled dock command has no connector to approach or activate.
+        List<SubLevel> ownedSubLevels = new ArrayList<>(initShipSubLevels(root));
+        ownedSubLevels.removeIf(subLevel -> subLevel == null || subLevel.isRemoved()
+                || initForeignSubLevelIds.contains(subLevel.getUniqueId()));
+        if (ownedSubLevels.stream().noneMatch(subLevel -> root.getUniqueId()
+                .equals(subLevel.getUniqueId()))) {
+            ownedSubLevels.add(root);
+        }
+        ownedSubLevels.sort(Comparator.comparing(subLevel -> subLevel.getUniqueId().toString()));
+        ownedSubLevels.forEach(subLevel -> calibrationSubLevels.put(subLevel.getUniqueId(), subLevel));
+        if (initializationFilters.mapsDockingConnectors()) {
+            collectCalibrationDockingConnectors(root, ownedSubLevels);
+        }
+        discoverCrnDisplays(ownedSubLevels);
+        calibrationSeats.addAll(discoverMountedSeats(ownedSubLevels));
+
+        for (ScmConfigurationProfile.UnitReference reference : configured) {
+            if (!reference.isValid()) {
+                continue;
+            }
+            SubLevel subLevel = SableLevelApi.subLevel(lookupLevel, reference.subLevelId());
+            if (subLevel == null || subLevel.isRemoved()) {
+                continue;
+            }
+            visitedSubLevels.add(subLevel.getUniqueId());
+            calibrationSubLevels.put(subLevel.getUniqueId(), subLevel);
+            // The collector can expose a render/assembly mirror for a loaded
+            // sub-level. SCM probes must bind the authoritative live entity:
+            // otherwise their liveness test rejects every unit before the
+            // allocator is allowed to drive it.
+            BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
+                    lookupLevel, reference.subLevelId(), reference.blockPosition());
+            if (blockEntity == null) {
+                blockEntity = SubLevelBlockEntityCollector.getBlockEntity(
+                        subLevel, reference.blockPosition());
+            }
+            BlockState state = blockEntity == null
+                    ? subLevel.getLevel().getBlockState(reference.blockPosition())
+                    : blockEntity.getBlockState();
+            if (state.isAir()) {
+                continue;
+            }
+            ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock());
+            List<Actuator> configuredActuators = configuredActuatorsFor(
+                    reference, subLevel, blockEntity, root);
+            for (Actuator actuator : configuredActuators) {
+                calibrationUnits.add(new CalibrationUnit(
+                        subLevel.getUniqueId(), reference.blockPosition(), blockId.toString(),
+                        rootPosition(root, subLevel, actuator.localForcePosition()),
+                        rootDirection(root, subLevel, actuator.localForceDirection()), actuator,
+                        reusableUnits.get(new PropulsionUnitKey(
+                                subLevel.getUniqueId(), reference.blockPosition(),
+                                blockId.toString(), actuator.kind())), false, true));
+                resolved.add(reference);
+            }
+        }
+        calibrationUnits.sort(Comparator
+                .comparing((CalibrationUnit unit) -> unit.subLevelId.toString())
+                .thenComparing(unit -> unit.blockPosition)
+                .thenComparing(unit -> unit.actuator.kind()));
+        configurationCandidates = List.copyOf(configured);
+        calibrationUnitIndex = 0;
+        calibrationSampleIndex = 0;
+        sampleSettleTicks = 0;
+        resetCalSamples();
+        profileDrivenInitialization = false;
+
+        if (calibrationUnits.isEmpty()) {
+            phase = Phase.CONFIGURING;
+            status = "No configured SCM actuators are currently loaded";
+            progress = 0.0D;
+            return;
+        }
+        if (resolved.size() != configured.size()) {
+            status = "Using " + calibrationUnits.size() + " configured SCM actuators ("
+                    + (configured.size() - resolved.size()) + " unavailable)";
+        } else {
+            status = "Building SCM control map from configured live adapters";
+        }
+        // There is intentionally no CALIBRATING phase here. The map captures
+        // current positions, orientations, controls and safe adapter limits;
+        // live SCM feedback corrects error without a probe sweep.
+        phase = Phase.SAVING;
+        progress = 0.92D;
+    }
+
+    // Record passive docking topology for both discovery and explicit-profile
+    // map construction. Connector indices are deterministic because schedule
+    // data persists those indices in target-point references.
+    private void collectCalibrationDockingConnectors(
+            ServerSubLevel root,
+            Collection<? extends SubLevel> subLevels
+    ) {
+        clearCalibrationDockingConnectorBindings();
+        calibrationDockingConnectors.clear();
+        if (root == null || subLevels == null) {
+            return;
+        }
+        List<SubLevel> ordered = new ArrayList<>();
+        for (SubLevel subLevel : subLevels) {
+            if (subLevel != null && !subLevel.isRemoved()) {
+                ordered.add(subLevel);
+            }
+        }
+        ordered.sort(Comparator.comparing(subLevel -> subLevel.getUniqueId().toString()));
+        for (SubLevel subLevel : ordered) {
+            for (BlockEntity blockEntity : SubLevelBlockEntityCollector.getBlockEntities(subLevel)) {
+                if (!isDockingConnector(blockEntity)) {
+                    continue;
+                }
+                Direction facing = blockEntity.getBlockState().getValue(BlockStateProperties.FACING);
+                Vec3 localFacing = Vec3.atLowerCornerOf(facing.getNormal());
+                Vec3 localTip = blockEntity.getBlockPos().getCenter()
+                        .add(localFacing.scale(1.5D));
+                calibrationDockingConnectors.add(new ShipControlMap.DockingConnector(
+                        calibrationDockingConnectors.size(), subLevel.getUniqueId(),
+                        blockEntity.getBlockPos(), rootPosition(root, subLevel, localTip),
+                        rootDirection(root, subLevel, localFacing)));
+            }
+        }
+        calibrationDockingConnectors.sort(Comparator
+                .comparing((ShipControlMap.DockingConnector connector) ->
+                        connector.subLevelId().toString())
+                .thenComparing(ShipControlMap.DockingConnector::blockPosition));
+        for (int idx = 0; idx < calibrationDockingConnectors.size(); idx++) {
+            ShipControlMap.DockingConnector connector = calibrationDockingConnectors.get(idx);
+            calibrationDockingConnectors.set(idx, new ShipControlMap.DockingConnector(
+                    idx, connector.subLevelId(), connector.blockPosition(),
+                    connector.rootTipPosition(), connector.rootFacing()));
+        }
+        Level level = controller.getLevel();
+        if (level == null || level.isClientSide) return;
+        for (ShipControlMap.DockingConnector connector : calibrationDockingConnectors) {
+            DockingConnectorAutomation.bindToShipControlModule(
+                    DockingConnectorAutomation.resolve(
+                            level, connector.subLevelId(), connector.blockPosition()),
+                    controller.getShipName(), connector.index());
+        }
+    }
+
+    // Clear the previous SCM connector bindings
+    private void clearCalibrationDockingConnectorBindings() {
+        Level level = controller.getLevel();
+        if (level == null || level.isClientSide) return;
+        for (ShipControlMap.DockingConnector connector : calibrationDockingConnectors) {
+            DockingConnectorAutomation.clearShipControlModuleBinding(
+                    DockingConnectorAutomation.resolve(
+                            level, connector.subLevelId(), connector.blockPosition()));
+        }
+    }
+
+    // Resolve one player-authored block binding through the same SCM probe
+    // registry used by linker targets. A selected face becomes a real injected
+    // redstone plane, while adapter-specific probes (for example Directional
+    // Gearshift) can translate that face into their native safe control path.
+    private List<Actuator> configuredActuatorsFor(
+            ScmConfigurationProfile.UnitReference reference,
+            SubLevel subLevel,
+            @Nullable BlockEntity blockEntity,
+            ServerSubLevel root
+    ) {
+        List<Actuator> ordinary = actuatorsFor(blockEntity);
+        boolean requestedProbe = reference.usesFaceControl()
+                || reference.adapter().startsWith("scm:") || ordinary.isEmpty();
+        if (requestedProbe) {
+            BlockState state = subLevel.getLevel().getBlockState(reference.blockPosition());
+            ResourceLocation id = BuiltInRegistries.BLOCK.getKey(state.getBlock());
+            Direction face = reference.face();
+            ScmTarget target = new ScmTarget(reference.subLevelId(), reference.blockPosition(),
+                    id == null ? "minecraft:air" : id.toString(),
+                    state.getBlock().getName().getString(),
+                    face == null ? null : reference.blockPosition().relative(face), face);
+            Vec3 suggestedDirection = face == null ? Vec3.ZERO
+                    : Vec3.atLowerCornerOf(face.getNormal());
+            String requestedAdapter = configuredProbeAdapterId(reference.adapter());
+            List<Actuator> probes = ScmControlProbeRegistry.create(
+                            subLevel.getLevel(), blockEntity, target, suggestedDirection)
+                    .stream().filter(probe -> requestedAdapter.isBlank()
+                            || requestedAdapter.equals(probe.adapterId()))
+                    .map(probe -> (Actuator) new ScmProbeActuator(
+                            subLevel.getLevel(), target, blockEntity, probe))
+                    .toList();
+            if (!probes.isEmpty() || reference.adapter().startsWith("scm:")) {
+                return probes;
+            }
+        }
+        // This is an explicit profile binding, not automatic discovery. The
+        // initialization filters only constrain the latter; applying them
+        // here made an Auto-only profile silently drop its selected ordinary
+        // actuators whenever the initializer was configured not to map
+        // thruster providers.
+        return ordinary.stream().filter(actuator -> reference.adapter().isBlank()
+                || reference.adapter().equals(actuator.kind())).toList();
+    }
+
+    private static String configuredProbeAdapterId(String adapter) {
+        if (adapter == null || !adapter.startsWith("scm:")) {
+            return "";
+        }
+        String value = adapter.substring("scm:".length());
+        int faceSuffix = value.indexOf(":face_");
+        return faceSuffix < 0 ? value : value.substring(0, faceSuffix);
     }
 
     // Configure the V2 cal units
@@ -2756,6 +5545,77 @@ public final class ShipControlModuleRuntime {
         }
     }
 
+    // Merge selected SCM configuration controls into the physical calibration
+    // scan. A normal block actuator is already discovered above and is skipped
+    // by its stable key; a face/probe control has its own SCM adapter key and
+    // is therefore retained as an independent calibrated control surface.
+    private void discoverConfiguredScmControls(
+            ServerSubLevel root,
+            List<SubLevel> subLevels,
+            Map<PropulsionUnitKey, ShipControlMap.PropulsionUnit> reusableUnits
+    ) {
+        ScmConfigurationProfile profile = controller.getScmConfigurationProfile();
+        List<ScmConfigurationProfile.UnitReference> references = profile.groups().stream()
+                .flatMap(group -> group.units().stream())
+                .filter(ScmConfigurationProfile.UnitReference::isValid)
+                .distinct()
+                .sorted(Comparator
+                        .comparing((ScmConfigurationProfile.UnitReference reference) ->
+                                reference.subLevelId().toString())
+                        .thenComparing(ScmConfigurationProfile.UnitReference::blockPosition)
+                        .thenComparing(ScmConfigurationProfile.UnitReference::adapter)
+                        .thenComparing(reference -> reference.face() == null
+                                ? "" : reference.face().getSerializedName()))
+                .toList();
+        if (references.isEmpty()) {
+            return;
+        }
+        Map<UUID, SubLevel> subLevelsById = new LinkedHashMap<>();
+        subLevels.forEach(subLevel -> subLevelsById.put(subLevel.getUniqueId(), subLevel));
+        Set<PropulsionUnitKey> knownUnits = new LinkedHashSet<>();
+        for (CalibrationUnit unit : calibrationUnits) {
+            knownUnits.add(new PropulsionUnitKey(
+                    unit.subLevelId, unit.blockPosition, unit.blockId, unit.actuator.kind()));
+        }
+        Level ownerLevel = controller.getLevel();
+        for (ScmConfigurationProfile.UnitReference reference : references) {
+            SubLevel subLevel = subLevelsById.get(reference.subLevelId());
+            if (subLevel == null || subLevel.isRemoved()) {
+                continue;
+            }
+            BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
+                    ownerLevel, reference.subLevelId(), reference.blockPosition());
+            if (blockEntity == null) {
+                blockEntity = SubLevelBlockEntityCollector.getBlockEntity(
+                        subLevel, reference.blockPosition());
+            }
+            BlockState state = blockEntity == null
+                    ? subLevel.getLevel().getBlockState(reference.blockPosition())
+                    : blockEntity.getBlockState();
+            if (state.isAir()) {
+                continue;
+            }
+            ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock());
+            if (blockId == null) {
+                continue;
+            }
+            for (Actuator actuator : configuredActuatorsFor(
+                    reference, subLevel, blockEntity, root)) {
+                PropulsionUnitKey key = new PropulsionUnitKey(
+                        subLevel.getUniqueId(), reference.blockPosition(),
+                        blockId.toString(), actuator.kind());
+                if (!knownUnits.add(key)) {
+                    continue;
+                }
+                calibrationUnits.add(new CalibrationUnit(
+                        subLevel.getUniqueId(), reference.blockPosition(), blockId.toString(),
+                        rootPosition(root, subLevel, actuator.localForcePosition()),
+                        rootDirection(root, subLevel, actuator.localForceDirection()), actuator,
+                        reusableUnits.get(key), false, reference.usesFaceControl()));
+            }
+        }
+    }
+
     // Get the live SCM targets
     private List<ScmTarget> liveScmTargets(Map<UUID, SubLevel> subLevelsById) {
         return ContraptionNetworkLinkerData.scmTargets(
@@ -2773,7 +5633,7 @@ public final class ShipControlModuleRuntime {
             return new ScmTarget(target.subLevelId(), target.blockPosition(),
                     id == null ? target.blockId() : id.toString(),
                     target.label().isBlank() ? state.getBlock().getName().getString() : target.label(),
-                    target.signalPosition(), target.signalFace());
+                    target.signalPosition(), target.signalFace(), target.controlChannelId());
         }).toList();
     }
 
@@ -3076,7 +5936,9 @@ public final class ShipControlModuleRuntime {
                 + roundedResponse(theoreticalThrust) + '|'
                 + roundedResponse(probeResponse) + '|'
                 + vectorOctant(unit.forceDirection) + '|'
-                + canonicalInversionOctant(torque);
+                + canonicalInversionOctant(torque)
+                + (unit.actuator instanceof ScmProbeActuator probeActuator && probeActuator.probe.controlsSpeed()
+                ? "|branch:" + unit.subLevelId + ':' + unit.blockPosition.asLong() : "");
     }
 
     // Get the V2 probe response
@@ -3124,24 +5986,10 @@ public final class ShipControlModuleRuntime {
 
     // Get the V2 representative sweep
     private static List<CalibrationPoint> v2RepresentativeSweep(Actuator actuator) {
-        if (actuator.supportsControlEnvelope()) {
-            return v2EnvelopeSweep();
-        }
         List<CalibrationPoint> points = new ArrayList<>(V2_THROTTLE_STEPS.length);
         for (double throttle : V2_THROTTLE_STEPS) {
             points.add(new CalibrationPoint(
                     actuator.minControl(), actuator.maxControl(), throttle));
-        }
-        return List.copyOf(points);
-    }
-
-    // Get the V2 envelope sweep
-    private static List<CalibrationPoint> v2EnvelopeSweep() {
-        List<CalibrationPoint> points = new ArrayList<>(
-                V2_ENVELOPE_EFFECTIVE_STEPS.length);
-        for (double effectiveControl : V2_ENVELOPE_EFFECTIVE_STEPS) {
-            double modulation = envelopeModulation(effectiveControl);
-            points.add(new CalibrationPoint(0.0D, modulation, modulation));
         }
         return List.copyOf(points);
     }
@@ -3326,6 +6174,40 @@ public final class ShipControlModuleRuntime {
                 .toList();
         calibrationAccDisplays.clear();
         calibrationAccDisplays.addAll(uniqueAccDisplays);
+    }
+
+    // Discover mounted seats once while the SCM builds its durable body map
+    private static List<ShipControlMap.Seat> discoverMountedSeats(
+            Collection<? extends SubLevel> subLevels
+    ) {
+        List<ShipControlMap.Seat> seats = new ArrayList<>();
+        if (subLevels == null || subLevels.isEmpty()) {
+            return seats;
+        }
+        int scannedBlocks = 0;
+        List<? extends SubLevel> ordered = subLevels.stream()
+                .filter(subLevel -> subLevel != null && !subLevel.isRemoved())
+                .sorted(Comparator.comparing(subLevel -> subLevel.getUniqueId().toString()))
+                .toList();
+        for (SubLevel subLevel : ordered) {
+            if (scannedBlocks >= MAX_MAPPED_SEAT_BLOCKS) break;
+            int remaining = MAX_MAPPED_SEAT_BLOCKS - scannedBlocks;
+            for (SubLevelBlockEntityCollector.LoadedBlock block
+                    : SubLevelBlockEntityCollector.getLoadedBlocks(subLevel, remaining)) {
+                scannedBlocks++;
+                BlockEntity blockEntity = block.state().hasBlockEntity()
+                        ? SubLevelBlockEntityCollector.getBlockEntity(
+                        subLevel, block.position()) : null;
+                if (MountedSeatRegistry.isSeat(
+                        subLevel.getLevel(), block.position(), block.state(), blockEntity)) {
+                    seats.add(new ShipControlMap.Seat(
+                            subLevel.getUniqueId(), block.position()));
+                }
+            }
+        }
+        return seats.stream().distinct().sorted(Comparator
+                .comparing((ShipControlMap.Seat seat) -> seat.subLevelId().toString())
+                .thenComparing(ShipControlMap.Seat::blockPosition)).toList();
     }
 
     // Get the bearing child sub levels
@@ -3610,6 +6492,7 @@ public final class ShipControlModuleRuntime {
             if (unit.actuator.usesPhysicalCalibration() && !sampleNeutralized) {
                 unit.actuator.neutralize();
                 activateCarWheelDrive(unit);
+                activateSpeedCalibrationSelectors(unit);
                 sampleNeutralized = true;
                 sampleSettleTicks = 1;
                 updateCalProgress();
@@ -3680,6 +6563,7 @@ public final class ShipControlModuleRuntime {
         }
 
         unit.actuator.restore();
+        restoreSpeedCalibrationSelectors();
         calibrationUnitIndex++;
         calibrationSampleIndex = 0;
         if (initializationV2 && !v2RepresentativeSweepStarted
@@ -4036,6 +6920,42 @@ public final class ShipControlModuleRuntime {
         }
     }
 
+    // Measure a speed controller with its authored drive and lift selectors engaged
+    private void activateSpeedCalibrationSelectors(CalibrationUnit unit){
+        if(!(unit.actuator instanceof ScmProbeActuator probeActuator) || !probeActuator.probe.controlsSpeed()) return;
+        if(speedCalibrationSelectors.isEmpty()){
+            ScmConfigurationProfile configuration = controller.getScmConfigurationProfile();
+            if(configuration == null) return;
+            Set<ScmConfigurationProfile.UnitReference> selectors = configuration.unitsForExplicitActions(
+                    Set.of("ship_forward", "ship_ascend"));
+            Set<ScmConfigurationProfile.UnitReference> speedControls = configuredAccelerationUnits(configuration);
+            for(int idx = 0; idx < calibrationUnits.size(); idx++){
+                CalibrationUnit candidate = calibrationUnits.get(idx);
+                if(candidate == unit || !candidate.actuator.controllable() || !candidate.actuator.isAvailable()) continue;
+                if(!candidate.actuator.isKineticControl() && !candidate.actuator.isFaceActionControl()
+                        && !(candidate.actuator instanceof ScmProbeActuator probe && probe.probe.controlsSpeed())) continue;
+                ShipControlMap.PropulsionUnit mapped = candidate.toMapUnit(idx);
+                if(speedControls.stream().anyMatch(reference -> configurationReferenceMatchesUnit(reference, mapped))) continue;
+                if(selectors.stream().anyMatch(reference -> configurationReferenceMatchesUnit(reference, mapped))){
+                    speedCalibrationSelectors.add(candidate.actuator);
+                }
+            }
+        }
+        for(Actuator actuator : speedCalibrationSelectors) actuator.apply(1.0D);
+    }
+
+    // Restore selector ownership after each independently measured drive branch
+    private void restoreSpeedCalibrationSelectors(){
+        for(Actuator actuator : speedCalibrationSelectors){
+            try{
+                actuator.restore();
+            }catch(RuntimeException err){
+                LOGGER.log(System.Logger.Level.WARNING, "Could not restore a speed calibration selector", err);
+            }
+        }
+        speedCalibrationSelectors.clear();
+    }
+
     // Apply the calibration sample
     private void applyCalibrationSample(
             CalibrationUnit unit, CalibrationPoint point
@@ -4048,6 +6968,7 @@ public final class ShipControlModuleRuntime {
         }
         unit.actuator.applyCalibration(point);
         activateCarWheelDrive(unit);
+        activateSpeedCalibrationSelectors(unit);
     }
 
     // Restore the car wheel drive
@@ -4134,6 +7055,11 @@ public final class ShipControlModuleRuntime {
 
     // Get the assembly center of mass
     private Vec3 assemblyCenterOfMass(ServerSubLevel root, Vec3 fallback) {
+        SableAssemblyDynamicsApi.Snapshot dynamics = SableAssemblyDynamicsApi.sample(
+                assemblyTopology(root));
+        if (dynamics.massAvailable()) {
+            return dynamics.centerOfMass();
+        }
         List<MassPoint> massPoints = new ArrayList<>();
         for (SubLevel connected : connectedShipSubLevels(root)) {
             if (!(connected instanceof ServerSubLevel body)) {
@@ -4244,7 +7170,7 @@ public final class ShipControlModuleRuntime {
         ShipControlMap created = new ShipControlMap(id, dimension, root.getUniqueId(),
                 controller.getBlockPos(), centerOfMass, units, bearings,
                 calibrationDockingConnectors, calibrationCrnDisplays,
-                calibrationAccDisplays, System.currentTimeMillis());
+                calibrationAccDisplays, calibrationSeats, System.currentTimeMillis());
         if (!ShipControlMapStore.save(level, created)) {
             throw new IllegalStateException("Could not write " + ShipControlMapStore.DATABASE_NAME);
         }
@@ -4262,6 +7188,7 @@ public final class ShipControlModuleRuntime {
         calibrationDockingConnectors.clear();
         calibrationCrnDisplays.clear();
         calibrationAccDisplays.clear();
+        calibrationSeats.clear();
         calibrationSubLevels.clear();
         initializationSubLevels.clear();
         initBodyStates.clear();
@@ -4360,6 +7287,7 @@ public final class ShipControlModuleRuntime {
             activeAssemblyPrimaryMap = null;
             activeAssemblyTopology = null;
             activeScmActuatorOwners = Map.of();
+            activeAutomaticCarriageUnits = Set.of();
             activeAssemblyMapSignature = Long.MIN_VALUE;
             activeAssemblySubLevelIds = Set.of();
             activeCarriageCount = 0;
@@ -4369,6 +7297,7 @@ public final class ShipControlModuleRuntime {
 
         // -----------------------------------------------------ASSEMBLY TOPOLOGY-------------------------------------------------
 
+        refreshExternalConnectionTopology(root);
         SableAssemblyTopologyApi.Topology topology = assemblyTopology(root);
         long gameTime = controller.getLevel() == null
                 ? Long.MIN_VALUE : controller.getLevel().getGameTime();
@@ -4380,14 +7309,13 @@ public final class ShipControlModuleRuntime {
                 && activeAssemblyTopology == topology && !safetyRefreshDue) {
             return activeAssemblyMap;
         }
-        updateCollisionTopology(topology);
+        updateCollisionTopology(topology, connectedShipSubLevels(root));
         if (!topology.available()) {
             if (activeAssemblyMap != null
                     || activeAssemblyMapSignature != Long.MIN_VALUE
                     || !activeAssemblySubLevelIds.isEmpty()) {
                 releaseControlAuthority();
                 releaseControlActuators();
-                allocationWorkspace.reset();
                 reversedCalDirs.clear();
                 calDirMapId = null;
             }
@@ -4395,6 +7323,7 @@ public final class ShipControlModuleRuntime {
             activeAssemblyPrimaryMap = null;
             activeAssemblyTopology = topology;
             activeScmActuatorOwners = Map.of();
+            activeAutomaticCarriageUnits = Set.of();
             activeAssemblyMapSignature = Long.MIN_VALUE;
             activeAssemblySubLevelIds = Set.of();
             activeCarriageCount = 0;
@@ -4425,6 +7354,20 @@ public final class ShipControlModuleRuntime {
                 : topology.carriagePartitions()) {
             if (partition.primary()) {
                 primaryOwned.addAll(partition.bodyIds());
+                for (SableAssemblyTopologyApi.CarriagePartition automaticPartition
+                        : automaticPrimaryCarriagePartitions(
+                        topology, partition, primaryMap)) {
+                    ShipControlMap carriageMap = mainCarriageMap(
+                            root, topology, automaticPartition, primaryMap);
+                    if (carriageMap == null) {
+                        continue;
+                    }
+                    activeMainCarriageMapIds.add(carriageMap.id());
+                    attached.add(new ScmMapCompositionApi.Fragment<>(
+                            carriageMap.id(), carriageMap.rootSubLevelId(),
+                            automaticPartition.bodyIds(), new AssemblyMapSource(
+                            carriageMap, true, controller)));
+                }
                 continue;
             }
             ForeignScmMap foreign = foreignMaps.get(partition.rootSubLevelId());
@@ -4458,15 +7401,18 @@ public final class ShipControlModuleRuntime {
         ScmMapCompositionApi.Composition<AssemblyMapSource> composition =
                 ScmMapCompositionApi.compose(
                         primary, attached, topology.loadedBodyIds());
+        Set<AssemblyUnitIdentity> automaticCarriageUnits =
+                automaticCarriageUnitIdentities(
+                        composition, activeMainCarriageMapIds);
         long signature = activeAssemblySignature(topology, composition);
         if (activeAssemblyMap != null && activeAssemblyMapSignature == signature) {
             activeAssemblyMap = composeAssemblyMap(root, primaryMap, composition);
             activeAssemblyPrimaryMap = primaryMap;
             activeAssemblyTopology = topology;
             activeScmActuatorOwners = scmActuatorOwners(composition);
+            activeAutomaticCarriageUnits = automaticCarriageUnits;
             activeAssemblySubLevelIds = topology.loadedBodyIds();
-            activeCarriageCount = Math.max(0,
-                    topology.carriagePartitions().size() - 1);
+            activeCarriageCount = attached.size();
             absorbedScmMapCount = foreignMaps.size();
             lastMainCarriageMapSafetyRefreshTick = mainCarriageMaps.isEmpty()
                     ? Long.MIN_VALUE : gameTime;
@@ -4475,17 +7421,16 @@ public final class ShipControlModuleRuntime {
 
         ShipControlMap composed = composeAssemblyMap(root, primaryMap, composition);
         releaseControlActuators();
-        allocationWorkspace.reset();
         reversedCalDirs.clear();
         calDirMapId = null;
         activeAssemblyMap = composed;
         activeAssemblyPrimaryMap = primaryMap;
         activeAssemblyTopology = topology;
         activeScmActuatorOwners = scmActuatorOwners(composition);
+        activeAutomaticCarriageUnits = automaticCarriageUnits;
         activeAssemblyMapSignature = signature;
         activeAssemblySubLevelIds = topology.loadedBodyIds();
-        activeCarriageCount = Math.max(0,
-                topology.carriagePartitions().size() - 1);
+        activeCarriageCount = attached.size();
         absorbedScmMapCount = foreignMaps.size();
         lastMainCarriageMapSafetyRefreshTick = mainCarriageMaps.isEmpty()
                 ? Long.MIN_VALUE : gameTime;
@@ -4521,6 +7466,32 @@ public final class ShipControlModuleRuntime {
             }
         }
         return Map.copyOf(owners);
+    }
+
+    // Get the units from automatically discovered carriage fragments
+    private static Set<AssemblyUnitIdentity> automaticCarriageUnitIdentities(
+            ScmMapCompositionApi.Composition<AssemblyMapSource> composition,
+            Set<UUID> carriageFragmentIds
+    ) {
+        if (composition == null || carriageFragmentIds == null
+                || carriageFragmentIds.isEmpty()) {
+            return Set.of();
+        }
+        Set<AssemblyUnitIdentity> units = new LinkedHashSet<>();
+        for (ScmMapCompositionApi.SelectedFragment<AssemblyMapSource> selection
+                : composition.fragments()) {
+            if (!carriageFragmentIds.contains(selection.fragment().fragmentId())
+                    || selection.value() == null) {
+                continue;
+            }
+            for (ShipControlMap.PropulsionUnit unit : selection.value().map().units()) {
+                if (selection.effectiveSubLevelIds().contains(unit.subLevelId())) {
+                    units.add(new AssemblyUnitIdentity(unit.subLevelId(),
+                            unit.blockPosition(), unit.adapter()));
+                }
+            }
+        }
+        return Set.copyOf(units);
     }
 
     // Get the foreign SCM maps
@@ -4662,6 +7633,64 @@ public final class ShipControlModuleRuntime {
                     .reduce("", String::concat);
         }
         return UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8));
+    }
+
+    // Get dynamically attached bodies inside the primary structural partition
+    private static List<SableAssemblyTopologyApi.CarriagePartition>
+    automaticPrimaryCarriagePartitions(
+            SableAssemblyTopologyApi.Topology topology,
+            SableAssemblyTopologyApi.CarriagePartition primaryPartition,
+            ShipControlMap primaryMap
+    ) {
+        if (topology == null || primaryPartition == null || primaryMap == null) {
+            return List.of();
+        }
+        Set<UUID> mappedBodies = mapSubLevelIds(primaryMap);
+        Set<UUID> candidates = primaryPartition.bodyIds().stream()
+                .filter(id -> !mappedBodies.contains(id))
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        if (candidates.isEmpty()) {
+            return List.of();
+        }
+        Map<UUID, List<UUID>> structural = new LinkedHashMap<>();
+        for (SableAssemblyTopologyApi.Edge edge : topology.edges()) {
+            if (edge.kind() != SableAssemblyConnection.Kind.STRUCTURAL
+                    || !candidates.contains(edge.firstSubLevelId())
+                    || !candidates.contains(edge.secondSubLevelId())) {
+                continue;
+            }
+            structural.computeIfAbsent(edge.firstSubLevelId(), ignored -> new ArrayList<>())
+                    .add(edge.secondSubLevelId());
+            structural.computeIfAbsent(edge.secondSubLevelId(), ignored -> new ArrayList<>())
+                    .add(edge.firstSubLevelId());
+        }
+        Set<UUID> unvisited = new LinkedHashSet<>(candidates);
+        List<SableAssemblyTopologyApi.CarriagePartition> partitions = new ArrayList<>();
+        while (!unvisited.isEmpty()) {
+            UUID seed = unvisited.stream().min(Comparator.comparing(UUID::toString))
+                    .orElseThrow();
+            Set<UUID> component = new LinkedHashSet<>();
+            ArrayDeque<UUID> pending = new ArrayDeque<>();
+            pending.add(seed);
+            while (!pending.isEmpty()) {
+                UUID current = pending.removeFirst();
+                if (!component.add(current)) {
+                    continue;
+                }
+                structural.getOrDefault(current, List.of()).stream()
+                        .filter(candidates::contains)
+                        .filter(next -> !component.contains(next))
+                        .forEach(pending::addLast);
+            }
+            unvisited.removeAll(component);
+            List<UUID> bodyIds = component.stream()
+                    .sorted(Comparator.comparing(UUID::toString)).toList();
+            partitions.add(new SableAssemblyTopologyApi.CarriagePartition(
+                    bodyIds.getFirst(), bodyIds, primaryPartition.depth(), false));
+        }
+        return partitions.stream().sorted(Comparator.comparing(
+                SableAssemblyTopologyApi.CarriagePartition::rootSubLevelId,
+                Comparator.comparing(UUID::toString))).toList();
     }
 
     // Get the main carriage map
@@ -4808,7 +7837,8 @@ public final class ShipControlModuleRuntime {
                 + candidate.bearings().size()
                 + candidate.dockingConnectors().size()
                 + candidate.crnDisplays().size()
-                + candidate.accDisplays().size();
+                + candidate.accDisplays().size()
+                + candidate.seats().size();
         return calibratedUnits * 1_000_000L
                 + Math.min(999_999L, calibrationSamples * 1_000L + mappedContent);
     }
@@ -4828,7 +7858,8 @@ public final class ShipControlModuleRuntime {
                 && sameMainCarriageConnectors(
                         first.dockingConnectors(), second.dockingConnectors())
                 && Objects.equals(first.crnDisplays(), second.crnDisplays())
-                && Objects.equals(first.accDisplays(), second.accDisplays());
+                && Objects.equals(first.accDisplays(), second.accDisplays())
+                && Objects.equals(first.seats(), second.seats());
     }
 
     // Check if this uses the same main carriage units
@@ -4901,7 +7932,7 @@ public final class ShipControlModuleRuntime {
                 rootBodyCenterOfMass(carriageRoot, fallbackCenter),
                 transformed.units(), transformed.bearings(),
                 transformed.dockingConnectors(), transformed.crnDisplays(),
-                transformed.accDisplays(), primaryMap.updatedAt());
+                transformed.accDisplays(), transformed.seats(), primaryMap.updatedAt());
     }
 
     // Scan the main carriage map
@@ -4925,6 +7956,7 @@ public final class ShipControlModuleRuntime {
         List<ShipControlMap.DockingConnector> connectors = new ArrayList<>();
         Set<ShipControlMap.CrnDisplay> crnDisplays = new LinkedHashSet<>();
         Set<ShipControlMap.AccDisplay> accDisplays = new LinkedHashSet<>();
+        List<ShipControlMap.Seat> seats = discoverMountedSeats(bodies);
 
         for (SubLevel body : bodies) {
             for (BlockEntity blockEntity
@@ -5012,6 +8044,7 @@ public final class ShipControlModuleRuntime {
                         .comparing((ShipControlMap.AccDisplay display) ->
                                 display.subLevelId().toString())
                         .thenComparing(ShipControlMap.AccDisplay::blockPosition)).toList(),
+                seats,
                 System.currentTimeMillis());
     }
 
@@ -5213,6 +8246,7 @@ public final class ShipControlModuleRuntime {
         Set<AssemblyBlockIdentity> connectorIdentities = new LinkedHashSet<>();
         Set<ShipControlMap.CrnDisplay> crnDisplays = new LinkedHashSet<>();
         Set<ShipControlMap.AccDisplay> accDisplays = new LinkedHashSet<>();
+        Set<ShipControlMap.Seat> seats = new LinkedHashSet<>();
         // ------------------------------------SOURCE FRAGMENTS------------------------------------
         long updatedAt = primaryMap.updatedAt();
 
@@ -5303,6 +8337,10 @@ public final class ShipControlModuleRuntime {
                     .filter(display -> selection.effectiveSubLevelIds()
                             .contains(display.subLevelId()))
                     .forEach(accDisplays::add);
+            sourceMap.seats().stream()
+                    .filter(seat -> selection.effectiveSubLevelIds()
+                            .contains(seat.subLevelId()))
+                    .forEach(seats::add);
         }
 
         // -----------------------------------------------------FINAL MAP-----------------------------------------------------
@@ -5310,7 +8348,8 @@ public final class ShipControlModuleRuntime {
         return new ShipControlMap(
                 primaryMap.id(), primaryMap.dimension(), root.getUniqueId(),
                 primaryMap.controllerPosition(), centerOfMass, units, bearings,
-                connectors, List.copyOf(crnDisplays), List.copyOf(accDisplays), updatedAt);
+                connectors, List.copyOf(crnDisplays), List.copyOf(accDisplays),
+                List.copyOf(seats), updatedAt);
     }
 
     // Get the assembly point
@@ -5391,6 +8430,7 @@ public final class ShipControlModuleRuntime {
 
     // Release the control authority
     private void releaseControlAuthority() {
+        releaseScheduleSplineConstraint();
         Level level = controller.getLevel();
         MinecraftServer server = level == null ? null : level.getServer();
         if (server != null && claimedAssemblyAuthorityKey != null
@@ -5444,6 +8484,7 @@ public final class ShipControlModuleRuntime {
     // Update the control
     private void tickControl() {
         if (map == null) {
+            releaseScheduleSplineConstraint();
             releaseNavResidency();
             return;
         }
@@ -5474,6 +8515,7 @@ public final class ShipControlModuleRuntime {
         }
 
         if (!hasActiveControlCommands()) {
+            airshipAttitudeHoldTargets.clear();
             releaseControlAuthority();
             releaseControlActuators();
             return;
@@ -5487,58 +8529,59 @@ public final class ShipControlModuleRuntime {
             releaseControlActuators();
             return;
         }
-        ShipControlMap effectiveMap = liveGeometryMap(
+        // Resolve every live profile group before reducing only physical
+        // allocation geometry to the currently requested directional action.
+        // Speed chains and other group-owned controls are applied later from
+        // this complete map, so navigation and altitude nodes cannot lose a
+        // configured auxiliary actuator before they are evaluated.
+        ShipControlMap liveMap = liveControlMap(
                 currentRoot, assemblyMap, liveCenterOfMass);
-        ControlDemand demand = demandFor(telemetry, effectiveMap, dynamics, topology);
-        List<ShipControlAllocator.CarriageDemand> carriageDemands =
-                carriageDemands(topology, dynamics, demand.torque());
-        applyBearingPlan(effectiveMap, demand, liveCenterOfMass, telemetry,
-                topology, carriageDemands);
-        boolean prioritizeTranslation = demand.force().lengthSqr() > 1.0E-12D;
-        ShipControlAllocator.Allocation allocation = ShipControlAllocator.allocateArticulated(
-                effectiveMap, carriageDemands, demand.force(),
-                demand.preferredDirection(), prioritizeTranslation, allocationWorkspace);
-        applyAllocation(effectiveMap, allocation.controls());
-        if (isControlMode(ScmBuiltinControlModes.CAR_ID)) {
-            applyCarControl(effectiveMap, demand, telemetry, topology);
+        // Scalar speed controls are controller inputs, never propulsion
+        // geometry. Keep them available to their dedicated application pass
+        // while removing their measured response from force allocation.
+        ShipControlMap effectiveMap = withoutScalarSpeedControlGeometry(liveMap);
+        ScmSteeringMode steeringMode = resolvedSteeringMode(liveMap);
+        effectiveMap = steeringModeGeometryMap(effectiveMap, steeringMode);
+        ControlDemand demand = demandFor(telemetry, liveMap, effectiveMap, dynamics, topology);
+        demand = steeringModeDemand(demand, steeringMode);
+        // Autonomous commands initially expose every channel they may need so
+        // demandFor() can plan from the complete calibrated map. Once the
+        // current force/torque demand is known, retain only the matching side
+        // of every opposing action pair. In particular this prevents a
+        // scheduled car from asserting both faces of one Directional Gearshift.
+        effectiveMap = actionRoutedGeometryMap(
+                effectiveMap, activeControlActionTypes(demand, effectiveMap));
+        demand = routedGravitySupport(demand, effectiveMap);
+        ArticulatedAllocationPlan articulatedPlan = articulatedAllocationPlan(
+                effectiveMap, topology, dynamics, demand.torque());
+        applyBearingPlan(effectiveMap, demand, liveCenterOfMass, telemetry, articulatedPlan);
+        boolean prioritizeTranslation = demand.force().lengthSqr() > 1.0E-12D
+                && (!articulatedPlan.available() || !articulatedPlan.yawDemanded());
+        ShipControlAllocator.Allocation allocation = articulatedPlan.available()
+                ? ShipControlAllocator.allocateArticulated(
+                effectiveMap, articulatedPlan.demands(), demand.force(),
+                demand.preferredDirection(), prioritizeTranslation)
+                : prioritizeTranslation
+                        ? ShipControlAllocator.allocateStableTranslationPriority(
+                        effectiveMap, demand.force(), demand.torque(), demand.preferredDirection())
+                        : ShipControlAllocator.allocateStable(
+                        effectiveMap, demand.force(), demand.torque(), demand.preferredDirection());
+        applyAllocation(effectiveMap, allocation.controls(), steeringMode);
+        applyScmFaceActionControls(liveMap, demand, steeringMode);
+        if (isControlMode(ScmBuiltinControlModes.IK_ID)) {
+            applyIkLocomotion(liveMap, demand, telemetry);
+        } else if (isControlMode(ScmBuiltinControlModes.GROUND_SEA_ID)
+                || steeringMode == ScmSteeringMode.TANK) {
+            applyGroundSeaControl(liveMap, effectiveMap, demand,
+                    telemetry, topology, steeringMode);
+        } else {
+            applyScmWheelSteering(effectiveMap, demand, telemetry, topology, steeringMode);
         }
+        applyAccelerationControls(liveMap, demand, topology);
+        // Scalar Deceleration and Brake controls are applied after every
+        // propulsion path and never participate in direction allocation.
+        applyConfiguredSpeedReductionControls(liveMap, demand);
         updateCommandCompletion(telemetry);
-    }
-
-    // Get the carriage demands
-    private static List<ShipControlAllocator.CarriageDemand> carriageDemands(
-            SableAssemblyTopologyApi.Topology topology,
-            SableAssemblyDynamicsApi.Snapshot dynamics,
-            Vec3 requestedTorque
-    ) {
-        if (topology == null || !topology.available()) {
-            return List.of();
-        }
-        List<ShipControlAllocator.CarriageDemand> demands = new ArrayList<>();
-        for (SableAssemblyTopologyApi.CarriagePartition partition
-                : topology.carriagePartitions()) {
-            double mass = 0.0D;
-            Vec3 weightedCenter = Vec3.ZERO;
-            for (UUID bodyId : partition.bodyIds()) {
-                SableAssemblyDynamicsApi.BodyDynamics body = dynamics.body(bodyId)
-                        .orElse(null);
-                if (body == null || !body.massAvailable()) {
-                    continue;
-                }
-                mass += body.mass();
-                weightedCenter = weightedCenter.add(
-                        body.centerOfMass().scale(body.mass()));
-            }
-            Vec3 centerOfMass = mass > 1.0E-9D
-                    ? weightedCenter.scale(1.0D / mass)
-                    : dynamics.body(partition.rootSubLevelId())
-                    .map(SableAssemblyDynamicsApi.BodyDynamics::centerOfMass)
-                    .orElse(dynamics.centerOfMass());
-            demands.add(new ShipControlAllocator.CarriageDemand(
-                    partition.rootSubLevelId(), new LinkedHashSet<>(partition.bodyIds()),
-                    centerOfMass, mass, requestedTorque, partition.primary()));
-        }
-        return List.copyOf(demands);
     }
 
     // Publish the mapped CRN displays
@@ -5587,14 +8630,137 @@ public final class ShipControlModuleRuntime {
         }
     }
 
+    // Build one constrained allocation request for the live carriage assembly
+    private ArticulatedAllocationPlan articulatedAllocationPlan(
+            ShipControlMap currentMap,
+            @Nullable SableAssemblyTopologyApi.Topology topology,
+            @Nullable SableAssemblyDynamicsApi.Snapshot dynamics,
+            Vec3 requestedTorque
+    ) {
+        if (topology == null || !topology.available() || dynamics == null
+                || !dynamics.massAvailable() || topology.carriagePartitions().size() <= 1) {
+            return ArticulatedAllocationPlan.EMPTY;
+        }
+
+        List<CarriageDynamics> carriages = new ArrayList<>();
+        Map<UUID, CarriageDynamics> carriagesByBody = new LinkedHashMap<>();
+        double totalMass = 0.0D;
+        for (SableAssemblyTopologyApi.CarriagePartition partition
+                : topology.carriagePartitions()) {
+            if (partition.bodyIds().isEmpty()) {
+                return ArticulatedAllocationPlan.EMPTY;
+            }
+            SableAssemblyDynamicsApi.Snapshot carriageDynamics =
+                    SableAssemblyDynamicsApi.aggregate(dynamics, partition.bodyIds());
+            if (!carriageDynamics.massAvailable()) {
+                return ArticulatedAllocationPlan.EMPTY;
+            }
+            double mass = carriageDynamics.mass();
+            totalMass += mass;
+            CarriageDynamics carriage = new CarriageDynamics(
+                    partition, carriageDynamics, carriageDynamics.centerOfMass(), mass);
+            carriages.add(carriage);
+            for (UUID bodyId : partition.bodyIds()) {
+                carriagesByBody.putIfAbsent(bodyId, carriage);
+            }
+        }
+        if (!Double.isFinite(totalMass) || totalMass <= 1.0E-9D) {
+            return ArticulatedAllocationPlan.EMPTY;
+        }
+
+        Vec3 yawAxis = normalize(worldDirectionToRoot(
+                new Vec3(0.0D, 1.0D, 0.0D)), new Vec3(0.0D, 1.0D, 0.0D));
+        Vec3 requestedYawTorque = yawAxis.scale(finite(requestedTorque).dot(yawAxis));
+        Vec3 physicalYawTorque = ShipControlAllocator.physicalTorqueDemand(
+                currentMap, requestedYawTorque);
+        Vec3 yawAcceleration = finite(dynamics.inverseInertia().transform(physicalYawTorque));
+        // A whole-train yaw needs opposing tangential thrust at every carriage.
+        // Keep pitch and roll out of this field: a free coupler turns either
+        // one into a lever and feeds it back as an altitude oscillation.
+        Vec3 yawAngularAcceleration = Math.abs(physicalYawTorque.dot(yawAxis))
+                <= ACTION_DIRECTION_EPSILON ? Vec3.ZERO
+                : yawAxis.scale(yawAcceleration.dot(yawAxis));
+        Map<UUID, Vec3> articulationDamping = articulationYawDamping(
+                topology, carriagesByBody, yawAxis);
+        List<ArticulatedCarriagePlan> plans = new ArrayList<>(carriages.size());
+        List<ShipControlAllocator.CarriageDemand> demands = new ArrayList<>(carriages.size());
+        for (CarriageDynamics carriage : carriages) {
+            Set<UUID> bodyIds = Set.copyOf(carriage.partition().bodyIds());
+            Vec3 radialOffset = carriage.centerOfMass().subtract(dynamics.centerOfMass());
+            Vec3 forceCorrection = yawAngularAcceleration.cross(radialOffset)
+                    .scale(carriage.mass());
+            Vec3 normalizedForceCorrection = ShipControlAllocator.normalizePhysicalForce(
+                    currentMap, bodyIds, forceCorrection);
+            Vec3 carriageTorque = carriage.dynamics().inertia().transform(yawAngularAcceleration)
+                    .add(articulationDamping.getOrDefault(
+                            carriage.partition().rootSubLevelId(), Vec3.ZERO));
+            Vec3 localTorque = ShipControlAllocator.normalizePhysicalTorque(
+                    currentMap, bodyIds, carriage.centerOfMass(), carriageTorque);
+            ShipControlAllocator.CarriageDemand demand =
+                    new ShipControlAllocator.CarriageDemand(
+                            carriage.partition().rootSubLevelId(), bodyIds,
+                            carriage.centerOfMass(), carriage.mass(),
+                            localTorque, forceCorrection, true);
+            demands.add(demand);
+            plans.add(new ArticulatedCarriagePlan(
+                    bodyIds, carriage.centerOfMass(), localTorque,
+                    normalizedForceCorrection, carriage.mass() / totalMass, true));
+        }
+        return new ArticulatedAllocationPlan(demands, plans);
+    }
+
+    // Dampen coupler yaw-rate differences without commanding a relative yaw angle
+    private static Map<UUID, Vec3> articulationYawDamping(
+            SableAssemblyTopologyApi.Topology topology,
+            Map<UUID, CarriageDynamics> carriagesByBody,
+            Vec3 yawAxis
+    ) {
+        SableAssemblyArticulationTelemetryApi.Snapshot articulation =
+                SableAssemblyArticulationTelemetryApi.sample(topology);
+        if (!articulation.available() || carriagesByBody.isEmpty()) {
+            return Map.of();
+        }
+        Map<UUID, Vec3> res = new LinkedHashMap<>();
+        for (SableAssemblyArticulationTelemetryApi.Joint joint : articulation.joints()) {
+            if (!joint.physicsAvailable()) {
+                continue;
+            }
+            CarriageDynamics first = carriagesByBody.get(joint.firstSubLevelId());
+            CarriageDynamics second = carriagesByBody.get(joint.secondSubLevelId());
+            if (first == null || second == null || first == second) {
+                continue;
+            }
+            Vec3 axis = normalize(yawAxis, Vec3.ZERO);
+            if (axis.lengthSqr() <= 1.0E-9D) {
+                continue;
+            }
+            double rate = finite(joint.relativeAngularVelocity().dot(axis));
+            double firstInertia = Math.max(0.0D,
+                    axis.dot(first.dynamics().inertia().transform(axis)));
+            double secondInertia = Math.max(0.0D,
+                    axis.dot(second.dynamics().inertia().transform(axis)));
+            double totalInertia = firstInertia + secondInertia;
+            if (Math.abs(rate) <= 1.0E-6D || totalInertia <= 1.0E-9D) {
+                continue;
+            }
+            double reducedInertia = firstInertia * secondInertia / totalInertia;
+            Vec3 firstTorque = axis.scale(-rate * reducedInertia
+                    / ARTICULATION_YAW_DAMPING_SECONDS);
+            UUID firstId = first.partition().rootSubLevelId();
+            UUID secondId = second.partition().rootSubLevelId();
+            res.merge(firstId, firstTorque, Vec3::add);
+            res.merge(secondId, firstTorque.scale(-1.0D), Vec3::add);
+        }
+        return Map.copyOf(res);
+    }
+
     // Apply the bearing plan
     private void applyBearingPlan(
             ShipControlMap currentMap,
             ControlDemand demand,
             Vec3 centerOfMass,
             Telemetry telemetry,
-            SableAssemblyTopologyApi.Topology topology,
-            List<ShipControlAllocator.CarriageDemand> carriageDemands
+            ArticulatedAllocationPlan articulatedPlan
     ) {
         if (currentMap.bearings().isEmpty()) {
             return;
@@ -5625,41 +8791,33 @@ public final class ShipControlModuleRuntime {
             currentPoses.put(bearing.index(), actuator.currentPose());
         }
         Map<Integer, Integer> poseSelections = new LinkedHashMap<>();
-        if (topology != null && topology.available()
-                && !topology.carriagePartitions().isEmpty()) {
-            Map<UUID, ShipControlAllocator.CarriageDemand> demandsByCarriage =
-                    carriageDemands == null ? Map.of() : carriageDemands.stream()
-                            .collect(java.util.stream.Collectors.toMap(
-                                    ShipControlAllocator.CarriageDemand::carriageId,
-                                    java.util.function.Function.identity(),
-                                    (first, second) -> first,
-                                    LinkedHashMap::new));
-            for (SableAssemblyTopologyApi.CarriagePartition partition
-                    : topology.carriagePartitions()) {
-                List<ShipControlMap.BearingUnit> partitionBearings =
-                        availableBearings.stream()
-                                .filter(bearing -> partition.contains(
-                                        bearing.hostSubLevelId()))
-                                .toList();
-                if (partitionBearings.isEmpty()) {
+        // A steering bearing consumes a normalized position request, not a
+        // physical torque. Preserve full car steering authority after the
+        // allocator has independently inertia-scaled its propulsion torque.
+        Vec3 bearingForce = isControlMode(ScmBuiltinControlModes.CAR_ID)
+                ? demand.controlForce() : demand.force();
+        Vec3 bearingTorque = isControlMode(ScmBuiltinControlModes.CAR_ID)
+                ? demand.controlTorque() : demand.torque();
+        if (articulatedPlan.available()) {
+            for (ArticulatedCarriagePlan carriage : articulatedPlan.carriages()) {
+                List<ShipControlMap.BearingUnit> carriageBearings = availableBearings.stream()
+                        .filter(bearing -> carriage.contains(bearing.hostSubLevelId()))
+                        .toList();
+                if (carriageBearings.isEmpty()) {
                     continue;
                 }
-                ShipControlAllocator.CarriageDemand carriageDemand =
-                        demandsByCarriage.get(partition.rootSubLevelId());
-                Vec3 partitionCenter = carriageDemand == null
-                        ? centerOfMass : carriageDemand.centerOfMass();
-                Vec3 partitionTorque = partition.primary()
-                        ? demand.torque()
-                        : new Vec3(demand.torque().x, 0.0D, demand.torque().z);
+                Vec3 carriageTorque = isControlMode(ScmBuiltinControlModes.CAR_ID)
+                        ? carriage.splitControlTorque(bearingTorque)
+                        : carriage.torque();
                 poseSelections.putAll(ShipBearingPlanner.selectPoses(
-                        partitionBearings, demand.force(), partitionTorque,
-                        partitionCenter, currentPoses,
-                        relativeAirflowRoot(telemetry, partitionCenter),
-                        angularVelocity, airPressure, partition.primary()));
+                        carriageBearings, bearingForce.scale(carriage.forceShare())
+                                .add(carriage.forceCorrection()),
+                        carriageTorque, carriage.centerOfMass(), currentPoses,
+                        relativeAirflow, angularVelocity, airPressure));
             }
         } else {
             poseSelections.putAll(ShipBearingPlanner.selectPoses(
-                    availableBearings, demand.force(), demand.torque(), centerOfMass,
+                    availableBearings, bearingForce, bearingTorque, centerOfMass,
                     currentPoses, relativeAirflow, angularVelocity, airPressure));
         }
         // ------------------------------------ACTUATOR OUTPUT------------------------------------
@@ -5721,8 +8879,8 @@ public final class ShipControlModuleRuntime {
         return Double.isFinite(pressure) && pressure >= 0.0D ? pressure : 1.0D;
     }
 
-    // Get the live geometry map
-    private ShipControlMap liveGeometryMap(
+    // Get the complete live control map
+    private ShipControlMap liveControlMap(
             ServerSubLevel root,
             ShipControlMap currentMap,
             Vec3 centerOfMass
@@ -5733,7 +8891,25 @@ public final class ShipControlModuleRuntime {
         }
         Map<UUID, SubLevel> liveSubLevels = connectedShipSubLevelIndex(root);
         List<ShipControlMap.PropulsionUnit> liveUnits = new ArrayList<>(currentMap.units().size());
+        ScmConfigurationProfile configuration = controller.getScmConfigurationProfile();
+        Set<ScmConfigurationProfile.UnitReference> configuredFaceUnits =
+                configuration.isConfiguredFor(currentMap)
+                        ? configuration.groups().stream().flatMap(group -> group.units().stream())
+                        .filter(ScmConfigurationProfile.UnitReference::usesFaceControl)
+                        .collect(java.util.stream.Collectors.toUnmodifiableSet())
+                        : Set.of();
         for (ShipControlMap.PropulsionUnit unit : currentMap.units()) {
+            // A profile blacklist is applied after all dynamic Sable/adapter
+            // data is refreshed. Directional action routing happens later in
+            // actionRoutedGeometryMap(); do not mask other profile groups
+            // here because Acceleration, Brake and future auxiliary controls
+            // still need their live actuator and calibration data.
+            boolean excludedByProfile = configuration.excludedUnits().stream()
+                    .anyMatch(reference -> configurationReferenceMatchesUnit(reference, unit));
+            if (excludedByProfile) {
+                liveUnits.add(withZeroLiveCapacity(unit));
+                continue;
+            }
             SubLevel subLevel = liveSubLevels.get(unit.subLevelId());
             if (subLevel == null) {
                 liveUnits.add(withZeroLiveCapacity(unit));
@@ -5743,6 +8919,8 @@ public final class ShipControlModuleRuntime {
             if (actuator != null && !actuator.isAvailable()) {
                 controlActuators.remove(unit.index());
                 appliedControlValues.remove(unit.index());
+                regulatedSpeedLevels.remove(unit.index());
+                speedControlBranchFingerprint = "";
                 actuator = null;
             }
             if (actuator == null) {
@@ -5771,6 +8949,17 @@ public final class ShipControlModuleRuntime {
                 liveDirection = liveDirection.scale(-1.0D);
             }
             double liveMaximumThrust = Math.max(0.0D, actuator.liveMaximumThrust(unit));
+            // A configured face is a declared direct-control channel, not a
+            // measured propulsion source. It must remain allocatable when the
+            // physics sampler cannot observe an effect (for example, a wheel
+            // resting on terrain). The later action-routing map scopes it to
+            // its requested action while this complete map preserves the source.
+            boolean configuredFaceBinding = configuredFaceUnits.stream()
+                    .anyMatch(reference -> configurationReferenceMatchesUnit(reference, unit));
+            if (configuredFaceBinding) {
+                liveMaximumThrust = Math.max(liveMaximumThrust,
+                        actuator.theoreticalMaxThrust());
+            }
             liveUnits.add(new ShipControlMap.PropulsionUnit(
                     unit.index(), unit.subLevelId(), unit.blockPosition(), unit.blockId(),
                     unit.adapter(), unit.controllable(), livePosition, liveDirection,
@@ -5782,8 +8971,541 @@ public final class ShipControlModuleRuntime {
                 currentMap.id(), currentMap.dimension(), currentMap.rootSubLevelId(),
                 currentMap.controllerPosition(), centerOfMass, liveUnits,
                 currentMap.bearings(), currentMap.dockingConnectors(),
-                currentMap.crnDisplays(), currentMap.accDisplays(),
+                currentMap.crnDisplays(), currentMap.accDisplays(), currentMap.seats(),
                 currentMap.updatedAt());
+    }
+
+    // Remove scalar speed-management blocks from force/torque geometry. They
+    // remain in the map by stable index so the dedicated scalar passes can
+    // drive them, but the allocator cannot mistake a transmission, governor,
+    // decelerator or brake for directional propulsion authority.
+    private ShipControlMap withoutScalarSpeedControlGeometry(ShipControlMap currentMap) {
+        ScmConfigurationProfile configuration = controller.getScmConfigurationProfile();
+        if (currentMap == null || configuration == null
+                || !configuration.isConfiguredFor(currentMap)) {
+            return currentMap;
+        }
+        Set<ScmConfigurationProfile.UnitReference> scalarUnits = new LinkedHashSet<>();
+        scalarUnits.addAll(configuredAccelerationUnits(configuration));
+        scalarUnits.addAll(configuration.decelerationUnits());
+        scalarUnits.addAll(configuration.brakeUnits());
+        if (scalarUnits.isEmpty()) return currentMap;
+        boolean changed = false;
+        List<ShipControlMap.PropulsionUnit> units = new ArrayList<>(currentMap.units().size());
+        for (ShipControlMap.PropulsionUnit unit : currentMap.units()) {
+            boolean scalar = scalarUnits.stream().anyMatch(reference ->
+                    configurationReferenceMatchesUnit(reference, unit));
+            units.add(scalar ? withZeroLiveCapacity(unit) : unit);
+            changed |= scalar && unit.maxThrust() > 1.0E-9D;
+        }
+        if (!changed) return currentMap;
+        return new ShipControlMap(
+                currentMap.id(), currentMap.dimension(), currentMap.rootSubLevelId(),
+                currentMap.controllerPosition(), currentMap.centerOfMass(), units,
+                currentMap.bearings(), currentMap.dockingConnectors(),
+                currentMap.crnDisplays(), currentMap.accDisplays(), currentMap.seats(),
+                currentMap.updatedAt());
+    }
+
+    // Restrict authored yaw actuators to the axle selected by the steering mode
+    private ShipControlMap steeringModeGeometryMap(
+            ShipControlMap currentMap,
+            ScmSteeringMode steeringMode
+    ) {
+        if (currentMap == null || !steeringMode.usesWheelGeometry()
+                || steeringMode == ScmSteeringMode.FOUR_WHEEL) {
+            return currentMap;
+        }
+        ScmConfigurationProfile configuration = controller.getScmConfigurationProfile();
+        if (configuration == null || !configuration.isConfiguredFor(currentMap)) {
+            return currentMap;
+        }
+        Set<ScmConfigurationProfile.UnitReference> yawUnits =
+                configuration.unitsForExplicitActions(Set.of(
+                        "ship_yaw", "ship_pan", "ship_yaw_left", "ship_yaw_right"));
+        if (yawUnits.isEmpty()) return currentMap;
+        List<Double> positions = new ArrayList<>();
+        for (ShipControlMap.PropulsionUnit unit : currentMap.units()) {
+            if (yawUnits.stream().anyMatch(reference ->
+                    configurationReferenceMatchesUnit(reference, unit))) {
+                positions.add(unit.rootPosition().subtract(currentMap.centerOfMass())
+                        .dot(controllerForwardRoot()));
+            }
+        }
+        for (ShipControlMap.BearingUnit bearing : currentMap.bearings()) {
+            if (yawUnits.stream().anyMatch(reference ->
+                    Objects.equals(reference.subLevelId(), bearing.hostSubLevelId())
+                            && reference.blockPosition().equals(bearing.blockPosition()))) {
+                positions.add(bearingLongitudinalPosition(currentMap, bearing));
+            }
+        }
+        if (positions.isEmpty()) return currentMap;
+        double trailing = positions.stream().mapToDouble(Double::doubleValue)
+                .min().orElse(0.0D);
+        double leading = positions.stream().mapToDouble(Double::doubleValue)
+                .max().orElse(0.0D);
+        boolean changed = false;
+        List<ShipControlMap.PropulsionUnit> units = new ArrayList<>(currentMap.units().size());
+        for (ShipControlMap.PropulsionUnit unit : currentMap.units()) {
+            boolean yawUnit = yawUnits.stream().anyMatch(reference ->
+                    configurationReferenceMatchesUnit(reference, unit));
+            double position = unit.rootPosition().subtract(currentMap.centerOfMass())
+                    .dot(controllerForwardRoot());
+            boolean selected = !yawUnit || Math.abs(steeringMode.wheelDemand(
+                    1.0D, position, trailing, leading)) > 1.0E-6D;
+            units.add(selected ? unit : withZeroLiveCapacity(unit));
+            changed |= !selected && unit.maxThrust() > 1.0E-9D;
+        }
+        List<ShipControlMap.BearingUnit> bearings = new ArrayList<>();
+        for (ShipControlMap.BearingUnit bearing : currentMap.bearings()) {
+            boolean yawBearing = yawUnits.stream().anyMatch(reference ->
+                    Objects.equals(reference.subLevelId(), bearing.hostSubLevelId())
+                            && reference.blockPosition().equals(bearing.blockPosition()));
+            double position = bearingLongitudinalPosition(currentMap, bearing);
+            boolean selected = !yawBearing || Math.abs(steeringMode.wheelDemand(
+                    1.0D, position, trailing, leading)) > 1.0E-6D;
+            if (selected) bearings.add(bearing);
+            changed |= !selected;
+        }
+        if (!changed) return currentMap;
+        return new ShipControlMap(
+                currentMap.id(), currentMap.dimension(), currentMap.rootSubLevelId(),
+                currentMap.controllerPosition(), currentMap.centerOfMass(), units,
+                bearings, currentMap.dockingConnectors(), currentMap.crnDisplays(),
+                currentMap.accDisplays(), currentMap.seats(), currentMap.updatedAt());
+    }
+
+    // Resolve a bearing host's position in the root controller frame
+    private double bearingLongitudinalPosition(
+            ShipControlMap currentMap,
+            ShipControlMap.BearingUnit bearing
+    ) {
+        for (ShipControlMap.PropulsionUnit unit : currentMap.units()) {
+            if (unit.subLevelId().equals(bearing.hostSubLevelId())
+                    && unit.blockPosition().equals(bearing.blockPosition())) {
+                return unit.rootPosition().subtract(currentMap.centerOfMass())
+                        .dot(controllerForwardRoot());
+            }
+        }
+        ServerSubLevel root = rootSubLevel != null
+                ? rootSubLevel : containingServerSubLevel();
+        SubLevel subLevel = controller.getLevel() == null ? null
+                : SableLevelApi.subLevel(controller.getLevel(), bearing.hostSubLevelId());
+        if (root == null || subLevel == null) return 0.0D;
+        return rootPosition(root, subLevel, bearing.blockPosition().getCenter())
+                .subtract(currentMap.centerOfMass()).dot(controllerForwardRoot());
+    }
+
+    // Apply the current action routing without re-resolving live block entities.
+    // This runs after demand calculation, when an autonomous command has chosen
+    // the direction it actually needs. The initial live map still contains all
+    // of the command's possible channels for calibration and demand planning.
+    private ShipControlMap actionRoutedGeometryMap(
+            ShipControlMap currentMap, Set<String> activeActions
+    ) {
+        ScmConfigurationProfile configuration = controller.getScmConfigurationProfile();
+        if (!configuration.isConfiguredFor(currentMap)
+                || !configuration.hasActionBindings() || activeActions.isEmpty()) {
+            return currentMap;
+        }
+        Set<ScmConfigurationProfile.UnitReference> selectedUnits =
+                configuration.unitsForExplicitActions(activeActions);
+        List<ShipControlMap.PropulsionUnit> routedUnits =
+                new ArrayList<>(currentMap.units().size());
+        boolean changed = false;
+        for (ShipControlMap.PropulsionUnit unit : currentMap.units()) {
+            boolean excludedByProfile = configuration.excludedUnits().stream()
+                    .anyMatch(reference -> configurationReferenceMatchesUnit(reference, unit));
+            boolean automaticCarriageUnit = isImplicitAutomaticCarriageUnit(
+                    configuration, currentMap, unit);
+            boolean outsideActionGroup = selectedUnits.stream()
+                    .noneMatch(reference -> configurationReferenceMatchesUnit(reference, unit));
+            if (excludedByProfile || !automaticCarriageUnit && outsideActionGroup) {
+                routedUnits.add(withZeroLiveCapacity(unit));
+                changed |= unit.maxThrust() > 1.0E-9D;
+            } else {
+                routedUnits.add(unit);
+            }
+        }
+        List<ShipControlMap.BearingUnit> routedBearings = new ArrayList<>(
+                currentMap.bearings().size());
+        for (ShipControlMap.BearingUnit bearing : currentMap.bearings()) {
+            boolean excludedByProfile = configuration.excludedUnits().stream()
+                    .anyMatch(reference -> configurationReferenceMatchesBearing(reference, bearing));
+            boolean outsideActionGroup = selectedUnits.stream()
+                    .noneMatch(reference -> configurationReferenceMatchesBearing(reference, bearing));
+            if (excludedByProfile || outsideActionGroup) {
+                changed = true;
+                continue;
+            }
+            routedBearings.add(bearing);
+        }
+        if (!changed) {
+            return currentMap;
+        }
+        return new ShipControlMap(
+                currentMap.id(), currentMap.dimension(), currentMap.rootSubLevelId(),
+                currentMap.controllerPosition(), currentMap.centerOfMass(), routedUnits,
+                routedBearings, currentMap.dockingConnectors(),
+                currentMap.crnDisplays(), currentMap.accDisplays(), currentMap.seats(),
+                currentMap.updatedAt());
+    }
+
+    // Check if a discovered carriage unit is an implicit Auto capability
+    private boolean isImplicitAutomaticCarriageUnit(
+            ScmConfigurationProfile configuration,
+            ShipControlMap currentMap,
+            ShipControlMap.PropulsionUnit unit
+    ) {
+        if (configuration == null || currentMap == null || unit == null
+                || !configuration.isConfiguredFor(currentMap)
+                || !activeAutomaticCarriageUnits.contains(new AssemblyUnitIdentity(
+                unit.subLevelId(), unit.blockPosition(), unit.adapter()))) {
+            return false;
+        }
+        boolean excluded = configuration.excludedUnits().stream()
+                .anyMatch(reference -> configurationReferenceMatchesUnit(reference, unit));
+        if (excluded) {
+            return false;
+        }
+        return configuration.groups().stream().flatMap(group -> group.units().stream())
+                .noneMatch(reference -> configurationReferenceMatchesUnit(reference, unit));
+    }
+
+    // Check if a linker face belongs to an implicit carriage Auto capability
+    private boolean isImplicitAutomaticCarriageFaceTarget(
+            ScmConfigurationProfile configuration,
+            ShipControlMap currentMap,
+            ScmTarget target
+    ) {
+        if (target == null || !target.usesFaceControl()) {
+            return false;
+        }
+        String suffix = ":face_" + target.signalFace().getSerializedName();
+        return currentMap.units().stream().anyMatch(unit ->
+                Objects.equals(unit.subLevelId(), target.subLevelId())
+                        && unit.blockPosition().equals(target.blockPosition())
+                        && unit.adapter().endsWith(suffix)
+                        && isImplicitAutomaticCarriageUnit(
+                        configuration, currentMap, unit));
+    }
+
+    // Return the explicit SCM action channels currently asking for allocation.
+    // Direct graph controls use exactly their own action. Autonomous commands
+    // first expose their possible directional channels so their demand can be
+    // planned from the complete map; actionRoutedGeometryMap() then narrows
+    // each opposing pair to the side demanded this tick.
+    private Set<String> activeControlActionTypes() {
+        return activeControlActionTypes(null);
+    }
+
+    // Return the action channels currently asking for allocation. A completed
+    // demand lets autonomous controls select only the requested side of each
+    // signed axis, while direct graph commands remain their exact action.
+    private Set<String> activeControlActionTypes(@Nullable ControlDemand demand) {
+        return activeControlActionTypes(demand, null);
+    }
+
+    // Return the action channels with optional measured authority for resolving
+    // autonomous opposing groups. Direct commands and car drivetrain faces
+    // retain their explicit authored direction.
+    private Set<String> activeControlActionTypes(
+            @Nullable ControlDemand demand,
+            @Nullable ShipControlMap currentMap
+    ) {
+        if (activeCommands.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> actions = new LinkedHashSet<>();
+        for (ActiveShipCommand command : activeCommands.values()) {
+            String type = command.type();
+            if ("ship_initialize".equals(type) || "ship_scan_configuration".equals(type)
+                    || "ship_stop".equals(type)) {
+                continue;
+            }
+            actions.addAll(routingActionsFor(type));
+        }
+        if (demand == null) {
+            return actions;
+        }
+        actions = directionalActionTypes(actions, demand, currentMap);
+        // Speed reduction and stopping are separate scalar actions. Neither is
+        // inferred as reverse propulsion or allowed to select both direction groups.
+        if (activeDecelerationStrength(demand) > 1.0E-5D) {
+            actions.add("ship_decelerate");
+        }
+        if (activeBrakeStrength(demand) > 1.0E-5D) {
+            actions.add("ship_brake");
+        }
+        return actions;
+    }
+
+    // Limit opposing action groups to the side represented by the current
+    // control demand. Generic signed actions (such as ship_yaw) remain in the
+    // set, so a block deliberately bound to the generic group continues to
+    // receive its normal analog control.
+    private Set<String> directionalActionTypes(
+            Set<String> activeActions,
+            ControlDemand demand,
+            @Nullable ShipControlMap currentMap
+    ) {
+        if (activeActions.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> actions = new LinkedHashSet<>(activeActions);
+        Vec3 forward = controllerForwardRoot();
+        Vec3 up = controllerUpRoot();
+        Vec3 right = normalize(forward.cross(up), new Vec3(1.0D, 0.0D, 0.0D));
+        double forwardDemand = Math.abs(demand.driveDirection()) > ACTION_DIRECTION_EPSILON
+                ? demand.driveDirection() : demand.controlForce().dot(forward);
+        // Directional group names are an authored controller-frame contract.
+        // Calibration describes the units inside each group; it must not rename
+        // a player's Forward group to Backward (or Left to Right) because a
+        // sampled force basis happens to be inverted. Manual graph controls and
+        // autonomous navigation now select the exact same authored side.
+        boolean measuredAutonomousRouting = false;
+        retainDemandedAction(actions, "ship_forward", "ship_backward", forwardDemand);
+        // `ship_reverse` was the original negative longitudinal action. It
+        // remains a valid persisted graph/profile binding, while
+        // `ship_backward` is its current UI name. A scheduled command must
+        // therefore retain both names for negative demand and suppress both
+        // names for positive or neutral demand. Otherwise an older profile
+        // can have every usable propulsion unit masked even though the
+        // command itself was accepted.
+        if (!measuredAutonomousRouting
+                && forwardDemand >= -ACTION_DIRECTION_EPSILON) {
+            actions.remove("ship_reverse");
+        }
+        retainAutonomousActionPair(actions, "ship_strafe_right", "ship_strafe_left",
+                demand.controlForce(), false, demand.controlForce().dot(right), currentMap,
+                measuredAutonomousRouting);
+        retainAutonomousActionPair(actions, "ship_ascend", "ship_descend",
+                demand.controlForce(), false, demand.controlForce().dot(up), currentMap,
+                measuredAutonomousRouting);
+        retainAutonomousActionPair(actions, "ship_yaw_right", "ship_yaw_left",
+                demand.controlTorque(), true, yawRightDemand(demand), currentMap,
+                measuredAutonomousRouting);
+        retainAutonomousActionPair(actions, "ship_pitch_up", "ship_pitch_down",
+                demand.controlTorque(), true, demand.controlTorque().dot(right), currentMap,
+                measuredAutonomousRouting);
+        retainAutonomousActionPair(actions, "ship_roll_right", "ship_roll_left",
+                demand.controlTorque(), true, demand.controlTorque().dot(forward), currentMap,
+                measuredAutonomousRouting);
+        return actions;
+    }
+
+    // Resolve one autonomous signed pair from calibrated force/torque authority.
+    // This makes a group mean "the blocks which cause this motion", matching
+    // the SCM configuration UI, even when a controller/sub-level basis has a
+    // reversed axis. Cars are deliberately excluded because their authored
+    // gearshift faces may have no meaningful propulsion vector at rest.
+    private void retainAutonomousActionPair(
+            Set<String> actions,
+            String positiveAction,
+            String negativeAction,
+            Vec3 requestedWrench,
+            boolean torque,
+            double signedFallback,
+            @Nullable ShipControlMap currentMap,
+            boolean measuredAutonomousRouting
+    ) {
+        if (measuredAutonomousRouting && currentMap != null) {
+            retainMostAuthoritativeActions(actions, positiveAction,
+                    List.of(negativeAction), requestedWrench, torque,
+                    signedFallback, currentMap);
+        } else {
+            retainDemandedAction(actions, positiveAction, negativeAction, signedFallback);
+        }
+    }
+
+    // Keep the authored side whose calibrated units can actually produce the
+    // requested wrench. Fall back to the controller-frame sign for empty,
+    // uncalibrated or tied groups.
+    private void retainMostAuthoritativeActions(
+            Set<String> actions,
+            String positiveAction,
+            List<String> negativeActions,
+            Vec3 requestedWrench,
+            boolean torque,
+            double signedFallback,
+            ShipControlMap currentMap
+    ) {
+        if (!actions.contains(positiveAction)
+                && negativeActions.stream().noneMatch(actions::contains)) {
+            return;
+        }
+        if (requestedWrench == null
+                || requestedWrench.lengthSqr() <= ACTION_DIRECTION_EPSILON
+                * ACTION_DIRECTION_EPSILON) {
+            actions.remove(positiveAction);
+            negativeActions.forEach(actions::remove);
+            return;
+        }
+        double positiveAuthority = configuredActionAuthority(
+                positiveAction, requestedWrench, torque, currentMap);
+        double negativeAuthority = negativeActions.stream()
+                .mapToDouble(action -> configuredActionAuthority(
+                        action, requestedWrench, torque, currentMap))
+                .max().orElse(0.0D);
+        if (positiveAuthority > negativeAuthority + 1.0E-6D) {
+            negativeActions.forEach(actions::remove);
+        } else if (negativeAuthority > positiveAuthority + 1.0E-6D) {
+            actions.remove(positiveAction);
+        } else if (signedFallback > ACTION_DIRECTION_EPSILON) {
+            negativeActions.forEach(actions::remove);
+        } else if (signedFallback < -ACTION_DIRECTION_EPSILON) {
+            actions.remove(positiveAction);
+        } else {
+            actions.remove(positiveAction);
+            negativeActions.forEach(actions::remove);
+        }
+    }
+
+    // Sum only positive authority because the non-negative allocator cannot use
+    // a unit whose calibrated wrench points away from the current request.
+    private double configuredActionAuthority(
+            String action,
+            Vec3 requestedWrench,
+            boolean torque,
+            ShipControlMap currentMap
+    ) {
+        ScmConfigurationProfile configuration = controller.getScmConfigurationProfile();
+        Set<ScmConfigurationProfile.UnitReference> references =
+                configuration.unitsForExplicitActions(Set.of(action));
+        if (references.isEmpty()) {
+            return 0.0D;
+        }
+        Vec3 request = normalize(requestedWrench, Vec3.ZERO);
+        double authority = 0.0D;
+        for (ShipControlMap.PropulsionUnit unit : currentMap.units()) {
+            if (!unit.controllable() || unit.maxThrust() <= 1.0E-9D
+                    || references.stream().noneMatch(reference ->
+                    configurationReferenceMatchesUnit(reference, unit))) {
+                continue;
+            }
+            Vec3 available = torque
+                    ? unit.torqueDirection(currentMap.centerOfMass())
+                    : unit.forceDirection().scale(unit.maxThrust());
+            authority += Math.max(0.0D, available.dot(request));
+        }
+        return authority;
+    }
+
+    // Keep the positive or negative action for a signed demand. At rest both
+    // sides are removed: a face binding represents a physical input and must
+    // not stay energised simply because an autonomous command is still active.
+    private static void retainDemandedAction(
+            Set<String> actions, String positiveAction, String negativeAction,
+            double signedDemand
+    ) {
+        if (signedDemand > ACTION_DIRECTION_EPSILON) {
+            actions.remove(negativeAction);
+        } else if (signedDemand < -ACTION_DIRECTION_EPSILON) {
+            actions.remove(positiveAction);
+        } else {
+            actions.remove(positiveAction);
+            actions.remove(negativeAction);
+        }
+    }
+
+    private static Set<String> routingActionsFor(String commandType) {
+        Set<String> actions = new LinkedHashSet<>(switch (commandType) {
+            case "ship_stabilize" -> Set.of(
+                    "ship_stabilize",
+                    "ship_yaw", "ship_yaw_left", "ship_yaw_right", "ship_pan",
+                    "ship_pitch", "ship_pitch_down", "ship_pitch_up", "ship_tilt",
+                    "ship_roll", "ship_roll_left", "ship_roll_right");
+            case "ship_hover", "ship_climb" -> Set.of(
+                    commandType,
+                    "ship_ascend", "ship_descend",
+                    "ship_yaw", "ship_yaw_left", "ship_yaw_right", "ship_pan",
+                    "ship_pitch", "ship_pitch_down", "ship_pitch_up", "ship_tilt",
+                    "ship_roll", "ship_roll_left", "ship_roll_right");
+            case "ship_face" -> Set.of(
+                    "ship_face",
+                    "ship_ascend", "ship_descend",
+                    "ship_yaw", "ship_yaw_left", "ship_yaw_right", "ship_pan",
+                    "ship_pitch", "ship_pitch_down", "ship_pitch_up", "ship_tilt",
+                    "ship_roll", "ship_roll_left", "ship_roll_right");
+            case "ship_dock", "ship_navigate", "ship_follow" -> Set.of(
+                    commandType,
+                    // Retired control nodes are still valid persisted action
+                    // bindings. Keep their groups reachable from autonomous
+                    // navigation; this preserves existing calibrated ships
+                    // without making unassigned units eligible.
+                    "ship_forward", "ship_backward", "ship_reverse",
+                    "ship_strafe", "ship_strafe_left", "ship_strafe_right",
+                    "ship_ascend", "ship_descend",
+                    "ship_yaw", "ship_yaw_left", "ship_yaw_right", "ship_pan",
+                    "ship_pitch", "ship_pitch_down", "ship_pitch_up", "ship_tilt",
+                    "ship_roll", "ship_roll_left", "ship_roll_right");
+            // Acceleration is an analogue drive-chain channel, not a synonym
+            // for forward. Every direct translational action must expose it,
+            // while the action-specific group selects the physical direction.
+            case "ship_accelerate", "ship_forward", "ship_reverse", "ship_backward",
+                 "ship_strafe", "ship_strafe_left", "ship_strafe_right",
+                 "ship_ascend", "ship_descend", "ship_jump", "ship_crouch" ->
+                    Set.of(commandType);
+            default -> commandType == null || commandType.isBlank()
+                    ? Set.of() : Set.of(commandType);
+        });
+        if (ScmCommandRouting.requiresAccelerationControl(commandType)) {
+            actions.add(ScmCommandRouting.ACCELERATION_ACTION);
+        }
+        return Set.copyOf(actions);
+    }
+
+    // Match a player binding to one runtime map unit. Face-bound SCM probes
+    // carry their face in the persisted adapter id, allowing e.g. the two
+    // Directional Gearshift redstone inputs to be assigned to different graph
+    // functions without one group waking the other side.
+    private boolean configurationReferenceMatchesUnit(
+            ScmConfigurationProfile.UnitReference reference,
+            ShipControlMap.PropulsionUnit unit
+    ) {
+        if (reference == null || unit == null || !reference.matches(unit)) {
+            return false;
+        }
+        if (!reference.usesFaceControl()) {
+            return true;
+        }
+        String suffix = ":face_" + reference.face().getSerializedName();
+        if (unit.adapter().endsWith(suffix)) {
+            return true;
+        }
+        // Preserve maps saved before face-qualified SCM adapter ids existed.
+        if (!unit.adapter().equals("scm:directional_gearshift_forward")
+                && !unit.adapter().equals("scm:directional_gearshift_reverse")) {
+            return !unit.adapter().contains(":face_");
+        }
+        SubLevel subLevel = controller.getLevel() == null ? null
+                : SableLevelApi.subLevel(controller.getLevel(), reference.subLevelId());
+        if (subLevel == null || subLevel.isRemoved()) {
+            return false;
+        }
+        BlockState state = subLevel.getLevel().getBlockState(reference.blockPosition());
+        if (!state.hasProperty(BlockStateProperties.FACING)) {
+            return false;
+        }
+        Direction leftFace = state.getValue(BlockStateProperties.FACING);
+        return unit.adapter().endsWith("_forward")
+                ? reference.face().equals(leftFace.getOpposite())
+                : reference.face().equals(leftFace);
+    }
+
+    // Match a player binding to a movable bearing without treating a selected
+    // redstone face as permission to move the whole bearing assembly.
+    private static boolean configurationReferenceMatchesBearing(
+            ScmConfigurationProfile.UnitReference reference,
+            ShipControlMap.BearingUnit bearing
+    ) {
+        if (reference == null || bearing == null || reference.usesFaceControl()
+                || !Objects.equals(reference.subLevelId(), bearing.hostSubLevelId())
+                || !reference.blockPosition().equals(bearing.blockPosition())) {
+            return false;
+        }
+        return reference.adapter().isBlank()
+                || reference.adapter().equals(bearing.adapter());
     }
 
     // Copy the ship control module with the zero live capacity
@@ -5861,18 +9583,24 @@ public final class ShipControlModuleRuntime {
     // Get the demand
     private ControlDemand demandFor(
             Telemetry telemetry,
+            ShipControlMap liveMap,
             ShipControlMap effectiveMap,
             SableAssemblyDynamicsApi.Snapshot dynamics,
             SableAssemblyTopologyApi.Topology topology
     ) {
+        scheduleSplineConstraintRequested = false;
+        scheduleSplineConstraintDecision = "no calculated route request";
         Vec3 forward = controllerForwardRoot();
         Vec3 up = controllerUpRoot();
         Vec3 right = normalize(forward.cross(up), new Vec3(1.0D, 0.0D, 0.0D));
         Vec3 force = Vec3.ZERO;
         Vec3 torque = Vec3.ZERO;
-        GravityCompensation gravity = gravityCompensation(effectiveMap);
+        GravityCompensation gravity = gravityCompensation(liveMap);
         Vec3 preferredDirection = Vec3.ZERO;
         double driveDirection = 0.0D;
+        double accelerationStrength = 0.0D;
+        double decelerationStrength = 0.0D;
+        double brakeStrength = 0.0D;
         Vec3 localVelocity = worldDirectionToRoot(telemetry.velocity());
         double uprightStabilizationStrength = 0.0D;
         double attitudeLockStrength = 0.0D;
@@ -5884,26 +9612,76 @@ public final class ShipControlModuleRuntime {
             ActiveShipCommand command = entry.getValue();
             switch (command.type()) {
                 case "ship_yaw", "ship_pan" -> torque = torque.add(up.scale(command.amount()));
+                case "ship_yaw_right" -> torque = torque.add(ScmControlAxes.yawTorque(up, Math.abs(command.amount())));
+                case "ship_yaw_left" -> torque = torque.add(ScmControlAxes.yawTorque(up, -Math.abs(command.amount())));
                 case "ship_pitch", "ship_tilt" -> torque = torque.add(right.scale(command.amount()));
+                case "ship_pitch_up" -> torque = torque.add(right.scale(Math.abs(command.amount())));
+                case "ship_pitch_down" -> torque = torque.add(right.scale(-Math.abs(command.amount())));
                 case "ship_roll" -> torque = torque.add(forward.scale(command.amount()));
+                case "ship_roll_right" -> torque = torque.add(forward.scale(Math.abs(command.amount())));
+                case "ship_roll_left" -> torque = torque.add(forward.scale(-Math.abs(command.amount())));
                 case "ship_accelerate" -> {
-                    force = force.add(forward.scale(command.amount()));
-                    driveDirection += command.amount();
+                    // Legacy graphs may still issue this retired command. It
+                    // is a direction-independent speed control, never Forward.
+                    accelerationStrength = Math.max(
+                            accelerationStrength, Math.abs(command.amount()));
                 }
                 case "ship_forward" -> {
                     force = force.add(forward.scale(Math.abs(command.amount())));
                     driveDirection += Math.abs(command.amount());
+                    accelerationStrength = Math.max(
+                            accelerationStrength, Math.abs(command.amount()));
                 }
                 case "ship_reverse" -> {
                     force = force.add(forward.scale(-Math.abs(command.amount())));
                     driveDirection -= Math.abs(command.amount());
+                    accelerationStrength = Math.max(
+                            accelerationStrength, Math.abs(command.amount()));
+                }
+                case "ship_backward" -> {
+                    force = force.add(forward.scale(-Math.abs(command.amount())));
+                    driveDirection -= Math.abs(command.amount());
+                    accelerationStrength = Math.max(
+                            accelerationStrength, Math.abs(command.amount()));
                 }
                 case "ship_strafe" -> {
                     double strafeError = command.amount() - localVelocity.dot(right);
-                    force = force.add(right.scale(Mth.clamp(strafeError * 0.6D, -1.0D, 1.0D)));
+                    double strafeDemand = Mth.clamp(strafeError * 0.6D, -1.0D, 1.0D);
+                    force = force.add(right.scale(strafeDemand));
+                    accelerationStrength = Math.max(
+                            accelerationStrength, Math.abs(strafeDemand));
                 }
-                case "ship_ascend" -> force = force.add(up.scale(command.amount()));
-                case "ship_descend" -> force = force.add(up.scale(-command.amount()));
+                case "ship_strafe_left" -> {
+                    double strafeError = -Math.abs(command.amount()) - localVelocity.dot(right);
+                    double strafeDemand = Mth.clamp(strafeError * 0.6D, -1.0D, 1.0D);
+                    force = force.add(right.scale(strafeDemand));
+                    accelerationStrength = Math.max(
+                            accelerationStrength, Math.abs(strafeDemand));
+                }
+                case "ship_strafe_right" -> {
+                    double strafeError = Math.abs(command.amount()) - localVelocity.dot(right);
+                    double strafeDemand = Mth.clamp(strafeError * 0.6D, -1.0D, 1.0D);
+                    force = force.add(right.scale(strafeDemand));
+                    accelerationStrength = Math.max(
+                            accelerationStrength, Math.abs(strafeDemand));
+                }
+                case "ship_ascend" -> {
+                    force = force.add(up.scale(command.amount()));
+                    accelerationStrength = Math.max(
+                            accelerationStrength, Math.abs(command.amount()));
+                }
+                case "ship_descend" -> {
+                    force = force.add(up.scale(-command.amount()));
+                    accelerationStrength = Math.max(
+                            accelerationStrength, Math.abs(command.amount()));
+                }
+                case "ship_jump" -> {
+                    force = force.add(up.scale(Math.abs(command.amount())));
+                    accelerationStrength = Math.max(
+                            accelerationStrength, Math.abs(command.amount()));
+                }
+                case "ship_crouch" -> {
+                }
                 case "ship_stabilize" -> {
                     compensateGravity = true;
                     if (command.strength() >= attitudeLockStrength) {
@@ -5913,6 +9691,15 @@ public final class ShipControlModuleRuntime {
                 }
                 case "ship_decelerate" -> {
                     compensateGravity = true;
+                    decelerationStrength = Math.max(
+                            decelerationStrength, command.strength());
+                    if (!hasScmGroundDrive(topology)) {
+                        force = force.add(localVelocity.scale(-0.35D * command.strength()));
+                    }
+                }
+                case "ship_brake" -> {
+                    compensateGravity = true;
+                    brakeStrength = Math.max(brakeStrength, command.strength());
                     if (!hasScmGroundDrive(topology)) {
                         force = force.add(localVelocity.scale(-0.35D * command.strength()));
                     }
@@ -5924,6 +9711,8 @@ public final class ShipControlModuleRuntime {
                             command.targetSpeed(), command.strength());
                     force = force.add(worldDirectionToRoot(
                             new Vec3(0.0D, verticalCorrection, 0.0D)));
+                    accelerationStrength = Math.max(accelerationStrength,
+                            Mth.clamp(Math.abs(verticalCorrection), 0.0D, 1.0D));
                     uprightStabilizationStrength = Math.max(
                             uprightStabilizationStrength, command.strength());
                 }
@@ -5938,78 +9727,63 @@ public final class ShipControlModuleRuntime {
                     if (yieldsToDockingMagnet(command)) {
                         navigationPathStates.remove(entry.getKey() + ":docking_approach");
                         positionIntegralErrors.remove(entry.getKey());
+                        publishAutopilotDebugState(
+                                entry.getKey(), entry.getKey() + ":docking_approach",
+                                telemetry, command,
+                                NavigationGuidance.stopped(telemetry.position()), null);
                         compensateGravity = true;
                         break;
                     }
                     Telemetry targetTelemetry = targetPointTelemetry(
                             telemetry, command.targetPoint(), command.targetConnectorIndex());
-                    Vec3 target = command.avoidCollisions()
-                            ? dockControlTarget(targetTelemetry, command)
-                            : command.targetPosition();
-                    Vec3 dockingDirection = normalize(
-                            command.targetDirection(),
-                            normalize(target.subtract(targetTelemetry.position()), Vec3.ZERO));
-                    Vec3 stagingTarget = target.subtract(
-                            dockingDirection.scale(DOCKING_COLLISION_APPROACH_DISTANCE));
-                    boolean stagingApproach = command.avoidCollisions()
-                            && targetTelemetry.position().distanceTo(target)
-                            > DOCKING_COLLISION_APPROACH_DISTANCE;
-                    if (!isControlMode(ScmBuiltinControlModes.AIRSHIP_ID)) {
-                        NavigationGuidance guidance = navigationGuidance(
-                                entry.getKey() + ":docking_approach", targetTelemetry,
-                                command, stagingApproach ? stagingTarget : target, topology);
-                        ScmControlMode.ControlOutput modeDemand = controlModeDemand(
-                                entry.getKey(), targetTelemetry, command, guidance,
-                                forward, up, right, false);
-                        force = force.add(worldDirectionToRoot(modeDemand.force()));
-                        torque = torque.add(worldDirectionToRoot(modeDemand.torque()));
-                        driveDirection += modeDemand.driveDirection()
-                                * Math.max(0.05D, modeDemand.force().length());
-                        compensateGravity |= modeDemand.compensateGravity();
-                        uprightStabilizationStrength = Math.max(
-                                uprightStabilizationStrength,
-                                modeDemand.uprightStabilization());
-                        if (!stagingApproach && command.targetDirection().lengthSqr() > 1.0E-12D
-                                && !isControlMode(ScmBuiltinControlModes.PLANE_ID)) {
-                            torque = torque.add(dockingAlignmentTorque(telemetry, command));
+                    navigationPathStates.remove(entry.getKey() + ":docking_approach");
+                    Vec3 target = command.targetPosition();
+                    Vec3 captureDirection = normalize(
+                            target.subtract(targetTelemetry.position()), Vec3.ZERO);
+                    NavigationGuidance guidance = new NavigationGuidance(
+                            captureDirection, target, 0.25D,
+                            false, true, false, captureDirection);
+                    ModeControlDemand modeDemand = controlModeDemand(
+                            entry.getKey() + ":docking_approach", targetTelemetry,
+                            command, guidance,
+                            forward, up, right, false);
+                    ScmControlMode.ControlOutput output = modeDemand.output();
+                    force = force.add(worldDirectionToRoot(output.force()));
+                    torque = torque.add(worldDirectionToRoot(output.torque()));
+                    driveDirection += output.driveDirection()
+                            * Math.max(0.05D, output.force().length());
+                    accelerationStrength = Math.max(accelerationStrength,
+                            Math.max(modeDemand.speedPlan().accelerationStrength(),
+                                    output.driveStrength()));
+                    decelerationStrength = Math.max(decelerationStrength,
+                            modeDemand.speedPlan().decelerationStrength());
+                    brakeStrength = Math.max(brakeStrength,
+                            modeDemand.speedPlan().brakeStrength());
+                    compensateGravity |= output.compensateGravity();
+                    uprightStabilizationStrength = Math.max(
+                            uprightStabilizationStrength,
+                            output.uprightStabilization());
+                    if (command.lockRotation()) {
+                        if (0.7D >= attitudeLockStrength) {
+                            attitudeLockStrength = 0.7D;
+                            attitudeLockTarget = command.targetAttitude();
                         }
-                    } else {
-                        compensateGravity = true;
-                        Vec3 approachForce;
-                        if (stagingApproach) {
-                            NavigationGuidance guidance = navigationGuidance(
-                                    entry.getKey() + ":docking_approach", targetTelemetry,
-                                    command, stagingTarget, topology);
-                            approachForce = targetApproachForce(
-                                    entry.getKey(), targetTelemetry, command,
-                                    guidance.direction(), guidance.controlTarget(),
-                                    Math.max(0.5D, command.tolerance()),
-                                    guidance.distanceResponse());
-                        } else {
-                            navigationPathStates.remove(entry.getKey() + ":docking_approach");
-                            approachForce = targetApproachForce(
-                                    entry.getKey(), targetTelemetry, command, null, target);
-                        }
-                        force = force.add(worldDirectionToRoot(approachForce));
-                        if (command.lockRotation()) {
-                            if (0.7D >= attitudeLockStrength) {
-                                attitudeLockStrength = 0.7D;
-                                attitudeLockTarget = command.targetAttitude();
-                            }
-                        } else if (command.targetDirection().lengthSqr() > 1.0E-12D) {
-                            torque = torque.add(dockingAlignmentTorque(
-                                    telemetry, command));
-                            if (command.targetUp().lengthSqr() <= 1.0E-12D) {
-                                uprightStabilizationStrength = Math.max(
-                                        uprightStabilizationStrength, 0.8D);
-                            }
-                        } else {
-                            torque = torque.add(faceTorque(
-                                    targetTelemetry, command.targetPosition(), 0.45D));
+                    } else if (command.targetDirection().lengthSqr() > 1.0E-12D) {
+                        torque = torque.add(dockingAlignmentTorque(telemetry, command));
+                        if (command.targetUp().lengthSqr() <= 1.0E-12D
+                                && !isControlMode(ScmBuiltinControlModes.CAR_ID)) {
                             uprightStabilizationStrength = Math.max(
-                                    uprightStabilizationStrength, 0.7D);
+                                    uprightStabilizationStrength, 0.8D);
                         }
+                    } else if (isControlMode(ScmBuiltinControlModes.AIRSHIP_ID)) {
+                        torque = torque.add(faceTorque(
+                                targetTelemetry, command.targetPosition(), 0.45D));
+                        uprightStabilizationStrength = Math.max(
+                                uprightStabilizationStrength, 0.7D);
                     }
+                    publishAutopilotDebugState(
+                            entry.getKey(), entry.getKey() + ":docking_approach",
+                            targetTelemetry, command, guidance, modeDemand);
                 }
                 case "ship_navigate", "ship_follow" -> {
                     Telemetry targetTelemetry = targetPointTelemetry(
@@ -6022,30 +9796,88 @@ public final class ShipControlModuleRuntime {
                     boolean finalAlignmentApproach = finalAlignmentRequested
                             && targetTelemetry.position().distanceTo(command.targetPosition())
                             <= finalApproachDistance;
-                    NavigationGuidance guidance = navigationGuidance(
-                            entry.getKey(), targetTelemetry, command,
-                            command.targetPosition(), topology);
-                    ScmControlMode.ControlOutput modeDemand = controlModeDemand(
+                    boolean dockingAxisApproach = finalAlignmentApproach
+                            && isDockingAxisApproach(command);
+                    NavigationGuidance guidance;
+                    if (dockingAxisApproach) {
+                        guidance = dockingApproachGuidance(targetTelemetry, command);
+                    } else {
+                        // Route capture must be requested before the reactive
+                        // layer can temporarily take authority. Evaluating
+                        // avoidance first made its override flag reject every
+                        // joint request, leaving an overlapping route red.
+                        restoreConstraintCapturableScheduledRoute(
+                                entry.getKey(), telemetry);
+                        guidance = navigationGuidanceUnprotected(
+                                entry.getKey(), targetTelemetry, command,
+                                command.targetPosition());
+                        guidance = scheduledSplineConstraintGuidance(
+                                entry.getKey(), telemetry, command, guidance,
+                                finalAlignmentApproach);
+                        guidance = applyReactiveCollisionAvoidance(
+                                entry.getKey(), targetTelemetry, command, guidance);
+                        if (guidance.reactiveCollisionOverride()) {
+                            NavigationPathState routeState = navigationPathStates.get(
+                                    entry.getKey());
+                            if (routeState != null && routeState.precomputedScheduleRoute) {
+                                routeState.scheduleRouteRejoinActive = true;
+                            }
+                            // Keep a newly queued request alive through one
+                            // physics step. Once the joint actually exists,
+                            // release it only when avoidance needs transverse
+                            // travel which the prismatic route joint would block.
+                            if (entry.getKey().equals(scheduleSplineConstraintKey)
+                                    && scheduleSplineConstraint.active()
+                                    && reactiveGuidanceLeavesSpline(guidance)) {
+                                scheduleSplineConstraintDecision = "reactive collision override";
+                                releaseScheduleSplineConstraint();
+                            }
+                        }
+                    }
+                    publishLivePathfinderDebug(
+                            entry.getKey(), targetTelemetry.position(), command);
+                    boolean preferShipDirection = !finalAlignmentApproach
+                            && controller.activeShipFlightBehavior()
+                            == ScmFlightBehavior.PREFER_SHIP_DIRECTION
+                            || guidance.splineMagnetActive();
+                    boolean assemblyCollisionTranslation =
+                            isAssemblyCollisionTranslation(topology, guidance);
+                    ModeControlDemand modeDemand = controlModeDemand(
                             entry.getKey(), targetTelemetry, command, guidance,
                             forward, up, right,
-                            !finalAlignmentApproach
-                                    && controller.activeShipFlightBehavior()
-                                    == ScmFlightBehavior.PREFER_SHIP_DIRECTION);
-                    force = force.add(worldDirectionToRoot(modeDemand.force()));
-                    torque = torque.add(worldDirectionToRoot(modeDemand.torque()));
-                    driveDirection += modeDemand.driveDirection()
-                            * Math.max(0.05D, modeDemand.force().length());
-                    compensateGravity |= modeDemand.compensateGravity();
-                    uprightStabilizationStrength = Math.max(
-                            uprightStabilizationStrength,
-                            modeDemand.uprightStabilization());
+                            preferShipDirection);
+                    ScmControlMode.ControlOutput output = modeDemand.output();
+                    publishAutopilotDebugState(
+                            entry.getKey(), entry.getKey(), targetTelemetry,
+                            command, guidance, modeDemand);
+                    force = force.add(worldDirectionToRoot(output.force()));
+                    if (!dockingAxisApproach && !assemblyCollisionTranslation) {
+                        torque = torque.add(worldDirectionToRoot(output.torque()));
+                    }
+                    driveDirection += output.driveDirection()
+                            * Math.max(0.05D, output.force().length());
+                    accelerationStrength = Math.max(accelerationStrength,
+                            Math.max(modeDemand.speedPlan().accelerationStrength(),
+                                    output.driveStrength()));
+                    decelerationStrength = Math.max(decelerationStrength,
+                            modeDemand.speedPlan().decelerationStrength());
+                    brakeStrength = Math.max(brakeStrength,
+                            modeDemand.speedPlan().brakeStrength());
+                    compensateGravity |= output.compensateGravity();
+                    if (!assemblyCollisionTranslation) {
+                        uprightStabilizationStrength = Math.max(
+                                uprightStabilizationStrength,
+                                output.uprightStabilization());
+                    }
                     if (command.lockRotation()) {
+                        airshipAttitudeHoldTargets.remove(entry.getKey());
                         if (0.75D >= attitudeLockStrength) {
                             attitudeLockStrength = 0.75D;
                             attitudeLockTarget = command.targetAttitude();
                         }
                     } else if (finalAlignmentApproach && finalAlignmentRequested
                             && !isControlMode(ScmBuiltinControlModes.PLANE_ID)) {
+                        airshipAttitudeHoldTargets.remove(entry.getKey());
                         torque = torque.add(dockingAlignmentTorque(
                                 telemetry, command));
                         if (command.targetUp().lengthSqr() <= 1.0E-12D
@@ -6053,17 +9885,39 @@ public final class ShipControlModuleRuntime {
                             uprightStabilizationStrength = Math.max(
                                     uprightStabilizationStrength, 0.8D);
                         }
+                    } else if (!assemblyCollisionTranslation
+                            && isControlMode(ScmBuiltinControlModes.AIRSHIP_ID)
+                            && !preferShipDirection) {
+                        // Navigation owns yaw; holding the Euler pose recorded at command
+                        // start also locks any existing roll and fights the turn to a dock.
+                        airshipAttitudeHoldTargets.remove(entry.getKey());
+                        uprightStabilizationStrength = Math.max(
+                                uprightStabilizationStrength, 0.75D);
+                    } else {
+                        airshipAttitudeHoldTargets.remove(entry.getKey());
                     }
                 }
                 default -> {
                 }
             }
         }
+        if(!scheduleSplineConstraintRequested) releaseScheduleSplineConstraint();
         // -----------------------------------------------------STABILIZATION-----------------------------------------------------
 
+        // Keep gravity hold out of horizontal direction routing. Lift-powered
+        // airships still need their lift group while hovering or braking.
+        Vec3 controlForce = force;
+        double sustainingPower = sustainingAccelerationPower();
         if (compensateGravity) {
             force = force.add(gravity.demand());
             preferredDirection = gravity.direction();
+            // The allocator receives gravity support in every flight mode. The
+            // profile router must receive that same lift component so it keeps
+            // the authored Ascend group available without requiring a separate
+            // Acceleration group. Otherwise a grounded craft has no selected
+            // upward actuator until it has already somehow taken off.
+            controlForce = ScmControlAxes.withLiftSupport(
+                    controlForce, gravity.demand(), up);
         }
         if (attitudeLockTarget != null && attitudeLockStrength > 1.0E-4D) {
             torque = torque.add(attitudeLockTorque(
@@ -6071,17 +9925,308 @@ public final class ShipControlModuleRuntime {
                     worldDirectionToRoot(telemetry.angularVelocity()),
                     attitudeLockStrength));
         } else if (uprightStabilizationStrength > 1.0E-4D) {
-            torque = torque.add(uprightTorque(
-                    telemetry, uprightStabilizationStrength));
+            torque = torque.add(assemblyUprightTorque(
+                    telemetry, topology, uprightStabilizationStrength));
         }
-        torque = articulatedInertiaCompensatedTorque(torque, dynamics, topology);
-        return new ControlDemand(
-                clampComponents(force), clampComponents(torque), preferredDirection,
-                Mth.clamp(finite(driveDirection), -1.0D, 1.0D));
+        // Wheel, face and differential-drive controls use the unscaled pilot
+        // turn request. Inertia compensation belongs solely to physical
+        // force allocation and must not reduce an analogue steering input.
+        Vec3 controlTorque = torque;
+        torque = inertiaCompensatedTorque(torque, dynamics);
+        ControlDemand demand = new ControlDemand(
+                clampComponents(force), clampComponents(torque),
+                clampComponents(controlForce), clampComponents(controlTorque),
+                preferredDirection,
+                Mth.clamp(finite(driveDirection), -1.0D, 1.0D),
+                Mth.clamp(finite(accelerationStrength), 0.0D, 1.0D),
+                Mth.clamp(finite(decelerationStrength), 0.0D, 1.0D),
+                Mth.clamp(finite(brakeStrength), 0.0D, 1.0D), sustainingPower,
+                compensateGravity ? gravity : GravityCompensation.NONE);
+        long gameTime = controller.getLevel() == null ? Long.MIN_VALUE
+                : controller.getLevel().getGameTime();
+        if (autopilotDebugCollectionRequested(gameTime)) {
+            autopilotControlDemand = new TimedAutopilotControlDemand(
+                    gameTime, demand, compensateGravity,
+                    uprightStabilizationStrength,
+                    attitudeLockTarget != null && attitudeLockStrength > 1.0E-4D,
+                    attitudeLockTarget == null ? Vec3.ZERO : attitudeLockTarget);
+            invalidateAutopilotDebugSnapshot();
+        }
+        return demand;
+    }
+
+    // Let a physical hull/spline overlap retire stale ground recovery before capture.
+    private void restoreConstraintCapturableScheduledRoute(
+            String commandKey,
+            Telemetry telemetry
+    ) {
+        NavigationPathState state = navigationPathStates.get(commandKey);
+        ServerSubLevel root = rootSubLevel;
+        if (state == null || root == null || state.scheduleSpline == null
+                || !state.precomputedScheduleRoute) {
+            return;
+        }
+        boolean ground = usesGroundNavigation();
+        SplineConstraintFrame.AxisPolicy axes = ground
+                ? SplineConstraintFrame.AxisPolicy.HORIZONTAL
+                : SplineConstraintFrame.AxisPolicy.ALL;
+        List<AABB> worldBounds = rootWorldBounds(root);
+        SplineConstraintFrame.HullCapture capture = SplineConstraintFrame.captureHull(
+                state.scheduleSpline, state.scheduleSplineSegment,
+                state.minimumScheduleSplineFraction, worldBounds, axes,
+                SCHEDULE_ROUTE_HULL_CAPTURE_PADDING);
+        if (!capture.found()) {
+            capture = SplineConstraintFrame.captureHullAnywhere(
+                    state.scheduleSpline, worldBounds, axes,
+                    SCHEDULE_ROUTE_HULL_CAPTURE_PADDING);
+        }
+        if (!capture.found()) return;
+        Level level = controller.getLevel();
+        long gameTime = level == null ? 0L : level.getGameTime();
+        if ((state.groundRecoveryAtWaypoint() || state.forwardRecoveryAtWaypoint())
+                && !state.restoreSuspendedSableRoute(telemetry.position(), gameTime)) {
+            return;
+        }
+        state.scheduleSplineSegment = capture.projection().segmentIndex();
+        state.minimumScheduleSplineFraction = capture.projection().fraction();
+        state.scheduleRouteRejoinActive = false;
+        positionIntegralErrors.remove(commandKey);
+    }
+
+    // Keep only calculated schedule transit attached to its authored route
+    private NavigationGuidance scheduledSplineConstraintGuidance(
+            String commandKey,
+            Telemetry telemetry,
+            ActiveShipCommand command,
+            NavigationGuidance guidance,
+            boolean finalAlignmentApproach
+    ){
+        NavigationPathState state = navigationPathStates.get(commandKey);
+        ServerSubLevel root = rootSubLevel;
+        if(command.scheduleRouteEntry() < 0 || state == null
+                || !state.precomputedScheduleRoute || state.scheduleSpline == null
+                || finalAlignmentApproach || magneticConnectorIdx >= 0
+                || root == null || !freezeHandles.isEmpty() || !nestedFreezeHandles.isEmpty()){
+            scheduleSplineConstraintDecision = "route, phase or body unavailable";
+            releaseScheduleSplineConstraint(commandKey);
+            return guidance;
+        }
+        boolean ground = usesGroundNavigation();
+        SplineConstraintFrame.AxisPolicy axes = ground
+                ? SplineConstraintFrame.AxisPolicy.HORIZONTAL : SplineConstraintFrame.AxisPolicy.ALL;
+        List<AABB> worldBounds = rootWorldBounds(root);
+        SplineConstraintFrame.HullCapture hullCapture = SplineConstraintFrame.captureHull(
+                state.scheduleSpline, state.scheduleSplineSegment,
+                state.minimumScheduleSplineFraction, worldBounds, axes,
+                SCHEDULE_ROUTE_HULL_CAPTURE_PADDING);
+        if (!hullCapture.found()) {
+            hullCapture = SplineConstraintFrame.captureHullAnywhere(
+                    state.scheduleSpline, worldBounds, axes,
+                    SCHEDULE_ROUTE_HULL_CAPTURE_PADDING);
+        }
+        boolean hullOverlap = hullCapture.found();
+        if ((guidance.reactiveCollisionOverride() || guidance.reverseRecovery())
+                && !hullOverlap) {
+            scheduleSplineConstraintDecision = "collision recovery outside route";
+            state.scheduleRouteRejoinActive = true;
+            releaseScheduleSplineConstraint(commandKey);
+            return guidance;
+        }
+        double handoffDistance = Math.max(command.tolerance() * 2.0D,
+                Math.max(2.0D, telemetry.velocity().length() * NAVIGATION_RESPONSE_SECONDS));
+        WaypointSpline.Projection projection = hullCapture.found()
+                ? hullCapture.projection()
+                : state.scheduleSplineProjection(telemetry.position(), 1.0D);
+        if (hullCapture.found()) {
+            state.scheduleSplineSegment = projection.segmentIndex();
+            state.minimumScheduleSplineFraction = projection.fraction();
+        }
+        if(!SplineConstraintFrame.beforeHandoff(state.scheduleSpline, projection, handoffDistance)){
+            scheduleSplineConstraintDecision = "route handoff reached";
+            releaseScheduleSplineConstraint(commandKey);
+            return guidance;
+        }
+        if(!commandKey.equals(scheduleSplineConstraintKey)
+                || scheduleSplineConstraintState != state) releaseScheduleSplineConstraint();
+        long gameTime = root.getLevel().getGameTime();
+        if(gameTime < nextSplineConstraintRetryTick){
+            scheduleSplineConstraintDecision = "solver retry pending";
+            return guidance;
+        }
+        try{
+            Vec3 worldAnchor = scheduleSplineConstraintWorldAnchor;
+            boolean hullAnchor = scheduleSplineConstraintHullAnchor;
+            if(worldAnchor == null || hullOverlap
+                    && (!scheduleSplineConstraint.active()
+                    || !hullAnchor && !scheduleSplineConstraint.rigid())){
+                worldAnchor = telemetry.position();
+                hullAnchor = false;
+                if(hullOverlap){
+                    projection = hullCapture.projection();
+                    state.scheduleSplineSegment = projection.segmentIndex();
+                    state.minimumScheduleSplineFraction = projection.fraction();
+                    worldAnchor = hullCapture.anchor();
+                    hullAnchor = true;
+                }
+            }
+            if(!SplineConstraintFrame.beforeHandoff(
+                    state.scheduleSpline, projection, handoffDistance)){
+                releaseScheduleSplineConstraint();
+                return guidance;
+            }
+            boolean attached = hullOverlap
+                    ? scheduleSplineConstraint.updateCapturedWorldAnchor(
+                    root, state.scheduleSpline, projection, worldAnchor,
+                    controllerForwardRoot(), controllerUpRoot(), axes,
+                    SCHEDULE_ROUTE_SPLINE_CAPTURE, handoffDistance,
+                    (position, direction, timeStep) -> scheduledSplineConstraintClear(
+                            commandKey, state, position, direction, timeStep, ground))
+                    : scheduleSplineConstraint.updateWorldAnchor(
+                    root, state.scheduleSpline, projection, worldAnchor,
+                    controllerForwardRoot(), controllerUpRoot(), axes,
+                    SCHEDULE_ROUTE_SPLINE_CAPTURE, handoffDistance,
+                    (position, direction, timeStep) -> scheduledSplineConstraintClear(
+                            commandKey, state, position, direction, timeStep, ground));
+            if(!attached){
+                scheduleSplineConstraintDecision = scheduleSplineConstraint.diagnostic();
+                releaseScheduleSplineConstraint();
+                return guidance;
+            }
+            scheduleSplineConstraintKey = commandKey;
+            scheduleSplineConstraintState = state;
+            scheduleSplineConstraintWorldAnchor = worldAnchor;
+            scheduleSplineConstraintHullAnchor = hullAnchor;
+            scheduleSplineConstraintRequested = true;
+            scheduleSplineConstraintDecision = scheduleSplineConstraint.diagnostic();
+            if(!scheduleSplineConstraint.active()) return guidance;
+            state.scheduleRouteRejoinActive = false;
+            positionIntegralErrors.remove(commandKey);
+            // The joint owns cross-track position; actuator control follows the
+            // same ordered tangent instead of running a second rejoin path.
+            return scheduledSplineConstraintControlGuidance(
+                    telemetry, command, state, projection, ground);
+        }catch(ReflectiveOperationException | RuntimeException err){
+            scheduleSplineConstraintDecision = "solver error: " + err.getClass().getSimpleName();
+            releaseScheduleSplineConstraint();
+            nextSplineConstraintRetryTick = gameTime + 100L;
+            LOGGER.log(System.Logger.Level.WARNING, "Could not attach scheduled spline constraint", err);
+            return guidance;
+        }
+    }
+
+    // Follow the ordered constraint tangent without a competing centre-point rejoin correction
+    private NavigationGuidance scheduledSplineConstraintControlGuidance(
+            Telemetry telemetry,
+            ActiveShipCommand command,
+            NavigationPathState state,
+            WaypointSpline.Projection projection,
+            boolean ground
+    ) {
+        double lookahead = Math.max(0.75D, Math.min(
+                6.0D, Math.max(1.0D, telemetry.velocity().length())
+                        * NAVIGATION_RESPONSE_SECONDS));
+        Vec3 direction = SplineConstraintFrame.tangent(projection,
+                ground ? SplineConstraintFrame.AxisPolicy.HORIZONTAL
+                        : SplineConstraintFrame.AxisPolicy.ALL);
+        double curvature = 0.0D;
+        double steeringFeedForward = 0.0D;
+        if (ground) {
+            GroundPathPlanner.VehicleCapabilities capabilities = null;
+            CollisionScanContext collisionContext = collisionScanContext();
+            if (collisionContext != null) {
+                capabilities = groundVehicleCapabilities(cachedShipHullBounds(
+                        telemetry.position(), collisionContext));
+            }
+            GroundPathPlanner.ForwardRouteControl routeControl =
+                    GroundPathPlanner.forwardSplineControl(
+                            state.scheduleSpline, projection, telemetry.position(), capabilities,
+                            lookahead, command.targetSpeed(),
+                            GROUND_NAVIGATION_CORNER_LATERAL_ACCELERATION,
+                            NAVIGATION_BRAKING_ACCELERATION,
+                            NAVIGATION_RESPONSE_SECONDS,
+                            GROUND_NAVIGATION_MIN_CORNER_SPEED);
+            direction = normalize(routeControl.steeringDirection(), direction);
+            curvature = routeControl.signedCurvature();
+            steeringFeedForward = routeControl.steeringFeedForward();
+        }
+        WaypointSpline.TrackingTarget trackingTarget =
+                state.scheduleSpline.trackingTarget(projection, lookahead);
+        Vec3 controlTarget = trackingTarget.found()
+                ? trackingTarget.position()
+                : telemetry.position().add(direction.scale(lookahead));
+        return new NavigationGuidance(
+                direction, controlTarget, 0.6D, false, false, true, direction,
+                false, curvature, steeringFeedForward, true);
+    }
+
+    // Get the live world bounds of the body receiving the route joint
+    private static List<AABB> rootWorldBounds(ServerSubLevel root) {
+        if (root == null || root.isRemoved()) return List.of();
+        var bounds = root.boundingBox();
+        return List.of(new AABB(
+                bounds.minX(), bounds.minY(), bounds.minZ(),
+                bounds.maxX(), bounds.maxY(), bounds.maxZ()));
+    }
+
+    // Keep the solver joint alive while the server control loop owns safety
+    private boolean scheduledSplineConstraintClear(
+            String commandKey,
+            NavigationPathState state,
+            Vec3 position,
+            Vec3 direction,
+            double timeStep,
+            boolean ground
+    ){
+        ActiveShipCommand command = activeCommands.get(commandKey);
+        if(shutdownPrepared || controller.isRemoved() || phase != Phase.READY
+                || command == null || command.scheduleRouteEntry() < 0
+                || navigationPathStates.get(commandKey) != state
+                || magneticConnectorIdx >= 0 || !freezeHandles.isEmpty()
+                || !nestedFreezeHandles.isEmpty()) return false;
+        // Collision avoidance runs before this joint is refreshed. Duplicating
+        // that scan in the physics callback detached the joint before the
+        // reactive controller could take over, leaving calculated routes red.
+        return true;
+    }
+
+    // Release a route joint only when collision authority requests motion across its free axis
+    private boolean reactiveGuidanceLeavesSpline(NavigationGuidance guidance) {
+        if (guidance == null) return false;
+        Vec3 route = normalize(scheduleSplineConstraint.direction(), Vec3.ZERO);
+        Vec3 requested = normalize(guidance.collisionTravelDirection(), guidance.direction());
+        if (route.lengthSqr() <= 1.0E-12D
+                || requested.lengthSqr() <= 1.0E-12D) return false;
+        return Math.abs(route.dot(requested)) < Math.cos(Math.toRadians(5.0D));
+    }
+
+    // Keep live avoidance in control until it physically returns to the route centreline
+    private static boolean requireScheduleSplineRejoin(NavigationPathState state){
+        if(state != null && state.precomputedScheduleRoute){
+            state.scheduleRouteRejoinActive = true;
+        }
+        return false;
+    }
+
+    // Release only the route joint owned by this command
+    private void releaseScheduleSplineConstraint(String commandKey){
+        if(scheduleSplineConstraintKey == null
+                || Objects.equals(scheduleSplineConstraintKey, commandKey)){
+            releaseScheduleSplineConstraint();
+        }
+    }
+
+    // Return to live control without changing the body's momentum
+    private void releaseScheduleSplineConstraint(){
+        scheduleSplineConstraint.close();
+        scheduleSplineConstraintKey = null;
+        scheduleSplineConstraintState = null;
+        scheduleSplineConstraintWorldAnchor = null;
+        scheduleSplineConstraintHullAnchor = false;
+        scheduleSplineConstraintRequested = false;
     }
 
     // Control the mode demand
-    private ScmControlMode.ControlOutput controlModeDemand(
+    private ModeControlDemand controlModeDemand(
             String commandKey,
             Telemetry telemetry,
             ActiveShipCommand command,
@@ -6108,25 +10253,702 @@ public final class ShipControlModuleRuntime {
                 new Vec3(0.0D, 1.0D, 0.0D));
         Vec3 rightWorld = normalize(rootDirectionToWorld(rightRoot),
                 forwardWorld.cross(upWorld));
-        boolean groundMode = isControlMode(ScmBuiltinControlModes.CAR_ID);
-        double forwardClearance = groundMode
-                ? groundCollisionDistance(telemetry.position(), forwardWorld)
-                : collisionDistance(telemetry.position(), forwardWorld);
-        double reverseClearance = groundMode
-                ? groundCollisionDistance(telemetry.position(), forwardWorld.scale(-1.0D))
-                : collisionDistance(telemetry.position(), forwardWorld.scale(-1.0D));
+        boolean groundMode = usesGroundNavigation();
+        NavigationSpeedPlan speedPlan = navigationSpeedPlan(
+                commandKey, telemetry, command, guidance, dir, forwardWorld,
+                groundMode);
+        double propulsion = command.driveThrottle();
+        if(propulsion < 0.0D && hasConfiguredAccelerationGroup()) propulsion = 1.0D;
         ScmControlMode.ControlInput input = new ScmControlMode.ControlInput(
                 telemetry.position(), telemetry.velocity(), telemetry.angularVelocity(),
                 forwardWorld, upWorld, rightWorld, guidance.controlTarget(), dir,
                 integral, command.targetSpeed(), command.tolerance(),
-                guidance.distanceResponse(), forwardClearance, reverseClearance,
-                command.avoidCollisions(), preferForward);
-        return controller.getShipControlMode().navigate(input);
+                guidance.distanceResponse(), !guidance.brakeAtControlTarget(),
+                speedPlan.forwardClearance(), speedPlan.reverseClearance(),
+                speedPlan.permittedSpeed(), propulsion,
+                true, preferForward, guidance.reverseRecovery(),
+                guidance.pathCurvature(), guidance.steeringFeedForward());
+        return new ModeControlDemand(controller.getShipControlMode().navigate(input), speedPlan);
+    }
+
+    // Probe one host collision direction for the reusable reactive selector
+    private ReactiveCollisionAvoidance.EscapeCandidate reactiveEscapeCandidate(
+            Vec3 position,
+            Vec3 direction,
+            double scanRange,
+            boolean groundVehicle
+    ) {
+        Vec3 normalized = normalize(direction, Vec3.ZERO);
+        return new ReactiveCollisionAvoidance.EscapeCandidate(
+                normalized, reactiveCollisionDistance(
+                position, normalized, scanRange, groundVehicle));
+    }
+
+    // Apply the always-active reactive layer after route/rejoin/recovery guidance has been chosen.
+    // This changes only the current control tick; the schedule-owned retained route remains intact
+    // and becomes authoritative again as soon as the temporary hazard is clear.
+    private NavigationGuidance applyReactiveCollisionAvoidance(
+            String commandKey,
+            Telemetry telemetry,
+            ActiveShipCommand command,
+            NavigationGuidance guidance
+    ) {
+        if(command != null && ("ship_dock".equals(command.type())
+                || !command.avoidCollisions()
+                && dockingCaptureCommand(command))) return guidance;
+        Vec3 requested = normalize(guidance.collisionTravelDirection(),
+                guidance.direction());
+        if (requested.lengthSqr() <= 1.0E-12D) return guidance;
+        CollisionScanContext collisionContext = collisionScanContext();
+        if (collisionContext == null) return NavigationGuidance.stopped(telemetry.position());
+
+        boolean groundVehicle = usesGroundNavigation();
+        Vec3 position = telemetry.position();
+        HullBounds hull = cachedShipHullBounds(position, collisionContext);
+        Vec3 forward = normalize(rootDirectionToWorld(controllerForwardRoot()), requested);
+        Vec3 up = normalize(rootDirectionToWorld(controllerUpRoot()),
+                new Vec3(0.0D, 1.0D, 0.0D));
+        if (groundVehicle) {
+            requested = normalize(new Vec3(requested.x, 0.0D, requested.z), Vec3.ZERO);
+            forward = normalize(new Vec3(forward.x, 0.0D, forward.z), requested);
+            up = new Vec3(0.0D, 1.0D, 0.0D);
+        }
+        if (requested.lengthSqr() <= 1.0E-12D) return guidance;
+        Vec3 right = normalize(forward.cross(up),
+                groundVehicle ? new Vec3(-forward.z, 0.0D, forward.x)
+                        : new Vec3(1.0D, 0.0D, 0.0D));
+
+        double currentSpeed = assemblyMotionSpeed(
+                collisionContext, telemetry.velocity().length());
+        double scanRange = navigationCollisionScanRange(currentSpeed);
+        double requiredClearance = Math.min(scanRange,
+                navigationRequiredClearance(command.targetSpeed(), currentSpeed));
+        double exactHullRange = Math.min(NAVIGATION_EXACT_HULL_SCAN_MAX_RANGE,
+                Math.max(2.0D, Math.min(requiredClearance,
+                        currentSpeed * NAVIGATION_RESPONSE_SECONDS + 1.0D)));
+        double requestedClearance = reactiveSafetyCollisionDistance(
+                position, requested, scanRange, groundVehicle,
+                guidance.splineMagnetActive(), exactHullRange);
+
+        Vec3 velocityDirection = normalize(groundVehicle
+                ? new Vec3(telemetry.velocity().x, 0.0D, telemetry.velocity().z)
+                : telemetry.velocity(), requested);
+        double motionClearance = !ReactiveCollisionAvoidance.probeMotionDirection(
+                telemetry.velocity(), requested, 0.25D)
+                || velocityDirection.dot(requested) >= 0.995D
+                ? requestedClearance
+                : reactiveSafetyCollisionDistance(
+                position, velocityDirection, scanRange, groundVehicle,
+                false, exactHullRange);
+        MotionHazard carriageMotion = carriageMotionHazard(
+                collisionContext, position, requested, scanRange, groundVehicle);
+        if (carriageMotion.available()) {
+            double carriageClearance = reactiveSafetyCollisionDistance(
+                    position, carriageMotion.direction(), scanRange, groundVehicle,
+                    false, exactHullRange);
+            if (carriageClearance < motionClearance) {
+                motionClearance = carriageClearance;
+                velocityDirection = carriageMotion.direction();
+            }
+        }
+
+        if (dockingCaptureAllowed(telemetry, command, guidance)) {
+            double intendedTravel = guidance.controlTarget().subtract(position).length();
+            if (groundVehicle) {
+                Vec3 offset = guidance.controlTarget().subtract(position);
+                intendedTravel = new Vec3(offset.x, 0.0D, offset.z).length();
+            }
+            requiredClearance = Math.min(requiredClearance,
+                    Math.max(0.0D, intendedTravel));
+            // The selected dock face is the one intentional contact. A different object entering
+            // the corridor produces an earlier hit and therefore still invokes the reactive layer.
+            if (requestedClearance + DOCKING_CONTACT_CLEARANCE_ALLOWANCE
+                    >= intendedTravel && motionClearance + DOCKING_CONTACT_CLEARANCE_ALLOWANCE
+                    >= intendedTravel) {
+                return guidance;
+            }
+        }
+
+        Vec3 collisionDirection = motionClearance < requestedClearance
+                ? velocityDirection : requested;
+        double collisionClearance = Math.min(requestedClearance, motionClearance);
+        Vec3 reaction = simpleCollisionAvoidanceDirection(
+                position, collisionDirection, forward, collisionClearance, up, right,
+                scanRange, requiredClearance, groundVehicle);
+        NavigationPathState liveState = groundVehicle
+                ? navigationPathStates.get(commandKey) : null;
+        boolean liveHazard = collisionClearance < requiredClearance - 1.0E-4D
+                || reaction.lengthSqr() <= 1.0E-12D
+                || reaction.dot(collisionDirection) < 0.999D;
+        if(liveHazard && isPathfindingTransit(command)){
+            NavigationPathState state = navigationPathStates.computeIfAbsent(commandKey, ignored -> new NavigationPathState());
+            Vec3 blocker = position.add(collisionDirection.scale(
+                    Math.max(0.0D, collisionClearance)));
+            NavigationGuidance detour = advanceObstacleDetour(commandKey, telemetry, command, state,
+                    collisionContext, hull, forward, groundVehicle, blocker, collisionContext.level().getGameTime());
+            if(detour != null) return reactiveOverride(detour);
+        }
+        if (liveHazard && liveState != null
+                && (liveState.groundRecoveryAtWaypoint()
+                || liveState.forwardRecoveryAtWaypoint())) {
+            // A retained manoeuvre is committed only while its next physical
+            // curve remains clear. A newly-arrived body immediately reopens
+            // local planning; the original route snapshot stays suspended.
+            liveState.nextReplanTick = Long.MIN_VALUE;
+        }
+        if (reaction.lengthSqr() <= 1.0E-12D) {
+            // A car cannot side-step an obstacle. Commit to one bounded
+            // reverse curve immediately instead of holding at the blocker and
+            // reconsidering Forward on the next tick.
+            if (groundVehicle) {
+                NavigationPathState state = liveState != null ? liveState
+                        : navigationPathStates.computeIfAbsent(
+                        commandKey, ignored -> new NavigationPathState());
+                long gameTime = controller.getLevel() == null
+                        ? 0L : controller.getLevel().getGameTime();
+                Vec3 targetDirection = normalize(
+                        command.targetPosition().subtract(position), requested);
+                if (gameTime >= state.nextReplanTick
+                        && startReverseRecovery(
+                        telemetry, command.targetPosition(), targetDirection,
+                        forward, up, hull, collisionContext, state,
+                        scanRange, gameTime)) {
+                    NavigationGuidance recovery = reverseRecoveryGuidance(
+                            commandKey, telemetry, command.targetPosition(),
+                            targetDirection, forward, hull,
+                            collisionContext, state, gameTime);
+                    if (recovery != null) return reactiveOverride(recovery);
+                }
+                state.nextReplanTick = gameTime + NAVIGATION_FAILED_RETRY_TICKS;
+            }
+            return NavigationGuidance.stopped(position);
+        }
+        double reactionClearance = reaction.dot(collisionDirection) >= 0.999D
+                ? collisionClearance
+                : reactiveCollisionDistance(
+                position, reaction, scanRange, groundVehicle);
+        if (groundVehicle && reaction.dot(collisionDirection) > 0.0D
+                && reaction.dot(collisionDirection) < 0.999D) {
+            Vec3 blended = ReactiveCollisionAvoidance.steeringDirection(
+                    collisionDirection, reaction, collisionClearance, requiredClearance,
+                    Math.toRadians(35.0D));
+            // Blending back toward the route must not blend back into the
+            // obstruction. Retain the measured clear escape when the
+            // steering-limited vector has no usable travel segment.
+            double blendedClearance = reactiveCollisionDistance(
+                    position, blended, scanRange, true);
+            double minimumUsefulBlend = Math.min(requiredClearance,
+                    reactionClearance * 0.75D);
+            if (blendedClearance > collisionClearance + 0.25D
+                    && blendedClearance >= minimumUsefulBlend) {
+                reaction = blended;
+                reactionClearance = blendedClearance;
+            }
+        }
+        if (reaction.dot(requested) >= 0.999D
+                && collisionClearance >= requiredClearance - 1.0E-4D) {
+            return guidance;
+        }
+        double localStep = navigationPathStep(hull.maximumSpan());
+        double escapeDistance = reactiveEscapeDistance(
+                reactionClearance, requiredClearance, localStep, scanRange);
+        if (escapeDistance <= 1.0E-4D) {
+            return NavigationGuidance.stopped(position);
+        }
+        Vec3 escapeTarget = position.add(reaction.scale(escapeDistance));
+        if (groundVehicle) {
+            escapeTarget = new Vec3(escapeTarget.x, position.y, escapeTarget.z);
+        }
+        boolean reverseEscape = groundVehicle && reaction.dot(forward) < -0.25D;
+        if (groundVehicle) {
+            NavigationPathState state = liveState != null ? liveState
+                    : navigationPathStates.computeIfAbsent(
+                    commandKey, ignored -> new NavigationPathState());
+            long gameTime = controller.getLevel() == null
+                    ? 0L : controller.getLevel().getGameTime();
+            if (gameTime >= state.nextReplanTick) {
+                if (reverseEscape) {
+                    Vec3 targetDirection = normalize(
+                            command.targetPosition().subtract(position), requested);
+                    if (startReverseRecovery(
+                            telemetry, command.targetPosition(), targetDirection,
+                            forward, up, hull, collisionContext, state,
+                            scanRange, gameTime)) {
+                        NavigationGuidance recovery = reverseRecoveryGuidance(
+                                commandKey, telemetry, command.targetPosition(),
+                                targetDirection, forward, hull,
+                                collisionContext, state, gameTime);
+                        if (recovery != null) return reactiveOverride(recovery);
+                    }
+                } else if (!state.forwardRecoveryAtWaypoint()
+                        && startForwardAvoidance(
+                        telemetry, command.targetPosition(), reaction,
+                        escapeDistance, forward, up, hull,
+                        collisionContext, state, gameTime)) {
+                    NavigationGuidance recovery = forwardRecoveryGuidance(
+                            telemetry, state, hull, gameTime);
+                    if (recovery != null) return reactiveOverride(recovery);
+                }
+            }
+        }
+        return new NavigationGuidance(
+                reaction, escapeTarget, 0.6D,
+                reverseEscape || guidance.reverseRecovery(),
+                false, true, reaction, true);
+    }
+
+    // Get the greatest live velocity across the complete connected hull
+    private static double assemblyMotionSpeed(
+            CollisionScanContext context,
+            double fallback
+    ) {
+        double speed = Math.max(0.0D, finite(fallback));
+        if (context == null) {
+            return speed;
+        }
+        for (SubLevel subLevel : context.shipSubLevels()) {
+            if (!(subLevel instanceof ServerSubLevel body)) {
+                continue;
+            }
+            SableSubLevelTelemetryApi.Snapshot telemetry =
+                    SableSubLevelTelemetryApi.sample(body);
+            if (telemetry.physicsAvailable()) {
+                speed = Math.max(speed, telemetry.speed());
+            }
+        }
+        return speed;
+    }
+
+    // Find the earliest collision direction contributed by a swaying carriage
+    private MotionHazard carriageMotionHazard(
+            CollisionScanContext context,
+            Vec3 position,
+            Vec3 requested,
+            double scanRange,
+            boolean groundVehicle
+    ) {
+        if (context == null || context.shipSubLevels().size() <= 1) {
+            return MotionHazard.NONE;
+        }
+        List<Vec3> directions = new ArrayList<>();
+        Vec3 selectedDirection = Vec3.ZERO;
+        double selectedClearance = Math.max(0.0D, finite(scanRange));
+        for (SubLevel subLevel : context.shipSubLevels()) {
+            if (!(subLevel instanceof ServerSubLevel body)) {
+                continue;
+            }
+            SableSubLevelTelemetryApi.Snapshot telemetry =
+                    SableSubLevelTelemetryApi.sample(body);
+            if (!telemetry.physicsAvailable()) {
+                continue;
+            }
+            Vec3 velocity = telemetry.linearVelocity();
+            if (groundVehicle) {
+                velocity = new Vec3(velocity.x, 0.0D, velocity.z);
+            }
+            Vec3 direction = normalize(velocity, Vec3.ZERO);
+            if (direction.lengthSqr() <= 1.0E-12D
+                    || velocity.length() < NAVIGATION_MIN_CAPTURE_APPROACH_SPEED
+                    || direction.dot(requested) >= 0.995D
+                    || directions.stream().anyMatch(known -> known.dot(direction) >= 0.995D)) {
+                continue;
+            }
+            directions.add(direction);
+            double clearance = collisionDistance(position, direction, scanRange);
+            if (clearance < selectedClearance) {
+                selectedDirection = direction;
+                selectedClearance = clearance;
+            }
+            if (directions.size() >= COLLISION_CARRIAGE_MOTION_DIRECTIONS) {
+                break;
+            }
+        }
+        return selectedDirection.lengthSqr() <= 1.0E-12D
+                ? MotionHazard.NONE : new MotionHazard(selectedDirection, selectedClearance);
+    }
+
+    // Check whether a command is inside the dock's authored capture corridor.
+    // The dock connector itself is intentional contact, but the normal
+    // clearance tests above still reject any other obstacle in that corridor.
+    private static boolean dockingCaptureCommand(ActiveShipCommand command) {
+        return command != null && ("ship_dock".equals(command.type())
+                || "ship_navigate".equals(command.type())
+                && command.targetPoint().dockingConnector()
+                && command.targetConnectorIndex() >= 0);
+    }
+
+    // Check whether a dock capture may cross the ordinary collision boundary
+    private boolean dockingCaptureAllowed(
+            Telemetry telemetry,
+            ActiveShipCommand command,
+            NavigationGuidance guidance
+    ) {
+        if (!dockingCaptureCommand(command)
+                || telemetry.velocity().length() > DOCKING_FINAL_CAPTURE_MAX_SPEED
+                || !dockingDirectionWithin(
+                command, DOCKING_FINAL_ALIGNMENT_TOLERANCE_DEGREES)) {
+            return false;
+        }
+        Vec3 dockTarget = dockControlTarget(telemetry, command);
+        return guidance.controlTarget().distanceToSqr(dockTarget) <= 1.0E-4D;
+    }
+
+    // Preserve the recovery's steering/braking semantics while exposing that
+    // the permanent live-collision layer, rather than route ownership, chose it.
+    private static NavigationGuidance reactiveOverride(NavigationGuidance guidance) {
+        return new NavigationGuidance(
+                guidance.direction(), guidance.controlTarget(),
+                guidance.distanceResponse(), guidance.reverseRecovery(),
+                guidance.brakeAtControlTarget(), guidance.obstacleAvoidanceRoute(),
+                guidance.collisionTravelDirection(), true);
+    }
+
+    // Probe one full-hull reactive collision direction
+    private double reactiveCollisionDistance(
+            Vec3 position,
+            Vec3 direction,
+            double scanRange,
+            boolean groundVehicle
+    ) {
+        return reactiveCollisionDistance(
+                position, direction, scanRange, groundVehicle, false);
+    }
+
+    // Probe one direction while allowing only an authored route to cross a terrain gap
+    private double reactiveCollisionDistance(
+            Vec3 position,
+            Vec3 direction,
+            double scanRange,
+            boolean groundVehicle,
+            boolean authoredTerrainRoute
+    ) {
+        double refinedDistance = groundVehicle
+                ? groundCollisionDistance(
+                position, direction, scanRange, authoredTerrainRoute)
+                : collisionDistance(position, direction, scanRange);
+        return refinedDistance;
+    }
+
+    // Close sparse probe gaps near the physical hull with one bounded collision-shape sweep
+    private double reactiveSafetyCollisionDistance(
+            Vec3 position,
+            Vec3 direction,
+            double scanRange,
+            boolean groundVehicle,
+            boolean authoredTerrainRoute,
+            double exactRange
+    ) {
+        double probed = reactiveCollisionDistance(
+                position, direction, scanRange, groundVehicle, authoredTerrainRoute);
+        CollisionScanContext ctx = collisionScanContext();
+        double maximum = Math.min(Math.max(0.0D, finite(scanRange)),
+                Math.max(0.0D, finite(exactRange)));
+        if (ctx == null || maximum <= 1.0E-6D
+                || direction == null || direction.lengthSqr() <= 1.0E-12D) {
+            return probed;
+        }
+        Vec3 dir = direction.normalize();
+        long gameTime = ctx.level().getGameTime();
+        if (safetyCollisionCacheTick != gameTime) {
+            safetyCollisionCacheTick = gameTime;
+            safetyCollisionCache.clear();
+        }
+        CollisionProbe probe = new CollisionProbe(
+                position, dir, maximum, groundVehicle, false, !authoredTerrainRoute);
+        Double cached = safetyCollisionCache.get(probe);
+        if (cached != null) return Math.min(probed, cached);
+        HullBounds hull = cachedShipHullBounds(position, ctx);
+        double exact = SubLevelParticleOcclusion.findSweptBoundsBlockingDistance(
+                ctx.level(), ctx.containingSubLevel(), position, dir, maximum,
+                hull.worldBoundsAt(position, COLLISION_HULL_MARGIN, groundVehicle),
+                true, ctx.excludedSubLevelIds(), true,
+                NAVIGATION_EXACT_HULL_SCAN_MAX_BLOCKS,
+                NAVIGATION_EXACT_HULL_SCAN_MAX_NANOS);
+        safetyCollisionCache.put(probe, exact);
+        return Math.min(probed, exact);
+    }
+
+    // Build the only speed plan used for the configured Acceleration,
+    // Deceleration and Brake groups. The route's requested speed is capped by the speed at
+    // which the craft can stop at its target and the speed at
+    // which it can stop before the measured collision clearance. Heading,
+    // gravity compensation and the allocator's force magnitude deliberately
+    // do not participate in this calculation.
+    private NavigationSpeedPlan navigationSpeedPlan(
+            String commandKey,
+            Telemetry telemetry,
+            ActiveShipCommand command,
+            NavigationGuidance guidance,
+            Vec3 pathDirection,
+            Vec3 forwardWorld,
+            boolean groundMode
+    ) {
+        double scanRange = navigationCollisionScanRange(
+                telemetry.velocity().length());
+        if(!command.avoidCollisions() || "ship_dock".equals(command.type())){
+            return collisionBypassingSpeedPlan(
+                    telemetry, command, guidance, groundMode, scanRange);
+        }
+        NavigationPathState pathState = navigationPathStates.get(commandKey);
+        boolean activeGroundCurve = groundMode && pathState != null
+                && pathState.hasActiveGroundCurve();
+        if (activeGroundCurve
+                && guidance.collisionTravelDirection().lengthSqr() > 1.0E-12D) {
+            GroundPathPlanner.Curve curve = pathState.groundRouteCurves.get(
+                    pathState.groundCurveIndex);
+            Vec3 curveTangent = curve.tangentAtFraction(
+                    curve.nearestFraction(telemetry.position()));
+            activeGroundCurve = normalize(
+                    guidance.collisionTravelDirection(), curveTangent)
+                    .dot(curveTangent) >= 0.995D;
+        }
+        boolean certifiedGroundRoute = groundMode && pathState != null
+                && pathState.precomputedScheduleRoute
+                && guidance.obstacleAvoidanceRoute();
+        Vec3 travelDirection = normalize(pathDirection, forwardWorld);
+        Vec3 groundTravelDirection = guidance.reverseRecovery()
+                ? forwardWorld.scale(-1.0D) : forwardWorld;
+        // A retained calculated leg is the selected safe corridor. Its live
+        // steering tangent, rather than an unrelated vehicle-forward ray,
+        // owns both collision response and the speed envelope.
+        if (groundMode && (activeGroundCurve || certifiedGroundRoute)
+                && guidance.collisionTravelDirection().lengthSqr() > 1.0E-12D) {
+            groundTravelDirection = normalize(
+                    new Vec3(guidance.collisionTravelDirection().x, 0.0D,
+                            guidance.collisionTravelDirection().z),
+                    groundTravelDirection);
+        }
+        double curveClearance = activeGroundCurve
+                ? groundCurveCollisionDistance(commandKey, telemetry.position(), scanRange)
+                : -1.0D;
+        double forwardClearance;
+        double reverseClearance;
+        if (curveClearance >= 0.0D) {
+            // The chosen curve is the only drivetrain direction needed this
+            // tick. Avoid two redundant full-hull axis sweeps on every route
+            // sample; the opposite gear is reconsidered by the next replan.
+            forwardClearance = scanRange;
+            reverseClearance = scanRange;
+            if (guidance.reverseRecovery()) {
+                reverseClearance = curveClearance;
+            } else {
+                forwardClearance = curveClearance;
+            }
+        } else {
+            // A car can engage only one drivetrain direction. Probe that live
+            // corridor and leave the inactive gear clear until recovery selects it.
+            if (groundMode && guidance.reverseRecovery()) {
+                forwardClearance = scanRange;
+                reverseClearance = groundCollisionDistance(
+                        telemetry.position(), groundTravelDirection, scanRange);
+            } else if (groundMode) {
+                forwardClearance = groundCollisionDistance(
+                        telemetry.position(), groundTravelDirection, scanRange,
+                        guidance.splineMagnetActive());
+                reverseClearance = scanRange;
+            } else {
+                forwardClearance = collisionDistance(
+                        telemetry.position(), forwardWorld, scanRange);
+                reverseClearance = collisionDistance(
+                        telemetry.position(), forwardWorld.scale(-1.0D), scanRange);
+            }
+        }
+        double travelClearance = groundMode
+                ? (curveClearance >= 0.0D ? curveClearance
+                : (guidance.reverseRecovery() ? reverseClearance : forwardClearance))
+                : collisionDistance(
+                telemetry.position(), travelDirection, scanRange);
+        Vec3 measuredVelocity = groundMode
+                ? new Vec3(telemetry.velocity().x, 0.0D, telemetry.velocity().z)
+                : telemetry.velocity();
+        Vec3 velocityDirection = normalize(measuredVelocity, travelDirection);
+        Vec3 selectedTravelDirection = groundMode
+                ? groundTravelDirection : travelDirection;
+        if (ReactiveCollisionAvoidance.probeMotionDirection(measuredVelocity, selectedTravelDirection, 0.25D)
+                && curveClearance < 0.0D
+                && velocityDirection.dot(selectedTravelDirection) < 0.995D) {
+            double velocityClearance = groundMode
+                    ? groundCollisionDistance(
+                            telemetry.position(), velocityDirection, scanRange)
+                    : collisionDistance(
+                    telemetry.position(), velocityDirection, scanRange);
+            travelClearance = Math.min(travelClearance, velocityClearance);
+        }
+        if (dockingCaptureAllowed(telemetry, command, guidance)) {
+            Vec3 dockOffset = guidance.controlTarget().subtract(telemetry.position());
+            double intendedTravel = groundMode
+                    ? new Vec3(dockOffset.x, 0.0D, dockOffset.z).length()
+                    : dockOffset.length();
+            if (travelClearance + DOCKING_CONTACT_CLEARANCE_ALLOWANCE
+                    >= intendedTravel) {
+                travelClearance = Math.min(scanRange,
+                        intendedTravel + NAVIGATION_MIN_CLEARANCE);
+            }
+        }
+        // Collision probes use a finite moving look-ahead, while the retained
+        // direct route and its braking envelope own the real command target.
+        // A captured target still needs room to execute a live escape when
+        // another Sable body enters its clearance envelope.
+        boolean capturedTargetEscape = guidance.obstacleAvoidanceRoute()
+                && !guidance.brakeAtControlTarget()
+                && commandBrakingDistance(telemetry, command, command.targetPosition(), groundMode)
+                <= Math.max(0.25D, command.tolerance());
+        Vec3 brakingTarget = guidance.brakeAtControlTarget() || capturedTargetEscape
+                ? guidance.controlTarget() : command.targetPosition();
+        double targetDistance = commandBrakingDistance(
+                telemetry, command, brakingTarget, groundMode);
+        NavigationPathState speedState = navigationPathStates.get(commandKey);
+        if(groundMode && guidance.brakeAtControlTarget() && speedState != null
+                && speedState.hasActiveGroundCurve()){
+            targetDistance = GroundPathPlanner.remainingManeuverDistance(telemetry.position(),
+                    speedState.groundRouteCurves, speedState.groundCurveIndex);
+        }
+        double brakingTolerance = brakingTarget.distanceToSqr(
+                command.targetPosition()) <= 1.0E-8D
+                ? command.tolerance() : 0.25D;
+        double targetSpeedLimit = navigationCaptureApproachSpeed(
+                targetDistance, brakingTolerance);
+        double cornerSpeedLimit = command.targetSpeed();
+        double trafficSpeedLimit = command.targetSpeed();
+        double collisionSpeedLimit = command.targetSpeed();
+        double permittedSpeed = Math.min(command.targetSpeed(), targetSpeedLimit);
+        String limitingFactor = permittedSpeed + 1.0E-6D < command.targetSpeed()
+                ? "destination braking" : "requested cruise";
+        if (groundMode) {
+            cornerSpeedLimit = groundRouteCornerSpeedLimit(
+                    commandKey, telemetry.position(), guidance.controlTarget(),
+                    command.targetSpeed());
+            if (cornerSpeedLimit + 1.0E-6D < permittedSpeed) {
+                permittedSpeed = cornerSpeedLimit;
+                limitingFactor = "route corner";
+            }
+            if (pathState != null && pathState.forwardRecoveryAtWaypoint()) {
+                cornerSpeedLimit = Math.min(
+                        cornerSpeedLimit, GROUND_NAVIGATION_AVOIDANCE_SPEED);
+                if (cornerSpeedLimit + 1.0E-6D < permittedSpeed) {
+                    permittedSpeed = cornerSpeedLimit;
+                    limitingFactor = "avoidance maneuver";
+                }
+            }
+        }
+        RouteTrafficPriority.Decision trafficDecision =
+                routeTrafficDecision(commandKey);
+        boolean passingSameDirectionTraffic = trafficDecision.encounter()
+                == RouteTrafficPriority.Encounter.SAME_DIRECTION
+                && pathState != null && pathState.forwardRecoveryAtWaypoint();
+        boolean retreatingFromTraffic = trafficDecision.yield()
+                && guidance.reverseRecovery();
+        if (trafficDecision.yield() && !guidance.reactiveCollisionOverride()
+                && !passingSameDirectionTraffic
+                && !retreatingFromTraffic) {
+            trafficSpeedLimit = navigationStoppingSpeed(
+                    trafficDecision.yieldDistance(), 0.0D);
+            if (trafficSpeedLimit + 1.0E-6D < permittedSpeed) {
+                permittedSpeed = trafficSpeedLimit;
+                limitingFactor = "traffic right-of-way";
+            }
+        }
+        collisionSpeedLimit = ScmSpeedControl.scannedSafeSpeed(travelClearance, scanRange,
+                command.targetSpeed(), groundMode ? GROUND_NAVIGATION_MIN_CLEARANCE : NAVIGATION_MIN_CLEARANCE,
+                NAVIGATION_RESPONSE_SECONDS, NAVIGATION_BRAKING_ACCELERATION);
+        if (collisionSpeedLimit + 1.0E-6D < permittedSpeed) {
+            permittedSpeed = collisionSpeedLimit;
+            limitingFactor = "live collision clearance";
+        }
+        permittedSpeed = Math.max(0.0D, finite(permittedSpeed));
+
+        // Telemetry is the Sable rigid body's actual world velocity. Use its
+        // magnitude here rather than a steering-axis projection: a sideways
+        // slide still consumes stopping distance and must reduce drive / wake
+        // the configured Brake group.
+        double actualSpeed = Math.max(0.0D, finite(telemetry.velocity().length()));
+        double requestedThrottle = command.driveThrottle() >= 0.0D
+                ? command.driveThrottle() : 1.0D;
+        ScmSpeedControl.Request speedRequest = new ScmSpeedControl.Request(
+                actualSpeed, permittedSpeed, command.targetSpeed(),
+                requestedThrottle, NAVIGATION_RESPONSE_SECONDS);
+        // Dedicated Acceleration holds the selected engine setpoint while
+        // Deceleration and Brake independently correct excess speed.
+        boolean splineDrive = hasConfiguredAccelerationGroup();
+        ScmSpeedControl.Demand speedControl = splineDrive
+                ? ScmSpeedControl.planSpeedGroup(speedRequest)
+                : ScmSpeedControl.plan(speedRequest);
+        return new NavigationSpeedPlan(forwardClearance, reverseClearance,
+                travelClearance, scanRange, targetDistance,
+                targetSpeedLimit, cornerSpeedLimit, trafficSpeedLimit,
+                collisionSpeedLimit, permittedSpeed, limitingFactor,
+                speedControl.acceleration(),
+                speedControl.deceleration(), speedControl.brake());
+    }
+
+    // Build the speed plan for a collision-bypassing command
+    private NavigationSpeedPlan collisionBypassingSpeedPlan(
+            Telemetry telemetry,
+            ActiveShipCommand command,
+            NavigationGuidance guidance,
+            boolean groundMode,
+            double scanRange
+    ){
+        double targetDistance = commandBrakingDistance(
+                telemetry, command, guidance.controlTarget(), groundMode);
+        double targetSpeedLimit = navigationCaptureApproachSpeed(
+                targetDistance, command.tolerance());
+        double permittedSpeed = Math.min(command.targetSpeed(), targetSpeedLimit);
+        double actualSpeed = Math.max(0.0D, finite(telemetry.velocity().length()));
+        double requestedThrottle = command.driveThrottle() >= 0.0D
+                ? command.driveThrottle() : 1.0D;
+        ScmSpeedControl.Request speedRequest = new ScmSpeedControl.Request(
+                actualSpeed, permittedSpeed, command.targetSpeed(),
+                requestedThrottle, NAVIGATION_RESPONSE_SECONDS);
+        ScmSpeedControl.Demand speedControl = hasConfiguredAccelerationGroup()
+                ? ScmSpeedControl.planSpeedGroup(speedRequest)
+                : ScmSpeedControl.plan(speedRequest);
+        return new NavigationSpeedPlan(
+                scanRange, scanRange, scanRange, scanRange, targetDistance,
+                targetSpeedLimit, command.targetSpeed(), command.targetSpeed(),
+                command.targetSpeed(), permittedSpeed, "destination braking",
+                speedControl.acceleration(), speedControl.deceleration(), speedControl.brake());
+    }
+
+    // Cap a ground vehicle before the next retained bend, while preserving cruise speed across
+    // nearly-collinear route legs. The cap reaches its corner speed at the hull checkpoint and
+    // expands by the same braking envelope used for collision-safe travel.
+    private double groundRouteCornerSpeedLimit(
+            String commandKey,
+            Vec3 position,
+            Vec3 controlTarget,
+            double requestedSpeed
+    ) {
+        double maximum = Math.max(0.0D, finite(requestedSpeed));
+        NavigationPathState state = navigationPathStates.get(commandKey);
+        CollisionScanContext ctx = collisionScanContext();
+        if (state == null || !state.hasSableRoute() || ctx == null) return maximum;
+        HullBounds hull = cachedShipHullBounds(position, ctx);
+        return state.sableRouteControl(position, controlTarget,
+                groundVehicleCapabilities(hull), maximum).permittedSpeed();
+    }
+
+    // Use the authored alignment point for final-target speed management
+    private double commandBrakingDistance(
+            Telemetry telemetry,
+            ActiveShipCommand command,
+            Vec3 brakingTarget,
+            boolean groundMode
+    ) {
+        return groundMode
+                ? horizontalDistance(telemetry.position(), brakingTarget)
+                : telemetry.position().distanceTo(brakingTarget);
     }
 
     // Check if this is a control mode
     private boolean isControlMode(ResourceLocation modeId) {
         return controller.getShipControlMode().id().equals(modeId);
+    }
+
+    // Check whether the active mode navigates along terrain
+    private boolean usesGroundNavigation() {
+        return isControlMode(ScmBuiltinControlModes.GROUND_SEA_ID)
+                || isControlMode(ScmBuiltinControlModes.IK_ID);
     }
 
     // Get the prefer ship direction force
@@ -6188,25 +11010,25 @@ public final class ShipControlModuleRuntime {
         travelDirection = travelDirection.normalize();
         forwardWorld = forwardWorld.normalize();
         double alignment = Mth.clamp(forwardWorld.dot(travelDirection), -1.0D, 1.0D);
-        double dir = alignment <= GROUND_REVERSE_ALIGNMENT ? -1.0D : 1.0D;
+        // Gear is part of the committed manoeuvre state. Inferring it from a
+        // near-sideways dot product every tick caused forward/reverse pulse
+        // loops whenever steering noise crossed the old threshold.
+        double dir = guidance.reverseRecovery() ? -1.0D : 1.0D;
+        double collisionRange = navigationCollisionScanRange(telemetry.velocity().length());
         double clearance = groundCollisionDistance(
-                telemetry.position(), forwardWorld.scale(dir));
-        if (dir > 0.0D && clearance <= NAVIGATION_MIN_CLEARANCE) {
-            double reverseClearance = groundCollisionDistance(
-                    telemetry.position(), forwardWorld.scale(-1.0D));
-            if (reverseClearance > clearance + 1.0D) {
-                dir = -1.0D;
-                clearance = reverseClearance;
-            }
-        }
+                telemetry.position(), forwardWorld.scale(dir), collisionRange);
         double headingAlignment = Math.max(0.0D, dir * alignment);
         double targetDistance = horizontalDistance(
                 telemetry.position(), guidance.controlTarget());
-        double desiredSpeed = targetSpeedForDistance(
-                targetDistance, command.tolerance(), command.targetSpeed(),
-                guidance.distanceResponse());
-        desiredSpeed = Math.min(desiredSpeed, groundSafeSpeed(clearance));
-        desiredSpeed *= 0.15D + 0.85D * headingAlignment;
+        double desiredSpeed = guidance.brakeAtControlTarget()
+                ? targetSpeedForDistance(targetDistance, command.tolerance(),
+                command.targetSpeed(), guidance.distanceResponse())
+                : command.targetSpeed();
+        desiredSpeed = Math.min(desiredSpeed, navigationSafeTravelSpeed(
+                clearance, GROUND_NAVIGATION_MIN_CLEARANCE));
+        double headingSpeedFloor = guidance.brakeAtControlTarget() ? 0.15D : 0.60D;
+        desiredSpeed *= headingSpeedFloor
+                + (1.0D - headingSpeedFloor) * headingAlignment;
         double currentSpeed = telemetry.velocity().dot(forwardWorld);
         return Mth.clamp((dir * desiredSpeed - currentSpeed)
                 * GROUND_SPEED_CONTROL_GAIN, -1.0D, 1.0D);
@@ -6214,21 +11036,110 @@ public final class ShipControlModuleRuntime {
 
     // Get the ground collision distance
     private double groundCollisionDistance(Vec3 pos, Vec3 worldDir) {
+        return groundCollisionDistance(pos, worldDir, COLLISION_SCAN_RANGE);
+    }
+
+    // Get the ground collision distance with a speed-dependent scan range.
+    private double groundCollisionDistance(Vec3 pos, Vec3 worldDir, double range) {
+        return groundCollisionDistance(pos, worldDir, range, false);
+    }
+
+    // Get ground clearance while optionally trusting an authored route across unsupported terrain
+    private double groundCollisionDistance(
+            Vec3 pos,
+            Vec3 worldDir,
+            double range,
+            boolean authoredTerrainRoute
+    ) {
         CollisionScanContext ctx = collisionScanContext();
         if (ctx == null || worldDir.lengthSqr() <= 1.0E-12D) {
-            return COLLISION_SCAN_RANGE;
+            return Math.max(0.0D, finite(range));
         }
         Vec3 dir = worldDir.normalize();
-        HullBounds hull = shipHullBounds(pos, ctx.shipSubLevels());
-        return pathTraceDistance(pos, dir, COLLISION_SCAN_RANGE,
-                hull, ctx, true);
+        HullBounds hull = cachedShipHullBounds(pos, ctx);
+        return pathTraceDistance(pos, dir, range,
+                hull, ctx, true, !authoredTerrainRoute);
+    }
+
+    // Measure live clearance along the physical bicycle curve which the car
+    // is actually following. A long straight tangent sweep rejects obstacles
+    // which sit beside a safe turn and used to make cars stop even though the
+    // already-planned arc avoided them. The bounded segment count keeps this
+    // dynamic craft-to-craft check cheap while still following the curve.
+    private double groundCurveCollisionDistance(
+            String commandKey,
+            Vec3 position,
+            double range
+    ) {
+        NavigationPathState state = navigationPathStates.get(commandKey);
+        CollisionScanContext ctx = collisionScanContext();
+        double maximum = Math.max(0.0D, finite(range));
+        if (state == null || ctx == null || !state.hasActiveGroundCurve()) {
+            return -1.0D;
+        }
+        HullBounds hull = cachedShipHullBounds(position, ctx);
+        Vec3 referenceForward = normalize(
+                rootDirectionToWorld(controllerForwardRoot()),
+                new Vec3(0.0D, 0.0D, 1.0D));
+        Vec3 referenceUp = normalize(
+                rootDirectionToWorld(controllerUpRoot()),
+                new Vec3(0.0D, 1.0D, 0.0D));
+        Vec3 cursor = finite(position);
+        double checked = 0.0D;
+        int remainingSamples = 4;
+        for (int curveIdx = state.groundCurveIndex;
+             curveIdx < state.groundRouteCurves.size()
+                     && checked < maximum - 1.0E-6D && remainingSamples > 0;
+             curveIdx++) {
+            GroundPathPlanner.Curve curve = state.groundRouteCurves.get(curveIdx);
+            double startFraction = curveIdx == state.groundCurveIndex
+                    ? curve.nearestFraction(cursor) : 0.0D;
+            double remainingLength = curve.length() * (1.0D - startFraction);
+            if (remainingLength <= 1.0E-6D) {
+                continue;
+            }
+            double inspectedLength = Math.min(maximum - checked, remainingLength);
+            double fractionSpan = inspectedLength / Math.max(1.0E-9D, curve.length());
+            int samples = Math.min(remainingSamples, Math.max(1, (int) Math.ceil(
+                    inspectedLength / 1.5D)));
+            for (int sample = 1; sample <= samples
+                    && checked < maximum - 1.0E-6D; sample++) {
+                double fraction = startFraction
+                        + fractionSpan * sample / samples;
+                Vec3 next = curve.pointAtFraction(fraction);
+                next = new Vec3(next.x, cursor.y, next.z);
+                Vec3 delta = next.subtract(cursor);
+                double segmentLength = Math.min(delta.length(), maximum - checked);
+                if (segmentLength <= 1.0E-6D) {
+                    cursor = next;
+                    continue;
+                }
+                Vec3 direction = delta.normalize();
+                double previousFraction = fraction - fractionSpan / samples;
+                if (!pathPoseClear(
+                        cursor, curve.vehicleForwardAtFraction(previousFraction), referenceUp,
+                        next, curve.vehicleForwardAtFraction(fraction), referenceUp,
+                        referenceForward, referenceUp, hull, ctx, true)) {
+                    return checked;
+                }
+                checked += segmentLength;
+                cursor = cursor.add(direction.scale(segmentLength));
+                if (segmentLength + 1.0E-6D < delta.length()) {
+                    return checked;
+                }
+            }
+            remainingSamples -= samples;
+        }
+        // The stored route was fully collision-tested when planned. Returning
+        // the requested range after its checked portion means only a newly
+        // intersecting live obstacle can close the speed envelope.
+        return maximum;
     }
 
     // Get the ground safe speed
     private static double groundSafeSpeed(double clearance) {
-        double brakingDistance = Math.max(0.0D,
-                finite(clearance) - NAVIGATION_MIN_CLEARANCE);
-        return Math.sqrt(2.0D * GROUND_BRAKING_ACCELERATION * brakingDistance);
+        return navigationSafeTravelSpeed(
+                clearance, GROUND_NAVIGATION_MIN_CLEARANCE);
     }
 
     // Get safe forward travel while turning
@@ -6256,27 +11167,6 @@ public final class ShipControlModuleRuntime {
         }
         double alignment = horizontalTravel.normalize().dot(horizontalForwardWorld.normalize());
         return Mth.lerp(preferredDirectionForwardEngagement(alignment), 0.95D, 0.55D);
-    }
-
-    // Get the articulated inertia compensated torque
-    private static Vec3 articulatedInertiaCompensatedTorque(
-            Vec3 angularAccelerationDemand,
-            SableAssemblyDynamicsApi.Snapshot dynamics,
-            @Nullable SableAssemblyTopologyApi.Topology topology
-    ) {
-        if (topology == null || !topology.available()
-                || topology.carriagePartitions().size() <= 1) {
-            return inertiaCompensatedTorque(angularAccelerationDemand, dynamics);
-        }
-        Vec3 demand = angularAccelerationDemand == null
-                ? Vec3.ZERO : angularAccelerationDemand;
-        Vec3 rollPitch = inertiaCompensatedTorque(
-                new Vec3(demand.x, 0.0D, demand.z), dynamics);
-        SableAssemblyDynamicsApi.Snapshot primaryDynamics = dynamics == null
-                ? null : dynamics.aggregate(primaryCarriageBodyIds(topology));
-        Vec3 yaw = inertiaCompensatedTorque(
-                new Vec3(0.0D, demand.y, 0.0D), primaryDynamics);
-        return finite(new Vec3(rollPitch.x, yaw.y, rollPitch.z));
     }
 
     // Get the inertia compensated torque
@@ -6327,13 +11217,79 @@ public final class ShipControlModuleRuntime {
         Vec3 dir = counterGravityRoot.lengthSqr() <= 1.0E-12D
                 ? Vec3.ZERO : counterGravityRoot.normalize();
         return new GravityCompensation(
-                ShipControlAllocator.normalizePhysicalForce(effectiveMap, counterGravityRoot), dir);
+                ShipControlAllocator.normalizePhysicalForce(effectiveMap, counterGravityRoot), dir,
+                counterGravityRoot);
     }
 
-    // Get the upright torque
-    private Vec3 uprightTorque(Telemetry telemetry, double strength) {
+    // Recalculate gravity support after directional SCM groups are selected
+    private ControlDemand routedGravitySupport(
+            ControlDemand demand, ShipControlMap effectiveMap
+    ){
+        GravityCompensation previous = demand.gravitySupport();
+        if(previous.physicalForce().lengthSqr() <= 1.0E-12D) return demand;
+        GravityCompensation routed = gravityCompensation(effectiveMap);
+        Vec3 force = demand.force().subtract(previous.demand()).add(routed.demand());
+        return new ControlDemand(
+                clampComponents(force), demand.torque(), demand.controlForce(),
+                demand.controlTorque(), demand.preferredDirection(), demand.driveDirection(),
+                demand.accelerationStrength(), demand.decelerationStrength(),
+                demand.brakeStrength(), demand.sustainingPower(), routed);
+    }
+
+    // Return the external acceleration at the assembled craft's mass centres.
+    // The trajectory planner consumes this in world space; actuator allocation
+    // remains server-authoritative and continues to use the calibrated map.
+    private Vec3 aircraftExternalAcceleration() {
+        ServerSubLevel root = rootSubLevel != null ? rootSubLevel : containingServerSubLevel();
+        if (root == null) {
+            return Vec3.ZERO;
+        }
+        Vec3 weightedAcceleration = Vec3.ZERO;
+        double totalMass = 0.0D;
+        for (SubLevel connected : connectedShipSubLevels(root)) {
+            if (!(connected instanceof ServerSubLevel body) || body.getMassTracker() == null) {
+                continue;
+            }
+            double mass = body.getMassTracker().getMass();
+            Vector3dc center = body.getMassTracker().getCenterOfMass();
+            if (!Double.isFinite(mass) || mass <= 1.0E-9D || center == null) {
+                continue;
+            }
+            Vec3 position = worldPosition(body.logicalPose(), new Vec3(center.x(), center.y(), center.z()));
+            Vector3d gravity = DimensionPhysicsData.getGravity(
+                    body.getLevel(), new Vector3d(position.x, position.y, position.z));
+            weightedAcceleration = weightedAcceleration.add(
+                    gravity.x * mass, gravity.y * mass, gravity.z * mass);
+            totalMass += mass;
+        }
+        return totalMass <= 1.0E-9D ? Vec3.ZERO : finite(weightedAcceleration.scale(1.0D / totalMass));
+    }
+
+    // Get the shared upright torque without feeding local carriage flex into the train.
+    private Vec3 assemblyUprightTorque(
+            Telemetry telemetry,
+            @Nullable SableAssemblyTopologyApi.Topology topology,
+            double strength
+    ) {
+        if (topology != null && topology.available()
+                && topology.carriagePartitions().size() > 1) {
+            SableAssemblyOrientationApi.Snapshot orientation =
+                    SableAssemblyOrientationApi.sample(topology);
+            if (orientation.available()) {
+                Vec3 up = orientation.up();
+                Vec3 tiltRate = orientation.angularVelocity().subtract(
+                        up.scale(orientation.angularVelocity().dot(up)));
+                Vec3 levelingAxis = up.cross(new Vec3(0.0D, 1.0D, 0.0D));
+                return worldDirectionToRoot(levelingAxis.scale(0.55D * strength)
+                        .subtract(tiltRate.scale(0.55D * strength)));
+            }
+        }
         Vec3 localAngularVelocity = worldDirectionToRoot(telemetry.angularVelocity());
-        Vec3 torque = localAngularVelocity.scale(-0.4D * strength);
+        Vec3 yawAxis = normalize(worldDirectionToRoot(new Vec3(0.0D, 1.0D, 0.0D)),
+                new Vec3(0.0D, 1.0D, 0.0D));
+        Vec3 tiltRate = localAngularVelocity.subtract(
+                yawAxis.scale(localAngularVelocity.dot(yawAxis)));
+        Vec3 torque = tiltRate.scale(-0.4D * strength);
         Vec3 worldUp = rootDirectionToWorld(controllerUpRoot());
         Vec3 levelingAxisWorld = worldUp.cross(new Vec3(0.0D, 1.0D, 0.0D));
         return torque.add(worldDirectionToRoot(levelingAxisWorld).scale(0.7D * strength));
@@ -6416,12 +11372,16 @@ public final class ShipControlModuleRuntime {
     }
 
     // Apply the allocation
-    private void applyAllocation(ShipControlMap currentMap, double[] controls) {
+    private void applyAllocation(
+            ShipControlMap currentMap,
+            double[] controls,
+            ScmSteeringMode steeringMode
+    ) {
         double[] requested = new double[currentMap.units().size()];
         Map<String, Integer> groupWinners = new HashMap<>();
         for (int idx = 0; idx < currentMap.units().size(); idx++) {
             ShipControlMap.PropulsionUnit unit = currentMap.units().get(idx);
-            if (!unit.controllable()) {
+            if (!unit.controllable() || isAccelerationControlUnit(currentMap, unit)) {
                 continue;
             }
             Actuator actuator = controlActuators.get(idx);
@@ -6436,14 +11396,18 @@ public final class ShipControlModuleRuntime {
             if (actuator == null || !actuator.controllable()) {
                 continue;
             }
-            if (isControlMode(ScmBuiltinControlModes.CAR_ID)
+            boolean automaticCarriageFace = actuator.isFaceActionControl()
+                    && isImplicitAutomaticCarriageUnit(
+                    controller.getScmConfigurationProfile(), currentMap, unit);
+            if (actuator.isFaceActionControl() && !automaticCarriageFace
+                    || (isControlMode(ScmBuiltinControlModes.GROUND_SEA_ID)
+                    || steeringMode == ScmSteeringMode.TANK)
                     && (actuator.isKineticControl() || actuator.isWheelControl())) {
                 continue;
             }
             double normalized = idx < controls.length ? controls[idx] : 0.0D;
             double calibrated = actuator.controlForDemand(unit, normalized);
-            double control = mapAllocationControl(
-                    calibrated, unit.minControl(), unit.maxControl(), actuator.mapsOwnControlRange());
+            double control = actuator.mapControl(unit, calibrated);
             requested[idx] = control;
             String group = actuator.controlGroupId();
             if (!group.isBlank()) {
@@ -6455,8 +11419,19 @@ public final class ShipControlModuleRuntime {
         }
         for (int idx = 0; idx < currentMap.units().size(); idx++) {
             Actuator actuator = controlActuators.get(idx);
-            if (isControlMode(ScmBuiltinControlModes.CAR_ID) && actuator != null
-                    && (actuator.isKineticControl() || actuator.isWheelControl())) {
+            if (isAccelerationControlUnit(currentMap, currentMap.units().get(idx))) {
+                continue;
+            }
+            ShipControlMap.PropulsionUnit unit = currentMap.units().get(idx);
+            boolean automaticCarriageFace = actuator != null
+                    && actuator.isFaceActionControl()
+                    && isImplicitAutomaticCarriageUnit(
+                    controller.getScmConfigurationProfile(), currentMap, unit);
+            if (actuator != null && (actuator.isFaceActionControl()
+                    && !automaticCarriageFace
+                    || (isControlMode(ScmBuiltinControlModes.GROUND_SEA_ID)
+                    || steeringMode == ScmSteeringMode.TANK)
+                    && (actuator.isKineticControl() || actuator.isWheelControl()))) {
                 continue;
             }
             if (actuator == null || actuator.controlGroupId().isBlank()) {
@@ -6468,28 +11443,857 @@ public final class ShipControlModuleRuntime {
         }
     }
 
-    // Apply the car control
-    private void applyCarControl(
+    // Drive face-bound controls from their SCM profile action group. A face's
+    // linker/default label is only a compatibility fallback: once a player
+    // assigns that exact face to (for example) Yaw Left, its group is the
+    // authority. This is essential for four-wheel steering, where the left
+    // and right physical inputs intentionally belong to the same yaw action.
+    private void applyScmFaceActionControls(
+            ShipControlMap currentMap,
+            ControlDemand demand,
+            ScmSteeringMode steeringMode
+    ) {
+        Level level = controller.getLevel();
+        if (level == null) {
+            return;
+        }
+        ScmConfigurationProfile configuration = controller.getScmConfigurationProfile();
+        boolean explicitRouting = configuration != null
+                && configuration.isConfiguredFor(currentMap)
+                && configuration.hasActionBindings();
+        // Clear every linker-face output first. A profile can move a
+        // face from one action to another, and an old signal must never remain
+        // asserted just because the new action happens to be idle this tick.
+        List<ScmTarget> linkerTargets = ContraptionNetworkLinkerData.scmTargets(
+                controller.getStoredLinker());
+        for (ScmTarget target : linkerTargets) {
+            if (!target.usesFaceControl()) {
+                continue;
+            }
+            if (isImplicitAutomaticCarriageFaceTarget(
+                    configuration, currentMap, target)) {
+                continue;
+            }
+            ContraptionNetworkLinkerSignalBus.setPlaneSignal(
+                    level, target.subLevelId(), target.signalPosition(), target.signalFace(),
+                    scmFaceSignalSource(target), 0);
+        }
+        if (!explicitRouting) return;
+
+        Set<String> activeActions = activeProfileFaceActions(
+                activeControlActionTypes(demand, currentMap));
+        Set<ScmConfigurationProfile.UnitReference> selectedYawReferences =
+                steeringModeFaceReferences(configuration, currentMap, steeringMode);
+        Map<ScmConfigurationProfile.UnitReference, Double> requestedSignals = new LinkedHashMap<>();
+        Set<ScmConfigurationProfile.UnitReference> rotationalReferences = new HashSet<>();
+        boolean closedLoopControl = activeCommands.values().stream()
+                .anyMatch(command -> isClosedLoopCommand(command.type()));
+        for (String action : activeActions) {
+            // Each speed-control block is owned by the independent scalar pass.
+            if("ship_accelerate".equals(action)) continue;
+            double strength = profileFaceActionStrength(action, demand);
+            if (strength <= 1.0E-5D) {
+                continue;
+            }
+            for (ScmConfigurationProfile.UnitReference reference
+                    : configuration.unitsForExplicitActions(Set.of(action))) {
+                if (reference.usesFaceControl()
+                        && (!isYawProfileAction(action)
+                        || selectedYawReferences.contains(reference))
+                        && !steeringModeOwnsWheelFace(reference, steeringMode)) {
+                    requestedSignals.merge(reference, strength, Math::max);
+                    if (isRotationalFaceAction(action)) {
+                        rotationalReferences.add(reference);
+                    }
+                }
+            }
+        }
+
+        Set<String> requestedSources = requestedSignals.keySet().stream()
+                .map(ShipControlModuleRuntime::scmProfileFaceSignalSource)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        for (ScmConfigurationProfile.Group group : configuration.groups()) {
+            for (ScmConfigurationProfile.UnitReference reference : group.units()) {
+                if (reference.usesFaceControl()
+                        && !requestedSources.contains(scmProfileFaceSignalSource(reference))) {
+                    setProfileFaceSignal(level, reference, linkerTargets, 0);
+                    regulatedFaceControlValues.remove(
+                            scmProfileFaceSignalSource(reference));
+                }
+            }
+        }
+        requestedSignals.forEach((reference, strength) -> setProfileFaceSignal(
+                level, reference, linkerTargets, ScmSpeedControl.quantizedSignal(
+                        regulatedProfileFaceStrength(
+                                reference, strength, closedLoopControl
+                                        && rotationalReferences.contains(reference)), 15)));
+    }
+
+    // Track closed-loop rotational controls through their analogue range.
+    private double regulatedProfileFaceStrength(
+            ScmConfigurationProfile.UnitReference reference,
+            double requested,
+            boolean closedLoopControl
+    ) {
+        String source = scmProfileFaceSignalSource(reference);
+        double target = Mth.clamp(finite(requested), 0.0D, 1.0D);
+        if (!closedLoopControl) {
+            regulatedFaceControlValues.remove(source);
+            return target;
+        }
+        double regulated = ScmSpeedGroupAllocator.regulatedControl(
+                regulatedFaceControlValues.getOrDefault(source, 0.0D),
+                target, FACE_ROTATION_MAXIMUM_CHANGE);
+        if (regulated <= 1.0E-5D) {
+            regulatedFaceControlValues.remove(source);
+            return 0.0D;
+        }
+        regulatedFaceControlValues.put(source, regulated);
+        return regulated;
+    }
+
+    // Check whether feedback control, rather than a manual scalar command, owns this tick.
+    private static boolean isClosedLoopCommand(String type) {
+        return switch (type) {
+            case "ship_face", "ship_navigate", "ship_follow", "ship_dock",
+                 "ship_hover", "ship_climb", "ship_stabilize" -> true;
+            default -> false;
+        };
+    }
+
+    // Check whether one face action consumes continuous rotational demand.
+    private static boolean isRotationalFaceAction(String action) {
+        return switch (action) {
+            case "ship_yaw", "ship_pan", "ship_yaw_left", "ship_yaw_right",
+                 "ship_pitch", "ship_tilt", "ship_pitch_up", "ship_pitch_down",
+                 "ship_roll", "ship_roll_left", "ship_roll_right" -> true;
+            default -> false;
+        };
+    }
+
+    // Automated steering modes address wheel hubs directly by axle geometry
+    private boolean steeringModeOwnsWheelFace(
+            ScmConfigurationProfile.UnitReference reference,
+            ScmSteeringMode steeringMode
+    ) {
+        if (steeringMode == ScmSteeringMode.CUSTOM || reference == null) return false;
+        BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
+                controller.getLevel(), reference.subLevelId(), reference.blockPosition());
+        return blockEntity instanceof WheelMountControlBridge;
+    }
+
+    // Select the authored yaw references that belong to the requested axle
+    private Set<ScmConfigurationProfile.UnitReference> steeringModeFaceReferences(
+            ScmConfigurationProfile configuration,
+            ShipControlMap currentMap,
+            ScmSteeringMode steeringMode
+    ) {
+        Set<ScmConfigurationProfile.UnitReference> references =
+                configuration.unitsForExplicitActions(Set.of(
+                        "ship_yaw", "ship_pan", "ship_yaw_left", "ship_yaw_right"));
+        if (!steeringMode.usesWheelGeometry()
+                || steeringMode == ScmSteeringMode.FOUR_WHEEL
+                || references.isEmpty()) {
+            return references;
+        }
+        Map<ScmConfigurationProfile.UnitReference, Double> positions = new LinkedHashMap<>();
+        for (ScmConfigurationProfile.UnitReference reference : references) {
+            for (ShipControlMap.PropulsionUnit unit : currentMap.units()) {
+                if (configurationReferenceMatchesUnit(reference, unit)) {
+                    positions.put(reference, unit.rootPosition()
+                            .subtract(currentMap.centerOfMass()).dot(controllerForwardRoot()));
+                    break;
+                }
+            }
+            if (positions.containsKey(reference)) continue;
+            for (ShipControlMap.BearingUnit bearing : currentMap.bearings()) {
+                if (Objects.equals(reference.subLevelId(), bearing.hostSubLevelId())
+                        && reference.blockPosition().equals(bearing.blockPosition())) {
+                    positions.put(reference, bearingLongitudinalPosition(currentMap, bearing));
+                    break;
+                }
+            }
+        }
+        if (positions.isEmpty()) return references;
+        double trailing = positions.values().stream().mapToDouble(Double::doubleValue)
+                .min().orElse(0.0D);
+        double leading = positions.values().stream().mapToDouble(Double::doubleValue)
+                .max().orElse(0.0D);
+        Set<ScmConfigurationProfile.UnitReference> selected = new LinkedHashSet<>();
+        for (ScmConfigurationProfile.UnitReference reference : references) {
+            Double position = positions.get(reference);
+            if (position == null || Math.abs(steeringMode.wheelDemand(
+                    1.0D, position, trailing, leading)) > 1.0E-6D) {
+                selected.add(reference);
+            }
+        }
+        return Set.copyOf(selected);
+    }
+
+    // Check whether an SCM action represents yaw steering
+    private static boolean isYawProfileAction(String action) {
+        return "ship_yaw".equals(action) || "ship_pan".equals(action)
+                || "ship_yaw_left".equals(action) || "ship_yaw_right".equals(action);
+    }
+
+    // Drive exactly one player-configured face. If the face is represented by
+    // a linker target, retain that target's physical plane; otherwise use the
+    // directly selected block face. No directional action is inferred here.
+    private void setProfileFaceSignal(
+            Level level,
+            ScmConfigurationProfile.UnitReference reference,
+            List<ScmTarget> linkerTargets,
+            int strength
+    ) {
+        if (reference == null || !reference.usesFaceControl()) {
+            return;
+        }
+        String source = scmProfileFaceSignalSource(reference);
+        boolean linked = false;
+        for (ScmTarget target : linkerTargets) {
+            if (!target.usesFaceControl()
+                    || !profileReferenceMatchesTarget(reference, target)) {
+                continue;
+            }
+            ContraptionNetworkLinkerSignalBus.setPlaneSignal(
+                    level, target.subLevelId(), target.signalPosition(), target.signalFace(),
+                    source, strength);
+            linked = true;
+        }
+        if (!linked) {
+            ContraptionNetworkLinkerSignalBus.setPlaneSignal(
+                    level, reference.subLevelId(),
+                    reference.blockPosition().relative(reference.face()), reference.face(),
+                    source, strength);
+        }
+    }
+
+    private static String scmProfileFaceSignalSource(
+            ScmConfigurationProfile.UnitReference reference
+    ) {
+        return CONTROL_CHANNEL + ":profile-face:" + reference.subLevelId() + ':'
+                + reference.blockPosition().asLong() + ':'
+                + reference.face().getSerializedName();
+    }
+
+    // Preserve the historic linker/default face interpretation for unprofiled
+    // controllers. A configured SCM never enters this path.
+    private void applyLinkerFaceActionControls(Level level, ControlDemand demand) {
+        for (ScmTarget target : ContraptionNetworkLinkerData.scmTargets(
+                controller.getStoredLinker())) {
+            if (!target.usesFaceControl()) {
+                continue;
+            }
+            BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
+                    level, target.subLevelId(), target.blockPosition());
+            if (blockEntity instanceof WheelMountControlBridge) {
+                continue;
+            }
+            int signal = Mth.clamp((int) Math.round(
+                    scmFaceActionStrength(target, demand) * 15.0D), 0, 15);
+            ContraptionNetworkLinkerSignalBus.setPlaneSignal(
+                    level, target.subLevelId(), target.signalPosition(), target.signalFace(),
+                    scmFaceSignalSource(target), signal);
+        }
+    }
+
+    // Reduce the active command set to direct face actions. When an authored
+    // directional action is present it wins over the old generic axis action;
+    // otherwise a generic group remains available for existing profiles.
+    private static Set<String> activeProfileFaceActions(Set<String> requestedActions) {
+        Set<String> actions = new LinkedHashSet<>();
+        if (requestedActions != null) {
+            requestedActions.stream().filter(ShipControlModuleRuntime::isProfileFaceAction)
+                    .forEach(actions::add);
+        }
+        retainSpecificProfileFaceActions(actions, "ship_yaw", "ship_pan",
+                "ship_yaw_left", "ship_yaw_right");
+        retainSpecificProfileFaceActions(actions, "ship_pitch", "ship_tilt",
+                "ship_pitch_up", "ship_pitch_down");
+        retainSpecificProfileFaceActions(actions, "ship_roll", null,
+                "ship_roll_left", "ship_roll_right");
+        retainSpecificProfileFaceActions(actions, "ship_strafe", null,
+                "ship_strafe_left", "ship_strafe_right");
+        // Acceleration is the shared analogue drive-power channel, not a
+        // generic direction. Keep it active alongside the selected Forward
+        // or Backwards group so a car can select its gear and receive power
+        // in the same tick.
+        return Set.copyOf(actions);
+    }
+
+    private static boolean isProfileFaceAction(String action) {
+        return switch (action) {
+            case "ship_yaw", "ship_pan", "ship_yaw_left", "ship_yaw_right",
+                 "ship_pitch", "ship_tilt", "ship_pitch_up", "ship_pitch_down",
+                 "ship_roll", "ship_roll_left", "ship_roll_right",
+                 "ship_strafe", "ship_strafe_left", "ship_strafe_right",
+                 "ship_accelerate", "ship_forward", "ship_backward", "ship_reverse",
+                 "ship_ascend", "ship_descend", "ship_brake", "ship_decelerate" -> true;
+            default -> false;
+        };
+    }
+
+    private static void retainSpecificProfileFaceActions(
+            Set<String> actions, String generic, @Nullable String legacyGeneric,
+            String... specificActions
+    ) {
+        boolean hasSpecific = java.util.Arrays.stream(specificActions)
+                .anyMatch(actions::contains);
+        if (hasSpecific) {
+            actions.remove(generic);
+            if (legacyGeneric != null) {
+                actions.remove(legacyGeneric);
+            }
+        }
+    }
+
+    // Use the same physical-to-authored yaw conversion for routing, faces and wheel hubs.
+    private double yawRightDemand(ControlDemand demand){
+        return ScmControlAxes.yawRightDemand(demand.controlTorque(), controllerUpRoot(),
+                isControlMode(ScmBuiltinControlModes.CAR_ID)
+                        && !hasConfiguredTankSteering()
+                        && plannedDriveDirection(demand) < 0.0D);
+    }
+
+    private double profileFaceActionStrength(String action, ControlDemand demand) {
+        Vec3 forward = controllerForwardRoot();
+        Vec3 up = controllerUpRoot();
+        Vec3 right = normalize(forward.cross(up), new Vec3(1.0D, 0.0D, 0.0D));
+        double forwardDemand = ScmControlAxes.longitudinalDrive(
+                demand.controlForce(), forward, demand.driveDirection());
+        double forwardDrive = Math.max(0.0D, forwardDemand);
+        double backwardDrive = Math.max(0.0D, -forwardDemand);
+        // Once an Acceleration group exists it is the only analogue speed
+        // channel. Forward/Backward become mutually-exclusive direction
+        // selectors and must remain fully asserted while that direction is
+        // selected; feeding the speed plan into a gearshift face makes it
+        // chatter between gears and neutral as throttle is feathered.
+        boolean dedicatedSpeedControl = hasConfiguredAccelerationGroup();
+        double selectedDriveDirection = plannedDriveDirection(demand);
+        double strafeDemand = demand.controlForce().dot(right);
+        double liftDemand = ScmControlAxes.liftSelector(demand.controlForce(), demand.force(), up,
+                dedicatedSpeedControl && demand.sustainingPower() > ACTION_DIRECTION_EPSILON);
+        double yawDemand = yawRightDemand(demand);
+        double pitchDemand = demand.controlTorque().dot(right);
+        double rollDemand = demand.controlTorque().dot(forward);
+        return switch (action) {
+            case "ship_yaw_left" -> Mth.clamp(-yawDemand, 0.0D, 1.0D);
+            case "ship_yaw_right" -> Mth.clamp(yawDemand, 0.0D, 1.0D);
+            case "ship_yaw", "ship_pan" -> Mth.clamp(Math.abs(yawDemand), 0.0D, 1.0D);
+            case "ship_pitch_up" -> Mth.clamp(pitchDemand, 0.0D, 1.0D);
+            case "ship_pitch_down" -> Mth.clamp(-pitchDemand, 0.0D, 1.0D);
+            case "ship_pitch", "ship_tilt" -> Mth.clamp(Math.abs(pitchDemand), 0.0D, 1.0D);
+            case "ship_roll_left" -> Mth.clamp(-rollDemand, 0.0D, 1.0D);
+            case "ship_roll_right" -> Mth.clamp(rollDemand, 0.0D, 1.0D);
+            case "ship_roll" -> Mth.clamp(Math.abs(rollDemand), 0.0D, 1.0D);
+            case "ship_strafe_left" -> Mth.clamp(-strafeDemand, 0.0D, 1.0D);
+            case "ship_strafe_right" -> Mth.clamp(strafeDemand, 0.0D, 1.0D);
+            case "ship_strafe" -> Mth.clamp(Math.abs(strafeDemand), 0.0D, 1.0D);
+            case "ship_forward" -> dedicatedSpeedControl
+                    ? selectedDriveDirection > ACTION_DIRECTION_EPSILON ? 1.0D : 0.0D
+                    : Mth.clamp(forwardDrive, 0.0D, 1.0D);
+            case "ship_backward", "ship_reverse" -> dedicatedSpeedControl
+                    ? selectedDriveDirection < -ACTION_DIRECTION_EPSILON ? 1.0D : 0.0D
+                    : Mth.clamp(backwardDrive, 0.0D, 1.0D);
+            case "ship_accelerate" -> accelerationControlDemand(demand);
+            case "ship_ascend" -> Mth.clamp(liftDemand, 0.0D, 1.0D);
+            case "ship_descend" -> Mth.clamp(-liftDemand, 0.0D, 1.0D);
+            case "ship_decelerate" -> activeDecelerationStrength(demand);
+            case "ship_brake" -> activeBrakeStrength(demand);
+            default -> 0.0D;
+        };
+    }
+
+    private double explicitDecelerationStrength() {
+        return activeCommands.values().stream()
+                .filter(command -> "ship_decelerate".equals(command.type()))
+                .mapToDouble(ActiveShipCommand::strength)
+                .max().orElse(0.0D);
+    }
+
+    private double explicitBrakeStrength() {
+        return activeCommands.values().stream()
+                .filter(command -> "ship_brake".equals(command.type()))
+                .mapToDouble(ActiveShipCommand::strength)
+                .max().orElse(0.0D);
+    }
+
+    // Combine explicit graph controls with automatic navigation speed control.
+    private double activeDecelerationStrength(@Nullable ControlDemand demand) {
+        double automatic = demand == null ? 0.0D : demand.decelerationStrength();
+        return Math.max(explicitDecelerationStrength(),
+                Mth.clamp(automatic, 0.0D, 1.0D));
+    }
+
+    private double activeBrakeStrength(@Nullable ControlDemand demand) {
+        double automatic = demand == null ? 0.0D : demand.brakeStrength();
+        return Math.max(explicitBrakeStrength(), Mth.clamp(automatic, 0.0D, 1.0D));
+    }
+
+    // Clear linker-plane outputs owned by this SCM when it stops or unloads.
+    private void clearScmFaceActionControls() {
+        Level level = controller.getLevel();
+        if (level == null) {
+            return;
+        }
+        List<ScmTarget> linkerTargets = ContraptionNetworkLinkerData.scmTargets(
+                controller.getStoredLinker());
+        for (ScmTarget target : linkerTargets) {
+            if (target.usesFaceControl()) {
+                ContraptionNetworkLinkerSignalBus.setPlaneSignal(
+                        level, target.subLevelId(), target.signalPosition(), target.signalFace(),
+                        scmFaceSignalSource(target), 0);
+            }
+        }
+        ScmConfigurationProfile configuration = controller.getScmConfigurationProfile();
+        if (configuration != null) {
+            for (ScmConfigurationProfile.Group group : configuration.groups()) {
+                for (ScmConfigurationProfile.UnitReference reference : group.units()) {
+                    setProfileFaceSignal(level, reference, linkerTargets, 0);
+                }
+            }
+        }
+        regulatedFaceControlValues.clear();
+    }
+
+    private static String scmFaceSignalSource(ScmTarget target) {
+        return CONTROL_CHANNEL + ":face-action:" + target.stableId();
+    }
+
+    // Convert the final demand into the one direction named by a linker face.
+    private double scmFaceActionStrength(ScmTarget target, ControlDemand demand) {
+        String action = ContraptionNetworkLinkerData.scmTargetActionId(target);
+        if (action.isBlank()) {
+            return 0.0D;
+        }
+        Vec3 forward = controllerForwardRoot();
+        Vec3 up = controllerUpRoot();
+        Vec3 right = normalize(forward.cross(up), new Vec3(1.0D, 0.0D, 0.0D));
+        double forwardDemand = ScmControlAxes.longitudinalDrive(
+                demand.controlForce(), forward, demand.driveDirection());
+        double forwardDrive = Math.max(0.0D, forwardDemand);
+        double backwardDrive = Math.max(0.0D, -forwardDemand);
+        boolean dedicatedSpeedControl = hasConfiguredAccelerationGroup();
+        double selectedDriveDirection = plannedDriveDirection(demand);
+        double strafeDemand = demand.controlForce().dot(right);
+        double liftDemand = ScmControlAxes.liftSelector(demand.controlForce(), demand.force(), up,
+                dedicatedSpeedControl && demand.sustainingPower() > ACTION_DIRECTION_EPSILON);
+        double yawDemand = yawRightDemand(demand);
+        double pitchDemand = demand.controlTorque().dot(right);
+        double rollDemand = demand.controlTorque().dot(forward);
+        return switch (action) {
+            case "yaw_left" -> Mth.clamp(-yawDemand, 0.0D, 1.0D);
+            case "yaw_right" -> Mth.clamp(yawDemand, 0.0D, 1.0D);
+            case "pitch_up" -> Mth.clamp(pitchDemand, 0.0D, 1.0D);
+            case "pitch_down" -> Mth.clamp(-pitchDemand, 0.0D, 1.0D);
+            case "roll_left" -> Mth.clamp(-rollDemand, 0.0D, 1.0D);
+            case "roll_right" -> Mth.clamp(rollDemand, 0.0D, 1.0D);
+            case "strafe_left" -> Mth.clamp(-strafeDemand, 0.0D, 1.0D);
+            case "strafe_right" -> Mth.clamp(strafeDemand, 0.0D, 1.0D);
+            case "throttle_up", "forward" -> dedicatedSpeedControl
+                    ? selectedDriveDirection > ACTION_DIRECTION_EPSILON ? 1.0D : 0.0D
+                    : Mth.clamp(forwardDrive, 0.0D, 1.0D);
+            case "throttle_down", "reverse" -> dedicatedSpeedControl
+                    ? selectedDriveDirection < -ACTION_DIRECTION_EPSILON ? 1.0D : 0.0D
+                    : Mth.clamp(backwardDrive, 0.0D, 1.0D);
+            case "lift_up", "ascend" -> Mth.clamp(liftDemand, 0.0D, 1.0D);
+            case "lift_down", "descend" -> Mth.clamp(-liftDemand, 0.0D, 1.0D);
+            default -> 0.0D;
+        };
+    }
+
+    // Allocate speed controls by their downstream response, outside the propulsion allocator
+    // Unmapped controls retain the authored analogue setpoint
+    private void applyAccelerationControls(
+            ShipControlMap currentMap, ControlDemand demand, SableAssemblyTopologyApi.Topology topology
+    ) {
+        ScmConfigurationProfile configuration = controller.getScmConfigurationProfile();
+        if (configuration == null || !configuration.isConfiguredFor(currentMap)
+                || configuredAccelerationUnits(configuration).isEmpty()) {
+            return;
+        }
+        boolean active = hasActiveTranslationalCommand();
+        double requested = active ? accelerationControlDemand(demand) : 0.0D;
+        advanceSpeedControlBranches(currentMap, topology);
+        List<ShipControlMap.PropulsionUnit> mappedUnits = new ArrayList<>();
+        List<ScmSpeedGroupAllocator.Influence> influences = new ArrayList<>();
+        for(ShipControlMap.PropulsionUnit unit : currentMap.units()){
+            if(!isAccelerationControlUnit(currentMap, unit)) continue;
+            ScmSpeedGroupAllocator.Influence influence = speedControlInfluence(currentMap, unit);
+            if(influence != null){
+                mappedUnits.add(unit);
+                influences.add(influence);
+            }
+        }
+        Vec3 force = demand.force();
+        if(demand.sustainingPower() > 1.0E-5D && !influences.isEmpty()){
+            force = force.subtract(demand.gravitySupport().demand())
+                    .add(ScmSpeedGroupAllocator.normalizePhysicalForce(influences,
+                            demand.gravitySupport().physicalForce()));
+        }
+        if(isControlMode(ScmBuiltinControlModes.GROUND_SEA_ID)
+                || demand.sustainingPower() > 1.0E-5D){
+            Vec3 forward = controllerForwardRoot();
+            double travel = accelerationControlDemand(demand);
+            force = force.subtract(forward.scale(force.dot(forward)))
+                    .add(forward.scale(plannedDriveDirection(demand) * travel));
+        }
+        double maximumPower = requested <= 1.0E-5D ? 0.0D : 1.0D;
+        double[] efforts = ScmSpeedGroupAllocator.allocate(influences, force,
+                demand.controlTorque(), maximumPower);
+        Map<Integer, Double> mappedLevels = new HashMap<>();
+        for(int idx = 0; idx < mappedUnits.size(); idx++){
+            ShipControlMap.PropulsionUnit unit = mappedUnits.get(idx);
+            List<ScmSpeedGroupAllocator.Sample> samples = unit.samples().stream()
+                    .map(sample -> new ScmSpeedGroupAllocator.Sample(sample.control(), Math.abs(sample.thrust())))
+                    .toList();
+            mappedLevels.put(unit.index(), ScmSpeedGroupAllocator.controlForEffort(samples, efforts[idx]));
+        }
+        for (ShipControlMap.PropulsionUnit unit : currentMap.units()) {
+            if (!isAccelerationControlUnit(currentMap, unit)) {
+                continue;
+            }
+            Actuator actuator = controlActuators.get(unit.index());
+            if (actuator == null) {
+                BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
+                        controller.getLevel(), unit.subLevelId(), unit.blockPosition());
+                actuator = actuatorForStored(blockEntity, unit, controller.getLevel());
+                if (actuator != null && actuator.controllable() && actuator.isAvailable()) {
+                    controlActuators.put(unit.index(), actuator);
+                }
+            }
+            if (actuator == null || !actuator.controllable() || !actuator.isAvailable()) {
+                continue;
+            }
+            double level = mappedLevels.getOrDefault(unit.index(), requested);
+            if(active && demand.sustainingPower() > 1.0E-5D && mappedLevels.containsKey(unit.index())){
+                level = ScmSpeedGroupAllocator.regulatedControl(
+                        regulatedSpeedLevels.getOrDefault(unit.index(), 0.0D), level, 0.1D);
+            }
+            regulatedSpeedLevels.put(unit.index(), level);
+            double control = actuator.mapControl(unit, level);
+            applyAllocatedControl(unit.index(), actuator, control);
+        }
+    }
+
+    // Cache directed kinetic branches and spend at most half a millisecond per tick advancing them
+    private void advanceSpeedControlBranches(ShipControlMap currentMap, SableAssemblyTopologyApi.Topology topology){
+        String fingerprint = currentMap.id() + ":" + currentMap.updatedAt() + ":" + currentMap.units().size()
+                + ':' + topologyFingerprint(topology);
+        if(!fingerprint.equals(speedControlBranchFingerprint)){
+            speedControlBranchFingerprint = fingerprint;
+            speedControlBranches.clear();
+            Map<KineticBlockEntity, Integer> outputs = new IdentityHashMap<>();
+            Set<KineticBlockEntity> boundaries = Collections.newSetFromMap(new IdentityHashMap<>());
+            Set<Level> levels = Collections.newSetFromMap(new IdentityHashMap<>());
+            if(rootSubLevel != null){
+                for(SubLevel body : connectedShipSubLevels(rootSubLevel)) levels.add(body.getLevel());
+            }
+            Map<Integer, KineticBlockEntity> controls = new LinkedHashMap<>();
+            for(ShipControlMap.PropulsionUnit unit : currentMap.units()){
+                BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
+                        controller.getLevel(), unit.subLevelId(), unit.blockPosition());
+                if(!(blockEntity instanceof KineticBlockEntity kinetic)) continue;
+                levels.add(kinetic.getLevel());
+                if(isAccelerationControlUnit(currentMap, unit)){
+                    boundaries.add(kinetic);
+                    controls.put(unit.index(), kinetic);
+                }else if(!unit.adapter().startsWith("scm:")){
+                    outputs.put(kinetic, unit.index());
+                }
+            }
+            for(var entry : controls.entrySet()){
+                KineticBlockEntity start = entry.getValue();
+                var search = new ScmControlInfluenceGraph.Search<>(start, kinetic -> {
+                    BlockPos source = kinetic.hasSource() ? kinetic.source : null;
+                    return KineticGraphHelper.getConnectedNeighbours(kinetic).stream()
+                            .filter(next -> !next.isRemoved() && levels.contains(next.getLevel())
+                                    && !next.getBlockPos().equals(source)).toList();
+                }, outputs::containsKey, node -> node != start && boundaries.contains(node), 4096);
+                speedControlBranches.put(entry.getKey(), new SpeedControlBranch(search, outputs));
+            }
+        }
+        long started = System.nanoTime();
+        for(SpeedControlBranch branch : speedControlBranches.values()){
+            long remaining = 500_000L - (System.nanoTime() - started);
+            if(remaining <= 0L) break;
+            if(!branch.search().finished()) branch.search().advance(32, remaining);
+        }
+    }
+
+    // Use actual downstream actuator geometry, falling back only to measured physical responses
+    private @Nullable ScmSpeedGroupAllocator.Influence speedControlInfluence(
+            ShipControlMap currentMap, ShipControlMap.PropulsionUnit unit
+    ){
+        SpeedControlBranch branch = speedControlBranches.get(unit.index());
+        Actuator control = controlActuators.get(unit.index());
+        if(control != null && control.usesPhysicalCalibration()
+                && unit.samples().stream().anyMatch(sample -> Math.abs(sample.thrust()) > 1.0E-5D)){
+            Vec3 measured = unit.forceDirection().scale(unit.maxThrust());
+            if(measured.lengthSqr() > 1.0E-12D){
+                return new ScmSpeedGroupAllocator.Influence(measured,
+                        unit.rootPosition().subtract(currentMap.centerOfMass()).cross(measured));
+            }
+        }
+        Vec3 force = Vec3.ZERO;
+        Vec3 torque = Vec3.ZERO;
+        if(branch != null && branch.search().complete()){
+            for(KineticBlockEntity output : branch.search().outputs()){
+                Integer idx = branch.outputIndices().get(output);
+                if(idx == null || idx < 0 || idx >= currentMap.units().size()) continue;
+                ShipControlMap.PropulsionUnit actuator = currentMap.units().get(idx);
+                Vec3 response = actuator.forceDirection().scale(actuator.maxThrust());
+                force = force.add(response);
+                torque = torque.add(actuator.rootPosition().subtract(currentMap.centerOfMass()).cross(response));
+            }
+        }
+        Actuator actuator = controlActuators.get(unit.index());
+        if(force.lengthSqr() + torque.lengthSqr() <= 1.0E-12D
+                && actuator != null && (!(actuator instanceof ScmProbeActuator) || actuator.usesPhysicalCalibration())
+                && unit.samples().stream().anyMatch(sample -> Math.abs(sample.thrust()) > 1.0E-5D)){
+            force = unit.forceDirection().scale(unit.maxThrust());
+            torque = unit.rootPosition().subtract(currentMap.centerOfMass()).cross(force);
+        }
+        return force.lengthSqr() + torque.lengthSqr() > 1.0E-12D
+                ? new ScmSpeedGroupAllocator.Influence(force, torque) : null;
+    }
+
+    // Deceleration and Brake are scalar physical actions, not reverse force
+    // requests. Apply the exact authored group with its independent strength;
+    // face and wheel controls are handled by their atomic paths.
+    private void applyConfiguredSpeedReductionControls(
+            ShipControlMap currentMap, ControlDemand demand
+    ) {
+        double deceleration = activeDecelerationStrength(demand);
+        double brake = activeBrakeStrength(demand);
+        if (deceleration <= 1.0E-5D && brake <= 1.0E-5D) {
+            return;
+        }
+        ScmConfigurationProfile configuration = controller.getScmConfigurationProfile();
+        boolean explicitRouting = configuration != null
+                && configuration.isConfiguredFor(currentMap)
+                && configuration.hasActionBindings();
+        if (!explicitRouting) {
+            for (WheelMountControlBridge wheel : controlledScmWheels) {
+                wheel.ct$setDirectInputs(0.0F, 0.0F, 0.0F);
+            }
+            controlledScmWheels.clear();
+            controlledScmWheelTargets.clear();
+            controlledScmWheelLongitudinalPositions.clear();
+            return;
+        }
+        Set<ScmConfigurationProfile.UnitReference> decelerationUnits =
+                configuration.decelerationUnits();
+        Set<ScmConfigurationProfile.UnitReference> brakeUnits =
+                configuration.brakeUnits();
+        for (ShipControlMap.PropulsionUnit unit : currentMap.units()) {
+            if (!unit.controllable()) {
+                continue;
+            }
+            boolean reducesSpeed = decelerationUnits.stream().anyMatch(reference ->
+                    configurationReferenceMatchesUnit(reference, unit));
+            boolean stops = brakeUnits.stream().anyMatch(reference ->
+                    configurationReferenceMatchesUnit(reference, unit));
+            double strength = Math.max(reducesSpeed ? deceleration : 0.0D,
+                    stops ? brake : 0.0D);
+            if (strength <= 1.0E-5D) continue;
+            Actuator actuator = controlActuators.get(unit.index());
+            if (actuator == null) {
+                BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
+                        controller.getLevel(), unit.subLevelId(), unit.blockPosition());
+                actuator = actuatorForStored(blockEntity, unit, controller.getLevel());
+                if (actuator != null && actuator.controllable() && actuator.isAvailable()) {
+                    controlActuators.put(unit.index(), actuator);
+                }
+            }
+            if (actuator == null || !actuator.controllable() || !actuator.isAvailable()
+                    || actuator.isWheelControl() || actuator.isFaceActionControl()) {
+                continue;
+            }
+            double calibrated = actuator.controlForDemand(unit, strength);
+            double control = actuator.mapControl(unit, calibrated);
+            applyAllocatedControl(unit.index(), actuator, control);
+        }
+    }
+
+    // Resolve both the dedicated speed group and legacy ship_accelerate group.
+    private Set<ScmConfigurationProfile.UnitReference> configuredAccelerationUnits(
+            @Nullable ScmConfigurationProfile configuration
+    ) {
+        if (configuration == null) return Set.of();
+        Set<ScmConfigurationProfile.UnitReference> units = new LinkedHashSet<>();
+        units.addAll(configuration.accelerationUnits());
+        units.addAll(configuration.unitsForActions(Set.of("ship_accelerate")));
+        return Set.copyOf(units);
+    }
+
+    // The authored group itself defines this contract. Do not make direction
+    // selector semantics depend on current map availability: a temporarily
+    // unloaded speed-control block must not make Forward/Backward start
+    // modulating and then change semantics again when it reloads.
+    private boolean hasConfiguredAccelerationGroup() {
+        return !configuredAccelerationUnits(
+                controller.getScmConfigurationProfile()).isEmpty();
+    }
+
+    // Keep the analogue drive-chain level separate from the combined physical
+    // force. The latter also contains gravity hold, lateral correction and
+    // docking alignment; using its magnitude made a small planned speed
+    // request look like full acceleration whenever any of those corrections
+    // was active.
+    private double accelerationControlDemand(ControlDemand demand) {
+        if (demand == null) {
+            return 0.0D;
+        }
+        return ScmSpeedControl.accelerationSetpoint(
+                demand.accelerationStrength(), demand.sustainingPower());
+    }
+
+    // Flight engines must work at rest, in terrain contact and during travel braking
+    private double sustainingAccelerationPower(){
+        if(!isControlMode(ScmBuiltinControlModes.AIRSHIP_ID) || !hasConfiguredAccelerationGroup()){
+            return 0.0D;
+        }
+        double power = 0.0D;
+        for(ActiveShipCommand command : activeCommands.values()){
+            if("ship_dock".equals(command.type()) && yieldsToDockingMagnet(command)) continue;
+            power = Math.max(power, ScmCommandRouting.sustainingAccelerationPower(
+                    command.type(), command.driveThrottle(), command.strength()));
+        }
+        return power;
+    }
+
+    // Check whether the current command has a declared analogue drive
+    // channel. This is deliberately based on the command kind, rather than
+    // force output: the direction selector remains engaged while the analogue
+    // speed channel gains, maintains or reduces travel speed.
+    private boolean hasActiveAccelerationControl(
+            ShipControlMap currentMap, ControlDemand demand
+    ) {
+        ScmConfigurationProfile configuration = controller.getScmConfigurationProfile();
+        return configuration != null && configuration.isConfiguredFor(currentMap)
+                && !configuredAccelerationUnits(configuration).isEmpty()
+                && hasActiveTranslationalCommand();
+    }
+
+    // Return whether an active command is asking an analogue drive-chain
+    // control to participate. This deliberately does not depend on the
+    // individual direction action: a transmission or throttle must work for
+    // reverse and strafe just as it does for forward travel.
+    private boolean hasActiveTranslationalCommand() {
+        return activeCommands.values().stream()
+                .anyMatch(command -> ScmCommandRouting.requiresAccelerationControl(command.type()));
+    }
+
+    private boolean isAccelerationControlUnit(
+            ShipControlMap currentMap, ShipControlMap.PropulsionUnit unit
+    ) {
+        ScmConfigurationProfile configuration = controller.getScmConfigurationProfile();
+        return unit != null && configuration != null && configuration.isConfiguredFor(currentMap)
+                && configuredAccelerationUnits(configuration).stream()
+                .anyMatch(reference -> configurationReferenceMatchesUnit(reference, unit));
+    }
+
+    // Check whether the authored kinetic action groups form a tank drivetrain.
+    private boolean hasConfiguredTankSteering() {
+        return hasConfiguredTankSteering(activeAssemblyMap);
+    }
+
+    // Check whether the authored kinetic action groups form a tank drivetrain.
+    private boolean hasConfiguredTankSteering(@Nullable ShipControlMap currentMap) {
+        ScmConfigurationProfile configuration = controller.getScmConfigurationProfile();
+        if (currentMap == null || configuration == null
+                || !configuration.isConfiguredFor(currentMap)
+                || !configuration.hasActionBindings()) {
+            return false;
+        }
+        int longitudinal = configuredKineticActionUnits(configuration, currentMap,
+                Set.of("ship_forward", "ship_backward", "ship_reverse"));
+        int yaw = configuredKineticActionUnits(configuration, currentMap,
+                Set.of("ship_yaw", "ship_pan", "ship_yaw_left", "ship_yaw_right"));
+        return ScmTankSteering.isConfigured(longitudinal, yaw);
+    }
+
+    // Count unique kinetic units explicitly bound to the supplied SCM actions.
+    private int configuredKineticActionUnits(
+            ScmConfigurationProfile configuration,
+            ShipControlMap currentMap,
+            Set<String> actions
+    ) {
+        Set<ScmConfigurationProfile.UnitReference> references =
+                configuration.unitsForExplicitActions(actions);
+        if (references.isEmpty()) {
+            return 0;
+        }
+        return (int) currentMap.units().stream().filter(unit -> {
+            if (!unit.controllable() || references.stream().noneMatch(reference ->
+                    configurationReferenceMatchesUnit(reference, unit))) {
+                return false;
+            }
+            Actuator actuator = controlActuators.get(unit.index());
+            return actuator != null && actuator.isAvailable() && actuator.isKineticControl();
+        }).count();
+    }
+
+    // Apply ground and sea vehicle steering and drivetrain controls
+    private void applyGroundSeaControl(
+            ShipControlMap liveMap,
             ShipControlMap currentMap,
             ControlDemand demand,
             Telemetry telemetry,
-            @Nullable SableAssemblyTopologyApi.Topology topology
+            @Nullable SableAssemblyTopologyApi.Topology topology,
+            ScmSteeringMode steeringMode
     ) {
-        applyCarDrivetrain(currentMap, demand);
-        applyScmWheelSteering(demand, telemetry, topology);
+        applyCarDrivetrain(currentMap, demand,
+                steeringMode == ScmSteeringMode.TANK
+                        || steeringMode == ScmSteeringMode.CUSTOM
+                        && hasConfiguredTankSteering(liveMap));
+        applyScmWheelSteering(currentMap, demand, telemetry, topology, steeringMode);
     }
 
     // Apply the car drivetrain
     private void applyCarDrivetrain(
-            ShipControlMap currentMap, ControlDemand demand
+            ShipControlMap currentMap,
+            ControlDemand demand,
+            boolean tankSteering
     ) {
+        // Kinetic controls are applied outside the normal allocator path. A
+        // face filtered out by actionRoutedGeometryMap() would otherwise keep
+        // the signal from the previous tick, leaving a Directional Gearshift
+        // with both physical faces asserted after a schedule changes course.
+        neutralizeActionMaskedKineticControls(currentMap);
         double longitudinalDemand = Mth.clamp(
-                demand.force().dot(controllerForwardRoot()), -1.0D, 1.0D);
+                demand.controlForce().dot(controllerForwardRoot()), -1.0D, 1.0D);
         double requestedDirection = plannedDriveDirection(demand);
         double requestedDrive = requestedDirection == 0.0D
                 ? 0.0D : Math.max(0.0D, longitudinalDemand * requestedDirection);
+        ScmTankSteering.Demand tankDemand = ScmTankSteering.demand(
+                longitudinalDemand, ScmControlAxes.yawRightDemand(
+                demand.controlTorque(), controllerUpRoot(), false));
+        boolean holdKineticDirection = hasActiveAccelerationControl(currentMap, demand)
+                && Math.abs(requestedDirection) > ACTION_DIRECTION_EPSILON
+                && activeBrakeStrength(demand) <= 1.0E-5D;
+        double kineticDemand = Math.max(
+                holdKineticDirection ? 1.0D : requestedDrive,
+                tankSteering ? tankDemand.controlLevel() : 0.0D);
+        ScmConfigurationProfile configuration = controller.getScmConfigurationProfile();
+        // A face binding is an authored, discrete drivetrain command. It is
+        // routed by its configured action rather than inferred from the
+        // block's geometric force normal.
+        Set<ScmConfigurationProfile.UnitReference> activeFaceBindings =
+                activeConfiguredFaceBindings(configuration, currentMap, demand);
         List<KineticControlOption> options = new ArrayList<>();
         for (ShipControlMap.PropulsionUnit unit : currentMap.units()) {
+            // Profile routing represents a disallowed unit with zero live
+            // capacity. The car-specific kinetic path must honour that mask as
+            // well; otherwise it can wake a Forward gearshift while Yaw is
+            // intentionally routed to the Auto wheel group.
+            if (!unit.controllable() || unit.maxThrust() <= 1.0E-9D) {
+                continue;
+            }
+            if (isAccelerationControlUnit(currentMap, unit)) {
+                continue;
+            }
             Actuator actuator = controlActuators.get(unit.index());
             if (actuator == null || !actuator.isKineticControl()
                     || !actuator.isAvailable()) {
@@ -6509,11 +12313,25 @@ public final class ShipControlModuleRuntime {
                     .orElse(null);
             KineticControlOption selected = null;
             double selectedScore = Double.NEGATIVE_INFINITY;
-            if (requestedDrive > 1.0E-6D) {
+            if (kineticDemand > 1.0E-6D) {
                 for (KineticControlOption option : domain) {
                     double alignment = option.unit().forceDirection()
                             .dot(controllerForwardRoot());
-                    if (alignment * requestedDirection <= 0.05D) {
+                    boolean explicitlyRouted = !activeFaceBindings.isEmpty();
+                    // A configured gearshift face is an explicit directional
+                    // choice. Restrict the domain to that authored face: the
+                    // former code only disabled the geometric heuristic, so a
+                    // Backward action could still select its Forward sibling
+                    // solely because it scored higher.
+                    if (explicitlyRouted && activeFaceBindings.stream().noneMatch(reference ->
+                            configurationReferenceMatchesUnit(reference, option.unit()))) {
+                        continue;
+                    }
+                    // A configured face's redstone-side normal is not a
+                    // measurement of travel direction. Unconfigured/linker
+                    // controls retain the legacy alignment check.
+                    if (!explicitlyRouted && !tankSteering
+                            && alignment * requestedDirection <= 0.05D) {
                         continue;
                     }
                     double score = option.actuator().kineticControlSize() * 100.0D
@@ -6522,6 +12340,13 @@ public final class ShipControlModuleRuntime {
                             .mapToDouble(sample -> Math.abs(sample.speed())
                                     + (sample.active() ? 1.0D : 0.0D))
                             .max().orElse(0.0D);
+                    if (tankSteering) {
+                        Vec3 torque = option.unit().torqueDirection(currentMap.centerOfMass());
+                        double yawAuthority = torque.lengthSqr() <= 1.0E-12D
+                                ? 0.0D : ScmControlAxes.yawRightDemand(
+                                torque.normalize(), controllerUpRoot(), false);
+                        score += tankDemand.authorityScore(alignment, yawAuthority) * 100.0D;
+                    }
                     if (score > selectedScore) {
                         selectedScore = score;
                         selected = option;
@@ -6537,12 +12362,45 @@ public final class ShipControlModuleRuntime {
                 continue;
             }
             double control = selected.actuator().controlForDemand(
-                    selected.unit(), requestedDrive);
-            double applied = mapAllocationControl(
-                    control, selected.unit().minControl(), selected.unit().maxControl(),
-                    selected.actuator().mapsOwnControlRange());
+                    selected.unit(), kineticDemand);
+            double applied = selected.actuator().mapControl(selected.unit(), control);
             selected.actuator().apply(applied);
             appliedControlValues.put(selected.unit().index(), applied);
+        }
+    }
+
+    // Get the configured face controls explicitly requested by this car command.
+    // These bindings are safe to drive directly without a successful physical
+    // calibration sweep: their face is the command target, not an inferred
+    // force vector.
+    private Set<ScmConfigurationProfile.UnitReference> activeConfiguredFaceBindings(
+            ScmConfigurationProfile configuration,
+            ShipControlMap currentMap,
+            ControlDemand demand
+    ) {
+        if (configuration == null || !configuration.isConfiguredFor(currentMap)
+                || !configuration.hasActionBindings()) {
+            return Set.of();
+        }
+        return configuration.unitsForExplicitActions(activeControlActionTypes(demand)).stream()
+                .filter(ScmConfigurationProfile.UnitReference::usesFaceControl)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
+    // Deassert face-scoped kinetic controls which profile action routing has
+    // removed from the current car command. Do not touch live controls here:
+    // their active side is selected and applied by applyCarDrivetrain().
+    private void neutralizeActionMaskedKineticControls(ShipControlMap currentMap) {
+        for (ShipControlMap.PropulsionUnit unit : currentMap.units()) {
+            if (!unit.controllable() || unit.maxThrust() > 1.0E-9D) {
+                continue;
+            }
+            Actuator actuator = controlActuators.get(unit.index());
+            if (actuator == null || !actuator.isKineticControl() || !actuator.isAvailable()) {
+                continue;
+            }
+            actuator.neutralize();
+            appliedControlValues.put(unit.index(), actuator.neutralControl());
         }
     }
 
@@ -6582,7 +12440,45 @@ public final class ShipControlModuleRuntime {
     private double plannedDriveDirection(ControlDemand demand) {
         double requested = Math.signum(demand.driveDirection());
         return requested != 0.0D ? requested : Math.signum(
-                demand.force().dot(controllerForwardRoot()));
+                demand.controlForce().dot(controllerForwardRoot()));
+    }
+
+    // Get the strongest active pose command without mixing it into locomotion force routing
+    private double ikPostureDemand(String commandType) {
+        if (commandType == null || commandType.isBlank()) return 0.0D;
+        return activeCommands.values().stream().filter(command ->
+                        commandType.equals(command.type()))
+                .mapToDouble(command -> Math.abs(command.amount())).max().orElse(0.0D);
+    }
+
+    // Tank turns retain yaw authority while forward and reverse controls remain neutral
+    private ControlDemand steeringModeDemand(
+            ControlDemand demand,
+            ScmSteeringMode steeringMode
+    ) {
+        if (demand == null || steeringMode != ScmSteeringMode.TANK) return demand;
+        Vec3 up = normalize(controllerUpRoot(), new Vec3(0.0D, 1.0D, 0.0D));
+        double yawRight = ScmTankSteering.stableYaw(ScmControlAxes.yawRightDemand(
+                demand.controlTorque(), up, false));
+        Vec3 torque = demand.torque().subtract(up.scale(demand.torque().dot(up)))
+                .add(ScmControlAxes.yawTorque(up, yawRight));
+        Vec3 controlTorque = demand.controlTorque().subtract(
+                up.scale(demand.controlTorque().dot(up)))
+                .add(ScmControlAxes.yawTorque(up, yawRight));
+        if (!ScmTankSteering.isTurning(yawRight)) {
+            return new ControlDemand(demand.force(), torque, demand.controlForce(),
+                    controlTorque, demand.preferredDirection(), demand.driveDirection(),
+                    demand.accelerationStrength(), demand.decelerationStrength(),
+                    demand.brakeStrength(), demand.sustainingPower(), demand.gravitySupport());
+        }
+        Vec3 forward = controllerForwardRoot();
+        Vec3 force = demand.force().subtract(
+                forward.scale(demand.force().dot(forward)));
+        Vec3 controlForce = demand.controlForce().subtract(
+                forward.scale(demand.controlForce().dot(forward)));
+        return new ControlDemand(force, torque, controlForce,
+                controlTorque, demand.preferredDirection(), 0.0D,
+                0.0D, demand.decelerationStrength(), demand.brakeStrength(), 0.0D, demand.gravitySupport());
     }
 
     // Apply the allocated control
@@ -6595,18 +12491,734 @@ public final class ShipControlModuleRuntime {
         appliedControlValues.put(idx, control);
     }
 
-    // Apply the SCM wheel steering
-    private void applyScmWheelSteering(
-            ControlDemand demand,
-            Telemetry telemetry,
-            @Nullable SableAssemblyTopologyApi.Topology topology
+    // Solve and apply authored or automatically discovered IK limbs after ordinary allocation
+    private void applyIkLocomotion(
+            ShipControlMap currentMap, ControlDemand demand, Telemetry telemetry
     ) {
-        if (!isControlMode(ScmBuiltinControlModes.CAR_ID)) {
-            for (WheelMountControlBridge wheel : controlledScmWheels) {
-                wheel.ct$setDirectInputs(0.0F, 0.0F, 0.0F);
-            }
+        ScmConfigurationProfile configuration = controller.getScmConfigurationProfile();
+        ServerSubLevel root = rootSubLevel != null ? rootSubLevel : containingServerSubLevel();
+        if (configuration == null || currentMap == null || root == null
+                || !configuration.isConfiguredFor(currentMap)) {
             return;
         }
+        ScmLeggedGait gait = ScmLeggedGait.fromId(configuration.ikGait());
+        List<ScmSubLevelRelationRegistry.Relation> relations = ikSubLevelRelations(root);
+        List<IkLimbBinding> bindings = new ArrayList<>();
+        List<ScmLeggedLocomotion.Contact> contacts = new ArrayList<>();
+        int legs = gait == ScmLeggedGait.CUSTOM ? 8 : gait.legCount();
+        for (int index = 1; index <= legs; index++) {
+            IkRoleBinding yaw = ikRoleBinding(configuration, currentMap,
+                    "ik_leg_" + index + "_yaw");
+            IkRoleBinding hip = ikRoleBinding(configuration, currentMap,
+                    "ik_leg_" + index + "_hip");
+            IkRoleBinding knee = ikRoleBinding(configuration, currentMap,
+                    "ik_leg_" + index + "_knee");
+            IkRoleBinding ankle = ikRoleBinding(configuration, currentMap,
+                    "ik_leg_" + index + "_ankle");
+            IkRoleBinding extension = ikRoleBinding(configuration, currentMap,
+                    "ik_leg_" + index + "_extension");
+            IkRoleBinding propulsion = ikRoleBinding(configuration, currentMap,
+                    "ik_leg_" + index + "_propulsion");
+            Vec3 hipPosition = ikLiveRolePosition(root, currentMap, hip);
+            if (hipPosition == null) hipPosition = ikLiveRolePosition(root, currentMap, yaw);
+            if (hipPosition == null) continue;
+            Vec3 kneePosition = ikLiveRolePosition(root, currentMap, knee);
+            if (kneePosition == null) kneePosition = hipPosition.add(0.0D, -1.0D, 0.0D);
+            Vec3 fallbackFoot = ikLiveRolePosition(root, currentMap, ankle);
+            if (fallbackFoot == null) fallbackFoot = ikLiveRolePosition(root, currentMap, extension);
+            if (fallbackFoot == null) fallbackFoot = kneePosition.add(0.0D, -1.0D, 0.0D);
+            Vec3 footPosition = ikFootPosition(root, relationFootSources(knee, ankle, extension),
+                    directFootChildren(knee, ankle, extension), relations, fallbackFoot);
+            double coxa = Math.max(0.125D, ikDistance(
+                    ikLiveRolePosition(root, currentMap, yaw), hipPosition));
+            double upper = Math.max(0.25D, ikDistance(hipPosition, kneePosition));
+            double lower = Math.max(0.25D, ikDistance(kneePosition, footPosition));
+            String limbId = "leg_" + index;
+            Vec3 rootHip = hipPosition.subtract(currentMap.centerOfMass());
+            ScmLeggedLocomotion.Limb limb = new ScmLeggedLocomotion.Limb(
+                    limbId, ScmLeggedLocomotion.LimbKind.LEG, rootHip,
+                    footPosition.subtract(hipPosition), coxa, upper, lower,
+                    gait.phaseOffset(index - 1, legs), 0.0D, 0.0D, 0.0D);
+            bindings.add(new IkLimbBinding(limbId, limb, yaw, hip, knee, ankle, extension,
+                    ikArticulatedRoles(yaw, hip, knee, ankle), propulsion, hipPosition,
+                    footPosition, null));
+            contacts.add(ikFootContact(root, currentMap, limbId, hipPosition, footPosition));
+        }
+        for (int index = 1; index <= 2; index++) {
+            IkRoleBinding yaw = ikRoleBinding(configuration, currentMap,
+                    "ik_arm_" + index + "_yaw");
+            IkRoleBinding hip = ikRoleBinding(configuration, currentMap,
+                    "ik_arm_" + index + "_hip");
+            IkRoleBinding knee = ikRoleBinding(configuration, currentMap,
+                    "ik_arm_" + index + "_knee");
+            Vec3 hipPosition = ikLiveRolePosition(root, currentMap, hip);
+            if (hipPosition == null) hipPosition = ikLiveRolePosition(root, currentMap, yaw);
+            if (hipPosition == null) continue;
+            Vec3 kneePosition = ikLiveRolePosition(root, currentMap, knee);
+            if (kneePosition == null) kneePosition = hipPosition.add(0.0D, -0.75D, 0.0D);
+            Vec3 handPosition = kneePosition.add(0.0D, -0.75D, 0.0D);
+            ScmLeggedLocomotion.Limb limb = new ScmLeggedLocomotion.Limb(
+                    "arm_" + index, ScmLeggedLocomotion.LimbKind.ARM,
+                    hipPosition.subtract(currentMap.centerOfMass()),
+                    handPosition.subtract(hipPosition),
+                    Math.max(0.125D, ikDistance(ikLiveRolePosition(root, currentMap, yaw), hipPosition)),
+                    Math.max(0.25D, ikDistance(hipPosition, kneePosition)),
+                    Math.max(0.25D, ikDistance(kneePosition, handPosition)),
+                    index == 1 ? 0.0D : 0.5D, 0.0D, 0.0D, 0.0D);
+            bindings.add(new IkLimbBinding("arm_" + index, limb, yaw, hip, knee,
+                    IkRoleBinding.EMPTY, IkRoleBinding.EMPTY, ikArticulatedRoles(yaw, hip, knee),
+                    IkRoleBinding.EMPTY, hipPosition, handPosition, null));
+        }
+        if (bindings.stream().noneMatch(binding -> binding.id().startsWith("leg_"))) {
+            bindings = ikAutoLimbBindings(configuration, currentMap, root, relations, gait);
+            contacts.clear();
+            for (IkLimbBinding binding : bindings) {
+                if (binding.id().startsWith("leg_")) {
+                    contacts.add(ikFootContact(root, currentMap, binding.id(),
+                            binding.hipPosition(), binding.footPosition()));
+                }
+            }
+            if (bindings.stream().noneMatch(binding -> binding.id().startsWith("leg_"))
+                    && configuration.hasAutoUnits()) {
+                status = "IK Auto resolved " + ikAutoLinkedJointCount + " / "
+                        + ikAutoCandidateJointCount + " selected joints into "
+                        + ikAutoChainCount + " linked chains";
+            }
+        }
+        if (bindings.isEmpty()) return;
+        Set<Integer> activeIkJoints = bindings.stream().flatMap(binding ->
+                binding.articulatedJoints().stream()).flatMap(binding -> binding.units().stream())
+                .map(ShipControlMap.PropulsionUnit::index).collect(java.util.stream.Collectors.toSet());
+        ikJointTargetValues.keySet().removeIf(index -> !activeIkJoints.contains(index));
+        Vec3 forward = controllerForwardRoot();
+        Vec3 up = controllerUpRoot();
+        Vec3 right = normalize(forward.cross(up), new Vec3(1.0D, 0.0D, 0.0D));
+        Vec3 controlForce = finite(demand.controlForce());
+        Vec3 command = new Vec3(Mth.clamp(controlForce.dot(right), -1.0D, 1.0D), 0.0D,
+                Mth.clamp(controlForce.dot(forward), -1.0D, 1.0D));
+        double yawDemand = Mth.clamp(ScmControlAxes.yawRightDemand(
+                demand.controlTorque(), up, false), -1.0D, 1.0D);
+        double crouchDemand = ikPostureDemand("ship_crouch");
+        double jumpDemand = ikPostureDemand("ship_jump");
+        double motion = Mth.clamp(command.length(), 0.0D, 1.0D);
+        double gaitDemand = Math.max(motion, Math.abs(yawDemand));
+        double phase = ikGaitState.advancePhase(gaitDemand, 0.05D,
+                0.75D + gaitDemand * 0.45D);
+        Vec3 localVelocity = SableTransformApi.toLocalDirection(root, telemetry.velocity());
+        boolean airborne = contacts.stream().noneMatch(ScmLeggedLocomotion.Contact::grounded)
+                || jumpDemand > 1.0E-3D && localVelocity.y > 0.35D;
+        ScmLeggedLocomotion.Posture posture = new ScmLeggedLocomotion.Posture(
+                crouchDemand, jumpDemand, airborne);
+        ScmLeggedLocomotion.Input input = new ScmLeggedLocomotion.Input(
+                Vec3.ZERO, command, yawDemand, 0.0D,
+                phase, 0.35D, 1.25D, 0.45D, 0.35D, 0.85D);
+        ScmLeggedLocomotion.Plan plan = ScmLeggedLocomotion.solve(
+                input, bindings.stream().map(IkLimbBinding::limb).toList(), contacts,
+                ScmLeggedLocomotion.BodyMotion.NONE, null, posture);
+        List<ScmLeggedLocomotion.Contact> plannedContacts = new ArrayList<>();
+        for (IkLimbBinding binding : bindings) {
+            if (!binding.id().startsWith("leg_")) continue;
+            ScmLeggedLocomotion.LimbTarget target = plan.targets().get(binding.id());
+            if (target == null) continue;
+            plannedContacts.add(ikFootContact(root, currentMap, binding.id(), binding.hipPosition(),
+                    binding.hipPosition().add(target.footPosition())));
+        }
+        plan = ScmLeggedLocomotion.solve(input, bindings.stream().map(IkLimbBinding::limb).toList(),
+                plannedContacts, new ScmLeggedLocomotion.BodyMotion(localVelocity, 0.05D),
+                ikGaitState, posture);
+        for (IkLimbBinding binding : bindings) {
+            ScmLeggedLocomotion.LimbTarget target = plan.targets().get(binding.id());
+            if (target == null) continue;
+            ScmLeggedLocomotion.JointAngles angles = target.angles();
+            ScmLeggedLocomotion.JointAngles rest = ScmLeggedLocomotion.inverseKinematics(
+                    binding.limb(), binding.limb().defaultFootPosition());
+            ikApplyJoint(currentMap, binding.yaw(), angles.yaw() - rest.yaw());
+            ikApplyJoint(currentMap, binding.hip(), angles.hip() - rest.hip());
+            ikApplyJoint(currentMap, binding.knee(), angles.knee() - rest.knee());
+            ikApplyJoint(currentMap, binding.ankle(),
+                    ScmLeggedLocomotion.ankleCompensation(angles, rest));
+            ikApplyExtension(currentMap, binding.extension(), angles.reach() - rest.reach(),
+                    angles.reach(), binding.limb().upperLength() + binding.limb().lowerLength());
+            ikApplyRedundantLimb(root, currentMap, binding, target, relations);
+            if (binding.id().startsWith("leg_")) {
+                ikApplyPropulsion(currentMap, binding.propulsion(), target.stance() ? motion : 0.0D);
+            }
+        }
+    }
+
+    // Resolve one player-authored IK action to live propulsion and bearing controls
+    private IkRoleBinding ikRoleBinding(
+            ScmConfigurationProfile configuration, ShipControlMap currentMap, String action
+    ) {
+        Set<ScmConfigurationProfile.UnitReference> references =
+                configuration.unitsForActions(Set.of(action));
+        if (references.isEmpty()) return IkRoleBinding.EMPTY;
+        List<ShipControlMap.PropulsionUnit> units = currentMap.units().stream()
+                .filter(unit -> references.stream().anyMatch(reference ->
+                        configurationReferenceMatchesUnit(reference, unit))).toList();
+        List<ShipControlMap.BearingUnit> bearings = currentMap.bearings().stream()
+                .filter(bearing -> references.stream().anyMatch(reference ->
+                        configurationReferenceMatchesBearing(reference, bearing))).toList();
+        return new IkRoleBinding(units, bearings);
+    }
+
+    // Resolve unlabelled articulated Auto controls into leg and arm chains
+    private List<IkLimbBinding> ikAutoLimbBindings(
+            ScmConfigurationProfile configuration, ShipControlMap currentMap,
+            ServerSubLevel root, List<ScmSubLevelRelationRegistry.Relation> relations,
+            ScmLeggedGait gait
+    ) {
+        Set<ScmConfigurationProfile.UnitReference> references = configuration.autoUnits();
+        ikAutoCandidateJointCount = 0;
+        ikAutoLinkedJointCount = 0;
+        ikAutoChainCount = 0;
+        if (references.isEmpty()) return List.of();
+        Map<UUID, List<AutoIkJoint>> jointsByBody = new LinkedHashMap<>();
+        for (ShipControlMap.PropulsionUnit unit : currentMap.units()) {
+            if (!unit.controllable() || !unit.adapter().contains("joint")
+                    || references.stream().noneMatch(reference ->
+                    configurationReferenceMatchesUnit(reference, unit))) {
+                continue;
+            }
+            ikAutoCandidateJointCount++;
+            ScmSubLevelRelationRegistry.Relation relation = ikAutoRelationForUnit(root, unit, relations);
+            if (relation == null) continue;
+            ikAutoLinkedJointCount++;
+            AutoIkJoint joint = new AutoIkJoint(unit, relation.parentSubLevelId(),
+                    relation.childSubLevelId());
+            jointsByBody.computeIfAbsent(relation.parentSubLevelId(), ignored -> new ArrayList<>())
+                    .add(joint);
+            jointsByBody.computeIfAbsent(relation.childSubLevelId(), ignored -> new ArrayList<>())
+                    .add(joint);
+        }
+        UUID topologyRootId = root.getUniqueId();
+        List<AutoIkJoint> roots = jointsByBody.getOrDefault(topologyRootId, List.of());
+        if (roots.isEmpty()) {
+            topologyRootId = ikAutoTopologyRoot(jointsByBody, currentMap.centerOfMass());
+            roots = jointsByBody.getOrDefault(topologyRootId, List.of());
+        }
+        if (roots.isEmpty()) return List.of();
+        Vec3 forward = controllerForwardRoot();
+        Vec3 up = controllerUpRoot();
+        Vec3 right = normalize(forward.cross(up), new Vec3(1.0D, 0.0D, 0.0D));
+        List<AutoIkChain> chains = ikAutoJointChains(topologyRootId, roots, jointsByBody).stream()
+                .filter(chain -> chain.joints().size() >= 2).toList();
+        ikAutoChainCount = chains.size();
+        if (chains.isEmpty()) return List.of();
+        List<AutoIkChain> legChains = new ArrayList<>(chains);
+        legChains.sort(Comparator.<AutoIkChain>comparingDouble(chain -> ikAutoChainHeight(
+                        chain, currentMap.centerOfMass(), up))
+                .thenComparingDouble(chain -> ikAutoChainLateral(
+                        chain, currentMap.centerOfMass(), right)));
+        int requestedLegs = gait == ScmLeggedGait.CUSTOM ? 8 : gait.legCount();
+        List<AutoIkChain> selectedLegs = new ArrayList<>(legChains.subList(0,
+                Math.min(requestedLegs, legChains.size())));
+        List<IkLimbBinding> bindings = new ArrayList<>();
+        for (int index = 0; index < selectedLegs.size(); index++) {
+            IkLimbBinding binding = ikAutoLimbBinding(
+                    "leg_" + (index + 1), selectedLegs.get(index), false,
+                    index, selectedLegs.size(), root, currentMap, relations, gait);
+            if (binding != null) bindings.add(binding);
+        }
+        Set<AutoIkChain> selected = new HashSet<>(selectedLegs);
+        List<AutoIkChain> armChains = chains.stream().filter(chain -> !selected.contains(chain))
+                .sorted(Comparator.<AutoIkChain>comparingDouble(chain -> -ikAutoChainHeight(
+                        chain, currentMap.centerOfMass(), up)))
+                .limit(2).toList();
+        for (int index = 0; index < armChains.size(); index++) {
+            IkLimbBinding binding = ikAutoLimbBinding(
+                    "arm_" + (index + 1), armChains.get(index), true,
+                    index, armChains.size(), root, currentMap, relations, gait);
+            if (binding != null) bindings.add(binding);
+        }
+        return List.copyOf(bindings);
+    }
+
+    // Resolve the source relation across Synaxis's wrapped sub-level block-entity views
+    private @Nullable ScmSubLevelRelationRegistry.Relation ikAutoRelationForUnit(
+            ServerSubLevel root, ShipControlMap.PropulsionUnit unit,
+            List<ScmSubLevelRelationRegistry.Relation> relations
+    ) {
+        if (root == null || unit == null) return null;
+        ScmSubLevelRelationRegistry.Relation relation = ikAutoRelationFromCandidates(unit, relations);
+        if (relation != null) return relation;
+        BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
+                controller.getLevel(), unit.subLevelId(), unit.blockPosition());
+        if (blockEntity == null) return null;
+        List<ScmSubLevelRelationRegistry.Relation> direct = ScmSubLevelRelationRegistry.relations(
+                root.getLevel(), List.of(new ScmSubLevelRelationRegistry.ScopedBlockEntity(
+                        unit.subLevelId(), blockEntity)));
+        return ikAutoRelationFromCandidates(unit, direct);
+    }
+
+    // Match one joint against a relation source without trusting a wrapped sub-level identity
+    private static @Nullable ScmSubLevelRelationRegistry.Relation ikAutoRelationFromCandidates(
+            ShipControlMap.PropulsionUnit unit, Collection<ScmSubLevelRelationRegistry.Relation> relations
+    ) {
+        if (unit == null || relations == null || relations.isEmpty()) return null;
+        List<ScmSubLevelRelationRegistry.Relation> candidates = relations.stream()
+                .filter(ScmSubLevelRelationRegistry.Relation::hasSourceBlockPosition)
+                .filter(candidate -> unit.blockPosition().equals(candidate.sourceBlockPosition())).toList();
+        if (candidates.isEmpty()) return null;
+        ScmSubLevelRelationRegistry.Relation owned = candidates.stream().filter(candidate ->
+                candidate.matchesSource(unit.subLevelId(), unit.blockPosition())).findFirst().orElse(null);
+        if (owned != null) return owned;
+        ScmSubLevelRelationRegistry.Relation endpoint = candidates.stream().filter(candidate ->
+                unit.subLevelId().equals(candidate.parentSubLevelId())
+                        || unit.subLevelId().equals(candidate.childSubLevelId()))
+                .findFirst().orElse(null);
+        return endpoint == null && candidates.size() == 1 ? candidates.getFirst() : endpoint;
+    }
+
+    // Follow every relation-linked branch away from the torso to its articulated leaf
+    private static List<AutoIkChain> ikAutoJointChains(
+            UUID rootId, Collection<AutoIkJoint> roots, Map<UUID, List<AutoIkJoint>> jointsByBody
+    ) {
+        if (rootId == null) return List.of();
+        ArrayDeque<AutoIkPath> pending = new ArrayDeque<>();
+        if (roots != null) {
+            for (AutoIkJoint joint : roots) {
+                if (joint == null) continue;
+                UUID endpoint = joint.other(rootId);
+                if (endpoint != null) {
+                    pending.addLast(new AutoIkPath(List.of(joint), endpoint, Set.of(rootId, endpoint)));
+                }
+            }
+        }
+        List<AutoIkChain> chains = new ArrayList<>();
+        while (!pending.isEmpty()) {
+            AutoIkPath path = pending.removeFirst();
+            List<AutoIkJoint> children = jointsByBody.getOrDefault(path.endpoint(), List.of())
+                    .stream().filter(child -> !path.joints().contains(child))
+                    .filter(child -> {
+                        UUID next = child.other(path.endpoint());
+                        return next != null && !path.visitedBodies().contains(next);
+                    })
+                    .sorted(Comparator.comparingInt(child -> child.unit().index())).toList();
+            if (children.isEmpty()) {
+                chains.add(new AutoIkChain(path.joints(), path.endpoint()));
+                continue;
+            }
+            for (AutoIkJoint child : children) {
+                UUID endpoint = child.other(path.endpoint());
+                List<AutoIkJoint> joints = new ArrayList<>(path.joints());
+                joints.add(child);
+                Set<UUID> visitedBodies = new LinkedHashSet<>(path.visitedBodies());
+                visitedBodies.add(endpoint);
+                pending.addLast(new AutoIkPath(List.copyOf(joints), endpoint, Set.copyOf(visitedBodies)));
+            }
+        }
+        return List.copyOf(chains);
+    }
+
+    // Select the common joint hub when the physics implementation exposes the chassis as ground
+    private static @Nullable UUID ikAutoTopologyRoot(
+            Map<UUID, List<AutoIkJoint>> jointsByBody, Vec3 centerOfMass
+    ) {
+        UUID selected = null;
+        int selectedDegree = -1;
+        double selectedDistance = Double.MAX_VALUE;
+        for (Map.Entry<UUID, List<AutoIkJoint>> entry : jointsByBody.entrySet()) {
+            UUID bodyId = entry.getKey();
+            List<AutoIkJoint> joints = entry.getValue();
+            if (bodyId == null || joints == null || joints.isEmpty()) continue;
+            int degree = joints.size();
+            double distance = joints.stream().map(AutoIkJoint::unit)
+                    .map(ShipControlMap.PropulsionUnit::rootPosition)
+                    .mapToDouble(position -> position.distanceToSqr(centerOfMass)).average()
+                    .orElse(Double.MAX_VALUE);
+            if (degree > selectedDegree || degree == selectedDegree && distance < selectedDistance) {
+                selected = bodyId;
+                selectedDegree = degree;
+                selectedDistance = distance;
+            }
+        }
+        return selected;
+    }
+
+    // Get an Auto chain's vertical joint position
+    private static double ikAutoChainHeight(
+            AutoIkChain chain, Vec3 centerOfMass, Vec3 up
+    ) {
+        int anchor = Math.max(0, chain.joints().size() - 2);
+        return chain.joints().get(anchor).unit().rootPosition()
+                .subtract(centerOfMass).dot(up);
+    }
+
+    // Get an Auto chain's lateral joint position
+    private static double ikAutoChainLateral(
+            AutoIkChain chain, Vec3 centerOfMass, Vec3 right
+    ) {
+        int anchor = Math.max(0, chain.joints().size() - 2);
+        return chain.joints().get(anchor).unit().rootPosition()
+                .subtract(centerOfMass).dot(right);
+    }
+
+    // Build one automatic IK limb from its ordered articulated joints
+    private @Nullable IkLimbBinding ikAutoLimbBinding(
+            String id, AutoIkChain chain, boolean arm, int phaseIndex, int phaseCount,
+            ServerSubLevel root, ShipControlMap currentMap,
+            List<ScmSubLevelRelationRegistry.Relation> relations, ScmLeggedGait gait
+    ) {
+        List<AutoIkJoint> rotary = chain.joints().stream().filter(joint ->
+                !joint.unit().adapter().contains("linear")).toList();
+        if (rotary.isEmpty()) return null;
+        List<AutoIkJoint> limbJoints = rotary.subList(Math.max(0, rotary.size() - 3), rotary.size());
+        AutoIkJoint yawJoint = limbJoints.size() >= 3 ? limbJoints.getFirst() : null;
+        AutoIkJoint hipJoint = limbJoints.size() >= 3 ? limbJoints.get(1) : limbJoints.getFirst();
+        AutoIkJoint kneeJoint = limbJoints.size() >= 3 ? limbJoints.get(2)
+                : limbJoints.size() >= 2 ? limbJoints.get(1) : null;
+        AutoIkJoint extensionJoint = chain.joints().stream().filter(joint ->
+                joint.unit().adapter().contains("linear")).findFirst().orElse(null);
+        IkRoleBinding yaw = ikAutoRoleBinding(yawJoint);
+        IkRoleBinding hip = ikAutoRoleBinding(hipJoint);
+        IkRoleBinding knee = ikAutoRoleBinding(kneeJoint);
+        IkRoleBinding extension = ikAutoRoleBinding(extensionJoint);
+        Vec3 hipPosition = ikRolePosition(root, hip);
+        if (hipPosition == null) return null;
+        Vec3 kneePosition = ikRolePosition(root, knee);
+        if (kneePosition == null) kneePosition = hipPosition.add(0.0D, -1.0D, 0.0D);
+        Vec3 fallbackFoot = ikRolePosition(root, extension);
+        if (fallbackFoot == null) fallbackFoot = kneePosition.add(0.0D, -1.0D, 0.0D);
+        Vec3 footPosition = ikBodyCenterPosition(root, chain.leafBodyId(), fallbackFoot);
+        double coxa = Math.max(0.125D, ikDistance(ikRolePosition(root, yaw), hipPosition));
+        double upper = Math.max(0.25D, ikDistance(hipPosition, kneePosition));
+        double lower = Math.max(0.25D, ikDistance(kneePosition, footPosition));
+        ScmLeggedLocomotion.Limb limb = new ScmLeggedLocomotion.Limb(
+                id, arm ? ScmLeggedLocomotion.LimbKind.ARM : ScmLeggedLocomotion.LimbKind.LEG,
+                hipPosition.subtract(currentMap.centerOfMass()), footPosition.subtract(hipPosition),
+                coxa, upper, lower, arm ? phaseIndex * 0.5D
+                        : gait.phaseOffset(phaseIndex, Math.max(1, phaseCount)),
+                0.0D, 0.0D, 0.0D);
+        List<IkRoleBinding> articulated = rotary.stream()
+                .map(ShipControlModuleRuntime::ikAutoRoleBinding).toList();
+        return new IkLimbBinding(id, limb, yaw, hip, knee, IkRoleBinding.EMPTY, extension,
+                articulated, IkRoleBinding.EMPTY, hipPosition, footPosition, chain.leafBodyId());
+    }
+
+    // Collect the player-assigned revolute roles in chain order
+    private static List<IkRoleBinding> ikArticulatedRoles(IkRoleBinding... roles) {
+        if (roles == null || roles.length == 0) return List.of();
+        return Arrays.stream(roles).filter(binding -> binding != null && !binding.empty())
+                .toList();
+    }
+
+    // Convert one discovered articulated joint into an IK role binding
+    private static IkRoleBinding ikAutoRoleBinding(@Nullable AutoIkJoint joint) {
+        return joint == null ? IkRoleBinding.EMPTY
+                : new IkRoleBinding(List.of(joint.unit()), List.of());
+    }
+
+    // Get a representative root position for one IK role
+    private @Nullable Vec3 ikRolePosition(ServerSubLevel root, IkRoleBinding binding) {
+        if (binding == null || binding.empty()) return null;
+        if (!binding.units().isEmpty()) return binding.units().getFirst().rootPosition();
+        ShipControlMap.BearingUnit bearing = binding.bearings().getFirst();
+        SubLevel source = SableLevelApi.subLevel(root.getLevel(), bearing.hostSubLevelId());
+        return source == null ? null : rootPosition(root, source, bearing.blockPosition().getCenter());
+    }
+
+    // Get every body which can own the automatic foot body below an IK joint
+    private static Set<UUID> relationFootSources(
+            IkRoleBinding knee, IkRoleBinding ankle, IkRoleBinding extension
+    ) {
+        Set<UUID> sources = new LinkedHashSet<>();
+        for (ShipControlMap.PropulsionUnit unit : knee.units()) sources.add(unit.subLevelId());
+        for (ShipControlMap.PropulsionUnit unit : ankle.units()) sources.add(unit.subLevelId());
+        for (ShipControlMap.PropulsionUnit unit : extension.units()) sources.add(unit.subLevelId());
+        for (ShipControlMap.BearingUnit bearing : knee.bearings()) sources.add(bearing.hostSubLevelId());
+        for (ShipControlMap.BearingUnit bearing : ankle.bearings()) sources.add(bearing.hostSubLevelId());
+        for (ShipControlMap.BearingUnit bearing : extension.bearings()) {
+            sources.add(bearing.hostSubLevelId());
+        }
+        return Set.copyOf(sources);
+    }
+
+    // Get native bearing children which directly form an IK foot body
+    private static Set<UUID> directFootChildren(
+            IkRoleBinding knee, IkRoleBinding ankle, IkRoleBinding extension
+    ) {
+        Set<UUID> children = new LinkedHashSet<>();
+        for (ShipControlMap.BearingUnit bearing : knee.bearings()) {
+            children.addAll(bearing.childSubLevelIds());
+        }
+        for (ShipControlMap.BearingUnit bearing : ankle.bearings()) {
+            children.addAll(bearing.childSubLevelIds());
+        }
+        for (ShipControlMap.BearingUnit bearing : extension.bearings()) {
+            children.addAll(bearing.childSubLevelIds());
+        }
+        return Set.copyOf(children);
+    }
+
+    // Resolve the deepest connected child body as the foot body for an IK limb
+    private static Vec3 ikFootPosition(
+            ServerSubLevel root, Set<UUID> sources, Set<UUID> directChildren,
+            List<ScmSubLevelRelationRegistry.Relation> relations, Vec3 fallback
+    ) {
+        if (sources == null || sources.isEmpty()) {
+            return fallback;
+        }
+        Map<UUID, List<UUID>> children = new LinkedHashMap<>();
+        if (relations != null) {
+            for (ScmSubLevelRelationRegistry.Relation relation : relations) {
+                children.computeIfAbsent(relation.parentSubLevelId(), ignored -> new ArrayList<>())
+                        .add(relation.childSubLevelId());
+            }
+        }
+        ArrayDeque<UUID> pending = new ArrayDeque<>(sources);
+        if (directChildren != null) pending.addAll(directChildren);
+        Set<UUID> visited = new LinkedHashSet<>();
+        UUID footId = directChildren == null ? null
+                : directChildren.stream().reduce((left, right) -> right).orElse(null);
+        while (!pending.isEmpty()) {
+            UUID current = pending.removeFirst();
+            if (!visited.add(current)) continue;
+            List<UUID> next = children.getOrDefault(current, List.of());
+            for (UUID child : next) {
+                footId = child;
+                pending.addLast(child);
+            }
+        }
+        if (footId == null || sources.contains(footId)) {
+            footId = visited.stream().filter(id -> !sources.contains(id)).reduce((left, right) -> right)
+                    .orElse(null);
+        }
+        SubLevel foot = footId == null ? null : SableLevelApi.subLevel(root.getLevel(), footId);
+        return foot == null || foot.isRemoved() ? fallback
+                : rootPosition(root, foot, foot.getPlot().getCenterBlock().getCenter());
+    }
+
+    // Get the current root-space center of one known articulated leaf body
+    private static Vec3 ikBodyCenterPosition(
+            ServerSubLevel root, @Nullable UUID bodyId, Vec3 fallback
+    ) {
+        SubLevel body = bodyId == null ? null : SableLevelApi.subLevel(root.getLevel(), bodyId);
+        return body == null || body.isRemoved() ? fallback
+                : rootPosition(root, body, body.getPlot().getCenterBlock().getCenter());
+    }
+
+    // Probe automatic foot bodies against terrain and other non-owned sub-levels
+    private ScmLeggedLocomotion.Contact ikFootContact(
+            ServerSubLevel root, ShipControlMap currentMap, String limbId,
+            Vec3 hipPosition, Vec3 footPosition
+    ) {
+        Level level = controller.getLevel();
+        if (level == null) return new ScmLeggedLocomotion.Contact(limbId, false, Vec3.ZERO);
+        Vec3 worldFoot = SableTransformApi.toWorldPosition(root, footPosition);
+        Set<UUID> ownBodies = connectedShipSubLevels(root).stream()
+                .map(SubLevel::getUniqueId).collect(java.util.stream.Collectors.toUnmodifiableSet());
+        double probeHeight = 1.5D;
+        double probeRange = 3.25D;
+        double distance = SubLevelParticleOcclusion.findBlockingDistance(level, null,
+                worldFoot.add(0.0D, probeHeight, 0.0D), new Vec3(0.0D, -1.0D, 0.0D),
+                probeRange, true, ownBodies);
+        if (distance >= probeRange - 0.01D) {
+            return new ScmLeggedLocomotion.Contact(limbId, false, Vec3.ZERO);
+        }
+        Vec3 impactWorld = worldFoot.add(0.0D, probeHeight - distance, 0.0D);
+        Vec3 impactRoot = SableTransformApi.toLocalPosition(root, impactWorld);
+        return new ScmLeggedLocomotion.Contact(limbId, true,
+                impactRoot.subtract(currentMap.centerOfMass()), impactRoot.subtract(hipPosition));
+    }
+
+    // Get a role's position from its current articulated sub-level transform
+    private @Nullable Vec3 ikLiveRolePosition(
+            ServerSubLevel root, ShipControlMap currentMap, IkRoleBinding binding
+    ) {
+        if (binding == null || binding.empty()) return null;
+        if (binding.units().isEmpty()) return ikRolePosition(root, binding);
+        ShipControlMap.PropulsionUnit unit = binding.units().getFirst();
+        Actuator actuator = ikActuator(currentMap, unit);
+        SubLevel source = SableLevelApi.subLevel(root.getLevel(), unit.subLevelId());
+        return actuator == null || source == null ? unit.rootPosition()
+                : rootPosition(root, source, actuator.localForcePosition());
+    }
+
+    // Get the live end-effector position from the final articulated role
+    private Vec3 ikLiveFootPosition(
+            ServerSubLevel root, ShipControlMap currentMap, IkLimbBinding binding
+    ) {
+        Vec3 foot = ikLiveRolePosition(root, currentMap, binding.ankle());
+        if (foot == null) foot = ikLiveRolePosition(root, currentMap, binding.extension());
+        return foot == null ? binding.footPosition() : foot;
+    }
+
+    // Apply a live damped-least-squares correction across every discovered rotary joint
+    private boolean ikApplyRedundantLimb(
+            ServerSubLevel root, ShipControlMap currentMap, IkLimbBinding binding,
+            ScmLeggedLocomotion.LimbTarget target,
+            List<ScmSubLevelRelationRegistry.Relation> relations
+    ) {
+        if (binding == null || target == null || binding.articulatedJoints().size() < 2) {
+            return false;
+        }
+        List<IkRoleBinding> controls = new ArrayList<>();
+        List<ScmLeggedLocomotion.ArticulatedJoint> joints = new ArrayList<>();
+        for (IkRoleBinding role : binding.articulatedJoints()) {
+            if (role.units().isEmpty()) continue;
+            ShipControlMap.PropulsionUnit unit = role.units().getFirst();
+            Actuator actuator = ikActuator(currentMap, unit);
+            if (actuator == null || !actuator.kind().contains("synaxis_revolute")) continue;
+            SubLevel source = SableLevelApi.subLevel(root.getLevel(), unit.subLevelId());
+            Vec3 position = source == null ? unit.rootPosition()
+                    : rootPosition(root, source, actuator.localForcePosition());
+            Vec3 axis = source == null ? unit.forceDirection()
+                    : rootDirection(root, source, actuator.localForceDirection());
+            if (axis.lengthSqr() <= 1.0E-8D) continue;
+            controls.add(role);
+            joints.add(new ScmLeggedLocomotion.ArticulatedJoint(
+                    position, axis, 1.0D, 0.12D));
+        }
+        if (joints.size() < 2) return false;
+        Vec3 hip = ikLiveRolePosition(root, currentMap, binding.hip());
+        if (hip == null) hip = binding.hipPosition();
+        Vec3 foot = ikLiveFootPosition(root, currentMap, binding);
+        Vec3 desiredFoot = hip.add(target.footPosition());
+        ScmLeggedLocomotion.RedundantIkSolution solution = ScmLeggedLocomotion.solveRedundantIk(
+                foot, desiredFoot, joints, 0.06D, 0.25D);
+        if (solution.jointDeltas().size() != controls.size()) return false;
+        for (int index = 0; index < controls.size(); index++) {
+            ikApplyJointDelta(currentMap, controls.get(index), solution.jointDeltas().get(index));
+        }
+        return true;
+    }
+
+    // Apply an incremental joint target so the Synaxis PID loop follows the live pose
+    private void ikApplyJointDelta(
+            ShipControlMap currentMap, IkRoleBinding binding, double radians
+    ) {
+        if (binding == null || binding.empty()) return;
+        for (ShipControlMap.PropulsionUnit unit : binding.units()) {
+            Actuator actuator = ikActuator(currentMap, unit);
+            if (actuator == null) continue;
+            double current = actuator.neutralControl() + actuator.read().thrust();
+            double previous = ikJointTargetValues.getOrDefault(unit.index(), current);
+            double control = actuator.kind().contains("synaxis_revolute")
+                    ? Mth.clamp(previous + Mth.clamp(radians, -0.25D, 0.25D),
+                    actuator.minControl(), actuator.maxControl())
+                    : ikAngularControl(actuator, radians);
+            ikJointTargetValues.put(unit.index(), control);
+            applyAllocatedControl(unit.index(), actuator, control);
+        }
+        double degrees = Math.toDegrees(radians);
+        for (ShipControlMap.BearingUnit bearing : binding.bearings()) {
+            BearingActuator actuator = controlBearings.get(bearing.index());
+            if (actuator == null) continue;
+            ShipBearingPlanner.Pose current = actuator.currentPose();
+            actuator.applyPose(new ShipBearingPlanner.Pose(Mth.clamp(
+                    current.angleX() + degrees, bearing.minX(), bearing.maxX()), current.angleZ()));
+            selectedBearingPoses.remove(bearing.index());
+        }
+    }
+
+    // Apply one angular target to all controls assigned to an IK role
+    private void ikApplyJoint(ShipControlMap currentMap, IkRoleBinding binding, double radians) {
+        if (binding == null || binding.empty()) return;
+        for (ShipControlMap.PropulsionUnit unit : binding.units()) {
+            Actuator actuator = ikActuator(currentMap, unit);
+            if (actuator == null) continue;
+            double control = ikAngularControl(actuator, radians);
+            ikJointTargetValues.put(unit.index(), control);
+            applyAllocatedControl(unit.index(), actuator, control);
+        }
+        double degrees = Math.toDegrees(radians);
+        for (ShipControlMap.BearingUnit bearing : binding.bearings()) {
+            BearingActuator actuator = controlBearings.get(bearing.index());
+            if (actuator == null) continue;
+            ShipBearingPlanner.Pose current = actuator.currentPose();
+            actuator.applyPose(new ShipBearingPlanner.Pose(
+                    Mth.clamp(degrees, bearing.minX(), bearing.maxX()), current.angleZ()));
+            selectedBearingPoses.remove(bearing.index());
+        }
+    }
+
+    // Apply an extension target to all controls assigned to an IK role
+    private void ikApplyExtension(
+            ShipControlMap currentMap, IkRoleBinding binding, double displacement,
+            double reach, double maximumReach
+    ) {
+        if (binding == null || binding.empty()) return;
+        for (ShipControlMap.PropulsionUnit unit : binding.units()) {
+            Actuator actuator = ikActuator(currentMap, unit);
+            if (actuator == null) continue;
+            double range = Math.max(1.0E-6D, actuator.maxControl() - actuator.minControl());
+            double control = actuator.kind().contains("synaxis_linear")
+                    ? actuator.neutralControl() + displacement
+                    : Mth.lerp(Mth.clamp(reach / Math.max(1.0E-6D, maximumReach), 0.0D, 1.0D),
+                    actuator.minControl(), actuator.maxControl());
+            applyAllocatedControl(unit.index(), actuator,
+                    Mth.clamp(control, actuator.minControl(), actuator.minControl() + range));
+        }
+    }
+
+    // Apply a stance-only propulsion request to all controls assigned to an IK leg
+    private void ikApplyPropulsion(
+            ShipControlMap currentMap, IkRoleBinding binding, double demand
+    ) {
+        if (binding == null || binding.empty()) return;
+        for (ShipControlMap.PropulsionUnit unit : binding.units()) {
+            Actuator actuator = ikActuator(currentMap, unit);
+            if (actuator == null) continue;
+            double calibrated = actuator.controlForDemand(unit, Mth.clamp(demand, 0.0D, 1.0D));
+            double control = actuator.mapControl(unit, calibrated);
+            applyAllocatedControl(unit.index(), actuator, control);
+        }
+    }
+
+    // Resolve an IK unit's live actuator without applying ordinary allocation semantics
+    private @Nullable Actuator ikActuator(
+            ShipControlMap currentMap, ShipControlMap.PropulsionUnit unit
+    ) {
+        Actuator actuator = controlActuators.get(unit.index());
+        if (actuator != null && actuator.isAvailable()) return actuator;
+        BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
+                controller.getLevel(), unit.subLevelId(), unit.blockPosition());
+        actuator = actuatorForStored(blockEntity, unit, controller.getLevel());
+        if (actuator != null && actuator.isAvailable() && actuator.controllable()) {
+            controlActuators.put(unit.index(), actuator);
+            return actuator;
+        }
+        return null;
+    }
+
+    // Convert one analytical angular solution to an actuator-native target
+    private static double ikAngularControl(Actuator actuator, double radians) {
+        if (actuator.kind().contains("synaxis_revolute")) {
+            return Mth.clamp(actuator.neutralControl() + radians,
+                    actuator.minControl(), actuator.maxControl());
+        }
+        double ratio = Mth.clamp((radians + Math.PI) / (Math.PI * 2.0D), 0.0D, 1.0D);
+        return Mth.lerp(ratio, actuator.minControl(), actuator.maxControl());
+    }
+
+    // Get cached optional articulated relations for a single server control tick
+    private List<ScmSubLevelRelationRegistry.Relation> ikSubLevelRelations(ServerSubLevel root) {
+        long gameTime = root.getLevel().getGameTime();
+        if (ikRelationSnapshotTick == gameTime
+                && Objects.equals(ikRelationSnapshotRootId, root.getUniqueId())) {
+            return ikRelationSnapshot;
+        }
+        ikRelationSnapshotTick = gameTime;
+        ikRelationSnapshotRootId = root.getUniqueId();
+        ikRelationSnapshot = optionalSubLevelRelations(root);
+        return ikRelationSnapshot;
+    }
+
+    // Get a finite geometric distance with a conservative fallback
+    private static double ikDistance(@Nullable Vec3 first, @Nullable Vec3 second) {
+        return first == null || second == null ? 0.125D
+                : Math.max(0.125D, first.distanceTo(second));
+    }
+
+    // Apply the SCM wheel steering
+    private void applyScmWheelSteering(
+            ShipControlMap currentMap,
+            ControlDemand demand,
+            Telemetry telemetry,
+            @Nullable SableAssemblyTopologyApi.Topology topology,
+            ScmSteeringMode steeringMode
+    ) {
         Level level = controller.getLevel();
         if (level == null) {
             return;
@@ -6615,12 +13227,38 @@ public final class ShipControlModuleRuntime {
         String topologyFingerprint = topologyFingerprint(topology);
         Set<UUID> primaryBodyIds = primaryCarriageBodyIds(topology);
         boolean restrictToPrimary = restrictGroundDriveToPrimary(topology, primaryBodyIds);
+        ScmConfigurationProfile configuration = controller.getScmConfigurationProfile();
+        boolean explicitRouting = configuration != null
+                && configuration.isConfiguredFor(currentMap)
+                && configuration.hasActionBindings();
+        // Pitch/roll stabilization must not dilute the independent wheel steering channel.
+        // Offroad's left/right signal handedness is the opposite of the
+        // physical positive-right yaw demand used by profile actions.
+        double steeringDemand = Mth.clamp(ScmControlAxes.wheelSteeringDemand(
+                demand.controlTorque(), controllerUpRoot(),
+                isControlMode(ScmBuiltinControlModes.GROUND_SEA_ID)
+                        && plannedDriveDirection(demand) < 0.0D), -1.0D, 1.0D);
+        float steering = (float) steeringDemand;
+        // A wheel brake may be assigned to either progressive Deceleration or
+        // terminal Brake. Only the active authored action reaches that wheel.
+        float brake = (float) Mth.clamp(Math.max(
+                activeDecelerationStrength(demand), activeBrakeStrength(demand)),
+                0.0D, 1.0D);
+        Set<String> profileFaceActions = activeProfileFaceActions(
+                activeControlActionTypes(demand, currentMap));
+        String actionFingerprint = steeringMode.id() + ':' + profileFaceActions.stream().sorted()
+                .reduce((left, right) -> left + '|' + right).orElse("");
         if (lastScmWheelRefreshTick == Long.MIN_VALUE
                 || gameTime < lastScmWheelRefreshTick
                 || gameTime - lastScmWheelRefreshTick >= 20L
-                || !Objects.equals(lastScmWheelTopologyFingerprint, topologyFingerprint)) {
+                || !Objects.equals(lastScmWheelTopologyFingerprint, topologyFingerprint)
+                || !Objects.equals(lastScmWheelActionFingerprint, actionFingerprint)) {
             Set<WheelMountControlBridge> current =
                     Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+            Map<WheelMountControlBridge, List<ScmTarget>> currentTargets =
+                    new java.util.IdentityHashMap<>();
+            Map<WheelMountControlBridge, Double> currentPositions =
+                    new java.util.IdentityHashMap<>();
             for (ScmTarget target : ContraptionNetworkLinkerData.scmTargets(
                     controller.getStoredLinker())) {
                 if (restrictToPrimary && !primaryBodyIds.contains(target.subLevelId())) {
@@ -6629,7 +13267,45 @@ public final class ShipControlModuleRuntime {
                 BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
                         level, target.subLevelId(), target.blockPosition());
                 if (blockEntity instanceof WheelMountControlBridge wheel) {
+                    if (steeringMode != ScmSteeringMode.CUSTOM
+                            || isProfileWheelTargetSelected(
+                            configuration, target, profileFaceActions)) {
+                        current.add(wheel);
+                    }
+                    currentTargets.computeIfAbsent(wheel, ignored -> new ArrayList<>())
+                            .add(target);
+                }
+            }
+            // SCM configuration does not require linker targets. Select wheel
+            // hubs from the live allocation map so a Yaw group can steer the
+            // hubs the player assigned in the SCM tab. Explicit Brake faces
+            // are also included even though braking has no force vector and
+            // therefore normally carries zero allocator capacity.
+            for (ShipControlMap.PropulsionUnit unit : currentMap.units()) {
+                boolean profileWheelControl = explicitRouting
+                        && isProfileWheelControlSelected(
+                        configuration, unit, profileFaceActions);
+                if (!unit.controllable() || steeringMode == ScmSteeringMode.CUSTOM
+                        && !profileWheelControl
+                        && unit.maxThrust() <= 1.0E-9D
+                        || restrictToPrimary && !primaryBodyIds.contains(unit.subLevelId())) {
+                    continue;
+                }
+                BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
+                        level, unit.subLevelId(), unit.blockPosition());
+                if (blockEntity instanceof WheelMountControlBridge wheel) {
                     current.add(wheel);
+                    currentPositions.putIfAbsent(wheel,
+                            unit.rootPosition().subtract(currentMap.centerOfMass())
+                                    .dot(controllerForwardRoot()));
+                }
+            }
+            for (WheelMountControlBridge wheel : current) {
+                if (currentPositions.containsKey(wheel)) continue;
+                WheelMountControlBridge.PhysicalSample sample = wheel.ct$getPhysicalSample();
+                if (sample != null && sample.localPosition() != null) {
+                    currentPositions.put(wheel, sample.localPosition()
+                            .subtract(currentMap.centerOfMass()).dot(controllerForwardRoot()));
                 }
             }
             for (WheelMountControlBridge prev : controlledScmWheels) {
@@ -6639,34 +13315,295 @@ public final class ShipControlModuleRuntime {
             }
             controlledScmWheels.clear();
             controlledScmWheels.addAll(current);
+            controlledScmWheelTargets.clear();
+            controlledScmWheelLongitudinalPositions.clear();
+            currentTargets.forEach((wheel, targets) -> {
+                if (current.contains(wheel)) {
+                    controlledScmWheelTargets.put(wheel, List.copyOf(targets));
+                }
+            });
+            currentPositions.forEach((wheel, position) -> {
+                if (current.contains(wheel)) {
+                    controlledScmWheelLongitudinalPositions.put(wheel, position);
+                }
+            });
             lastScmWheelRefreshTick = gameTime;
             lastScmWheelTopologyFingerprint = topologyFingerprint;
+            lastScmWheelActionFingerprint = actionFingerprint;
         }
         if (controlledScmWheels.isEmpty()) {
             return;
         }
-        Vec3 torque = demand.torque();
-        double torqueScale = Math.max(1.0D,
-                Math.abs(torque.x) + Math.abs(torque.y) + Math.abs(torque.z));
-        double steeringDemand = Mth.clamp(
-                torque.dot(controllerUpRoot()) / torqueScale, -1.0D, 1.0D);
-        double plannedDirection = plannedDriveDirection(demand);
-        double longitudinalDemand = demand.force().dot(controllerForwardRoot());
-        if (plannedDirection < 0.0D) {
-            steeringDemand = -steeringDemand;
+        if (steeringMode == ScmSteeringMode.TANK
+                || steeringMode == ScmSteeringMode.RUDDER) {
+            for (WheelMountControlBridge wheel : controlledScmWheels) {
+                wheel.ct$setDirectInputs(0.0F, 0.0F, 0.0F);
+            }
+            return;
         }
-        float steering = (float) steeringDemand;
-        boolean braking = activeCommands.values().stream()
-                .anyMatch(command -> "ship_decelerate".equals(command.type()))
-                || plannedDirection != 0.0D
-                && longitudinalDemand * plannedDirection < -1.0E-5D
-                || demand.force().lengthSqr() <= 1.0E-8D
-                && telemetry.velocity().horizontalDistanceSqr() > 0.01D;
-        float left = Math.max(0.0F, -steering);
-        float right = Math.max(0.0F, steering);
+        if (steeringMode.usesWheelGeometry()) {
+            double trailing = controlledScmWheels.stream().mapToDouble(wheel ->
+                    controlledScmWheelLongitudinalPositions.getOrDefault(wheel, 0.0D))
+                    .min().orElse(0.0D);
+            double leading = controlledScmWheels.stream().mapToDouble(wheel ->
+                    controlledScmWheelLongitudinalPositions.getOrDefault(wheel, 0.0D))
+                    .max().orElse(0.0D);
+            for (WheelMountControlBridge wheel : controlledScmWheels) {
+                double wheelSteering = steeringMode.wheelDemand(steering,
+                        controlledScmWheelLongitudinalPositions.getOrDefault(wheel, 0.0D),
+                        trailing, leading);
+                wheel.ct$setDirectInputs(
+                        wheelSteering < -ACTION_DIRECTION_EPSILON
+                                ? (float) -wheelSteering : 0.0F,
+                        wheelSteering > ACTION_DIRECTION_EPSILON
+                                ? (float) wheelSteering : 0.0F,
+                        brake);
+            }
+            return;
+        }
+        // A face-routed WheelMount is controlled by the exact redstone plane
+        // chosen in the SCM profile. Do not also inject left/right values at
+        // the hub: that second path has no knowledge of the player's opposing
+        // face assignment and is what turns a four-wheel steering setup into
+        // crab steering. Releasing the direct overrides leaves only the
+        // selected profile faces authoritative.
+        if (explicitRouting && hasProfileWheelFaceBindings(level, configuration,
+                profileFaceActions, restrictToPrimary, primaryBodyIds)) {
+            for (WheelMountControlBridge wheel : controlledScmWheels) {
+                wheel.ct$setDirectInputs(0.0F, 0.0F, 0.0F);
+            }
+            return;
+        }
+        Map<WheelMountControlBridge, Set<WheelControl>> profileWheelControls =
+                activeProfileWheelControls(level, configuration, currentMap,
+                        profileFaceActions, steering, restrictToPrimary, primaryBodyIds);
         for (WheelMountControlBridge wheel : controlledScmWheels) {
-            wheel.ct$setDirectInputs(left, right, braking ? 1.0F : 0.0F);
+            Set<WheelControl> controls = profileWheelControls.get(wheel);
+            float directSteering = Math.abs(steering);
+            // The selected action chooses the physical input. Do not infer
+            // it from the torque sign: a Yaw Left group can deliberately
+            // contain LEFT on one hub and RIGHT on another.
+            wheel.ct$setDirectInputs(
+                    controls != null && controls.contains(WheelControl.LEFT)
+                            ? directSteering : 0.0F,
+                    controls != null && controls.contains(WheelControl.RIGHT)
+                            ? directSteering : 0.0F,
+                    controls != null && controls.contains(WheelControl.BRAKE)
+                            ? brake : 0.0F);
         }
+    }
+
+    // Check whether the active profile addresses any WheelMount through a
+    // selected face. Both direct SCM face selections and linker face targets
+    // count; their plane signal is the only allowed control path this tick.
+    private boolean hasProfileWheelFaceBindings(
+            Level level,
+            ScmConfigurationProfile configuration,
+            Set<String> activeActions,
+            boolean restrictToPrimary,
+            Set<UUID> primaryBodyIds
+    ) {
+        for (String action : activeActions) {
+            for (ScmConfigurationProfile.UnitReference reference
+                    : configuration.unitsForExplicitActions(Set.of(action))) {
+                if (!reference.usesFaceControl()
+                        || restrictToPrimary && !primaryBodyIds.contains(reference.subLevelId())) {
+                    continue;
+                }
+                BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
+                        level, reference.subLevelId(), reference.blockPosition());
+                if (blockEntity instanceof WheelMountControlBridge) {
+                    return true;
+                }
+            }
+        }
+        for (ScmTarget target : ContraptionNetworkLinkerData.scmTargets(
+                controller.getStoredLinker())) {
+            if (!target.usesFaceControl()
+                    || restrictToPrimary && !primaryBodyIds.contains(target.subLevelId())) {
+                continue;
+            }
+            BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
+                    level, target.subLevelId(), target.blockPosition());
+            if (!(blockEntity instanceof WheelMountControlBridge)) {
+                continue;
+            }
+            for (String action : activeActions) {
+                if (configuration.unitsForExplicitActions(Set.of(action)).stream()
+                        .anyMatch(reference -> profileReferenceMatchesTarget(reference, target))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // Determine whether a map unit is a player-routed wheel face for one of
+    // the currently active SCM actions. This deliberately asks the profile,
+    // not the Linker's face/default action metadata.
+    private boolean isProfileWheelControlSelected(
+            ScmConfigurationProfile configuration,
+            ShipControlMap.PropulsionUnit unit,
+            Set<String> activeActions
+    ) {
+        return wheelControlForScmUnit(unit) != null && activeActions.stream()
+                .anyMatch(action -> configuration.unitsForExplicitActions(Set.of(action)).stream()
+                        .anyMatch(reference -> configurationReferenceMatchesUnit(reference, unit)));
+    }
+
+    // Resolve the direct input for every configured wheel. The profile action
+    // selects the participating hubs; the signed Offroad steering demand
+    // selects LEFT or RIGHT. A selected face identifies the hub to address;
+    // it does not contribute another steering sign.
+    private Map<WheelMountControlBridge, Set<WheelControl>> activeProfileWheelControls(
+            Level level,
+            ScmConfigurationProfile configuration,
+            ShipControlMap currentMap,
+            Set<String> activeActions,
+            float steering,
+            boolean restrictToPrimary,
+            Set<UUID> primaryBodyIds
+    ) {
+        Map<WheelMountControlBridge, Set<WheelControl>> controls =
+                new java.util.IdentityHashMap<>();
+        List<ScmTarget> linkerTargets = ContraptionNetworkLinkerData.scmTargets(
+                controller.getStoredLinker());
+
+        // Linker face targets retain the same profile ownership rule as direct
+        // selections. Never derive a second sign from a selected face here.
+        for (ScmTarget target : linkerTargets) {
+            if (!target.usesFaceControl()
+                    || restrictToPrimary && !primaryBodyIds.contains(target.subLevelId())) {
+                continue;
+            }
+            BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
+                    level, target.subLevelId(), target.blockPosition());
+            if (!(blockEntity instanceof WheelMountControlBridge wheel)) {
+                continue;
+            }
+            for (String action : activeActions) {
+                boolean selected = configuration.unitsForExplicitActions(Set.of(action)).stream()
+                        .anyMatch(reference -> profileReferenceMatchesTarget(reference, target));
+                if (!selected) {
+                    continue;
+                }
+                WheelControl control = wheelControlForProfileAction(action, steering);
+                if (control != null) {
+                    controls.computeIfAbsent(wheel,
+                                    ignored -> EnumSet.noneOf(WheelControl.class))
+                            .add(control);
+                }
+            }
+        }
+
+        // Face-only profile selections do not need a linker. The face is only
+        // the player's precise target selector; the signed demand still owns
+        // the direct WheelMount input side.
+        for (String action : activeActions) {
+            for (ScmConfigurationProfile.UnitReference reference
+                    : configuration.unitsForExplicitActions(Set.of(action))) {
+                WheelControl control = wheelControlForProfileAction(action, steering);
+                if (control == null
+                        || restrictToPrimary && !primaryBodyIds.contains(reference.subLevelId())) {
+                    continue;
+                }
+                BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
+                        level, reference.subLevelId(), reference.blockPosition());
+                if (blockEntity instanceof WheelMountControlBridge wheel) {
+                    controls.computeIfAbsent(wheel, ignored -> EnumSet.noneOf(WheelControl.class))
+                            .add(control);
+                }
+            }
+        }
+
+        // Preserve support for profile references resolved through the live
+        // map (including older profiles). All matching wheel probes collapse
+        // to the same WheelMount instance, so one action still produces one
+        // uniform direct input for that selected hub.
+        for (ShipControlMap.PropulsionUnit unit : currentMap.units()) {
+            if (!unit.controllable()
+                    || restrictToPrimary && !primaryBodyIds.contains(unit.subLevelId())) {
+                continue;
+            }
+            if (wheelControlForScmUnit(unit) == null) {
+                continue;
+            }
+            BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
+                    level, unit.subLevelId(), unit.blockPosition());
+            if (!(blockEntity instanceof WheelMountControlBridge wheel)) {
+                continue;
+            }
+            for (String action : activeActions) {
+                WheelControl requestedControl = wheelControlForProfileAction(action, steering);
+                if (requestedControl == null
+                        || configuration.unitsForExplicitActions(Set.of(action)).stream()
+                        .noneMatch(reference -> configurationReferenceMatchesUnit(reference, unit))) {
+                    continue;
+                }
+                controls.computeIfAbsent(wheel, ignored -> EnumSet.noneOf(WheelControl.class))
+                        .add(requestedControl);
+            }
+        }
+        return controls;
+    }
+
+    private boolean isProfileWheelTargetSelected(
+            ScmConfigurationProfile configuration,
+            ScmTarget target,
+            Set<String> activeActions
+    ) {
+        return activeActions.stream()
+                .anyMatch(action -> configuration.unitsForExplicitActions(Set.of(action)).stream()
+                        .anyMatch(reference -> profileReferenceMatchesTarget(reference, target)));
+    }
+
+    private static boolean profileReferenceMatchesTarget(
+            ScmConfigurationProfile.UnitReference reference, ScmTarget target
+    ) {
+        if (reference == null || target == null
+                || !Objects.equals(reference.subLevelId(), target.subLevelId())
+                || !reference.blockPosition().equals(target.blockPosition())) {
+            return false;
+        }
+        // Adapter-qualified wheel probes are resolved through the live-map
+        // fallback. Face bindings use the profile action uniformly instead.
+        if (reference.adapter().contains("wheel_mount_")) {
+            return false;
+        }
+        return !reference.usesFaceControl()
+                || reference.face().equals(target.signalFace());
+    }
+
+    // The profile action selects which hubs participate. The signed Offroad
+    // steering demand selects the direct left/right input on those hubs; an
+    // authored yaw name is a vehicle turn, not an Offroad signal-side name.
+    private static @Nullable WheelControl wheelControlForProfileAction(
+            String action, float steering
+    ) {
+        return switch (action) {
+            case "ship_yaw", "ship_pan", "ship_yaw_left", "ship_yaw_right" ->
+                    steering < -ACTION_DIRECTION_EPSILON
+                    ? WheelControl.LEFT : steering > ACTION_DIRECTION_EPSILON
+                    ? WheelControl.RIGHT : null;
+            case "ship_brake", "ship_decelerate" -> WheelControl.BRAKE;
+            default -> null;
+        };
+    }
+
+    private static @Nullable WheelControl wheelControlForScmUnit(
+            ShipControlMap.PropulsionUnit unit
+    ) {
+        if (unit == null) {
+            return null;
+        }
+        String adapter = unit.adapter();
+        if (adapter.contains("wheel_mount_left")) {
+            return WheelControl.LEFT;
+        }
+        if (adapter.contains("wheel_mount_right")) {
+            return WheelControl.RIGHT;
+        }
+        return adapter.contains("wheel_mount_brake") ? WheelControl.BRAKE : null;
     }
 
     // Check if this has SCM ground drive
@@ -6690,6 +13627,9 @@ public final class ShipControlModuleRuntime {
         if (!groundDrive && currentMap != null) {
             for (ShipControlMap.PropulsionUnit unit : currentMap.units()) {
                 if (restrictToPrimary && !primaryBodyIds.contains(unit.subLevelId())) {
+                    continue;
+                }
+                if (!unit.controllable() || unit.maxThrust() <= 1.0E-9D) {
                     continue;
                 }
                 Actuator actuator = controlActuators.get(unit.index());
@@ -6765,6 +13705,9 @@ public final class ShipControlModuleRuntime {
         telemetryTick = Long.MIN_VALUE;
         telemetryRootId = null;
         cachedTelemetry = Telemetry.EMPTY;
+        simulationMetricsTick = Long.MIN_VALUE;
+        simulationMetricsRootId = null;
+        cachedSimulationMetrics = SimulationMetrics.EMPTY;
     }
 
     // Get the telemetry
@@ -6788,7 +13731,16 @@ public final class ShipControlModuleRuntime {
                 new Vec3(linear.x, linear.y, linear.z),
                 new Vec3(angular.x, angular.y, angular.z),
                 originWorld, centerWorld);
-        pointVelocity = assemblyCenterVel(root, pointVelocity);
+        // Ground-drive feedback is the controlled root sub-level's velocity.
+        // Wheel mounts are only command outputs, and a mass-weighted velocity
+        // over coupled bodies can hide a stationary car's actual acceleration
+        // or braking response. Air and articulated craft retain their
+        // assembly-centre telemetry below.
+        if (isControlMode(ScmBuiltinControlModes.CAR_ID)) {
+            pointVelocity = new Vec3(linear.x, linear.y, linear.z);
+        } else {
+            pointVelocity = assemblyCenterVel(root, pointVelocity);
+        }
         Vector3d euler = root.logicalPose().orientation().getEulerAnglesXYZ(new Vector3d());
         return new Telemetry(true, centerWorld,
                 pointVelocity,
@@ -6895,6 +13847,66 @@ public final class ShipControlModuleRuntime {
         return connectors.getFirst();
     }
 
+    // Check whether this command must enter a docking connector on its capture axis
+    private static boolean isDockingAxisApproach(ActiveShipCommand command) {
+        return command != null && command.targetPoint().dockingConnector()
+                && command.targetConnectorIndex() >= 0
+                && command.targetDirection().lengthSqr() > 1.0E-12D;
+    }
+
+    // Check whether the docking connector's magnetic capture owns translation.
+    private boolean yieldsToDockingMagnet(ActiveShipCommand command) {
+        return magneticConnectorIdx >= 0
+                && command.targetConnectorIndex() == magneticConnectorIdx;
+    }
+
+    // Keep collision detours as whole-assembly translation instead of a carriage pose command
+    private static boolean isAssemblyCollisionTranslation(
+            @Nullable SableAssemblyTopologyApi.Topology topology,
+            NavigationGuidance guidance
+    ) {
+        return topology != null && topology.available()
+                && topology.carriagePartitions().size() > 1
+                && (guidance.reactiveCollisionOverride()
+                || guidance.obstacleAvoidanceRoute());
+    }
+
+    // Align across the dock capture axis before moving into the dock
+    private NavigationGuidance dockingApproachGuidance(
+            Telemetry targetTelemetry,
+            ActiveShipCommand command
+    ) {
+        Vec3 position = targetTelemetry.position();
+        Vec3 target = command.targetPosition();
+        Vec3 error = target.subtract(position);
+        Vec3 axis = normalize(command.targetDirection(), error);
+        if (axis.lengthSqr() <= 1.0E-12D) {
+            Vec3 direct = normalize(error, Vec3.ZERO);
+            return new NavigationGuidance(direct, target, 0.25D,
+                    false, true, false, direct);
+        }
+        double axialDistance = error.dot(axis);
+        Vec3 crossTrack = error.subtract(axis.scale(axialDistance));
+        double crossTrackTolerance = Mth.clamp(Math.max(0.10D,
+                command.tolerance() * 0.25D), 0.10D, 0.35D);
+        boolean centered = crossTrack.lengthSqr()
+                <= crossTrackTolerance * crossTrackTolerance;
+        if (!centered) {
+            Vec3 crossTrackDirection = normalize(crossTrack, Vec3.ZERO);
+            return new NavigationGuidance(crossTrackDirection,
+                    position.add(crossTrack), 0.25D,
+                    false, true, false, crossTrackDirection);
+        }
+        // The docking torque aligns the connector while axial capture remains
+        // active. Waiting for orientation here produced a stop-start motor.
+        Vec3 captureDirection = axialDistance < 0.0D ? axis.scale(-1.0D) : axis;
+        if (Math.abs(axialDistance) <= 1.0E-6D) {
+            captureDirection = Vec3.ZERO;
+        }
+        return new NavigationGuidance(captureDirection, target, 0.25D,
+                false, true, false, captureDirection);
+    }
+
     // Get the docking alignment torque
     private Vec3 dockingAlignmentTorque(Telemetry telemetry, ActiveShipCommand command) {
         ShipControlMap.DockingConnector connector = mappedConnector(
@@ -6927,6 +13939,15 @@ public final class ShipControlModuleRuntime {
 
     // Check if the docking direction was reached
     private boolean dockingDirectionReached(ActiveShipCommand command) {
+        return dockingDirectionWithin(command, 8.0D);
+    }
+
+    // Check connector-relative facing and roll alignment using one shared
+    // tolerance for approach gating and final command completion.
+    private boolean dockingDirectionWithin(
+            ActiveShipCommand command,
+            double toleranceDegrees
+    ) {
         if (command.targetDirection().lengthSqr() <= 1.0E-12D) {
             return true;
         }
@@ -6943,9 +13964,11 @@ public final class ShipControlModuleRuntime {
         MappedDockingConnector mapped = mappedDockingConnector(root, connector);
         Vec3 currentWorld = normalize(mapped.worldFacing(), Vec3.ZERO);
         Vec3 targetWorld = normalize(command.targetDirection(), Vec3.ZERO);
+        double alignment = Math.cos(Math.toRadians(Mth.clamp(
+                Math.abs(finite(toleranceDegrees)), 0.1D, 90.0D)));
         boolean facingAligned = currentWorld.lengthSqr() > 1.0E-12D
                 && targetWorld.lengthSqr() > 1.0E-12D
-                && currentWorld.dot(targetWorld) >= Math.cos(Math.toRadians(8.0D));
+                && currentWorld.dot(targetWorld) >= alignment;
         if (!facingAligned || command.targetUp().lengthSqr() <= 1.0E-12D) {
             return facingAligned;
         }
@@ -6953,7 +13976,7 @@ public final class ShipControlModuleRuntime {
         Vec3 targetUp = perpendicularTo(command.targetUp(), targetWorld);
         return currentUp.lengthSqr() > 1.0E-12D
                 && targetUp.lengthSqr() > 1.0E-12D
-                && currentUp.dot(targetUp) >= Math.cos(Math.toRadians(8.0D));
+                && currentUp.dot(targetUp) >= alignment;
     }
 
     // Get the docking connector up
@@ -7021,58 +14044,9 @@ public final class ShipControlModuleRuntime {
             return finite(fallback);
         }
 
-        Vec3 right = normalize(
-                rightDirection, new Vec3(1.0D, 0.0D, 0.0D));
-        Vec3 up = normalize(
-                upDirection, new Vec3(0.0D, 1.0D, 0.0D));
-        Vec3 forward = normalize(
-                forwardDirection, new Vec3(0.0D, 0.0D, 1.0D));
-        double minRight = Double.POSITIVE_INFINITY;
-        double maxRight = Double.NEGATIVE_INFINITY;
-        double minUp = Double.POSITIVE_INFINITY;
-        double maxUp = Double.NEGATIVE_INFINITY;
-        double minForward = Double.POSITIVE_INFINITY;
-        double maxForward = Double.NEGATIVE_INFINITY;
-        for (Vec3 point : hullPoints) {
-            Vec3 finitePoint = finite(point);
-            double rightProjection = finitePoint.dot(right);
-            double upProjection = finitePoint.dot(up);
-            double forwardProjection = finitePoint.dot(forward);
-            minRight = Math.min(minRight, rightProjection);
-            maxRight = Math.max(maxRight, rightProjection);
-            minUp = Math.min(minUp, upProjection);
-            maxUp = Math.max(maxUp, upProjection);
-            minForward = Math.min(minForward, forwardProjection);
-            maxForward = Math.max(maxForward, forwardProjection);
-        }
-        if (!Double.isFinite(minRight) || !Double.isFinite(maxRight)
-                || !Double.isFinite(minUp) || !Double.isFinite(maxUp)
-                || !Double.isFinite(minForward)
-                || !Double.isFinite(maxForward)) {
-            return finite(fallback);
-        }
-
-        return right.scale(axisTarget(
-                        minRight, maxRight, selected.right()))
-                .add(up.scale(axisTarget(
-                        minUp, maxUp, selected.up())))
-                .add(forward.scale(axisTarget(
-                        minForward, maxForward, selected.forward())));
-    }
-
-    // Get the axis target
-    private static double axisTarget(
-            double minimum,
-            double maximum,
-            int selector
-    ) {
-        if (selector < 0) {
-            return minimum;
-        }
-        if (selector > 0) {
-            return maximum;
-        }
-        return (minimum + maximum) * 0.5D;
+        return OrientedHull.targetPoint(
+                hullPoints, rightDirection, upDirection, forwardDirection,
+                selected.right(), selected.up(), selected.forward(), fallback);
     }
 
     // Get the velocity at point
@@ -7098,21 +14072,7 @@ public final class ShipControlModuleRuntime {
     ) {
         return targetApproachForce(
                 commandKey, telemetry, command, requestedDirection,
-                targetPosition, command.tolerance());
-    }
-
-    // Get the target approach force
-    private Vec3 targetApproachForce(
-            String commandKey,
-            Telemetry telemetry,
-            ActiveShipCommand command,
-            @Nullable Vec3 requestedDirection,
-            Vec3 targetPosition,
-            double tolerance
-    ) {
-        return targetApproachForce(
-                commandKey, telemetry, command, requestedDirection,
-                targetPosition, tolerance, 0.25D);
+                targetPosition, command.tolerance(), command.targetSpeed());
     }
 
     // Get the target approach force
@@ -7123,9 +14083,27 @@ public final class ShipControlModuleRuntime {
             @Nullable Vec3 requestedDirection,
             Vec3 targetPosition,
             double tolerance,
-            double distanceResponse
+            double speedLimit
+    ) {
+        return targetApproachForce(
+                commandKey, telemetry, command, requestedDirection,
+                targetPosition, targetPosition, tolerance, 0.25D, speedLimit);
+    }
+
+    // Get the target approach force
+    private Vec3 targetApproachForce(
+            String commandKey,
+            Telemetry telemetry,
+            ActiveShipCommand command,
+            @Nullable Vec3 requestedDirection,
+            Vec3 targetPosition,
+            Vec3 speedTarget,
+            double tolerance,
+            double distanceResponse,
+            double speedLimit
     ) {
         Vec3 error = finite(targetPosition).subtract(telemetry.position());
+        Vec3 speedError = finite(speedTarget).subtract(telemetry.position());
         Vec3 dir = requestedDirection == null
                 ? normalize(error, Vec3.ZERO)
                 : normalize(requestedDirection, Vec3.ZERO);
@@ -7138,7 +14116,8 @@ public final class ShipControlModuleRuntime {
                 tolerance, followsTarget);
         positionIntegralErrors.put(commandKey, integral);
         return positionControlForce(
-                error, telemetry.velocity(), dir, command.targetSpeed(),
+                error, speedError.length(), telemetry.velocity(), dir,
+                Math.min(command.targetSpeed(), Math.max(0.0D, finite(speedLimit))),
                 tolerance, integral, distanceResponse);
     }
 
@@ -7194,11 +14173,29 @@ public final class ShipControlModuleRuntime {
             double distanceResponse
     ) {
         Vec3 error = finite(positionError);
+        return positionControlForce(error, error.length(), vel, requestedDirection,
+                maximumSpeed, tolerance, accumulatedError, distanceResponse);
+    }
+
+    // Keep a route waypoint as the steering target while applying its speed
+    // envelope to the actual staging/final target. This avoids stopping at
+    // every collision-avoidance point during an airship docking approach.
+    private static Vec3 positionControlForce(
+            Vec3 positionError,
+            double speedReferenceDistance,
+            Vec3 vel,
+            @Nullable Vec3 requestedDirection,
+            double maximumSpeed,
+            double tolerance,
+            Vec3 accumulatedError,
+            double distanceResponse
+    ) {
+        Vec3 error = finite(positionError);
         Vec3 dir = requestedDirection == null
                 ? normalize(error, Vec3.ZERO)
                 : normalize(requestedDirection, Vec3.ZERO);
         double desiredSpeed = targetSpeedForDistance(
-                error.length(), tolerance, maximumSpeed, distanceResponse);
+                speedReferenceDistance, tolerance, maximumSpeed, distanceResponse);
         Vec3 desiredVelocity = dir.scale(desiredSpeed);
         return desiredVelocity.subtract(finite(vel))
                 .scale(POSITION_VELOCITY_GAIN)
@@ -7283,11 +14280,57 @@ public final class ShipControlModuleRuntime {
                 targetDistance * Math.max(0.0D, finite(distanceResponse)));
     }
 
-    // Get the navigation required clearance
+    // Get the range required to observe the current speed's complete braking
+    // envelope. The extra look-ahead time gives the controller room to begin
+    // reducing propulsion before it reaches its calculated stop point.
+    static double navigationCollisionScanRange(double currentSpeed) {
+        return ScmSpeedControl.collisionLookahead(
+                Math.abs(finite(currentSpeed)), NAVIGATION_MIN_CLEARANCE,
+                NAVIGATION_LOOKAHEAD_SECONDS, NAVIGATION_BRAKING_ACCELERATION,
+                NAVIGATION_LIVE_MIN_SCAN_RANGE);
+    }
+
+    // Get the maximum travel speed which can stop inside the measured
+    // clearance after the controller's response delay.
+    static double navigationSafeTravelSpeed(double clearance) {
+        return navigationSafeTravelSpeed(clearance, NAVIGATION_MIN_CLEARANCE);
+    }
+
+    // Get the maximum safe speed for one vehicle clearance margin.
+    private static double navigationSafeTravelSpeed(
+            double clearance,
+            double minimumClearance
+    ) {
+        return ScmSpeedControl.safeSpeed(
+                clearance, minimumClearance,
+                NAVIGATION_RESPONSE_SECONDS, NAVIGATION_BRAKING_ACCELERATION);
+    }
+
+    // Get the speed which can stop at a command target instead of at an
+    // obstacle. Tolerance is the capture radius, not extra braking room.
+    static double navigationStoppingSpeed(double distance, double tolerance) {
+        return ScmSpeedControl.stoppingSpeed(
+                distance, tolerance,
+                NAVIGATION_RESPONSE_SECONDS, NAVIGATION_BRAKING_ACCELERATION);
+    }
+
+    // Keep low-speed drivetrains moving until they cross a target's capture boundary.
+    static double navigationCaptureApproachSpeed(double distance, double tolerance) {
+        return ScmSpeedControl.captureApproachSpeed(
+                distance, tolerance,
+                NAVIGATION_RESPONSE_SECONDS, NAVIGATION_BRAKING_ACCELERATION,
+                NAVIGATION_MIN_CAPTURE_APPROACH_SPEED);
+    }
+
+    // Get the navigation required clearance.
     static double navigationRequiredClearance(double requestedSpeed, double currentSpeed) {
-        double speed = Math.max(Math.abs(finite(requestedSpeed)), Math.abs(finite(currentSpeed)));
-        return Mth.clamp(NAVIGATION_MIN_CLEARANCE + speed * speed * 3.0D,
-                NAVIGATION_MIN_CLEARANCE, COLLISION_SCAN_RANGE);
+        double current = Math.abs(finite(currentSpeed));
+        double requested = Math.abs(finite(requestedSpeed));
+        double anticipated = Math.max(current, Math.min(requested,
+                current + NAVIGATION_BRAKING_ACCELERATION
+                        * NAVIGATION_RESPONSE_SECONDS));
+        return ScmSpeedControl.collisionLookahead(anticipated, NAVIGATION_MIN_CLEARANCE,
+                NAVIGATION_RESPONSE_SECONDS, NAVIGATION_BRAKING_ACCELERATION, 0.0D);
     }
 
     // Check if this uses aircraft navigation
@@ -7415,8 +14458,8 @@ public final class ShipControlModuleRuntime {
     // Get the aircraft safe clearance
     static double aircraftSafeClearance(double requestedSpeed, double currentSpeed) {
         double speed = Math.max(Math.abs(finite(requestedSpeed)), Math.abs(finite(currentSpeed)));
-        return Mth.clamp(AIRCRAFT_MIN_SAFE_CLEARANCE + speed * speed * 4.0D,
-                AIRCRAFT_MIN_SAFE_CLEARANCE, AIRCRAFT_MAX_SAFE_CLEARANCE);
+        return Math.max(AIRCRAFT_MIN_SAFE_CLEARANCE,
+                navigationCollisionScanRange(speed));
     }
 
     // Get the aircraft approach distance
@@ -7620,10 +14663,8 @@ public final class ShipControlModuleRuntime {
                 new Vec3(0.0D, 0.0D, 1.0D));
         Vec3 targetPosition = finite(requestedTarget);
         Vec3 targetDelta = targetPosition.subtract(telemetry.position());
-        Vec3 requestedTravelDirection = command.avoidCollisions()
-                ? navigationGuidance(
-                        commandKey, telemetry, command, targetPosition, topology).direction()
-                : null;
+        Vec3 requestedTravelDirection = navigationGuidance(
+                commandKey, telemetry, command, targetPosition).direction();
         Vec3 horizontalTargetDelta = new Vec3(
                 targetDelta.x, 0.0D, targetDelta.z);
         Vec3 horizontalAvoidance = requestedTravelDirection == null
@@ -7631,8 +14672,7 @@ public final class ShipControlModuleRuntime {
                 : new Vec3(
                         requestedTravelDirection.x, 0.0D,
                         requestedTravelDirection.z);
-        boolean avoidanceBlocked = command.avoidCollisions()
-                && requestedTravelDirection != null
+        boolean avoidanceBlocked = requestedTravelDirection != null
                 && requestedTravelDirection.lengthSqr() <= 1.0E-12D
                 && targetDelta.lengthSqr() > 1.0E-12D;
         Vec3 horizontalTarget = avoidanceBlocked
@@ -7649,10 +14689,11 @@ public final class ShipControlModuleRuntime {
         double forwardSpeed = telemetry.velocity().dot(horizontalForward);
         double safeClearance = aircraftSafeClearance(
                 command.targetSpeed(), telemetry.velocity().length());
+        double collisionRange = navigationCollisionScanRange(telemetry.velocity().length());
         double approachDistance =
                 aircraftApproachDistance(safeClearance, command.targetSpeed());
         double groundClearance =
-                collisionDistance(telemetry.position(), worldUp.scale(-1.0D));
+                collisionDistance(telemetry.position(), worldUp.scale(-1.0D), collisionRange);
 
         // -----------------------------------------------------FLIGHT PHASE-----------------------------------------------------
         AircraftNavigationState state = aircraftNavigationStates.computeIfAbsent(
@@ -7688,15 +14729,13 @@ public final class ShipControlModuleRuntime {
         };
 
         // ------------------------------------COLLISION RESPONSE------------------------------------
-        double forwardClearance = command.avoidCollisions()
-                ? Math.min(
-                        collisionDistance(telemetry.position(), horizontalForward),
-                        collisionDistance(telemetry.position(), targetDirection))
-                : COLLISION_SCAN_RANGE;
+        double forwardClearance = Math.min(
+                collisionDistance(telemetry.position(), horizontalForward, collisionRange),
+                collisionDistance(telemetry.position(), targetDirection, collisionRange));
         double requiredForwardClearance = navigationRequiredClearance(
                 desiredSpeed, telemetry.velocity().length());
         boolean forwardHazard = avoidanceBlocked || aircraftForwardHazard(
-                command.avoidCollisions(), state.phase,
+                true, state.phase,
                 forwardClearance, requiredForwardClearance);
         double altitudeError = aircraftAltitudeError(
                 state.phase, telemetry.position().y, targetPosition.y,
@@ -7783,8 +14822,7 @@ public final class ShipControlModuleRuntime {
             ActiveShipCommand command
     ) {
         return navigationGuidance(
-                commandKey, telemetry, command, command.targetPosition(),
-                activeAssemblyTopology).direction();
+                commandKey, telemetry, command, command.targetPosition()).direction();
     }
 
     // Get the navigation guidance
@@ -7792,125 +14830,1697 @@ public final class ShipControlModuleRuntime {
             String commandKey,
             Telemetry telemetry,
             ActiveShipCommand command,
-            Vec3 targetPosition,
-            @Nullable SableAssemblyTopologyApi.Topology topology
+            Vec3 targetPosition
     ) {
-        // ------------------------------------TARGET DIRECTION------------------------------------
-        boolean groundVehicle = isControlMode(ScmBuiltinControlModes.CAR_ID);
-        Vec3 error = finite(targetPosition).subtract(telemetry.position());
+        NavigationGuidance requested = navigationGuidanceUnprotected(
+                commandKey, telemetry, command, targetPosition);
+        return applyReactiveCollisionAvoidance(
+                commandKey, telemetry, command, requested);
+    }
+
+    // Resolve route ownership and recovery before the permanent reactive safety layer is applied.
+    private NavigationGuidance navigationGuidanceUnprotected(
+            String commandKey,
+            Telemetry telemetry,
+            ActiveShipCommand command,
+            Vec3 targetPosition
+    ) {
+        routeTrafficIntents.remove(commandKey);
+        routeTrafficDecisions.remove(commandKey);
+        boolean groundVehicle = usesGroundNavigation();
+        boolean planeVehicle = isControlMode(ScmBuiltinControlModes.PLANE_ID);
+        Vec3 position = telemetry.position();
+        Vec3 target = finite(targetPosition);
+        Vec3 error = target.subtract(position);
         if (groundVehicle) {
             error = new Vec3(error.x, 0.0D, error.z);
-            targetPosition = new Vec3(targetPosition.x, telemetry.position().y, targetPosition.z);
+            target = new Vec3(target.x, position.y, target.z);
         }
-        if (error.lengthSqr() <= 1.0E-12D) {
-            navigationPathStates.remove(commandKey);
-            return NavigationGuidance.stopped(telemetry.position());
-        }
-        Vec3 direct = error.normalize();
-        if (!command.avoidCollisions()) {
-            navigationPathStates.remove(commandKey);
-            return new NavigationGuidance(direct, targetPosition, 0.25D);
-        }
-
-        CollisionScanContext ctx = collisionScanContext();
-        if (ctx == null) {
-            navigationPathStates.remove(commandKey);
-            return NavigationGuidance.stopped(telemetry.position());
-        }
-        HullBounds hull = shipHullBounds(
-                telemetry.position(), ctx.shipSubLevels());
-        double lookahead = Math.min(
-                error.length(), navigationPathLookahead(
-                        command.targetSpeed(), telemetry.velocity().length()));
-        Vec3 localGoal = telemetry.position().add(direct.scale(lookahead));
-        if (groundVehicle) {
-            localGoal = new Vec3(localGoal.x, telemetry.position().y, localGoal.z);
-        }
-        if (pathSegmentClear(
-                telemetry.position(), localGoal, hull, ctx, groundVehicle)) {
+        boolean atCommandTarget = error.lengthSqr() <= 1.0E-12D;
+        Vec3 direct = atCommandTarget ? Vec3.ZERO : error.normalize();
+        boolean withinCommandTolerance = error.length()
+                <= Math.max(0.0D, command.tolerance());
+        double arrivalSpeed = groundVehicle
+                ? Math.hypot(telemetry.velocity().x, telemetry.velocity().z)
+                : telemetry.velocity().length();
+        boolean settledAtCommandTarget = navigationArrivalReached(
+                error.length(), command.tolerance(), arrivalSpeed);
+        if(!command.avoidCollisions()){
             navigationPathStates.remove(commandKey);
             return new NavigationGuidance(
-                    direct,
-                    error.length() <= lookahead + 1.0E-6D
-                            ? targetPosition : localGoal,
-                    1.0D);
+                    direct, target, 0.25D, false, true, false, direct);
+        }
+        NavigationPathState state = navigationPathStates.get(commandKey);
+        long gameTime = controller.getLevel() == null
+                ? 0L : controller.getLevel().getGameTime();
+        boolean scheduledPathfindingTransit = controller.followsShippingScheduleRoute() && isPathfindingTransit(command)
+                && command.scheduleRouteEntry() >= 0;
+        boolean retainedScheduleRouteRequired = scheduledPathfindingTransit
+                && hasScheduledRouteForEntry(command.scheduleRouteEntry(),
+                target, command.tolerance());
+        // The library graph selector has already chosen the nearest physical leg and oriented its
+        // continuation toward this schedule-owned destination. Adopt that result directly; a second
+        // whole-route projection here could jump to a later crossing and abandon the selected leg.
+        if (scheduledPathfindingTransit
+                && !withinCommandTolerance
+                && (state == null || !state.precomputedScheduleRoute)) {
+            CompletedScheduledRoute scheduled = takeCompletedScheduledRoute(
+                    position, finite(targetPosition), command.scheduleRouteEntry(),
+                    command.tolerance());
+            if (scheduled != null && !scheduled.waypoints().isEmpty()) {
+                if (state == null) {
+                    state = navigationPathStates.computeIfAbsent(
+                            commandKey, ignored -> new NavigationPathState());
+                }
+                state.adoptScheduledRoute(scheduled.controlPoints(),
+                        scheduled.origin(), target, position, gameTime,
+                        scheduled, groundVehicle);
+            }
+        }
+        boolean calculatedScheduleTransit = state != null
+                && state.precomputedScheduleRoute;
+        if (retainedScheduleRouteRequired && !withinCommandTolerance
+                && !calculatedScheduleTransit) {
+            return NavigationGuidance.stopped(position);
+        }
+        if ((calculatedScheduleTransit || retainedScheduleRouteRequired)
+                && withinCommandTolerance) {
+            if(settledAtCommandTarget) navigationPathStates.remove(commandKey);
+            return NavigationGuidance.stopped(position);
+        }
+        CollisionScanContext ctx = collisionScanContext();
+        if (ctx == null) {
+            // Collision avoidance owns every movement command. Missing Sable geometry is not
+            // permission to follow either a cached route or a direct endpoint ray blindly.
+            return NavigationGuidance.stopped(position);
         }
 
-        double step = navigationPathStep(hull.maximumSpan());
-        NavigationPathState state = navigationPathStates.computeIfAbsent(
-                commandKey, ignored -> new NavigationPathState());
-        double waypointRadius = Math.max(1.0D, step * 0.35D);
-        while (state.waypointIndex < state.waypoints.size()
+        Vec3 forward = normalize(rootDirectionToWorld(controllerForwardRoot()),
+                atCommandTarget ? new Vec3(0.0D, 0.0D, 1.0D) : direct);
+        Vec3 up = normalize(rootDirectionToWorld(controllerUpRoot()),
+                new Vec3(0.0D, 1.0D, 0.0D));
+        Vec3 right = normalize(forward.cross(up), new Vec3(1.0D, 0.0D, 0.0D));
+        if (groundVehicle) {
+            forward = normalize(new Vec3(forward.x, 0.0D, forward.z), direct);
+            up = new Vec3(0.0D, 1.0D, 0.0D);
+            right = normalize(forward.cross(up), new Vec3(1.0D, 0.0D, 0.0D));
+        }
+
+        HullBounds hull = cachedShipHullBounds(position, ctx);
+        if(state != null && state.obstacleDetourQueued && state.obstacleDetourBlocker != null){
+            NavigationGuidance detour = advanceObstacleDetour(commandKey, telemetry, command, state, ctx,
+                    hull, forward, groundVehicle, state.obstacleDetourBlocker, gameTime);
+            if(detour != null) return detour;
+        }
+        if(state != null && state.precomputedScheduleRoute && state.scheduleSpline != null
+                && !state.hasTemporaryRoutePrefix()){
+            for(RouteHazardState hazard : routeHazards.values()){
+                if(hazard.hit == null || hazard.route.scheduleEntry() != state.precomputedScheduleEntry
+                        || !java.util.Objects.equals(hazard.route.origin(), state.precomputedScheduleOrigin)
+                        || !java.util.Objects.equals(hazard.route.target(), state.precomputedScheduleTarget)) continue;
+                WaypointSpline.Projection current = state.scheduleSplineProjection(position, 2.0D);
+                WaypointSpline.Projection blocked = state.scheduleSpline.project(hazard.hit.position(), state.scheduleSplineSegment);
+                if(!current.found() || !blocked.found()
+                        || blocked.distanceAlongRoute() < current.distanceAlongRoute() - hull.maximumSpan()) continue;
+                NavigationGuidance detour = advanceObstacleDetour(commandKey, telemetry, command, state, ctx,
+                        hull, forward, groundVehicle, hazard.hit.position(), gameTime);
+                if(detour != null) return detour;
+                break;
+            }
+        }
+        SablePathfinder.Safety routeSafety = sableRouteSafety(hull, groundVehicle);
+        double scanRange = navigationCollisionScanRange(
+                telemetry.velocity().length());
+        if (groundVehicle && state != null && state.forwardRecoveryAtWaypoint()) {
+            boolean recoveryBlocked = groundCurveCollisionDistance(
+                    commandKey, position, scanRange)
+                    <= GROUND_NAVIGATION_MIN_CLEARANCE;
+            NavigationGuidance recovery = forwardRecoveryGuidance(
+                    telemetry, state, hull, gameTime);
+            if (!recoveryBlocked && recovery != null) return recovery;
+            if (!state.restoreSuspendedSableRoute(position, gameTime)) {
+                state.clearReverseRecovery();
+                state.nextReplanTick = recoveryBlocked
+                        ? Long.MIN_VALUE : gameTime + NAVIGATION_FAILED_RETRY_TICKS;
+            } else if (recoveryBlocked) {
+                state.nextReplanTick = Long.MIN_VALUE;
+            }
+        }
+        double lookahead = Math.min(error.length(), scanRange);
+        double localStep = navigationPathStep(hull.maximumSpan());
+        if (calculatedScheduleTransit && !withinCommandTolerance
+                && (state == null || !state.precomputedScheduleRoute
+                || !state.hasSableRoute() && !state.groundRecoveryAtWaypoint())) {
+            return NavigationGuidance.stopped(position);
+        }
+        // Live routes are invalidated by target movement. Calculated schedule geometry is selected
+        // again above and may never silently fall through to an unrelated destination route.
+        if (state != null && state.hasSableRoute() && !state.precomputedScheduleRoute
+                && (state.plannedTarget == null
+                || state.plannedTarget.distanceToSqr(target) > localStep * localStep)) {
+            state.clearSableRoute();
+        }
+        if (state != null && state.hasSableRoute()) {
+            double routeCorridor = groundVehicle
+                    ? groundRouteCentrelineCorridor(localStep)
+                    : Math.max(localStep * 2.0D,
+                    hull.horizontalRadius() + localStep);
+            state.updateOrderedRouteProgress(
+                    position, groundVehicle, routeCorridor);
+            state.advanceOverlappedRoute(position, hull, groundVehicle, 0.1D);
+        }
+        double activeRouteCorridor = calculatedScheduleTransit || groundVehicle
+                ? groundRouteCentrelineCorridor(localStep)
+                : Math.max(localStep * 2.0D,
+                hull.horizontalRadius() + localStep);
+        WaypointProgressTracker.Observation progress = null;
+        if (groundVehicle) {
+            state = navigationPathStates.computeIfAbsent(
+                    commandKey, ignored -> new NavigationPathState());
+            Vec3 progressTarget = state.hasSableRoute()
+                    ? state.waypoints.get(state.waypointIndex) : target;
+            progress = state.waypointProgress.observe(
+                    position, progressTarget, Math.max(0.5D, command.tolerance()),
+                    gameTime, GROUND_NAVIGATION_STUCK_TICKS, true);
+            state.lastWaypointProgress = progress;
+        }
+        if (atCommandTarget) {
+            recordCompletedLiveScheduleRoute(command, state, target);
+            navigationPathStates.remove(commandKey);
+            return NavigationGuidance.stopped(position);
+        }
+        if (groundVehicle && state != null && state.groundRecoveryAtWaypoint()) {
+            if (!state.precomputedScheduleRoute && (state.plannedTarget == null
+                    || state.plannedTarget.distanceToSqr(target) > 4.0D)) {
+                navigationPathStates.remove(commandKey);
+                state = null;
+            } else {
+                NavigationGuidance recovery = reverseRecoveryGuidance(
+                        commandKey, telemetry, target, direct, forward,
+                        hull, ctx, state, gameTime);
+                if (recovery != null) return recovery;
+                if (state.restoreSuspendedSableRoute(telemetry.position(), gameTime)) {
+                    // Continue below and immediately steer along the restored calculated leg.
+                } else if (state.reverseForwardReleased) {
+                    navigationPathStates.remove(commandKey);
+                    state = null;
+                } else {
+                    // A completed or stalled recovery must not immediately
+                    // pulse forward into the obstacle which selected reverse.
+                    // Retire the reverse route, stop for this tick, then let
+                    // the bounded forward detour search run on the next tick.
+                    state.clearReverseRecovery();
+                    state.nextDetourTick = Long.MIN_VALUE;
+                    return NavigationGuidance.stopped(position);
+                }
+            }
+        }
+
+        boolean constrainedScheduleRoute = state != null
+                && scheduleSplineConstraint.active()
+                && commandKey.equals(scheduleSplineConstraintKey)
+                && navigationPathStates.get(commandKey) == state;
+        if(constrainedScheduleRoute) state.scheduleRouteRejoinActive = false;
+        boolean retainedScheduleRejoin = state != null && !constrainedScheduleRoute
+                && state.updateScheduledRouteRejoinState(
+                position, telemetry.velocity(), forward, groundVehicle);
+        boolean retainedScheduleOnCourse = state != null
+                && state.precomputedScheduleRoute && state.hasSableRoute()
+                && (constrainedScheduleRoute || !retainedScheduleRejoin
+                && state.withinActiveRouteCorridor(
+                position, groundVehicle, activeRouteCorridor));
+        double forwardClearance = retainedScheduleOnCourse ? scanRange
+                : groundVehicle
+                ? groundCollisionDistance(position, forward, scanRange)
+                : scanRange;
+        // Only routes which have not yet established that the vehicle occupies
+        // their active leg need direct-to-destination validation here.
+        double directClearance = retainedScheduleOnCourse ? lookahead
+                : reactiveCollisionDistance(
+                position, direct, lookahead, groundVehicle);
+
+        double travelReactiveClearance = groundVehicle
+                ? Math.min(lookahead, GROUND_NAVIGATION_MIN_CLEARANCE
+                + Math.max(0.5D, telemetry.velocity().length() * 0.75D))
+                : lookahead;
+        boolean directTravelClear = directClearance >= lookahead - 1.0E-4D
+                && (!groundVehicle
+                || forwardClearance >= travelReactiveClearance - 1.0E-4D);
+        // Any retained route owns transit geometry. Visibility of the final destination never
+        // authorizes a shortcut across the route which the live or schedule planner selected.
+        boolean retainedRouteLocallyBlocked = false;
+        if (retainedScheduleOnCourse && state != null
+                && state.precomputedScheduleRoute && state.hasSableRoute()) {
+            Vec3 probeTarget = state.sableRouteTrackingTarget(
+                    position, groundVehicle, Math.max(localStep, scanRange * 0.25D));
+            Vec3 probeDirection = normalize(probeTarget.subtract(position), direct);
+            double probeDistance = Math.min(scanRange,
+                    Math.max(NAVIGATION_MIN_CLEARANCE,
+                            probeTarget.distanceTo(position)));
+            retainedRouteLocallyBlocked = reactiveCollisionDistance(
+                    position, probeDirection, scanRange, groundVehicle, true)
+                    < probeDistance - 1.0E-4D;
+        }
+        boolean checkRetainedRouteDetour = retainedScheduleRejoin
+                || !retainedScheduleOnCourse
+                || retainedRouteLocallyBlocked;
+        NavigationGuidance routeRejoin = !checkRetainedRouteDetour ? null
+                : rejoinBlockedRetainedRoute(
+                commandKey, telemetry, position, target, direct, forward, up, hull, ctx,
+                groundVehicle, state, progress, routeSafety, gameTime, scanRange, localStep);
+        if (routeRejoin != null) return routeRejoin;
+        Vec3 immediateTarget = state != null && state.hasSableRoute()
+                && state.plannedTarget != null
+                && (state.precomputedScheduleRoute
+                || state.plannedTarget.distanceToSqr(target) <= localStep * localStep)
+                ? state.sableRouteTrackingTarget(
+                position, groundVehicle,
+                Math.max(localStep, scanRange * 0.25D)) : target;
+        if (groundVehicle) {
+            immediateTarget = new Vec3(immediateTarget.x, position.y, immediateTarget.z);
+        }
+        Vec3 immediateDirection = normalize(immediateTarget.subtract(position), direct);
+        GroundPathPlanner.ForwardRouteControl groundRouteControl = null;
+        if (groundVehicle && state != null && state.hasSableRoute()) {
+            Vec3 steeringPosition = state.precomputedScheduleRoute
+                    ? navigationSteeringPosition(position, forward, false) : position;
+            groundRouteControl = state.sableRouteControl(
+                    position, steeringPosition, immediateTarget,
+                    groundVehicleCapabilities(hull), Double.MAX_VALUE);
+            immediateDirection = groundRouteControl.steeringDirection();
+        }
+        boolean terminalSplineTarget = state != null
+                && state.isTerminalSplineTarget(immediateTarget);
+        SplineMagnetism.Guidance splineMagnet = retainedScheduleOnCourse && state != null
+                ? state.scheduleSplineMagnet(position, telemetry.velocity(), groundVehicle,
+                Math.max(localStep, scanRange * 0.25D))
+                : SplineMagnetism.Guidance.none();
+        if (splineMagnet.active() && !groundVehicle) {
+            immediateDirection = splineMagnet.travelDirection();
+            double controlDistance = Math.max(0.75D,
+                    immediateTarget.distanceTo(position));
+            immediateTarget = position.add(
+                    immediateDirection.scale(controlDistance));
+        }
+        boolean retainedRouteActive = state != null && state.hasSableRoute();
+        if (retainedRouteActive) {
+            publishRouteTrafficIntent(commandKey, telemetry, command);
+        }
+        RouteTrafficPriority.Decision trafficDecision =
+                routeTrafficDecision(commandKey);
+        boolean sameDirectionTrafficYield = trafficDecision.yield()
+                && trafficDecision.encounter()
+                == RouteTrafficPriority.Encounter.SAME_DIRECTION;
+        double immediateLookahead = Math.min(scanRange,
+                Math.max(NAVIGATION_MIN_CLEARANCE, immediateTarget.distanceTo(position)));
+        // Measure the complete live stopping horizon once. The speed planner
+        // reuses this longer cached probe later in the same control tick.
+        double immediateClearance = retainedRouteActive
+                ? reactiveCollisionDistance(
+                position, immediateDirection, scanRange, groundVehicle,
+                retainedScheduleOnCourse && state.precomputedScheduleRoute)
+                : directClearance;
+        boolean trafficRetreatRequired = groundVehicle && state != null
+                && RouteTrafficPriority.requiresRetreat(
+                trafficDecision, immediateClearance,
+                navigationRequiredClearance(0.0D, telemetry.velocity().length()));
+        if (trafficRetreatRequired && gameTime >= state.nextReplanTick) {
+            if (startReverseRecovery(
+                    telemetry, target, immediateDirection, forward, up,
+                    hull, ctx, state, scanRange, gameTime)) {
+                NavigationGuidance recovery = reverseRecoveryGuidance(
+                        commandKey, telemetry, target, direct, forward,
+                        hull, ctx, state, gameTime);
+                if (recovery != null) return recovery;
+            }
+            state.nextReplanTick = gameTime + NAVIGATION_FAILED_RETRY_TICKS;
+        }
+        Vec3 rawImmediateReaction = retainedRouteActive
+                ? simpleCollisionAvoidanceDirection(
+                position, immediateDirection, forward, immediateClearance, up, right,
+                scanRange, immediateLookahead, groundVehicle)
+                : immediateDirection;
+        Vec3 immediateReaction = rawImmediateReaction;
+        if (groundVehicle && immediateReaction.lengthSqr() > 1.0E-12D
+                && immediateReaction.dot(immediateDirection) < 0.999D) {
+            Vec3 blended = ReactiveCollisionAvoidance.steeringDirection(
+                    immediateDirection, immediateReaction, immediateClearance,
+                    immediateLookahead, Math.toRadians(35.0D));
+            double rawClearance = reactiveCollisionDistance(
+                    position, rawImmediateReaction, scanRange, true);
+            double blendedClearance = reactiveCollisionDistance(
+                    position, blended, scanRange, true);
+            if (blendedClearance > immediateClearance + 0.25D
+                    && blendedClearance >= Math.min(
+                    immediateLookahead, rawClearance * 0.75D)) {
+                immediateReaction = blended;
+            }
+        }
+        if (retainedRouteActive && immediateReaction.lengthSqr() <= 1.0E-12D) {
+            if (sameDirectionTrafficYield && state != null && state.hasSableRoute()) {
+                return new NavigationGuidance(
+                        immediateDirection, immediateTarget, 0.6D,
+                        false, false, true, immediateDirection);
+            }
+            NavigationGuidance recovery = blockedGroundRecoveryGuidance(
+                    commandKey, telemetry, target, direct, immediateDirection,
+                    forward, up, hull, ctx, state, progress, scanRange, gameTime);
+            if (recovery != null) return recovery;
+            return NavigationGuidance.blocked(position, immediateDirection);
+        }
+        if (retainedRouteActive
+                && immediateReaction.dot(immediateDirection) < 0.999D) {
+            double escapeClearance = reactiveCollisionDistance(
+                    position, immediateReaction, scanRange, groundVehicle);
+            double escapeDistance = reactiveEscapeDistance(
+                    escapeClearance, immediateLookahead, localStep, scanRange);
+            if (escapeDistance <= 1.0E-4D) {
+                return NavigationGuidance.blocked(position, immediateDirection);
+            }
+            if (groundVehicle && state != null
+                    && gameTime >= state.nextReplanTick) {
+                boolean started = startForwardAvoidance(
+                        telemetry, target, immediateReaction, escapeDistance,
+                        forward, up, hull, ctx, state, gameTime);
+                // If the shallow route blend cannot produce a bicycle-model
+                // curve, retain the originally probed clear escape and let the
+                // planner shape the turn. Do not throw away a real side exit
+                // merely because an instantaneous 35-degree vector failed.
+                if (!started && rawImmediateReaction.lengthSqr() > 1.0E-12D
+                        && rawImmediateReaction.dot(immediateReaction) < 0.999D) {
+                    double rawClearance = reactiveCollisionDistance(
+                            position, rawImmediateReaction, scanRange, true);
+                    double rawEscapeDistance = reactiveEscapeDistance(
+                            rawClearance, immediateLookahead, localStep, scanRange);
+                    started = startForwardAvoidance(
+                            telemetry, target, rawImmediateReaction,
+                            rawEscapeDistance, forward, up, hull, ctx,
+                            state, gameTime);
+                }
+                if (started) {
+                    NavigationGuidance recovery = forwardRecoveryGuidance(
+                            telemetry, state, hull, gameTime);
+                    if (recovery != null) return recovery;
+                }
+            }
+            if (sameDirectionTrafficYield && groundVehicle
+                    && state != null && state.hasSableRoute()) {
+                return new NavigationGuidance(
+                        immediateDirection, immediateTarget, 0.6D,
+                        false, false, true, immediateDirection);
+            }
+            NavigationGuidance recovery = blockedGroundRecoveryGuidance(
+                    commandKey, telemetry, target, direct, immediateDirection,
+                    forward, up, hull, ctx, state, progress, scanRange, gameTime);
+            if (recovery != null) return recovery;
+            Vec3 escapeTarget = position.add(immediateReaction.scale(escapeDistance));
+            if (groundVehicle) {
+                escapeTarget = new Vec3(escapeTarget.x, position.y, escapeTarget.z);
+            }
+            if (isPathfindingTransit(command)) {
+                repairTransitRouteAfterReaction(state);
+            }
+            return new NavigationGuidance(
+                    immediateReaction, groundVehicle ? target : escapeTarget, 0.6D,
+                    false, false, true, immediateReaction);
+        }
+        // A steering vehicle cannot safely take an almost-opposite route leg as a forward
+        // chord. Before it reaches that leg, use its configured Backwards group through a
+        // pose-validated reverse manoeuvre and then resume the retained route at the same point.
+        if (groundVehicle && state != null && state.hasSableRoute()
+                && isPathfindingTransit(command)
+                && requiresGroundAlignmentManeuver(
+                forward, state.sableRouteDirection())
+                && gameTime >= state.nextReplanTick
+                && startRouteAlignmentManeuver(
+                telemetry, target, immediateTarget, forward, up, hull, ctx, state, gameTime)) {
+            NavigationGuidance recovery = reverseRecoveryGuidance(
+                    commandKey, telemetry, target, direct, forward,
+                    hull, ctx, state, gameTime);
+            if (recovery != null) return recovery;
+        }
+        // A clear route may turn around an obstacle which is directly in front of the drivetrain.
+        // The route segment validator therefore remains clear while the speed envelope reaches zero.
+        // Invoke the same bounded reverse recovery after measured progress stalls so steering can
+        // acquire that leg instead of holding the vehicle motionless forever.
+        if (groundVehicle && state != null && state.hasSableRoute()
+                && progress != null
+                && progress.ticksWithoutProgress() >= GROUND_REVERSE_RECOVERY_STUCK_TICKS
+                && forwardClearance < navigationRequiredClearance(
+                0.0D, telemetry.velocity().length())) {
+            NavigationGuidance recovery = blockedGroundRecoveryGuidance(
+                    commandKey, telemetry, target, direct, immediateDirection,
+                    forward, up, hull, ctx, state, progress, scanRange, gameTime);
+            if (recovery != null) return recovery;
+        }
+        // A completed schedule route is already certified movement geometry.
+        // Its projected tracking point remains authoritative both on and while
+        // rejoining the leg; temporary traffic is handled only by the live
+        // collision response and cannot invalidate or replace the route.
+        if (state != null && state.precomputedScheduleRoute
+                && state.hasSableRoute()) {
+            return new NavigationGuidance(
+                    immediateDirection, immediateTarget, 0.6D,
+                    false, terminalSplineTarget, true, immediateDirection,
+                    false,
+                    groundRouteControl == null ? 0.0D
+                            : groundRouteControl.signedCurvature(),
+                    groundRouteControl == null ? 0.0D
+                            : groundRouteControl.steeringFeedForward(),
+                    splineMagnet.active());
+        }
+        if (state != null && state.hasSableRoute()
+                && !state.routeValidationDeferred(gameTime)) {
+            double waypointRadius = Math.max(0.5D, localStep * 0.5D);
+            // Swept route-leg overlap already skips checkpoints behind the hull. Retain center-point
+            // capture as the normal small-vehicle endpoint completion path.
+            if (state.waypointIndex < state.waypoints.size()
                 && navigationWaypointReached(
-                        telemetry.position(),
-                        state.waypoints.get(state.waypointIndex), waypointRadius)) {
+                        position, state.waypoints.get(state.waypointIndex), waypointRadius)) {
+                state.waypointIndex++;
+            }
+            if (state.waypointIndex < state.waypoints.size()) {
+                Vec3 waypoint = state.waypoints.get(state.waypointIndex);
+                Vec3 routeTrackingTarget = state.sableRouteTrackingTarget(
+                        position, groundVehicle,
+                        Math.max(localStep, scanRange * 0.25D));
+                SablePathfinder.Traversal routeSegment = state.sableRouteSegment(
+                        position, waypoint,
+                        ctx, groundVehicle, routeSafety, gameTime);
+                if (routeSegment.result() == SablePathfinder.TraversalResult.CLEAR) {
+                    Vec3 controlTarget = routeTrackingTarget;
+                    if (groundVehicle) {
+                        controlTarget = new Vec3(
+                                controlTarget.x, position.y, controlTarget.z);
+                    }
+                    Vec3 direction = normalize(
+                            controlTarget.subtract(position), direct);
+                    if (groundVehicle) {
+                        direction = state.sableRouteSteeringDirection(
+                                position, controlTarget, groundVehicleCapabilities(hull));
+                    }
+                    return new NavigationGuidance(
+                            direction, controlTarget, 0.6D,
+                            false, false, true, direction);
+                }
+                if (routeSegment.result() == SablePathfinder.TraversalResult.UNAVAILABLE) {
+                    state.deferRouteValidation(gameTime + SABLE_ROUTE_RETRY_TICKS);
+                }
+                if (routeSegment.result() == SablePathfinder.TraversalResult.BLOCKED) {
+                    state.nextDetourTick = Long.MIN_VALUE;
+                    state.invalidateRouteSegmentValidation();
+                    return NavigationGuidance.blocked(position,
+                            normalize(waypoint.subtract(position), direct));
+                }
+            } else {
+                state.clearSableRoute();
+            }
+        }
+        // A schedule's first visit learns a full cached leg even when its immediate reactive
+        // corridor happens to be clear. Without this background plan, clear schedules paid the
+        // same route work on every cycle and never acquired a persistent route to reuse.
+        if (directTravelClear && isPathfindingTransit(command) && command.scheduleRouteEntry() >= 0
+                && (state == null || !state.usedPrecomputedScheduleRoute)
+                && (state == null || !state.hasSableRoute())) {
+            if (state == null) {
+                state = navigationPathStates.computeIfAbsent(
+                        commandKey, ignored -> new NavigationPathState());
+            }
+            if (state.queuedPlanInvalid(position, target, localStep)) {
+                state.queueSableRoute(planSableRoute(
+                        position, target, forward, hull, ctx, groundVehicle), position, target);
+            }
+            int work = SABLE_ROUTE_LIVE_WORK_BUDGET.claim(state.queuedSableRoute,
+                    gameTime, SABLE_ROUTE_LIVE_EXPANSIONS_PER_PLAN);
+            if (work > 0) {
+                state.queuedSableRoute.advance(work);
+            }
+            SablePathfinder.Result learnedPlan = state.queuedSableRoute.result();
+            state.setPathfinderDebug(state.queuedSableRoute.debugRoute(commandKey));
+            if (state.queuedSableRoute.finished() && learnedPlan.reachedDestination()) {
+                List<Vec3> learnedRoute = learnedPlan.waypoints().stream()
+                        .map(SablePathfinder.Waypoint::position).toList();
+                state.setSableRoute(learnedRoute, target, position, gameTime);
+                state.recordLiveScheduleRoute(
+                        command.scheduleRouteEntry(), position, target, learnedRoute);
+                if (!learnedRoute.isEmpty()) {
+                    Vec3 waypoint = learnedRoute.getFirst();
+                    Vec3 direction = normalize(waypoint.subtract(position), direct);
+                    return new NavigationGuidance(direction, waypoint, 0.6D,
+                            false, false, true, direction);
+                }
+            } else if (state.queuedSableRoute.finished()) {
+                state.clearQueuedSableRoute();
+                state.nextDetourTick = gameTime + SABLE_ROUTE_RETRY_TICKS;
+            }
+        }
+        if (directTravelClear && (state == null || !state.hasSableRoute())) {
+            if (!groundVehicle && (state == null || !state.hasSableRoute())) {
+                navigationPathStates.remove(commandKey);
+            }
+            return new NavigationGuidance(
+                    direct, target, 0.25D, false, true, false, direct);
+        }
+
+        if (state == null) {
+            state = navigationPathStates.computeIfAbsent(
+                    commandKey, ignored -> new NavigationPathState());
+        }
+        if (isPathfindingTransit(command) && !state.usedPrecomputedScheduleRoute
+                && gameTime >= state.nextDetourTick) {
+            if (state.queuedPlanInvalid(position, target, localStep)) {
+                state.queueSableRoute(planSableRoute(
+                        position, target, forward, hull, ctx, groundVehicle),
+                        position, target);
+            }
+            int work = SABLE_ROUTE_LIVE_WORK_BUDGET.claim(state.queuedSableRoute,
+                    gameTime, SABLE_ROUTE_LIVE_EXPANSIONS_PER_PLAN);
+            if (work > 0) state.queuedSableRoute.advance(work);
+            SablePathfinder.Result plan = state.queuedSableRoute.result();
+            state.setPathfinderDebug(state.queuedSableRoute.debugRoute(commandKey));
+            if (state.queuedSableRoute.finished() && plan.reachedDestination()) {
+                List<Vec3> route = plan.waypoints().stream()
+                        .map(SablePathfinder.Waypoint::position).toList();
+                if (route.isEmpty()) return NavigationGuidance.stopped(position);
+                state.setSableRoute(route, target, position, gameTime);
+                state.recordLiveScheduleRoute(command.scheduleRouteEntry(), position, target, route);
+                Vec3 waypoint = route.getFirst();
+                Vec3 direction = normalize(
+                        waypoint.subtract(position), direct);
+                return new NavigationGuidance(
+                        direction, waypoint, 0.6D,
+                        false, false, true, direction);
+            }
+            Vec3 queuedTarget = state.queuedRouteTrackingTarget(
+                    position, groundVehicle, Math.max(localStep, scanRange * 0.25D));
+            if (queuedTarget != null) {
+                if (groundVehicle) {
+                    queuedTarget = new Vec3(queuedTarget.x, position.y, queuedTarget.z);
+                }
+                Vec3 direction = normalize(queuedTarget.subtract(position), direct);
+                return new NavigationGuidance(
+                        direction, queuedTarget, 0.6D,
+                        false, false, true, direction);
+            }
+            if (state.queuedSableRoute.finished()) {
+                state.clearQueuedSableRoute();
+                state.nextDetourTick = gameTime + SABLE_ROUTE_RETRY_TICKS;
+            }
+            // The queued global search does not suspend the permanent local
+            // collision layer. Preserve the intended travel vector so the
+            // vehicle can begin a safe live escape/reverse curve while A*
+            // prepares the longer detour, instead of parking at the first
+            // blocker with a zero direction which no override can evaluate.
+            return NavigationGuidance.blocked(position, direct);
+        }
+
+        Vec3 avoidance = simpleCollisionAvoidanceDirection(
+                position, direct, forward,
+                Math.min(directClearance, forwardClearance), up, right,
+                scanRange, lookahead, groundVehicle);
+        if (groundVehicle && avoidance.lengthSqr() > 1.0E-12D) {
+            avoidance = ReactiveCollisionAvoidance.steeringDirection(
+                    direct, avoidance, directClearance, lookahead,
+                    Math.toRadians(35.0D));
+        }
+        if (groundVehicle) {
+            double requiredClearance = navigationRequiredClearance(
+                    command.targetSpeed(), telemetry.velocity().length());
+            boolean noLateralEscape = avoidance.lengthSqr() <= 1.0E-12D;
+            boolean unableToAdvance = progress != null
+                    && progress.ticksWithoutProgress() >= GROUND_REVERSE_RECOVERY_STUCK_TICKS
+                    && groundRecoveryCollisionDistance(
+                    position, forward, scanRange, hull, ctx) < requiredClearance;
+            boolean reverseNeeded = progress != null
+                    && (unableToAdvance || (noLateralEscape && progress.stalled()));
+            if (reverseNeeded
+                    && gameTime >= state.nextReplanTick) {
+                if (startReverseRecovery(
+                        telemetry, target, direct, forward, up,
+                        hull, ctx, state, scanRange, gameTime)) {
+                    NavigationGuidance recovery = reverseRecoveryGuidance(
+                            commandKey, telemetry, target, direct, forward,
+                            hull, ctx, state, gameTime);
+                    if (recovery != null) return recovery;
+                }
+                state.nextReplanTick = gameTime + NAVIGATION_FAILED_RETRY_TICKS;
+            }
+        }
+
+        // A non-plane craft with real backward authority may make one short
+        // retreat only after lateral, vertical and reactive escapes all fail.
+        // Reaching that retained point restarts the ordered local search from
+        // the newly-cleared position instead of committing to a long reverse.
+        if (!groundVehicle && !planeVehicle
+                && avoidance.lengthSqr() <= 1.0E-12D
+                && state.consecutiveReverseEscapes == 0
+                && (hasDirectionalAuthority(activeAssemblyMap,
+                controllerForwardRoot().scale(-1.0D))
+                || hasConfiguredAction("ship_backward", "ship_reverse"))) {
+            Vec3 reverse = forward.scale(-1.0D);
+            double reverseClearance = collisionDistance(
+                    position, reverse, scanRange);
+            double reverseDistance = Math.min(
+                    localStep * 2.0D,
+                    Math.max(0.0D, reverseClearance - NAVIGATION_MIN_CLEARANCE));
+            if (reverseDistance >= localStep * 0.5D) {
+                Vec3 reverseTarget = position.add(
+                        reverse.scale(reverseDistance));
+                state.setReverseEscapeDetour(
+                        List.of(reverseTarget), target, gameTime);
+                return new NavigationGuidance(
+                        reverse, reverseTarget, 0.6D,
+                        false, false, true, reverse);
+            }
+        }
+
+        if (avoidance.lengthSqr() <= 1.0E-12D) {
+            return NavigationGuidance.blocked(position, direct);
+        }
+        if (groundVehicle) {
+            // Keep the real destination as the target and alter only the live
+            // steering direction. This is the stable reactive behaviour: no
+            // sharp lateral waypoint exists for the car to miss or orbit.
+            return new NavigationGuidance(
+                    avoidance, target, 0.25D,
+                    false, true, true, avoidance);
+        }
+        double fallbackDistance = Math.min(lookahead,
+                Math.max(localStep * 2.0D, travelReactiveClearance));
+        Vec3 controlTarget = position.add(avoidance.scale(fallbackDistance));
+        if (groundVehicle) {
+            controlTarget = new Vec3(controlTarget.x, position.y, controlTarget.z);
+        }
+        state.setSableRoute(List.of(controlTarget), target, position, gameTime);
+        return new NavigationGuidance(
+                avoidance, controlTarget, 0.6D,
+                false, false, true, avoidance);
+    }
+
+    // Keep steering through a verified local escape while a retained-route rejoin is searched. A
+    // queued planner is not a movement hold: stopping here made an off-course vehicle wait for a
+    // complete local plan even when it had room to turn back toward its cached route.
+    private NavigationGuidance rejoinPlanningGuidance(
+            Vec3 position,
+            Vec3 rejoinTarget,
+            Vec3 fallback,
+            Vec3 forward,
+            Vec3 up,
+            boolean groundVehicle,
+            double scanRange,
+            double localStep
+    ) {
+        Vec3 desired = normalize(rejoinTarget.subtract(position), fallback);
+        Vec3 horizontalRight = new Vec3(-forward.z, 0.0D, forward.x);
+        Vec3 right = normalize(forward.cross(up), normalize(horizontalRight, new Vec3(1.0D, 0.0D, 0.0D)));
+        double requiredClearance = Math.min(scanRange,
+                Math.max(NAVIGATION_MIN_CLEARANCE, rejoinTarget.distanceTo(position)));
+        double directClearance = reactiveCollisionDistance(
+                position, desired, requiredClearance, groundVehicle);
+        Vec3 direction = simpleCollisionAvoidanceDirection(
+                position, desired, forward, directClearance, up, right, scanRange,
+                requiredClearance, groundVehicle);
+        if (groundVehicle && direction.lengthSqr() > 1.0E-12D) {
+            direction = ReactiveCollisionAvoidance.steeringDirection(
+                    desired, direction, directClearance, requiredClearance,
+                    Math.toRadians(35.0D));
+        }
+        if (direction.lengthSqr() <= 1.0E-12D) {
+            return NavigationGuidance.blocked(position, desired);
+        }
+        double clearance = direction.dot(desired) >= 0.999D
+                ? directClearance : reactiveCollisionDistance(
+                position, direction, scanRange, groundVehicle);
+        double escapeDistance = reactiveEscapeDistance(
+                clearance, requiredClearance, localStep, scanRange);
+        if (escapeDistance <= 1.0E-4D) {
+            return NavigationGuidance.blocked(position, desired);
+        }
+        Vec3 controlTarget = position.add(direction.scale(escapeDistance));
+        if (groundVehicle) {
+            controlTarget = new Vec3(controlTarget.x, position.y, controlTarget.z);
+        }
+        return new NavigationGuidance(direction, controlTarget, 0.6D,
+                false, false, true, direction);
+    }
+
+    // Rejoin a retained full route at the next live-clear leg instead of recalculating its destination route.
+    private @Nullable NavigationGuidance rejoinBlockedRetainedRoute(
+            String commandKey,
+            Telemetry telemetry,
+            Vec3 position,
+            Vec3 target,
+            Vec3 direct,
+            Vec3 forward,
+            Vec3 up,
+            HullBounds hull,
+            CollisionScanContext ctx,
+            boolean groundVehicle,
+            @Nullable NavigationPathState state,
+            @Nullable WaypointProgressTracker.Observation progress,
+            SablePathfinder.Safety safety,
+            long gameTime,
+            double scanRange,
+            double localStep
+    ) {
+        if (state == null || !state.hasSableRoute() || state.hasTemporaryRoutePrefix() || state.obstacleDetourQueued
+                || state.plannedTarget == null
+                || !state.precomputedScheduleRoute
+                && (state.routeValidationDeferred(gameTime)
+                || state.plannedTarget.distanceToSqr(target) > localStep * localStep)) {
+            return null;
+        }
+        // A retained route remains authoritative, but a live blocker on its next segment still
+        // needs a temporary Sable detour into a later clear leg. The detour is spliced only into
+        // this vehicle's active suffix; it never changes the schedule-owned persistent route.
+        double waypointRadius = Math.max(0.5D, localStep * 0.5D);
+        if (state.waypointIndex < state.waypoints.size()
+                && navigationWaypointReached(position,
+                state.waypoints.get(state.waypointIndex), waypointRadius)) {
             state.waypointIndex++;
         }
-
-        boolean targetMoved = state.plannedTarget == null
-                || state.plannedTarget.distanceToSqr(targetPosition) > step * step;
-        if (!targetMoved && state.waypointIndex < state.waypoints.size()) {
-            Vec3 waypoint = state.waypoints.get(state.waypointIndex);
-            if (pathSegmentClear(telemetry.position(), waypoint, hull, ctx, groundVehicle)) {
-                return new NavigationGuidance(
-                        normalize(waypoint.subtract(telemetry.position()), Vec3.ZERO),
-                        waypoint, 1.0D);
+        if (!state.hasSableRoute()) return null;
+        Vec3 next = state.waypoints.get(state.waypointIndex);
+        SablePathfinder.Traversal segment = state.sableRouteSegment(
+                position, next, ctx, groundVehicle, safety, gameTime);
+        double activeCorridor = groundVehicle
+                ? groundRouteCentrelineCorridor(localStep)
+                : Math.max(localStep * 2.0D,
+                hull.horizontalRadius() + localStep);
+        boolean occupiesActiveLeg = state.withinActiveRouteCorridor(
+                position, groundVehicle, activeCorridor);
+        if (segment.result() == SablePathfinder.TraversalResult.CLEAR
+                && occupiesActiveLeg && !state.scheduleRouteRejoinActive) {
+            if (state.queuedRouteRejoinIndex >= 0) state.clearQueuedSableRoute();
+            state.resetRouteRejoinSearch();
+            return null;
+        }
+        if (segment.result() == SablePathfinder.TraversalResult.UNAVAILABLE) {
+            state.deferRouteValidation(gameTime + SABLE_ROUTE_RETRY_TICKS);
+            return null;
+        }
+        List<SablePathfinder.Waypoint> retainedRoute =
+                state.routeWaypoints(groundVehicle);
+        SablePathfinder.RouteLegRejoin rejoin;
+        if (state.queuedRouteRejoinIndex >= state.waypointIndex
+                && (!groundVehicle
+                || state.queuedRouteRejoinIndex == state.waypointIndex)
+                && state.queuedSableRoute != null
+                && state.queuedRouteRejoinTarget != null) {
+            rejoin = new SablePathfinder.RouteLegRejoin(
+                    state.queuedRouteRejoinIndex,
+                    state.queuedRouteRejoinTarget, false);
+        } else {
+            if (groundVehicle && state.queuedRouteRejoinIndex >= 0) {
+                state.clearQueuedSableRoute();
             }
-            state.nextReplanTick = Long.MIN_VALUE;
+            // Ground recovery remains bound to the active ordered leg. A
+            // later crossing or return leg may be physically closer while
+            // still leading away from the current destination progress.
+            int searchStart = groundVehicle
+                    ? state.waypointIndex : state.routeRejoinSearchStart();
+            SablePathfinder.RouteLegRejoinScan rejoinScan =
+                    SablePathfinder.scanRouteLegRejoin(
+                    ctx.level(), retainedRoute, searchStart,
+                    state.routeStartPosition, position, safety,
+                    sableRouteValidator(ctx, groundVehicle),
+                    groundVehicle ? 1 : SABLE_ROUTE_REJOIN_WAYPOINTS_PER_TICK,
+                    state.routeProgressWaypointIndex == state.waypointIndex
+                            ? state.minimumRouteLegProgress : 0.0D);
+            if (!rejoinScan.found()) {
+                if (groundVehicle) {
+                    // The live leg can be temporarily unavailable while the
+                    // vehicle is off course or an obstacle splits its suffix.
+                    // Do not fall through to ordinary spline following here:
+                    // that drops the rejoin state before a pose-valid merge
+                    // can begin and makes the vehicle drive straight away.
+                    state.resetRouteRejoinSearch();
+                    return rejoinPlanningGuidance(
+                            position, state.sableRouteTrackingTarget(
+                                    position, true,
+                                    Math.max(localStep, scanRange * 0.25D)),
+                            direct, forward, up, true, scanRange, localStep);
+                }
+                if (rejoinScan.exhausted()) {
+                    state.resetRouteRejoinSearch();
+                    return null;
+                } else {
+                    state.advanceRouteRejoinSearch(rejoinScan.nextWaypointIndex());
+                    return rejoinPlanningGuidance(
+                            position, state.sableRouteTrackingTarget(
+                                    position, groundVehicle,
+                                    Math.max(localStep, scanRange * 0.25D)),
+                            direct, forward, up, groundVehicle,
+                            scanRange, localStep);
+                }
+            } else {
+                state.resetRouteRejoinSearch();
+                rejoin = rejoinScan.rejoin();
+            }
+        }
+        Vec3 rejoinTarget = rejoin.position();
+        if (groundVehicle) {
+            // A clear straight chord to the active leg is not a valid car
+            // merge by itself: it can meet the route at a sharp angle. Always
+            // use the pose planner so the final recovery tangent agrees with
+            // the ordered leg and reverse/forward turns remain committed.
+            if (gameTime >= state.nextReplanTick
+                    && startGroundRouteRejoinManeuver(
+                    telemetry, target, rejoin, forward, up,
+                    hull, ctx, state, gameTime)) {
+                NavigationGuidance recovery = reverseRecoveryGuidance(
+                        commandKey, telemetry, target, direct, forward,
+                        hull, ctx, state, gameTime);
+                if (recovery != null) return recovery;
+            }
+            if(state.precomputedScheduleRoute && state.scheduleSpline != null){
+                WaypointSpline.TrackingTarget mergeTarget = SplineRouteGeometry.mergeTarget(
+                        state.scheduleSpline, state.scheduleSplineProjection(position, localStep),
+                        position, groundVehicleCapabilities(hull).minimumTurningRadius(),
+                        Math.max(localStep * 4.0D, scanRange * 0.25D),
+                        SplineConstraintFrame.AxisPolicy.HORIZONTAL);
+                if(mergeTarget.found()) rejoinTarget = mergeTarget.position();
+            }
+            return rejoinPlanningGuidance(
+                    position, rejoinTarget, direct, forward, up, true,
+                    scanRange, localStep);
+        }
+        if (rejoin.directlyReachable()) {
+            boolean alreadyOnLeg = position.distanceToSqr(rejoinTarget)
+                    <= waypointRadius * waypointRadius;
+            state.spliceSableRoute(alreadyOnLeg
+                            ? List.of() : List.of(rejoinTarget), rejoin.waypointIndex(),
+                    target, position, gameTime);
+            Vec3 controlTarget = state.sableRouteTrackingTarget(
+                    position, groundVehicle,
+                    Math.max(localStep, scanRange * 0.25D));
+            Vec3 direction = normalize(controlTarget.subtract(position), direct);
+            return new NavigationGuidance(direction, controlTarget, 0.6D,
+                    false, false, true, direction);
+        }
+        if (state.queuedRejoinInvalid(position, target,
+                rejoin.waypointIndex(), rejoinTarget, localStep)) {
+            state.queueSableRoute(planSableRoute(position, rejoinTarget, forward,
+                    hull, ctx, groundVehicle), position, target,
+                    rejoin.waypointIndex(), rejoinTarget);
+        }
+        int work = SABLE_ROUTE_LIVE_WORK_BUDGET.claim(state.queuedSableRoute,
+                gameTime, SABLE_ROUTE_LIVE_EXPANSIONS_PER_PLAN);
+        if (work > 0) state.queuedSableRoute.advance(work);
+        SablePathfinder.Result plan = state.queuedSableRoute.result();
+        state.setPathfinderDebug(state.queuedSableRoute.debugRoute(commandKey));
+        if (state.queuedSableRoute.finished() && plan.reachedDestination()) {
+            List<Vec3> detour = plan.waypoints().stream()
+                    .map(SablePathfinder.Waypoint::position).toList();
+            List<Vec3> merged = state.spliceSableRoute(detour,
+                    state.queuedRouteRejoinIndex, target, position, gameTime);
+            Vec3 waypoint = merged.getFirst();
+            Vec3 direction = normalize(waypoint.subtract(position), direct);
+            return new NavigationGuidance(direction, waypoint, 0.6D,
+                    false, false, true, direction);
+        }
+        if (groundVehicle && progress != null
+                && progress.ticksWithoutProgress() >= GROUND_REVERSE_RECOVERY_STUCK_TICKS
+                && gameTime >= state.nextReplanTick
+                && groundRecoveryCollisionDistance(position, forward, scanRange, hull, ctx)
+                < navigationRequiredClearance(0.0D, telemetry.velocity().length())
+        ) {
+            Vec3 rejoinDirection = normalize(
+                    rejoinTarget.subtract(position), direct);
+            if (startReverseRecovery(telemetry, target, rejoinDirection, forward, up,
+                    hull, ctx, state, scanRange, gameTime)) {
+                NavigationGuidance recovery = reverseRecoveryGuidance(
+                        commandKey, telemetry, target, direct, forward,
+                        hull, ctx, state, gameTime);
+                if (recovery != null) return recovery;
+            }
+            state.nextReplanTick = gameTime + NAVIGATION_FAILED_RETRY_TICKS;
+        }
+        if (state.queuedSableRoute.finished()) {
+            state.clearQueuedSableRoute();
+            state.nextDetourTick = gameTime + SABLE_ROUTE_RETRY_TICKS;
+        }
+        return rejoinPlanningGuidance(
+                position, rejoinTarget, direct, forward, up, groundVehicle,
+                scanRange, localStep);
+    }
+
+    // Use the car's actual bicycle envelope to reach and align with the
+    // current retained leg. This is the live multi-point escape path used for
+    // every off-course merge, including when a diagonal chord is unobstructed.
+    private boolean startGroundRouteRejoinManeuver(
+            Telemetry telemetry,
+            Vec3 target,
+            SablePathfinder.RouteLegRejoin rejoin,
+            Vec3 forward,
+            Vec3 up,
+            HullBounds hull,
+            CollisionScanContext ctx,
+            NavigationPathState state,
+            long gameTime
+    ) {
+        if (!state.hasSableRoute() || rejoin == null || !rejoin.found()) return false;
+        int rejoinIndex = Math.max(state.waypointIndex,
+                Math.min(rejoin.waypointIndex(), state.waypoints.size() - 1));
+        Vec3 legStart = rejoinIndex <= 0
+                ? state.routeStartPosition : state.waypoints.get(rejoinIndex - 1);
+        Vec3 legEnd = state.waypoints.get(rejoinIndex);
+        Vec3 routeDirection = normalize(new Vec3(
+                legEnd.x - legStart.x, 0.0D, legEnd.z - legStart.z), Vec3.ZERO);
+        if (routeDirection.lengthSqr() <= 1.0E-12D) return false;
+        SablePathfinder.RouteProjection projected =
+                SablePathfinder.routeLegProjection(
+                        rejoinIndex, legStart, legEnd, rejoin.position(),
+                        SablePathfinder.RouteMode.GROUND);
+        double progressFloor = rejoinIndex == state.waypointIndex
+                && state.routeProgressWaypointIndex == state.waypointIndex
+                ? state.minimumRouteLegProgress : 0.0D;
+        double projectedProgress = Math.max(progressFloor,
+                Mth.clamp(projected.legProgress(), 0.0D, 1.0D));
+        Vec3 routePosition = legStart.add(
+                legEnd.subtract(legStart).scale(projectedProgress));
+        GroundPathPlanner.VehicleCapabilities capabilities =
+                groundVehicleCapabilities(hull);
+        double step = Math.max(0.35D, Math.min(
+                navigationPathStep(hull.maximumSpan()),
+                capabilities.minimumTurningRadius() * 0.45D));
+        double mergeAdvance = Math.max(capabilities.minimumTurningRadius() * 2.5D,
+                Math.max(step * 4.0D,
+                        horizontalDistance(telemetry.position(), routePosition) * 1.5D));
+        GroundPathPlanner.RouteTarget merge = GroundPathPlanner.routeTargetAhead(
+                state.routeStartPosition, state.waypoints, rejoinIndex,
+                projectedProgress, mergeAdvance);
+        if (!merge.found() || merge.direction().lengthSqr() <= 1.0E-12D) return false;
+        WaypointSpline.TrackingTarget splineMerge = state.precomputedScheduleRoute
+                && state.scheduleSpline != null
+                ? SplineRouteGeometry.mergeTarget(state.scheduleSpline,
+                state.scheduleSplineProjection(telemetry.position(), mergeAdvance),
+                telemetry.position(), capabilities.minimumTurningRadius(), mergeAdvance,
+                SplineConstraintFrame.AxisPolicy.HORIZONTAL)
+                : WaypointSpline.TrackingTarget.notFound();
+        Vec3 mergePosition = splineMerge.found() ? splineMerge.position() : merge.position();
+        Vec3 mergeDirection = splineMerge.found() ? splineMerge.tangent() : merge.direction();
+        double distance = horizontalDistance(telemetry.position(), mergePosition);
+        GroundPathPlanner.Plan plan = boundedGroundPlan(ctx, work -> GroundPathPlanner.planRouteRejoin(
+                new GroundPathPlanner.RouteRejoinRequest(
+                        telemetry.position(), forward, mergePosition,
+                        mergeDirection, 0.0D, capabilities,
+                        Math.max(distance + step * 2.0D,
+                                capabilities.minimumTurningRadius() * 4.0D),
+                        step, 256, (start, end) -> pathPoseClear(
+                        start.position(), start.forward(), up,
+                        end.position(), end.forward(), up,
+                        forward, up, hull, ctx, true, work.remainingNanos())), work::available));
+        if (plan.waypoints().isEmpty()) {
+            // If the complete pose merge has no valid first edge, explicitly
+            // try a clearance-maximising reverse turn. Heading mismatch is a
+            // recovery trigger in its own right; it must not depend on seeing
+            // an obstacle directly in front of the vehicle.
+            if (startReverseRecovery(
+                    telemetry, target, mergeDirection, forward, up,
+                    hull, ctx, state,
+                    navigationCollisionScanRange(telemetry.velocity().length()),
+                    gameTime)) {
+                state.groundRecoveryNeedsContinuation = true;
+                return true;
+            }
+            state.nextReplanTick = gameTime + NAVIGATION_FAILED_RETRY_TICKS;
+            return false;
+        }
+        if (!plan.reachesGoal()) {
+            // The bounded planner can still return a fully swept, safe prefix.
+            // Execute it instead of parking, then immediately continue the
+            // pose search from the new position with the retained route intact.
+            state.beginPartialGroundRecovery(plan, target, telemetry.position(),
+                    Math.min(1.5D, Math.max(0.25D, distance * 0.2D)), gameTime);
+            return true;
+        }
+        if(splineMerge.found()){
+            state.scheduleSplineSegment = splineMerge.segmentIndex();
+            state.minimumScheduleSplineFraction = splineMerge.fraction();
+        }
+        state.beginGroundRecovery(plan, target, telemetry.position(),
+                Math.min(1.5D, Math.max(0.25D, distance * 0.2D)),
+                gameTime, true, merge.nextWaypointIndex(), merge.legProgress());
+        return true;
+    }
+
+    // Plan one bounded route through loaded root-world and Sable geometry.
+    private SablePathfinder.QueuedPlan planSableRoute(
+            Vec3 position,
+            Vec3 target,
+            Vec3 forward,
+            HullBounds hull,
+            CollisionScanContext ctx,
+            boolean groundVehicle
+    ) {
+        Vec3 offset = finite(target).subtract(finite(position));
+        double distance = offset.length();
+        double range = sableRouteRange(distance, hull);
+        double step = navigationPathStep(hull.maximumSpan());
+        SablePathfinder.Safety safety = sableRouteSafety(hull, groundVehicle);
+        SablePathfinder.Movement movement = groundVehicle
+                ? new SablePathfinder.Movement(Set.of(SablePathfinder.RouteMode.GROUND), 0)
+                : SablePathfinder.Movement.FLIGHT;
+        SablePathfinder.RoutePreferences preferences =
+                new SablePathfinder.RoutePreferences(
+                        groundVehicle
+                                ? normalize(new Vec3(forward.x, 0.0D, forward.z), forward)
+                                : forward,
+                        0.15D, 1.0D, 3.0D, 0.20D, -1.0D,
+                        Math.max(step, 0.75D));
+        return SablePathfinder.queue(new SablePathfinder.Request(
+                ctx.level(), SablePathfinder.Location.world(position),
+                SablePathfinder.Location.world(finite(target)), safety, movement,
+                step, range, sableRouteExpansionBudget(distance, step),
+                Math.max(0.5D, step * 0.5D),
+                sableRouteValidator(ctx, groundVehicle), preferences));
+    }
+
+    // Grow the bounded search only for long schedule legs; short live detours retain the normal cap.
+    private static int sableRouteExpansionBudget(double distance, double step) {
+        double spacing = Math.max(0.5D, finite(step));
+        long distanceScaled = (long) Math.ceil(Math.max(0.0D, finite(distance)) / spacing) * 512L;
+        return (int) Math.min(65_536L,
+                Math.max((long) SABLE_ROUTE_MAX_EXPANSIONS, distanceScaled));
+    }
+
+    // Keep reactive steering local: it must not replace a completed cached transit route.
+    private static void repairTransitRouteAfterReaction(
+            @Nullable NavigationPathState state
+    ) {
+        if (state != null && state.hasSableRoute()) {
+            state.invalidateRouteSegmentValidation();
+        }
+    }
+
+    // Create a rotation-safe clearance envelope from every connected ship body.
+    private static SablePathfinder.Safety sableRouteSafety(
+            HullBounds hull,
+            boolean groundVehicle
+    ) {
+        if (groundVehicle) {
+            double margin = Math.max(COLLISION_HULL_MARGIN,
+                    GROUND_NAVIGATION_MIN_CLEARANCE);
+            return new SablePathfinder.Safety(
+                    hull.horizontalRadius() + margin,
+                    Math.max(0.01D, hull.maxY - hull.minY) + margin * 2.0D,
+                    Math.max(0.0D, -hull.minY) + margin);
+        }
+        double radius = hull.spatialRadius() + NAVIGATION_MIN_CLEARANCE;
+        return new SablePathfinder.Safety(radius, radius * 2.0D, radius);
+    }
+
+    // Keep route searching bounded by the live hull size without reducing a large ship to a point.
+    private static double sableRouteRange(double destinationDistance, HullBounds hull) {
+        return Math.max(SABLE_ROUTE_MIN_RANGE,
+                destinationDistance + hull.horizontalRadius() * 4.0D
+                        + NAVIGATION_MIN_CLEARANCE * 2.0D);
+    }
+
+    // Build the collision-only Sable route policy used for both planning and route retention.
+    private static SablePathfinder.Validator sableRouteValidator(
+            CollisionScanContext ctx,
+            boolean groundVehicle
+    ) {
+        int probes = groundVehicle
+                ? GROUND_COLLISION_NAVIGATION_PROBES_PER_BOUNDS
+                : COLLISION_NAVIGATION_PROBES_PER_BOUNDS;
+        return SablePathfinder.sableCollisionValidator(
+                new SablePathfinder.CollisionOptions(true, true,
+                        ctx.excludedSubLevelIds(), probes),
+                groundVehicle
+                        ? new SablePathfinder.GroundContactPolicy(
+                        GROUND_NAVIGATION_MIN_CLEARANCE
+                                + GROUND_NAVIGATION_CONTACT_CLEARANCE)
+                        : SablePathfinder.GroundContactPolicy.NONE,
+                // A cached route is movement authority, so no probe pattern may accept a gap.
+                SablePathfinder.CollisionPrecision.SWEPT);
+    }
+
+    // Revalidate the next retained segment against the live conservative ship envelope.
+    private static SablePathfinder.Traversal sableRouteSegment(
+            Vec3 start,
+            Vec3 end,
+            CollisionScanContext ctx,
+            boolean groundVehicle,
+            SablePathfinder.Safety safety
+    ) {
+        Vec3 delta = finite(end).subtract(finite(start));
+        if (delta.lengthSqr() <= 1.0E-12D) {
+            return SablePathfinder.Traversal.clear(
+                    groundVehicle ? SablePathfinder.RouteMode.GROUND
+                            : SablePathfinder.RouteMode.FLIGHT);
+        }
+        SablePathfinder.Traversal traversal = sableRouteValidator(ctx, groundVehicle).validate(
+                new SablePathfinder.Query(ctx.level(), start, end,
+                        safety,
+                        groundVehicle ? SablePathfinder.RouteMode.GROUND
+                                : SablePathfinder.RouteMode.FLIGHT));
+        return traversal == null ? SablePathfinder.Traversal.blocked() : traversal;
+    }
+
+    // Get one immediate collision-free steering direction without building a route.
+    private Vec3 simpleCollisionAvoidanceDirection(
+            Vec3 position,
+            Vec3 direct,
+            Vec3 forward,
+            double directClearance,
+            Vec3 up,
+            Vec3 right,
+            double scanRange,
+            double requiredClearance,
+            boolean groundVehicle
+    ) {
+        double minimum = Math.min(scanRange,
+                Math.max(0.0D, finite(requiredClearance)));
+        // The direct full-hull probe is performed every navigation tick. Do
+        // not spend additional probes on alternatives until that active
+        // corridor is actually constrained.
+        if (directClearance >= minimum - 1.0E-4D) {
+            return direct;
+        }
+        List<Vec3> directions = new ArrayList<>();
+        if (groundVehicle) {
+            directions.add(rotateHorizontal(direct, Math.toRadians(35.0D)));
+            directions.add(rotateHorizontal(direct, Math.toRadians(-35.0D)));
+            directions.add(rotateHorizontal(direct, Math.toRadians(70.0D)));
+            directions.add(rotateHorizontal(direct, Math.toRadians(-70.0D)));
+            directions.add(rotateHorizontal(forward, Math.toRadians(35.0D)));
+            directions.add(rotateHorizontal(forward, Math.toRadians(-35.0D)));
+            directions.add(rotateHorizontal(forward, Math.toRadians(70.0D)));
+            directions.add(rotateHorizontal(forward, Math.toRadians(-70.0D)));
+            directions.add(forward.scale(-1.0D));
+        } else {
+            directions.add(normalize(direct.add(right.scale(0.8D)), direct));
+            directions.add(normalize(direct.subtract(right.scale(0.8D)), direct));
+            directions.add(normalize(direct.add(up.scale(0.8D)), direct));
+            directions.add(normalize(direct.subtract(up.scale(0.8D)), direct));
+            directions.add(direct.scale(-1.0D));
+        }
+        List<ReactiveCollisionAvoidance.EscapeCandidate> candidates = directions.stream()
+                .map(direction -> reactiveEscapeCandidate(
+                        position, direction, scanRange, groundVehicle))
+                .toList();
+        ReactiveCollisionAvoidance.Response response = ReactiveCollisionAvoidance.resolve(
+                new ReactiveCollisionAvoidance.Request(
+                        direct, directClearance, minimum, candidates));
+        if (!response.hazard()) return direct;
+        return response.escapeAvailable() ? response.escapeDirection() : Vec3.ZERO;
+    }
+
+    // Keep an immediate escape inside the measured collision-free segment.
+    private static double reactiveEscapeDistance(
+            double clearance,
+            double requiredClearance,
+            double localStep,
+            double scanRange
+    ) {
+        double desired = Math.min(Math.max(0.0D, finite(scanRange)) * 0.5D,
+                Math.max(Math.max(0.25D, finite(localStep)) * 2.0D,
+                        Math.max(0.0D, finite(requiredClearance)) * 0.35D));
+        return Math.min(desired, Math.max(0.0D, finite(clearance)) * 0.5D);
+    }
+
+    // Check whether normal forward steering can acquire a route leg. Sideways
+    // and backwards poses need a committed manoeuvre; leaving them to the
+    // instantaneous controller creates an undecidable forward/reverse pulse.
+    private static boolean requiresGroundAlignmentManeuver(
+            Vec3 forward,
+            Vec3 routeDirection
+    ) {
+        Vec3 heading = normalize(new Vec3(forward.x, 0.0D, forward.z), Vec3.ZERO);
+        Vec3 target = normalize(new Vec3(routeDirection.x, 0.0D, routeDirection.z), Vec3.ZERO);
+        return heading.lengthSqr() > 1.0E-12D && target.lengthSqr() > 1.0E-12D
+                && heading.dot(target) <= GROUND_ALIGNMENT_MANEUVER_THRESHOLD;
+    }
+
+    // Build one forward bicycle-model escape so steering and propulsion agree on a safe corridor.
+    private boolean startForwardAvoidance(
+            Telemetry telemetry,
+            Vec3 target,
+            Vec3 escapeDirection,
+            double escapeDistance,
+            Vec3 forward,
+            Vec3 up,
+            HullBounds hull,
+            CollisionScanContext ctx,
+            NavigationPathState state,
+            long gameTime
+    ) {
+        double distance = Math.min(8.0D, Math.max(0.0D, finite(escapeDistance)));
+        Vec3 direction = normalize(new Vec3(
+                escapeDirection.x, 0.0D, escapeDirection.z), Vec3.ZERO);
+        if (distance < 0.35D || direction.lengthSqr() <= 1.0E-12D) return false;
+        GroundPathPlanner.VehicleCapabilities capabilities =
+                groundVehicleCapabilities(hull);
+        double step = Math.max(0.35D, Math.min(
+                navigationPathStep(hull.maximumSpan()),
+                capabilities.minimumTurningRadius() * 0.45D));
+        Vec3 recoveryTarget = telemetry.position().add(direction.scale(distance));
+        GroundPathPlanner.Plan plan = boundedGroundPlan(ctx, work -> GroundPathPlanner.planForwardRecovery(
+                new GroundPathPlanner.PoseRequest(
+                        telemetry.position(), recoveryTarget, forward, capabilities,
+                        Math.max(distance + step * 2.0D,
+                                capabilities.minimumTurningRadius() * 3.0D),
+                        step, 96, (start, end) -> pathPoseClear(
+                        start.position(), start.forward(), up,
+                        end.position(), end.forward(), up,
+                        forward, up, hull, ctx, true, work.remainingNanos())), work::available));
+        if (plan.waypoints().isEmpty()) return false;
+        state.beginForwardRecovery(plan.waypoints().stream()
+                        .map(GroundPathPlanner.Waypoint::position).toList(),
+                plan.curves(), target, telemetry.position(), gameTime);
+        return true;
+    }
+
+    // Follow a live forward escape curve, then restore the retained calculated suffix.
+    private @Nullable NavigationGuidance forwardRecoveryGuidance(
+            Telemetry telemetry,
+            NavigationPathState state,
+            HullBounds hull,
+            long gameTime
+    ) {
+        double waypointRadius = Math.max(0.75D,
+                groundNavigationWaypointRadius(hull,
+                        navigationPathStep(hull.maximumSpan())));
+        while (state.waypointIndex < state.waypoints.size()) {
+            Vec3 waypoint = state.waypoints.get(state.waypointIndex);
+            double curveProgress = state.activeGroundCurveProgress(telemetry.position());
+            WaypointProgressTracker.Observation recoveryProgress =
+                    state.waypointProgress.observe(
+                            telemetry.position(), waypoint, waypointRadius,
+                            gameTime, GROUND_NAVIGATION_STUCK_TICKS,
+                            true, curveProgress);
+            state.lastWaypointProgress = recoveryProgress;
+            boolean reached = recoveryProgress.capturedAtRouteProgress(
+                    curveProgress, 0.65D);
+            if (recoveryProgress.stalled()) return null;
+            if (!reached) break;
+            state.waypointIndex++;
+            state.completeGroundWaypoint(waypoint);
+        }
+        if (state.waypointIndex >= state.waypoints.size()) return null;
+        GroundCurveFollow follow = state.groundCurveFollow(
+                telemetry.position(), groundNavigationCurveLookahead(
+                        hull, navigationPathStep(hull.maximumSpan()),
+                        telemetry.velocity()));
+        Vec3 waypoint = state.waypoints.get(state.waypointIndex);
+        Vec3 controlTarget = follow == null ? waypoint : follow.target();
+        Vec3 direction = follow == null
+                ? normalize(waypoint.subtract(telemetry.position()), Vec3.ZERO)
+                : follow.tangent();
+        return new NavigationGuidance(direction, controlTarget, 0.6D,
+                false, false, true, direction);
+    }
+
+    // Start reverse recovery before a blocked immediate route response can hold the vehicle still.
+    private @Nullable NavigationGuidance blockedGroundRecoveryGuidance(
+            String commandKey,
+            Telemetry telemetry,
+            Vec3 target,
+            Vec3 direct,
+            Vec3 routeDirection,
+            Vec3 forward,
+            Vec3 up,
+            HullBounds hull,
+            CollisionScanContext ctx,
+            @Nullable NavigationPathState state,
+            @Nullable WaypointProgressTracker.Observation progress,
+            double scanRange,
+            long gameTime
+    ) {
+        if (state == null || progress == null || gameTime < state.nextReplanTick) return null;
+        double forwardClearance = groundRecoveryCollisionDistance(
+                telemetry.position(), forward, scanRange, hull, ctx);
+        double horizontalSpeed = new Vec3(
+                telemetry.velocity().x, 0.0D, telemetry.velocity().z).length();
+        boolean trappedAtObstacle = horizontalSpeed <= 0.12D
+                && forwardClearance <= GROUND_NAVIGATION_MIN_CLEARANCE + 0.5D;
+        boolean progressStalled = progress.ticksWithoutProgress()
+                >= GROUND_REVERSE_RECOVERY_STUCK_TICKS
+                && forwardClearance < navigationRequiredClearance(
+                0.0D, telemetry.velocity().length());
+        if (!trappedAtObstacle && !progressStalled) return null;
+        if (startReverseRecovery(telemetry, target, routeDirection, forward, up,
+                hull, ctx, state, scanRange, gameTime)) {
+            NavigationGuidance recovery = reverseRecoveryGuidance(
+                    commandKey, telemetry, target, direct, forward,
+                    hull, ctx, state, gameTime);
+            if (recovery != null) return recovery;
+        }
+        state.nextReplanTick = gameTime + NAVIGATION_FAILED_RETRY_TICKS;
+        return null;
+    }
+
+    // Start one bounded reverse-only recovery after direct forward travel stalls.
+    private boolean startReverseRecovery(
+            Telemetry telemetry,
+            Vec3 target,
+            Vec3 targetDirection,
+            Vec3 forward,
+            Vec3 up,
+            HullBounds hull,
+            CollisionScanContext ctx,
+            NavigationPathState state,
+            double scanRange,
+            long gameTime
+    ) {
+        Vec3 reverse = forward.scale(-1.0D);
+        List<Vec3> candidates = List.of(
+                reverse,
+                rotateHorizontal(reverse, Math.toRadians(30.0D)),
+                rotateHorizontal(reverse, Math.toRadians(-30.0D)),
+                rotateHorizontal(reverse, Math.toRadians(55.0D)),
+                rotateHorizontal(reverse, Math.toRadians(-55.0D)));
+        Vec3 recoveryDirection = Vec3.ZERO;
+        double recoveryClearance = 0.0D;
+        for (Vec3 candidate : candidates) {
+            double clearance = groundRecoveryCollisionDistance(
+                    telemetry.position(), candidate, scanRange, hull, ctx);
+            double score = clearance + Math.max(0.0D,
+                    candidate.dot(targetDirection)) * 0.5D;
+            double bestScore = recoveryClearance + (recoveryDirection.lengthSqr() <= 1.0E-12D
+                    ? 0.0D : Math.max(0.0D, recoveryDirection.dot(targetDirection)) * 0.5D);
+            if (score > bestScore) {
+                recoveryDirection = candidate;
+                recoveryClearance = clearance;
+            }
+        }
+        double step = navigationPathStep(hull.maximumSpan());
+        double recoveryDistance = Math.min(8.0D,
+                Math.max(0.0D,
+                        recoveryClearance - GROUND_NAVIGATION_MIN_CLEARANCE));
+        if (recoveryDirection.lengthSqr() <= 1.0E-12D
+                || recoveryDistance < 0.35D) {
+            return false;
+        }
+        double recoveryStep = Math.min(step, recoveryDistance);
+        Vec3 recoveryTarget = telemetry.position().add(
+                recoveryDirection.scale(recoveryDistance));
+        GroundPathPlanner.VehicleCapabilities capabilities =
+                groundVehicleCapabilities(hull);
+        GroundPathPlanner.Plan plan = boundedGroundPlan(ctx, work -> GroundPathPlanner.planRecoveryManeuver(
+                new GroundPathPlanner.PoseRequest(
+                        telemetry.position(), recoveryTarget, forward,
+                        capabilities, recoveryDistance + step * 2.0D,
+                        Math.max(0.35D, Math.min(recoveryStep,
+                                capabilities.minimumTurningRadius() * 0.45D)),
+                        48, (start, end) -> pathPoseClear(
+                        start.position(), start.forward(), up,
+                        end.position(), end.forward(), up,
+                        forward, up, hull, ctx, true, work.remainingNanos())), work::available));
+        if (plan.waypoints().isEmpty()) return false;
+        state.beginGroundRecovery(plan, target, telemetry.position(),
+                Math.min(1.5D, Math.max(0.25D, recoveryDistance * 0.5D)), gameTime, true);
+        return true;
+    }
+
+    // Plan a committed pose-aware merge onto the current ordered route leg.
+    // The library may use forward, reverse, or several gear phases, and the
+    // original Sable suffix remains suspended until the merge is complete.
+    private boolean startRouteAlignmentManeuver(
+            Telemetry telemetry,
+            Vec3 target,
+            Vec3 routeCheckpoint,
+            Vec3 forward,
+            Vec3 up,
+            HullBounds hull,
+            CollisionScanContext ctx,
+            NavigationPathState state,
+            long gameTime
+    ) {
+        if (!state.hasSableRoute()) return false;
+        Vec3 legStart = state.waypointIndex <= 0
+                ? state.routeStartPosition : state.waypoints.get(state.waypointIndex - 1);
+        Vec3 legEnd = state.waypoints.get(state.waypointIndex);
+        Vec3 routeDirection = normalize(new Vec3(
+                legEnd.x - legStart.x, 0.0D, legEnd.z - legStart.z), Vec3.ZERO);
+        if (routeDirection.lengthSqr() <= 1.0E-12D) return false;
+        Vec3 routePosition = SablePathfinder.routeLegTrackingTarget(
+                legStart, legEnd, telemetry.position(),
+                SablePathfinder.RouteMode.GROUND, 0.0D,
+                state.routeProgressWaypointIndex == state.waypointIndex
+                        ? state.minimumRouteLegProgress : 0.0D);
+        GroundPathPlanner.VehicleCapabilities capabilities = groundVehicleCapabilities(hull);
+        double step = Math.max(0.35D, Math.min(navigationPathStep(hull.maximumSpan()),
+                capabilities.minimumTurningRadius() * 0.45D));
+        double maximumAdvance = Math.max(
+                horizontalDistance(routePosition, legEnd),
+                GroundPathPlanner.forwardRouteMergeAdvance(
+                        routePosition, routeDirection, state.waypoints, state.waypointIndex,
+                        Math.toRadians(8.0D), Math.max(0.25D, step * 0.25D)));
+        double distance = horizontalDistance(telemetry.position(), routePosition)
+                + maximumAdvance;
+        if (distance <= 0.35D && horizontalDistance(
+                telemetry.position(), routeCheckpoint) <= 0.35D) return false;
+        GroundPathPlanner.Plan plan = boundedGroundPlan(ctx, work -> GroundPathPlanner.planRouteRejoin(
+                new GroundPathPlanner.RouteRejoinRequest(
+                        telemetry.position(), forward, routePosition,
+                        routeDirection, maximumAdvance, capabilities,
+                        Math.max(distance + step * 2.0D,
+                                capabilities.minimumTurningRadius() * 4.0D),
+                        step, 192, (start, end) -> pathPoseClear(
+                        start.position(), start.forward(), up,
+                        end.position(), end.forward(), up,
+                        forward, up, hull, ctx, true, work.remainingNanos())), work::available));
+        // A failed pose search is meaningful information, not a reason to repeat all of its
+        // collision sweeps every server tick. Revisit it only after the normal route retry
+        // window, when the vehicle or its surroundings may have changed.
+        if (plan.waypoints().isEmpty()) {
+            if (startReverseRecovery(
+                    telemetry, target, routeDirection, forward, up,
+                    hull, ctx, state,
+                    navigationCollisionScanRange(telemetry.velocity().length()),
+                    gameTime)) {
+                state.groundRecoveryNeedsContinuation = true;
+                return true;
+            }
+            state.nextReplanTick = gameTime + NAVIGATION_FAILED_RETRY_TICKS;
+            return false;
+        }
+        if (!plan.reachesGoal()) {
+            // A partial result is collision-tested manoeuvre geometry, not a
+            // planning failure. Drive it and continue searching immediately
+            // after completion instead of entering the stopped retry loop.
+            state.beginPartialGroundRecovery(plan, target, telemetry.position(),
+                    Math.min(1.5D, Math.max(0.25D, distance * 0.2D)), gameTime);
+            return true;
+        }
+        Vec3 plannedRejoin = plan.waypoints().getLast().position();
+        SablePathfinder.RouteProjection resume =
+                SablePathfinder.routeProjection(
+                        state.routeWaypoints(true), state.waypointIndex,
+                        state.routeStartPosition, plannedRejoin,
+                        state.routeProgressWaypointIndex == state.waypointIndex
+                                ? state.minimumRouteLegProgress : 0.0D);
+        int resumeIndex = resume.found()
+                ? Math.max(state.waypointIndex, resume.nextWaypointIndex())
+                : state.waypointIndex;
+        double resumeProgress = resume.found()
+                ? Mth.clamp(resume.legProgress(), 0.0D, 1.0D) : 0.0D;
+        state.beginGroundRecovery(plan, target, telemetry.position(),
+                Math.min(1.5D, Math.max(0.25D, distance * 0.2D)), gameTime, true,
+                resumeIndex, resumeProgress);
+        return true;
+    }
+
+    // Follow the retained reverse recovery until forward navigation can resume.
+    private @Nullable NavigationGuidance reverseRecoveryGuidance(
+            String commandKey,
+            Telemetry telemetry,
+            Vec3 target,
+            Vec3 direct,
+            Vec3 forward,
+            HullBounds hull,
+            CollisionScanContext ctx,
+            NavigationPathState state,
+            long gameTime
+    ) {
+        double scanRange = navigationCollisionScanRange(telemetry.velocity().length());
+        double directLookahead = Math.min(scanRange,
+                telemetry.position().distanceTo(target));
+        double targetClearance = groundCollisionDistance(
+                telemetry.position(), direct, directLookahead);
+        double physicalForwardClearance = groundCollisionDistance(
+                telemetry.position(), forward, directLookahead);
+        double forwardClearance = Math.min(
+                targetClearance, physicalForwardClearance);
+        double reversedDistance = horizontalDistance(
+                state.reverseStartPosition, telemetry.position());
+        if (!state.reverseRecoveryMustFinish && GroundPathPlanner.shouldRefreshReverseRoute(
+                forward, direct, forwardClearance,
+                directLookahead, reversedDistance,
+                state.minimumReverseDistance)) {
+            state.reverseForwardReleased = true;
+            return null;
+        }
+        double waypointRadius = Math.max(0.75D,
+                groundNavigationWaypointRadius(hull,
+                        navigationPathStep(hull.maximumSpan())));
+        while (state.waypointIndex < state.waypoints.size()) {
+            Vec3 waypoint = state.waypoints.get(state.waypointIndex);
+            double curveProgress = state.activeGroundCurveProgress(
+                    telemetry.position());
+            WaypointProgressTracker.Observation recoveryProgress =
+                    state.waypointProgress.observe(
+                            telemetry.position(), waypoint, waypointRadius,
+                            gameTime, GROUND_NAVIGATION_STUCK_TICKS,
+                            true, curveProgress);
+            state.lastWaypointProgress = recoveryProgress;
+            boolean reached = recoveryProgress.capturedAtRouteProgress(
+                    curveProgress, 0.65D);
+            if (recoveryProgress.stalled()) {
+                state.reverseForwardReleased = false;
+                return null;
+            }
+            if (!reached) break;
+            state.waypointIndex++;
+            state.completeGroundWaypoint(waypoint);
+        }
+        if (state.waypointIndex >= state.waypoints.size()) {
+            state.reverseForwardReleased = false;
+            return null;
         }
 
-        long gameTime = ctx.level().getGameTime();
-        if (gameTime < state.nextReplanTick) {
-            return NavigationGuidance.stopped(telemetry.position());
-        }
-
-        Vec3 worldUp = new Vec3(0.0D, 1.0D, 0.0D);
-        Vec3 side = normalize(direct.cross(worldUp), rootDirectionToWorld(
-                normalize(controllerForwardRoot().cross(controllerUpRoot()),
-                        new Vec3(1.0D, 0.0D, 0.0D))));
-        Vec3 vertical = normalize(side.cross(direct), worldUp);
-        if (vertical.dot(worldUp) < 0.0D) {
-            side = side.scale(-1.0D);
-            vertical = vertical.scale(-1.0D);
-        }
-        // -----------------------------------------------------PATH SEARCH-----------------------------------------------------
-        List<Vec3> route = findNavigationPath(
-                telemetry.position(), localGoal, direct, side, vertical, step,
-                groundVehicle ? GROUND_NAVIGATION_PATH_MIN_FORWARD : 0,
-                NAVIGATION_PATH_MAX_FORWARD, NAVIGATION_PATH_MAX_SIDE,
-                groundVehicle ? 0 : NAVIGATION_PATH_MIN_VERTICAL,
-                groundVehicle ? 0 : NAVIGATION_PATH_MAX_VERTICAL,
-                NAVIGATION_PATH_MAX_EXPANSIONS,
-                (start, end) -> pathSegmentClear(start, end, hull, ctx, groundVehicle));
-        route = smoothNavigationPath(
-                telemetry.position(), route, hull, ctx, groundVehicle);
-        state.waypoints = route;
-        state.waypointIndex = 0;
-        state.plannedTarget = targetPosition;
-        state.nextReplanTick = gameTime + NAVIGATION_PATH_REPLAN_TICKS;
-        if (route.isEmpty()) {
-            return NavigationGuidance.stopped(telemetry.position());
-        }
-        Vec3 waypoint = route.getFirst();
+        Vec3 waypoint = state.waypoints.get(state.waypointIndex);
+        boolean reverse = state.reverseAtWaypoint();
+        GroundCurveFollow follow = state.groundCurveFollow(
+                telemetry.position(), groundNavigationCurveLookahead(
+                        hull, navigationPathStep(hull.maximumSpan()),
+                        telemetry.velocity()));
+        Vec3 controlTarget = follow == null ? waypoint : follow.target();
+        Vec3 direction = follow == null
+                ? normalize(waypoint.subtract(telemetry.position()),
+                forward.scale(reverse ? -1.0D : 1.0D))
+                : follow.tangent();
+        boolean finalRecoveryPoint = state.waypointIndex
+                == state.waypoints.size() - 1;
         return new NavigationGuidance(
-                normalize(waypoint.subtract(telemetry.position()), Vec3.ZERO),
-                waypoint, 1.0D);
+                direction, controlTarget, 0.6D, reverse,
+                finalRecoveryPoint, true, direction);
+    }
+
+    // Rotate one horizontal direction.
+    private static Vec3 rotateHorizontal(Vec3 direction, double radians) {
+        Vec3 horizontal = normalize(
+                new Vec3(direction.x, 0.0D, direction.z),
+                new Vec3(0.0D, 0.0D, 1.0D));
+        double sin = Math.sin(radians);
+        double cos = Math.cos(radians);
+        return new Vec3(
+                horizontal.x * cos - horizontal.z * sin,
+                0.0D,
+                horizontal.x * sin + horizontal.z * cos);
     }
 
     // Get the navigation path lookahead
     static double navigationPathLookahead(double requestedSpeed, double currentSpeed) {
         double speed = Math.max(
                 Math.abs(finite(requestedSpeed)), Math.abs(finite(currentSpeed)));
-        return Mth.clamp(
-                NAVIGATION_MIN_CLEARANCE + speed * speed * 3.0D,
-                COLLISION_SCAN_RANGE, NAVIGATION_PATH_MAX_LOOKAHEAD);
+        return navigationCollisionScanRange(speed);
     }
 
     // Get the navigation path step
     static double navigationPathStep(double hullSpan) {
         return Mth.clamp(
-                Math.max(0.0D, finite(hullSpan)) + 2.0D,
+                Math.max(0.0D, finite(hullSpan)) * 0.15D,
                 NAVIGATION_PATH_MIN_STEP, NAVIGATION_PATH_MAX_STEP);
+    }
+
+    // Derive the steering envelope from live wheel locations when they are
+    // available. The collision sweep remains the authority on body clearance;
+    // these values tell the planner what curved motion the drivetrain can make.
+    // Resolve live turning actuators without using hull extents as an axle
+    private Vec3 navigationSteeringPosition(Vec3 center, Vec3 forward, boolean reverse){
+        ShipControlMap currentMap = effectiveAssemblyMap();
+        ServerSubLevel root = rootSubLevel;
+        ScmConfigurationProfile configuration = controller.getScmConfigurationProfile();
+        if(currentMap == null || root == null) return center;
+        List<Vec3> positions = new ArrayList<>();
+        Set<ScmConfigurationProfile.UnitReference> references = configuration == null ? Set.of()
+                : configuration.unitsForExplicitActions(Set.of(
+                "ship_yaw", "ship_pan", "ship_yaw_left", "ship_yaw_right"));
+        for(ScmConfigurationProfile.UnitReference reference : references){
+            SubLevel subLevel = SableLevelApi.subLevel(controller.getLevel(), reference.subLevelId());
+            if(subLevel != null){
+                positions.add(SableTransformApi.toWorldPosition(subLevel, reference.blockPosition().getCenter()));
+            }
+        }
+        if(positions.isEmpty()){
+            for(ShipControlMap.PropulsionUnit unit : currentMap.units()){
+                Actuator actuator = controlActuators.get(unit.index());
+                if(actuator != null && actuator.isWheelControl()){
+                    positions.add(SableTransformApi.toWorldPosition(root, unit.rootPosition()));
+                }
+            }
+        }
+        return ScmSteeringGeometry.referencePosition(center, forward, positions,
+                resolvedSteeringMode(currentMap), reverse);
+    }
+
+    private GroundPathPlanner.VehicleCapabilities groundVehicleCapabilities(HullBounds hull) {
+        double wheelbase = Math.max(1.25D, hull.horizontalRadius() * 2.0D);
+        Vec3 controllerForward = normalize(new Vec3(
+                controllerForwardRoot().x, 0.0D, controllerForwardRoot().z),
+                new Vec3(0.0D, 0.0D, 1.0D));
+        double leadingWheel = Double.NEGATIVE_INFINITY;
+        double trailingWheel = Double.POSITIVE_INFINITY;
+        for (WheelMountControlBridge wheel : controlledScmWheels) {
+            WheelMountControlBridge.PhysicalSample sample = wheel.ct$getPhysicalSample();
+            if (sample != null && sample.localPosition() != null) {
+                Vec3 position = sample.localPosition();
+                if (Double.isFinite(position.x) && Double.isFinite(position.z)) {
+                    double longitudinalPosition = position.dot(controllerForward);
+                    leadingWheel = Math.max(leadingWheel, longitudinalPosition);
+                    trailingWheel = Math.min(trailingWheel, longitudinalPosition);
+                }
+            }
+        }
+        if (Double.isFinite(leadingWheel) && Double.isFinite(trailingWheel)) {
+            // Track separation is not wheelbase. Using the diagonal between
+            // two wheels inflated the minimum radius for wide vehicles and
+            // generated curves they could not actually follow.
+            wheelbase = Math.max(1.25D, leadingWheel - trailingWheel);
+        }
+        // Wheel mounts expose their positions but not a universal steering-lock
+        // or suspension API. Use the common 32 degree travel as a conservative
+        // fallback; hosts with a richer wheel bridge can pass its exact values
+        // directly to the reusable planner.
+        ScmSteeringMode steeringMode = resolvedSteeringMode(effectiveAssemblyMap());
+        return new GroundPathPlanner.VehicleCapabilities(
+                wheelbase, steeringMode.planningSteeringRadians(Math.toRadians(32.0D)),
+                0.0D, 0.0D, 0.0D,
+                hasDirectionalAuthority(activeAssemblyMap, controllerForwardRoot().scale(-1.0D))
+                        || hasConfiguredAction("ship_backward", "ship_reverse"));
+    }
+
+    // Check whether the calibrated map can produce force along one local axis
+    private static boolean hasDirectionalAuthority(
+            @Nullable ShipControlMap currentMap,
+            Vec3 direction
+    ) {
+        if (currentMap == null) return false;
+        Vec3 axis = normalize(direction, Vec3.ZERO);
+        if (axis.lengthSqr() <= 1.0E-12D) return false;
+        double available = currentMap.units().stream()
+                .filter(ShipControlMap.PropulsionUnit::controllable)
+                .filter(unit -> unit.maxThrust() > 1.0E-9D)
+                .mapToDouble(unit -> Math.max(0.0D,
+                        unit.forceDirection().dot(axis)) * unit.maxThrust())
+                .sum();
+        return available > 1.0E-6D;
+    }
+
+
+    // Check whether any requested SCM action has a calibration group
+    private boolean hasConfiguredAction(String... actions) {
+        ScmConfigurationProfile configuration = controller.getScmConfigurationProfile();
+        if (configuration == null || actions == null) return false;
+        for (String action : actions) {
+            if (action != null && configuration.hasActionGroupsFor(Set.of(action))) return true;
+        }
+        return false;
     }
 
     // Check if the navigation waypoint was reached
@@ -7923,215 +16533,118 @@ public final class ShipControlModuleRuntime {
                 <= Math.max(0.0D, finite(radius));
     }
 
-    // Find the navigation path
-    static List<Vec3> findNavigationPath(
-            Vec3 start,
-            Vec3 target,
-            Vec3 forward,
-            Vec3 side,
-            Vec3 vertical,
-            double step,
-            int maxForward,
-            int maxSide,
-            int minVertical,
-            int maxVertical,
-            int maxExpansions,
-            BiPredicate<Vec3, Vec3> segmentClear
-    ) {
-        return findNavigationPath(
-                start, target, forward, side, vertical, step,
-                0, maxForward, maxSide, minVertical, maxVertical,
-                maxExpansions, segmentClear);
+    // Ground checkpoints are logical manoeuvre endpoints. Let a wide hull
+    // advance when it has already overlapped one instead of trying to drive
+    // its origin back through the checkpoint.
+    private static double groundNavigationWaypointRadius(HullBounds hull, double step) {
+        return Math.max(1.0D, Math.min(
+                Math.max(0.0D, finite(step)) * GROUND_NAVIGATION_WAYPOINT_RADIUS_STEPS,
+                hull.horizontalRadius() + Math.max(1.0D, finite(step)) * 0.2D));
     }
 
-    // Find the navigation path
-    static List<Vec3> findNavigationPath(
-            Vec3 start,
-            Vec3 target,
-            Vec3 forward,
-            Vec3 side,
-            Vec3 vertical,
-            double step,
-            int minForward,
-            int maxForward,
-            int maxSide,
-            int minVertical,
-            int maxVertical,
-            int maxExpansions,
-            BiPredicate<Vec3, Vec3> segmentClear
-    ) {
-        if (start == null || target == null || segmentClear == null) {
-            return List.of();
-        }
-        if (segmentClear.test(start, target)) {
-            return List.of(target);
-        }
-        // -----------------------------------------------------SEARCH GRID-----------------------------------------------------
-        Vec3 forwardAxis = normalize(forward, target.subtract(start));
-        Vec3 sideAxis = normalize(side, new Vec3(1.0D, 0.0D, 0.0D));
-        Vec3 verticalAxis = normalize(vertical, new Vec3(0.0D, 1.0D, 0.0D));
-        double cellSize = Math.max(0.5D, finite(step));
-        NavigationGridNode origin = new NavigationGridNode(0, 0, 0);
-        // -----------------------------------------------------SEARCH STATE-----------------------------------------------------
-        PriorityQueue<NavigationPathCandidate> frontier = new PriorityQueue<>(
-                Comparator.comparingDouble(NavigationPathCandidate::score));
-        Map<NavigationGridNode, Double> costs = new HashMap<>();
-        Map<NavigationGridNode, NavigationGridNode> parents = new HashMap<>();
-        costs.put(origin, 0.0D);
-        frontier.add(new NavigationPathCandidate(origin, 0.0D,
-                start.distanceTo(target)));
-        List<NavigationGridNode> offsets = List.of(
-                new NavigationGridNode(1, 0, 0),
-                new NavigationGridNode(0, 1, 0),
-                new NavigationGridNode(0, -1, 0),
-                new NavigationGridNode(0, 0, 1),
-                new NavigationGridNode(0, 0, -1),
-                new NavigationGridNode(-1, 0, 0));
-
-        // -----------------------------------------------------PATH SEARCH-----------------------------------------------------
-        int expansions = 0;
-        while (!frontier.isEmpty() && expansions++ < Math.max(1, maxExpansions)) {
-            NavigationPathCandidate candidate = frontier.poll();
-            NavigationGridNode current = candidate.node();
-            double currentCost = costs.getOrDefault(current, Double.POSITIVE_INFINITY);
-            if (candidate.cost() > currentCost + 1.0E-9D) {
-                continue;
-            }
-            Vec3 currentPosition = navigationGridPosition(
-                    start, current, forwardAxis, sideAxis, verticalAxis, cellSize);
-            if (!current.equals(origin)
-                    && segmentClear.test(currentPosition, target)) {
-                return buildNavPath(
-                        start, target, current, parents,
-                        forwardAxis, sideAxis, verticalAxis, cellSize);
-            }
-
-            // ------------------------------------NEIGHBOR EXPANSION------------------------------------
-            for (NavigationGridNode offset : offsets) {
-                NavigationGridNode next = new NavigationGridNode(
-                        current.forward() + offset.forward(),
-                        current.side() + offset.side(),
-                        current.vertical() + offset.vertical());
-                if (next.forward() < Math.min(0, minForward)
-                        || next.forward() > Math.max(1, maxForward)
-                        || Math.abs(next.side()) > Math.max(1, maxSide)
-                        || next.vertical() < minVertical
-                        || next.vertical() > maxVertical
-                        || next.equals(origin)) {
-                    continue;
-                }
-                Vec3 nextPosition = navigationGridPosition(
-                        start, next, forwardAxis, sideAxis, verticalAxis, cellSize);
-                if (!segmentClear.test(currentPosition, nextPosition)) {
-                    continue;
-                }
-                double moveCost = currentPosition.distanceTo(nextPosition);
-                if (offset.vertical() < 0) {
-                    moveCost *= 1.35D;
-                } else if (offset.forward() <= 0) {
-                    moveCost *= 1.08D;
-                }
-                double nextCost = currentCost + moveCost;
-                if (nextCost + 1.0E-9D >= costs.getOrDefault(
-                        next, Double.POSITIVE_INFINITY)) {
-                    continue;
-                }
-                costs.put(next, nextCost);
-                parents.put(next, current);
-                frontier.add(new NavigationPathCandidate(
-                        next, nextCost, nextCost + nextPosition.distanceTo(target)));
-            }
-        }
-        return List.of();
+    // Keep route ownership tied to the vehicle's centreline, not its collision envelope.
+    private static double groundRouteCentrelineCorridor(double step) {
+        return Mth.clamp(Math.max(0.60D, finite(step) * 0.45D), 0.60D, 0.75D);
     }
 
-    // Get the navigation grid position
-    private static Vec3 navigationGridPosition(
-            Vec3 start,
-            NavigationGridNode node,
-            Vec3 forward,
-            Vec3 side,
-            Vec3 vertical,
-            double step
-    ) {
-        return start.add(forward.scale(node.forward() * step))
-                .add(side.scale(node.side() * step))
-                .add(vertical.scale(node.vertical() * step));
-    }
-
-    // Build the nav path
-    private static List<Vec3> buildNavPath(
-            Vec3 start,
-            Vec3 target,
-            NavigationGridNode destination,
-            Map<NavigationGridNode, NavigationGridNode> parents,
-            Vec3 forward,
-            Vec3 side,
-            Vec3 vertical,
-            double step
-    ) {
-        ArrayDeque<Vec3> reversed = new ArrayDeque<>();
-        NavigationGridNode cursor = destination;
-        while (cursor != null && (cursor.forward() != 0
-                || cursor.side() != 0 || cursor.vertical() != 0)) {
-            reversed.addFirst(navigationGridPosition(
-                    start, cursor, forward, side, vertical, step));
-            cursor = parents.get(cursor);
-        }
-        List<Vec3> route = new ArrayList<>(reversed);
-        if (route.isEmpty() || route.getLast().distanceToSqr(target) > 1.0E-9D) {
-            route.add(target);
-        }
-        return List.copyOf(route);
-    }
-
-    // Get the smooth navigation path
-    private List<Vec3> smoothNavigationPath(
-            Vec3 start,
-            List<Vec3> route,
+    // Look ahead on the active physical curve without turning its collision
+    // samples into route checkpoints. Faster or larger vehicles lead farther,
+    // while the bound keeps the steering reference on the current maneuver.
+    private static double groundNavigationCurveLookahead(
             HullBounds hull,
-            CollisionScanContext ctx,
-            boolean groundVehicle
+            double step,
+            Vec3 velocity
     ) {
-        if (route == null || route.size() < 2) {
-            return route == null ? List.of() : route;
-        }
-        List<Vec3> smoothed = new ArrayList<>();
-        Vec3 anchor = start;
-        int next = 0;
-        while (next < route.size()) {
-            int furthest = next;
-            for (int candidate = route.size() - 1; candidate > next; candidate--) {
-                if (pathSegmentClear(anchor, route.get(candidate), hull, ctx, groundVehicle)) {
-                    furthest = candidate;
-                    break;
-                }
-            }
-            Vec3 waypoint = route.get(furthest);
-            smoothed.add(waypoint);
-            anchor = waypoint;
-            next = furthest + 1;
-        }
-        return List.copyOf(smoothed);
+        double minimum = 0.75D;
+        double maximum = Math.max(minimum, Math.max(0.0D, finite(step)) * 0.65D);
+        double speed = new Vec3(finite(velocity).x, 0.0D, finite(velocity).z).length();
+        return Mth.clamp(Math.max(hull.horizontalRadius() * 0.35D,
+                speed * 0.18D + 1.0D), minimum, maximum);
     }
 
-    // Check if the path segment is clear
-    private boolean pathSegmentClear(
+    // Share exact recovery search work across controllers on the server thread
+    private static GroundPathPlanner.Plan boundedGroundPlan(
+            CollisionScanContext ctx,
+            java.util.function.Function<TickWorkBudget.Slice, GroundPathPlanner.Plan> planner
+    ){
+        MinecraftServer server = ctx.level().getServer();
+        long tick = server == null ? ctx.level().getGameTime() : server.getTickCount();
+        try(TickWorkBudget.Slice work = GROUND_RECOVERY_WORK_BUDGET.claim(tick)){
+            return work.available() ? planner.apply(work) : GroundPathPlanner.Plan.empty();
+        }
+    }
+
+    // Check the complete rotated hull sweep between two planned poses
+    private boolean pathPoseClear(
             Vec3 start,
+            Vec3 startForward,
+            Vec3 startUp,
             Vec3 end,
+            Vec3 endForward,
+            Vec3 endUp,
+            Vec3 referenceForward,
+            Vec3 referenceUp,
             HullBounds hull,
             CollisionScanContext ctx,
             boolean groundVehicle
     ) {
-        Vec3 delta = end.subtract(start);
+        return pathPoseClear(start, startForward, startUp, end, endForward, endUp,
+                referenceForward, referenceUp, hull, ctx, groundVehicle, 750_000L);
+    }
+
+    // Stop an exact pose query at its supplied time allowance
+    private boolean pathPoseClear(
+            Vec3 start, Vec3 startForward, Vec3 startUp,
+            Vec3 end, Vec3 endForward, Vec3 endUp,
+            Vec3 referenceForward, Vec3 referenceUp, HullBounds hull,
+            CollisionScanContext ctx, boolean groundVehicle, long maximumNanos
+    ){
+        Vec3 delta = finite(end).subtract(finite(start));
         double distance = delta.length();
-        if (distance <= 1.0E-6D) {
-            return true;
+        if (distance <= 1.0E-6D) return true;
+        List<AABB> startBounds = hull.worldBoundsAtPose(
+                start, startForward, startUp, referenceForward, referenceUp,
+                COLLISION_HULL_MARGIN, groundVehicle);
+        List<AABB> endBounds = hull.worldBoundsAtPose(
+                end, endForward, endUp, referenceForward, referenceUp,
+                COLLISION_HULL_MARGIN, groundVehicle);
+        List<AABB> rotationalSweep = new ArrayList<>(startBounds.size());
+        for (int idx = 0; idx < startBounds.size(); idx++) {
+            AABB from = startBounds.get(idx);
+            AABB toAtStart = endBounds.get(Math.min(idx, endBounds.size() - 1))
+                    .move(delta.scale(-1.0D));
+            rotationalSweep.add(from.minmax(toAtStart));
         }
-        Vec3 dir = delta.scale(1.0D / distance);
-        double blockingDistance = pathTraceDistance(
-                start, dir, distance, hull, ctx, groundVehicle);
-        return blockingDistance >= distance - 1.0E-4D;
+        double clearDistance = SubLevelParticleOcclusion.findSweptBoundsBlockingDistance(
+                ctx.level(), ctx.containingSubLevel(), start,
+                delta.scale(1.0D / distance), distance,
+                rotationalSweep, true, ctx.excludedSubLevelIds(), true,
+                131_072, maximumNanos);
+        return clearDistance >= distance - 1.0E-4D;
+    }
+
+    // Confirm a rare stalled-vehicle recovery with the complete supported hull, not a live probe face.
+    private static double groundRecoveryCollisionDistance(
+            Vec3 position,
+            Vec3 worldDirection,
+            double range,
+            HullBounds hull,
+            CollisionScanContext ctx
+    ) {
+        double maximum = Math.max(0.0D, finite(range));
+        if (ctx == null || hull == null || worldDirection.lengthSqr() <= 1.0E-12D) {
+            return maximum;
+        }
+        MinecraftServer server = ctx.level().getServer();
+        long tick = server == null ? ctx.level().getGameTime() : server.getTickCount();
+        try(TickWorkBudget.Slice work = GROUND_RECOVERY_WORK_BUDGET.claim(tick)){
+            if(!work.available()) return 0.0D;
+            return SubLevelParticleOcclusion.findSweptBoundsBlockingDistance(
+                    ctx.level(), ctx.containingSubLevel(), position, worldDirection, maximum,
+                    hull.worldBoundsAt(position, COLLISION_HULL_MARGIN, true), true,
+                    ctx.excludedSubLevelIds(), true, 131_072,
+                    Math.min(250_000L, work.remainingNanos()));
+        }
     }
 
     // Get the path trace distance
@@ -8141,26 +16654,98 @@ public final class ShipControlModuleRuntime {
             double range,
             HullBounds hull,
             CollisionScanContext ctx,
-            boolean groundVehicle
+            boolean groundVehicle,
+            boolean inspectGroundSupport
     ) {
         long gameTime = ctx.level().getGameTime();
         if (pathTraceCacheTick != gameTime) {
             pathTraceCacheTick = gameTime;
             pathTraceCache.clear();
         }
-        CollisionProbe probe = new CollisionProbe(origin, dir, range, groundVehicle);
+        CollisionProbe probe = new CollisionProbe(
+                origin, dir, range, groundVehicle, false, inspectGroundSupport);
         Double cached = pathTraceCache.get(probe);
         if (cached != null) {
             return cached;
         }
+        for (Map.Entry<CollisionProbe, Double> entry : pathTraceCache.entrySet()) {
+            CollisionProbe cachedProbe = entry.getKey();
+            if (cachedProbe.preserveGroundClearance() == groundVehicle
+                    && !cachedProbe.subLevelOnly()
+                    && cachedProbe.inspectGroundSupport() == inspectGroundSupport
+                    && cachedProbe.range() + 1.0E-8D >= range
+                    && cachedProbe.origin().equals(origin)
+                    && cachedProbe.direction().equals(dir)) {
+                return Math.min(range, entry.getValue());
+            }
+        }
+        List<AABB> movingBounds = hull.worldBoundsAt(
+                origin, COLLISION_HULL_MARGIN, groundVehicle);
+        // A supported vehicle removes only its shared resting-contact band,
+        // then probes a dense leading face. Full swept-volume queries visited
+        // the ground below every wheel for each steering sample and dominated
+        // schedule ticks near any collider.
+        int probes = groundVehicle
+                ? GROUND_COLLISION_NAVIGATION_PROBES_PER_BOUNDS
+                : COLLISION_NAVIGATION_PROBES_PER_BOUNDS;
         double distance = SubLevelParticleOcclusion.findProbedBoundsBlockingDistance(
                 ctx.level(), ctx.containingSubLevel(), dir, range,
-                hull.worldBoundsAt(origin, COLLISION_HULL_MARGIN, groundVehicle),
-                true, ctx.excludedSubLevelIds(), true,
-                COLLISION_NAVIGATION_PROBES_PER_BOUNDS,
-                collisionProbeCache(ctx.level()));
+                movingBounds, true, ctx.excludedSubLevelIds(), true,
+                probes, collisionProbeCache(ctx.level()));
+        if (groundVehicle && inspectGroundSupport) {
+            distance = Math.min(distance, groundSupportDistance(
+                    origin, dir, distance, hull, ctx));
+        }
         pathTraceCache.put(probe, distance);
         return distance;
+    }
+
+    // Stop a ground vehicle before a sustained loss of terrain support. Short
+    // gaps and vertical variation inside the suspension/drop envelope remain
+    // traversable, so slabs, hills and uneven ground do not become walls.
+    private double groundSupportDistance(
+            Vec3 origin,
+            Vec3 direction,
+            double range,
+            HullBounds hull,
+            CollisionScanContext ctx
+    ) {
+        double permittedGap = Mth.clamp(
+                hull.horizontalRadius() * 0.30D, 0.75D, 2.0D);
+        return GroundSupportSafety.supportedDistance(
+                range, GROUND_SUPPORT_SAMPLE_SPACING, permittedGap,
+                distance -> hasGroundSupportAt(
+                        origin.add(direction.scale(distance)), hull, ctx.level()));
+    }
+
+    // Check representative points below the live hull footprint
+    private boolean hasGroundSupportAt(
+            Vec3 anchor,
+            HullBounds hull,
+            Level level
+    ) {
+        groundTerrainAccess.beginTick(level);
+        double inset = 0.20D;
+        double minimumX = anchor.x + hull.minX() + inset;
+        double maximumX = anchor.x + hull.maxX() - inset;
+        double minimumZ = anchor.z + hull.minZ() + inset;
+        double maximumZ = anchor.z + hull.maxZ() - inset;
+        if (minimumX > maximumX) minimumX = maximumX = anchor.x;
+        if (minimumZ > maximumZ) minimumZ = maximumZ = anchor.z;
+        double centerX = (minimumX + maximumX) * 0.5D;
+        double centerZ = (minimumZ + maximumZ) * 0.5D;
+        double bottom = anchor.y + hull.minY();
+        double[][] samples = {
+                {centerX, centerZ},
+                {minimumX, minimumZ}, {minimumX, maximumZ},
+                {maximumX, minimumZ}, {maximumX, maximumZ},
+                {minimumX, centerZ}, {maximumX, centerZ}
+        };
+        for (double[] sample : samples) {
+            if(groundTerrainAccess.hasSupportColumn(sample[0], sample[1], bottom,
+                    GROUND_SUPPORT_MAX_RISE, GROUND_SUPPORT_MAX_DROP)) return true;
+        }
+        return false;
     }
 
     // Get the ship hull bounds
@@ -8202,30 +16787,15 @@ public final class ShipControlModuleRuntime {
                 minX, minY, minZ, maxX, maxY, maxZ);
     }
 
-    // Get the ship hull distance to target
-    private double shipHullDistanceToTarget(
+    // Require the authored alignment point to reach the final command target
+    private boolean commandTargetReached(
             Telemetry targetTelemetry,
-            Vec3 targetPosition
+            ActiveShipCommand command
     ) {
-        CollisionScanContext ctx = collisionScanContext();
-        if (ctx == null) {
-            return finite(targetPosition)
-                    .distanceTo(targetTelemetry.position());
-        }
-        return shipHullBounds(
-                targetTelemetry.position(), ctx.shipSubLevels())
-                .distanceToTarget(targetTelemetry.position(), targetPosition);
-    }
-
-    // Check if the ship hull reached the target
-    private boolean shipHullTargetReached(
-            Telemetry targetTelemetry,
-            Vec3 targetPosition,
-            double tolerance
-    ) {
-        return navigationTargetReached(
-                shipHullDistanceToTarget(targetTelemetry, targetPosition),
-                tolerance);
+        double distance = usesGroundNavigation()
+                ? horizontalDistance(targetTelemetry.position(), command.targetPosition())
+                : targetTelemetry.position().distanceTo(command.targetPosition());
+        return navigationTargetReached(distance, command.tolerance());
     }
 
     // Check if the navigation target was reached
@@ -8233,6 +16803,32 @@ public final class ShipControlModuleRuntime {
         return Double.isFinite(hullDistance)
                 && Math.max(0.0D, hullDistance)
                 <= Math.max(0.0D, finite(tolerance));
+    }
+
+    // Require a navigation arrival to settle before another command can replace its route
+    static boolean navigationArrivalReached(double distance, double tolerance, double speed) {
+        return navigationTargetReached(distance, tolerance)
+                && navigationVelocitySettled(speed);
+    }
+
+    // Check whether a target point has stopped moving fast enough to hand control over
+    private static boolean navigationVelocitySettled(double speed) {
+        return Double.isFinite(speed) && Math.max(0.0D, speed)
+                <= LINEAR_VELOCITY_TOLERANCE;
+    }
+
+    // Check whether the hull has reached a navigation hand-off target
+    private boolean shipHullTargetReached(
+            Telemetry targetTelemetry,
+            Vec3 targetPosition,
+            double tolerance
+    ) {
+        CollisionScanContext ctx = collisionScanContext();
+        double distance = ctx == null
+                ? finite(targetPosition).distanceTo(targetTelemetry.position())
+                : shipHullBounds(targetTelemetry.position(), ctx.shipSubLevels())
+                .distanceToTarget(targetTelemetry.position(), targetPosition);
+        return navigationTargetReached(distance, tolerance);
     }
 
     // Get the ship hull dist to target
@@ -8245,20 +16841,9 @@ public final class ShipControlModuleRuntime {
             return horizontalDistance(
                     targetTelemetry.position(), targetPosition);
         }
-        HullBounds hull = shipHullBounds(
-                targetTelemetry.position(), ctx.shipSubLevels());
-        Vec3 target = finite(targetPosition);
-        double nearestSquared = Double.POSITIVE_INFINITY;
-        for (AABB bounds : hull.worldBoundsAt(targetTelemetry.position(), 0.0D)) {
-            double dx = Math.max(
-                    Math.max(bounds.minX - target.x, 0.0D),
-                    target.x - bounds.maxX);
-            double dz = Math.max(
-                    Math.max(bounds.minZ - target.z, 0.0D),
-                    target.z - bounds.maxZ);
-            nearestSquared = Math.min(nearestSquared, dx * dx + dz * dz);
-        }
-        return Math.sqrt(nearestSquared);
+        return shipHullBounds(targetTelemetry.position(), ctx.shipSubLevels())
+                .horizontalDistanceToTarget(
+                        targetTelemetry.position(), targetPosition);
     }
 
     // Get the target distance to bounds
@@ -8408,6 +16993,24 @@ public final class ShipControlModuleRuntime {
         return collisionProbeCache;
     }
 
+    // Build the dynamic Sable hull once per controller position and server tick.
+    private HullBounds cachedShipHullBounds(Vec3 position, CollisionScanContext ctx) {
+        Vec3 center = finite(position);
+        long gameTime = ctx.level().getGameTime();
+        if (collisionHullCache != null
+                && collisionHullCacheTick == gameTime
+                && collisionHullCacheContext == ctx
+                && collisionHullCachePosition.distanceToSqr(center) <= 1.0E-8D) {
+            return collisionHullCache;
+        }
+        HullBounds hull = shipHullBounds(center, ctx.shipSubLevels());
+        collisionHullCacheTick = gameTime;
+        collisionHullCacheContext = ctx;
+        collisionHullCachePosition = center;
+        collisionHullCache = hull;
+        return hull;
+    }
+
     // Get the collision distance
     private double collisionDistance(
             Vec3 pos, Vec3 worldDir, double range
@@ -8424,19 +17027,26 @@ public final class ShipControlModuleRuntime {
             collisionDistanceCacheTick = gameTime;
             collisionDistanceCache.clear();
         }
-        CollisionProbe probe = new CollisionProbe(pos, dir, scanRange, false);
+        CollisionProbe probe = new CollisionProbe(
+                pos, dir, scanRange, false, false, false);
         Double cached = collisionDistanceCache.get(probe);
         if (cached != null) {
             return cached;
         }
-        HullBounds hull = shipHullBounds(
-                pos, ctx.shipSubLevels());
+        HullBounds hull = cachedShipHullBounds(pos, ctx);
+        List<AABB> movingBounds = hull.worldBoundsAt(pos, COLLISION_HULL_MARGIN);
         double distance = SubLevelParticleOcclusion.findProbedBoundsBlockingDistance(
                 ctx.level(), ctx.containingSubLevel(), dir, scanRange,
-                hull.worldBoundsAt(pos, COLLISION_HULL_MARGIN),
+                movingBounds,
                 true, ctx.excludedSubLevelIds(), true,
                 COLLISION_NAVIGATION_PROBES_PER_BOUNDS,
-                collisionProbeCache(ctx.level()));
+                collisionProbeCache(ctx.level()),
+                isControlMode(ScmBuiltinControlModes.AIRSHIP_ID) ? COLLISION_HULL_MARGIN * 2.0D : 0.0D);
+        double dynamicBodyDistance =
+                SubLevelParticleOcclusion.findSubLevelEnvelopeBlockingDistance(
+                        ctx.level(), dir, scanRange, movingBounds,
+                        ctx.excludedSubLevelIds(), collisionProbeCache(ctx.level()));
+        distance = Math.min(distance, dynamicBodyDistance);
         collisionDistanceCache.put(probe, distance);
         return distance;
     }
@@ -8447,15 +17057,19 @@ public final class ShipControlModuleRuntime {
         if (root == null) {
             return null;
         }
-        Level level = root.getLevel();
+        // Collision queries must run against the containing dimension. Passing
+        // a sub-level view limits Sable's spatial query to that vehicle and
+        // makes other moving craft invisible to generic avoidance.
+        Level level = SableLevelApi.serverLevel(root.getLevel());
+        if (level == null) {
+            level = root.getLevel();
+        }
         if (level == null) {
             return null;
         }
         SableAssemblyTopologyApi.Topology topology = assemblyTopology(root);
-        updateCollisionTopology(topology);
-        List<SubLevel> shipSubLevels = topology.available()
-                ? new ArrayList<>(topology.loadedBodies())
-                : connectedShipSubLevels(root);
+        List<SubLevel> shipSubLevels = collisionShipSubLevels(root, topology);
+        updateCollisionTopology(topology, shipSubLevels);
         if (collisionCtx != null
                 && collisionCtx.level() == level
                 && collisionCtx.containingSubLevel() == root
@@ -8475,10 +17089,20 @@ public final class ShipControlModuleRuntime {
 
     // Update the collision topology
     private void updateCollisionTopology(
-            @Nullable SableAssemblyTopologyApi.Topology topology
+            @Nullable SableAssemblyTopologyApi.Topology topology,
+            Collection<SubLevel> shipSubLevels
     ) {
         String fingerprint = topology != null && topology.available()
                 ? topology.fingerprint() : "";
+        if (shipSubLevels != null && !shipSubLevels.isEmpty()) {
+            StringBuilder supportFingerprint = new StringBuilder(fingerprint).append('|');
+            shipSubLevels.stream()
+                    .filter(Objects::nonNull)
+                    .map(SubLevel::getUniqueId)
+                    .sorted(Comparator.comparing(UUID::toString))
+                    .forEach(id -> supportFingerprint.append(id).append(','));
+            fingerprint = supportFingerprint.toString();
+        }
         if (Objects.equals(collisionTopologyFingerprint, fingerprint)) {
             return;
         }
@@ -8493,6 +17117,10 @@ public final class ShipControlModuleRuntime {
         collisionProbeCacheTick = Long.MIN_VALUE;
         collisionProbeCache.clear();
         navigationPathStates.clear();
+        routeTrafficIntents.clear();
+        routeTrafficDecisions.clear();
+        autopilotDebugStates.clear();
+        autopilotControlDemand = null;
         aircraftNavigationStates.clear();
     }
 
@@ -8500,10 +17128,15 @@ public final class ShipControlModuleRuntime {
     private List<SubLevel> connectedShipSubLevels(ServerSubLevel root) {
         SableAssemblyTopologyApi.Topology topology = assemblyTopologyCache.get(root);
         UUID rootId = root.getUniqueId();
+        long gameTime = root.getLevel().getGameTime();
+        boolean loadingSupportRefreshDue = intervalElapsed(gameTime,
+                connectedLoadingSupportRefreshTick,
+                SCM_LOADING_SUPPORT_REFRESH_TICKS);
         if (Objects.equals(connectedSubLevelsRootId, rootId)
                 && !cachedConnectedSubLevels.isEmpty()
                 && cachedConnectedSubLevels.stream().noneMatch(SubLevel::isRemoved)
-                && cachedAssemblyTopology == topology) {
+                && cachedAssemblyTopology == topology
+                && !loadingSupportRefreshDue) {
             return cachedConnectedSubLevels;
         }
         Map<UUID, SubLevel> connected = new LinkedHashMap<>();
@@ -8515,13 +17148,143 @@ public final class ShipControlModuleRuntime {
                 }
             }
         }
+        includeOptionalArticulatedChildren(root, connected);
+        includeNearbyLoadingSupportBodies(root, connected);
         List<SubLevel> res = List.copyOf(connected.values());
-        connectedSubLevelsTick = assemblyTopologyCache.generation();
+        long signature = assemblyTopologyCache.generation();
+        for (UUID id : connected.keySet()) {
+            signature = signature * 31L + id.getMostSignificantBits();
+            signature = signature * 31L + id.getLeastSignificantBits();
+        }
+        connectedSubLevelsTick = signature;
         connectedSubLevelsRootId = rootId;
+        connectedLoadingSupportRefreshTick = gameTime;
         cachedConnectedSubLevels = res;
         connectedSubLevelIdx = Map.copyOf(connected);
         cachedAssemblyTopology = topology;
         return res;
+    }
+
+    // Include every live controlled carriage in the collision hull.
+    private List<SubLevel> collisionShipSubLevels(
+            ServerSubLevel root,
+            @Nullable SableAssemblyTopologyApi.Topology topology
+    ) {
+        Map<UUID, SubLevel> bodies = new LinkedHashMap<>();
+        // Loading dependencies may be nearby traffic, not part of this hull.
+        bodies.put(root.getUniqueId(), root);
+        if (topology != null && topology.available()) {
+            for (ServerSubLevel body : topology.loadedBodies()) {
+                if (body != null && !body.isRemoved()) {
+                    bodies.putIfAbsent(body.getUniqueId(), body);
+                }
+            }
+        }
+        includeOptionalArticulatedChildren(root, bodies);
+        for (UUID bodyId : collisionMappedSubLevelIds()) {
+            Object resolved = SubLevelBlockEntityCollector.getSubLevel(
+                    root.getLevel(), bodyId);
+            if (resolved instanceof SubLevel body && !body.isRemoved()
+                    && body.getLevel() == root.getLevel()) {
+                bodies.putIfAbsent(body.getUniqueId(), body);
+            }
+        }
+        return List.copyOf(bodies.values());
+    }
+
+    // Get every sub-level represented by the live assembly control map
+    private Set<UUID> collisionMappedSubLevelIds() {
+        Set<UUID> bodyIds = new LinkedHashSet<>(activeAssemblySubLevelIds);
+        ShipControlMap map = activeAssemblyMap;
+        if (map == null) {
+            return Set.copyOf(bodyIds);
+        }
+        if (map.rootSubLevelId() != null) {
+            bodyIds.add(map.rootSubLevelId());
+        }
+        for (ShipControlMap.PropulsionUnit unit : map.units()) {
+            if (unit.subLevelId() != null) {
+                bodyIds.add(unit.subLevelId());
+            }
+        }
+        for (ShipControlMap.BearingUnit bearing : map.bearings()) {
+            if (bearing.hostSubLevelId() != null) {
+                bodyIds.add(bearing.hostSubLevelId());
+            }
+            bodyIds.addAll(bearing.childSubLevelIds());
+            for (ShipControlMap.BearingPose pose : bearing.poses()) {
+                for (ShipControlMap.AerodynamicSurface surface : pose.aerodynamicSurfaces()) {
+                    if (surface.subLevelId() != null) {
+                        bodyIds.add(surface.subLevelId());
+                    }
+                }
+            }
+        }
+        for (ShipControlMap.DockingConnector connector : map.dockingConnectors()) {
+            if (connector.subLevelId() != null) {
+                bodyIds.add(connector.subLevelId());
+            }
+        }
+        for (ShipControlMap.CrnDisplay display : map.crnDisplays()) {
+            if (display.subLevelId() != null) {
+                bodyIds.add(display.subLevelId());
+            }
+        }
+        for (ShipControlMap.AccDisplay display : map.accDisplays()) {
+            if (display.subLevelId() != null) {
+                bodyIds.add(display.subLevelId());
+            }
+        }
+        for (ShipControlMap.Seat seat : map.seats()) {
+            if (seat.subLevelId() != null) {
+                bodyIds.add(seat.subLevelId());
+            }
+        }
+        return Set.copyOf(bodyIds);
+    }
+
+    // Include nearby loading-only drive bodies without turning them into structural topology.
+    private static void includeNearbyLoadingSupportBodies(
+            ServerSubLevel root,
+            Map<UUID, SubLevel> connected
+    ) {
+        if (root == null || connected == null) return;
+        List<ServerSubLevel> dependencies = SableAssemblyTopologyApi.loadingDependencyBodies(root);
+        boolean added;
+        do {
+            added = false;
+            for (ServerSubLevel candidate : dependencies) {
+                if (candidate == null || candidate.isRemoved()
+                        || connected.containsKey(candidate.getUniqueId())
+                        || !isNearbyLoadingSupportBody(candidate, connected.values())) {
+                    continue;
+                }
+                connected.put(candidate.getUniqueId(), candidate);
+                added = true;
+            }
+        } while (added);
+    }
+
+    // Check whether a loading dependency is close enough to be a vehicle support body.
+    private static boolean isNearbyLoadingSupportBody(
+            ServerSubLevel candidate,
+            Collection<SubLevel> connected
+    ) {
+        if (candidate == null || candidate.isRemoved() || connected == null) return false;
+        var candidateBounds = candidate.boundingBox();
+        for (SubLevel owner : connected) {
+            if (owner == null || owner.isRemoved()) continue;
+            var ownerBounds = owner.boundingBox();
+            if (candidateBounds.maxX() + SCM_LOADING_SUPPORT_BODY_GAP >= ownerBounds.minX()
+                    && candidateBounds.minX() - SCM_LOADING_SUPPORT_BODY_GAP <= ownerBounds.maxX()
+                    && candidateBounds.maxY() + SCM_LOADING_SUPPORT_BODY_GAP >= ownerBounds.minY()
+                    && candidateBounds.minY() - SCM_LOADING_SUPPORT_BODY_GAP <= ownerBounds.maxY()
+                    && candidateBounds.maxZ() + SCM_LOADING_SUPPORT_BODY_GAP >= ownerBounds.minZ()
+                    && candidateBounds.minZ() - SCM_LOADING_SUPPORT_BODY_GAP <= ownerBounds.maxZ()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // Get the assembly topology
@@ -8532,6 +17295,28 @@ public final class ShipControlModuleRuntime {
             connectedShipSubLevels(root);
         }
         return topology;
+    }
+
+    // Detect dynamic links from external Sable actors without an invalidation event
+    private void refreshExternalConnectionTopology(ServerSubLevel root) {
+        Level level = controller.getLevel();
+        long gameTime = level == null ? Long.MIN_VALUE : level.getGameTime();
+        UUID rootId = root.getUniqueId();
+        if (Objects.equals(externalConnectionProbeRootId, rootId)
+                && !intervalElapsed(gameTime, lastExternalConnectionProbeTick,
+                EXTERNAL_CONNECTION_PROBE_TICKS)) {
+            return;
+        }
+        externalConnectionProbeRootId = rootId;
+        lastExternalConnectionProbeTick = gameTime;
+        SableAssemblyTopologyApi.Topology cached = assemblyTopologyCache.get(root);
+        SableAssemblyTopologyApi.Topology observed = SableAssemblyTopologyApi.discover(
+                root, (owner, actor) -> isAssemblyTopologyActor(actor),
+                (owner, actor, target) -> SableAssemblyConnection.Kind.STRUCTURAL);
+        if (observed.available() && (!cached.available()
+                || !observed.fingerprint().equals(cached.fingerprint()))) {
+            assemblyTopologyCache.invalidate();
+        }
     }
 
     // Discover the assembly topology
@@ -8574,9 +17359,63 @@ public final class ShipControlModuleRuntime {
             return root == null || root.isRemoved() ? List.of() : List.of(root);
         }
         SableAssemblyTopologyApi.Topology topology = discoverAssemblyTopology(serverRoot);
-        return topology.available()
-                ? List.copyOf(topology.loadedBodies())
-                : List.of(serverRoot);
+        Map<UUID, SubLevel> connected = new LinkedHashMap<>();
+        connected.put(serverRoot.getUniqueId(), serverRoot);
+        if (topology.available()) {
+            for (ServerSubLevel body : topology.loadedBodies()) {
+                if (body != null && !body.isRemoved()) {
+                    connected.putIfAbsent(body.getUniqueId(), body);
+                }
+            }
+        }
+        includeOptionalArticulatedChildren(serverRoot, connected);
+        return List.copyOf(connected.values());
+    }
+
+    // Add live optional child bodies discovered by registered compatibility providers
+    private static void includeOptionalArticulatedChildren(
+            ServerSubLevel root, Map<UUID, SubLevel> bodies
+    ) {
+        if (root == null || root.isRemoved() || bodies == null || bodies.isEmpty()) {
+            return;
+        }
+        Level level = root.getLevel();
+        Set<UUID> ids = ScmSubLevelRelationRegistry.connected(
+                bodies.keySet(), optionalSubLevelRelations(root));
+        for (UUID id : ids) {
+            if (bodies.containsKey(id)) {
+                continue;
+            }
+            SubLevel child = SableLevelApi.subLevel(level, id);
+            if (child != null && !child.isRemoved()) {
+                bodies.put(id, child);
+            }
+        }
+    }
+
+    // Collect the loaded optional articulated relations for one root world
+    private static List<ScmSubLevelRelationRegistry.Relation> optionalSubLevelRelations(
+            ServerSubLevel root
+    ) {
+        if (root == null || root.isRemoved()) {
+            return List.of();
+        }
+        Level level = root.getLevel();
+        List<ScmSubLevelRelationRegistry.ScopedBlockEntity> scoped = new ArrayList<>();
+        for (Object candidate : SubLevelBlockEntityCollector.getSubLevels(level)) {
+            if (!(candidate instanceof SubLevel subLevel) || subLevel.isRemoved()) {
+                continue;
+            }
+            for (BlockEntity blockEntity : SubLevelBlockEntityCollector.getBlockEntities(subLevel)) {
+                scoped.add(new ScmSubLevelRelationRegistry.ScopedBlockEntity(
+                        subLevel.getUniqueId(), blockEntity));
+            }
+        }
+        for (BlockEntity blockEntity : SubLevelBlockEntityCollector.getBlockEntities(root)) {
+            scoped.add(new ScmSubLevelRelationRegistry.ScopedBlockEntity(
+                    root.getUniqueId(), blockEntity));
+        }
+        return ScmSubLevelRelationRegistry.relations(level, scoped);
     }
 
     // Check if this is assembly topology actor
@@ -8649,9 +17488,7 @@ public final class ShipControlModuleRuntime {
                                             .orElse(null),
                                     targetTelemetry.position(),
                                     command.targetPosition())
-                            : ("ship_dock".equals(command.type())
-                                    ? dockControlTarget(targetTelemetry, command)
-                                    : command.targetPosition())
+                            : command.targetPosition()
                                     .subtract(targetTelemetry.position()).length();
                 })
                 .min().orElse(0.0D);
@@ -8722,15 +17559,12 @@ public final class ShipControlModuleRuntime {
 
     // Get the controller forward root
     private Vec3 controllerForwardRoot() {
-        Direction facing = controller.getBlockState().hasProperty(AnalogueContraptionControllerBlock.HORIZONTAL_FACING)
-                ? controller.getBlockState().getValue(AnalogueContraptionControllerBlock.HORIZONTAL_FACING)
-                : Direction.NORTH;
-        return ctrlDirToRoot(Vec3.atLowerCornerOf(facing.getNormal()));
+        return ctrlDirToRoot(controller.getScmOrientation().forwardVector());
     }
 
     // Get the controller up root
     private Vec3 controllerUpRoot() {
-        return ctrlDirToRoot(new Vec3(0.0D, 1.0D, 0.0D));
+        return ctrlDirToRoot(controller.getScmOrientation().upVector());
     }
 
     // Get the ctrl dir to root
@@ -8791,11 +17625,7 @@ public final class ShipControlModuleRuntime {
             Pose3dc sourcePose,
             Vec3 pos
     ) {
-        Vector3d world = new Vector3d(
-                pos.x, pos.y, pos.z);
-        sourcePose.transformPosition(world);
-        targetPose.transformPositionInverse(world);
-        return new Vec3(world.x, world.y, world.z);
+        return SableTransformApi.transformPositionBetween(targetPose, sourcePose, pos);
     }
 
     // Transform a direction between poses
@@ -8804,11 +17634,7 @@ public final class ShipControlModuleRuntime {
             Pose3dc sourcePose,
             Vec3 dir
     ) {
-        Vector3d world = new Vector3d(
-                dir.x, dir.y, dir.z);
-        sourcePose.orientation().transform(world);
-        targetPose.orientation().transformInverse(world);
-        return new Vec3(world.x, world.y, world.z);
+        return SableTransformApi.transformDirectionBetween(targetPose, sourcePose, dir);
     }
 
     // Get the world position
@@ -8890,19 +17716,24 @@ public final class ShipControlModuleRuntime {
         lastIssuedCommands.put(key, command);
         completedCommands.remove(key);
         if (!continuingTargetUpdate) {
+            if(key.equals(scheduleSplineConstraintKey)) releaseScheduleSplineConstraint();
             navigationPathStates.remove(key);
             positionIntegralErrors.remove(key);
+            airshipAttitudeHoldTargets.remove(key);
             aircraftNavigationStates.remove(key);
         }
         if (isTranslationTarget(command.type())) {
             supersedeTranslationTargets(key, command.type());
         }
         if (command.disabled()) {
+            if(key.equals(scheduleSplineConstraintKey)) releaseScheduleSplineConstraint();
             activeCommands.remove(key);
             completedCommands.add(key);
+            invalidateAutopilotDebugSnapshot();
             return;
         }
         activeCommands.put(key, command);
+        invalidateAutopilotDebugSnapshot();
     }
 
     // Supersede the translation targets
@@ -8914,9 +17745,11 @@ public final class ShipControlModuleRuntime {
                 .map(Map.Entry::getKey)
                 .toList();
         for (String key : superseded) {
+            if(key.equals(scheduleSplineConstraintKey)) releaseScheduleSplineConstraint();
             activeCommands.remove(key);
             navigationPathStates.remove(key);
             positionIntegralErrors.remove(key);
+            airshipAttitudeHoldTargets.remove(key);
             aircraftNavigationStates.remove(key);
         }
     }
@@ -8936,12 +17769,15 @@ public final class ShipControlModuleRuntime {
     // Complete the command
     private void completeCommand(ActiveShipCommand command) {
         completedCommands.add(commandKey(command.id(), command.type()));
+        invalidateAutopilotDebugSnapshot();
     }
 
     // Check if this has active control commands
     private boolean hasActiveControlCommands() {
         return activeCommands.values().stream().anyMatch(command ->
-                !"ship_initialize".equals(command.type()) && !"ship_stop".equals(command.type()));
+                !"ship_initialize".equals(command.type())
+                        && !"ship_scan_configuration".equals(command.type())
+                        && !"ship_stop".equals(command.type()));
     }
 
     // Update the command completion
@@ -8952,17 +17788,14 @@ public final class ShipControlModuleRuntime {
                 continue;
             }
             boolean reached = switch (command.type()) {
-                case "ship_strafe" -> strafeTargetReached(telemetry, command);
+                case "ship_strafe", "ship_strafe_left", "ship_strafe_right" -> strafeTargetReached(telemetry, command);
                 case "ship_climb" -> Math.abs(command.targetY() - telemetry.position().y) <= POSITION_TOLERANCE
                     && Math.abs(telemetry.velocity().y) <= LINEAR_VELOCITY_TOLERANCE;
                 case "ship_face" -> faceTargetReached(telemetry, command);
                 case "ship_dock" -> {
                     Telemetry targetTelemetry = targetPointTelemetry(
                             telemetry, command.targetPoint(), command.targetConnectorIndex());
-                    yield shipHullTargetReached(
-                            targetTelemetry,
-                            command.targetPosition(),
-                            command.tolerance())
+                    yield commandTargetReached(targetTelemetry, command)
                             && targetTelemetry.velocity().length()
                             <= LINEAR_VELOCITY_TOLERANCE
                             && dockingDirectionReached(command);
@@ -8970,10 +17803,7 @@ public final class ShipControlModuleRuntime {
                 case "ship_navigate" -> {
                     Telemetry targetTelemetry = targetPointTelemetry(
                             telemetry, command.targetPoint(), command.targetConnectorIndex());
-                    yield shipHullTargetReached(
-                            targetTelemetry,
-                            command.targetPosition(),
-                            command.tolerance())
+                    yield commandTargetReached(targetTelemetry, command)
                             && (command.targetDirection().lengthSqr() <= 1.0E-12D
                             || dockingDirectionReached(command));
                 }
@@ -8981,16 +17811,20 @@ public final class ShipControlModuleRuntime {
                     && Math.abs(telemetry.velocity().y) <= LINEAR_VELOCITY_TOLERANCE;
                 case "ship_stabilize" ->
                         stabilizationTargetReached(telemetry, command);
-                case "ship_decelerate" ->
-                        telemetry.velocity().length() <= LINEAR_VELOCITY_TOLERANCE;
-                case "ship_yaw", "ship_pan", "ship_pitch", "ship_tilt", "ship_roll",
+                case "ship_decelerate", "ship_brake" ->
+                    telemetry.velocity().length() <= LINEAR_VELOCITY_TOLERANCE;
+                case "ship_yaw", "ship_yaw_right", "ship_yaw_left",
+                     "ship_pan", "ship_pitch", "ship_pitch_up", "ship_pitch_down",
+                     "ship_tilt", "ship_roll", "ship_roll_right", "ship_roll_left",
                      "ship_accelerate", "ship_forward", "ship_reverse",
+                     "ship_backward",
                      "ship_ascend", "ship_descend" -> true;
                 default -> false;
             };
             if (reached) {
                 completeCommand(command);
-                if ("ship_decelerate".equals(command.type())) {
+                if ("ship_decelerate".equals(command.type())
+                        || "ship_brake".equals(command.type())) {
                     activeCommands.remove(key);
                 }
             }
@@ -9003,7 +17837,12 @@ public final class ShipControlModuleRuntime {
         Vec3 up = controllerUpRoot();
         Vec3 right = normalize(forward.cross(up), new Vec3(1.0D, 0.0D, 0.0D));
         double currentSpeed = worldDirectionToRoot(telemetry.velocity()).dot(right);
-        return Math.abs(command.amount() - currentSpeed) <= 0.05D
+        double targetSpeed = switch (command.type()) {
+            case "ship_strafe_left" -> -Math.abs(command.amount());
+            case "ship_strafe_right" -> Math.abs(command.amount());
+            default -> command.amount();
+        };
+        return Math.abs(targetSpeed - currentSpeed) <= 0.05D
                 && telemetry.angularVelocity().length() <= ANGULAR_VELOCITY_TOLERANCE;
     }
 
@@ -9070,13 +17909,20 @@ public final class ShipControlModuleRuntime {
 
     // Reset the control state
     private void resetControlState() {
+        releaseScheduleSplineConstraint();
+        nextSplineConstraintRetryTick = Long.MIN_VALUE;
         releaseControlAuthority();
         magneticConnectorIdx = -1;
         activeCommands.clear();
         lastIssuedCommands.clear();
         couplerControlRequests.clear();
         navigationPathStates.clear();
+        routeTrafficIntents.clear();
+        routeTrafficDecisions.clear();
+        autopilotDebugStates.clear();
+        autopilotControlDemand = null;
         positionIntegralErrors.clear();
+        airshipAttitudeHoldTargets.clear();
         aircraftNavigationStates.clear();
         collisionTelemetryStates.clear();
         collisionCtxTick = Long.MIN_VALUE;
@@ -9088,8 +17934,10 @@ public final class ShipControlModuleRuntime {
         pathTraceCache.clear();
         collisionProbeCacheTick = Long.MIN_VALUE;
         collisionProbeCache.clear();
+        ikGaitState.clear();
         connectedSubLevelsTick = Long.MIN_VALUE;
         connectedSubLevelsRootId = null;
+        connectedLoadingSupportRefreshTick = Long.MIN_VALUE;
         cachedConnectedSubLevels = List.of();
         connectedSubLevelIdx = Map.of();
         cachedAssemblyTopology = null;
@@ -9107,7 +17955,6 @@ public final class ShipControlModuleRuntime {
         activeCarriageCount = 0;
         absorbedScmMapCount = 0;
         lastMainCarriageMapSafetyRefreshTick = Long.MIN_VALUE;
-        allocationWorkspace.reset();
         groundDriveCheckTick = Long.MIN_VALUE;
         invalidateTelemetryCache();
     }
@@ -9160,12 +18007,6 @@ public final class ShipControlModuleRuntime {
         createInitTracking();
         PhysicsStaffInteractionGuard.protectInitializationTargets(
                 initProtectedSubLevelIds);
-    }
-
-    // Check if the command yields to the docking magnet
-    private boolean yieldsToDockingMagnet(ActiveShipCommand command) {
-        return magneticConnectorIdx >= 0
-                && command.targetConnectorIndex() == magneticConnectorIdx;
     }
 
     // Create the init tracking
@@ -9315,6 +18156,7 @@ public final class ShipControlModuleRuntime {
 
     // Restore the cal actuators
     private void restoreCalActuators() {
+        speedCalibrationSelectors.clear();
         for (CalibrationUnit unit : calibrationUnits) {
             try {
                 unit.actuator.restore();
@@ -9360,6 +18202,7 @@ public final class ShipControlModuleRuntime {
 
     // Release the control actuators
     private void releaseControlActuators() {
+        releaseScheduleSplineConstraint();
         for (Actuator actuator : controlActuators.values()) {
             try {
                 actuator.restore();
@@ -9369,6 +18212,10 @@ public final class ShipControlModuleRuntime {
         }
         controlActuators.clear();
         appliedControlValues.clear();
+        regulatedFaceControlValues.clear();
+        speedControlBranches.clear();
+        speedControlBranchFingerprint = "";
+        regulatedSpeedLevels.clear();
         for (BearingActuator actuator : controlBearings.values()) {
             try {
                 actuator.restore();
@@ -9382,8 +18229,12 @@ public final class ShipControlModuleRuntime {
             wheel.ct$setDirectInputs(0.0F, 0.0F, 0.0F);
         }
         controlledScmWheels.clear();
+        controlledScmWheelTargets.clear();
+        controlledScmWheelLongitudinalPositions.clear();
+        clearScmFaceActionControls();
         lastScmWheelRefreshTick = Long.MIN_VALUE;
         lastScmWheelTopologyFingerprint = "";
+        lastScmWheelActionFingerprint = "";
         groundDriveCheckTick = Long.MIN_VALUE;
         groundDriveTopologyFingerprint = "";
     }
@@ -9427,6 +18278,7 @@ public final class ShipControlModuleRuntime {
 
     // Mark the operation as failed
     private void fail(String msg, @Nullable Exception err) {
+        configurationScanOnly = false;
         syncInitializationDisplays(false, 0, "");
         restoreCalActuators();
         releaseFreezeHandles();
@@ -9445,6 +18297,7 @@ public final class ShipControlModuleRuntime {
         calibrationDockingConnectors.clear();
         calibrationCrnDisplays.clear();
         calibrationAccDisplays.clear();
+        calibrationSeats.clear();
         calibrationSubLevels.clear();
         initializationSubLevels.clear();
         initBodyStates.clear();
@@ -9521,13 +18374,51 @@ public final class ShipControlModuleRuntime {
         if (values == null || !values.containsKey("speed")) {
             return Math.max(0.0D, finite(fallback));
         }
-        return Math.max(0.0D, finite(values.get("speed")));
+        double speed = Math.max(0.0D, finite(values.get("speed")));
+        return values.getOrDefault("speed_fraction", 0.0D) > 0.5D
+                ? Mth.clamp(speed, 0.0D, 1.0D) * 28.0D : speed;
+    }
+
+    // Get an optional direct propulsion request. A negative value preserves
+    // the legacy target-speed controller for graph and third-party commands
+    // which do not opt into the schedule throttle contract.
+    static double commandDriveThrottle(Map<String, Double> values) {
+        if(values != null && values.getOrDefault("speed_fraction", 0.0D) > 0.5D){
+            return Mth.clamp(finite(values.getOrDefault("speed", 0.6D)), 0.0D, 1.0D);
+        }
+        if (values == null || !values.containsKey("drive_throttle")) {
+            return -1.0D;
+        }
+        return ScmSpeedControl.propulsionRequest(values.get("drive_throttle"));
+    }
+
+    // Schedule runtimes attach this stable entry key so pre-calculated legs survive live dock updates.
+    private static int scheduleRouteEntry(Map<String, Double> values) {
+        if (values == null || !values.containsKey("schedule_route_entry")) {
+            return -1;
+        }
+        double value = finite(values.get("schedule_route_entry"));
+        return value < 0.0D ? -1 : Math.max(-1, Mth.floor(value));
     }
 
     // Check if collision avoidance was requested
     static boolean collisionAvoidanceRequested(Map<String, Double> values) {
         return values != null
                 && finite(values.getOrDefault("avoid_collisions", 0.0D)) > 0.5D;
+    }
+
+    // Restrict retained world routing to between-point travel commands.
+    private static boolean isPathfindingTransit(ActiveShipCommand command) {
+        return command != null && ("ship_navigate".equals(command.type())
+                || "ship_follow".equals(command.type()))
+                && !isDockWaitProvisioning(command.id());
+    }
+
+    // Keep dock queue and landing-zone provisioning on their existing reactive control path.
+    private static boolean isDockWaitProvisioning(String commandId) {
+        return "shipping_schedule_queue_hover".equals(commandId)
+                || "shipping_schedule_park".equals(commandId)
+                || "shipping_schedule_park_hold".equals(commandId);
     }
 
     // Normalize the value to a finite result
@@ -9559,12 +18450,7 @@ public final class ShipControlModuleRuntime {
         return Mth.lerp(clamped, minimum, maximum);
     }
 
-    // Get the envelope modulation
-    static double envelopeModulation(double normalizedControl) {
-        return Math.sqrt(Mth.clamp(finite(normalizedControl), 0.0D, 1.0D));
-    }
-
-    // Check if this requires calibration refresh
+    // Check if this stored map uses a retired adapter identity
     static boolean requiresCalibrationRefresh(@Nullable ShipControlMap candidate) {
         if (candidate == null) {
             return false;
@@ -9577,16 +18463,6 @@ public final class ShipControlModuleRuntime {
                         || "digital_envelope".equals(unit.adapter())
                         || "digital_envelope_v2".equals(unit.adapter()));
         if (legacyActuator) {
-            return true;
-        }
-        boolean missingVectorArticulation = candidate.units().stream()
-                .filter(unit -> unit.blockId().startsWith("createpropulsion:")
-                        && unit.blockId().contains("vector_thruster"))
-                .anyMatch(unit -> candidate.bearings().stream().noneMatch(articulation ->
-                        PROPULSION_VECTOR_ADAPTER.equals(articulation.adapter())
-                                && articulation.hostSubLevelId().equals(unit.subLevelId())
-                                && articulation.blockPosition().equals(unit.blockPosition())));
-        if (missingVectorArticulation) {
             return true;
         }
         Map<Integer, ShipControlMap.PropulsionUnit> unitsByIndex = new HashMap<>();
@@ -9673,6 +18549,11 @@ public final class ShipControlModuleRuntime {
         if (blockEntity == null || blockEntity.isRemoved()) {
             return null;
         }
+        if (isFlightControlVectorThruster(blockEntity)
+                && blockEntity instanceof IDirectControlReceiver receiver
+                && invokeNoArg(blockEntity, "getLinkedComputerPos") == null) {
+            return new FlightControlVectorThrusterActuator(blockEntity, receiver);
+        }
         if (blockEntity instanceof BlockEntityPropeller propeller) {
             if (blockEntity instanceof IDirectControlReceiver receiver) {
                 return new DirectActuator(blockEntity, propeller, receiver);
@@ -9706,6 +18587,15 @@ public final class ShipControlModuleRuntime {
         return null;
     }
 
+    // Check if this is an unlinked Flight Control vector thruster
+    private static boolean isFlightControlVectorThruster(BlockEntity blockEntity) {
+        String className = blockEntity.getClass().getName();
+        return className.startsWith("ace.flight.block.")
+                && className.endsWith("VectorThrusterBlockEntity")
+                && firstMethod(blockEntity.getClass(), "getNozzleDirection") != null
+                && firstMethod(blockEntity.getClass(), "getEffectiveMaxThrustForComputer") != null;
+    }
+
     // Get the actuators
     private static List<Actuator> actuatorsFor(@Nullable BlockEntity blockEntity) {
         if (blockEntity instanceof RcsThrusterBlockEntity rcsThruster && !blockEntity.isRemoved()) {
@@ -9728,6 +18618,10 @@ public final class ShipControlModuleRuntime {
     ) {
         String adapter = unit.adapter();
         if (adapter.startsWith("scm:") && ownerLevel != null) {
+            Actuator configured = configuredScmActuatorForStored(blockEntity, unit, ownerLevel);
+            if (configured != null) {
+                return configured;
+            }
             AdvancedContraptionControllerBlockEntity owningController =
                     activeScmActuatorOwners.getOrDefault(
                             new AssemblyUnitIdentity(unit.subLevelId(),
@@ -9743,7 +18637,7 @@ public final class ShipControlModuleRuntime {
                 ResourceLocation linkedId = BuiltInRegistries.BLOCK.getKey(linkedState.getBlock());
                 return new ScmTarget(linked.subLevelId(), linked.blockPosition(),
                         linkedId == null ? linked.blockId() : linkedId.toString(), linked.label(),
-                        linked.signalPosition(), linked.signalFace());
+                        linked.signalPosition(), linked.signalFace(), linked.controlChannelId());
             }).toList();
             ScmTarget target = linkedTargets.stream()
                     .filter(linked -> Objects.equals(linked.subLevelId(), unit.subLevelId())
@@ -9768,9 +18662,11 @@ public final class ShipControlModuleRuntime {
                     ownerLevel, linkedTargets, linkedSubLevels, directionFrame, suggestedDir,
                     owningController.getShipControlMode().id().equals(
                             ScmBuiltinControlModes.CAR_ID))) {
-                if (adapter.equals("scm:" + linked.probe().adapterId())) {
-                    return new ScmProbeActuator(linked.level(), linked.target(),
-                            linked.blockEntity(), linked.probe());
+                ScmProbeActuator candidate = new ScmProbeActuator(
+                        linked.level(), linked.target(), linked.blockEntity(), linked.probe());
+                if (adapter.equals(candidate.kind())
+                        || adapter.equals("scm:" + linked.probe().adapterId())) {
+                    return candidate;
                 }
             }
             return null;
@@ -9782,6 +18678,65 @@ public final class ShipControlModuleRuntime {
             }
         }
         return actuators.size() == 1 ? actuators.getFirst() : null;
+    }
+
+    // Recreate a profile-configured SCM probe directly from its persisted
+    // block/face binding. This keeps custom registry probes and face-scoped
+    // redstone controls alive after the initial map build; they do not depend
+    // on an unrelated Contraption Network Linker target being present.
+    private @Nullable Actuator configuredScmActuatorForStored(
+            @Nullable BlockEntity initialBlockEntity,
+            ShipControlMap.PropulsionUnit unit,
+            Level ownerLevel
+    ) {
+        List<ScmConfigurationProfile.UnitReference> references = new ArrayList<>();
+        controller.getScmConfigurationProfile().groups().forEach(group ->
+                references.addAll(group.units()));
+        for (ScmConfigurationProfile.UnitReference reference : references) {
+            if (!configurationReferenceMatchesUnit(reference, unit)) {
+                continue;
+            }
+            SubLevel subLevel = SableLevelApi.subLevel(ownerLevel, reference.subLevelId());
+            if (subLevel == null || subLevel.isRemoved()) {
+                continue;
+            }
+            BlockEntity blockEntity = initialBlockEntity;
+            if (blockEntity == null || blockEntity.getLevel() != subLevel.getLevel()
+                    || !reference.blockPosition().equals(blockEntity.getBlockPos())) {
+                // Prefer the live entity owned by the target sub-level. The
+                // probe can then rebind from that same scoped lookup when the
+                // moving sub-level replaces its wrapper. The collector is a
+                // fallback solely for block-entity-less redstone controls.
+                blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
+                        ownerLevel, reference.subLevelId(), reference.blockPosition());
+                if (blockEntity == null) {
+                    blockEntity = SubLevelBlockEntityCollector.getBlockEntity(
+                            subLevel, reference.blockPosition());
+                }
+            }
+            BlockState state = blockEntity == null
+                    ? subLevel.getLevel().getBlockState(reference.blockPosition())
+                    : blockEntity.getBlockState();
+            if (state.isAir()) {
+                continue;
+            }
+            ResourceLocation id = BuiltInRegistries.BLOCK.getKey(state.getBlock());
+            Direction face = reference.face();
+            ScmTarget target = new ScmTarget(reference.subLevelId(), reference.blockPosition(),
+                    id == null ? unit.blockId() : id.toString(), state.getBlock().getName().getString(),
+                    face == null ? null : reference.blockPosition().relative(face), face);
+            Vec3 suggested = face == null ? unit.forceDirection()
+                    : Vec3.atLowerCornerOf(face.getNormal());
+            for (ScmControlProbe probe : ScmControlProbeRegistry.create(
+                    subLevel.getLevel(), blockEntity, target, suggested)) {
+                ScmProbeActuator actuator = new ScmProbeActuator(
+                        subLevel.getLevel(), target, blockEntity, probe);
+                if (unit.adapter().equals(actuator.kind())) {
+                    return actuator;
+                }
+            }
+        }
+        return null;
     }
 
     // Create the built-in SCM probes
@@ -9809,6 +18764,25 @@ public final class ShipControlModuleRuntime {
                 Vec3 dir = ctx.suggestedDirection().horizontalDistanceSqr() > 1.0E-9D
                         ? normalize(ctx.suggestedDirection(), new Vec3(0.0D, 0.0D, 1.0D))
                         : effectDirection(state, ctx.suggestedDirection());
+                // A face-bound configuration selects one of the two physical
+                // redstone inputs, not an arbitrary logical "forward" label.
+                // DirectionalGearshiftBlock defines LEFT as FACING and RIGHT
+                // as its opposite, so resolve the player's chosen block face
+                // against the live state before creating the safe probe.
+                if (ctx.target().usesFaceControl()
+                        && state.hasProperty(BlockStateProperties.FACING)) {
+                    Direction leftFace = state.getValue(BlockStateProperties.FACING);
+                    Direction selectedFace = ctx.target().signalFace();
+                    if (selectedFace.equals(leftFace) || selectedFace.equals(leftFace.getOpposite())) {
+                        boolean forward = selectedFace.equals(leftFace.getOpposite());
+                        return List.of(new DirectionalGearshiftScmProbe(
+                                blockEntity, receiver, ctx.target(), dir, forward));
+                    }
+                    // The remaining faces are still valid generic redstone
+                    // planes, but they are not inputs of this gearshift.
+                    return List.of(new RedstoneScmProbe(
+                            ctx.level(), blockEntity, ctx.target(), dir));
+                }
                 return List.of(
                         new DirectionalGearshiftScmProbe(
                                 blockEntity, receiver, ctx.target(), dir, true),
@@ -10481,10 +19455,14 @@ public final class ShipControlModuleRuntime {
         private final Level level;
         // SCM probe actuator target
         private final ScmTarget target;
-        // Source block entity
-        private final @Nullable BlockEntity sourceBlockEntity;
-        // Probe
-        private final ScmControlProbe probe;
+        // Source block entity. A moving Sable sub-level may replace this
+        // wrapper while keeping the same local block position, so it must be
+        // rebound through the SCM registry instead of being treated as the
+        // permanent identity of the controlled block.
+        private @Nullable BlockEntity sourceBlockEntity;
+        // Probe. This is replaced together with the source block entity when
+        // a loaded sub-level exposes a new live wrapper for the same target.
+        private ScmControlProbe probe;
 
         // Initialize the SCM probe actuator
         private ScmProbeActuator(
@@ -10502,7 +19480,9 @@ public final class ShipControlModuleRuntime {
         // Get the kind
         @Override
         public String kind() {
-            return "scm:" + probe.adapterId();
+            return "scm:" + probe.adapterId()
+                    + (target.usesFaceControl()
+                    ? ":face_" + target.signalFace().getSerializedName() : "");
         }
 
         // Check if the mapped actuator can be controlled
@@ -10520,29 +19500,66 @@ public final class ShipControlModuleRuntime {
         // Check if this is available
         @Override
         public boolean isAvailable() {
-            if (!level.isLoaded(target.blockPosition())) {
+            return rebindLiveProbe();
+        }
+
+        // Rebind a probe after a moving sub-level replaces its block-entity
+        // wrapper. Probes deliberately own the actual block access (direct
+        // controller calls, variable-transmission power, custom integrations,
+        // and so on), so retaining an old probe after this transition can
+        // appear as a one-tick pulse even when the target position remains
+        // valid. Recreating through the registry makes this apply to every
+        // registered SCM control instead of special-casing individual blocks.
+        private boolean rebindLiveProbe() {
+            BlockEntity current = SimulatedHelper.findLoadedBlockEntityExact(
+                    level, target.subLevelId(), target.blockPosition());
+            if (current != null) {
+                if (current.isRemoved() || current.getBlockState().isAir()) {
+                    return false;
+                }
+                if (current != sourceBlockEntity) {
+                    SubLevel subLevel = target.subLevelId() == null
+                            ? null : SableLevelApi.subLevel(level, target.subLevelId());
+                    Level targetLevel = subLevel == null ? level : subLevel.getLevel();
+                    String adapterId = probe.adapterId();
+                    ScmControlProbe replacement = ScmControlProbeRegistry.create(
+                                    targetLevel, current, target,
+                                    probe.localEffectDirection())
+                            .stream().filter(candidate -> adapterId.equals(candidate.adapterId()))
+                            .findFirst().orElse(null);
+                    if (replacement == null) {
+                        return false;
+                    }
+                    sourceBlockEntity = current;
+                    probe = replacement;
+                }
+                return probe.isAvailable();
+            }
+            if (sourceBlockEntity != null) {
                 return false;
             }
-            BlockEntity current = level.getBlockEntity(target.blockPosition());
-            if (current == null && sourceBlockEntity != null) {
-                current = SimulatedHelper.findLoadedBlockEntityExact(
-                        level, target.subLevelId(), target.blockPosition());
+            if (!SubLevelBlockEntityCollector.isTargetLoaded(
+                    level, target.subLevelId(), target.blockPosition())) {
+                return false;
             }
-            return current == sourceBlockEntity
-                    && !level.getBlockState(target.blockPosition()).isAir()
-                    && probe.isAvailable();
+            SubLevel subLevel = target.subLevelId() == null
+                    ? null : SableLevelApi.subLevel(level, target.subLevelId());
+            BlockState state = subLevel == null
+                    ? level.getBlockState(target.blockPosition())
+                    : subLevel.getLevel().getBlockState(target.blockPosition());
+            return !state.isAir() && probe.isAvailable();
         }
 
         // Check if this requires continuous control
         @Override
-        public boolean requiresContinuousControl() {
+        public boolean requiresContinuousControl(){
             return true;
         }
 
         // Check if this uses physical calibration
         @Override
         public boolean usesPhysicalCalibration() {
-            return probe instanceof CompositeScmProbe;
+            return probe instanceof CompositeScmProbe || probe.controlsSpeed();
         }
 
         // Check if this requires observed response
@@ -10551,38 +19568,54 @@ public final class ShipControlModuleRuntime {
             return probe instanceof CompositeScmProbe;
         }
 
+        // Face-bound targets have an authored signed action and are driven
+        // directly from the final SCM demand rather than vector allocation.
+        @Override
+        public boolean isFaceActionControl() {
+            return target.usesFaceControl();
+        }
+
         // Check if this is wheel control
         @Override
         public boolean isWheelControl() {
             return probe instanceof CompositeScmProbe composite
-                    && composite.isWheelConfiguration();
+                    && composite.isWheelConfiguration()
+                    || probe instanceof WheelMountScmProbe;
         }
 
         // Check if this is a kinetic control
         @Override
         public boolean isKineticControl() {
             return probe instanceof CompositeScmProbe composite
-                    && composite.isKineticConfiguration();
+                    && composite.isKineticConfiguration()
+                    || probe instanceof DirectionalGearshiftScmProbe;
         }
 
         // Get the kinetic control size
         @Override
         public int kineticControlSize() {
-            return probe instanceof CompositeScmProbe composite
-                    ? composite.kineticControlSize() : 0;
+            if (probe instanceof CompositeScmProbe composite) {
+                return composite.kineticControlSize();
+            }
+            return probe instanceof DirectionalGearshiftScmProbe ? 1 : 0;
         }
 
         // Get the kinetic control domain
         @Override
         public Set<String> kineticControlDomain() {
-            return probe instanceof CompositeScmProbe composite
-                    ? composite.controlDomain() : Set.of();
+            if (probe instanceof CompositeScmProbe composite) {
+                return composite.controlDomain();
+            }
+            return probe instanceof DirectionalGearshiftScmProbe
+                    ? Set.of("target-block:" + target.blockStableId()) : Set.of();
         }
 
         // Apply the SCM probe actuator
         @Override
-        public void apply(double control) {
-            probe.apply(Mth.clamp(control, minControl(), maxControl()));
+        public void apply(double control){
+            if (rebindLiveProbe()) {
+                probe.apply(Mth.clamp(control, minControl(), maxControl()));
+            }
         }
 
         // Return the SCM probe actuator to neutral
@@ -10612,6 +19645,9 @@ public final class ShipControlModuleRuntime {
         // Read the SCM probe actuator
         @Override
         public Reading read() {
+            if (!rebindLiveProbe()) {
+                return new Reading(0.0D, 0.0D, false);
+            }
             ScmControlProbe.Reading reading = probe.read();
             return new Reading(reading.speed(), reading.effect(), reading.active());
         }
@@ -10649,13 +19685,34 @@ public final class ShipControlModuleRuntime {
         // Restore the SCM probe actuator
         @Override
         public void restore() {
-            probe.restore();
+            if (rebindLiveProbe()) {
+                probe.restore();
+            }
         }
 
         // Check if the actuator maps its own control range
         @Override
         public boolean mapsOwnControlRange() {
             return true;
+        }
+
+        // Map Synaxis native PID/PID targets without restricting their range
+        @Override
+        public double mapControl(ShipControlMap.PropulsionUnit unit, double demand) {
+            if (probe.adapterId().startsWith("synaxis_")) {
+                return finite(demand);
+            }
+            return Actuator.super.mapControl(unit, demand);
+        }
+
+        // Map Synaxis position demand directly into its native PID/PID target range
+        @Override
+        public double controlForDemand(ShipControlMap.PropulsionUnit unit, double normalizedDemand) {
+            if (probe.adapterId().startsWith("synaxis_")) {
+                return Mth.lerp(Mth.clamp(normalizedDemand, 0.0D, 1.0D),
+                        neutralControl(), maxControl());
+            }
+            return Actuator.super.controlForDemand(unit, normalizedDemand);
         }
 
         // Get the expected thrust sign
@@ -10845,16 +19902,28 @@ public final class ShipControlModuleRuntime {
         public boolean isAvailable() {
             return allProbes.stream().allMatch(member -> {
                 BlockEntity blockEntity = member.blockEntity();
-                if (!member.level().isLoaded(member.target().blockPosition())
-                        || !member.probe().isAvailable()) {
+                if (!member.probe().isAvailable()) {
                     return false;
                 }
-                return blockEntity == null
-                        ? !member.level().getBlockState(
-                                member.target().blockPosition()).isAir()
-                        : !blockEntity.isRemoved()
-                        && member.level().getBlockEntity(
-                                member.target().blockPosition()) == blockEntity;
+                BlockEntity current = SimulatedHelper.findLoadedBlockEntityExact(
+                        member.level(), member.target().subLevelId(),
+                        member.target().blockPosition());
+                if (blockEntity != null) {
+                    return !blockEntity.isRemoved() && current == blockEntity
+                            && !current.getBlockState().isAir();
+                }
+                if (!SubLevelBlockEntityCollector.isTargetLoaded(
+                        member.level(), member.target().subLevelId(),
+                        member.target().blockPosition())) {
+                    return false;
+                }
+                SubLevel subLevel = member.target().subLevelId() == null
+                        ? null : SableLevelApi.subLevel(
+                        member.level(), member.target().subLevelId());
+                BlockState state = subLevel == null
+                        ? member.level().getBlockState(member.target().blockPosition())
+                        : subLevel.getLevel().getBlockState(member.target().blockPosition());
+                return !state.isAir();
             });
         }
 
@@ -10923,6 +19992,9 @@ public final class ShipControlModuleRuntime {
             return "create_rotation_speed_controller";
         }
 
+        @Override
+        public boolean controlsSpeed(){ return true; }
+
         // Get the speed controller SCM probe display name
         @Override
         public String displayName() {
@@ -10944,8 +20016,8 @@ public final class ShipControlModuleRuntime {
         // Apply the speed controller SCM probe
         @Override
         public void apply(double control) {
-            int target = (int) Math.round(
-                    Mth.clamp(control, 0.0D, 1.0D) * PROBE_MAX_SPEED);
+            int target = ScmSpeedControl.quantizedSignal(control, PROBE_MAX_SPEED,
+                    controller.targetSpeed.getValue(), 0.15D);
             if (controller.targetSpeed.getValue() == target) {
                 return;
             }
@@ -11015,6 +20087,9 @@ public final class ShipControlModuleRuntime {
             return "variable_transmission";
         }
 
+        @Override
+        public boolean controlsSpeed(){ return true; }
+
         // Get the variable transmission SCM probe display name
         @Override
         public String displayName() {
@@ -11042,7 +20117,8 @@ public final class ShipControlModuleRuntime {
                     || !(state.getBlock() instanceof VariableTransmissionBlock)) {
                 return;
             }
-            int power = Mth.clamp((int) Math.round(control * 15.0D), 0, 15);
+            int power = ScmSpeedControl.quantizedSignal(control, 15,
+                    state.getValue(VariableTransmissionBlock.POWER), 0.15D);
             block.applyPower(level, transmission.getBlockPos(), state, power);
         }
 
@@ -11152,8 +20228,10 @@ public final class ShipControlModuleRuntime {
         @Override
         public void apply(double value) {
             boolean active = value > 1.0E-5D;
-            control.applyDirectControllerSignal("left", active && !forward ? 1.0F : 0.0F);
-            control.applyDirectControllerSignal("right", active && forward ? 1.0F : 0.0F);
+            control.applyExclusiveDirectControllerSignal(
+                    forward ? "right" : "left",
+                    forward ? "left" : "right",
+                    active ? 1.0F : 0.0F);
         }
 
         // Read the directional gearshift SCM probe
@@ -11358,7 +20436,7 @@ public final class ShipControlModuleRuntime {
         // Apply the redstone SCM probe
         @Override
         public void apply(double control) {
-            int signal = Mth.clamp((int) Math.round(control * 15.0D), 0, 15);
+            int signal = ScmSpeedControl.quantizedSignal(control, 15);
             if (target.usesFaceControl()) {
                 ContraptionNetworkLinkerSignalBus.setPlaneSignal(
                         level, target.subLevelId(), target.signalPosition(),
@@ -11445,6 +20523,11 @@ public final class ShipControlModuleRuntime {
             return false;
         }
 
+        // Check whether this actuator is driven by an exact linker action.
+        default boolean isFaceActionControl() {
+            return false;
+        }
+
         // Check if this is wheel control
         default boolean isWheelControl() {
             return false;
@@ -11475,6 +20558,7 @@ public final class ShipControlModuleRuntime {
 
         // Get the calibration points
         default List<CalibrationPoint> calibrationPoints() {
+            if(exactScalarControl()) return List.of();
             if (!controllable()) {
                 return List.of(new CalibrationPoint(minControl(), maxControl(), 0.0D));
             }
@@ -11517,13 +20601,19 @@ public final class ShipControlModuleRuntime {
             return false;
         }
 
-        // Check if this supports control envelope
-        default boolean supportsControlEnvelope() {
+        // Check if this accepts an exact zero to one scalar
+        default boolean exactScalarControl(){
             return false;
+        }
+
+        // Map an allocated demand into this actuator's control range
+        default double mapControl(ShipControlMap.PropulsionUnit unit, double demand) {
+            return mapAllocationControl(demand, unit.minControl(), unit.maxControl(), mapsOwnControlRange());
         }
 
         // Control the demand
         default double controlForDemand(ShipControlMap.PropulsionUnit unit, double normalizedDemand) {
+            if(exactScalarControl()) return directScalarControl(normalizedDemand);
             return calibratedControl(unit, normalizedDemand);
         }
 
@@ -11670,6 +20760,12 @@ public final class ShipControlModuleRuntime {
             return true;
         }
 
+        // Check if this accepts an exact zero to one scalar
+        @Override
+        public boolean exactScalarControl(){
+            return true;
+        }
+
         // Get the live maximum thrust
         @Override
         public double liveMaximumThrust(ShipControlMap.PropulsionUnit unit) {
@@ -11700,6 +20796,8 @@ public final class ShipControlModuleRuntime {
 
     // Handle the direct actuator
     private static final class DirectActuator extends AbstractActuator {
+        // Reserved native throttle authority
+        private static final float SHIP_THRUSTER_AUTHORITY_RESERVE = 0.14F;
         // Propeller
         private final BlockEntityPropeller propeller;
         // Receiver
@@ -11708,6 +20806,10 @@ public final class ShipControlModuleRuntime {
         private final @Nullable ThrusterBlockEntity.ControlMode originalMode;
         // Original computer throttle
         private final float originalComputerThrottle;
+        // Live ship maximum throttle
+        private float liveShipMaximumThrottle;
+        // Has live ship maximum throttle
+        private boolean hasLiveShipMaximumThrottle;
 
         // Initialize the direct actuator
         private DirectActuator(BlockEntity blockEntity, BlockEntityPropeller propeller,
@@ -11715,10 +20817,10 @@ public final class ShipControlModuleRuntime {
             super(blockEntity);
             this.propeller = propeller;
             this.receiver = receiver;
-            if (blockEntity instanceof ThrusterBlockEntity thruster) {
+            if(blockEntity instanceof ThrusterBlockEntity thruster){
                 originalMode = thruster.getControlMode();
                 originalComputerThrottle = thruster.getComputerThrottle();
-            } else {
+            }else{
                 originalMode = null;
                 originalComputerThrottle = 0.0F;
             }
@@ -11736,39 +20838,61 @@ public final class ShipControlModuleRuntime {
             return true;
         }
 
+        // Check if this requires continuous control
+        @Override
+        public boolean requiresContinuousControl(){
+            return blockEntity instanceof ThrusterBlockEntity;
+        }
+
         // Apply the direct actuator
         @Override
-        public void apply(double control) {
+        public void apply(double control){
             markApplied();
             double clamped = Mth.clamp(control, 0.0D, 1.0D);
-            if (blockEntity instanceof ThrusterBlockEntity thruster) {
-                float modulation = (float) envelopeModulation(clamped);
-                thruster.applyShipControlEnvelope(CONTROL_CHANNEL, 0.0F,
-                        modulation, modulation);
-            } else {
+            if(blockEntity instanceof ThrusterBlockEntity thruster){
+                ShipThrottleCommand command = shipThrottleCommand(clamped);
+                thruster.applyShipControlThrottle(
+                        CONTROL_CHANNEL, command.throttle(), command.maximum());
+            }else{
                 receiver.applyDirectControllerSignal(CONTROL_CHANNEL, (float) clamped);
             }
+        }
+
+        // Reserve native throttle authority and derive the live raw throttle
+        private ShipThrottleCommand shipThrottleCommand(double demand){
+            double requested = Mth.clamp(demand, 0.0D, 1.0D);
+            if(requested <= 1.0E-4D){
+                hasLiveShipMaximumThrottle = false;
+                liveShipMaximumThrottle = 0.0F;
+                return new ShipThrottleCommand(0.0F, 0.0F);
+            }
+            double targetMaximum = Math.min(1.0D,
+                    requested + SHIP_THRUSTER_AUTHORITY_RESERVE);
+            if(!hasLiveShipMaximumThrottle){
+                liveShipMaximumThrottle = (float) targetMaximum;
+                hasLiveShipMaximumThrottle = true;
+            }else{
+                float response = targetMaximum > liveShipMaximumThrottle ? 0.2F : 0.05F;
+                liveShipMaximumThrottle = Mth.lerp(
+                        response, liveShipMaximumThrottle, (float) targetMaximum);
+            }
+            liveShipMaximumThrottle = Mth.clamp(
+                    Math.max((float) targetMaximum, liveShipMaximumThrottle), 0.0F, 1.0F);
+            float throttle = Mth.clamp(
+                    (float) (requested / liveShipMaximumThrottle), 0.0F, 1.0F);
+            return new ShipThrottleCommand(liveShipMaximumThrottle, throttle);
         }
 
         // Apply the calibration
         @Override
         public void applyCalibration(CalibrationPoint point) {
-            if (blockEntity instanceof ThrusterBlockEntity thruster) {
-                markApplied();
-                thruster.applyShipControlEnvelope(CONTROL_CHANNEL,
-                        (float) point.minControl(), (float) point.maxControl(),
-                        (float) point.throttle());
-                return;
-            }
             apply(point.throttle());
         }
 
         // Get the calibration points
         @Override
         public List<CalibrationPoint> calibrationPoints() {
-            return blockEntity instanceof ThrusterBlockEntity
-                    ? envelopeSweep()
-                    : throttleSweep(minControl(), maxControl());
+            return List.of();
         }
 
         // Read the direct actuator
@@ -11825,18 +20949,16 @@ public final class ShipControlModuleRuntime {
             return true;
         }
 
-        // Check if this supports control envelope
+        // Check if this accepts an exact zero to one scalar
         @Override
-        public boolean supportsControlEnvelope() {
-            return blockEntity instanceof ThrusterBlockEntity;
+        public boolean exactScalarControl(){
+            return true;
         }
 
         // Control the demand
         @Override
         public double controlForDemand(ShipControlMap.PropulsionUnit unit, double normalizedDemand) {
-            return supportsControlEnvelope()
-                    ? calibratedEnvelopeControl(unit, normalizedDemand)
-                    : calibratedControl(unit, normalizedDemand);
+            return directScalarControl(normalizedDemand);
         }
 
         // Restore the direct actuator
@@ -11846,12 +20968,140 @@ public final class ShipControlModuleRuntime {
                 return;
             }
             if (blockEntity instanceof ThrusterBlockEntity thruster && originalMode != null) {
-                thruster.clearShipControlEnvelope(CONTROL_CHANNEL);
+                thruster.clearShipControlThrottle(CONTROL_CHANNEL);
                 thruster.setThrottle(originalComputerThrottle);
                 thruster.setControlMode(originalMode);
             } else {
                 receiver.applyDirectControllerSignal(CONTROL_CHANNEL, 0.0F);
             }
+        }
+
+        // Store one native G and G ship throttle command
+        private record ShipThrottleCommand(float maximum, float throttle){}
+    }
+
+    // Handle the Flight Control live vector thruster actuator
+    private static final class FlightControlVectorThrusterActuator extends AbstractActuator {
+        // Receiver
+        private final IDirectControlReceiver receiver;
+        // Resolved nozzle direction reader
+        private final Method nozzleDirectionReader;
+        // Resolved maximum thrust reader
+        private final Method maximumThrustReader;
+        // Resolved thrust centre offset reader
+        private final @Nullable Method thrustCenterOffsetReader;
+        // Last requested throttle
+        private double throttle;
+
+        // Initialize the Flight Control live vector thruster actuator
+        private FlightControlVectorThrusterActuator(
+                BlockEntity blockEntity,
+                IDirectControlReceiver receiver
+        ) {
+            super(blockEntity);
+            this.receiver = receiver;
+            this.nozzleDirectionReader = Objects.requireNonNull(firstMethod(
+                    blockEntity.getClass(), "getNozzleDirection"));
+            this.maximumThrustReader = Objects.requireNonNull(firstMethod(
+                    blockEntity.getClass(), "getEffectiveMaxThrustForComputer"));
+            this.thrustCenterOffsetReader = firstMethod(
+                    blockEntity.getClass(), "getBodyThrustCenterOffset");
+        }
+
+        // Get the kind
+        @Override
+        public String kind() {
+            return "flight_control_vector_thruster_v1";
+        }
+
+        // Check if the mapped actuator can be controlled
+        @Override
+        public boolean controllable() {
+            return invokeNoArg(blockEntity, "getLinkedComputerPos") == null;
+        }
+
+        // Apply the live vector thruster throttle
+        @Override
+        public void apply(double control) {
+            markApplied();
+            throttle = Mth.clamp(control, 0.0D, 1.0D);
+            receiver.applyDirectControllerSignal(CONTROL_CHANNEL, (float) throttle);
+        }
+
+        // Read the live vector thruster
+        @Override
+        public Reading read() {
+            double thrust = liveMaximumThrust(null) * throttle;
+            return new Reading(speed(), thrust, throttle > 1.0E-6D && controllable());
+        }
+
+        // Get the local force direction
+        @Override
+        public Vec3 localForceDirection() {
+            Vec3 nozzle = vectorValue(invoke(blockEntity, nozzleDirectionReader));
+            return nozzle == null ? Vec3.ZERO : nozzle.scale(-1.0D);
+        }
+
+        // Get the local force position
+        @Override
+        public Vec3 localForcePosition() {
+            Vec3 offset = thrustCenterOffsetReader == null ? null
+                    : throttleOffset(invoke(blockEntity, thrustCenterOffsetReader));
+            return offset == null ? super.localForcePosition()
+                    : super.localForcePosition().add(offset);
+        }
+
+        // Get the minimum control
+        @Override
+        public double minControl() {
+            return 0.0D;
+        }
+
+        // Get the maximum control
+        @Override
+        public double maxControl() {
+            return 1.0D;
+        }
+
+        // Get the theoretical max thrust
+        @Override
+        public double theoreticalMaxThrust() {
+            return liveMaximumThrust(null);
+        }
+
+        // Get the live maximum thrust
+        @Override
+        public double liveMaximumThrust(ShipControlMap.PropulsionUnit unit) {
+            return Math.max(0.0D, numberValue(
+                    invoke(blockEntity, maximumThrustReader), 0.0D));
+        }
+
+        // Check if this actuator maps its own control range
+        @Override
+        public boolean mapsOwnControlRange() {
+            return true;
+        }
+
+        // Check if this accepts an exact zero to one scalar
+        @Override
+        public boolean exactScalarControl(){
+            return true;
+        }
+
+        // Get the expected thrust sign
+        @Override
+        public double expectedThrustSign() {
+            return 1.0D;
+        }
+
+        // Restore native Flight Control vector thruster operation
+        @Override
+        public void restore() {
+            if (!beginRestore()) {
+                return;
+            }
+            throttle = 0.0D;
+            receiver.applyDirectControllerSignal(CONTROL_CHANNEL, 0.0F);
         }
     }
 
@@ -11963,13 +21213,19 @@ public final class ShipControlModuleRuntime {
             return true;
         }
 
+        // Check if this accepts an exact zero to one scalar
+        @Override
+        public boolean exactScalarControl(){
+            return true;
+        }
+
         // Control the demand
         @Override
         public double controlForDemand(
                 ShipControlMap.PropulsionUnit unit,
                 double normalizedDemand
         ) {
-            return calibratedControl(unit, normalizedDemand);
+            return directScalarControl(normalizedDemand);
         }
 
         // Restore the direct receiver actuator
@@ -12146,14 +21402,8 @@ public final class ShipControlModuleRuntime {
         private final Method throttleInput;
         // Original throttle
         private final double originalThrottle;
-        // Resolved minimum setter method
-        private final @Nullable Method minimumSetter;
-        // Resolved maximum setter method
-        private final @Nullable Method maximumSetter;
-        // Original minimum
-        private final double originalMinimum;
-        // Original maximum
-        private final double originalMaximum;
+        // Resolved native maximum throttle reader
+        private final @Nullable Method maximumReader;
 
         // Initialize the reflective actuator
         private ReflectiveActuator(BlockEntity blockEntity, @Nullable BlockEntityPropeller propeller,
@@ -12163,24 +21413,16 @@ public final class ShipControlModuleRuntime {
             this.throttleInput = throttleInput;
             this.originalThrottle = numberValue(firstResult(blockEntity,
                     "getThrottle", "getPower"), 0.0D);
-            this.minimumSetter = firstMethod(blockEntity.getClass(), 1,
-                    "setMinThrottle", "setMinimumThrottle", "setMinPower", "setMinimumPower");
-            this.maximumSetter = firstMethod(blockEntity.getClass(), 1,
-                    "setMaxThrottle", "setMaximumThrottle", "setMaxPower", "setMaximumPower",
-                    "setThrustLimit");
-            this.originalMinimum = Mth.clamp(numberValue(firstResult(blockEntity,
-                    "getMinThrottle", "getMinimumThrottle", "getMinPower", "getMinimumPower"),
-                    0.0D), 0.0D, 1.0D);
-            this.originalMaximum = Mth.clamp(numberValue(firstResult(blockEntity,
+            this.maximumReader = firstMethod(blockEntity.getClass(),
                     "getMaxThrottle", "getMaximumThrottle", "getMaxPower",
-                    "getMaximumPower", "getThrustLimit"), 1.0D), originalMinimum, 1.0D);
+                    "getMaximumPower", "getThrustLimit");
         }
 
         // Get the kind
         @Override
         public String kind() {
-            if (supportsEnvelope()) {
-                return ENVELOPE_ACTUATOR_ADAPTER;
+            if (maximumReader != null) {
+                return LEGACY_THROTTLE_LIMIT_ACTUATOR_ADAPTER;
             }
             return blockEntity.getClass().getName().startsWith(
                     "dev.propulsionteam.propulsionsimulated.")
@@ -12197,34 +21439,19 @@ public final class ShipControlModuleRuntime {
         @Override
         public void apply(double control) {
             markApplied();
-            double clamped = Mth.clamp(control, 0.0D, 1.0D);
-            if (supportsEnvelope()) {
-                double modulation = envelopeModulation(clamped);
-                setEnvelope(0.0D, modulation);
-                invokeNumber(blockEntity, throttleInput, modulation);
-            } else {
-                invokeNumber(blockEntity, throttleInput, clamped);
-            }
+            invokeNumber(blockEntity, throttleInput, Mth.clamp(control, 0.0D, 1.0D));
         }
 
         // Apply the calibration
         @Override
         public void applyCalibration(CalibrationPoint point) {
-            if (!supportsEnvelope()) {
-                apply(point.throttle());
-                return;
-            }
-            markApplied();
-            setEnvelope(point.minControl(), point.maxControl());
-            invokeNumber(blockEntity, throttleInput, point.throttle());
+            apply(point.throttle());
         }
 
         // Get the calibration points
         @Override
         public List<CalibrationPoint> calibrationPoints() {
-            return supportsEnvelope()
-                    ? envelopeSweep()
-                    : throttleSweep(originalMinimum, originalMaximum);
+            return List.of();
         }
 
         // Read the reflective actuator
@@ -12256,19 +21483,25 @@ public final class ShipControlModuleRuntime {
         // Get the minimum control
         @Override
         public double minControl() {
-            return originalMinimum;
+            return 0.0D;
         }
 
         // Get the maximum control
         @Override
         public double maxControl() {
-            return originalMaximum;
+            return 1.0D;
         }
 
         // Get the theoretical max thrust
         @Override
         public double theoreticalMaxThrust() {
-            return reflectedThrustLimit(blockEntity);
+            return reflectedThrustLimit(blockEntity) * nativeMaximum();
+        }
+
+        // Get the live maximum thrust
+        @Override
+        public double liveMaximumThrust(ShipControlMap.PropulsionUnit unit) {
+            return reflectedThrustLimit(blockEntity) * nativeMaximum();
         }
 
         // Get the expected thrust sign
@@ -12283,18 +21516,16 @@ public final class ShipControlModuleRuntime {
             return true;
         }
 
-        // Check if this supports control envelope
+        // Check if this accepts an exact zero to one scalar
         @Override
-        public boolean supportsControlEnvelope() {
-            return supportsEnvelope();
+        public boolean exactScalarControl(){
+            return true;
         }
 
         // Control the demand
         @Override
         public double controlForDemand(ShipControlMap.PropulsionUnit unit, double normalizedDemand) {
-            return supportsControlEnvelope()
-                    ? calibratedEnvelopeControl(unit, normalizedDemand)
-                    : calibratedControl(unit, normalizedDemand);
+            return directScalarControl(normalizedDemand);
         }
 
         // Restore the reflective actuator
@@ -12304,26 +21535,12 @@ public final class ShipControlModuleRuntime {
                 return;
             }
             invokeNumber(blockEntity, throttleInput, originalThrottle);
-            if (supportsEnvelope()) {
-                setEnvelope(originalMinimum, originalMaximum);
-            }
         }
 
-        // Check if this supports envelope
-        private boolean supportsEnvelope() {
-            return minimumSetter != null && maximumSetter != null;
-        }
-
-        // Set the envelope
-        private void setEnvelope(double minimum, double maximum) {
-            if (!supportsEnvelope()) {
-                return;
-            }
-            double clampedMinimum = Mth.clamp(minimum, 0.0D, 1.0D);
-            double clampedMaximum = Mth.clamp(Math.max(clampedMinimum, maximum), 0.0D, 1.0D);
-            invokeNumber(blockEntity, maximumSetter, 1.0D);
-            invokeNumber(blockEntity, minimumSetter, clampedMinimum);
-            invokeNumber(blockEntity, maximumSetter, clampedMaximum);
+        // Get the live native maximum throttle modifier
+        private double nativeMaximum() {
+            return maximumReader == null ? 1.0D : Mth.clamp(
+                    numberValue(invoke(blockEntity, maximumReader), 1.0D), 0.0D, 1.0D);
         }
 
     }
@@ -12781,6 +21998,10 @@ public final class ShipControlModuleRuntime {
         private final double reusableMaximumThrust;
         // Reusable maximum speed
         private final double reusableMaximumSpeed;
+        // A direct profile binding deliberately skips physical probing. Its
+        // adapter's declared live capacity is therefore the allocator input,
+        // even when that adapter normally requests observed calibration data.
+        private final boolean directLiveCapacity;
         // V2 representative index
         private int v2RepresentativeIndex = -1;
         // Tracks whether V2 representative is set
@@ -12793,7 +22014,7 @@ public final class ShipControlModuleRuntime {
                                 Vec3 rootPosition, Vec3 forceDirection, Actuator actuator,
                                 @Nullable ShipControlMap.PropulsionUnit reusable) {
             this(subLevelId, blockPosition, blockId, rootPosition, forceDirection,
-                    actuator, reusable, false);
+                    actuator, reusable, false, false);
         }
 
         // Initialize the calibration unit
@@ -12801,13 +22022,28 @@ public final class ShipControlModuleRuntime {
                                 Vec3 rootPosition, Vec3 forceDirection, Actuator actuator,
                                 @Nullable ShipControlMap.PropulsionUnit reusable,
                                 boolean preserveCompatibleReusableCapacity) {
+            this(subLevelId, blockPosition, blockId, rootPosition, forceDirection, actuator,
+                    reusable, preserveCompatibleReusableCapacity, false);
+        }
+
+        // Initialize the calibration unit
+        private CalibrationUnit(UUID subLevelId, BlockPos blockPosition, String blockId,
+                                Vec3 rootPosition, Vec3 forceDirection, Actuator actuator,
+                                @Nullable ShipControlMap.PropulsionUnit reusable,
+                                boolean preserveCompatibleReusableCapacity,
+                                boolean directLiveCapacity) {
             this.subLevelId = subLevelId;
             this.blockPosition = blockPosition.immutable();
             this.blockId = blockId;
             this.rootPosition = rootPosition;
             this.forceDirection = forceDirection;
             this.actuator = actuator;
+            this.directLiveCapacity = directLiveCapacity;
             this.calibrationPoints = List.copyOf(actuator.calibrationPoints());
+            // A saved speed-control response must be measured for its own current drive branch
+            if(actuator instanceof ScmProbeActuator probeActuator && probeActuator.probe.controlsSpeed()){
+                reusable = null;
+            }
             this.calibrationRequired = !canReuseCalibration(reusable, actuator, calibrationPoints);
             boolean compatibleReusable = canReuseCalibration(reusable, actuator);
             if (reusable != null && (!calibrationRequired
@@ -12837,7 +22073,8 @@ public final class ShipControlModuleRuntime {
             double maxThrust = samples.stream().mapToDouble(sample -> Math.abs(sample.thrust()))
                     .max().orElse(0.0D);
             maxThrust = Math.max(maxThrust, reusableMaximumThrust);
-            if (maxThrust <= 1.0E-6D && !actuator.requiresObservedResponse()) {
+            if (maxThrust <= 1.0E-6D
+                    && (directLiveCapacity || !actuator.requiresObservedResponse())) {
                 maxThrust = actuator.theoreticalMaxThrust();
             }
             double maxSpeed = Math.max(reusableMaximumSpeed,
@@ -12945,55 +22182,23 @@ public final class ShipControlModuleRuntime {
         return limit;
     }
 
+    // Clamp an exact native scalar control value
+    static double directScalarControl(double normalizedDemand){
+        return Mth.clamp(finite(normalizedDemand), 0.0D, 1.0D);
+    }
+
     // Get the calibrated control
     static double calibratedControl(ShipControlMap.PropulsionUnit unit, double normalizedDemand) {
-        return calibratedControl(unit, normalizedDemand, false);
-    }
-
-    // Get the calibrated envelope control
-    static double calibratedEnvelopeControl(
-            ShipControlMap.PropulsionUnit unit,
-            double normalizedDemand
-    ) {
-        return calibratedControl(unit, normalizedDemand, true);
-    }
-
-    // Get the calibrated control
-    private static double calibratedControl(
-            ShipControlMap.PropulsionUnit unit,
-            double normalizedDemand,
-            boolean envelopeControl
-    ) {
         double demand = Mth.clamp(finite(normalizedDemand), 0.0D, 1.0D);
         if (unit == null || demand <= 1.0E-6D || unit.maxThrust() <= 1.0E-9D
                 || unit.samples().isEmpty()) {
             return demand;
         }
 
-        List<ShipControlMap.CalibrationSample> curve;
-        if (envelopeControl) {
-            curve = unit.samples().stream()
-                    .sorted(Comparator.comparingDouble(
-                            ShipControlModuleRuntime::effectiveEnvelopeControl))
-                    .toList();
-        } else {
-            double envelopeMaximum = unit.samples().stream()
-                    .mapToDouble(ShipControlMap.CalibrationSample::maxControl)
-                    .max().orElse(unit.maxControl());
-            double envelopeMinimum = unit.samples().stream()
-                    .filter(sample -> Math.abs(
-                            sample.maxControl() - envelopeMaximum) <= 1.0E-6D)
-                    .mapToDouble(ShipControlMap.CalibrationSample::minControl)
-                    .min().orElse(unit.minControl());
-            curve = unit.samples().stream()
-                    .filter(sample -> Math.abs(
-                            sample.maxControl() - envelopeMaximum) <= 1.0E-6D)
-                    .filter(sample -> Math.abs(
-                            sample.minControl() - envelopeMinimum) <= 1.0E-6D)
-                    .sorted(Comparator.comparingDouble(
-                            ShipControlMap.CalibrationSample::control))
-                    .toList();
-        }
+        List<ShipControlMap.CalibrationSample> curve = unit.samples().stream()
+                .sorted(Comparator.comparingDouble(
+                        ShipControlMap.CalibrationSample::control))
+                .toList();
         if (curve.size() < 2) {
             return demand;
         }
@@ -13002,9 +22207,7 @@ public final class ShipControlModuleRuntime {
         double previousControl = 0.0D;
         double previousThrust = 0.0D;
         for (ShipControlMap.CalibrationSample sample : curve) {
-            double control = envelopeControl
-                    ? effectiveEnvelopeControl(sample)
-                    : Mth.clamp(sample.control(), 0.0D, 1.0D);
+            double control = Mth.clamp(sample.control(), 0.0D, 1.0D);
             double thrust = Math.max(previousThrust, Math.abs(sample.thrust()));
             if (targetThrust <= thrust && thrust > previousThrust + 1.0E-9D) {
                 double fraction = (targetThrust - previousThrust) / (thrust - previousThrust);
@@ -13016,31 +22219,6 @@ public final class ShipControlModuleRuntime {
         return previousThrust > 1.0E-9D ? previousControl : demand;
     }
 
-    // Get the effective envelope control
-    static double effectiveEnvelopeControl(
-            ShipControlMap.CalibrationSample sample
-    ) {
-        if (sample == null) {
-            return 0.0D;
-        }
-        return effectiveEnvelopeControl(
-                sample.minControl(), sample.maxControl(), sample.control());
-    }
-
-    // Get the effective envelope control
-    static double effectiveEnvelopeControl(
-            double minimum, double maximum, double throttle
-    ) {
-        double normalizedThrottle = Mth.clamp(finite(throttle), 0.0D, 1.0D);
-        if (normalizedThrottle <= 0.0D) {
-            return 0.0D;
-        }
-        double clampedMinimum = Mth.clamp(finite(minimum), 0.0D, 1.0D);
-        double clampedMaximum = Mth.clamp(
-                Math.max(clampedMinimum, finite(maximum)), 0.0D, 1.0D);
-        return Mth.lerp(normalizedThrottle, clampedMinimum, clampedMaximum);
-    }
-
     // Get the throttle sweep
     private static List<CalibrationPoint> throttleSweep(double minimum, double maximum) {
         double clampedMinimum = Mth.clamp(minimum, 0.0D, 1.0D);
@@ -13048,26 +22226,6 @@ public final class ShipControlModuleRuntime {
         List<CalibrationPoint> points = new ArrayList<>(THROTTLE_STEPS.length);
         for (double throttle : THROTTLE_STEPS) {
             points.add(new CalibrationPoint(clampedMinimum, clampedMaximum, throttle));
-        }
-        return List.copyOf(points);
-    }
-
-    // Get the envelope sweep
-    private static List<CalibrationPoint> envelopeSweep() {
-        List<CalibrationPoint> points = new ArrayList<>();
-        for (double effectiveControl : PRECISE_ENVELOPE_EFFECTIVE_STEPS) {
-            double modulation = envelopeModulation(effectiveControl);
-            points.add(new CalibrationPoint(0.0D, modulation, modulation));
-        }
-        for (double maximumStep : ENVELOPE_STEPS) {
-            for (double minimumStep : ENVELOPE_STEPS) {
-                if (minimumStep > maximumStep) {
-                    continue;
-                }
-                for (double throttle : THROTTLE_STEPS) {
-                    points.add(new CalibrationPoint(minimumStep, maximumStep, throttle));
-                }
-            }
         }
         return List.copyOf(points);
     }
@@ -13185,6 +22343,26 @@ public final class ShipControlModuleRuntime {
         return null;
     }
 
+    // Get an unnormalised local thrust centre offset
+    private static @Nullable Vec3 throttleOffset(@Nullable Object val) {
+        if (val instanceof float[] offset && offset.length >= 3) {
+            return new Vec3(offset[0], offset[1], offset[2]);
+        }
+        if (val instanceof double[] offset && offset.length >= 3) {
+            return new Vec3(offset[0], offset[1], offset[2]);
+        }
+        if (val instanceof Vec3 offset) {
+            return offset;
+        }
+        if (val instanceof Vector3dc offset) {
+            return new Vec3(offset.x(), offset.y(), offset.z());
+        }
+        if (val instanceof Vector3fc offset) {
+            return new Vec3(offset.x(), offset.y(), offset.z());
+        }
+        return null;
+    }
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -13196,6 +22374,7 @@ public final class ShipControlModuleRuntime {
     // Define the phase values
     private enum Phase {
         IDLE,
+        CONFIGURING,
         FREEZING,
         SCANNING,
         CALIBRATING,
@@ -13242,8 +22421,47 @@ public final class ShipControlModuleRuntime {
     private record ControlDemand(
             Vec3 force,
             Vec3 torque,
+            Vec3 controlForce,
+            Vec3 controlTorque,
             Vec3 preferredDirection,
-            double driveDirection
+            double driveDirection,
+            double accelerationStrength,
+            double decelerationStrength,
+            double brakeStrength,
+            double sustainingPower,
+            GravityCompensation gravitySupport
+    ) {
+    }
+
+    private record SpeedControlBranch(
+            ScmControlInfluenceGraph.Search<KineticBlockEntity> search,
+            Map<KineticBlockEntity, Integer> outputIndices
+    ){}
+
+    // Keep the navigation controller's physical force request separate from
+    // scalar Acceleration, Deceleration and Brake group values.
+    private record ModeControlDemand(
+            ScmControlMode.ControlOutput output,
+            NavigationSpeedPlan speedPlan
+    ) {
+    }
+
+    // The speed envelope derived from the live route target and collision scan.
+    private record NavigationSpeedPlan(
+            double forwardClearance,
+            double reverseClearance,
+            double travelClearance,
+            double scanRange,
+            double targetDistance,
+            double targetSpeedLimit,
+            double cornerSpeedLimit,
+            double trafficSpeedLimit,
+            double collisionSpeedLimit,
+            double permittedSpeed,
+            String limitingFactor,
+            double accelerationStrength,
+            double decelerationStrength,
+            double brakeStrength
     ) {
     }
 
@@ -13263,43 +22481,1475 @@ public final class ShipControlModuleRuntime {
     record NavigationGuidance(
             Vec3 direction,
             Vec3 controlTarget,
-            double distanceResponse
+            double distanceResponse,
+            boolean reverseRecovery,
+            boolean brakeAtControlTarget,
+            boolean obstacleAvoidanceRoute,
+            Vec3 collisionTravelDirection,
+            boolean reactiveCollisionOverride,
+            double pathCurvature,
+            double steeringFeedForward,
+            boolean splineMagnetActive
     ) {
+        NavigationGuidance(
+                Vec3 direction,
+                Vec3 controlTarget,
+                double distanceResponse,
+                boolean reverseRecovery,
+                boolean brakeAtControlTarget,
+                boolean obstacleAvoidanceRoute,
+                Vec3 collisionTravelDirection,
+                boolean reactiveCollisionOverride
+        ) {
+            this(direction, controlTarget, distanceResponse, reverseRecovery,
+                    brakeAtControlTarget, obstacleAvoidanceRoute,
+                    collisionTravelDirection, reactiveCollisionOverride,
+                    0.0D, 0.0D, false);
+        }
+
+        NavigationGuidance(
+                Vec3 direction,
+                Vec3 controlTarget,
+                double distanceResponse,
+                boolean reverseRecovery,
+                boolean brakeAtControlTarget,
+                boolean obstacleAvoidanceRoute,
+                Vec3 collisionTravelDirection
+        ) {
+            this(direction, controlTarget, distanceResponse, reverseRecovery,
+                    brakeAtControlTarget, obstacleAvoidanceRoute,
+                    collisionTravelDirection, false, 0.0D, 0.0D, false);
+        }
+
+        NavigationGuidance(
+                Vec3 direction,
+                Vec3 controlTarget,
+                double distanceResponse,
+                boolean reverseRecovery,
+                boolean brakeAtControlTarget,
+                boolean obstacleAvoidanceRoute,
+                Vec3 collisionTravelDirection,
+                boolean reactiveCollisionOverride,
+                double pathCurvature,
+                double steeringFeedForward
+        ) {
+            this(direction, controlTarget, distanceResponse, reverseRecovery,
+                    brakeAtControlTarget, obstacleAvoidanceRoute,
+                    collisionTravelDirection, reactiveCollisionOverride,
+                    pathCurvature, steeringFeedForward, false);
+        }
+
         // Initialize the navigation guidance
         NavigationGuidance {
             direction = direction == null ? Vec3.ZERO : finite(direction);
             controlTarget = controlTarget == null ? Vec3.ZERO : finite(controlTarget);
             distanceResponse = Math.max(0.0D, finite(distanceResponse));
+            collisionTravelDirection = collisionTravelDirection == null
+                    ? Vec3.ZERO : finite(collisionTravelDirection);
+            pathCurvature = finite(pathCurvature);
+            steeringFeedForward = Mth.clamp(
+                    finite(steeringFeedForward), -1.0D, 1.0D);
         }
 
         // Get the stopped
         private static NavigationGuidance stopped(Vec3 pos) {
-            return new NavigationGuidance(Vec3.ZERO, pos, 1.0D);
+            return new NavigationGuidance(Vec3.ZERO, pos, 1.0D, false, true,
+                    false, Vec3.ZERO, false);
+        }
+
+        // Hold propulsion while preserving the obstructed travel vector for the outer reactive
+        // layer. A live escape can then override this hold without turning planner/wait states
+        // into direct-to-destination movement.
+        private static NavigationGuidance blocked(Vec3 pos, Vec3 travelDirection) {
+            return new NavigationGuidance(Vec3.ZERO, pos, 1.0D, false, true,
+                    true, travelDirection, false);
         }
     }
 
-    // Store the navigation grid node
-    record NavigationGridNode(int forward, int side, int vertical) {
+    // Schedule metadata labels saved safe geometry. The live schedule command remains responsible
+    // for choosing the active destination, while an explicit origin makes pre-calculation independent
+    // from the vehicle which requested it.
+    static record ScheduledRouteDestination(
+            int scheduleEntry,
+            @Nullable UUID dockId,
+            @Nullable Vec3 origin,
+            Vec3 target
+    ) {
+        // Compatibility constructor for callers that only resolve a schedule stop.
+        ScheduledRouteDestination(int scheduleEntry, @Nullable UUID dockId, Vec3 target) {
+            this(scheduleEntry, dockId, null, target);
+        }
+
+        ScheduledRouteDestination {
+            scheduleEntry = Math.max(-1, scheduleEntry);
+            origin = origin == null ? null : finite(origin);
+            target = target == null ? Vec3.ZERO : finite(target);
+        }
     }
 
-    // Store the navigation path candidate
-    private record NavigationPathCandidate(
-            NavigationGridNode node,
-            double cost,
-            double score
+    // One independently retained route leg prepared from a schedule graph.
+    private record ScheduledRoutePlan(int scheduleEntry, @Nullable UUID dockId,
+                                      Vec3 origin, Vec3 target,
+                                      SablePathfinder.QueuedPlan plan) {
+    }
+
+    private record RouteHazardJob(ShipControlModuleRuntime runtime, UUID routeId) {}
+
+    private static final class RouteHazardState {
+        private final CompletedScheduledRoute route;
+        private final RouteObstacleScan scan;
+        private final double endpointClearance;
+        private @Nullable RouteObstacleScan.Hit hit;
+        private boolean sawHit;
+
+        private RouteHazardState(CompletedScheduledRoute route, RouteObstacleScan scan,
+                                 double endpointClearance){
+            this.route = route;
+            this.scan = scan;
+            this.endpointClearance = endpointClearance;
+        }
+    }
+
+    // Store a completed schedule leg independently of the transient A* frontier.
+    private record CompletedScheduledRoute(
+            int scheduleEntry,
+            @Nullable UUID dockId,
+            Vec3 origin,
+            Vec3 target,
+            List<SablePathfinder.Waypoint> waypoints,
+            WaypointSpline curve,
+            List<SablePathfinder.Waypoint> sampledWaypoints
     ) {
+        private CompletedScheduledRoute(
+                int scheduleEntry,
+                @Nullable UUID dockId,
+                Vec3 origin,
+                Vec3 target,
+                List<SablePathfinder.Waypoint> waypoints
+        ) {
+            this(scheduleEntry, dockId, origin, target, waypoints, null, null);
+        }
+
+        private CompletedScheduledRoute {
+            scheduleEntry = Math.max(-1, scheduleEntry);
+            origin = finite(origin);
+            target = finite(target);
+            waypoints = waypoints == null ? List.of() : List.copyOf(waypoints);
+            List<Vec3> controls = controlPoints(origin, target, waypoints);
+            curve = WaypointSpline.of(controls);
+            List<Vec3> sampled = curve.sample(SCHEDULE_ROUTE_SPLINE_SAMPLE_SPACING,
+                    MAX_SCHEDULE_ROUTE_SPLINE_SAMPLES);
+            sampledWaypoints = sampled.size() < 2 ? List.of()
+                    : sampled.subList(1, sampled.size()).stream()
+                    .map(point -> new SablePathfinder.Waypoint(point, null)).toList();
+        }
+
+        // Get the authored route controls including immutable route endpoints.
+        private List<Vec3> controlPoints() {
+            return curve.waypoints();
+        }
+
+        // Normalize the authored route controls including immutable route endpoints.
+        private static List<Vec3> controlPoints(
+                Vec3 origin,
+                Vec3 target,
+                List<SablePathfinder.Waypoint> waypoints
+        ) {
+            List<Vec3> points = new ArrayList<>();
+            points.add(origin);
+            for (SablePathfinder.Waypoint waypoint : waypoints) {
+                if (waypoint == null || points.getLast().distanceToSqr(waypoint.position()) <= 1.0E-8D) continue;
+                points.add(waypoint.position());
+            }
+            if (points.getLast().distanceToSqr(target) > 1.0E-8D) points.add(target);
+            return List.copyOf(points);
+        }
+
+        // Sample the authored spline into close guidance chords while retaining segment endpoints.
+        private List<SablePathfinder.Waypoint> splineWaypoints() {
+            return sampledWaypoints;
+        }
+
+        // Create a stable route id which remains unchanged when interior waypoints move.
+        private UUID routeId(UUID ownerId) {
+            String identity = ownerId + "|" + scheduleEntry + "|" + dockId
+                    + "|" + vectorIdentity(origin) + "|" + vectorIdentity(target);
+            return UUID.nameUUIDFromBytes(identity.getBytes(StandardCharsets.UTF_8));
+        }
+
+        // Encode one endpoint without locale-sensitive number formatting.
+        private static String vectorIdentity(Vec3 point) {
+            return Double.toHexString(point.x) + "," + Double.toHexString(point.y)
+                    + "," + Double.toHexString(point.z);
+        }
+
+        private CompoundTag toTag() {
+            CompoundTag tag = new CompoundTag();
+            tag.putInt("ScheduleEntry", scheduleEntry);
+            if (dockId != null) {
+                tag.putUUID("DockId", dockId);
+            }
+            writePosition(tag, ROUTE_ORIGIN_TAG, origin);
+            writePosition(tag, ROUTE_TARGET_TAG, target);
+            ListTag storedWaypoints = new ListTag();
+            for (SablePathfinder.Waypoint waypoint : waypoints) {
+                if (waypoint == null) {
+                    continue;
+                }
+                CompoundTag stored = new CompoundTag();
+                writePosition(stored, "Position", waypoint.position());
+                storedWaypoints.add(stored);
+            }
+            tag.put(ROUTE_WAYPOINTS_TAG, storedWaypoints);
+            return tag;
+        }
+
+        private static @Nullable CompletedScheduledRoute fromTag(CompoundTag tag) {
+            if (tag == null) {
+                return null;
+            }
+            Vec3 origin = readPosition(tag, ROUTE_ORIGIN_TAG);
+            Vec3 target = readPosition(tag, ROUTE_TARGET_TAG);
+            if (origin == null || target == null) {
+                return null;
+            }
+            List<SablePathfinder.Waypoint> waypoints = new ArrayList<>();
+            ListTag storedWaypoints = tag.getList(ROUTE_WAYPOINTS_TAG, Tag.TAG_COMPOUND);
+            for (int index = 0; index < storedWaypoints.size(); index++) {
+                Vec3 position = readPosition(storedWaypoints.getCompound(index), "Position");
+                if (position != null) {
+                    waypoints.add(new SablePathfinder.Waypoint(position, null));
+                }
+            }
+            return waypoints.isEmpty() ? null
+                    : new CompletedScheduledRoute(tag.contains("ScheduleEntry")
+                    ? tag.getInt("ScheduleEntry") : -1,
+                    tag.hasUUID("DockId") ? tag.getUUID("DockId") : null,
+                    origin, target, waypoints);
+        }
+
+        private static void writePosition(CompoundTag tag, String key, Vec3 position) {
+            CompoundTag stored = new CompoundTag();
+            Vec3 safe = finite(position);
+            stored.putDouble("X", safe.x);
+            stored.putDouble("Y", safe.y);
+            stored.putDouble("Z", safe.z);
+            tag.put(key, stored);
+        }
+
+        private static @Nullable Vec3 readPosition(CompoundTag tag, String key) {
+            if (!tag.contains(key, Tag.TAG_COMPOUND)) {
+                return null;
+            }
+            CompoundTag stored = tag.getCompound(key);
+            Vec3 position = new Vec3(stored.getDouble("X"),
+                    stored.getDouble("Y"), stored.getDouble("Z"));
+            return Double.isFinite(position.x) && Double.isFinite(position.y)
+                    && Double.isFinite(position.z) ? position : null;
+        }
+    }
+
+    // Retain one short-lived applied-guidance overlay snapshot.
+    private record TimedDebugRoute(long gameTime, SablePathfinder.DebugRoute route) {
+    }
+
+    private record TimedRouteTrafficIntent(
+            long gameTime,
+            RouteTrafficPriority.Participant participant
+    ) {
+    }
+
+    private record TimedRouteTrafficDecision(
+            long gameTime,
+            RouteTrafficPriority.Decision decision
+    ) {
+    }
+
+    // Retain the raw applied navigation state for debug-only formatting.
+    private record TimedAutopilotCommandState(
+            long gameTime,
+            String navigationKey,
+            Telemetry telemetry,
+            ActiveShipCommand command,
+            NavigationGuidance guidance,
+            @Nullable ModeControlDemand modeDemand,
+            RouteTrafficPriority.Decision trafficDecision
+    ) {
+    }
+
+    // Retain the final merged control demand for the live brain overlay.
+    private record TimedAutopilotControlDemand(
+            long gameTime,
+            ControlDemand demand,
+            boolean compensateGravity,
+            double uprightStabilizationStrength,
+            boolean attitudeLockActive,
+            Vec3 attitudeLockTarget
+    ) {
+    }
+
+    // Preserve the active forward route while a ground recovery temporarily owns the waypoint state.
+    private record SuspendedSableRoute(
+            List<Vec3> waypoints,
+            int waypointIndex,
+            Vec3 target,
+            Vec3 routeStartPosition,
+            int routeProgressWaypointIndex,
+            double minimumRouteLegProgress,
+            @Nullable WaypointSpline scheduleSpline,
+            int scheduleSplineSegment,
+            double minimumScheduleSplineFraction,
+            int scheduleSplineResumeWaypoint
+    ) {
+        // Normalize the retained route snapshot.
+        private SuspendedSableRoute {
+            waypoints = waypoints == null ? List.of() : List.copyOf(waypoints);
+            waypointIndex = Math.max(0, Math.min(waypointIndex, Math.max(0, waypoints.size() - 1)));
+            target = target == null ? Vec3.ZERO : finite(target);
+            routeStartPosition = routeStartPosition == null
+                    ? Vec3.ZERO : finite(routeStartPosition);
+            routeProgressWaypointIndex = Math.max(-1, routeProgressWaypointIndex);
+            minimumRouteLegProgress = Mth.clamp(
+                    finite(minimumRouteLegProgress), 0.0D, 1.0D);
+            scheduleSplineSegment = Math.max(0, scheduleSplineSegment);
+            minimumScheduleSplineFraction = Mth.clamp(
+                    finite(minimumScheduleSplineFraction), 0.0D, 1.0D);
+            scheduleSplineResumeWaypoint = Math.max(0, scheduleSplineResumeWaypoint);
+        }
+    }
+
+    // A continuous steering reference sampled from a two-point ground curve.
+    private record GroundCurveFollow(Vec3 target, Vec3 tangent) {
     }
 
     // Store navigation path state
     private static final class NavigationPathState {
         // Tracked waypoints
         private List<Vec3> waypoints = List.of();
+        // Gear selection for each tracked waypoint
+        private List<Boolean> reverseWaypoints = List.of();
+        // Reverse-only recovery curves
+        private List<GroundPathPlanner.Curve> groundRouteCurves = List.of();
+        private int groundCurveIndex;
         // Waypoint index
         private int waypointIndex;
+        // Route-space start of the active waypoint segment.
+        private Vec3 routeStartPosition = Vec3.ZERO;
+        // Previous live position used to sweep the physical hull across retained route legs.
+        private Vec3 previousRoutePosition = Vec3.ZERO;
+        private boolean routePositionInitialized;
+        // Monotonic progress on the active stop-to-stop route leg. Temporary
+        // off-course/recovery motion may not drag guidance back behind it.
+        private int routeProgressWaypointIndex = -1;
+        private double minimumRouteLegProgress;
+        // Authored schedule curve retained separately from its collision-checking chords.
+        private @Nullable WaypointSpline scheduleSpline;
+        private int scheduleSplineSegment;
+        private double minimumScheduleSplineFraction;
+        private int scheduleSplineResumeWaypoint;
+        // Once a schedule vehicle leaves its authored spline, rejoin control
+        // remains authoritative until its centreline is recaptured.
+        private boolean scheduleRouteRejoinActive;
         // Planned target
         private @Nullable Vec3 plannedTarget;
+        // Marks retained safe geometry adopted for the schedule-owned live target.
+        private boolean precomputedScheduleRoute;
+        // Remains set while this transit is using cached geometry, including local recovery.
+        private boolean usedPrecomputedScheduleRoute;
+        // Source metadata retained for a background cache refresh after repeated detours.
+        private int precomputedScheduleEntry = -1;
+        private @Nullable UUID precomputedScheduleDockId;
+        private @Nullable Vec3 precomputedScheduleOrigin;
+        private @Nullable Vec3 precomputedScheduleTarget;
+        // A full live route is retained until its schedule leg safely completes, then promoted to
+        // the persistent schedule cache by the owning runtime.
+        private int learnedScheduleEntry = -1;
+        private @Nullable Vec3 learnedScheduleOrigin;
+        private @Nullable Vec3 learnedScheduleTarget;
+        private List<Vec3> learnedScheduleWaypoints = List.of();
+        // Last live Sable route diagnostic snapshot
+        private @Nullable SablePathfinder.DebugRoute pathfinderDebugRoute;
+        // Cached incremental route search for the current transit destination
+        private @Nullable SablePathfinder.QueuedPlan queuedSableRoute;
+        private boolean obstacleDetourQueued;
+        private @Nullable Vec3 obstacleDetourBlocker;
+        private int obstacleSplineMergeSegment = -1;
+        private double obstacleSplineMergeFraction;
+        // Endpoint used to invalidate a queued route when the craft has moved away from its start
+        private @Nullable Vec3 queuedRouteOrigin;
+        // Remaining cached-route waypoint reached by the queued local rejoin, or -1 for a full route plan
+        private int queuedRouteRejoinIndex = -1;
+        // Projected position on that retained leg.
+        private @Nullable Vec3 queuedRouteRejoinTarget;
+        // Next retained waypoint to inspect when a bounded live rejoin scan spans ticks.
+        private int routeRejoinSearchIndex = -1;
+        // A recent clear retained-segment validation is shared by route repair and route following.
+        private long routeSegmentValidationTick = Long.MIN_VALUE;
+        private int routeSegmentValidationWaypoint = -1;
+        private @Nullable SablePathfinder.Traversal routeSegmentValidation;
         // Next replan tick
         private long nextReplanTick = Long.MIN_VALUE;
+        // Next local detour search tick
+        private long nextDetourTick = Long.MIN_VALUE;
+        // Retry a remote unloaded cached leg without parking a craft whose local reactive corridor is clear.
+        private long routeValidationDeferredUntil = Long.MIN_VALUE;
+        // Position where the current reverse recovery started
+        private Vec3 reverseStartPosition = Vec3.ZERO;
+        // Minimum distance to reverse before resuming forward travel
+        private double minimumReverseDistance;
+        // Consecutive non-ground retreats without a usable forward route
+        private int consecutiveReverseEscapes;
+        // Whether live clearance, rather than route exhaustion, ended reverse
+        private boolean reverseForwardReleased;
+        // A route-leg inversion must reach its planned checkpoint before normal forward routing
+        // may resume; obstacle recovery may still release once its original corridor is clear.
+        private boolean reverseRecoveryMustFinish;
+        // A safe bounded prefix must immediately continue route-pose planning
+        // after it completes instead of entering the ordinary retry cooldown.
+        private boolean groundRecoveryNeedsContinuation;
+        // A pose-validated forward escape temporarily owns steering before the retained suffix resumes.
+        private boolean forwardRecovery;
+        // Cached forward route retained while a ground vehicle performs a short reverse recovery
+        private @Nullable SuspendedSableRoute suspendedSableRoute;
+        // Tick-to-tick waypoint capture and approach progress
+        private final WaypointProgressTracker waypointProgress =
+                new WaypointProgressTracker();
+        // Latest route-progress decision exposed only through the debug snapshot.
+        private @Nullable WaypointProgressTracker.Observation lastWaypointProgress;
+
+        // Check whether the current waypoint is a reverse maneuver
+        private boolean reverseAtWaypoint() {
+            return waypointIndex >= 0 && waypointIndex < reverseWaypoints.size()
+                    && reverseWaypoints.get(waypointIndex);
+        }
+
+        // Check whether a retained Sable route is active
+        private boolean hasSableRoute() {
+            return waypointIndex >= 0 && waypointIndex < waypoints.size()
+                    && !reverseAtWaypoint() && groundRouteCurves.isEmpty();
+        }
+
+        // Replace the retained Sable route
+        private void setSableRoute(
+                List<Vec3> route,
+                Vec3 target,
+                Vec3 origin,
+                long currentTick
+        ) {
+            replaceRetainedRoute(route, target, origin, currentTick);
+            clearQueuedSableRoute();
+            pathfinderDebugRoute = null;
+            precomputedScheduleRoute = false;
+            scheduleRouteRejoinActive = false;
+            consecutiveReverseEscapes = 0;
+            suspendedSableRoute = null;
+        }
+
+        // Adopt a completed schedule plan at its nearest retained leg without treating travel as hull overlap.
+        private void adoptScheduledRoute(
+                List<Vec3> route,
+                Vec3 routeJoin,
+                Vec3 target,
+                Vec3 position,
+                long currentTick,
+                CompletedScheduledRoute scheduled,
+                boolean groundVehicle
+        ) {
+            WaypointSpline spline = WaypointSpline.of(route);
+            List<Vec3> sampled = spline.sample(SCHEDULE_ROUTE_SPLINE_SAMPLE_SPACING,
+                    MAX_SCHEDULE_ROUTE_SPLINE_SAMPLES);
+            if (sampled.size() < 2) return;
+            setSableRoute(sampled.subList(1, sampled.size()), target,
+                    sampled.getFirst(), currentTick);
+            scheduleSpline = spline;
+            scheduleSplineSegment = 0;
+            minimumScheduleSplineFraction = 0.0D;
+            scheduleSplineResumeWaypoint = 0;
+            precomputedScheduleRoute = true;
+            scheduleRouteRejoinActive = false;
+            usedPrecomputedScheduleRoute = true;
+            precomputedScheduleEntry = scheduled == null ? -1 : scheduled.scheduleEntry();
+            precomputedScheduleDockId = scheduled == null ? null : scheduled.dockId();
+            precomputedScheduleOrigin = scheduled == null ? null : scheduled.origin();
+            precomputedScheduleTarget = scheduled == null ? null : scheduled.target();
+            waypointIndex = 0;
+            previousRoutePosition = finite(position);
+            routePositionInitialized = true;
+            nextDetourTick = Long.MIN_VALUE;
+        }
+
+        // Retain a completed live plan until the vehicle actually reaches its schedule target.
+        private void recordLiveScheduleRoute(
+                int scheduleEntry,
+                Vec3 origin,
+                Vec3 target,
+                List<Vec3> route
+        ) {
+            if (scheduleEntry < 0 || route == null || route.isEmpty()) {
+                return;
+            }
+            learnedScheduleEntry = scheduleEntry;
+            learnedScheduleOrigin = origin == null ? Vec3.ZERO : finite(origin);
+            learnedScheduleTarget = target == null ? Vec3.ZERO : finite(target);
+            learnedScheduleWaypoints = List.copyOf(route);
+        }
+
+        // Expose a learned route only when it still belongs to the target which was reached.
+        private @Nullable CompletedScheduledRoute completedLiveScheduleRoute(Vec3 target) {
+            if (learnedScheduleEntry < 0 || learnedScheduleOrigin == null
+                    || learnedScheduleTarget == null || learnedScheduleWaypoints.isEmpty()
+                    || learnedScheduleTarget.distanceToSqr(target) > 4.0D) {
+                return null;
+            }
+            return new CompletedScheduledRoute(learnedScheduleEntry, null,
+                    learnedScheduleOrigin, learnedScheduleTarget,
+                    learnedScheduleWaypoints.stream()
+                            .map(point -> new SablePathfinder.Waypoint(point, null))
+                            .toList());
+        }
+
+        // Queue one full bounded route calculation without discarding the active reactive controller.
+        private void queueSableRoute(SablePathfinder.QueuedPlan queued,
+                                     Vec3 origin, Vec3 target) {
+            queueSableRoute(queued, origin, target, -1, null);
+        }
+
+        // Queue a local plan whose completed prefix rejoins a projected point on one retained leg.
+        private void queueSableRoute(SablePathfinder.QueuedPlan queued,
+                                     Vec3 origin, Vec3 target, int rejoinWaypointIndex,
+                                     @Nullable Vec3 rejoinTarget) {
+            queuedSableRoute = queued;
+            queuedRouteOrigin = origin;
+            queuedRouteRejoinIndex = rejoinWaypointIndex;
+            queuedRouteRejoinTarget = rejoinTarget;
+            plannedTarget = target;
+        }
+
+        // Check whether no compatible retained queue is available for this live transit state.
+        private boolean queuedPlanInvalid(Vec3 position, Vec3 target, double step) {
+            return queuedSableRoute == null || queuedRouteOrigin == null || plannedTarget == null
+                    || queuedRouteRejoinIndex >= 0
+                    || queuedRouteOrigin.distanceToSqr(position) > step * step * 4.0D
+                    || !precomputedScheduleRoute
+                    && plannedTarget.distanceToSqr(target) > step * step;
+        }
+
+        // A proactive detour may be prepared while the vehicle keeps moving on its still-clear prefix
+        private boolean obstaclePlanInvalid(Vec3 target, int rejoinWaypointIndex,
+                                            @Nullable Vec3 rejoinTarget, double step){
+            if(queuedSableRoute == null || plannedTarget == null
+                    || plannedTarget.distanceToSqr(target) > step * step
+                    || queuedRouteRejoinIndex != rejoinWaypointIndex) return true;
+            return rejoinWaypointIndex >= 0 && (queuedRouteRejoinTarget == null || rejoinTarget == null
+                    || queuedRouteRejoinTarget.distanceToSqr(rejoinTarget) > step * step);
+        }
+
+        // Map one forward spline distance to its first retained sampled waypoint without crossing branches
+        private int scheduleWaypointAtOrAfter(double distanceAlongRoute){
+            if(scheduleSpline == null || scheduleSpline.isEmpty() || waypoints.isEmpty()) return -1;
+            int segment = Math.max(0, Math.min(scheduleSplineSegment,
+                    scheduleSpline.segments().size() - 1));
+            double fraction = minimumScheduleSplineFraction;
+            int first = Math.max(waypointIndex, scheduleSplineResumeWaypoint);
+            for(int idx = first; idx < waypoints.size(); idx++){
+                WaypointSpline.Projection projection = scheduleSpline.project(
+                        waypoints.get(idx), segment, fraction);
+                if(!projection.found()) continue;
+                if(projection.distanceAlongRoute() + 0.05D >= distanceAlongRoute) return idx;
+                segment = projection.segmentIndex();
+                fraction = projection.fraction();
+                if(fraction >= 0.999D && segment + 1 < scheduleSpline.segments().size()){
+                    segment++;
+                    fraction = 0.0D;
+                }
+            }
+            return -1;
+        }
+
+        // Check whether the retained local route-rejoin plan no longer matches this blocked leg.
+        private boolean queuedRejoinInvalid(
+                Vec3 position,
+                Vec3 target,
+                int rejoinWaypointIndex,
+                Vec3 rejoinTarget,
+                double step
+        ) {
+            double permittedStartDrift = Math.max(step * 2.0D,
+                    precomputedScheduleRoute ? step * 8.0D : step * 2.0D);
+            return queuedSableRoute == null || queuedRouteOrigin == null || plannedTarget == null
+                    || queuedRouteRejoinTarget == null
+                    || queuedRouteRejoinIndex != rejoinWaypointIndex
+                    || queuedRouteRejoinTarget.distanceToSqr(rejoinTarget) > step * step
+                    || queuedRouteOrigin.distanceToSqr(position)
+                    > permittedStartDrift * permittedStartDrift
+                    || !precomputedScheduleRoute
+                    && plannedTarget.distanceToSqr(target) > step * step;
+        }
+
+        // Get the bounded rejoin scan start without revisiting an already-inspected suffix.
+        private int routeRejoinSearchStart() {
+            return Math.max(waypointIndex, routeRejoinSearchIndex);
+        }
+
+        // Retain the next bounded rejoin scan cursor.
+        private void advanceRouteRejoinSearch(int nextWaypointIndex) {
+            routeRejoinSearchIndex = Math.max(waypointIndex, nextWaypointIndex);
+        }
+
+        // Restart a retained-route scan after a route or blocking state changes.
+        private void resetRouteRejoinSearch() {
+            routeRejoinSearchIndex = -1;
+        }
+
+        // Check whether an unavailable remote route leg is waiting for its next loaded-state retry.
+        private boolean routeValidationDeferred(long gameTime) {
+            return gameTime < routeValidationDeferredUntil;
+        }
+
+        // Preserve the cached route but avoid a repeated full segment test before the retry interval.
+        private void deferRouteValidation(long retryTick) {
+            routeValidationDeferredUntil = Math.max(routeValidationDeferredUntil, retryTick);
+        }
+
+        // A reactive sidestep changed the start of the next leg; it cannot reuse its former clear result.
+        private void invalidateRouteSegmentValidation() {
+            routeSegmentValidationTick = Long.MIN_VALUE;
+            routeSegmentValidationWaypoint = -1;
+            routeSegmentValidation = null;
+            resetRouteRejoinSearch();
+        }
+
+        // Reuse a short-lived clear validation while reactive hull probes remain active every tick.
+        private SablePathfinder.Traversal sableRouteSegment(
+                Vec3 position,
+                Vec3 waypoint,
+                CollisionScanContext ctx,
+                boolean groundVehicle,
+                SablePathfinder.Safety safety,
+                long gameTime
+        ) {
+            if (routeSegmentValidation != null
+                    && routeSegmentValidation.result()
+                    == SablePathfinder.TraversalResult.CLEAR
+                    && routeSegmentValidationWaypoint == waypointIndex
+                    && gameTime >= routeSegmentValidationTick
+                    && gameTime - routeSegmentValidationTick
+                    < SABLE_ROUTE_SEGMENT_VALIDATION_INTERVAL_TICKS) {
+                return routeSegmentValidation;
+            }
+            SablePathfinder.Traversal traversal = ShipControlModuleRuntime.sableRouteSegment(
+                    position, waypoint, ctx, groundVehicle, safety);
+            routeSegmentValidationTick = gameTime;
+            routeSegmentValidationWaypoint = waypointIndex;
+            routeSegmentValidation = traversal;
+            return traversal;
+        }
+
+        // Clear the retained queued plan.
+        private void clearQueuedSableRoute() {
+            obstacleDetourQueued = false;
+            obstacleDetourBlocker = null;
+            obstacleSplineMergeSegment = -1;
+            obstacleSplineMergeFraction = 0.0D;
+            SABLE_ROUTE_LIVE_WORK_BUDGET.release(queuedSableRoute);
+            queuedSableRoute = null;
+            queuedRouteOrigin = null;
+            queuedRouteRejoinIndex = -1;
+            queuedRouteRejoinTarget = null;
+            resetRouteRejoinSearch();
+        }
+
+        // Convert the retained position route into generic pathfinder route metadata.
+        private List<SablePathfinder.Waypoint> routeWaypoints(boolean groundVehicle) {
+            SablePathfinder.RouteMode mode = groundVehicle
+                    ? SablePathfinder.RouteMode.GROUND : SablePathfinder.RouteMode.FLIGHT;
+            return waypoints.stream().map(point -> new SablePathfinder.Waypoint(point, mode)).toList();
+        }
+
+        // Get only the unconsumed route suffix for the live guidance overlay.
+        private List<SablePathfinder.Waypoint> remainingRouteWaypoints(
+                SablePathfinder.RouteMode mode
+        ) {
+            if (waypointIndex < 0 || waypointIndex >= waypoints.size()) {
+                return List.of();
+            }
+            return waypoints.subList(waypointIndex, waypoints.size()).stream()
+                    .map(point -> new SablePathfinder.Waypoint(point, mode)).toList();
+        }
+
+        // Follow only the accepted safe prefix while an incremental live plan is still running.
+        private @Nullable Vec3 queuedRouteTrackingTarget(
+                Vec3 position,
+                boolean groundVehicle,
+                double lookahead
+        ) {
+            if (queuedSableRoute == null || queuedRouteOrigin == null) return null;
+            List<SablePathfinder.Waypoint> route = queuedSableRoute.result().waypoints();
+            if (route.isEmpty()) return null;
+            SablePathfinder.RouteMode mode = groundVehicle
+                    ? SablePathfinder.RouteMode.GROUND : SablePathfinder.RouteMode.FLIGHT;
+            SablePathfinder.RouteProjection projection = SablePathfinder.routeProjection(
+                    route, 0, queuedRouteOrigin, position);
+            int next = projection.found()
+                    ? Math.max(0, Math.min(
+                    projection.nextWaypointIndex(), route.size() - 1)) : 0;
+            Vec3 start = next == 0
+                    ? queuedRouteOrigin : route.get(next - 1).position();
+            Vec3 end = route.get(next).position();
+            return SablePathfinder.routeLegTrackingTarget(
+                    start, end, position, mode,
+                    Math.max(0.25D, finite(lookahead)));
+        }
+
+        // Get the bounded route ahead of the vehicle for traffic coordination.
+        private List<Vec3> routeTrafficPath(
+                Vec3 position,
+                SablePathfinder.RouteMode mode,
+                double maximumDistance
+        ) {
+            if (!hasSableRoute()) return List.of();
+            Vec3 current = finite(position);
+            Vec3 start = waypointIndex <= 0
+                    ? routeStartPosition : waypoints.get(waypointIndex - 1);
+            SablePathfinder.RouteProjection projection =
+                    SablePathfinder.routeLegProjection(
+                            waypointIndex, start, waypoints.get(waypointIndex),
+                            current, mode);
+            List<Vec3> route = new ArrayList<>();
+            route.add(current);
+            Vec3 cursor = projection.found() ? projection.position() : current;
+            double maximum = Math.max(0.0D, finite(maximumDistance));
+            double traversed = mode == SablePathfinder.RouteMode.GROUND
+                    ? horizontalDistance(current, cursor) : current.distanceTo(cursor);
+            if (traversed > 1.0E-6D) route.add(cursor);
+            for (int index = waypointIndex;
+                 index < waypoints.size() && traversed < maximum - 1.0E-6D;
+                 index++) {
+                Vec3 endpoint = waypoints.get(index);
+                double length = mode == SablePathfinder.RouteMode.GROUND
+                        ? horizontalDistance(cursor, endpoint)
+                        : cursor.distanceTo(endpoint);
+                if (length <= 1.0E-6D) {
+                    cursor = endpoint;
+                    continue;
+                }
+                double retained = Math.min(length, maximum - traversed);
+                Vec3 next = retained + 1.0E-6D >= length ? endpoint
+                        : cursor.add(endpoint.subtract(cursor).scale(retained / length));
+                if (route.getLast().distanceToSqr(next) > 1.0E-8D) route.add(next);
+                traversed += retained;
+                cursor = endpoint;
+            }
+            return List.copyOf(route);
+        }
+
+        // Check whether live guidance is still inside the current certified leg corridor.
+        private boolean withinActiveRouteCorridor(
+                Vec3 position,
+                boolean groundVehicle,
+                double corridorRadius
+        ) {
+            if (!hasSableRoute()) return false;
+            Vec3 current = finite(position);
+            double corridor = Math.max(0.0D, finite(corridorRadius));
+            // Schedule sample chords exist for collision validation only.
+            // Route ownership must use the authored spline, otherwise a
+            // vehicle can leave a bend but still be accepted as on route.
+            if (precomputedScheduleRoute && scheduleSpline != null && !hasTemporaryRoutePrefix()
+                    && !scheduleSpline.segments().isEmpty()) {
+                int segment = Math.max(0, Math.min(scheduleSplineSegment,
+                        scheduleSpline.segments().size() - 1));
+                WaypointSpline.Projection projection = scheduleSpline.projectSegment(
+                        current, segment, minimumScheduleSplineFraction);
+                if (projection.found()) {
+                    double distance = groundVehicle
+                            ? horizontalDistance(current, projection.position())
+                            : current.distanceTo(projection.position());
+                    return distance <= corridor;
+                }
+            }
+            Vec3 start = waypointIndex <= 0
+                    ? routeStartPosition : waypoints.get(waypointIndex - 1);
+            Vec3 end = waypoints.get(waypointIndex);
+            SablePathfinder.RouteProjection projection =
+                    SablePathfinder.routeLegProjection(
+                            waypointIndex, start, end, current,
+                            groundVehicle ? SablePathfinder.RouteMode.GROUND
+                                    : SablePathfinder.RouteMode.FLIGHT);
+            return projection.found()
+                    && projection.distanceToRouteSqr() <= corridor * corridor;
+        }
+
+        // Keep planned-route recovery active until the authored spline centreline is recaptured.
+        private boolean updateScheduledRouteRejoinState(
+                Vec3 position,
+                Vec3 velocity,
+                Vec3 forward,
+                boolean groundVehicle
+        ) {
+            if(hasTemporaryRoutePrefix()){
+                scheduleRouteRejoinActive = true;
+                return true;
+            }
+            if (!precomputedScheduleRoute || scheduleSpline == null) {
+                scheduleRouteRejoinActive = false;
+                return false;
+            }
+            double capture = SCHEDULE_ROUTE_SPLINE_CAPTURE.guideRadius();
+            scheduleRouteRejoinActive = !withinActiveRouteCorridor(
+                    position, groundVehicle, capture);
+            if(!scheduleRouteRejoinActive){
+                WaypointSpline.Projection projection = scheduleSpline.projectSegment(
+                        position, scheduleSplineSegment, minimumScheduleSplineFraction);
+                SplineConstraintFrame.AxisPolicy axes = groundVehicle
+                        ? SplineConstraintFrame.AxisPolicy.HORIZONTAL
+                        : SplineConstraintFrame.AxisPolicy.ALL;
+                scheduleRouteRejoinActive = !SplineConstraintFrame.canGuide(
+                        position, velocity, forward, projection, axes, capture);
+            }
+            return scheduleRouteRejoinActive;
+        }
+
+        // Commit progress only on the current ordered route leg. A crossing or
+        // loop elsewhere in the suffix must never become the new cursor merely
+        // because it is geometrically closer while the vehicle is off course.
+        private void updateOrderedRouteProgress(
+                Vec3 position,
+                boolean groundVehicle,
+                double corridorRadius
+        ) {
+            if (!hasSableRoute()) return;
+            if (routeProgressWaypointIndex != waypointIndex) {
+                routeProgressWaypointIndex = waypointIndex;
+                minimumRouteLegProgress = 0.0D;
+            }
+            Vec3 activeStart = waypointIndex <= 0
+                    ? routeStartPosition : waypoints.get(waypointIndex - 1);
+            SablePathfinder.RouteProjection active = SablePathfinder.routeLegProjection(
+                    waypointIndex, activeStart, waypoints.get(waypointIndex), position,
+                    groundVehicle ? SablePathfinder.RouteMode.GROUND
+                            : SablePathfinder.RouteMode.FLIGHT);
+            double corridor = Math.max(0.0D, finite(corridorRadius));
+            if (active.found()
+                    && active.distanceToRouteSqr() <= corridor * corridor) {
+                minimumRouteLegProgress = Math.max(minimumRouteLegProgress,
+                        Mth.clamp(active.legProgress(), 0.0D, 1.0D));
+                return;
+            }
+            // If the craft is physically beyond the endpoint plane, move only
+            // to the immediately-following leg. Hull overlap remains the
+            // normal multi-waypoint advance mechanism.
+            if (active.found() && active.legProgress() > 1.0D + 1.0E-4D
+                    && waypointIndex + 1 < waypoints.size()) {
+                waypointIndex++;
+                routeProgressWaypointIndex = waypointIndex;
+                minimumRouteLegProgress = 0.0D;
+                invalidateRouteSegmentValidation();
+            }
+        }
+
+        // Skip checkpoints behind any later contiguous route leg crossed by the live physical hull.
+        private void advanceOverlappedRoute(
+                Vec3 position,
+                HullBounds hull,
+                boolean groundVehicle,
+                double capturePadding
+        ) {
+            Vec3 current = finite(position);
+            Vec3 previous = routePositionInitialized ? previousRoutePosition : current;
+            previousRoutePosition = current;
+            routePositionInitialized = true;
+            if (!hasSableRoute() || hull == null) return;
+            SablePathfinder.WaypointAdvance advance = SablePathfinder.advanceRouteOverlap(
+                    waypoints, waypointIndex, routeStartPosition, previous, current,
+                    capturePadding,
+                    (movementStart, movementEnd, legStart, legEnd, padding) ->
+                            hull.sweptRouteLegOverlap(movementStart, movementEnd,
+                                    legStart, legEnd, padding, groundVehicle));
+            int nextWaypoint = advance.nextWaypointIndex();
+            // The schedule destination is not a skippable checkpoint. A wide hull may overlap it
+            // before the schedule-owned control point reaches its authored tolerance.
+            if (precomputedScheduleRoute && !waypoints.isEmpty()) {
+                nextWaypoint = Math.min(nextWaypoint, waypoints.size() - 1);
+            }
+            if (nextWaypoint == waypointIndex) return;
+            waypointIndex = nextWaypoint;
+            invalidateRouteSegmentValidation();
+        }
+
+        // Aim ahead along the active certified segment so control converges back onto the drawn
+        // route instead of cutting a loose chord straight to its next checkpoint.
+        private Vec3 sableRouteTrackingTarget(
+                Vec3 position,
+                boolean groundVehicle,
+                double lookahead
+        ) {
+            if (!hasSableRoute()) return finite(position);
+            if (precomputedScheduleRoute && scheduleSpline != null
+                    && waypointIndex >= scheduleSplineResumeWaypoint) {
+                WaypointSpline.Projection projection = scheduleSplineProjection(
+                        position, lookahead);
+                if (projection.found()) {
+                    double curveLookahead = Math.max(0.75D, finite(lookahead));
+                    WaypointSpline.TrackingTarget target = scheduleSpline.trackingTarget(
+                            projection, curveLookahead);
+                    if (target.found()) return target.position();
+                }
+            }
+            Vec3 start = waypointIndex <= 0 ? routeStartPosition
+                    : waypoints.get(waypointIndex - 1);
+            Vec3 end = waypoints.get(waypointIndex);
+            return SablePathfinder.routeLegTrackingTarget(
+                    start, end, position,
+                    groundVehicle ? SablePathfinder.RouteMode.GROUND
+                            : SablePathfinder.RouteMode.FLIGHT,
+                    Math.max(0.25D, finite(lookahead)),
+                    routeProgressWaypointIndex == waypointIndex
+                            ? minimumRouteLegProgress : 0.0D);
+        }
+
+        // Pull an on-route vehicle back to the authored spline centreline.
+        // Ground/sea retains terrain-owned Y motion; flight vehicles capture
+        // all axes. Rejoin and collision recovery bypass this result entirely.
+        private SplineMagnetism.Guidance scheduleSplineMagnet(
+                Vec3 position,
+                Vec3 velocity,
+                boolean groundVehicle,
+                double lookahead
+        ) {
+            if (!precomputedScheduleRoute || scheduleSpline == null
+                    || waypointIndex < scheduleSplineResumeWaypoint) {
+                return SplineMagnetism.Guidance.none();
+            }
+            WaypointSpline.Projection projection = scheduleSplineProjection(
+                    position, lookahead);
+            return SplineMagnetism.guide(position, velocity, projection,
+                    Math.max(0.75D, finite(lookahead)), groundVehicle ? 4.0D : 3.0D,
+                    groundVehicle ? 3.0D : 2.25D,
+                    groundVehicle ? SplineMagnetism.AxisPolicy.HORIZONTAL
+                            : SplineMagnetism.AxisPolicy.ALL);
+        }
+
+        // Advance only through adjacent authored spline legs and retain monotonic local progress.
+        private WaypointSpline.Projection scheduleSplineProjection(
+                Vec3 position,
+                double lookahead
+        ) {
+            if (scheduleSpline == null || scheduleSpline.segments().isEmpty()) {
+                return WaypointSpline.Projection.notFound();
+            }
+            scheduleSplineSegment = Math.max(0, Math.min(scheduleSplineSegment,
+                    scheduleSpline.segments().size() - 1));
+            WaypointSpline.Projection projection = scheduleSpline.projectSegment(
+                    position, scheduleSplineSegment, minimumScheduleSplineFraction);
+            double capture = Math.max(0.75D, Math.min(3.0D, finite(lookahead) * 0.5D));
+            while (projection.found()
+                    && scheduleSplineSegment + 1 < scheduleSpline.segments().size()
+                    && (projection.fraction() >= 0.999D
+                    || position.distanceTo(projection.position()) <= capture
+                    && projection.fraction() >= 0.97D)) {
+                scheduleSplineSegment++;
+                minimumScheduleSplineFraction = 0.0D;
+                projection = scheduleSpline.projectSegment(
+                        position, scheduleSplineSegment, 0.0D);
+            }
+            if (projection.found()
+                    && projection.distance() <= Math.max(2.0D, finite(lookahead) * 2.0D)) {
+                minimumScheduleSplineFraction = Math.max(
+                        minimumScheduleSplineFraction, projection.fraction());
+            }
+            return projection;
+        }
+
+        // Anticipate the next retained bend without replacing the certified current-leg target.
+        private Vec3 sableRouteSteeringDirection(
+                Vec3 position,
+                Vec3 controlTarget,
+                GroundPathPlanner.VehicleCapabilities capabilities
+        ) {
+            return sableRouteControl(position, controlTarget, capabilities,
+                    Double.MAX_VALUE).steeringDirection();
+        }
+
+        // Get the ordered travel tangent of the active retained leg.
+        private Vec3 sableRouteDirection() {
+            if (!hasSableRoute()) return Vec3.ZERO;
+            if (precomputedScheduleRoute && scheduleSpline != null
+                    && waypointIndex >= scheduleSplineResumeWaypoint
+                    && !scheduleSpline.segments().isEmpty()) {
+                int segment = Math.max(0, Math.min(scheduleSplineSegment,
+                        scheduleSpline.segments().size() - 1));
+                Vec3 tangent = scheduleSpline.segments().get(segment)
+                        .tangentAtFraction(minimumScheduleSplineFraction);
+                return normalize(new Vec3(tangent.x, 0.0D, tangent.z), Vec3.ZERO);
+            }
+            Vec3 start = waypointIndex <= 0
+                    ? routeStartPosition : waypoints.get(waypointIndex - 1);
+            Vec3 end = waypoints.get(waypointIndex);
+            return normalize(new Vec3(
+                    end.x - start.x, 0.0D, end.z - start.z), Vec3.ZERO);
+        }
+
+        // Look through collinear checkpoints so steering and braking see the same real bend.
+        private GroundPathPlanner.ForwardRouteControl sableRouteControl(
+                Vec3 position,
+                Vec3 controlTarget,
+                GroundPathPlanner.VehicleCapabilities capabilities,
+                double requestedSpeed
+        ) {
+            return sableRouteControl(position, position, controlTarget, capabilities, requestedSpeed);
+        }
+
+        // Preview from the turning axle without advancing the hull's route cursor
+        private GroundPathPlanner.ForwardRouteControl sableRouteControl(
+                Vec3 position,
+                Vec3 steeringPosition,
+                Vec3 controlTarget,
+                GroundPathPlanner.VehicleCapabilities capabilities,
+                double requestedSpeed
+        ) {
+            if (!hasSableRoute()) {
+                return GroundPathPlanner.ForwardRouteControl.clear(
+                        normalize(controlTarget.subtract(position), Vec3.ZERO), requestedSpeed);
+            }
+            if (precomputedScheduleRoute && scheduleSpline != null
+                    && waypointIndex >= scheduleSplineResumeWaypoint
+                    && !scheduleSpline.segments().isEmpty()) {
+                double lookahead = Math.max(0.75D,
+                        horizontalDistance(position, controlTarget));
+                WaypointSpline.Projection projection = scheduleSplineProjection(
+                        position, lookahead);
+                if (projection.found()) {
+                    WaypointSpline.Projection steeringProjection = SplineRouteGeometry.steeringProjection(
+                            scheduleSpline, projection, steeringPosition,
+                            steeringPosition.distanceTo(position) + lookahead);
+                    return GroundPathPlanner.forwardSplineControl(
+                            scheduleSpline, steeringProjection, steeringPosition, capabilities,
+                            lookahead, requestedSpeed,
+                            GROUND_NAVIGATION_CORNER_LATERAL_ACCELERATION,
+                            NAVIGATION_BRAKING_ACCELERATION,
+                            NAVIGATION_RESPONSE_SECONDS,
+                            GROUND_NAVIGATION_MIN_CORNER_SPEED);
+                }
+            }
+            return GroundPathPlanner.forwardRouteControl(
+                    position, controlTarget, routeStartPosition, waypoints, waypointIndex,
+                    capabilities, requestedSpeed,
+                    GROUND_NAVIGATION_CORNER_LATERAL_ACCELERATION,
+                    NAVIGATION_BRAKING_ACCELERATION,
+                    NAVIGATION_RESPONSE_SECONDS,
+                    GROUND_NAVIGATION_MIN_CORNER_SPEED);
+        }
+
+        // Check whether the live spline target is its immutable destination endpoint.
+        private boolean isTerminalSplineTarget(Vec3 controlTarget) {
+            return precomputedScheduleRoute && scheduleSpline != null
+                    && !scheduleSpline.waypoints().isEmpty()
+                    && horizontalDistance(controlTarget,
+                    scheduleSpline.waypoints().getLast()) <= 0.05D;
+        }
+
+        // Replace only the blocked prefix and preserve the cached leg after its projected rejoin point.
+        private List<Vec3> spliceSableRoute(List<Vec3> prefix, int rejoinWaypointIndex,
+                                             Vec3 target, Vec3 origin, long currentTick) {
+            return spliceSableRoute(prefix, rejoinWaypointIndex, target, origin, currentTick,
+                    -1, 0.0D);
+        }
+
+        // Insert one temporary detour at the active cursor without rebuilding or restarting the authored leg
+        private List<Vec3> spliceSableRoute(List<Vec3> prefix, int rejoinWaypointIndex,
+                                             Vec3 target, Vec3 origin, long currentTick,
+                                             int mergeSegment, double mergeFraction) {
+            boolean retainPrecalculatedSource = precomputedScheduleRoute;
+            WaypointSpline retainedSpline = scheduleSpline;
+            int retainedSplineSegment = scheduleSplineSegment;
+            double retainedSplineFraction = minimumScheduleSplineFraction;
+            List<Vec3> retained = waypoints;
+            int insertion = Math.max(0, Math.min(waypointIndex, retained.size()));
+            int suffix = Math.max(insertion, Math.min(rejoinWaypointIndex, retained.size()));
+            SplineRouteGeometry.RouteSplice splice = SplineRouteGeometry.spliceDetour(
+                    retained, insertion, prefix, suffix);
+            waypoints = splice.waypoints();
+            reverseWaypoints = waypoints.stream().map(ignored -> false).toList();
+            waypointIndex = splice.waypointIndex();
+            int resumeWaypoint = splice.resumeWaypointIndex();
+            plannedTarget = target;
+            routeProgressWaypointIndex = waypointIndex;
+            minimumRouteLegProgress = 0.0D;
+            previousRoutePosition = finite(origin);
+            routePositionInitialized = true;
+            if(insertion == 0) routeStartPosition = finite(origin);
+            invalidateRouteSegmentValidation();
+            groundRouteCurves = List.of();
+            groundCurveIndex = 0;
+            groundRecoveryNeedsContinuation = false;
+            forwardRecovery = false;
+            lastWaypointProgress = null;
+            waypointProgress.clear();
+            nextDetourTick = currentTick + SABLE_ROUTE_RETRY_TICKS;
+            routeValidationDeferredUntil = Long.MIN_VALUE;
+            clearQueuedSableRoute();
+            pathfinderDebugRoute = null;
+            if (retainPrecalculatedSource) {
+                scheduleSpline = retainedSpline;
+                WaypointSpline.Projection merge = WaypointSpline.Projection.notFound();
+                if(retainedSpline != null && mergeSegment >= 0
+                        && mergeSegment < retainedSpline.segments().size()){
+                    scheduleSplineSegment = mergeSegment;
+                    minimumScheduleSplineFraction = Mth.clamp(mergeFraction, 0.0D, 1.0D);
+                }else if(retainedSpline != null && !retainedSpline.isEmpty()){
+                    Vec3 mergePosition = resumeWaypoint > insertion
+                            ? waypoints.get(resumeWaypoint - 1)
+                            : suffix < retained.size() ? retained.get(suffix) : null;
+                    if(mergePosition != null){
+                        merge = retainedSpline.project(mergePosition,
+                                retainedSplineSegment, retainedSplineFraction);
+                    }
+                    scheduleSplineSegment = merge.found()
+                            ? merge.segmentIndex() : retainedSplineSegment;
+                    minimumScheduleSplineFraction = merge.found()
+                            ? merge.fraction() : retainedSplineFraction;
+                }
+                scheduleSplineResumeWaypoint = resumeWaypoint;
+                precomputedScheduleRoute = true;
+                scheduleRouteRejoinActive = waypointIndex < scheduleSplineResumeWaypoint;
+            }
+            return waypoints;
+        }
+
+        private boolean hasTemporaryRoutePrefix(){
+            return precomputedScheduleRoute && scheduleSplineResumeWaypoint > 0
+                    && waypointIndex < scheduleSplineResumeWaypoint;
+        }
+
+        // Retain the queued plan's accepted route geometry for the live overlay.
+        private void setPathfinderDebug(SablePathfinder.DebugRoute route) {
+            pathfinderDebugRoute = route;
+        }
+
+        // Replace the one permitted non-ground reverse escape
+        private void setReverseEscapeDetour(
+                List<Vec3> route,
+                Vec3 target,
+                long currentTick
+        ) {
+            replaceRetainedRoute(route, target, Vec3.ZERO, currentTick);
+            precomputedScheduleRoute = false;
+            scheduleRouteRejoinActive = false;
+            clearPrecomputedScheduleSource();
+            consecutiveReverseEscapes++;
+        }
+
+        // Replace one retained route
+        private void replaceRetainedRoute(
+                List<Vec3> route,
+                Vec3 target,
+                Vec3 origin,
+                long currentTick
+        ) {
+            waypoints = route == null ? List.of() : List.copyOf(route);
+            reverseWaypoints = waypoints.stream().map(ignored -> false).toList();
+            waypointIndex = 0;
+            plannedTarget = target;
+            resetRouteRejoinSearch();
+            invalidateRouteSegmentValidation();
+            groundRouteCurves = List.of();
+            groundCurveIndex = 0;
+            groundRecoveryNeedsContinuation = false;
+            forwardRecovery = false;
+            lastWaypointProgress = null;
+            routeStartPosition = origin == null ? Vec3.ZERO : finite(origin);
+            previousRoutePosition = routeStartPosition;
+            routePositionInitialized = true;
+            routeProgressWaypointIndex = waypoints.isEmpty() ? -1 : 0;
+            minimumRouteLegProgress = 0.0D;
+            scheduleSpline = null;
+            scheduleSplineSegment = 0;
+            minimumScheduleSplineFraction = 0.0D;
+            scheduleSplineResumeWaypoint = 0;
+            scheduleRouteRejoinActive = false;
+            nextDetourTick = currentTick + SABLE_ROUTE_RETRY_TICKS;
+            routeValidationDeferredUntil = Long.MIN_VALUE;
+        }
+
+        // Clear the retained Sable route
+        private void clearSableRoute() {
+            waypoints = List.of();
+            reverseWaypoints = List.of();
+            waypointIndex = 0;
+            plannedTarget = null;
+            routeStartPosition = Vec3.ZERO;
+            previousRoutePosition = Vec3.ZERO;
+            routePositionInitialized = false;
+            routeProgressWaypointIndex = -1;
+            minimumRouteLegProgress = 0.0D;
+            scheduleSpline = null;
+            scheduleSplineSegment = 0;
+            minimumScheduleSplineFraction = 0.0D;
+            scheduleSplineResumeWaypoint = 0;
+            precomputedScheduleRoute = false;
+            scheduleRouteRejoinActive = false;
+            clearPrecomputedScheduleSource();
+            pathfinderDebugRoute = null;
+            clearQueuedSableRoute();
+            groundRouteCurves = List.of();
+            groundCurveIndex = 0;
+            groundRecoveryNeedsContinuation = false;
+            forwardRecovery = false;
+            lastWaypointProgress = null;
+            nextDetourTick = Long.MIN_VALUE;
+            routeValidationDeferredUntil = Long.MIN_VALUE;
+            suspendedSableRoute = null;
+        }
+
+        // Drop deleted schedule geometry while allowing the live command to plan normally.
+        private void discardPrecomputedScheduleRoute() {
+            if (!precomputedScheduleRoute && !usedPrecomputedScheduleRoute) return;
+            clearSableRoute();
+            usedPrecomputedScheduleRoute = false;
+        }
+
+        // Retire a reverse maneuver without discarding target progress state
+        private void clearReverseRecovery() {
+            waypoints = List.of();
+            reverseWaypoints = List.of();
+            waypointIndex = 0;
+            plannedTarget = null;
+            precomputedScheduleRoute = false;
+            clearPrecomputedScheduleSource();
+            clearQueuedSableRoute();
+            groundRouteCurves = List.of();
+            groundCurveIndex = 0;
+            routeProgressWaypointIndex = -1;
+            minimumRouteLegProgress = 0.0D;
+            reverseForwardReleased = false;
+            reverseRecoveryMustFinish = false;
+            groundRecoveryNeedsContinuation = false;
+            forwardRecovery = false;
+            lastWaypointProgress = null;
+            nextReplanTick = Long.MIN_VALUE;
+            suspendedSableRoute = null;
+        }
+
+        // Replace live route following with one committed, pose-validated
+        // multi-point manoeuvre while retaining the forward suffix.
+        private void beginGroundRecovery(
+                GroundPathPlanner.Plan plan,
+                Vec3 target,
+                Vec3 position,
+                double minimumDistance,
+                long currentTick,
+                boolean mustFinish
+        ) {
+            beginGroundRecovery(plan, target, position, minimumDistance,
+                    currentTick, mustFinish, waypointIndex,
+                    routeProgressWaypointIndex == waypointIndex
+                            ? minimumRouteLegProgress : 0.0D);
+        }
+
+        // Execute a collision-tested bounded prefix and resume the retained
+        // route with no retry delay so multi-stage turns cannot park between phases.
+        private void beginPartialGroundRecovery(
+                GroundPathPlanner.Plan plan,
+                Vec3 target,
+                Vec3 position,
+                double minimumDistance,
+                long currentTick
+        ) {
+            beginGroundRecovery(plan, target, position, minimumDistance,
+                    currentTick, true);
+            groundRecoveryNeedsContinuation = true;
+        }
+
+        // Start a recovery whose completion resumes an explicitly ordered
+        // retained-route point, including progress within that leg.
+        private void beginGroundRecovery(
+                GroundPathPlanner.Plan plan,
+                Vec3 target,
+                Vec3 position,
+                double minimumDistance,
+                long currentTick,
+                boolean mustFinish,
+                int resumeWaypointIndex,
+                double resumeLegProgress
+        ) {
+            if (hasSableRoute() && plannedTarget != null) {
+                int resume = Math.max(waypointIndex, Math.min(
+                        resumeWaypointIndex, waypoints.size() - 1));
+                suspendedSableRoute = new SuspendedSableRoute(
+                        waypoints, resume, plannedTarget, routeStartPosition,
+                        resume, Math.max(resume == waypointIndex
+                                && routeProgressWaypointIndex == waypointIndex
+                                ? minimumRouteLegProgress : 0.0D,
+                                Mth.clamp(finite(resumeLegProgress), 0.0D, 1.0D)),
+                        scheduleSpline, scheduleSplineSegment,
+                        minimumScheduleSplineFraction, scheduleSplineResumeWaypoint);
+            }
+            clearQueuedSableRoute();
+            List<GroundPathPlanner.Waypoint> planned = plan == null
+                    ? List.of() : plan.waypoints();
+            waypoints = planned.stream()
+                    .map(GroundPathPlanner.Waypoint::position).toList();
+            reverseWaypoints = planned.stream()
+                    .map(GroundPathPlanner.Waypoint::reverse).toList();
+            waypointIndex = 0;
+            plannedTarget = target;
+            setGroundRoute(plan == null ? List.of() : plan.curves());
+            routeProgressWaypointIndex = -1;
+            minimumRouteLegProgress = 0.0D;
+            waypointProgress.reset(position, waypoints.getFirst(), currentTick, true);
+            lastWaypointProgress = null;
+            reverseStartPosition = position;
+            minimumReverseDistance = minimumDistance;
+            reverseForwardReleased = false;
+            reverseRecoveryMustFinish = mustFinish;
+            groundRecoveryNeedsContinuation = false;
+            forwardRecovery = false;
+            nextReplanTick = Long.MAX_VALUE;
+        }
+
+        // Replace route following with one exact-hull-validated forward escape curve.
+        private void beginForwardRecovery(
+                List<Vec3> route,
+                List<GroundPathPlanner.Curve> curves,
+                Vec3 target,
+                Vec3 position,
+                long currentTick
+        ) {
+            if (hasSableRoute() && plannedTarget != null) {
+                suspendedSableRoute = new SuspendedSableRoute(
+                        waypoints, waypointIndex, plannedTarget, routeStartPosition,
+                        routeProgressWaypointIndex, minimumRouteLegProgress,
+                        scheduleSpline, scheduleSplineSegment,
+                        minimumScheduleSplineFraction, scheduleSplineResumeWaypoint);
+            }
+            clearQueuedSableRoute();
+            waypoints = route == null ? List.of() : List.copyOf(route);
+            reverseWaypoints = waypoints.stream().map(ignored -> false).toList();
+            waypointIndex = 0;
+            plannedTarget = target;
+            setGroundRoute(curves);
+            routeProgressWaypointIndex = -1;
+            minimumRouteLegProgress = 0.0D;
+            groundRecoveryNeedsContinuation = false;
+            waypointProgress.reset(position, waypoints.getFirst(), currentTick, true);
+            lastWaypointProgress = null;
+            forwardRecovery = true;
+            nextReplanTick = Long.MAX_VALUE;
+        }
+
+        // Check whether the current curve is a live forward collision escape.
+        private boolean forwardRecoveryAtWaypoint() {
+            return forwardRecovery && waypointIndex >= 0
+                    && waypointIndex < waypoints.size() && hasActiveGroundCurve();
+        }
+
+        // Check whether a committed recovery manoeuvre owns both steering and gear selection.
+        private boolean groundRecoveryAtWaypoint() {
+            return !forwardRecovery && waypointIndex >= 0
+                    && waypointIndex < waypoints.size() && hasActiveGroundCurve();
+        }
+
+        // Resume the retained forward route after a recovery without claiming
+        // progress from the recovery vehicle's off-route position. A full
+        // route-rejoin plan stores its intended resume progress when it starts;
+        // a partial escape manoeuvre must retain the old monotonic floor.
+        private boolean restoreSuspendedSableRoute(Vec3 position, long currentTick) {
+            if (suspendedSableRoute == null) return false;
+            boolean continueGroundRecovery = groundRecoveryNeedsContinuation;
+            SuspendedSableRoute route = suspendedSableRoute;
+            suspendedSableRoute = null;
+            waypoints = route.waypoints();
+            reverseWaypoints = waypoints.stream().map(ignored -> false).toList();
+            waypointIndex = Math.max(0, Math.min(route.waypointIndex(), waypoints.size() - 1));
+            plannedTarget = route.target();
+            groundRouteCurves = List.of();
+            groundCurveIndex = 0;
+            routeStartPosition = route.routeStartPosition();
+            routeProgressWaypointIndex = route.routeProgressWaypointIndex();
+            minimumRouteLegProgress = route.minimumRouteLegProgress();
+            scheduleSpline = route.scheduleSpline();
+            scheduleSplineSegment = route.scheduleSplineSegment();
+            minimumScheduleSplineFraction = route.minimumScheduleSplineFraction();
+            scheduleSplineResumeWaypoint = route.scheduleSplineResumeWaypoint();
+            if (scheduleSpline != null && position != null) {
+                WaypointSpline.Projection resumedSpline = scheduleSpline.project(
+                        position, scheduleSplineSegment,
+                        minimumScheduleSplineFraction);
+                if (resumedSpline.found() && resumedSpline.distance() <= 1.0D) {
+                    scheduleSplineSegment = resumedSpline.segmentIndex();
+                    minimumScheduleSplineFraction = resumedSpline.fraction();
+                }
+            }
+            previousRoutePosition = position == null
+                    ? routeStartPosition : finite(position);
+            routePositionInitialized = true;
+            reverseForwardReleased = false;
+            reverseRecoveryMustFinish = false;
+            groundRecoveryNeedsContinuation = false;
+            forwardRecovery = false;
+            routeSegmentValidation = null;
+            routeSegmentValidationWaypoint = -1;
+            nextReplanTick = continueGroundRecovery
+                    ? Long.MIN_VALUE
+                    : currentTick + NAVIGATION_FAILED_RETRY_TICKS;
+            nextDetourTick = Long.MIN_VALUE;
+            return hasSableRoute();
+        }
+
+        // Clear metadata which only applies while a completed schedule cache owns this route.
+        private void clearPrecomputedScheduleSource() {
+            precomputedScheduleEntry = -1;
+            precomputedScheduleDockId = null;
+            precomputedScheduleOrigin = null;
+            precomputedScheduleTarget = null;
+        }
+
+        // Check whether the current sparse checkpoint has a physical curve.
+        private boolean hasActiveGroundCurve() {
+            return groundCurveIndex >= 0
+                    && groundCurveIndex < groundRouteCurves.size();
+        }
+
+        // Require real travel along an active physical manoeuvre before its
+        // hull-overlap endpoint test may complete it. Route rejoining remains
+        // a separate intentional fast-forward operation below.
+        private double activeGroundCurveProgress(Vec3 position) {
+            return hasActiveGroundCurve()
+                    ? groundRouteCurves.get(groundCurveIndex).nearestFraction(position)
+                    : 1.0D;
+        }
+
+        // Replace the reverse recovery curves
+        private void setGroundRoute(List<GroundPathPlanner.Curve> curves) {
+            groundRouteCurves = curves == null ? List.of() : List.copyOf(curves);
+            groundCurveIndex = 0;
+        }
+
+        // Advance exactly one maneuver when its sparse endpoint is completed.
+        private void completeGroundWaypoint(Vec3 waypoint) {
+            if (groundCurveIndex < groundRouteCurves.size()) groundCurveIndex++;
+        }
+
+        // Follow the active curve continuously. Its completion remains the
+        // only route checkpoint, but the target/tangent evolve along its
+        // capability-derived arc so the car cannot cut the corner or circle
+        // around an unreachable chord.
+        private @Nullable GroundCurveFollow groundCurveFollow(
+                Vec3 position,
+                double lookahead
+        ) {
+            if (groundCurveIndex < 0 || groundCurveIndex >= groundRouteCurves.size()) {
+                return null;
+            }
+            GroundPathPlanner.Curve curve = groundRouteCurves.get(groundCurveIndex);
+            double length = curve.length();
+            double progress = curve.nearestFraction(position);
+            double targetProgress = length <= 1.0E-8D ? 1.0D
+                    : Math.min(1.0D, progress + Math.max(0.0D, lookahead) / length);
+            Vec3 tangent = curve.tangentAtFraction(progress);
+            return new GroundCurveFollow(curve.pointAtFraction(targetProgress), tangent);
+        }
     }
 
     // Store the hull bounds
@@ -13319,6 +23969,35 @@ public final class ShipControlModuleRuntime {
                     maxZ - minZ);
         }
 
+        // Get the largest horizontal distance from the controller origin to
+        // the Sable collision hull.
+        private double horizontalRadius() {
+            double radius = 0.0D;
+            for (AABB bounds : relativeBounds) {
+                radius = Math.max(radius, Math.hypot(bounds.minX, bounds.minZ));
+                radius = Math.max(radius, Math.hypot(bounds.minX, bounds.maxZ));
+                radius = Math.max(radius, Math.hypot(bounds.maxX, bounds.minZ));
+                radius = Math.max(radius, Math.hypot(bounds.maxX, bounds.maxZ));
+            }
+            return radius;
+        }
+
+        // Get the largest spatial distance from the controller origin to the
+        // Sable collision hull.
+        private double spatialRadius() {
+            double radiusSqr = 0.0D;
+            for (AABB bounds : relativeBounds) {
+                for (double x : new double[]{bounds.minX, bounds.maxX}) {
+                    for (double y : new double[]{bounds.minY, bounds.maxY}) {
+                        for (double z : new double[]{bounds.minZ, bounds.maxZ}) {
+                            radiusSqr = Math.max(radiusSqr, x * x + y * y + z * z);
+                        }
+                    }
+                }
+            }
+            return Math.sqrt(radiusSqr);
+        }
+
         // Get the world bounds
         private List<AABB> worldBoundsAt(Vec3 anchor, double margin) {
             return worldBoundsAt(anchor, margin, false);
@@ -13336,20 +24015,161 @@ public final class ShipControlModuleRuntime {
             for (AABB bounds : relativeBounds) {
                 worldBounds.add(new AABB(
                         bounds.minX + pos.x - inflation,
-                        bounds.minY + pos.y
-                                + (preserveGroundClearance
-                                ? GROUND_NAVIGATION_CONTACT_CLEARANCE : -inflation),
+                        bounds.minY + pos.y - inflation,
                         bounds.minZ + pos.z - inflation,
                         bounds.maxX + pos.x + inflation,
                         bounds.maxY + pos.y + inflation,
                         bounds.maxZ + pos.z + inflation));
             }
-            return List.copyOf(worldBounds);
+            List<AABB> resolved = List.copyOf(worldBounds);
+            return preserveGroundClearance
+                    ? SubLevelParticleOcclusion.withoutGroundContactBand(
+                    resolved, inflation + GROUND_NAVIGATION_CONTACT_CLEARANCE)
+                    : resolved;
+        }
+
+        // Check an actual assembled hull sweep against a retained route leg. Ground routes are
+        // planar, while flight routes use the complete physical bounds.
+        private boolean sweptRouteLegOverlap(
+                Vec3 previousPosition,
+                Vec3 currentPosition,
+                Vec3 legStart,
+                Vec3 legEnd,
+                double capturePadding,
+                boolean groundVehicle
+        ) {
+            Vec3 start = finite(legStart);
+            Vec3 end = finite(legEnd);
+            List<AABB> previous = worldBoundsAt(previousPosition, 0.0D);
+            List<AABB> current = worldBoundsAt(currentPosition, 0.0D);
+            int count = Math.min(previous.size(), current.size());
+            double padding = Math.max(0.0D, finite(capturePadding));
+            for (int index = 0; index < count; index++) {
+                AABB swept = previous.get(index).minmax(current.get(index)).inflate(padding);
+                if (segmentIntersectsBounds(start, end, swept, groundVehicle)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Clip a route segment against one swept hull piece.
+        private static boolean segmentIntersectsBounds(
+                Vec3 start,
+                Vec3 end,
+                AABB bounds,
+                boolean horizontal
+        ) {
+            Vec3 delta = end.subtract(start);
+            double[] range = {0.0D, 1.0D};
+            return clipSegmentAxis(start.x, delta.x, bounds.minX, bounds.maxX, range)
+                    && (horizontal || clipSegmentAxis(
+                    start.y, delta.y, bounds.minY, bounds.maxY, range))
+                    && clipSegmentAxis(start.z, delta.z, bounds.minZ, bounds.maxZ, range);
+        }
+
+        // Clip one route-segment parameter range against one hull axis.
+        private static boolean clipSegmentAxis(
+                double origin,
+                double delta,
+                double minimum,
+                double maximum,
+                double[] range
+        ) {
+            if (Math.abs(delta) <= 1.0E-9D) {
+                return origin >= minimum && origin <= maximum;
+            }
+            double first = (minimum - origin) / delta;
+            double second = (maximum - origin) / delta;
+            if (first > second) {
+                double swap = first;
+                first = second;
+                second = swap;
+            }
+            range[0] = Math.max(range[0], first);
+            range[1] = Math.min(range[1], second);
+            return range[0] <= range[1];
+        }
+
+        // Get conservative world bounds for one planned vehicle orientation
+        private List<AABB> worldBoundsAtPose(
+                Vec3 anchor,
+                Vec3 forward,
+                Vec3 up,
+                Vec3 referenceForward,
+                Vec3 referenceUp,
+                double margin,
+                boolean preserveGroundClearance
+        ) {
+            Vec3 pos = finite(anchor);
+            Vec3 sourceForward = normalize(referenceForward,
+                    new Vec3(0.0D, 0.0D, 1.0D));
+            Vec3 sourceUp = normalize(referenceUp,
+                    new Vec3(0.0D, 1.0D, 0.0D));
+            Vec3 sourceRight = normalize(sourceForward.cross(sourceUp),
+                    new Vec3(1.0D, 0.0D, 0.0D));
+            Vec3 targetForward = normalize(forward, sourceForward);
+            Vec3 targetUp = normalize(up, sourceUp);
+            Vec3 targetRight = normalize(targetForward.cross(targetUp), sourceRight);
+            targetUp = normalize(targetRight.cross(targetForward), targetUp);
+            double inflation = Math.max(0.0D, finite(margin));
+            List<AABB> worldBounds = new ArrayList<>(relativeBounds.size());
+            for (AABB bounds : relativeBounds) {
+                double minX = Double.POSITIVE_INFINITY;
+                double minY = Double.POSITIVE_INFINITY;
+                double minZ = Double.POSITIVE_INFINITY;
+                double maxX = Double.NEGATIVE_INFINITY;
+                double maxY = Double.NEGATIVE_INFINITY;
+                double maxZ = Double.NEGATIVE_INFINITY;
+                for (double x : new double[]{bounds.minX, bounds.maxX}) {
+                    for (double y : new double[]{bounds.minY, bounds.maxY}) {
+                        for (double z : new double[]{bounds.minZ, bounds.maxZ}) {
+                            Vec3 point = new Vec3(x, y, z);
+                            Vec3 rotated = targetRight.scale(point.dot(sourceRight))
+                                    .add(targetUp.scale(point.dot(sourceUp)))
+                                    .add(targetForward.scale(point.dot(sourceForward)))
+                                    .add(pos);
+                            minX = Math.min(minX, rotated.x);
+                            minY = Math.min(minY, rotated.y);
+                            minZ = Math.min(minZ, rotated.z);
+                            maxX = Math.max(maxX, rotated.x);
+                            maxY = Math.max(maxY, rotated.y);
+                            maxZ = Math.max(maxZ, rotated.z);
+                        }
+                    }
+                }
+                worldBounds.add(new AABB(
+                        minX - inflation,
+                        minY - inflation,
+                        minZ - inflation,
+                        maxX + inflation, maxY + inflation, maxZ + inflation));
+            }
+            List<AABB> resolved = List.copyOf(worldBounds);
+            return preserveGroundClearance
+                    ? SubLevelParticleOcclusion.withoutGroundContactBand(
+                    resolved, inflation + GROUND_NAVIGATION_CONTACT_CLEARANCE)
+                    : resolved;
         }
 
         // Get the distance to target
         private double distanceToTarget(Vec3 anchor, Vec3 target) {
             return targetDistanceToBounds(target, worldBoundsAt(anchor, 0.0D));
+        }
+
+        // Get horizontal distance from a target point to the assembled hull.
+        private double horizontalDistanceToTarget(Vec3 anchor, Vec3 targetPosition) {
+            Vec3 target = finite(targetPosition);
+            double nearestSquared = Double.POSITIVE_INFINITY;
+            for (AABB bounds : worldBoundsAt(anchor, 0.0D)) {
+                double dx = Math.max(
+                        Math.max(bounds.minX - target.x, 0.0D),
+                        target.x - bounds.maxX);
+                double dz = Math.max(
+                        Math.max(bounds.minZ - target.z, 0.0D),
+                        target.z - bounds.maxZ);
+                nearestSquared = Math.min(nearestSquared, dx * dx + dz * dz);
+            }
+            return Math.sqrt(nearestSquared);
         }
     }
 
@@ -13359,10 +24179,11 @@ public final class ShipControlModuleRuntime {
             boolean forceFullInitialization,
             boolean ignoreBearings,
             boolean ignoreSails,
-            boolean ignoreThrusters
+            boolean ignoreThrusters,
+            boolean ignoreDockingConnectors
     ) {
         private static final InitializationFilters NONE =
-                new InitializationFilters(false, false, false, false, false);
+                new InitializationFilters(false, false, false, false, false, false);
 
         // Create the initialization filters from parameters
         static InitializationFilters fromParameters(Map<String, Double> parameters) {
@@ -13372,7 +24193,8 @@ public final class ShipControlModuleRuntime {
                     enabled(values.get("force_full_initialization")),
                     enabled(values.get("ignore_bearings")),
                     enabled(values.get("ignore_sails")),
-                    enabled(values.get("ignore_thrusters")));
+                    enabled(values.get("ignore_thrusters")),
+                    enabled(values.get("ignore_docking_connectors")));
         }
 
         // Check if the mapping includes bearings
@@ -13393,6 +24215,11 @@ public final class ShipControlModuleRuntime {
         // Check if the mapping includes propulsion
         boolean mapsPropulsion(boolean thrusterProvider) {
             return !ignoreThrusters || !thrusterProvider;
+        }
+
+        // Check if the mapping includes docking connectors
+        boolean mapsDockingConnectors() {
+            return !ignoreDockingConnectors;
         }
 
         // Check if this is enabled
@@ -13661,6 +24488,7 @@ public final class ShipControlModuleRuntime {
             double targetY,
             Vec3 targetPosition,
             double targetSpeed,
+            double driveThrottle,
             double tolerance,
             boolean avoidCollisions,
             boolean lockRotation,
@@ -13668,7 +24496,8 @@ public final class ShipControlModuleRuntime {
             ShipTargetPoint targetPoint,
             int targetConnectorIndex,
             Vec3 targetDirection,
-            Vec3 targetUp
+            Vec3 targetUp,
+            int scheduleRouteEntry
     ) {
         // Initialize the active ship command
         private ActiveShipCommand(
@@ -13686,8 +24515,8 @@ public final class ShipControlModuleRuntime {
                 ShipTargetPoint targetPoint
         ) {
             this(id, type, amount, strength, targetY, targetPosition,
-                    targetSpeed, tolerance, avoidCollisions, lockRotation,
-                    targetAttitude, targetPoint, -1, Vec3.ZERO, Vec3.ZERO);
+                    targetSpeed, -1.0D, tolerance, avoidCollisions, lockRotation,
+                    targetAttitude, targetPoint, -1, Vec3.ZERO, Vec3.ZERO, -1);
         }
 
         // Initialize the active ship command
@@ -13699,6 +24528,7 @@ public final class ShipControlModuleRuntime {
             targetY = finite(targetY);
             targetPosition = targetPosition == null ? Vec3.ZERO : targetPosition;
             targetSpeed = Math.max(0.0D, finite(targetSpeed));
+            driveThrottle = ScmSpeedControl.propulsionRequest(driveThrottle);
             tolerance = Math.max(0.0D, finite(tolerance));
             targetAttitude =
                     targetAttitude == null ? Vec3.ZERO : finite(targetAttitude);
@@ -13708,6 +24538,7 @@ public final class ShipControlModuleRuntime {
             targetDirection = targetDirection == null
                     ? Vec3.ZERO : normalize(targetDirection, Vec3.ZERO);
             targetUp = targetUp == null ? Vec3.ZERO : normalize(targetUp, Vec3.ZERO);
+            scheduleRouteEntry = Math.max(-1, scheduleRouteEntry);
         }
 
         // Get the idle
@@ -13777,6 +24608,37 @@ public final class ShipControlModuleRuntime {
                     ShipTargetPoint.CENTER_OF_MASS);
         }
 
+        // Get the target with a direct propulsion request.
+        private static ActiveShipCommand target(
+                String id,
+                String type,
+                Vec3 target,
+                double targetSpeed,
+                double driveThrottle,
+                double tolerance,
+                boolean avoidCollisions
+        ) {
+            return target(id, type, target, targetSpeed, driveThrottle, tolerance,
+                    avoidCollisions, false, Vec3.ZERO,
+                    ShipTargetPoint.CENTER_OF_MASS);
+        }
+
+        // Get the target with a direct propulsion request and a schedule-leg identity.
+        private static ActiveShipCommand target(
+                String id,
+                String type,
+                Vec3 target,
+                double targetSpeed,
+                double driveThrottle,
+                double tolerance,
+                boolean avoidCollisions,
+                int scheduleRouteEntry
+        ) {
+            return target(id, type, target, targetSpeed, driveThrottle, tolerance,
+                    avoidCollisions, false, Vec3.ZERO, ShipTargetPoint.CENTER_OF_MASS,
+                    -1, Vec3.ZERO, Vec3.ZERO, scheduleRouteEntry);
+        }
+
         // Get the target
         private static ActiveShipCommand target(
                 String id,
@@ -13789,7 +24651,25 @@ public final class ShipControlModuleRuntime {
                 Vec3 targetAttitude,
                 ShipTargetPoint targetPoint
         ) {
-            return target(id, type, target, targetSpeed, tolerance,
+            return target(id, type, target, targetSpeed, -1.0D, tolerance,
+                    avoidCollisions, lockRotation, targetAttitude,
+                    targetPoint, -1, Vec3.ZERO, Vec3.ZERO);
+        }
+
+        // Get the target with a direct propulsion request.
+        private static ActiveShipCommand target(
+                String id,
+                String type,
+                Vec3 target,
+                double targetSpeed,
+                double driveThrottle,
+                double tolerance,
+                boolean avoidCollisions,
+                boolean lockRotation,
+                Vec3 targetAttitude,
+                ShipTargetPoint targetPoint
+        ) {
+            return target(id, type, target, targetSpeed, driveThrottle, tolerance,
                     avoidCollisions, lockRotation, targetAttitude,
                     targetPoint, -1, Vec3.ZERO, Vec3.ZERO);
         }
@@ -13809,21 +24689,67 @@ public final class ShipControlModuleRuntime {
                 Vec3 targetDirection,
                 Vec3 targetUp
         ) {
+            return target(id, type, target, targetSpeed, -1.0D, tolerance,
+                    avoidCollisions, lockRotation, targetAttitude, targetPoint,
+                    targetConnectorIndex, targetDirection, targetUp);
+        }
+
+        // Get the target with a direct propulsion request.
+        private static ActiveShipCommand target(
+                String id,
+                String type,
+                Vec3 target,
+                double targetSpeed,
+                double driveThrottle,
+                double tolerance,
+                boolean avoidCollisions,
+                boolean lockRotation,
+                Vec3 targetAttitude,
+                ShipTargetPoint targetPoint,
+                int targetConnectorIndex,
+                Vec3 targetDirection,
+                Vec3 targetUp
+        ) {
+            return target(id, type, target, targetSpeed, driveThrottle, tolerance,
+                    avoidCollisions, lockRotation, targetAttitude, targetPoint,
+                    targetConnectorIndex, targetDirection, targetUp, -1);
+        }
+
+        // Get the target with a direct propulsion request and optional schedule-leg identity.
+        private static ActiveShipCommand target(
+                String id,
+                String type,
+                Vec3 target,
+                double targetSpeed,
+                double driveThrottle,
+                double tolerance,
+                boolean avoidCollisions,
+                boolean lockRotation,
+                Vec3 targetAttitude,
+                ShipTargetPoint targetPoint,
+                int targetConnectorIndex,
+                Vec3 targetDirection,
+                Vec3 targetUp,
+                int scheduleRouteEntry
+        ) {
             return new ActiveShipCommand(
                     id, type, 0.0D, 1.0D, target.y,
-                    target, targetSpeed, tolerance, avoidCollisions,
+                    target, targetSpeed, driveThrottle, tolerance, avoidCollisions,
                     lockRotation, targetAttitude, targetPoint,
-                    targetConnectorIndex, targetDirection, targetUp);
+                    targetConnectorIndex, targetDirection, targetUp, scheduleRouteEntry);
         }
 
         // Check if the actuator is disabled
         private boolean disabled() {
             return switch (type) {
-                case "ship_yaw", "ship_pan", "ship_pitch", "ship_tilt", "ship_roll",
+                case "ship_yaw", "ship_yaw_right", "ship_yaw_left",
+                     "ship_pan", "ship_pitch", "ship_pitch_up", "ship_pitch_down",
+                     "ship_tilt", "ship_roll", "ship_roll_right", "ship_roll_left",
                      "ship_accelerate", "ship_forward", "ship_reverse", "ship_strafe",
+                     "ship_backward", "ship_strafe_left", "ship_strafe_right",
                      "ship_ascend", "ship_descend" ->
                         Math.abs(amount) <= 1.0E-4D;
-                case "ship_stabilize", "ship_decelerate", "ship_hover" ->
+                case "ship_stabilize", "ship_decelerate", "ship_brake", "ship_hover" ->
                         strength <= 1.0E-4D;
                 default -> false;
             };
@@ -13835,11 +24761,14 @@ public final class ShipControlModuleRuntime {
                 return false;
             }
             return switch (type) {
-                case "ship_yaw", "ship_pan", "ship_pitch", "ship_tilt", "ship_roll",
+                case "ship_yaw", "ship_yaw_right", "ship_yaw_left",
+                     "ship_pan", "ship_pitch", "ship_pitch_up", "ship_pitch_down",
+                     "ship_tilt", "ship_roll", "ship_roll_right", "ship_roll_left",
                      "ship_accelerate", "ship_forward", "ship_reverse", "ship_strafe",
+                     "ship_backward", "ship_strafe_left", "ship_strafe_right",
                      "ship_ascend", "ship_descend" ->
                         Double.compare(amount, other.amount) == 0;
-                case "ship_stabilize", "ship_decelerate", "ship_hover" ->
+                case "ship_stabilize", "ship_decelerate", "ship_brake", "ship_hover" ->
                         Double.compare(strength, other.strength) == 0;
                 case "ship_climb" ->
                         Double.compare(targetY, other.targetY) == 0
@@ -13852,11 +24781,13 @@ public final class ShipControlModuleRuntime {
                 case "ship_dock", "ship_navigate", "ship_follow" ->
                         targetPosition.equals(other.targetPosition)
                                 && Double.compare(targetSpeed, other.targetSpeed) == 0
+                                && Double.compare(driveThrottle, other.driveThrottle) == 0
                                 && Double.compare(tolerance, other.tolerance) == 0
                                 && avoidCollisions == other.avoidCollisions
                                 && lockRotation == other.lockRotation
                                 && targetPoint == other.targetPoint
                                 && targetConnectorIndex == other.targetConnectorIndex
+                                && scheduleRouteEntry == other.scheduleRouteEntry
                                 && targetDirection.equals(other.targetDirection)
                                 && targetUp.equals(other.targetUp);
                 default -> equals(other);
@@ -13872,11 +24803,13 @@ public final class ShipControlModuleRuntime {
                     && type.equals(other.type)
                     && id.equals(other.id)
                     && Double.compare(targetSpeed, other.targetSpeed) == 0
+                    && Double.compare(driveThrottle, other.driveThrottle) == 0
                     && Double.compare(tolerance, other.tolerance) == 0
                     && avoidCollisions == other.avoidCollisions
                     && lockRotation == other.lockRotation
                     && targetPoint == other.targetPoint
                     && targetConnectorIndex == other.targetConnectorIndex
+                    && scheduleRouteEntry == other.scheduleRouteEntry
                     && targetDirection.equals(other.targetDirection)
                     && targetUp.equals(other.targetUp);
         }
@@ -13988,24 +24921,185 @@ public final class ShipControlModuleRuntime {
     ) {
     }
 
+    // Store one carriage motion hazard
+    private record MotionHazard(Vec3 direction, double clearance) {
+        private static final MotionHazard NONE = new MotionHazard(
+                Vec3.ZERO, Double.POSITIVE_INFINITY);
+
+        // Check whether this contains an active motion direction
+        private boolean available() {
+            return direction.lengthSqr() > 1.0E-12D
+                    && Double.isFinite(clearance);
+        }
+    }
+
     // Store the collision probe
     private record CollisionProbe(
             Vec3 origin,
             Vec3 direction,
             double range,
-            boolean preserveGroundClearance
+            boolean preserveGroundClearance,
+            boolean subLevelOnly,
+            boolean inspectGroundSupport
     ) {
     }
 
+    // Store one live carriage's mass distribution data
+    private record CarriageDynamics(
+            SableAssemblyTopologyApi.CarriagePartition partition,
+            SableAssemblyDynamicsApi.Snapshot dynamics,
+            Vec3 centerOfMass,
+            double mass
+    ) {
+    }
+
+    // Store one carriage's constrained local allocation target
+    private record ArticulatedCarriagePlan(
+            Set<UUID> bodyIds,
+            Vec3 centerOfMass,
+            Vec3 torque,
+            Vec3 forceCorrection,
+            double forceShare,
+            boolean yawAuthority
+    ) {
+        // Initialize the carriage allocation plan
+        private ArticulatedCarriagePlan {
+            bodyIds = bodyIds == null ? Set.of() : Set.copyOf(bodyIds);
+            centerOfMass = finite(centerOfMass);
+            torque = finite(torque);
+            forceCorrection = finite(forceCorrection);
+            forceShare = Mth.clamp(finite(forceShare), 0.0D, 1.0D);
+        }
+
+        // Check whether this plan owns the requested body
+        private boolean contains(@Nullable UUID bodyId) {
+            return bodyId != null && bodyIds.contains(bodyId);
+        }
+
+        // Split a normalized steering torque without commanding follower yaw
+        private Vec3 splitControlTorque(Vec3 controlTorque) {
+            Vec3 requested = finite(controlTorque);
+            return new Vec3(requested.x * forceShare,
+                    yawAuthority ? requested.y : 0.0D,
+                    requested.z * forceShare);
+        }
+    }
+
+    // Store the full constrained allocation plan for an articulated assembly
+    private record ArticulatedAllocationPlan(
+            List<ShipControlAllocator.CarriageDemand> demands,
+            List<ArticulatedCarriagePlan> carriages
+    ) {
+        private static final ArticulatedAllocationPlan EMPTY =
+                new ArticulatedAllocationPlan(List.of(), List.of());
+
+        // Initialize the articulated allocation plan
+        private ArticulatedAllocationPlan {
+            demands = demands == null ? List.of() : List.copyOf(demands);
+            carriages = carriages == null ? List.of() : List.copyOf(carriages);
+        }
+
+        // Check whether this has a complete multi-carriage request
+        private boolean available() {
+            return demands.size() > 1 && demands.size() == carriages.size();
+        }
+
+        // Check whether the train must preserve differential yaw authority
+        private boolean yawDemanded() {
+            return carriages.stream().anyMatch(carriage ->
+                    carriage.forceCorrection().lengthSqr()
+                    > ACTION_DIRECTION_EPSILON * ACTION_DIRECTION_EPSILON);
+        }
+    }
+
     // Store the gravity compensation
-    private record GravityCompensation(Vec3 demand, Vec3 direction) {
+    private record GravityCompensation(Vec3 demand, Vec3 direction, Vec3 physicalForce) {
         private static final GravityCompensation NONE =
-                new GravityCompensation(Vec3.ZERO, Vec3.ZERO);
+                new GravityCompensation(Vec3.ZERO, Vec3.ZERO, Vec3.ZERO);
     }
 
     // Store the telemetry
     private record Telemetry(boolean available, Vec3 position, Vec3 velocity,
                              Vec3 angularVelocity, Vec3 eulerDegrees) {
         private static final Telemetry EMPTY = new Telemetry(false, Vec3.ZERO, Vec3.ZERO, Vec3.ZERO, Vec3.ZERO);
+    }
+
+    // Store one automatically discovered articulated joint connection
+    private record AutoIkJoint(
+            ShipControlMap.PropulsionUnit unit, UUID firstBodyId, UUID secondBodyId
+    ) {
+        // Get the body on the opposite side of this joint
+        private @Nullable UUID other(UUID bodyId) {
+            if (bodyId == null) return null;
+            if (bodyId.equals(firstBodyId)) return secondBodyId;
+            return bodyId.equals(secondBodyId) ? firstBodyId : null;
+        }
+    }
+
+    // Store one automatically discovered articulated chain
+    private record AutoIkChain(List<AutoIkJoint> joints, @Nullable UUID leafBodyId) {
+        private AutoIkChain {
+            joints = joints == null ? List.of() : List.copyOf(joints);
+        }
+    }
+
+    // Store one in-progress undirected Auto joint path
+    private record AutoIkPath(List<AutoIkJoint> joints, UUID endpoint, Set<UUID> visitedBodies) {
+        private AutoIkPath {
+            joints = joints == null ? List.of() : List.copyOf(joints);
+            visitedBodies = visitedBodies == null ? Set.of() : Set.copyOf(visitedBodies);
+        }
+    }
+
+    // Store the controls selected for one IK role
+    private record IkRoleBinding(
+            List<ShipControlMap.PropulsionUnit> units,
+            List<ShipControlMap.BearingUnit> bearings
+    ) {
+        private static final IkRoleBinding EMPTY = new IkRoleBinding(List.of(), List.of());
+
+        private IkRoleBinding {
+            units = units == null ? List.of() : List.copyOf(units);
+            bearings = bearings == null ? List.of() : List.copyOf(bearings);
+        }
+
+        // Check whether this role has an assigned live control
+        private boolean empty() {
+            return units.isEmpty() && bearings.isEmpty();
+        }
+    }
+
+    // Store one solved limb and its control roles
+    private record IkLimbBinding(
+            String id,
+            ScmLeggedLocomotion.Limb limb,
+            IkRoleBinding yaw,
+            IkRoleBinding hip,
+            IkRoleBinding knee,
+            IkRoleBinding ankle,
+            IkRoleBinding extension,
+            List<IkRoleBinding> articulatedJoints,
+            IkRoleBinding propulsion,
+            Vec3 hipPosition,
+            Vec3 footPosition,
+            @Nullable UUID footSubLevelId
+    ) {
+        private IkLimbBinding {
+            articulatedJoints = articulatedJoints == null ? List.of()
+                    : articulatedJoints.stream().filter(Objects::nonNull)
+                    .filter(binding -> !binding.empty()).toList();
+        }
+    }
+
+    // Immutable server-authoritative structural metrics for SCM presentation.
+    private record SimulationMetrics(double mass, Vec3 centerOfMass, Vec3 centerOfLift, String facing) {
+        private static final SimulationMetrics EMPTY = new SimulationMetrics(0.0D, Vec3.ZERO, Vec3.ZERO, "unknown");
+
+        private SimulationMetrics {
+            mass = Double.isFinite(mass) && mass > 0.0D ? mass : 0.0D;
+            centerOfMass = finite(centerOfMass);
+            centerOfLift = finite(centerOfLift);
+            facing = facing == null || facing.isBlank() ? "unknown" : facing;
+        }
     }
 }

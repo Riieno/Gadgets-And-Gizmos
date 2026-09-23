@@ -11,6 +11,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 import com.rieno.gadgetsandgizmos.content.ShipDockBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ThrusterMenu;
+import com.rieno.gadgetsandgizmos.content.WorkerInventoryMenu;
 import com.rieno.gadgetsandgizmos.content.DoubleButtonBlockEntity;
 import com.rieno.gadgetsandgizmos.content.GyroscopeLinkBlockEntity;
 import com.rieno.gadgetsandgizmos.content.GyroscopeLinkMenu;
@@ -86,7 +87,9 @@ public final class CTClientScreens {
     }
 
     // Open the shipping manifest
-    public static void openShippingManifest(ClipboardContent content) {
+    public static void openShippingManifest(
+            BlockPos pos, ClipboardContent content, int resourceUses, int availableResourceUses
+    ) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.player == null) {
             return;
@@ -94,7 +97,8 @@ public final class CTClientScreens {
         DataComponentMap components = DataComponentMap.builder()
                 .set(AllDataComponents.CLIPBOARD_CONTENT, content)
                 .build();
-        ScreenOpener.open(new ShippingManifestClipboardScreen(minecraft.player.getInventory().selected, components));
+        ScreenOpener.open(new ShippingManifestClipboardScreen(minecraft.player.getInventory().selected,
+                components, pos, resourceUses, availableResourceUses));
     }
 
     // Open the ship dock
@@ -133,6 +137,7 @@ public final class CTClientScreens {
         if (CTMenuTypes.VECTOR_BEARING != null) evt.register(CTMenuTypes.VECTOR_BEARING.get(), VectorBearingScreen::new);
         if (CTMenuTypes.AILERON_BEARING != null) evt.register(CTMenuTypes.AILERON_BEARING.get(), AileronBearingScreen::new);
         if (CTMenuTypes.POWERED_ZIPLINE != null) evt.register(CTMenuTypes.POWERED_ZIPLINE.get(), PoweredZiplineScreen::new);
+        if (CTMenuTypes.WORKER_INVENTORY != null) evt.register(CTMenuTypes.WORKER_INVENTORY.get(), WorkerInventoryScreen::new);
         evt.register(CTMenuTypes.NAVIGATION_TABLE.get(), NavigationTableScreen::new);
     }
 }

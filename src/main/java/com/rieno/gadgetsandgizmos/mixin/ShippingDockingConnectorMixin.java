@@ -1,17 +1,14 @@
 package com.rieno.gadgetsandgizmos.mixin;
 
 import com.rieno.gadgetsandgizmos.compat.simulated.DockingConnectorBindingAccess;
-import com.rieno.gadgetsandgizmos.compat.simulated.ShippingDockingConnectorAccess;
 import com.rieno.gadgetsandgizmos.content.CTTooltipHelper;
 import com.simibubi.create.api.equipment.goggles.IHaveGoggleInformation;
-import com.simibubi.create.content.logistics.box.PackageItem;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import dev.simulated_team.simulated.content.blocks.docking_connector.DockingConnectorBlockEntity;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -23,10 +20,10 @@ import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
-// Add shipping and binding access to Simulated docking connectors
+// Add binding access to Simulated docking connectors
 @Mixin(value = DockingConnectorBlockEntity.class, remap = false)
-public abstract class ShippingDockingConnectorMixin implements ShippingDockingConnectorAccess,
-        DockingConnectorBindingAccess, IHaveGoggleInformation {
+public abstract class ShippingDockingConnectorMixin implements DockingConnectorBindingAccess,
+        IHaveGoggleInformation {
     private static final String BINDING_TAG = "CreateThrustersBinding";
     private static final String SHIP_DOCK_ID_TAG = "ShipDockId";
     private static final String SHIP_DOCK_NAME_TAG = "ShipDockName";
@@ -35,60 +32,12 @@ public abstract class ShippingDockingConnectorMixin implements ShippingDockingCo
     private static final String SCM_NAME_TAG = "ScmName";
     private static final String SCM_CONNECTOR_TAG = "ScmConnector";
 
-    @Unique private boolean createthrusters$shippingItems = true;
-    @Unique private boolean createthrusters$shippingPackages = true;
-    @Unique private boolean createthrusters$shippingFluids = true;
-    @Unique private boolean createthrusters$shippingEnergy = true;
-    @Unique private String createthrusters$shippingPackageAddress = "";
     @Unique private UUID createthrusters$shipDockId;
     @Unique private String createthrusters$shipDockName = "";
     @Unique private int createthrusters$shipDockConnectorIndex = -1;
     @Unique private boolean createthrusters$shipControlModuleBound;
     @Unique private String createthrusters$shipControlModuleName = "";
     @Unique private int createthrusters$shipControlModuleConnectorIndex = -1;
-
-    @Override
-    public void createthrusters$configureShippingTransfers(
-            boolean items,
-            boolean packages,
-            String packageAddress,
-            boolean fluids,
-            boolean energy
-    ) {
-        createthrusters$shippingItems = items;
-        createthrusters$shippingPackages = packages;
-        createthrusters$shippingPackageAddress = packageAddress == null ? "" : packageAddress.trim();
-        createthrusters$shippingFluids = fluids;
-        createthrusters$shippingEnergy = energy;
-    }
-
-    @Override
-    public void createthrusters$resetShippingTransfers() {
-        createthrusters$shippingItems = true;
-        createthrusters$shippingPackages = true;
-        createthrusters$shippingPackageAddress = "";
-        createthrusters$shippingFluids = true;
-        createthrusters$shippingEnergy = true;
-    }
-
-    @Override
-    public boolean createthrusters$allowsItemTransfer(ItemStack stack) {
-        if (stack == null || stack.isEmpty()) return true;
-        if (!PackageItem.isPackage(stack)) return createthrusters$shippingItems;
-        return createthrusters$shippingPackages
-                && (createthrusters$shippingPackageAddress.isBlank()
-                || PackageItem.matchAddress(stack, createthrusters$shippingPackageAddress));
-    }
-
-    @Override
-    public boolean createthrusters$allowsFluidTransfer() {
-        return createthrusters$shippingFluids;
-    }
-
-    @Override
-    public boolean createthrusters$allowsEnergyTransfer() {
-        return createthrusters$shippingEnergy;
-    }
 
     @Override
     public void createthrusters$setShipDockBinding(UUID dockId, String dockName, int connectorIndex) {

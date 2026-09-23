@@ -152,7 +152,8 @@ public final class ShipControlMapStore {
                     loadBearings(connection, mapId),
                     loadDockingConnectors(connection, mapId),
                     loadCrnDisplays(connection, mapId),
-                    loadAccDisplays(connection, mapId), header.updatedAt());
+                    loadAccDisplays(connection, mapId),
+                    loadSeats(connection, mapId), header.updatedAt());
         } catch (IOException | SQLException err) {
             LOGGER.log(System.Logger.Level.ERROR, "Could not load ship control map " + mapId, err);
             return null;
@@ -261,7 +262,7 @@ public final class ShipControlMapStore {
                 header.controllerPosition(), header.centerOfMass(), loadUnits(connection, mapId),
                 loadBearings(connection, mapId), loadDockingConnectors(connection, mapId),
                 loadCrnDisplays(connection, mapId), loadAccDisplays(connection, mapId),
-                header.updatedAt());
+                loadSeats(connection, mapId), header.updatedAt());
     }
 
     // Store the map cache
@@ -370,6 +371,17 @@ public final class ShipControlMapStore {
                         FOREIGN KEY (map_id) REFERENCES ship_maps(map_id) ON DELETE CASCADE
                     )
                     """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS control_seats (
+                        map_id TEXT NOT NULL,
+                        sublevel_id TEXT NOT NULL,
+                        block_x INTEGER NOT NULL,
+                        block_y INTEGER NOT NULL,
+                        block_z INTEGER NOT NULL,
+                        PRIMARY KEY (map_id, sublevel_id, block_x, block_y, block_z),
+                        FOREIGN KEY (map_id) REFERENCES ship_maps(map_id) ON DELETE CASCADE
+                    )
+                    """);
             // ------------------------------------BEARING MAPS------------------------------------
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS control_bearings (
@@ -468,6 +480,8 @@ public final class ShipControlMapStore {
                     + "ON control_crn_displays(sublevel_id)");
             statement.execute("CREATE INDEX IF NOT EXISTS control_acc_displays_sublevel "
                     + "ON control_acc_displays(sublevel_id)");
+            statement.execute("CREATE INDEX IF NOT EXISTS control_seats_sublevel "
+                    + "ON control_seats(sublevel_id)");
             statement.execute("CREATE INDEX IF NOT EXISTS control_bearings_host ON control_bearings(host_sublevel_id)");
             statement.execute("CREATE INDEX IF NOT EXISTS control_bearing_children_sublevel "
                     + "ON control_bearing_children(child_sublevel_id)");
@@ -533,6 +547,11 @@ public final class ShipControlMapStore {
 
     // Replace the units
     private static void replaceUnits(Connection connection, ShipControlMap map) throws SQLException {
+        try (PreparedStatement delete = connection.prepareStatement(
+                "DELETE FROM control_seats WHERE map_id = ?")) {
+            delete.setString(1, map.id().toString());
+            delete.executeUpdate();
+        }
         try (PreparedStatement delete = connection.prepareStatement(
                 "DELETE FROM control_acc_displays WHERE map_id = ?")) {
             delete.setString(1, map.id().toString());
@@ -617,6 +636,7 @@ public final class ShipControlMapStore {
         insertDockingConnectors(connection, map);
         insertCrnDisplays(connection, map);
         insertAccDisplays(connection, map);
+        insertSeats(connection, map);
         insertBearings(connection, map);
     }
 
@@ -683,6 +703,26 @@ public final class ShipControlMapStore {
                 statement.setInt(3, display.blockPosition().getX());
                 statement.setInt(4, display.blockPosition().getY());
                 statement.setInt(5, display.blockPosition().getZ());
+                statement.addBatch();
+            }
+            statement.executeBatch();
+        }
+    }
+
+    // Insert the mapped seats
+    private static void insertSeats(Connection connection, ShipControlMap map)
+            throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO control_seats (
+                    map_id, sublevel_id, block_x, block_y, block_z
+                ) VALUES (?, ?, ?, ?, ?)
+                """)) {
+            for (ShipControlMap.Seat seat : map.seats()) {
+                statement.setString(1, map.id().toString());
+                statement.setString(2, seat.subLevelId().toString());
+                statement.setInt(3, seat.blockPosition().getX());
+                statement.setInt(4, seat.blockPosition().getY());
+                statement.setInt(5, seat.blockPosition().getZ());
                 statement.addBatch();
             }
             statement.executeBatch();
@@ -973,6 +1013,28 @@ public final class ShipControlMapStore {
             }
         }
         return displays;
+    }
+
+    // Load the mapped seats
+    private static List<ShipControlMap.Seat> loadSeats(
+            Connection connection, UUID mapId
+    ) throws SQLException {
+        List<ShipControlMap.Seat> seats = new ArrayList<>();
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT sublevel_id, block_x, block_y, block_z
+                FROM control_seats
+                WHERE map_id = ? ORDER BY sublevel_id, block_x, block_y, block_z
+                """)) {
+            statement.setString(1, mapId.toString());
+            try (ResultSet res = statement.executeQuery()) {
+                while (res.next()) {
+                    seats.add(new ShipControlMap.Seat(
+                            UUID.fromString(res.getString(1)),
+                            new BlockPos(res.getInt(2), res.getInt(3), res.getInt(4))));
+                }
+            }
+        }
+        return seats;
     }
 
     // Load the bearing children

@@ -137,7 +137,6 @@ public final class ContraptionNetworkLinkerTrackerEvents {
     public static void serverStopping(ServerStoppingEvent event) {
         ShipCouplerService.clearLoadedCouplers(event.getServer());
         ControllerRuntimeObserver.clear(event.getServer());
-        WirelessDockingTransfer.clear(event.getServer());
         ShipDockScheduler.shutdown(event.getServer());
         ContraptionNetworkLinkerTracker.beginShutdownIfLoaded(event.getServer());
         AccDisplayControllerRegistry.beginShutdown(event.getServer());

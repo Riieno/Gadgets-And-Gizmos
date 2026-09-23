@@ -31,6 +31,10 @@ import com.rieno.gadgetsandgizmos.content.FuelOxidizerBlock;
 import com.rieno.gadgetsandgizmos.content.GyroscopeLinkBlock;
 import com.rieno.gadgetsandgizmos.content.IndustrialMotorBlock;
 import com.rieno.gadgetsandgizmos.content.ShippingManifestBlock;
+import com.rieno.gadgetsandgizmos.content.SmartBatteryBlock;
+import com.rieno.gadgetsandgizmos.content.SmartTankBlock;
+import com.rieno.gadgetsandgizmos.content.SmartVaultBlock;
+import com.rieno.gadgetsandgizmos.content.WorkerPodBlock;
 import com.rieno.gadgetsandgizmos.content.GyroRedstoneBridgeBlock;
 import com.rieno.gadgetsandgizmos.content.LauncherEndpointBlock;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryCarriageBlock;
@@ -40,6 +44,7 @@ import com.rieno.gadgetsandgizmos.content.PhysicsStaffAnchorBlock;
 import com.rieno.gadgetsandgizmos.content.PoweredZiplineBlock;
 import com.rieno.gadgetsandgizmos.content.RopeKnotBlock;
 import com.rieno.gadgetsandgizmos.content.RcsThrusterBlock;
+import com.rieno.gadgetsandgizmos.content.RatchetCogwheelBlock;
 import com.rieno.gadgetsandgizmos.content.ScissorPistonArmBlock;
 import com.rieno.gadgetsandgizmos.content.ScissorPistonBlock;
 import com.rieno.gadgetsandgizmos.content.ScissorPistonLinkBlock;
@@ -54,6 +59,8 @@ import com.rieno.gadgetsandgizmos.content.VectorBearingBlock;
 import com.rieno.gadgetsandgizmos.content.VectorBearingLinkBlock;
 import com.rieno.gadgetsandgizmos.content.VirtualOrientationSourceBlock;
 import com.rieno.gadgetsandgizmos.content.UniversalDisplayAdapterBlock;
+import com.simibubi.create.content.decoration.encasing.CasingBlock;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.material.MapColor;
@@ -92,6 +99,11 @@ public final class CTBlocks {
                     () -> new BlackstoneAlloyBlock(BlockBehaviour.Properties.of()
                             .mapColor(MapColor.COLOR_BLACK).strength(5.0f, 8.0f)
                             .sound(SoundType.NETHERITE_BLOCK).requiresCorrectToolForDrops()));
+
+    @Nullable
+    public static final DeferredBlock<CasingBlock> BLACKSTONE_CASING = register("blackstone_casing",
+            () -> new CasingBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.ANDESITE)
+                    .mapColor(MapColor.COLOR_BLACK).sound(SoundType.WOOD)));
 
     @Nullable
     public static final DeferredBlock<FuelOxidizerBlock> FUEL_OXIDIZER = register("fuel_oxidizer",
@@ -162,6 +174,16 @@ public final class CTBlocks {
             () -> new BiDirectionalGearshiftBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(3.0f).requiresCorrectToolForDrops().noOcclusion()));
 
     @Nullable
+    public static final DeferredBlock<RatchetCogwheelBlock> RATCHET_COGWHEEL = register("ratchet_cogwheel",
+            () -> new RatchetCogwheelBlock(false, BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
+                    .strength(3.0f).requiresCorrectToolForDrops().noOcclusion()));
+
+    @Nullable
+    public static final DeferredBlock<RatchetCogwheelBlock> LARGE_RATCHET_COGWHEEL = register("large_ratchet_cogwheel",
+            () -> new RatchetCogwheelBlock(true, BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
+                    .strength(3.0f).requiresCorrectToolForDrops().noOcclusion()));
+
+    @Nullable
     public static final DeferredBlock<AnalogueJoystickBlock> ANALOGUE_JOYSTICK = register("analogue_joystick",
             () -> new AnalogueJoystickBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(2.0f).requiresCorrectToolForDrops().noOcclusion()));
 
@@ -227,6 +249,26 @@ public final class CTBlocks {
     @Nullable
     public static final DeferredBlock<ShippingManifestBlock> SHIPPING_MANIFEST = register("shipping_manifest",
             () -> new ShippingManifestBlock(BlockBehaviour.Properties.of().mapColor(MapColor.WOOD).strength(0.5f).noCollission().noOcclusion()));
+
+    @Nullable
+    public static final DeferredBlock<SmartVaultBlock> SMART_VAULT = register("smart_vault",
+            () -> new SmartVaultBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
+                    .strength(3.0f).requiresCorrectToolForDrops()));
+
+    @Nullable
+    public static final DeferredBlock<SmartBatteryBlock> SMART_BATTERY = register("smart_battery",
+            () -> new SmartBatteryBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
+                    .strength(3.0f).requiresCorrectToolForDrops()));
+
+    @Nullable
+    public static final DeferredBlock<SmartTankBlock> SMART_TANK = register("smart_tank",
+            () -> new SmartTankBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
+                    .strength(3.0f).requiresCorrectToolForDrops().noOcclusion()));
+
+    @Nullable
+    public static final DeferredBlock<WorkerPodBlock> WORKER_POD = register("worker_pod",
+            () -> new WorkerPodBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
+                    .strength(2.5f).requiresCorrectToolForDrops().noOcclusion()));
 
     @Nullable
     public static final DeferredBlock<AlternatorBlock> ALTERNATOR = register("alternator",

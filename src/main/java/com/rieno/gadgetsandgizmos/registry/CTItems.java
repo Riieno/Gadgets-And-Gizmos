@@ -23,6 +23,8 @@ import com.rieno.gadgetsandgizmos.content.ShippingManifestBlockItem;
 import com.rieno.gadgetsandgizmos.content.ShippingScheduleItem;
 import com.rieno.gadgetsandgizmos.content.ShipDockBlockItem;
 import com.rieno.gadgetsandgizmos.content.SmallThrusterBlockItem;
+import com.rieno.gadgetsandgizmos.content.SmartTankBlockItem;
+import com.rieno.gadgetsandgizmos.content.SmartVaultBlockItem;
 import com.rieno.gadgetsandgizmos.content.PhysicsGogglesItem;
 import com.rieno.gadgetsandgizmos.content.PhysicsStaffItem;
 import com.rieno.gadgetsandgizmos.content.PoweredZiplineBlockItem;
@@ -31,6 +33,8 @@ import com.rieno.gadgetsandgizmos.content.PortableContraptionControllerItem;
 import com.rieno.gadgetsandgizmos.content.ThrusterLenseItem;
 import com.rieno.gadgetsandgizmos.content.ProcessingUpgradeItem;
 import com.rieno.gadgetsandgizmos.content.VerticalAxisVariantBlockItem;
+import com.rieno.gadgetsandgizmos.content.WorkerEnergyBatteryItem;
+import com.simibubi.create.content.kinetics.simpleRelays.CogwheelBlockItem;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.JukeboxSong;
@@ -77,6 +81,9 @@ public final class CTItems {
             register("blackstone_alloy_block",
                     () -> new BlockItem(CTBlocks.BLACKSTONE_ALLOY_BLOCK.get(), new Item.Properties()));
     @Nullable
+    public static final DeferredItem<BlockItem> BLACKSTONE_CASING = register("blackstone_casing",
+            () -> new BlockItem(CTBlocks.BLACKSTONE_CASING.get(), new Item.Properties()));
+    @Nullable
     public static final DeferredItem<BlockItem> SMALL_THRUSTER = register("small_thruster",
         () -> new SmallThrusterBlockItem(CTBlocks.THRUSTER.get(), new Item.Properties()));
     @Nullable
@@ -119,6 +126,12 @@ public final class CTItems {
     @Nullable
     public static final DeferredItem<BlockItem> BI_DIRECTIONAL_GEARSHIFT = register("bi_directional_gearshift",
         () -> new CTTooltipBlockItem(CTBlocks.BI_DIRECTIONAL_GEARSHIFT.get(), new Item.Properties()));
+    @Nullable
+    public static final DeferredItem<BlockItem> RATCHET_COGWHEEL = register("ratchet_cogwheel",
+            () -> new CogwheelBlockItem(CTBlocks.RATCHET_COGWHEEL.get(), new Item.Properties()));
+    @Nullable
+    public static final DeferredItem<BlockItem> LARGE_RATCHET_COGWHEEL = register("large_ratchet_cogwheel",
+            () -> new CogwheelBlockItem(CTBlocks.LARGE_RATCHET_COGWHEEL.get(), new Item.Properties()));
     @Nullable
     public static final DeferredItem<BlockItem> VERTICAL_BIDIRECTIONAL_GEARBOX = register("vertical_bidirectional_gearbox",
         () -> new VerticalAxisVariantBlockItem(CTBlocks.BIDIRECTIONAL_GEARBOX.get(), new Item.Properties(), "item.createthrusters.vertical_bidirectional_gearbox"));
@@ -267,6 +280,22 @@ public final class CTItems {
     @Nullable
     public static final DeferredItem<BlockItem> SHIPPING_MANIFEST = register("shipping_manifest",
             () -> new ShippingManifestBlockItem(CTBlocks.SHIPPING_MANIFEST.get(), new Item.Properties().stacksTo(16)));
+    @Nullable
+    public static final DeferredItem<BlockItem> SMART_VAULT = register("smart_vault",
+            () -> new SmartVaultBlockItem(CTBlocks.SMART_VAULT.get(), new Item.Properties()));
+    @Nullable
+    public static final DeferredItem<BlockItem> SMART_BATTERY = register("smart_battery",
+            () -> new SmartVaultBlockItem(CTBlocks.SMART_BATTERY.get(), new Item.Properties()));
+    @Nullable
+    public static final DeferredItem<BlockItem> SMART_TANK = register("smart_tank",
+            () -> new SmartTankBlockItem(CTBlocks.SMART_TANK.get(), new Item.Properties()));
+    @Nullable
+    public static final DeferredItem<BlockItem> WORKER_POD = register("worker_pod",
+            () -> new CTTooltipBlockItem(CTBlocks.WORKER_POD.get(), new Item.Properties()));
+    @Nullable
+    public static final DeferredItem<WorkerEnergyBatteryItem> WORKER_ENERGY_BATTERY =
+            register("worker_energy_battery", () -> new WorkerEnergyBatteryItem(
+                    new Item.Properties().stacksTo(64)));
     @Nullable
     public static final DeferredItem<ShippingScheduleItem> SHIPPING_SCHEDULE = register("shipping_schedule",
             () -> new ShippingScheduleItem(new Item.Properties().stacksTo(1)));

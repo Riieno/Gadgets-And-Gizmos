@@ -4,7 +4,10 @@
     "icon": { "id": "createthrusters:physics_staff" },
     "title": { "translate": "advancement.createthrusters.physics_staff.title" },
     "description": { "translate": "advancement.createthrusters.physics_staff.description" },
-    "frame": "task", "show_toast": true, "announce_to_chat": true, "hidden": false
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
   },
   "criteria": {
     "has_physics_staff": {

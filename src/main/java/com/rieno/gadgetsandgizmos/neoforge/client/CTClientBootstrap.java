@@ -74,7 +74,9 @@ public final class CTClientBootstrap {
         modEventBus.addListener((FMLClientSetupEvent evt) -> {
             evt.enqueueWork(() -> {
                 TabletAppClientRegistry.registerIfAbsent(DiagnosticTabletData.appId("app_store"), new AppStore());
+                BlackstoneCasingConnectedTextures.register();
                 AccDisplayConnectedTextures.register();
+                SmartStorageConnectedTextures.register();
                 registerAccDisplayRenderLayers();
                 registerIonThrusterItemModel();
                 CTClientRenderers.registerVisualizers();
@@ -115,6 +117,7 @@ public final class CTClientBootstrap {
         ItemBlockRenderTypes.setRenderLayer(CTBlocks.ACC_DISPLAY_PANEL.get(), RenderType.cutoutMipped());
         ItemBlockRenderTypes.setRenderLayer(CTBlocks.ACC_DISPLAY_HALF_PANEL.get(), RenderType.cutoutMipped());
         ItemBlockRenderTypes.setRenderLayer(CTBlocks.ACC_DISPLAY_SLAB.get(), RenderType.cutoutMipped());
+        ItemBlockRenderTypes.setRenderLayer(CTBlocks.SMART_TANK.get(), RenderType.cutoutMipped());
     }
 
     // Select the focused-engine model for Thrusters with an installed Lens
@@ -169,10 +172,13 @@ public final class CTClientBootstrap {
         NeoForge.EVENT_BUS.addListener(SupporterHeadClientEvents::onItemTooltip);
 
         NeoForge.EVENT_BUS.addListener(CTGantryAnchorDebugRenderer::onRenderWorld);
+        NeoForge.EVENT_BUS.addListener(CTPathfinderDebugRenderer::onRenderWorld);
+        NeoForge.EVENT_BUS.addListener(ShippingRouteSplineClient::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(ShippingManifestRenderer::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(PoweredZiplinePlacementHandler::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(ContraptionNetworkLinkerFaceRenderer::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(PoweredZiplinePlacementHandler::onInteractionKeyMappingTriggered);
+        NeoForge.EVENT_BUS.addListener(ShippingRouteSplineClient::onInteractionKeyMappingTriggered);
         NeoForge.EVENT_BUS.addListener(ContraptionNetworkLinkerClient::onInteractionKeyMappingTriggered);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletClientInteraction::onInteractionKeyMappingTriggered);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletClientInteraction::onKeyInput);
@@ -180,6 +186,7 @@ public final class CTClientBootstrap {
         NeoForge.EVENT_BUS.addListener(ShippingManifestClientHandler::onMouseScrolling);
         NeoForge.EVENT_BUS.addListener(AccDisplayGuiProjection::onMouseScrolling);
         NeoForge.EVENT_BUS.addListener(AccDisplayGuiProjection::onClientTick);
+        NeoForge.EVENT_BUS.addListener(ShippingRouteSplineClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletGuiProjection::onClientTick);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletGuiProjection::onRenderFrame);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletLandingZoneClient::onRenderWorld);

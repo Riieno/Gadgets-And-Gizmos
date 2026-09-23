@@ -14,7 +14,6 @@ import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlProbe;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlProbeRegistry;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmTarget;
-import com.rieno.gadgetsandgizmos.lib.shipping.ShipLogisticsRun;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAction;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionContext;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionHandler;
@@ -84,16 +83,6 @@ public final class DiagnosticTabletScmActions {
         UUID tabletId = ctx.sourceTabletId();
         if (tabletId == null) return failure("The tablet identity is not available");
         String requested = value(action);
-        if ("begin_reader".equals(action.actionId())
-                && DiagnosticTabletData.appId("scm").equals(action.appId())
-                && ("configure_network".equals(requested)
-                || "configure_fuel".equals(requested)
-                || "configure_run".equals(requested))) {
-            DiagnosticTabletAppStorage.clearSelections(ctx.player().server, tabletId,
-                    DiagnosticTabletData.appId("scm"));
-            sendSnapshot(ctx);
-            return success("Reader mode active; select multiple blocks to build the network");
-        }
         if ("select_target".equals(action.actionId())) {
             boolean selected = DiagnosticTabletAppStorage.selectBinding(ctx.player().server,
                     tabletId, DiagnosticTabletData.appId("scm"), requested);
@@ -190,15 +179,6 @@ public final class DiagnosticTabletScmActions {
             case "push_configured" -> pushConfigured(player, ctx, controller, val);
             case "map_target" -> saveTarget(ctx, "mapped_target", val, "SCM target saved");
             case "test_target" -> testTarget(player, ctx, val);
-            case "assign_items", "assign_fluids", "assign_energy", "assign_fuel",
-                    "configure_network", "configure_fuel" ->
-                    assignStockEndpoint(player, ctx, controller, action.actionId(), val);
-            case "begin_logistics_run" -> beginLogisticsRun(ctx, controller, val);
-            case "select_logistics_run" -> selectLogisticsRun(ctx, controller, val, false);
-            case "edit_logistics_run" -> selectLogisticsRun(ctx, controller, val, true);
-            case "rename_logistics_run" -> renameLogisticsRun(ctx, controller, val);
-            case "delete_logistics_run" -> deleteLogisticsRun(ctx, controller, val);
-            case "configure_run" -> configLogisticsRun(player, ctx, controller, val);
             case "schedule" -> DiagnosticTabletScheduleSessions.open(player, controller)
                     ? success("Shipping schedule opened")
                     : failure("A live pilot with a shipping schedule is required");
@@ -275,188 +255,6 @@ public final class DiagnosticTabletScmActions {
                         + selection.blockPos().getY() + "," + selection.blockPos().getZ()));
         return success(unique.size() + " SCM block(s) pushed"
                 + (rejected == 0 ? "" : "; " + rejected + " rejected"));
-    }
-
-    // Begin the logistics run
-    private static TabletActionHandler.Result beginLogisticsRun(
-            TabletActionContext ctx,
-            AdvancedContraptionControllerBlockEntity controller,
-            String val
-    ) {
-        ShipLogisticsRun.ResourceType type = ShipLogisticsRun.ResourceType.fromId(val);
-        long sameType = controller.shipLogisticsRuns().stream()
-                .filter(run -> run.resourceType() == type).count();
-        ShipLogisticsRun run = ShipLogisticsRun.create(
-                type, type.label() + " Run " + (sameType + 1L), List.of());
-        controller.configureShipLogisticsRun(run);
-        selectStoredRun(ctx, run.id());
-        DiagnosticTabletAppStorage.clearSelections(ctx.player().server,
-                ctx.sourceTabletId(), DiagnosticTabletData.appId("scm"));
-        return success(run.name() + " created; select its blocks and docking connector");
-    }
-
-    // Select the logistics run
-    private static TabletActionHandler.Result selectLogisticsRun(
-            TabletActionContext ctx,
-            AdvancedContraptionControllerBlockEntity controller,
-            String val,
-            boolean edit
-    ) {
-        UUID runId = parseUuid(val);
-        if (runId == null || controller.shipLogisticsRuns().stream()
-                .noneMatch(run -> run.id().equals(runId))) return failure("Logistics run not found");
-        selectStoredRun(ctx, runId);
-        if (edit) {
-            DiagnosticTabletAppStorage.clearSelections(ctx.player().server,
-                    ctx.sourceTabletId(), DiagnosticTabletData.appId("scm"));
-        }
-        return success(edit ? "Reader mode active; select blocks to add or remove them"
-                : "Logistics run selected");
-    }
-
-    // Rename the logistics run
-    private static TabletActionHandler.Result renameLogisticsRun(
-            TabletActionContext ctx,
-            AdvancedContraptionControllerBlockEntity controller,
-            String val
-    ) {
-        String[] parts = val.split("\\|", 2);
-        UUID runId = parts.length == 2 ? parseUuid(parts[0]) : null;
-        String name = parts.length == 2 ? parts[1].strip() : "";
-        if (runId == null || name.isBlank()) return failure("Enter a run name");
-        ShipLogisticsRun run = controller.shipLogisticsRuns().stream()
-                .filter(candidate -> candidate.id().equals(runId)).findFirst().orElse(null);
-        if (run == null) return failure("Logistics run not found");
-        controller.configureShipLogisticsRun(run.withName(name));
-        selectStoredRun(ctx, runId);
-        return success("Run renamed to " + name);
-    }
-
-    // Delete the logistics run
-    private static TabletActionHandler.Result deleteLogisticsRun(
-            TabletActionContext ctx,
-            AdvancedContraptionControllerBlockEntity controller,
-            String val
-    ) {
-        UUID runId = parseUuid(val);
-        if (runId == null || !controller.removeShipLogisticsRun(runId)) {
-            return failure("Logistics run not found");
-        }
-        selectStoredRun(ctx, null);
-        return success("Logistics run deleted");
-    }
-
-    // Configure the logistics run
-    private static TabletActionHandler.Result configLogisticsRun(
-            ServerPlayer player,
-            TabletActionContext ctx,
-            AdvancedContraptionControllerBlockEntity controller,
-            String val
-    ) {
-        UUID runId = selectedStoredRun(ctx);
-        if (runId == null) return failure("Select a logistics run first");
-        UUID rootSubLevelId = SimulatedHelper.getContainingSubLevelId(controller);
-        List<EndpointSelection> selections = endpointSelections(
-                player, ctx, val, rootSubLevelId);
-        if (selections.isEmpty()) return failure("Read a block to update the run");
-        EndpointSelection selection = selections.getLast();
-        ResolvedTarget resolved = resolveTarget(player.level(), selection.subLevelId(),
-                selection.selection());
-        DiagnosticTabletAppStorage.clearSelections(player.server, ctx.sourceTabletId(),
-                DiagnosticTabletData.appId("scm"));
-        if (resolved == null || resolved.state().isAir()) return failure("That block is unavailable");
-        boolean added = controller.toggleShipLogisticsRunEndpoint(
-                runId, selection.subLevelId(), selection.pos());
-        controller.getShipStockNetworkSnapshot();
-        return success(selection.selection().label() + (added ? " added to " : " removed from ")
-                + "the logistics run; reader mode remains active");
-    }
-
-    // Select the stored run
-    private static void selectStoredRun(TabletActionContext ctx, @Nullable UUID runId) {
-        if (ctx.sourceTabletId() == null) return;
-        TabletStorageApi.storage().updateApp(ctx.sourceTabletId(),
-                DiagnosticTabletData.appId("scm"), data -> {
-                    if (runId == null) data.remove("SelectedLogisticsRun");
-                    else data.putUUID("SelectedLogisticsRun", runId);
-                    return data;
-                });
-    }
-
-    // Get the selected stored run
-    private static @Nullable UUID selectedStoredRun(TabletActionContext ctx) {
-        if (ctx.sourceTabletId() == null) return null;
-        CompoundTag data = DiagnosticTabletAppStorage.data(ctx.player().server,
-                ctx.sourceTabletId(), DiagnosticTabletData.appId("scm"));
-        return data.hasUUID("SelectedLogisticsRun") ? data.getUUID("SelectedLogisticsRun") : null;
-    }
-
-    // Parse the UUID
-    private static @Nullable UUID parseUuid(String val) {
-        try {
-            return val == null || val.isBlank() ? null : UUID.fromString(val.strip());
-        } catch (IllegalArgumentException ignored) {
-            return null;
-        }
-    }
-
-    // Assign the stock endpoint
-    private static TabletActionHandler.Result assignStockEndpoint(
-            ServerPlayer player, TabletActionContext ctx,
-            AdvancedContraptionControllerBlockEntity controller, String actionId, String val) {
-        String kind = "configure_network".equals(actionId) ? "network"
-                : "configure_fuel".equals(actionId) ? "fuel"
-                : actionId.substring("assign_".length());
-        UUID rootSubLevelId = SimulatedHelper.getContainingSubLevelId(controller);
-        List<EndpointSelection> selections = endpointSelections(
-                player, ctx, val, rootSubLevelId);
-        if (selections.isEmpty()) {
-            return failure("Read at least one storage block before assigning it");
-        }
-
-        Map<String, EndpointSelection> unique = new LinkedHashMap<>();
-        for (EndpointSelection selection : selections) {
-            unique.put(selection.key(), selection);
-        }
-        int configured = 0;
-        int rejected = 0;
-        for (EndpointSelection selection : unique.values()) {
-            ResolvedTarget resolved = resolveTarget(player.level(), selection.subLevelId(),
-                    selection.selection());
-            if (resolved == null || resolved.state().isAir()) {
-                rejected++;
-                continue;
-            }
-            controller.configureWirelessStockEndpoint(selection.subLevelId(), selection.pos(),
-                    "fuel".equals(kind));
-            saveWorkspaceTarget(ctx, "stock_" + kind, selection.serialized());
-            configured++;
-        }
-        if (configured == 0) return failure("None of the selected storage blocks are loaded");
-        controller.getShipStockNetworkSnapshot();
-        return success(configured + " " + kind + " endpoint(s) assigned"
-                + (rejected == 0 ? "" : "; " + rejected + " unavailable")
-                + "; reader mode remains active");
-    }
-
-    // Get the endpoint selections
-    private static List<EndpointSelection> endpointSelections(
-            ServerPlayer player, TabletActionContext ctx, String val,
-            @Nullable UUID rootSubLevelId) {
-        List<EndpointSelection> res = new ArrayList<>();
-        if (ctx.sourceTabletId() != null) {
-            for (DiagnosticTabletData.Binding binding : DiagnosticTabletAppStorage.selections(
-                    player.server, ctx.sourceTabletId(), DiagnosticTabletData.appId("scm"))) {
-                res.add(new EndpointSelection(binding.label(), binding.subLevelId(), binding.pos()));
-            }
-        }
-        if (res.isEmpty()) {
-            Selection selection = parseSelection(val);
-            if (selection != null) {
-                res.add(new EndpointSelection(selection.label(), rootSubLevelId, selection.pos()));
-            }
-        }
-        return List.copyOf(res);
     }
 
     // Test the target
@@ -753,57 +551,11 @@ public final class DiagnosticTabletScmActions {
                 target.putString("Status", controller.getShipControlGraphValue("status").asString());
                 target.putBoolean("Ready", controller.getShipControlGraphValue("ready").asBoolean());
                 target.putBoolean("Pilot", controller.hasShippingSchedule());
-                // ------------------------------------LOGISTICS RUNS------------------------------------
-                ListTag runs = new ListTag();
-                UUID selectedRun = appData.hasUUID("SelectedLogisticsRun")
-                        ? appData.getUUID("SelectedLogisticsRun") : null;
-                for (ShipLogisticsRun run : controller.shipLogisticsRuns()) {
-                    CompoundTag runTag = new CompoundTag();
-                    runTag.putUUID("Id", run.id());
-                    runTag.putString("Name", run.name());
-                    runTag.putString("Resource", run.resourceType().id());
-                    runTag.putString("ResourceLabel", run.resourceType().label());
-                    runTag.putInt("Color", run.resourceType().outlineColor());
-                    runTag.putBoolean("Selected", run.id().equals(selectedRun));
-                    ListTag endpoints = new ListTag();
-                    for (ShipLogisticsRun.Endpoint endpoint : run.endpoints()) {
-                        CompoundTag endpointTag = endpoint.toTag();
-                        endpointTag.putString("Label", endpoint.position().getX() + ", "
-                                + endpoint.position().getY() + ", " + endpoint.position().getZ());
-                        endpoints.add(endpointTag);
-                    }
-                    runTag.put("Endpoints", endpoints);
-                    runs.add(runTag);
-                }
-                target.put("Runs", runs);
-                // ------------------------------------STOCK NETWORKS------------------------------------
-                ListTag stock = new ListTag();
-                for (ShipStockNetworkCache.Network network
-                        : controller.getShipStockNetworkSnapshot().networks().values()) {
-                    for (com.simibubi.create.content.logistics.BigItemStack item
-                            : network.items().getStacks()) {
-                        CompoundTag row = new CompoundTag();
-                        row.putString("Kind", "item");
-                        row.putString("Name", item.stack.getHoverName().getString());
-                        row.putLong("Amount", item.count);
-                        stock.add(row);
-                    }
-                    for (net.neoforged.neoforge.fluids.FluidStack fluid : network.fluids()) {
-                        CompoundTag row = new CompoundTag();
-                        row.putString("Kind", "fluid");
-                        row.putString("Name", fluid.getHoverName().getString());
-                        row.putLong("Amount", fluid.getAmount());
-                        stock.add(row);
-                    }
-                    if (network.energy() > 0) {
-                        CompoundTag row = new CompoundTag();
-                        row.putString("Kind", "energy");
-                        row.putString("Name", "Forge Energy");
-                        row.putLong("Amount", network.energy());
-                        stock.add(row);
-                    }
-                }
-                target.put("Stock", stock);
+                ShipCargoAutomation.ResourceStatus resources =
+                        ShipCargoAutomation.resourceStatus(controller);
+                target.putLong("ManagedItems", resources.items());
+                target.putLong("ManagedFluids", resources.fluids());
+                target.putLong("ManagedEnergy", resources.energy());
             }
             targets.add(target);
         }
@@ -858,30 +610,6 @@ public final class DiagnosticTabletScmActions {
 
     // Store the selection
     private record Selection(String label, BlockPos pos) {
-    }
-
-    // Store the endpoint selection
-    private record EndpointSelection(String label, @Nullable UUID subLevelId, BlockPos pos) {
-        // Initialize the endpoint selection
-        private EndpointSelection {
-            label = label == null || label.isBlank() ? "Storage" : label;
-            pos = pos == null ? BlockPos.ZERO : pos.immutable();
-        }
-
-        // Get the selection
-        private Selection selection() {
-            return new Selection(label, pos);
-        }
-
-        // Handle key
-        private String key() {
-            return (subLevelId == null ? "world" : subLevelId.toString()) + ":" + pos.asLong();
-        }
-
-        // Get the serialized
-        private String serialized() {
-            return label + ":" + pos.getX() + "," + pos.getY() + "," + pos.getZ();
-        }
     }
 
     // Store the resolved target

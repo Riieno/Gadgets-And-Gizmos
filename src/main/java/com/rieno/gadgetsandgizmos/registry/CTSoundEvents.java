@@ -32,6 +32,8 @@ public final class CTSoundEvents {
             register("block.thruster.idle");
     public static final DeferredHolder<SoundEvent, SoundEvent> THRUSTER_HEAT =
             register("block.thruster.heat");
+    public static final DeferredHolder<SoundEvent, SoundEvent> RATCHET_GEAR_CLICK =
+            register("block.ratchet_gear.click");
     public static final DeferredHolder<SoundEvent, SoundEvent> MUSIC_DISC_KINETIC_CURRENCY =
             register("music_disc.kinetic_currency");
     public static final DeferredHolder<SoundEvent, SoundEvent> MUSIC_DISC_TWISTED_ALIVE =

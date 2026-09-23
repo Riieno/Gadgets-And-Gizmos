@@ -547,8 +547,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     protected boolean isControllerRuntimeLoaded() {
         return level != null
                 && !level.isClientSide
-                && !isRemoved()
-                && level.isLoaded(worldPosition);
+                && !isRemoved();
     }
 
     // Send the runtime data
@@ -2914,7 +2913,9 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
             linkerSlot.setStackInSlot(0, ItemStack.EMPTY);
         }
         unregisterWirelessNetwork();
-        deleteControllerManifest();
+        if (!retainControllerManifestAfterDestroy()) {
+            deleteControllerManifest();
+        }
     }
 
     // Mark the destructive removal
@@ -2925,6 +2926,11 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     // Check if the destructive removal is pending
     public boolean isDestructiveRemovalPending() {
         return destructiveRemovalPending;
+    }
+
+    // Let a specialised controller retain its durable SQLite state after a block replacement.
+    protected boolean retainControllerManifestAfterDestroy() {
+        return false;
     }
 
     // Handle the external relocation event
@@ -3195,6 +3201,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
                 schematicCopy ? 0 : controllerManifestRevision);
         if (snapshot != null && !schematicCopy) {
             applyControllerManifestSnapshot(snapshot);
+            onControllerManifestSaved(snapshot);
         }
         return snapshot;
     }
@@ -3214,10 +3221,18 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
 
     // Reload the controller manifest
     private boolean reloadControllerManifest(HolderLookup.Provider provider) {
-        if (level == null || level.isClientSide || controllerManifestId == null || controllerManifestId.isBlank()) {
+        return restoreControllerManifest(controllerManifestId, provider);
+    }
+
+    // Restore this controller from a known SQLite manifest identity.
+    protected final boolean restoreControllerManifest(
+            String manifestId,
+            HolderLookup.Provider provider
+    ) {
+        if (level == null || level.isClientSide || manifestId == null || manifestId.isBlank()) {
             return false;
         }
-        ControllerManifestStore.ManifestSnapshot snapshot = ControllerManifestStore.loadController(controllerManifestId, level);
+        ControllerManifestStore.ManifestSnapshot snapshot = ControllerManifestStore.loadController(manifestId, level);
         if (snapshot == null) {
             return false;
         }
@@ -3242,6 +3257,10 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
 
     // Handle the controller manifest reloaded event
     protected void onControllerManifestReloaded() {
+    }
+
+    // Observe a successful SQLite save after its stable manifest identity is known.
+    protected void onControllerManifestSaved(ControllerManifestStore.ManifestSnapshot snapshot) {
     }
 
     // Check if the assembly transfer is pending

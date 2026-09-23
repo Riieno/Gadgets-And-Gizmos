@@ -168,8 +168,9 @@ public final class AdvancedGraphNodeFactory {
         if (AdvancedGraphCatalog.isShipSpeedNode(type)) {
             CompoundTag defaults = data.getCompound("Defaults");
             defaults.put("speed", graphDefault(
-                    "number", AdvancedGraphCatalog.defaultShipSpeed(type)));
+                    "number", AdvancedGraphCatalog.defaultShipSpeedPercent(type)));
             data.put("Defaults", defaults);
+            data.putBoolean(AdvancedGraphCatalog.SHIP_SPEED_PERCENT_TAG, true);
         }
         if ("ship_telemetry".equals(type)) {
             CompoundTag defaults = data.getCompound("Defaults");
@@ -340,16 +341,25 @@ public final class AdvancedGraphNodeFactory {
         }
         if ("acc_display_graph".equals(type) || "acc_display_plotter".equals(type)
                 || "acc_display_external".equals(type)
-                || "acc_display_crn".equals(type)) {
+                || "acc_display_crn".equals(type)
+                || "acc_display_shipping_information".equals(type)
+                || "acc_display_scm_information".equals(type)) {
             CompoundTag defaults = data.getCompound("Defaults");
             defaults.put("visible", graphDefault("boolean", true));
             if ("acc_display_plotter".equals(type)) {
                 defaults.put("value", graphDefault("number", 0.0D));
             }
-            if ("acc_display_crn".equals(type)) {
+            if ("acc_display_crn".equals(type) || "acc_display_shipping_information".equals(type)) {
                 data.putString("DisplayMode",
                         ShipInformationDisplayModes.DEFAULT);
                 defaults.put("text", graphDefault("string", ""));
+            }
+            if ("acc_display_scm_information".equals(type)) {
+                for (String port : AdvancedGraphCatalog.get(type).inputs().keySet()) {
+                    if (port.startsWith("show_")) {
+                        defaults.put(port, graphDefault("boolean", false));
+                    }
+                }
             }
             defaults.put("x", graphDefault("number", 0.0D));
             defaults.put("y", graphDefault("number", 0.0D));
@@ -426,7 +436,138 @@ public final class AdvancedGraphNodeFactory {
             points.add(end);
             data.put("Points", points);
         }
+        // -----------------------------------------------------WORKER GRAPH-----------------------------------------------------
+
+        if (type.startsWith("worker_") || "request_worker_task".equals(type)
+                || "cancel_worker_task".equals(type)) {
+            putWorkerDefaults(type, data);
+        }
         return data;
+    }
+
+    // Add persisted defaults and direct selector choices for the worker graph node library
+    private static void putWorkerDefaults(String type, CompoundTag data) {
+        CompoundTag defaults = data.getCompound("Defaults");
+        CompoundTag options = data.getCompound("InputOptions");
+        switch (type) {
+            case "worker_routine" -> {
+                defaults.put("workers", graphDefault("string", "All assigned workers"));
+                defaults.put("loop_routine", graphDefault("boolean", true));
+                defaults.put("idle_delay", graphDefault("number", 20.0D));
+            }
+            case "worker_task_event" -> {
+                defaults.put("task_name", graphDefault("string", "Worker Task"));
+                defaults.put("default_priority", graphDefault("number", 0.0D));
+                defaults.put("interrupt_policy", graphDefault("string", "interrupt_current"));
+                defaults.put("resume_previous_task", graphDefault("boolean", true));
+                defaults.put("allow_re_entry", graphDefault("boolean", false));
+                putOptions(options, "interrupt_policy", List.of("interrupt_current", "queue", "only_when_idle"));
+            }
+            case "worker_source_container", "worker_destination_container" -> {
+                defaults.put("mode", graphDefault("string", "automatic"));
+                defaults.put("preference", graphDefault("string", "nearest"));
+                defaults.put("search_range", graphDefault("number", 0.0D));
+                putOptions(options, "mode", List.of("automatic", "specific"));
+                putOptions(options, "preference", "worker_source_container".equals(type)
+                        ? List.of("nearest", "highest_stock", "priority", "any")
+                        : List.of("nearest", "most_space", "priority", "any"));
+            }
+            case "worker_item_filter" -> {
+                defaults.put("mode", graphDefault("string", "allow_list"));
+                defaults.put("items", graphDefault("string", ""));
+                defaults.put("match_components", graphDefault("boolean", false));
+                defaults.put("ignore_damage", graphDefault("boolean", false));
+                defaults.put("match_mod", graphDefault("string", ""));
+                defaults.put("enabled", graphDefault("boolean", true));
+                putOptions(options, "mode", List.of("allow_list", "deny_list"));
+            }
+            case "worker_fluid_filter" -> {
+                defaults.put("mode", graphDefault("string", "allow_list"));
+                defaults.put("fluids", graphDefault("string", ""));
+                defaults.put("match_components", graphDefault("boolean", false));
+                defaults.put("enabled", graphDefault("boolean", true));
+                putOptions(options, "mode", List.of("allow_list", "deny_list"));
+            }
+            case "worker_tag_filter" -> {
+                defaults.put("mode", graphDefault("string", "allow_list"));
+                defaults.put("match", graphDefault("string", "any"));
+                defaults.put("tags", graphDefault("string", ""));
+                putOptions(options, "mode", List.of("allow_list", "deny_list"));
+                putOptions(options, "match", List.of("any", "all"));
+            }
+            case "worker_move_items", "worker_move_fluid" -> {
+                defaults.put("amount", graphDefault("number", 64.0D));
+                defaults.put("amount_mode", graphDefault("string", "up_to"));
+                defaults.put("retry", graphDefault("boolean", true));
+                defaults.put("timeout", graphDefault("number", 0.0D));
+                putOptions(options, "amount_mode", List.of("exact", "up_to"));
+            }
+            case "worker_move_fe" -> {
+                defaults.put("amount", graphDefault("number", 100000.0D));
+                defaults.put("amount_mode", graphDefault("string", "up_to"));
+                defaults.put("minimum_source_reserve", graphDefault("number", 0.0D));
+                defaults.put("retry", graphDefault("boolean", true));
+                putOptions(options, "amount_mode", List.of("exact", "up_to"));
+            }
+            case "worker_deposit" -> {
+                defaults.put("amount_mode", graphDefault("string", "all"));
+                defaults.put("retry", graphDefault("boolean", true));
+                defaults.put("return_remainder", graphDefault("boolean", true));
+                putOptions(options, "amount_mode", List.of("all", "exact", "up_to"));
+            }
+            case "worker_process" -> {
+                defaults.put("operation", graphDefault("string", ""));
+                defaults.put("collect_result", graphDefault("boolean", true));
+                defaults.put("timeout", graphDefault("number", 0.0D));
+            }
+            case "worker_craft" -> {
+                defaults.put("recipe", graphDefault("string", ""));
+                defaults.put("count", graphDefault("number", 1.0D));
+                defaults.put("use_worker_inventory", graphDefault("boolean", true));
+            }
+            case "worker_give_items" -> {
+                defaults.put("follow_recipient", graphDefault("boolean", true));
+                defaults.put("drop_if_full", graphDefault("boolean", true));
+                defaults.put("timeout", graphDefault("number", 0.0D));
+            }
+            case "worker_move_to" -> {
+                defaults.put("target_mode", graphDefault("string", "target"));
+                defaults.put("stopping_distance", graphDefault("number", 1.5D));
+                defaults.put("follow_moving_target", graphDefault("boolean", true));
+                defaults.put("timeout", graphDefault("number", 0.0D));
+                putOptions(options, "target_mode", List.of("target", "entity", "position", "home"));
+            }
+            case "request_worker_task" -> {
+                defaults.put("task", graphDefault("string", "Worker Task"));
+                defaults.put("workers", graphDefault("string", "All assigned workers"));
+                defaults.put("request_type", graphDefault("string", "items"));
+                defaults.put("destination_type", graphDefault("string", "container"));
+                defaults.put("items", graphDefault("string", ""));
+                defaults.put("item_amount", graphDefault("number", 1.0D));
+                defaults.put("fluids", graphDefault("string", ""));
+                defaults.put("fluid_amount", graphDefault("number", 1000.0D));
+                defaults.put("fe_amount", graphDefault("number", 100000.0D));
+                defaults.put("destination_player", graphDefault("string", ""));
+                defaults.put("can_craft", graphDefault("boolean", false));
+                defaults.put("priority", graphDefault("number", 0.0D));
+                defaults.put("interrupt", graphDefault("string", "use_task_default"));
+                defaults.put("wait_for_completion", graphDefault("boolean", false));
+                putOptions(options, "request_type", List.of("items", "fluids", "fe", "multiple"));
+                putOptions(options, "destination_type", List.of("player", "container"));
+                putOptions(options, "interrupt", List.of("use_task_default", "force_interrupt", "queue", "only_if_idle"));
+            }
+            default -> {
+            }
+        }
+        if (!defaults.isEmpty()) data.put("Defaults", defaults);
+        if (!options.isEmpty()) data.put("InputOptions", options);
+    }
+
+    // Add a fixed set of direct node selector choices
+    private static void putOptions(CompoundTag options, String port, List<String> values) {
+        ListTag entries = new ListTag();
+        for (String value : values) entries.add(StringTag.valueOf(value));
+        options.put(port, entries);
     }
 
     public static CompoundTag graphDefault(String type, Object val) {

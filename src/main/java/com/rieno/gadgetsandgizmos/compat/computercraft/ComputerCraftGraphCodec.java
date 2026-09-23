@@ -51,6 +51,7 @@ public final class ComputerCraftGraphCodec {
                 .map(ComputerCraftGraphCodec::edge).toList());
         result.put("functions", value.functions().stream()
                 .map(ComputerCraftGraphCodec::function).toList());
+        result.put("scmActionFunctions", value.scmActionFunctions());
         Map<String, Object> variables = new LinkedHashMap<>();
         value.variables().forEach((name, entry) ->
                 variables.put(name, graphValue(entry)));
@@ -238,6 +239,19 @@ public final class ComputerCraftGraphCodec {
             case "remove_function" -> {
                 fields(table, "op", "functionId");
                 yield new GraphMutation.RemoveFunction(functionId);
+            }
+            case "set_scm_action_function" -> {
+                fields(table, "op", "action", "functionId");
+                yield new GraphMutation.SetScmActionFunction(
+                        text(table, "action", null, MAX_ID),
+                        optionalText(table, "functionId", "", MAX_ID));
+            }
+            case "create_scm_action_function" -> {
+                fields(table, "op", "id", "action", "name");
+                yield new GraphMutation.CreateScmActionFunction(
+                        text(table, "id", null, MAX_ID),
+                        text(table, "action", null, MAX_ID),
+                        optionalText(table, "name", "", 64));
             }
             case "set_variable" -> {
                 fields(table, "op", "name", "value");

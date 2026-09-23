@@ -105,6 +105,27 @@ public final class CTSableTrackingCommands {
                 .then(Commands.literal("hide_links")
                         .requires(src -> src.hasPermission(OP_PERMISSION_LEVEL))
                         .executes(ctx -> hideLinks(ctx.getSource())))
+                .then(Commands.literal("pathfinder_debug_renderer")
+                        .requires(src -> src.hasPermission(OP_PERMISSION_LEVEL))
+                        .executes(ctx -> togglePathfinderDebugRenderer(ctx.getSource()))
+                        .then(Commands.literal("on")
+                                .executes(ctx -> setPathfinderDebugRenderer(
+                                        ctx.getSource(), true)))
+                        .then(Commands.literal("off")
+                                .executes(ctx -> setPathfinderDebugRenderer(
+                                        ctx.getSource(), false))))
+                .then(Commands.literal("debug_scm_ai_brain")
+                        .requires(src -> src.hasPermission(OP_PERMISSION_LEVEL))
+                        .executes(ctx -> toggleScmAiBrainDebug(ctx.getSource()))
+                        .then(Commands.literal("on")
+                                .executes(ctx -> setScmAiBrainDebug(
+                                        ctx.getSource(), true)))
+                        .then(Commands.literal("off")
+                                .executes(ctx -> setScmAiBrainDebug(
+                                        ctx.getSource(), false))))
+                .then(Commands.literal("debug_dump")
+                        .requires(src -> src.hasPermission(OP_PERMISSION_LEVEL))
+                        .executes(ctx -> startScmDebugDump(ctx.getSource())))
                 .then(Commands.literal("remove_disabled_items")
                         .requires(src -> src.hasPermission(OP_PERMISSION_LEVEL))
                         .then(Commands.literal("range")
@@ -136,6 +157,64 @@ public final class CTSableTrackingCommands {
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
+
+    // Toggle the operator Sable pathfinder debug renderer.
+    private static int togglePathfinderDebugRenderer(CommandSourceStack src) throws CommandSyntaxException {
+        ServerPlayer player = src.getPlayerOrException();
+        boolean enabled = PathfinderDebugRenderService.toggle(player);
+        src.sendSuccess(() -> Component.literal("Pathfinder debug renderer "
+                + (enabled ? "enabled." : "disabled.")), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    // Set the operator Sable pathfinder debug renderer state.
+    private static int setPathfinderDebugRenderer(
+            CommandSourceStack src,
+            boolean enabled
+    ) throws CommandSyntaxException {
+        ServerPlayer player = src.getPlayerOrException();
+        PathfinderDebugRenderService.setEnabled(player, enabled);
+        src.sendSuccess(() -> Component.literal("Pathfinder debug renderer "
+                + (enabled ? "enabled." : "disabled.")), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    // Toggle the operator SCM autopilot brain nameplates.
+    private static int toggleScmAiBrainDebug(CommandSourceStack src)
+            throws CommandSyntaxException {
+        ServerPlayer player = src.getPlayerOrException();
+        boolean enabled = PathfinderDebugRenderService.toggleBrain(player);
+        src.sendSuccess(() -> Component.literal("SCM AI brain debug "
+                + (enabled ? "enabled." : "disabled.")), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    // Set the operator SCM autopilot brain nameplate state.
+    private static int setScmAiBrainDebug(
+            CommandSourceStack src,
+            boolean enabled
+    ) throws CommandSyntaxException {
+        ServerPlayer player = src.getPlayerOrException();
+        PathfinderDebugRenderService.setBrainEnabled(player, enabled);
+        src.sendSuccess(() -> Component.literal("SCM AI brain debug "
+                + (enabled ? "enabled." : "disabled.")), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    // Start a bounded file trace for the SCM vehicle occupied by this operator.
+    private static int startScmDebugDump(CommandSourceStack src)
+            throws CommandSyntaxException {
+        ScmDebugDumpService.StartResult result = ScmDebugDumpService.start(
+                src.getPlayerOrException());
+        if (!result.started()) {
+            src.sendFailure(Component.literal(result.message()));
+            return 0;
+        }
+        src.sendSuccess(() -> Component.literal("Started a five-minute SCM debug dump for "
+                + result.vehicleName() + " (" + result.vehicleId() + ") at "
+                + result.file()), false);
+        return Command.SINGLE_SUCCESS;
+    }
 
     // Queue the disabled item cleanup
     private static int queueDisabledItemCleanup(CommandSourceStack src, int chunkRange) {

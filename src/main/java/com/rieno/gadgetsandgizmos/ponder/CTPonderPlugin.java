@@ -167,6 +167,8 @@ public class CTPonderPlugin implements PonderPlugin {
 
             var kineticRelays = entries.addToTag(AllCreatePonderTags.KINETIC_RELAYS);
             addIfPresent(kineticRelays, CTBlocks.BIDIRECTIONAL_GEARBOX);
+            addIfPresent(kineticRelays, CTBlocks.RATCHET_COGWHEEL);
+            addIfPresent(kineticRelays, CTBlocks.LARGE_RATCHET_COGWHEEL);
             addIfPresent(kineticRelays, CTBlocks.VARIABLE_TRANSMISSION);
             addIfPresent(kineticRelays, CTBlocks.PHYSICS_GANTRY_BELT_WHEEL);
 

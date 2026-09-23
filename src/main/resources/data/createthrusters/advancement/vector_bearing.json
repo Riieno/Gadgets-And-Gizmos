@@ -4,7 +4,10 @@
     "icon": { "id": "createthrusters:vector_bearing" },
     "title": { "translate": "advancement.createthrusters.vector_bearing.title" },
     "description": { "translate": "advancement.createthrusters.vector_bearing.description" },
-    "frame": "task", "show_toast": true, "announce_to_chat": true, "hidden": false
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
   },
   "criteria": {
     "has_vector_bearing": {

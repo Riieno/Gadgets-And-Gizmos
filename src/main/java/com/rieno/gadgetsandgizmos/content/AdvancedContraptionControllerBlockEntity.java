@@ -53,8 +53,10 @@ import com.rieno.gadgetsandgizmos.lib.control.ControllerBindingOwner;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryKind;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmFlightBehavior;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlMode;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmOrientation;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlModeRegistry;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
+import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ContraptionNetworkLinkerSnapshotPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphSnapshotPayload;
@@ -94,7 +96,13 @@ import com.rieno.gadgetsandgizmos.lib.control.FrequencyBinding;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.display.AccDisplaySourceRegistry;
-import com.rieno.gadgetsandgizmos.lib.shipping.ShipLogisticsRun;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerFailureReason;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerResourceKey;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerResourceType;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerRoster;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerTask;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerTaskRequest;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerWorkOrder;
 import net.minecraft.core.Direction;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
@@ -153,11 +161,16 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private static final long CLIENT_PROFILER_SAMPLE_TIMEOUT_TICKS = 40L;
     private static final String GRAPH_DATA_SCHEMA_REVISION_TAG = "GraphDataSchemaRevision";
     private static final String GRAPH_VERSIONS_TAG = "AdvancedGraphVersions";
+    private static final String SHIPPING_SCHEDULE_DRAFT_GRAPH_TAG = "ShippingScheduleDraftGraph";
+    private static final String SHIPPING_SCHEDULE_ACTIVE_GRAPH_TAG = "ShippingScheduleActiveGraph";
     private static final String GOGGLES_TRACKER_PAIRS_TAG = "GogglesTrackerPairs";
     private static final String SHIP_CONTROL_MAP_ID_TAG = "ShipControlMapId";
     private static final String SHIP_NAME_TAG = "ShipName";
+    private static final String SCM_PERSISTENCE_UUID_TAG = "ScmPersistenceUuid";
+    private static final String SCM_DISPLAY_PROGRESS_TAG = "ScmDisplayProgress";
     private static final String SHIP_FLIGHT_BEHAVIOR_TAG = "ShipFlightBehavior";
     private static final String SHIP_CONTROL_MODE_TAG = "ShipControlMode";
+    private static final String SCM_CONFIGURATION_PROFILE_TAG = "ScmConfigurationProfile";
     private static final String SCHEMATIC_SHIP_CONTROL_MAP_TAG = "ShipControlMap";
     private static final String SHIP_INITIALIZATION_VISIBLE_TAG = "ShipInitializationVisible";
     private static final String SHIP_INITIALIZATION_PERCENT_TAG = "ShipInitializationPercent";
@@ -181,22 +194,38 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private AdvancedGraphDocument draftGraph = new AdvancedGraphDocument();
     // Active graph
     private AdvancedGraphDocument activeGraph = new AdvancedGraphDocument();
+    // Hidden host-only Scratch schedule graph. It deliberately uses the same
+    // document/node/edge contract as the normal ACC graph rather than a
+    // second ad-hoc schedule format.
+    private AdvancedGraphDocument shippingScheduleDraftGraph = new AdvancedGraphDocument();
+    private AdvancedGraphDocument shippingScheduleActiveGraph = new AdvancedGraphDocument();
     // Graph runtime
     private final GraphRuntime graphRuntime = new GraphRuntime(this);
-    // Ship stock network cache
-    private final ShipStockNetworkCache shipStockNetworkCache = new ShipStockNetworkCache(this);
-    // Tracked ship logistics runs
-    private final List<ShipLogisticsRun> shipLogisticsRuns = new ArrayList<>();
     // Ship control runtime
     private final ShipControlModuleRuntime shipControlRuntime = new ShipControlModuleRuntime(this);
     // Shipping schedule runtime
     private final ShippingScheduleRuntime shippingScheduleRuntime = new ShippingScheduleRuntime(this);
+    // Last shipping status sent to the client block entity. Schedule state is
+    // server-authoritative, but goggles build their tooltip from the client
+    // copy and otherwise keep displaying the transient load message.
+    private String lastSyncedShippingScheduleStatus = "";
     // Current ship name
     private String shipName = "Unnamed Ship";
+    // Stable across relocation so an SCM can recover its SQLite manifest after the hull id changes.
+    private UUID scmPersistenceId = UUID.randomUUID();
+    // Controller-owned worker-to-pod assignments; pods host runtime but never own workers.
+    private final WorkerRoster workerRoster = new WorkerRoster();
+    private @Nullable UUID scmPersistenceSubLevelId;
+    private boolean scmPersistenceRestoreAttempted;
+    // Whether SCM and schedule route preparation broadcasts its progress to operators
+    private boolean scmDisplayProgress;
     // Current ship flight behavior
     private ScmFlightBehavior shipFlightBehavior = ScmFlightBehavior.DEFAULT;
     // Current ship control mode
     private ScmControlMode shipControlMode = ScmControlModeRegistry.resolve("airship");
+    // Player-authored group, blacklist and action assignment data. It is separate
+    // from the measured map so a rescan never silently overwrites player intent.
+    private ScmConfigurationProfile scmConfigurationProfile = ScmConfigurationProfile.empty();
     // Graph versions
     private final AdvancedGraphVersionHistory graphVersions = new AdvancedGraphVersionHistory();
     // Tracked goggles tracker pairs
@@ -223,6 +252,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private long lastGraphRuntimeSendTick = Long.MIN_VALUE;
     // Tracks whether graph runtime payload is dirty
     private boolean graphRuntimePayloadDirty;
+    // Remembers non-looping Worker Routines for the currently applied graph revision.
+    private final Set<String> dispatchedWorkerRoutines = new LinkedHashSet<>();
+    // Identifies the applied graph revision used to reset Worker Routine dispatch state.
+    private int dispatchedWorkerRoutineRevision = Integer.MIN_VALUE;
     // Current graph observer sample cursor
     private int graphObserverSampleCursor;
     // Current graph observer sample graph
@@ -328,6 +361,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private @Nullable CompoundTag pendingServerShutdownSnapshot;
     // Tracks whether graph owned binding channels are verified
     private boolean graphOwnedBindingChannelsVerified;
+    // Tracks whether the current manifest read came from a client update packet
+    private boolean readingClientUpdatePacket;
     // Tracked mouse input values
     private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     // Active mouse inputs
@@ -384,7 +419,344 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         for (ControllerDiscoveryNode node : discoverAccDisplayTargets()) {
             merged.putIfAbsent(node.nodeId(), node);
         }
+        for (WorkerStorageEndpoint endpoint : WorkerStorageEndpoint.linked(this, true)) {
+            ControllerDiscoveryNode node = endpoint.discoveryNode();
+            merged.putIfAbsent(node.nodeId(), node);
+        }
         return new ArrayList<>(merged.values());
+    }
+
+    // Claim a worker for this controller while leaving the pod as its live station.
+    public void claimWorker(UUID podId, UUID workerId) {
+        workerRoster.assign(workerId, podId);
+        setChanged();
+        sendData();
+    }
+
+    // Release a worker that has left one of this controller's stations.
+    public void releaseWorker(UUID podId, UUID workerId) {
+        workerRoster.release(workerId, podId);
+        setChanged();
+        sendData();
+    }
+
+    // Check controller ownership before dispatching live work from a station.
+    public boolean ownsWorker(UUID workerId, UUID podId) {
+        return workerRoster.owns(workerId, podId);
+    }
+
+    // Dispatch one named Worker Graph task through the controller-owned worker roster.
+    public WorkerFailureReason requestWorkerTask(WorkerTaskRequest request) {
+        if (request == null) return new WorkerFailureReason("invalid_request", "Worker task request is missing");
+        WorkerWorkOrder order = workerGraphOrder(request);
+        if (order == null) {
+            return new WorkerFailureReason("unknown_task", "No matching executable Worker Task Event was found");
+        }
+        List<WorkerPodBlockEntity> pods = WorkerPodBlockEntity.linkedPods(this);
+        if (pods.isEmpty()) return new WorkerFailureReason("no_workers", "No linked Worker Pods are available");
+        if (request.automaticWorkerSelection()) {
+            for (WorkerPodBlockEntity pod : pods) {
+                if (pod.submit(order)) return WorkerFailureReason.none();
+            }
+            return new WorkerFailureReason("no_worker_available", "No assigned worker can carry this task resource");
+        }
+        for (UUID workerId : request.workers()) {
+            UUID stationId = workerRoster.station(workerId);
+            if (stationId == null) continue;
+            for (WorkerPodBlockEntity pod : pods) {
+                if (stationId.equals(pod.podId()) && pod.submit(workerId, order)) {
+                    return WorkerFailureReason.none();
+                }
+            }
+        }
+        return new WorkerFailureReason("selected_workers_unavailable", "The selected workers cannot accept this task");
+    }
+
+    // Cancel one queued Worker Graph task at every linked Worker Pod.
+    public boolean cancelWorkerTask(UUID requestId) {
+        if (requestId == null) return false;
+        boolean cancelled = false;
+        for (WorkerPodBlockEntity pod : WorkerPodBlockEntity.linkedPods(this)) {
+            cancelled |= pod.cancel(requestId);
+        }
+        return cancelled;
+    }
+
+    // Compile one high-level Move / Process / Deposit path from the persisted Worker Graph.
+    private @Nullable WorkerWorkOrder workerGraphOrder(WorkerTaskRequest request) {
+        AdvancedGraphDocument.FunctionGraph workerGraph = activeGraph.functions().stream()
+                .filter(AdvancedContraptionControllerBlockEntity::isWorkerGraphFunction)
+                .findFirst().orElse(null);
+        if (workerGraph == null) return null;
+        AdvancedGraphDocument.Node event = workerGraph.nodes().stream()
+                .filter(node -> "worker_task_event".equals(node.type()))
+                .filter(node -> request.taskName().equals(workerInputString(node, "task_name", "Worker Task")))
+                .findFirst().orElse(null);
+        if (event == null) return null;
+        AdvancedGraphDocument.Node move = workerExecutionTarget(workerGraph, event, "triggered");
+        return workerGraphOrder(workerGraph, move, request);
+    }
+
+    // Compile a worker resource flow which begins at a routine or task-event execution output.
+    private @Nullable WorkerWorkOrder workerGraphOrder(AdvancedGraphDocument.FunctionGraph workerGraph,
+                                                       @Nullable AdvancedGraphDocument.Node move,
+                                                       WorkerTaskRequest request) {
+        if (move == null) return null;
+        WorkerResourceType type = workerMoveType(move.type());
+        if (type == null) return null;
+        AdvancedGraphDocument.Node filter = workerConnectedInput(workerGraph, move, "filter");
+        ResourceLocation resourceId = workerFilterResource(filter, type);
+        ResourceLocation requestedResource = workerRequestedResource(request, type);
+        if (requestedResource != null) resourceId = requestedResource;
+        if (resourceId == null) return null;
+        long amount = Math.max(1L, Math.round(workerInputNumber(move, "amount", 1.0D)));
+        amount = workerRequestedAmount(request, type, amount);
+        AdvancedGraphDocument.Node source = workerConnectedInput(workerGraph, move, "source");
+        UUID sourceId = workerSelectorEndpoint(source);
+        AdvancedGraphDocument.Node next = workerExecutionTarget(workerGraph, move, "complete");
+        WorkerWorkOrder.Mode mode = WorkerWorkOrder.Mode.TRANSFER;
+        UUID processorId = null;
+        UUID destinationId = null;
+        ResourceLocation outputId = resourceId;
+        long outputAmount = amount;
+        if (next != null && "worker_process".equals(next.type())) {
+            mode = WorkerWorkOrder.Mode.PROCESS;
+            AdvancedGraphDocument.Node processorSelector = workerConnectedInput(workerGraph, next, "processor");
+            processorId = workerSelectorEndpoint(processorSelector);
+            if (processorId == null) processorId = workerTargetEndpoint(next, "processor");
+            AdvancedGraphDocument.Node outputFilter = workerConnectedInput(workerGraph, next, "result_item_filter");
+            ResourceLocation configuredOutput = workerFilterResource(outputFilter, type);
+            if (configuredOutput != null) outputId = configuredOutput;
+            next = workerExecutionTarget(workerGraph, next, "complete");
+        } else if (next != null && "worker_craft".equals(next.type())) {
+            mode = WorkerWorkOrder.Mode.AUTO_CRAFT;
+            processorId = workerTargetEndpoint(next, "target");
+            next = workerExecutionTarget(workerGraph, next, "complete");
+        }
+        if (next != null && "worker_deposit".equals(next.type())) {
+            destinationId = workerSelectorEndpoint(workerConnectedInput(workerGraph, next, "destination"));
+        } else if (mode == WorkerWorkOrder.Mode.TRANSFER) {
+            return null;
+        }
+        UUID requestedDestination = workerRequestedDestination(request, type);
+        if (requestedDestination != null) destinationId = requestedDestination;
+        WorkerTask task = new WorkerTask(request.id(), request.taskName(),
+                new WorkerResourceKey(type, resourceId), amount, 0L, request.priority(), true);
+        return new WorkerWorkOrder(request.id(), task, mode, sourceId, destinationId, processorId,
+                new WorkerResourceKey(type, outputId), outputAmount);
+    }
+
+    // Dispatch each enabled default Worker Routine when a compatible worker becomes available.
+    private void dispatchWorkerRoutines() {
+        if (activeGraph.revision() != dispatchedWorkerRoutineRevision) {
+            dispatchedWorkerRoutineRevision = activeGraph.revision();
+            dispatchedWorkerRoutines.clear();
+        }
+        List<WorkerPodBlockEntity> pods = WorkerPodBlockEntity.linkedPods(this);
+        if (pods.isEmpty()) return;
+        for (AdvancedGraphDocument.FunctionGraph workerGraph : activeGraph.functions()) {
+            if (!isWorkerGraphFunction(workerGraph)) continue;
+            for (AdvancedGraphDocument.Node routine : workerGraph.nodes()) {
+                if (!"worker_routine".equals(routine.type())) continue;
+                boolean loops = workerInputBoolean(routine, "loop_routine", true);
+                String routineKey = workerGraph.id() + ":" + routine.id();
+                if (!loops && dispatchedWorkerRoutines.contains(routineKey)) continue;
+                AdvancedGraphDocument.Node move = workerExecutionTarget(workerGraph, routine, "start");
+                UUID requestId = UUID.nameUUIDFromBytes(("worker-routine:" + getBlockPos().asLong()
+                        + ":" + activeGraph.revision() + ":" + routineKey).getBytes(StandardCharsets.UTF_8));
+                WorkerTaskRequest request = new WorkerTaskRequest(requestId, "Worker Routine", Set.of(), 0,
+                        WorkerTaskRequest.InterruptPolicy.QUEUE, true, new CompoundTag());
+                WorkerWorkOrder order = workerGraphOrder(workerGraph, move, request);
+                if (order == null) continue;
+                boolean accepted = false;
+                Set<UUID> selectedWorkers = workerSelectedIds(routine);
+                for (WorkerPodBlockEntity pod : pods) {
+                    if (selectedWorkers.isEmpty()) {
+                        if (pod.submit(order)) {
+                            accepted = true;
+                            break;
+                        }
+                        continue;
+                    }
+                    for (UUID workerId : selectedWorkers) {
+                        if (pod.submit(workerId, order)) accepted = true;
+                    }
+                }
+                if (accepted && !loops) dispatchedWorkerRoutines.add(routineKey);
+            }
+        }
+    }
+
+    // Check whether one private function is the persistent Worker Graph workspace.
+    private static boolean isWorkerGraphFunction(AdvancedGraphDocument.FunctionGraph function) {
+        return function.nodes().stream().anyMatch(node -> "worker_routine".equals(node.type())
+                && node.data().getBoolean("WorkerGraphRoot"));
+    }
+
+    // Find the next worker execution target from a named output.
+    private static @Nullable AdvancedGraphDocument.Node workerExecutionTarget(
+            AdvancedGraphDocument.FunctionGraph graph, AdvancedGraphDocument.Node from, String port) {
+        if (graph == null || from == null) return null;
+        for (AdvancedGraphDocument.Edge edge : graph.edges()) {
+            if (!from.id().equals(edge.fromNode()) || !port.equals(edge.fromPort())) continue;
+            for (AdvancedGraphDocument.Node node : graph.nodes()) {
+                if (node.id().equals(edge.toNode())) return node;
+            }
+        }
+        return null;
+    }
+
+    // Find the data node connected to one worker node input.
+    private static @Nullable AdvancedGraphDocument.Node workerConnectedInput(
+            AdvancedGraphDocument.FunctionGraph graph, AdvancedGraphDocument.Node target, String port) {
+        if (graph == null || target == null) return null;
+        for (AdvancedGraphDocument.Edge edge : graph.edges()) {
+            if (!target.id().equals(edge.toNode()) || !port.equals(edge.toPort())) continue;
+            for (AdvancedGraphDocument.Node node : graph.nodes()) {
+                if (node.id().equals(edge.fromNode())) return node;
+            }
+        }
+        return null;
+    }
+
+    // Resolve a move node to its physical worker resource type.
+    private static @Nullable WorkerResourceType workerMoveType(String type) {
+        return switch (type) {
+            case "worker_move_items" -> WorkerResourceType.ITEM;
+            case "worker_move_fluid" -> WorkerResourceType.FLUID;
+            case "worker_move_fe" -> WorkerResourceType.ENERGY;
+            default -> null;
+        };
+    }
+
+    // Read the first direct resource id configured by one filter.
+    private static @Nullable ResourceLocation workerFilterResource(
+            @Nullable AdvancedGraphDocument.Node filter, WorkerResourceType type) {
+        if (type == WorkerResourceType.ENERGY) return WorkerResourceKey.ENERGY_ID;
+        if (filter == null) return null;
+        String port = type == WorkerResourceType.ITEM ? "items" : "fluids";
+        String configured = workerInputString(filter, port, "");
+        String first = configured.split(",", 2)[0].strip();
+        return first.isBlank() || first.startsWith("#") ? null : ResourceLocation.tryParse(first);
+    }
+
+    // Read the direct resource selection supplied by a Main Graph Worker Request.
+    private static @Nullable ResourceLocation workerRequestedResource(WorkerTaskRequest request,
+                                                                       WorkerResourceType type) {
+        if (request == null || request.parameters() == null) return null;
+        CompoundTag parameters = request.parameters();
+        String configured = switch (type) {
+            case ITEM -> parameters.getString("Items");
+            case FLUID, FUEL -> parameters.getString("Fluids");
+            case ENERGY -> WorkerResourceKey.ENERGY_ID.toString();
+        };
+        String first = configured.split(",", 2)[0].strip();
+        return first.isBlank() || first.startsWith("#") ? null : ResourceLocation.tryParse(first);
+    }
+
+    // Read the amount matching the resource type supplied by a Main Graph Worker Request.
+    private static long workerRequestedAmount(WorkerTaskRequest request, WorkerResourceType type, long fallback) {
+        if (request == null || request.parameters() == null) return fallback;
+        CompoundTag parameters = request.parameters();
+        boolean hasConfiguredResource = switch (type) {
+            case ITEM -> !parameters.getString("Items").isBlank();
+            case FLUID, FUEL -> !parameters.getString("Fluids").isBlank();
+            case ENERGY -> "fe".equalsIgnoreCase(parameters.getString("RequestType"))
+                    || "multiple".equalsIgnoreCase(parameters.getString("RequestType"));
+        };
+        if (!hasConfiguredResource) return fallback;
+        long configuredAmount = switch (type) {
+            case ITEM -> parameters.getLong("ItemAmount");
+            case FLUID, FUEL -> parameters.getLong("FluidAmount");
+            case ENERGY -> parameters.getLong("FeAmount");
+        };
+        return configuredAmount > 0L ? configuredAmount : fallback;
+    }
+
+    // Resolve the selected resource-specific SCM endpoint or online player supplied by a Main Graph Worker Request.
+    private @Nullable UUID workerRequestedDestination(WorkerTaskRequest request, WorkerResourceType type) {
+        if (request == null || request.parameters() == null) return null;
+        if ("player".equalsIgnoreCase(request.parameters().getString("DestinationType"))) {
+            if (level == null || level.getServer() == null) return null;
+            String name = request.parameters().getString("DestinationPlayer").strip();
+            if (name.isBlank()) return null;
+            return level.getServer().getPlayerList().getPlayers().stream()
+                    .filter(player -> name.equalsIgnoreCase(player.getGameProfile().getName()))
+                    .map(ServerPlayer::getUUID).findFirst().orElse(null);
+        }
+        if (!"container".equalsIgnoreCase(request.parameters().getString("DestinationType"))) return null;
+        String key = switch (type) {
+            case ITEM -> "ItemDestination";
+            case FLUID, FUEL -> "FluidDestination";
+            case ENERGY -> "FeDestination";
+        };
+        return workerTargetEndpoint(request.parameters().getCompound(key));
+    }
+
+    // Resolve the explicit SCM endpoint selected by a source, destination or processor selector.
+    private @Nullable UUID workerSelectorEndpoint(@Nullable AdvancedGraphDocument.Node selector) {
+        if (selector == null || !"specific".equals(workerInputString(selector, "mode", "automatic"))) return null;
+        return workerTargetEndpoint(selector, "target");
+    }
+
+    // Resolve a direct target-picker value to its linked Worker endpoint.
+    private @Nullable UUID workerTargetEndpoint(@Nullable AdvancedGraphDocument.Node node, String port) {
+        if (node == null || port == null || port.isBlank()) return null;
+        return workerTargetEndpoint(node.data().getCompound("WorkerTargets").getCompound(port));
+    }
+
+    // Resolve one serialized worker target to its current SCM endpoint identity.
+    private @Nullable UUID workerTargetEndpoint(CompoundTag targetTag) {
+        ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(targetTag);
+        if (target == null) return null;
+        String nodeId = target.nodeId();
+        String prefix = "worker:endpoint:";
+        if (nodeId.startsWith(prefix)) {
+            try {
+                return UUID.fromString(nodeId.substring(prefix.length()));
+            } catch (IllegalArgumentException ignored) {
+                return null;
+            }
+        }
+        return WorkerStorageEndpoint.linked(this, true).stream()
+                .filter(endpoint -> nodeId.equals(endpoint.discoveryNode().nodeId()))
+                .map(WorkerStorageEndpoint::id).findFirst().orElse(null);
+    }
+
+    // Read the explicitly assigned mannequin ids for one Worker Routine.
+    private static Set<UUID> workerSelectedIds(AdvancedGraphDocument.Node routine) {
+        if (routine == null) return Set.of();
+        Set<UUID> selected = new LinkedHashSet<>();
+        ListTag ids = routine.data().getList("WorkerIds", Tag.TAG_STRING);
+        for (int index = 0; index < ids.size(); index++) {
+            try {
+                selected.add(UUID.fromString(ids.getString(index)));
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        return Set.copyOf(selected);
+    }
+
+    // Read a string input default from one persisted worker node.
+    private static String workerInputString(AdvancedGraphDocument.Node node, String port, String fallback) {
+        if (node == null) return fallback;
+        CompoundTag value = node.data().getCompound("Defaults").getCompound(port).getCompound("Payload");
+        String configured = value.getString("Value").strip();
+        return configured.isBlank() ? fallback : configured;
+    }
+
+    // Read a numeric input default from one persisted worker node.
+    private static double workerInputNumber(AdvancedGraphDocument.Node node, String port, double fallback) {
+        if (node == null) return fallback;
+        CompoundTag payload = node.data().getCompound("Defaults").getCompound(port).getCompound("Payload");
+        return payload.contains("Value", Tag.TAG_DOUBLE) ? payload.getDouble("Value") : fallback;
+    }
+
+    // Read a boolean input default from one persisted worker node.
+    private static boolean workerInputBoolean(AdvancedGraphDocument.Node node, String port, boolean fallback) {
+        if (node == null) return fallback;
+        CompoundTag payload = node.data().getCompound("Defaults").getCompound(port).getCompound("Payload");
+        return payload.contains("Value", Tag.TAG_BYTE) ? payload.getBoolean("Value") : fallback;
     }
 
     // Discover the ACC display targets
@@ -482,6 +854,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         super.initialize();
         if (getLevel() != null && !getLevel().isClientSide
                 && !AccDisplayControllerRegistry.isStopping(getLevel())) {
+            restoreScmPersistenceIfAvailable();
             serverRuntimeInitialized = true;
             AccDisplayControllerRegistry.register(this);
             AdvancedControllerNamedEventBus.register(this);
@@ -490,9 +863,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             shipControlRuntime.resumeAfterLoad(
                     shippingScheduleRuntime.requiresControlAfterLoad());
             shippingScheduleRuntime.resumeAfterLoad();
-            if (!shipLogisticsRuns.isEmpty()) {
-                shipStockNetworkCache.snapshot();
-            }
         }
     }
 
@@ -524,19 +894,24 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 GRAPH_DATA_SCHEMA_REFRESH_INTERVAL) == 0L) {
             refreshChangedGraphDataSchemas();
         }
+        restoreScmPersistenceIfAvailable();
+        syncScmPersistenceSubLevel();
         shipControlRuntime.tick();
         syncShipInit();
         shippingScheduleRuntime.tick();
-        if (getLevel() != null && !getLevel().isClientSide
-                && Math.floorMod(getLevel().getGameTime() + getBlockPos().asLong(), 4L) == 0L
-                && shipLogisticsRuns.stream().anyMatch(run ->
-                run.resourceType() == ShipLogisticsRun.ResourceType.FUEL)) {
-            ShipCargoAutomation.refuelFromShipRuns(this, List.of(), true, true);
+        String shippingStatus = shippingScheduleRuntime.status();
+        if (!Objects.equals(lastSyncedShippingScheduleStatus, shippingStatus)) {
+            lastSyncedShippingScheduleStatus = shippingStatus;
+            setChanged();
+            sendData();
         }
         if (getLevel() != null) {
             resetStaleMouseAxes();
             checkGraphBindings();
             flushGraphBindingSync();
+            if (!getLevel().isClientSide && Math.floorMod(getLevel().getGameTime() + getBlockPos().asLong(), 10L) == 0L) {
+                dispatchWorkerRoutines();
+            }
             boolean activeGraphHasContent = hasGraphContent(activeGraph);
             boolean anyGraphHasContent = activeGraphHasContent || hasGraphContent(draftGraph);
             List<GraphRuntimeObserver> observers = cachedGraphRuntimeObservers();
@@ -550,9 +925,12 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 trackGraphChannelChanges();
             }
             if (activeGraphHasContent || graphRuntime.hasPendingWork()) {
-                if (graphRuntime.needsRegularTick(activeGraph, true)// !observers.isEmpty())
+                boolean samplePassiveOutputs = !publishedAccDisplays.isEmpty()
+                        || !observers.isEmpty() && Math.floorMod(
+                        getLevel().getGameTime() + getBlockPos().asLong(), 4L) == 0L;
+                if (graphRuntime.needsRegularTick(activeGraph, samplePassiveOutputs)
                         || graphRuntime.hasPendingWork()) {
-                    graphRuntime.tick(activeGraph, true); //!observers.isEmpty());
+                    graphRuntime.tick(activeGraph, samplePassiveOutputs);
                 }
             }
             if (!transientMouseInputs.isEmpty()) {
@@ -583,7 +961,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         shippingScheduleRuntime.prepareForServerShutdown();
         graphRuntime.prepareForServerShutdown();
         shipControlRuntime.prepareForServerShutdown();
-        shipStockNetworkCache.clear();
         cachedGraphRuntimeObservers = List.of();
         graphObserverInputs.clear();
         graphObserverOutputs.clear();
@@ -594,6 +971,30 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Check if this has ship control module
     public boolean hasShipControlModule() {
         return shipControlRuntime.isModuleAttached();
+    }
+
+    // Check if this ACC is physically mounted on an SCM. The broader runtime
+    // attachment check intentionally accepts an ACC Display Slab for legacy
+    // control/display behaviour; the dedicated SCM editor must only appear
+    // when the controller is actually on a Ship Control Module.
+    public boolean isMountedOnShipControlModule() {
+        if (CTBlocks.SHIP_CONTROL_MODULE == null) {
+            return false;
+        }
+        var module = CTBlocks.SHIP_CONTROL_MODULE.get();
+        if (getEmbeddedBlockState() != null && getEmbeddedBlockState().is(module)) {
+            return true;
+        }
+        Level level = getLevel();
+        return level != null && level.getBlockState(getBlockPos().below()).is(module);
+    }
+
+    // Check whether the hidden Schedule Scratch surface is available. This is
+    // deliberately server-authoritative and combines the physical SCM mount,
+    // completed SCM attachment, and the pilot immediately beside the ACC.
+    public boolean hasShippingScheduleWorkspace() {
+        return isMountedOnShipControlModule() && hasShipControlModule()
+                && ShippingSchedulePilot.hasScheduleWorkspacePilot(this);
     }
 
     // Get the configured ship flight behavior
@@ -610,6 +1011,184 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Get the ship control mode
     public ScmControlMode getShipControlMode() {
         return shipControlMode;
+    }
+
+    // Get the persisted SCM configuration profile
+    public ScmConfigurationProfile getScmConfigurationProfile() {
+        return scmConfigurationProfile;
+    }
+
+    // Replace the SCM configuration profile after it has been validated by the
+    // server-side configuration workflow.
+    public void setScmConfigurationProfile(ScmConfigurationProfile profile) {
+        scmConfigurationProfile = profile == null ? ScmConfigurationProfile.empty() : profile;
+        setChanged();
+        sendData();
+    }
+
+    // Reconcile auto-discovered docking connectors without changing player assignments
+    public void reconcileScmDockingConnectors(
+            java.util.Collection<ShipControlMap.DockingConnector> connectors
+    ) {
+        if (!scmConfigurationProfile.reconcileDockingConnectors(connectors)) return;
+        setChanged();
+        sendData();
+    }
+
+    // Get one ship docking connector's player-selected binding group
+    public ScmConfigurationProfile.DockingConnectorGroup getScmDockingConnectorGroup(
+            UUID subLevelId, BlockPos position
+    ) {
+        return scmConfigurationProfile.dockingConnectorGroup(subLevelId, position);
+    }
+
+    // Get optional control-capable suggestions from the last discovery pass.
+    // The configuration screen itself may select any live block on the craft.
+    public List<ScmConfigurationProfile.UnitReference> getScmConfigurationCandidates() {
+        List<ScmConfigurationProfile.UnitReference> discovered =
+                shipControlRuntime.configurationCandidates();
+        if (!discovered.isEmpty()) {
+            return discovered;
+        }
+        ShipControlMap stored = storedShipControlMap();
+        if (stored == null) {
+            return List.of();
+        }
+        return stored.units().stream().map(ScmConfigurationProfile.UnitReference::of)
+                .distinct().toList();
+    }
+
+    // Get every live docking connector in the assembled ship.
+    public List<ScmConfigurationProfile.DockingConnectorReference> getScmConfigurationDockingConnectors() {
+        return shipControlRuntime.configurationDockingConnectors();
+    }
+
+    // Get the parent Sable body used by the live calibration viewer.
+    public @Nullable UUID getScmConfigurationRootSubLevelId() {
+        return shipControlRuntime.configurationRootSubLevelId();
+    }
+
+    // Get the connected Sable bodies that make up the live SCM calibration view.
+    public List<UUID> getScmConfigurationViewSubLevelIds() {
+        return shipControlRuntime.configurationViewSubLevelIds();
+    }
+
+    // Get the detached SCM preview scene used when the owning craft is not
+    // currently streamed to the client that opened this controller.
+    public List<ShipControlModuleRuntime.ConfigurationPreviewBlock> getScmConfigurationPreviewBlocks(
+            int maximumBlocks
+    ) {
+        return shipControlRuntime.configurationPreviewBlocks(maximumBlocks);
+    }
+
+    // Begin the discovery-only SCM pass used by the configuration modal. It
+    // reads the assembled craft but deliberately never freezes or pulses it.
+    public boolean scanScmConfiguration() {
+        return shipControlRuntime.scanConfiguration("scm_configuration", Map.of(), Map.of());
+    }
+
+    // Rebuild the current SCM groups from their live control adapters
+    public boolean reinitializeScmConfiguration() {
+        return shipControlRuntime.rebuildConfiguredControlMap();
+    }
+
+    // Return the stable configuration identity without requiring a discovery
+    // scan. It is persisted with the controller and becomes the subsequent
+    // profile-driven initialization map id.
+    public UUID getScmConfigurationMapId() {
+        return shipControlRuntime.ensureConfigurationMapId();
+    }
+
+    public boolean isScmConfigurationScanning() {
+        return shipControlRuntime.isConfigurationScanning();
+    }
+
+    public String getScmConfigurationStatus() {
+        return shipControlRuntime.initializationStatus();
+    }
+
+    // Validate a player-authored profile against live Sable body membership.
+    // The player may select every real block in the craft; whether an action
+    // can control it is resolved through the safe SCM adaptor/probe API during
+    // profile-driven initialization.
+    public boolean replaceScmConfigurationProfile(ScmConfigurationProfile requested) {
+        UUID targetMapId = getScmConfigurationMapId();
+        if (requested == null) {
+            return false;
+        }
+        List<ScmConfigurationProfile.Group> groups = requested.groups().stream()
+                .map(group -> new ScmConfigurationProfile.Group(group.id(), group.label(),
+                        group.units().stream().filter(shipControlRuntime::isConfigurationTarget)
+                                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new))))
+                .filter(group -> !group.id().isBlank())
+                .toList();
+        Map<String, String> actions = new LinkedHashMap<>();
+        requested.actionGroups().forEach((action, group) -> {
+            if (AdvancedGraphCatalog.isScmActionDispatchType(action)
+                    || ScmConfigurationProfile.isAutoAction(action)
+                    || ScmConfigurationProfile.isAccelerationAction(action)
+                    || ScmConfigurationProfile.isIkAction(action)) {
+                actions.put(action, group);
+            }
+        });
+        ScmConfigurationProfile sanitized = ScmConfigurationProfile.empty();
+        sanitized.setOrientationOverride(requested.orientationOverride());
+        sanitized.setVehicleType(requested.vehicleType());
+        sanitized.setSteeringType(requested.steeringType());
+        sanitized.setIkGait(requested.ikGait());
+        Set<ScmConfigurationProfile.DockingConnectorReference> liveDockingConnectors =
+                new LinkedHashSet<>(getScmConfigurationDockingConnectors());
+        Map<ScmConfigurationProfile.DockingConnectorReference,
+                ScmConfigurationProfile.DockingConnectorGroup> dockingConnectorGroups =
+                requested.dockingConnectorGroups();
+        if (!liveDockingConnectors.isEmpty()) {
+            dockingConnectorGroups = requested.dockingConnectorGroups().entrySet().stream()
+                    .filter(entry -> liveDockingConnectors.contains(entry.getKey()))
+                    .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
+                            (first, second) -> second, LinkedHashMap::new));
+        }
+        sanitized.replaceDockingConnectorGroups(dockingConnectorGroups);
+        sanitized.replace(targetMapId, groups, actions,
+                requested.excludedUnits().stream().filter(shipControlRuntime::isConfigurationTarget)
+                        .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new)));
+        CompoundTag previousBindings = scmConfigurationProfile.toTag();
+        CompoundTag nextBindings = sanitized.toTag();
+        previousBindings.remove("Orientation");
+        nextBindings.remove("Orientation");
+        previousBindings.remove("MapId");
+        nextBindings.remove("MapId");
+        setScmConfigurationProfile(sanitized);
+        shipControlRuntime.refreshVehicleType();
+        // A profile is the live control declaration, not deferred calibration
+        // UI state. Rebuild the allocator map immediately so newly assigned
+        // blocks/faces can be driven by graph, pilot and schedule commands.
+        if(!previousBindings.equals(nextBindings)){
+            shipControlRuntime.rebuildConfiguredControlMap();
+        }
+        shipControlRuntime.refreshOrientation();
+        return true;
+    }
+
+    // The ACC above the SCM owns the craft frame, not its propulsion or current velocity.
+    public ScmOrientation getScmDefaultOrientation(){
+        BlockState state = getBlockState();
+        Direction forward = state.hasProperty(AnalogueContraptionControllerBlock.HORIZONTAL_FACING)
+                ? state.getValue(AnalogueContraptionControllerBlock.HORIZONTAL_FACING) : Direction.NORTH;
+        Direction up = state.hasProperty(AnalogueContraptionControllerBlock.FACING)
+                ? state.getValue(AnalogueContraptionControllerBlock.FACING) : Direction.UP;
+        return ScmOrientation.fromMount(forward, up);
+    }
+
+    public ScmOrientation getScmOrientation(){
+        return scmConfigurationProfile.resolveOrientation(getScmDefaultOrientation());
+    }
+
+    public String getScmDetectedVehicleType() {
+        return shipControlRuntime.detectedVehicleType();
+    }
+
+    public String getScmDetectedSteeringType() {
+        return shipControlRuntime.detectedSteeringType();
     }
 
     // Set the ship control mode
@@ -701,14 +1280,18 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Install the shipping schedule
     public boolean installShippingSchedule(com.simibubi.create.content.trains.schedule.Schedule schedule,
                                            @Nullable UUID pilotId) {
-        return shippingScheduleRuntime.install(schedule, pilotId);
+        boolean installed = shippingScheduleRuntime.install(schedule, pilotId);
+        if (installed) syncShippingScheduleGraphFromRuntime();
+        return installed;
     }
 
     // Install the shipping schedule
     public boolean installShippingSchedule(com.simibubi.create.content.trains.schedule.Schedule schedule,
                                            @Nullable UUID pilotId,
                                            ShippingAutoRefuelSettings autoRefuel) {
-        return shippingScheduleRuntime.install(schedule, pilotId, autoRefuel);
+        boolean installed = shippingScheduleRuntime.install(schedule, pilotId, autoRefuel);
+        if (installed) syncShippingScheduleGraphFromRuntime();
+        return installed;
     }
 
     // Install the blaze burner shipping schedule
@@ -716,12 +1299,16 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                                            UUID pilotId,
                                            ShippingAutoRefuelSettings autoRefuel,
                                            boolean blazeBurnerPilot) {
-        return shippingScheduleRuntime.install(schedule, pilotId, autoRefuel, blazeBurnerPilot);
+        boolean installed = shippingScheduleRuntime.install(schedule, pilotId, autoRefuel, blazeBurnerPilot);
+        if (installed) syncShippingScheduleGraphFromRuntime();
+        return installed;
     }
 
     // Remove the shipping schedule
     public ItemStack removeShippingSchedule() {
-        return shippingScheduleRuntime.remove();
+        ItemStack schedule = shippingScheduleRuntime.remove();
+        ShippingScheduleRouteData.bind(schedule, scmPersistenceId);
+        return schedule;
     }
 
     // Check if this has shipping schedule
@@ -741,7 +1328,14 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Copy the shipping schedule
     public ItemStack copyShippingSchedule() {
-        return shippingScheduleRuntime.copyScheduleItem();
+        ItemStack schedule = shippingScheduleRuntime.copyScheduleItem();
+        ShippingScheduleRouteData.bind(schedule, scmPersistenceId);
+        return schedule;
+    }
+
+    // Get the stable SCM route owner id
+    public UUID getScmPersistenceId() {
+        return scmPersistenceId;
     }
 
     // Get the shipping schedule pilot id
@@ -756,6 +1350,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Run the shipping schedule graph command
     public boolean executeShippingScheduleGraphCommand(String nodeType) {
+        if ("shipping_start".equals(nodeType)) {
+            return startShippingScheduleGraph();
+        }
         return shippingScheduleRuntime.executeGraphCommand(nodeType);
     }
 
@@ -795,6 +1392,20 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             return;
         }
         shipName = normalized;
+        setChanged();
+        sendData();
+    }
+
+    // Check whether SCM progress messages are enabled from its workspace.
+    public boolean scmDisplayProgress() {
+        return scmDisplayProgress;
+    }
+
+    // Set SCM progress messages without requiring the retired Initialize node.
+    public void setScmDisplayProgress(boolean enabled) {
+        if (scmDisplayProgress == enabled) return;
+        scmDisplayProgress = enabled;
+        shipControlRuntime.setDisplayProgressPreference(enabled);
         setChanged();
         sendData();
     }
@@ -981,37 +1592,14 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         shipControlRuntime.setDockingMagneticCapture(connectorIndex, active);
     }
 
-    // Get the ship stock network snapshot
-    public ShipStockNetworkCache.Snapshot getShipStockNetworkSnapshot() {
-        return shipStockNetworkCache.snapshot();
-    }
-
-    // Get the ship stock network access
-    public ShipStockNetworkCache.NetworkAccess getShipStockNetworkAccess(
-            UUID subLevelId, BlockPos connectorPosition
-    ) {
-        return shipStockNetworkCache.accessFor(subLevelId, connectorPosition);
-    }
-
-    // Get the ship stock network access
-    public ShipStockNetworkCache.NetworkAccess getShipStockNetworkAccess(
-            UUID subLevelId,
-            BlockPos connectorPosition,
-            Set<ShipLogisticsRun.ResourceType> resourceTypes
-    ) {
-        return shipStockNetworkCache.accessFor(subLevelId, connectorPosition, resourceTypes);
-    }
-
-    // Get the ship logistics run access
-    public ShipStockNetworkCache.NetworkAccess getShipLogisticsRunAccess(
-            ShipLogisticsRun.ResourceType resourceType
-    ) {
-        return shipStockNetworkCache.accessFor(resourceType);
-    }
-
     // Get the mapped ship sublevel ids
     public Set<UUID> getMappedShipSubLevelIds() {
         return shipControlRuntime.mappedSubLevelIds();
+    }
+
+    // Get the mounted seats retained by the SCM map
+    public List<ShipControlMap.Seat> getMappedShipSeats() {
+        return shipControlRuntime.mappedSeats();
     }
 
     // Update the graph mirrors
@@ -1082,10 +1670,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                                            Map<String, AdvancedGraphDocument.Value> inputs,
                                            Map<String, AdvancedGraphDocument.Value> outputs) {
         if (graph == null) return;
-        if (graph.edges().isEmpty()) {
-            graphObserverSampleCursor = 0;
-            return;
-        }
         graphRuntime.beginPreviewSample(graph);
         Map<String, AdvancedGraphDocument.Node> nodes = new LinkedHashMap<>();
         for (AdvancedGraphDocument.Node node : graph.nodes()) {
@@ -1093,6 +1677,31 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         Set<String> sampledInputs = new HashSet<>();
         Set<String> sampledOutputs = new HashSet<>();
+        // This diagnostic has no outgoing wires by design. Sample its complete
+        // server-owned state so an unconnected node is still useful in the editor.
+        Map<String, AdvancedGraphDocument.Value> brainValues = null;
+        for (AdvancedGraphDocument.Node node : graph.nodes()) {
+            if (!"scm_brain_debug".equals(node.type())) continue;
+            if (brainValues == null) {
+                brainValues = new LinkedHashMap<>();
+                for (Map.Entry<String, String> output :
+                        AdvancedGraphCatalog.outputs(node).entrySet()) {
+                    if ("exec".equals(output.getValue())) continue;
+                    brainValues.put(output.getKey(),
+                            graphRuntime.previewOutput(graph, node, output.getKey()));
+                }
+            }
+            for (Map.Entry<String, AdvancedGraphDocument.Value> output :
+                    brainValues.entrySet()) {
+                String outputKey = node.id() + ":" + output.getKey();
+                outputs.put(outputKey, output.getValue());
+                sampledOutputs.add(outputKey);
+            }
+        }
+        if (graph.edges().isEmpty()) {
+            graphObserverSampleCursor = 0;
+            return;
+        }
         int edgeCount = graph.edges().size();
         int examined = 0;
         int edgeIndex = Math.floorMod(graphObserverSampleCursor, edgeCount);
@@ -1178,73 +1787,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (hadRuntimeData) sendGraphRuntimeData(graphRuntimeObservers());
     }
 
-    // Get the ship logistics runs
-    public List<ShipLogisticsRun> shipLogisticsRuns() {
-        return List.copyOf(shipLogisticsRuns);
-    }
-
-    // Keep the original flat stock endpoint working
-    public void configureWirelessStockEndpoint(UUID subLevelId, BlockPos pos, boolean fuel) {
-        List<ShipLogisticsRun.ResourceType> types = fuel
-                ? List.of(ShipLogisticsRun.ResourceType.FUEL)
-                : List.of(ShipLogisticsRun.ResourceType.ITEM,
-                ShipLogisticsRun.ResourceType.FLUID, ShipLogisticsRun.ResourceType.ENERGY);
-        for (ShipLogisticsRun.ResourceType type : types) {
-            ShipLogisticsRun run = shipLogisticsRuns.stream()
-                    .filter(candidate -> candidate.resourceType() == type
-                            && candidate.name().equals(type.label() + " Run"))
-                    .findFirst().orElseGet(() -> ShipLogisticsRun.create(
-                            type, type.label() + " Run", List.of()));
-            List<ShipLogisticsRun.Endpoint> endpoints = new ArrayList<>(run.endpoints());
-            ShipLogisticsRun.Endpoint endpoint = new ShipLogisticsRun.Endpoint(subLevelId, pos);
-            if (!endpoints.contains(endpoint)) endpoints.add(endpoint);
-            configureShipLogisticsRun(run.withEndpoints(endpoints));
-        }
-    }
-
-    // Configure the ship logistics run
-    public void configureShipLogisticsRun(ShipLogisticsRun run) {
-        if (run == null) return;
-        shipLogisticsRuns.removeIf(existing -> existing.id().equals(run.id()));
-        shipLogisticsRuns.add(run);
-        shipLogisticsRuns.sort(Comparator.comparing(ShipLogisticsRun::name,
-                String.CASE_INSENSITIVE_ORDER).thenComparing(runValue -> runValue.id().toString()));
-        shipStockNetworkCache.invalidate();
-        setChanged();
-        sendData();
-    }
-
-    // Remove the ship logistics run
-    public boolean removeShipLogisticsRun(UUID runId) {
-        if (runId == null || !shipLogisticsRuns.removeIf(run -> run.id().equals(runId))) {
-            return false;
-        }
-        shipStockNetworkCache.invalidate();
-        setChanged();
-        sendData();
-        return true;
-    }
-
-    // Toggle the ship logistics run endpoint
-    public boolean toggleShipLogisticsRunEndpoint(
-            UUID runId, UUID subLevelId, BlockPos position
-    ) {
-        ShipLogisticsRun run = shipLogisticsRuns.stream()
-                .filter(candidate -> candidate.id().equals(runId)).findFirst().orElse(null);
-        if (run == null || position == null) return false;
-        ShipLogisticsRun.Endpoint endpoint = new ShipLogisticsRun.Endpoint(subLevelId, position);
-        List<ShipLogisticsRun.Endpoint> endpoints = new ArrayList<>(run.endpoints());
-        boolean added;
-        if (endpoints.remove(endpoint)) {
-            added = false;
-        } else {
-            endpoints.add(endpoint);
-            added = true;
-        }
-        configureShipLogisticsRun(run.withEndpoints(endpoints));
-        return added;
-    }
-
     // Get the graph runtime observers
     private List<GraphRuntimeObserver> graphRuntimeObservers() {
         return graphRuntimeObservers(true);
@@ -1307,7 +1849,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 continue;
             }
             AdvancedControllerGraphSnapshotPayload.send(
-                    observer.player(), getBlockPos(), subLevelId, draftGraph, activeGraph);
+                    observer.player(), getBlockPos(), subLevelId, draftGraph, activeGraph,
+                    shippingScheduleDraftGraph, shippingScheduleActiveGraph);
             newlySyncedObservers.add(observer);
         }
         gogglesGraphSnapshotFingerprints.keySet().removeIf(
@@ -1413,6 +1956,225 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Get the active graph
     public AdvancedGraphDocument getActiveGraph() {
         return activeGraph.copy();
+    }
+
+    // Get the hidden Schedule Scratch graph draft. Callers must still pass the
+    // Schedule-workspace check before displaying or editing this document.
+    public AdvancedGraphDocument getShippingScheduleDraftGraph() {
+        hydrateShippingScheduleGraphFromRuntime();
+        return shippingScheduleDraftGraph.copy();
+    }
+
+    // Get the active Schedule Scratch graph.
+    public AdvancedGraphDocument getShippingScheduleActiveGraph() {
+        hydrateShippingScheduleGraphFromRuntime();
+        return shippingScheduleActiveGraph.copy();
+    }
+
+    // Save one controller-owned Scratch schedule graph. An already-running
+    // SCM receives the updated route; an inactive SCM waits for Start.
+    public boolean saveShippingScheduleGraph(AdvancedGraphDocument graph, int expectedRevision) {
+        hydrateShippingScheduleGraphFromRuntime();
+        if (!hasShippingScheduleWorkspace() || graph == null
+                || expectedRevision != shippingScheduleDraftGraph.revision()
+                || getLevel() == null || getLevel().isClientSide) {
+            return false;
+        }
+        AdvancedGraphDocument candidate = graph.copy();
+        ShippingScheduleGraph.ensureTemplate(candidate);
+        com.simibubi.create.content.trains.schedule.Schedule schedule =
+                ShippingScheduleGraph.toSchedule(candidate, getLevel().registryAccess());
+        // Saving is not a hidden start button. A live SCM runtime receives
+        // the edited schedule immediately, while an inactive controller keeps
+        // the graph ready for the explicit Start control.
+        if (shippingScheduleRuntime.hasSchedule() && (schedule == null || schedule.entries.isEmpty()
+                || !shippingScheduleRuntime.replaceSchedule(schedule))) {
+            return false;
+        }
+        candidate.setRevision(shippingScheduleDraftGraph.revision() + 1);
+        boolean wasFollowing = followsShippingScheduleRoute();
+        shippingScheduleDraftGraph = candidate;
+        shippingScheduleActiveGraph = candidate.copy();
+        if(wasFollowing != followsShippingScheduleRoute()) shipControlRuntime.resetScheduledRouteFollowing();
+        if(schedule != null && !schedule.entries.isEmpty()) shippingScheduleRuntime.ensureEditableRoutes(schedule);
+        setChanged();
+        sendData();
+        return true;
+    }
+
+    // Explicitly import the physical schedule held by the attached pilot. Once
+    // materialised, the SCM's stored Scratch graph remains authoritative until
+    // the player deliberately reads the item again.
+    public boolean readShippingScheduleFromPilot() {
+        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
+        com.simibubi.create.content.trains.schedule.Schedule schedule = ShippingSchedulePilot.adjacentPilotSchedule(this);
+        if (schedule == null || schedule.entries.isEmpty()) return false;
+        syncShippingScheduleGraphFromSchedule(schedule);
+        sendData();
+        return true;
+    }
+
+    // Explicitly write the SCM-owned Scratch graph to its live Create runtime
+    // and paired held schedule item. This is intentionally separate from a
+    // Read so an old item cannot silently overwrite an edited controller graph.
+    public boolean writeShippingScheduleToPilot() {
+        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
+        AdvancedGraphDocument candidate = shippingScheduleDraftGraph.copy();
+        ShippingScheduleGraph.ensureTemplate(candidate);
+        com.simibubi.create.content.trains.schedule.Schedule schedule =
+                ShippingScheduleGraph.toSchedule(candidate, getLevel().registryAccess());
+        if (schedule == null || schedule.entries.isEmpty()) return false;
+        if (shippingScheduleRuntime.hasSchedule() && !shippingScheduleRuntime.replaceSchedule(schedule)) return false;
+        boolean wroteItem = ShippingSchedulePilot.writeAdjacentPilotSchedule(this, schedule);
+        if (!wroteItem) return false;
+        shippingScheduleActiveGraph = candidate.copy();
+        setChanged();
+        sendData();
+        return true;
+    }
+
+    // Start the controller-owned Scratch schedule without depending on a
+    // physical shipping-schedule item. A seated pilot (or blaze pilot) is
+    // still required because it is the runtime actor, but the document stored
+    // by this SCM is the authority.
+    public boolean startShippingScheduleGraph() {
+        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
+        AdvancedGraphDocument candidate = shippingScheduleDraftGraph.copy();
+        ShippingScheduleGraph.ensureTemplate(candidate);
+        com.simibubi.create.content.trains.schedule.Schedule schedule =
+                ShippingScheduleGraph.toSchedule(candidate, getLevel().registryAccess());
+        if (schedule == null || schedule.entries.isEmpty()) return false;
+        boolean updated = shippingScheduleRuntime.hasSchedule()
+                ? shippingScheduleRuntime.replaceSchedule(schedule)
+                : installScheduleGraphRuntime(schedule);
+        if (!updated) return false;
+        shippingScheduleActiveGraph = candidate.copy();
+        if (!shippingScheduleRuntime.restartFromController()) return false;
+        setChanged();
+        sendData();
+        return true;
+    }
+
+    // Route the visible SCM controls through the same server-authoritative
+    // runtime commands as schedule graph nodes.
+    public boolean controlShippingScheduleGraph(String command) {
+        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
+        return shippingScheduleRuntime.executeGraphCommand(command);
+    }
+
+    // Queue the complete visible schedule route without starting or changing the schedule.
+    public boolean precalculateShippingScheduleRoute() {
+        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
+        AdvancedGraphDocument graph = shippingScheduleDraftGraph.copy();
+        ShippingScheduleGraph.ensureTemplate(graph);
+        com.simibubi.create.content.trains.schedule.Schedule schedule =
+                ShippingScheduleGraph.toSchedule(graph, getLevel().registryAccess());
+        return schedule != null && !schedule.entries.isEmpty()
+                && shippingScheduleRuntime.precalculateRoutes(schedule);
+    }
+
+    // Delete prepared schedule-route geometry without changing the schedule graph.
+    public boolean deleteShippingScheduleRoute() {
+        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
+        return shipControlRuntime.deleteScheduledRoutes();
+    }
+
+    // Queue resolved schedule legs through the SCM route planner with their schedule entry identity.
+    boolean queueShippingScheduleRoutes(
+            List<ShipControlModuleRuntime.ScheduledRouteDestination> destinations
+    ) {
+        return shipControlRuntime.queueScheduledRouteDestinations(destinations);
+    }
+
+    public boolean followsShippingScheduleRoute(){
+        return shippingScheduleDraftGraph.variables().getOrDefault(ShippingScheduleGraph.FOLLOW_ROUTE_VARIABLE,
+                AdvancedGraphDocument.Value.bool(true)).asBoolean();
+    }
+
+    boolean createEditableShippingScheduleRoutes(List<ShipControlModuleRuntime.ScheduledRouteDestination> destinations){
+        return shipControlRuntime.createEditableScheduledRoutes(destinations);
+    }
+
+    // Get detached retained route geometry used to place schedule-owned dock queues.
+    List<List<Vec3>> shippingScheduleRoutePolylines(
+            int scheduleEntry,
+            Vec3 target,
+            double targetTolerance
+    ) {
+        return shipControlRuntime.scheduledRoutePolylines(
+                scheduleEntry, target, targetTolerance);
+    }
+
+    // Check whether a schedule-route calculation is currently queued.
+    public boolean isPrecalculatingShippingScheduleRoute() {
+        return shipControlRuntime.isPrecalculatingScheduledRoutes();
+    }
+
+    // Get the live queued schedule-route calculation progress.
+    public double shippingScheduleRoutePrecalculationProgress() {
+        return shipControlRuntime.scheduledRoutePrecalculationProgress();
+    }
+
+    // Start a schedule graph without requiring the retired schedule item.
+    private boolean installScheduleGraphRuntime(com.simibubi.create.content.trains.schedule.Schedule schedule) {
+        if (schedule == null || getLevel() == null) {
+            return false;
+        }
+        if (ShippingSchedulePilot.isBlazeBurnerPilot(this)) {
+            String identity = getLevel().dimension().location() + "|" + getBlockPos().asLong();
+            UUID pilot = UUID.nameUUIDFromBytes(("shipping_schedule_blaze|" + identity)
+                    .getBytes(StandardCharsets.UTF_8));
+            return shippingScheduleRuntime.install(schedule, pilot,
+                    ShippingAutoRefuelSettings.fromSchedule(schedule), true);
+        }
+        LivingEntity pilot = ShippingSchedulePilot.findAdjacentSeatedPilot(this);
+        return pilot != null && shippingScheduleRuntime.install(schedule, pilot.getUUID(),
+                ShippingAutoRefuelSettings.fromSchedule(schedule));
+    }
+
+    // Convert an installed legacy item schedule to its graph representation.
+    private void syncShippingScheduleGraphFromRuntime() {
+        if (getLevel() == null) {
+            return;
+        }
+        com.simibubi.create.content.trains.schedule.Schedule schedule = shippingScheduleRuntime.scheduleCopy();
+        if (schedule == null) return;
+        syncShippingScheduleGraphFromSchedule(schedule);
+    }
+
+    // Materialize a live or legacy held schedule into the reusable graph
+    // contract. Keeping this separate from the runtime reader lets older
+    // pilots populate Schedule immediately without first being reassigned.
+    private void syncShippingScheduleGraphFromSchedule(
+            com.simibubi.create.content.trains.schedule.Schedule schedule
+    ) {
+        if (getLevel() == null || schedule == null) return;
+        AdvancedGraphDocument graph = ShippingScheduleGraph.fromSchedule(schedule, getLevel().registryAccess());
+        int nextRevision = Math.max(shippingScheduleDraftGraph.revision(), shippingScheduleActiveGraph.revision()) + 1;
+        graph.setRevision(nextRevision);
+        shippingScheduleDraftGraph = graph;
+        shippingScheduleActiveGraph = graph.copy();
+        setChanged();
+    }
+
+    // Older worlds can already have a schedule runtime in memory while the
+    // new graph tags are absent. Menu creation and snapshots must repair that
+    // state too; relying only on the NBT read path left a valid held schedule
+    // looking like an empty Schedule tab until the controller reloaded.
+    private void hydrateShippingScheduleGraphFromRuntime() {
+        if (getLevel() == null || getLevel().isClientSide) {
+            return;
+        }
+        com.simibubi.create.content.trains.schedule.Schedule schedule = shippingScheduleRuntime.scheduleCopy();
+        if (schedule == null) schedule = ShippingSchedulePilot.adjacentPilotSchedule(this);
+        if (schedule == null || schedule.entries.isEmpty()) return;
+        // A populated graph is controller-owned. It must never be silently
+        // replaced just because the held item/runtime has changed; the explicit
+        // Read action handles that direction. Empty legacy state still imports
+        // automatically so existing pilots open with a useful Schedule tab.
+        if (shippingScheduleDraftGraph.nodes().isEmpty()) {
+            syncShippingScheduleGraphFromSchedule(schedule);
+        }
     }
 
     // Get the active graph view
@@ -1654,7 +2416,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             return;
         }
         releaseAccDisplays();
-        shipStockNetworkCache.clear();
         shipControlRuntime.close();
         if (getLevel() != null && !getLevel().isClientSide) {
             clearGraphTargetWrites(activeGraph);
@@ -1676,7 +2437,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         releaseAccDisplays();
         AccDisplayControllerRegistry.unregister(this);
         AdvancedControllerNamedEventBus.unregister(this);
-        shipStockNetworkCache.clear();
         shipControlRuntime.close();
         super.remove();
     }
@@ -1687,7 +2447,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         releaseAccDisplays();
         AccDisplayControllerRegistry.unregister(this);
         AdvancedControllerNamedEventBus.unregister(this);
-        shipStockNetworkCache.clear();
         shippingScheduleRuntime.suspendForChunkUnload();
         shipControlRuntime.suspendForChunkUnload();
         super.onChunkUnloaded();
@@ -2443,6 +3202,14 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         for (AdvancedGraphDocument.Node node : graph.nodes()) {
             ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
             if (target != null && target.subLevelId() != null) subLevelIds.add(target.subLevelId());
+            CompoundTag workerTargets = node.data().getCompound("WorkerTargets");
+            for (String port : workerTargets.getAllKeys()) {
+                ControllerDiscoveryNode workerTarget = ControllerDiscoveryNode.fromTag(
+                        workerTargets.getCompound(port));
+                if (workerTarget != null && workerTarget.subLevelId() != null) {
+                    subLevelIds.add(workerTarget.subLevelId());
+                }
+            }
         }
     }
 
@@ -2499,7 +3266,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Get the notation SCM model
     public NotationScmModel getNotationScmModel() {
-        return NotationScmModel.from(storedShipControlMap());
+        return NotationScmModel.from(storedShipControlMap(), scmConfigurationProfile);
     }
 
     // Get the notation draft owner id
@@ -3048,7 +3815,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (graphRevision != accDisplayStructureRevision) {
             publishesShipInformation = false;
             for (AdvancedGraphDocument.Node node : activeGraph.nodes()) {
-                if (node != null && "acc_display_crn".equals(node.type())) {
+                if (AccDisplayBlockEntity.isShippingInformationNode(node)) {
                     publishesShipInformation = true;
                     break;
                 }
@@ -3086,7 +3853,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         boolean frameChanged = graphChanged
                 || runtimeChanged
                 || statusHash != lastAccDisplayStatusHash
-                || accDisplayFramesDirty;
+                || accDisplayFramesDirty
+                // SCM telemetry changes independently from graph variables.
+                // Refresh it on the existing bounded display cadence.
+                || updateDue;
         if (!frameChanged && !refreshTargets) {
             return;
         }
@@ -3115,7 +3885,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         Set<UniversalDisplayAdapterBlockEntity> current =
                 Collections.newSetFromMap(new IdentityHashMap<>());
         for (AdvancedGraphDocument.Node node : activeGraph.nodes()) {
-            if (node == null || !"acc_display_crn".equals(node.type())
+            if (node == null || (!AccDisplayBlockEntity.isShippingInformationNode(node)
+                    && !"acc_display_scm_information".equals(node.type()))
                     || !AccDisplayBlockEntity.contentNodeVisible(node, inputs, outputs)) {
                 continue;
             }
@@ -3125,8 +3896,14 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 continue;
             }
             CompoundTag frame = new CompoundTag();
-            frame.putString("Source", "ACC Display Ship Information");
-            AccDisplayBlockEntity.populateCrnFrame(frame, this, node, inputs, outputs);
+            boolean shipping = AccDisplayBlockEntity.isShippingInformationNode(node);
+            frame.putString("Source", shipping ? "ACC Display Shipping Information"
+                    : "ACC Display SCM Information");
+            if (shipping) {
+                AccDisplayBlockEntity.populateCrnFrame(frame, this, node, inputs, outputs);
+            } else {
+                AccDisplayBlockEntity.populateScmFrame(frame, this, node, inputs, outputs);
+            }
             adapter.acceptAccDisplayPresentation(this, frame);
             current.add(adapter);
         }
@@ -5004,13 +5781,25 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private boolean reconcileGraphTargets(AdvancedGraphDocument graph) {
         boolean changed = false;
         for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)) {
+            CompoundTag workerTargets = node.data().getCompound("WorkerTargets");
+            for (String port : workerTargets.getAllKeys()) {
+                ControllerDiscoveryNode staleWorker = ControllerDiscoveryNode.fromTag(
+                        workerTargets.getCompound(port));
+                ControllerDiscoveryNode currentWorker = refreshCurrentTarget(staleWorker);
+                if (currentWorker == null || currentWorker.equals(staleWorker)) continue;
+                workerTargets.put(port, currentWorker.toTag());
+                putGraphDefault(node.data(), port, "target", currentWorker.nodeId());
+                changed = true;
+            }
+            if (!workerTargets.isEmpty()) node.data().put("WorkerTargets", workerTargets);
             ControllerDiscoveryNode stale = ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
             ControllerDiscoveryNode current = refreshCurrentTarget(stale);
-            if (current == null || current.equals(stale)) continue;
-            node.data().putString("Target", current.nodeId());
-            node.data().putString("TargetLabel", current.label().isBlank() ? current.nodeId() : current.label());
-            node.data().put("TargetData", current.toTag());
-            changed = true;
+            if (current != null && !current.equals(stale)) {
+                node.data().putString("Target", current.nodeId());
+                node.data().putString("TargetLabel", current.label().isBlank() ? current.nodeId() : current.label());
+                node.data().put("TargetData", current.toTag());
+                changed = true;
+            }
         }
         return changed;
     }
@@ -6028,6 +6817,60 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return "advanced_controller";
     }
 
+    // Keep the SCM's durable identity bound to the current hull and SQLite manifest.
+    @Override
+    protected void onControllerManifestSaved(ControllerManifestStore.ManifestSnapshot snapshot) {
+        UUID subLevelId = SimulatedHelper.getContainingSubLevelId(this);
+        if (snapshot == null || subLevelId == null || scmPersistenceId == null) {
+            return;
+        }
+        if (ControllerSqliteStore.saveScmPersistence(
+                getLevel(), subLevelId, scmPersistenceId, snapshot.id())) {
+            scmPersistenceSubLevelId = subLevelId;
+        }
+    }
+
+    // Retain an SCM manifest after its block is broken so a replacement on the same hull can recover it.
+    @Override
+    protected boolean retainControllerManifestAfterDestroy() {
+        return SimulatedHelper.getContainingSubLevelId(this) != null;
+    }
+
+    // Restore a replacement SCM only when the sublevel has exactly one retained SCM state.
+    private void restoreScmPersistenceIfAvailable() {
+        if (scmPersistenceRestoreAttempted || getLevel() == null || getLevel().isClientSide
+                || !controllerManifestId().isBlank()) {
+            return;
+        }
+        UUID subLevelId = SimulatedHelper.getContainingSubLevelId(this);
+        if (subLevelId == null) {
+            return;
+        }
+        scmPersistenceRestoreAttempted = true;
+        ControllerSqliteStore.ScmPersistenceBinding binding =
+                ControllerSqliteStore.findScmPersistence(getLevel(), subLevelId, scmPersistenceId);
+        if (binding == null) {
+            return;
+        }
+        if (restoreControllerManifest(binding.manifestId(), getLevel().registryAccess())) {
+            scmPersistenceId = binding.scmId();
+            scmPersistenceSubLevelId = subLevelId;
+            setChanged();
+            sendData();
+        }
+    }
+
+    // Persist a surviving SCM when only its Sable sublevel id has changed.
+    private void syncScmPersistenceSubLevel() {
+        if (getLevel() == null || getLevel().isClientSide || controllerManifestId().isBlank()) {
+            return;
+        }
+        UUID subLevelId = SimulatedHelper.getContainingSubLevelId(this);
+        if (subLevelId != null && !subLevelId.equals(scmPersistenceSubLevelId)) {
+            saveControllerManifestNow();
+        }
+    }
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -6041,6 +6884,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     protected void writeAdditionalControllerManifestData(CompoundTag tag, HolderLookup.Provider provider) {
         tag.put("AdvancedDraftGraph", draftGraph.toTag());
         tag.put("AdvancedActiveGraph", activeGraph.toTag());
+        tag.put(SHIPPING_SCHEDULE_DRAFT_GRAPH_TAG, shippingScheduleDraftGraph.toTag());
+        tag.put(SHIPPING_SCHEDULE_ACTIVE_GRAPH_TAG, shippingScheduleActiveGraph.toTag());
         tag.put(GRAPH_VERSIONS_TAG, graphVersions.toTag());
         ListTag trackerPairs = new ListTag();
         gogglesTrackerPairs.forEach((id, label) -> {
@@ -6054,10 +6899,15 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             tag.putUUID(SHIP_CONTROL_MAP_ID_TAG, shipControlRuntime.mapId());
         }
         tag.putString(SHIP_NAME_TAG, shipName);
+        tag.putUUID(SCM_PERSISTENCE_UUID_TAG, scmPersistenceId);
+        tag.put("WorkerRoster", workerRoster.toTag());
+        tag.putBoolean(SCM_DISPLAY_PROGRESS_TAG, scmDisplayProgress);
         tag.putString(SHIP_FLIGHT_BEHAVIOR_TAG, shipFlightBehavior.id());
         tag.putString(SHIP_CONTROL_MODE_TAG,
                 ScmControlModeRegistry.serialize(shipControlMode.id()));
+        tag.put(SCM_CONFIGURATION_PROFILE_TAG, scmConfigurationProfile.toTag());
         shippingScheduleRuntime.write(tag, provider);
+        shipControlRuntime.writePrecalculatedRouteCache(tag);
         if (pendingServerShutdownSnapshot != null) {
             tag.put(SERVER_SHUTDOWN_SNAPSHOT_TAG,
                     pendingServerShutdownSnapshot.copy());
@@ -6091,6 +6941,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 ControllerSchematicPayload.CONTROLLER_DATA_TAG);
         removeGraphOwnedCustomEntries(controllerData);
         controllerData.remove(SHIP_CONTROL_MAP_ID_TAG);
+        controllerData.remove(SCM_PERSISTENCE_UUID_TAG);
+        controllerData.remove("ScmPrecalculatedRoutes");
         controllerData.remove(SERVER_SHUTDOWN_SNAPSHOT_TAG);
         ShippingScheduleRuntime.sanitizeSchematicPayload(controllerData);
         ShipControlMap map = storedShipControlMap();
@@ -6184,6 +7036,18 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         } else {
             activeGraph = draftGraph.copy();
         }
+        if (tag.contains(SHIPPING_SCHEDULE_DRAFT_GRAPH_TAG, Tag.TAG_COMPOUND)) {
+            shippingScheduleDraftGraph = AdvancedGraphDocument.fromTag(
+                    tag.getCompound(SHIPPING_SCHEDULE_DRAFT_GRAPH_TAG));
+        } else {
+            shippingScheduleDraftGraph = new AdvancedGraphDocument();
+        }
+        if (tag.contains(SHIPPING_SCHEDULE_ACTIVE_GRAPH_TAG, Tag.TAG_COMPOUND)) {
+            shippingScheduleActiveGraph = AdvancedGraphDocument.fromTag(
+                    tag.getCompound(SHIPPING_SCHEDULE_ACTIVE_GRAPH_TAG));
+        } else {
+            shippingScheduleActiveGraph = shippingScheduleDraftGraph.copy();
+        }
         graphVersions.fromTag(tag.getList(GRAPH_VERSIONS_TAG, Tag.TAG_COMPOUND));
         gogglesTrackerPairs.clear();
         ListTag trackerPairs = tag.getList(GOGGLES_TRACKER_PAIRS_TAG, Tag.TAG_COMPOUND);
@@ -6200,13 +7064,26 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         gogglesTrackingSnapshots.clear();
         shipControlRuntime.setMapId(tag.hasUUID(SHIP_CONTROL_MAP_ID_TAG)
                 ? tag.getUUID(SHIP_CONTROL_MAP_ID_TAG) : null);
+        scmPersistenceId = tag.hasUUID(SCM_PERSISTENCE_UUID_TAG)
+                ? tag.getUUID(SCM_PERSISTENCE_UUID_TAG) : scmPersistenceId;
+        workerRoster.fromTag(tag.getCompound("WorkerRoster"));
         String restoredShipName = tag.getString(SHIP_NAME_TAG).strip();
         shipName = restoredShipName.isBlank() ? "Unnamed Ship" : restoredShipName;
+        scmDisplayProgress = tag.getBoolean(SCM_DISPLAY_PROGRESS_TAG);
+        shipControlRuntime.setDisplayProgressPreference(scmDisplayProgress);
         shipFlightBehavior = ScmFlightBehavior.fromId(
                 tag.getString(SHIP_FLIGHT_BEHAVIOR_TAG));
         shipControlMode = ScmControlModeRegistry.resolve(
                 tag.getString(SHIP_CONTROL_MODE_TAG));
-        shippingScheduleRuntime.read(tag, provider);
+        scmConfigurationProfile = tag.contains(SCM_CONFIGURATION_PROFILE_TAG, Tag.TAG_COMPOUND)
+                ? ScmConfigurationProfile.fromTag(tag.getCompound(SCM_CONFIGURATION_PROFILE_TAG))
+                : ScmConfigurationProfile.empty();
+        shippingScheduleRuntime.read(tag, provider, !readingClientUpdatePacket);
+        shipControlRuntime.readPrecalculatedRouteCache(tag);
+        if (!readingClientUpdatePacket && shippingScheduleDraftGraph.nodes().isEmpty()
+                && shippingScheduleRuntime.hasSchedule()) {
+            syncShippingScheduleGraphFromRuntime();
+        }
         pendingServerShutdownSnapshot = tag.contains(
                 SERVER_SHUTDOWN_SNAPSHOT_TAG, Tag.TAG_COMPOUND)
                 ? tag.getCompound(SERVER_SHUTDOWN_SNAPSHOT_TAG).copy() : null;
@@ -6221,13 +7098,13 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (!clientPacket) {
             shipControlRuntime.writePersistentCouplerState(tag);
         }
-        ListTag logisticsRuns = new ListTag();
-        for (ShipLogisticsRun run : shipLogisticsRuns) logisticsRuns.add(run.toTag());
-        tag.put("ShipLogisticsRuns", logisticsRuns);
+        tag.remove("ShipLogisticsRuns");
         tag.remove("WirelessStockEndpoints");
         if (clientPacket) {
             tag.remove("AdvancedDraftGraph");
             tag.remove("AdvancedActiveGraph");
+            tag.remove(SHIPPING_SCHEDULE_DRAFT_GRAPH_TAG);
+            tag.remove(SHIPPING_SCHEDULE_ACTIVE_GRAPH_TAG);
             tag.remove(GRAPH_VERSIONS_TAG);
             tag.putBoolean(SHIP_INITIALIZATION_VISIBLE_TAG, shipInitializationProgressVisible);
             tag.putInt(SHIP_INITIALIZATION_PERCENT_TAG, shipInitializationProgressPercent);
@@ -6245,46 +7122,29 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     protected void read(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         AdvancedGraphDocument retainedClientDraft = clientPacket ? draftGraph : null;
         AdvancedGraphDocument retainedClientActive = clientPacket ? activeGraph : null;
-        super.read(tag, provider, clientPacket);
+        AdvancedGraphDocument retainedClientScheduleDraft = clientPacket ? shippingScheduleDraftGraph : null;
+        AdvancedGraphDocument retainedClientScheduleActive = clientPacket ? shippingScheduleActiveGraph : null;
+        boolean previousClientUpdateRead = readingClientUpdatePacket;
+        readingClientUpdatePacket = clientPacket;
+        try {
+            super.read(tag, provider, clientPacket);
+        } finally {
+            readingClientUpdatePacket = previousClientUpdateRead;
+        }
         if (!clientPacket) {
             shipControlRuntime.readPersistentCouplerState(tag);
         }
-        shipLogisticsRuns.clear();
-        ListTag logisticsRuns = tag.getList("ShipLogisticsRuns", Tag.TAG_COMPOUND);
-        for (int idx = 0; idx < logisticsRuns.size(); idx++) {
-            ShipLogisticsRun run = ShipLogisticsRun.fromTag(logisticsRuns.getCompound(idx));
-            if (run != null) shipLogisticsRuns.add(run);
-        }
-        if (shipLogisticsRuns.isEmpty()) {
-            ListTag wireless = tag.getList("WirelessStockEndpoints", Tag.TAG_COMPOUND);
-            List<ShipLogisticsRun.Endpoint> stockEndpoints = new ArrayList<>();
-            List<ShipLogisticsRun.Endpoint> fuelEndpoints = new ArrayList<>();
-            for (int idx = 0; idx < wireless.size(); idx++) {
-                CompoundTag row = wireless.getCompound(idx);
-                if (!row.hasUUID("SubLevel") || !row.contains("Pos", Tag.TAG_LONG)) continue;
-                ShipLogisticsRun.Endpoint endpoint = new ShipLogisticsRun.Endpoint(
-                        row.getUUID("SubLevel"), BlockPos.of(row.getLong("Pos")));
-                (row.getBoolean("Fuel") ? fuelEndpoints : stockEndpoints).add(endpoint);
-            }
-            if (!stockEndpoints.isEmpty()) {
-                shipLogisticsRuns.add(ShipLogisticsRun.create(
-                        ShipLogisticsRun.ResourceType.ITEM, "Imported Item Run", stockEndpoints));
-                shipLogisticsRuns.add(ShipLogisticsRun.create(
-                        ShipLogisticsRun.ResourceType.FLUID, "Imported Fluid Run", stockEndpoints));
-                shipLogisticsRuns.add(ShipLogisticsRun.create(
-                        ShipLogisticsRun.ResourceType.ENERGY, "Imported FE Run", stockEndpoints));
-            }
-            if (!fuelEndpoints.isEmpty()) {
-                shipLogisticsRuns.add(ShipLogisticsRun.create(
-                        ShipLogisticsRun.ResourceType.FUEL, "Imported Fuel Run", fuelEndpoints));
-            }
-        }
-        shipStockNetworkCache.invalidate();
         if (clientPacket && !tag.contains("AdvancedDraftGraph", Tag.TAG_COMPOUND)) {
             draftGraph = retainedClientDraft;
         }
         if (clientPacket && !tag.contains("AdvancedActiveGraph", Tag.TAG_COMPOUND)) {
             activeGraph = retainedClientActive;
+        }
+        if (clientPacket && !tag.contains(SHIPPING_SCHEDULE_DRAFT_GRAPH_TAG, Tag.TAG_COMPOUND)) {
+            shippingScheduleDraftGraph = retainedClientScheduleDraft;
+        }
+        if (clientPacket && !tag.contains(SHIPPING_SCHEDULE_ACTIVE_GRAPH_TAG, Tag.TAG_COMPOUND)) {
+            shippingScheduleActiveGraph = retainedClientScheduleActive;
         }
         if (clientPacket) {
             shipInitializationProgressVisible = tag.getBoolean(SHIP_INITIALIZATION_VISIBLE_TAG);
@@ -6345,13 +7205,16 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Create the menu
     @Override
     public AbstractContainerMenu createMenu(int containerId, Inventory playerInventory, Player player) {
+        hydrateShippingScheduleGraphFromRuntime();
         if (player instanceof ServerPlayer serverPlayer) {
             AdvancedControllerGraphSnapshotPayload.send(
                     serverPlayer,
                     getBlockPos(),
                     SimulatedHelper.getContainingSubLevelId(this),
                     draftGraph,
-                    activeGraph);
+                    activeGraph,
+                    shippingScheduleDraftGraph,
+                    shippingScheduleActiveGraph);
             ItemStack linker = getStoredLinker();
             ContraptionNetworkLinkerData.migrateLegacyStorage(linker);
             ContraptionNetworkLinkerSnapshotPayload.sendIfChanged(serverPlayer, linker);

@@ -1,0 +1,6 @@
+{
+  "replace": false,
+  "values": [
+    { "id": "createthrusters:blackstone_casing", "required": false }
+  ]
+}

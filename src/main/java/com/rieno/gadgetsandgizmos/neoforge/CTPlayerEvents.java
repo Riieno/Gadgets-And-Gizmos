@@ -27,6 +27,7 @@ import com.rieno.gadgetsandgizmos.content.PhysicsGantryCarriageBlockEntity;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryShaftBlock;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryShaftBlockEntity;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinEntity;
+import com.rieno.gadgetsandgizmos.content.WorkerInventoryMenu;
 import com.rieno.gadgetsandgizmos.content.PortableContraptionControllerRuntime;
 import com.rieno.gadgetsandgizmos.content.RopeWinchUnstickWindow;
 import com.rieno.gadgetsandgizmos.content.ThrusterBlock;
@@ -129,6 +130,7 @@ public final class CTPlayerEvents {
     public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer serverPlayer) {
             PortableContraptionControllerRuntime.stopAll(serverPlayer);
+            ShippingRouteOverlayService.forget(serverPlayer.getUUID());
         }
         ContraptionNetworkLinkerSnapshotPayload.clearServerState(event.getEntity().getUUID());
         ARMOR_STAND_POSE_GUI_PREFERENCES.remove(event.getEntity().getUUID());
@@ -353,10 +355,19 @@ public final class CTPlayerEvents {
         }
         if (event.getLevel().isClientSide()
                 || !(event.getEntity() instanceof ServerPlayer serverPlayer)
-                || !isArmorStandPoseGuiEnabled(serverPlayer)
-                || !canUseArmorStandPoseGui(armorStand)) {
+                ) {
             return;
         }
+
+        if (armorStand instanceof PlayerMannequinEntity mannequin
+                && mannequin.assignedWorkerPod().isPresent()) {
+            WorkerInventoryMenu.open(serverPlayer, mannequin);
+            event.setCancellationResult(InteractionResult.SUCCESS);
+            event.setCanceled(true);
+            return;
+        }
+
+        if (!isArmorStandPoseGuiEnabled(serverPlayer) || !canUseArmorStandPoseGui(armorStand)) return;
 
         if (prefersStrawStatuesPoseGui(serverPlayer)
                 && StrawStatuesPoseGuiCompat.tryOpen(serverPlayer, armorStand)) {

@@ -138,10 +138,6 @@ public record DiagnosticTabletActionPayload(boolean placed, InteractionHand hand
                         TabletInteractionMode.READER, payload.value());
                 case "begin_push" -> state = state.withMode(
                         TabletInteractionMode.PUSH, payload.value());
-                case "begin_logistics_run", "edit_logistics_run" -> {
-                    state = state.withMode(TabletInteractionMode.READER, "configure_run");
-                    stateOnlyAction = false;
-                }
                 case "clear_selections" -> DiagnosticTabletAppStorage.clearSelections(
                         player.server, state.tabletId(), payload.appId());
                 case "select" -> {

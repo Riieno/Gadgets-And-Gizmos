@@ -30,6 +30,7 @@ public class ClientContraptionNetworkLinkerItem extends ContraptionNetworkLinker
     }
 
     // Initialize the client
+    @SuppressWarnings("removal")
     @Override
     public void initializeClient(Consumer<IClientItemExtensions> consumer) {
         consumer.accept(SimpleCustomRenderer.create(this, new ContraptionNetworkLinkerItemRenderer()));

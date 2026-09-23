@@ -325,6 +325,30 @@ public final class AdvancedGraphCatalog {
                 "visible", "boolean", "text", "string", "x", "number", "y", "number",
                 "width", "number", "height", "number", "scale", "number",
                 "rotation", "number"), Map.of(), true);
+        // Kept separate from the legacy CRN node so new graphs say exactly what
+        // they present while saved graphs retain their existing node id.
+        register("acc_display_shipping_information", "hud", Map.of(
+                "visible", "boolean", "text", "string", "x", "number", "y", "number",
+                "width", "number", "height", "number", "scale", "number",
+                "rotation", "number"), Map.of(), true);
+        register("acc_display_scm_information", "hud", Map.ofEntries(
+                Map.entry("visible", "boolean"),
+                Map.entry("show_status", "boolean"),
+                Map.entry("show_ready", "boolean"),
+                Map.entry("show_initialization", "boolean"),
+                Map.entry("show_mass", "boolean"),
+                Map.entry("show_weight", "boolean"),
+                Map.entry("show_facing", "boolean"),
+                Map.entry("show_center_of_mass", "boolean"),
+                Map.entry("show_center_of_lift", "boolean"),
+                Map.entry("show_position", "boolean"),
+                Map.entry("show_velocity", "boolean"),
+                Map.entry("show_speed", "boolean"),
+                Map.entry("show_angular_velocity", "boolean"),
+                Map.entry("show_orientation", "boolean"),
+                Map.entry("show_collision", "boolean"),
+                Map.entry("show_navigation", "boolean"),
+                Map.entry("show_inertia", "boolean")), Map.of(), true);
         register("acc_display_mode", "hud",
                 Map.of("exec", "exec", "target", "target", "mode", "string"),
                 Map.of("exec", "exec", "mode", "string", "success", "boolean"), false);
@@ -355,7 +379,7 @@ public final class AdvancedGraphCatalog {
         register("controller_tracker", "controller", Map.of(), trackingOutputs(), false);
         register("portable_tracker", "controller", Map.of(), gogglesTrackingOutputs(), false);
         register("reset_outputs", "controller", Map.of("exec", "exec"), Map.of("exec", "exec"), false);
-        register("ship_initialize", "ship_control", Map.of(
+        register("ship_scan_configuration", "ship_control", Map.of(
                         "exec", "exec",
                         "ship_name", "string",
                         "control_mode", "string",
@@ -363,7 +387,8 @@ public final class AdvancedGraphCatalog {
                         "force_full_initialization", "boolean",
                         "ignore_bearings", "boolean",
                         "ignore_sails", "boolean",
-                        "ignore_thrusters", "boolean"),
+                        "ignore_thrusters", "boolean",
+                        "ignore_docking_connectors", "boolean"),
                 initOutputs(), true);
         register("ship_stop_initialization", "ship_control",
                 Map.of("exec", "exec"), commandOutputs(), false);
@@ -377,9 +402,37 @@ public final class AdvancedGraphCatalog {
                 Map.entry("vector_thruster_count", "number"),
                 Map.entry("docking_connector_count", "number"),
                 Map.entry("controllable_count", "number"),
+                Map.entry("mass", "number"),
+                Map.entry("weight", "number"),
+                Map.entry("facing", "string"),
+                Map.entry("center_of_mass_x", "number"),
+                Map.entry("center_of_mass_y", "number"),
+                Map.entry("center_of_mass_z", "number"),
+                Map.entry("center_of_lift_x", "number"),
+                Map.entry("center_of_lift_y", "number"),
+                Map.entry("center_of_lift_z", "number"),
                 Map.entry("inertia_tensor", "map"),
                 Map.entry("status", "string"),
                 Map.entry("map_id", "string")), false);
+        register("scm_configuration", "ship_control", Map.of(), Map.ofEntries(
+                Map.entry("configured", "boolean"),
+                Map.entry("scanning", "boolean"),
+                Map.entry("candidate_count", "number"),
+                Map.entry("group_count", "number"),
+                Map.entry("action_binding_count", "number"),
+                Map.entry("excluded_unit_count", "number"),
+                Map.entry("action_groups", "map")), false);
+        register("scm_brain_debug", "ship_control", Map.of(), Map.ofEntries(
+                Map.entry("scm_brain_available", "boolean"),
+                Map.entry("scm_brain_state", "string"),
+                Map.entry("scm_brain_reason", "string"),
+                Map.entry("scm_brain_vehicle_name", "string"),
+                Map.entry("scm_brain_vehicle_id", "string"),
+                Map.entry("scm_brain_game_time", "number"),
+                Map.entry("scm_brain_anchor_x", "number"),
+                Map.entry("scm_brain_anchor_y", "number"),
+                Map.entry("scm_brain_anchor_z", "number"),
+                Map.entry("scm_brain_data", "map")), false);
         register("ship_coupler_status", "ship_control", Map.of(), Map.of(
                 "coupler_count", "number",
                 "coupled_count", "number",
@@ -391,19 +444,32 @@ public final class AdvancedGraphCatalog {
                 Map.of("exec", "exec", "behavior", "string"),
                 commandOutputs(), false);
         register("ship_yaw", "ship_control", amountInputs(), targetCommandOutputs(), true);
+        register("ship_yaw_right", "ship_control", amountInputs(), targetCommandOutputs(), true);
+        register("ship_yaw_left", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_pitch", "ship_control", amountInputs(), targetCommandOutputs(), true);
+        register("ship_pitch_up", "ship_control", amountInputs(), targetCommandOutputs(), true);
+        register("ship_pitch_down", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_pan", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_tilt", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_roll", "ship_control", amountInputs(), targetCommandOutputs(), true);
+        register("ship_roll_right", "ship_control", amountInputs(), targetCommandOutputs(), true);
+        register("ship_roll_left", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_accelerate", "ship_control", amountInputs(), commandOutputs(), false);
         register("ship_forward", "ship_control", amountInputs(), commandOutputs(), false);
         register("ship_reverse", "ship_control", amountInputs(), commandOutputs(), false);
+        register("ship_backward", "ship_control", amountInputs(), commandOutputs(), false);
         register("ship_strafe", "ship_control", amountInputs(), targetCommandOutputs(), true);
+        register("ship_strafe_left", "ship_control", amountInputs(), targetCommandOutputs(), true);
+        register("ship_strafe_right", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_ascend", "ship_control", amountInputs(), commandOutputs(), false);
         register("ship_descend", "ship_control", amountInputs(), commandOutputs(), false);
+        register("ship_jump", "ship_control", amountInputs(), commandOutputs(), false);
+        register("ship_crouch", "ship_control", amountInputs(), commandOutputs(), false);
         register("ship_stabilize", "ship_control",
                 Map.of("exec", "exec", "strength", "number"), commandOutputs(), true);
         register("ship_decelerate", "ship_control",
+                Map.of("exec", "exec", "strength", "number"), commandOutputs(), true);
+        register("ship_brake", "ship_control",
                 Map.of("exec", "exec", "strength", "number"), commandOutputs(), true);
         register("ship_hover", "ship_control",
                 Map.of("exec", "exec", "strength", "number"), commandOutputs(), true);
@@ -473,9 +539,21 @@ public final class AdvancedGraphCatalog {
                 Map.entry("velocity_y", "number"),
                 Map.entry("velocity_z", "number"),
                 Map.entry("speed", "number"),
+                Map.entry("angular_velocity_x", "number"),
+                Map.entry("angular_velocity_y", "number"),
+                Map.entry("angular_velocity_z", "number"),
                 Map.entry("yaw", "number"),
                 Map.entry("pitch", "number"),
                 Map.entry("roll", "number"),
+                Map.entry("mass", "number"),
+                Map.entry("weight", "number"),
+                Map.entry("facing", "string"),
+                Map.entry("center_of_mass_x", "number"),
+                Map.entry("center_of_mass_y", "number"),
+                Map.entry("center_of_mass_z", "number"),
+                Map.entry("center_of_lift_x", "number"),
+                Map.entry("center_of_lift_y", "number"),
+                Map.entry("center_of_lift_z", "number"),
                 Map.entry("inertia_tensor", "map"),
                 Map.entry("nearest_collision_distance", "number"),
                 Map.entry("collision_distance_forward", "number"),
@@ -489,6 +567,9 @@ public final class AdvancedGraphCatalog {
         register("shipping_travel_metrics", "ship_control", Map.of(), Map.ofEntries(
                 Map.entry("shipping_active", "boolean"),
                 Map.entry("shipping_pilot_present", "boolean"),
+                Map.entry("shipping_seated_players", "number"),
+                Map.entry("shipping_seat_count", "number"),
+                Map.entry("shipping_available_seats", "number"),
                 Map.entry("shipping_docked", "boolean"),
                 Map.entry("shipping_waiting", "boolean"),
                 Map.entry("shipping_diverted", "boolean"),
@@ -534,14 +615,126 @@ public final class AdvancedGraphCatalog {
                 Map.entry("shipping_manifest_next_entry", "number"),
                 Map.entry("shipping_manifest_is_cyclic", "boolean"),
                 Map.entry("shipping_manifest_stops", "list")), false);
+        register("shipping_start", "shipping_schedule", Map.of("exec", "exec"),
+                commandOutputs(), false);
         register("shipping_pause", "shipping_schedule", Map.of("exec", "exec"),
                 commandOutputs(), false);
         register("shipping_resume", "shipping_schedule", Map.of("exec", "exec"),
+                commandOutputs(), false);
+        register("shipping_stop", "shipping_schedule", Map.of("exec", "exec"),
                 commandOutputs(), false);
         register("shipping_restart", "shipping_schedule", Map.of("exec", "exec"),
                 commandOutputs(), false);
         register("shipping_skip", "shipping_schedule", Map.of("exec", "exec"),
                 commandOutputs(), false);
+        // ------------------------------------WORKER GRAPH------------------------------------
+        register("worker_routine", "worker", Map.of("workers", "string", "loop_routine", "boolean", "idle_delay", "number"),
+                Map.of("start", "exec", "worker", "worker"), true);
+        register("worker_task_event", "worker", Map.ofEntries(
+                Map.entry("task_name", "string"), Map.entry("default_priority", "number"),
+                Map.entry("interrupt_policy", "string"), Map.entry("resume_previous_task", "boolean"),
+                Map.entry("allow_re_entry", "boolean")), Map.ofEntries(
+                Map.entry("triggered", "exec"), Map.entry("worker", "worker"),
+                Map.entry("requester", "entity"), Map.entry("priority", "number"),
+                Map.entry("request", "task_request")), true);
+        register("worker_source_container", "worker_containers", Map.ofEntries(
+                Map.entry("mode", "string"), Map.entry("target", "target"),
+                Map.entry("preference", "string"), Map.entry("search_range", "number")),
+                Map.of("source", "container_selector"), false);
+        register("worker_destination_container", "worker_containers", Map.ofEntries(
+                Map.entry("mode", "string"), Map.entry("target", "target"),
+                Map.entry("preference", "string"), Map.entry("search_range", "number")),
+                Map.of("destination", "container_selector"), false);
+        register("worker_item_filter", "worker_filters", Map.ofEntries(
+                Map.entry("tags", "tag_filter"), Map.entry("enabled", "boolean"),
+                Map.entry("mode", "string"), Map.entry("items", "string"),
+                Map.entry("match_components", "boolean"), Map.entry("ignore_damage", "boolean"),
+                Map.entry("match_mod", "string")), Map.of("filter", "item_filter"), false);
+        register("worker_fluid_filter", "worker_filters", Map.ofEntries(
+                Map.entry("tags", "tag_filter"), Map.entry("enabled", "boolean"),
+                Map.entry("mode", "string"), Map.entry("fluids", "string"),
+                Map.entry("match_components", "boolean")), Map.of("filter", "fluid_filter"), false);
+        register("worker_tag_filter", "worker_filters", Map.ofEntries(
+                Map.entry("mode", "string"), Map.entry("match", "string"), Map.entry("tags", "string")),
+                Map.of("filter", "tag_filter"), false);
+        register("worker_move_items", "worker_transfer", Map.ofEntries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("source", "container_selector"),
+                Map.entry("filter", "item_filter"), Map.entry("amount", "number"),
+                Map.entry("amount_mode", "string"), Map.entry("retry", "boolean"),
+                Map.entry("timeout", "number")), Map.ofEntries(
+                Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                Map.entry("items", "item_payload"), Map.entry("moved_amount", "number"),
+                Map.entry("failure_reason", "failure_reason")), true);
+        register("worker_move_fluid", "worker_transfer", Map.ofEntries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("source", "container_selector"),
+                Map.entry("filter", "fluid_filter"), Map.entry("amount", "number"),
+                Map.entry("amount_mode", "string"), Map.entry("retry", "boolean"),
+                Map.entry("timeout", "number")), Map.ofEntries(
+                Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                Map.entry("fluid", "fluid_payload"), Map.entry("moved_amount", "number"),
+                Map.entry("failure_reason", "failure_reason")), true);
+        register("worker_move_fe", "worker_transfer", Map.ofEntries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("source", "container_selector"),
+                Map.entry("amount", "number"), Map.entry("amount_mode", "string"),
+                Map.entry("minimum_source_reserve", "number"), Map.entry("retry", "boolean")),
+                Map.ofEntries(Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                        Map.entry("fe", "fe_payload"), Map.entry("moved_amount", "number"),
+                        Map.entry("failure_reason", "failure_reason")), true);
+        register("worker_deposit", "worker_transfer", Map.ofEntries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("destination", "container_selector"),
+                Map.entry("items", "item_payload"), Map.entry("fluid", "fluid_payload"),
+                Map.entry("fe", "fe_payload"), Map.entry("amount_mode", "string"),
+                Map.entry("retry", "boolean"), Map.entry("return_remainder", "boolean")),
+                Map.ofEntries(Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                        Map.entry("remaining_items", "item_payload"),
+                        Map.entry("remaining_fluid", "fluid_payload"),
+                        Map.entry("remaining_fe", "fe_payload"),
+                        Map.entry("failure_reason", "failure_reason")), true);
+        register("worker_process", "worker_actions", Map.ofEntries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("processor", "target"),
+                Map.entry("items", "item_payload"), Map.entry("fluid", "fluid_payload"),
+                Map.entry("fe", "fe_payload"), Map.entry("result_item_filter", "item_filter"),
+                Map.entry("result_fluid_filter", "fluid_filter"), Map.entry("operation", "string"),
+                Map.entry("collect_result", "boolean"), Map.entry("timeout", "number")),
+                Map.ofEntries(Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                        Map.entry("items", "item_payload"), Map.entry("fluid", "fluid_payload"),
+                        Map.entry("fe", "fe_payload"), Map.entry("failure_reason", "failure_reason")), true);
+        register("worker_craft", "worker_actions", Map.ofEntries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("target", "target"),
+                Map.entry("items", "item_payload"), Map.entry("recipe", "string"),
+                Map.entry("count", "number"), Map.entry("use_worker_inventory", "boolean")),
+                Map.ofEntries(Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                        Map.entry("items", "item_payload"), Map.entry("failure_reason", "failure_reason")), true);
+        register("worker_give_items", "worker_actions", Map.ofEntries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("items", "item_payload"),
+                Map.entry("recipient", "entity"), Map.entry("follow_recipient", "boolean"),
+                Map.entry("drop_if_full", "boolean"), Map.entry("timeout", "number")),
+                Map.ofEntries(Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                        Map.entry("remaining_items", "item_payload"),
+                        Map.entry("failure_reason", "failure_reason")), true);
+        register("worker_move_to", "worker_actions", Map.ofEntries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("target", "target"), Map.entry("entity", "entity"),
+                Map.entry("position", "position"), Map.entry("target_mode", "string"),
+                Map.entry("stopping_distance", "number"), Map.entry("follow_moving_target", "boolean"),
+                Map.entry("timeout", "number")), Map.ofEntries(Map.entry("arrived", "exec"),
+                Map.entry("failed", "exec"), Map.entry("failure_reason", "failure_reason")), true);
+        register("request_worker_task", "worker_bridge", Map.ofEntries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"),
+                Map.entry("worker_group", "worker_group"), Map.entry("workers", "string"),
+                Map.entry("request_type", "string"), Map.entry("destination_type", "string"),
+                Map.entry("priority", "number"), Map.entry("requester", "entity"), Map.entry("task", "string"),
+                Map.entry("items", "string"), Map.entry("item_amount", "number"),
+                Map.entry("item_destination", "target"), Map.entry("fluids", "string"),
+                Map.entry("fluid_amount", "number"), Map.entry("fluid_destination", "target"),
+                Map.entry("fe_amount", "number"), Map.entry("fe_destination", "target"),
+                Map.entry("destination_player", "string"), Map.entry("can_craft", "boolean"),
+                Map.entry("interrupt", "string"), Map.entry("wait_for_completion", "boolean")),
+                Map.ofEntries(Map.entry("accepted", "exec"), Map.entry("rejected", "exec"),
+                        Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                        Map.entry("request", "task_request"),
+                        Map.entry("failure_reason", "failure_reason")), true);
+        register("cancel_worker_task", "worker_bridge", Map.of("exec", "exec", "request", "task_request"),
+                Map.of("cancelled", "exec", "not_found", "exec"), true);
     }
 
     // Initialize the advanced graph catalog
@@ -627,7 +820,8 @@ public final class AdvancedGraphCatalog {
     // Get all advanced graph catalog values
     public static List<Definition> all() {
         return REGISTRY.definitions().stream()
-                .filter(definition -> !"acc_display_mode".equals(definition.id()))
+                .filter(definition -> !"acc_display_mode".equals(definition.id())
+                        && !isRetiredScmActionType(definition.id()))
                 .map(AdvancedGraphCatalog::fromLibraryDefinition)
                 .toList();
     }
@@ -649,12 +843,66 @@ public final class AdvancedGraphCatalog {
         return definition != null && "ship_control".equals(definition.category());
     }
 
+    // Check whether a direct, signed SCM primitive may appear in a reusable
+    // graph function. Route and target commands keep their state in the root
+    // graph so their completion semantics remain unambiguous.
+    public static boolean isScmFunctionPrimitiveType(String type) {
+        return "ship_forward".equals(type)
+                || "ship_backward".equals(type)
+                || "ship_reverse".equals(type)
+                || "ship_ascend".equals(type)
+                || "ship_descend".equals(type)
+                || "ship_jump".equals(type)
+                || "ship_crouch".equals(type)
+                || "ship_yaw".equals(type)
+                || "ship_yaw_left".equals(type)
+                || "ship_yaw_right".equals(type)
+                || "ship_pitch".equals(type)
+                || "ship_pitch_up".equals(type)
+                || "ship_pitch_down".equals(type)
+                || "ship_roll".equals(type)
+                || "ship_roll_left".equals(type)
+                || "ship_roll_right".equals(type)
+                || "ship_strafe".equals(type)
+                || "ship_strafe_left".equals(type)
+                || "ship_strafe_right".equals(type)
+                || "ship_accelerate".equals(type)
+                || "ship_brake".equals(type);
+    }
+
     // Check if this is a ship control passive type
     public static boolean isShipControlPassiveType(String type) {
         return "ship_status".equals(type) || "ship_telemetry".equals(type)
                 || "ship_coupler_status".equals(type)
+                || "scm_configuration".equals(type)
+                || "scm_brain_debug".equals(type)
                 || "shipping_travel_metrics".equals(type)
                 || "shipping_manifest".equals(type);
+    }
+
+    // Check whether a public SCM node may be replaced by its configured action
+    // function at a main-graph call site. Passive data readers retain their direct
+    // behaviour, and function bodies retain explicit SCM nodes to avoid recursion.
+    public static boolean isScmActionDispatchType(String type) {
+        Definition definition = get(type);
+        return definition != null && "ship_control".equals(definition.category())
+                && !isShipControlPassiveType(type)
+                && definition.inputs().containsKey("exec");
+    }
+
+    // These commands are preserved only so existing saved graphs and schedule
+    // data remain executable. New graphs expose Forward and Backward instead.
+    public static boolean isRetiredScmActionType(String type) {
+        return "ship_accelerate".equals(type)
+                || "ship_decelerate".equals(type)
+                || "ship_reverse".equals(type);
+    }
+
+    // Check whether an SCM action is available for new action-function and
+    // block-group configuration. Retired commands intentionally remain
+    // dispatchable for compatibility with graphs saved before their removal.
+    public static boolean isPublicScmActionDispatchType(String type) {
+        return isScmActionDispatchType(type) && !isRetiredScmActionType(type);
     }
 
     // Get the physical interaction outputs
@@ -691,8 +939,10 @@ public final class AdvancedGraphCatalog {
 
     // Check if this is a shipping schedule control type
     public static boolean isShippingScheduleControlType(String type) {
-        return "shipping_pause".equals(type)
+        return "shipping_start".equals(type)
+                || "shipping_pause".equals(type)
                 || "shipping_resume".equals(type)
+                || "shipping_stop".equals(type)
                 || "shipping_restart".equals(type)
                 || "shipping_skip".equals(type);
     }
@@ -738,8 +988,7 @@ public final class AdvancedGraphCatalog {
             boolean connected
     ) {
         if (!isShipSpeedPort(node, port)
-                || connected
-                || !node.data().getBoolean(SHIP_SPEED_PERCENT_TAG)) {
+                || !connected && !node.data().getBoolean(SHIP_SPEED_PERCENT_TAG)) {
             return val;
         }
         double percent = Double.isFinite(val)
@@ -776,11 +1025,19 @@ public final class AdvancedGraphCatalog {
     public static boolean isShipControlCompletionType(String type) {
         return "ship_initialize".equals(type)
                 || "ship_yaw".equals(type)
+                || "ship_yaw_right".equals(type)
+                || "ship_yaw_left".equals(type)
                 || "ship_pitch".equals(type)
+                || "ship_pitch_up".equals(type)
+                || "ship_pitch_down".equals(type)
                 || "ship_pan".equals(type)
                 || "ship_tilt".equals(type)
                 || "ship_roll".equals(type)
+                || "ship_roll_right".equals(type)
+                || "ship_roll_left".equals(type)
                 || "ship_strafe".equals(type)
+                || "ship_strafe_left".equals(type)
+                || "ship_strafe_right".equals(type)
                 || "ship_climb".equals(type)
                 || "ship_face".equals(type)
                 || "ship_dock".equals(type)
@@ -1182,6 +1439,8 @@ public final class AdvancedGraphCatalog {
             case "acc_display_plotter" -> "ACC Display Function Plotter";
             case "acc_display_external" -> "ACC Display External Source";
             case "acc_display_crn" -> "ACC Display Ship Information";
+            case "acc_display_shipping_information" -> "ACC Display Shipping Information";
+            case "acc_display_scm_information" -> "ACC Display SCM Information";
             case "acc_display_mode" -> "Set Display Mode";
             case "validate_number" -> "Validate Number";
             case "play_sound" -> "Play Sound";
@@ -1203,20 +1462,33 @@ public final class AdvancedGraphCatalog {
             case "ship_initialize" -> "Initialize Control Module";
             case "ship_stop_initialization" -> "Stop Initialization";
             case "ship_status" -> "Control Module Status";
+            case "scm_brain_debug" -> "SCM Brain Debug";
             case "ship_flight_behavior" -> "Set Flight Behavior";
             case "ship_yaw" -> "Yaw";
+            case "ship_yaw_right" -> "Yaw Right";
+            case "ship_yaw_left" -> "Yaw Left";
             case "ship_pitch" -> "Pitch";
+            case "ship_pitch_up" -> "Pitch Up";
+            case "ship_pitch_down" -> "Pitch Down";
             case "ship_pan" -> "Pan";
             case "ship_tilt" -> "Tilt";
             case "ship_roll" -> "Roll";
+            case "ship_roll_right" -> "Roll Right";
+            case "ship_roll_left" -> "Roll Left";
             case "ship_accelerate" -> "Accelerate";
             case "ship_forward" -> "Forward";
-            case "ship_reverse" -> "Reverse";
+            case "ship_reverse" -> "Reverse (Legacy)";
+            case "ship_backward" -> "Backward";
             case "ship_strafe" -> "Strafe";
+            case "ship_strafe_left" -> "Strafe Left";
+            case "ship_strafe_right" -> "Strafe Right";
             case "ship_ascend" -> "Ascend";
             case "ship_descend" -> "Descend";
+            case "ship_jump" -> "Jump";
+            case "ship_crouch" -> "Crouch";
             case "ship_stabilize" -> "Stabilize";
             case "ship_decelerate" -> "Decelerate";
+            case "ship_brake" -> "Brake";
             case "ship_hover" -> "Hover";
             case "ship_climb" -> "Climb to Y Level";
             case "ship_face" -> "Face Coordinates";
@@ -1234,6 +1506,24 @@ public final class AdvancedGraphCatalog {
             case "shipping_resume" -> "Resume";
             case "shipping_restart" -> "Restart";
             case "shipping_skip" -> "Skip";
+            // ------------------------------------WORKER GRAPH------------------------------------
+            case "worker_routine" -> "Worker Routine";
+            case "worker_task_event" -> "Worker Task Event";
+            case "worker_source_container" -> "Source Container";
+            case "worker_destination_container" -> "Destination Container";
+            case "worker_item_filter" -> "Item Filter";
+            case "worker_fluid_filter" -> "Fluid Filter";
+            case "worker_tag_filter" -> "Tag Filter";
+            case "worker_move_items" -> "Move Items";
+            case "worker_move_fluid" -> "Move Fluid";
+            case "worker_move_fe" -> "Move FE";
+            case "worker_deposit" -> "Deposit";
+            case "worker_process" -> "Process";
+            case "worker_craft" -> "Craft";
+            case "worker_give_items" -> "Give Items";
+            case "worker_move_to" -> "Move To";
+            case "request_worker_task" -> "Worker Request";
+            case "cancel_worker_task" -> "Cancel Worker Task";
             case "adrc_nth_order" -> "ADRC Nth Order";
             default -> titleCase(id);
         };
@@ -1258,6 +1548,12 @@ public final class AdvancedGraphCatalog {
             case "functions" -> "Functions";
             case "ship_control" -> "Ship Control";
             case "shipping_schedule" -> "Shipping Schedule";
+            case "worker" -> "Worker";
+            case "worker_containers" -> "Containers";
+            case "worker_filters" -> "Filters";
+            case "worker_transfer" -> "Transfer";
+            case "worker_actions" -> "Actions";
+            case "worker_bridge" -> "Worker";
             default -> titleCase(category);
         };
     }
@@ -1280,6 +1576,12 @@ public final class AdvancedGraphCatalog {
             case "functions" -> 0xFF8F73D8;
             case "ship_control" -> 0xFF4FC3C8;
             case "shipping_schedule" -> 0xFFDB8C4B;
+            case "worker" -> 0xFFF0C75E;
+            case "worker_containers" -> 0xFFBC8A55;
+            case "worker_filters" -> 0xFF5D9FE3;
+            case "worker_transfer" -> 0xFF59C58B;
+            case "worker_actions" -> 0xFFA57AE7;
+            case "worker_bridge" -> 0xFFF0C75E;
             default -> 0xFF7D8A99;
         };
     }

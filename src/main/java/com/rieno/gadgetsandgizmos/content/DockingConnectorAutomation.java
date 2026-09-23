@@ -10,7 +10,6 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.rieno.gadgetsandgizmos.compat.simulated.DockingConnectorBindingAccess;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
-import com.rieno.gadgetsandgizmos.compat.simulated.ShippingDockingConnectorAccess;
 import dev.simulated_team.simulated.content.blocks.docking_connector.DockingConnectorBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -113,7 +112,6 @@ public final class DockingConnectorAutomation {
             access.createthrusters$clearShipControlModuleBinding();
         }
     }
-
     // Resolve the docking connector automation
     public static @Nullable DockingConnectorBlockEntity resolve(
             @Nullable Level level,
@@ -156,7 +154,6 @@ public final class DockingConnectorAutomation {
                 continue;
             }
             endpoint.unDock();
-            resetTransfers(endpoint);
             setPowered(endpoint, false);
         }
     }
@@ -182,28 +179,6 @@ public final class DockingConnectorAutomation {
         }
         collectEndpoint(endpoints, SimulatedHelper.findLoadedBlockEntityExact(
                 connector.getLevel(), connector.otherConnectorSubLevelId, pos));
-    }
-
-    // Configure the transfers
-    public static void configureTransfers(
-            @Nullable BlockEntity connector,
-            boolean items,
-            boolean packages,
-            String packageAddress,
-            boolean fluids,
-            boolean energy
-    ) {
-        if (connector instanceof ShippingDockingConnectorAccess access) {
-            access.createthrusters$configureShippingTransfers(
-                    items, packages, packageAddress, fluids, energy);
-        }
-    }
-
-    // Reset the transfers
-    public static void resetTransfers(@Nullable BlockEntity connector) {
-        if (connector instanceof ShippingDockingConnectorAccess access) {
-            access.createthrusters$resetShippingTransfers();
-        }
     }
 
     // Check if this is locked pair

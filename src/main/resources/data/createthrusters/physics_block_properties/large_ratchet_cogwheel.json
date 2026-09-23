@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:large_ratchet_cogwheel",
+  "properties": {
+    "sable:mass": 0.0
+  }
+}

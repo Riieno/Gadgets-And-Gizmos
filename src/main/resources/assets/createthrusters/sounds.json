@@ -17,6 +17,16 @@
     ],
     "subtitle": "createthrusters.subtitle.block.thruster.heat"
   },
+  "block.ratchet_gear.click": {
+    "sounds": [
+      "createthrusters:block/ratchet_gear/ratchet_click_1",
+      "createthrusters:block/ratchet_gear/ratchet_click_2",
+      "createthrusters:block/ratchet_gear/ratchet_click_3",
+      "createthrusters:block/ratchet_gear/ratchet_click_4",
+      "createthrusters:block/ratchet_gear/ratchet_click_5"
+    ],
+    "subtitle": "createthrusters.subtitle.block.ratchet_gear.click"
+  },
   "music_disc.kinetic_currency": {
     "sounds": [
       {

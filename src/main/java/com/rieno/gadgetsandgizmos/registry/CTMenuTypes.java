@@ -23,6 +23,7 @@ import com.rieno.gadgetsandgizmos.content.PoweredZiplineMenu;
 import com.rieno.gadgetsandgizmos.content.RcsThrusterMenu;
 import com.rieno.gadgetsandgizmos.content.ThrusterMenu;
 import com.rieno.gadgetsandgizmos.content.VectorBearingMenu;
+import com.rieno.gadgetsandgizmos.content.WorkerInventoryMenu;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.inventory.MenuType;
 import net.neoforged.neoforge.common.extensions.IMenuTypeExtension;
@@ -99,6 +100,10 @@ public final class CTMenuTypes {
 
     public static final DeferredHolder<MenuType<?>, MenuType<NavigationTableMenu>> NAVIGATION_TABLE = REGISTRAR.register(
             "navigation_table", () -> IMenuTypeExtension.create(NavigationTableMenu::new));
+
+    @Nullable
+    public static final DeferredHolder<MenuType<?>, MenuType<WorkerInventoryMenu>> WORKER_INVENTORY = register("worker_inventory",
+            "worker_inventory", () -> IMenuTypeExtension.create(WorkerInventoryMenu::new));
 
     /*--------------------------------------------------------##---------------------------------------------------------
 

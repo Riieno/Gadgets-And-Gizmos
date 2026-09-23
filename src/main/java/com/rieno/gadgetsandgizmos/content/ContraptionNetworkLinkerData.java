@@ -1461,11 +1461,32 @@ public final class ContraptionNetworkLinkerData {
             }
             for (LinkedFace face : target.faces()) {
                 BlockPos controlledPos = target.blockPos().relative(face.face().getOpposite());
+                AnalogueControlChannel faceChannel = AnalogueControlChannel.byId(face.signalKey());
+                if (faceChannel == null) {
+                    faceChannel = FACE_TO_OPTION.get(face.face());
+                }
                 res.add(new ScmTarget(target.subLevelId(), controlledPos,
-                        "", target.label(), target.blockPos(), face.face()));
+                        "", target.label(), target.blockPos(), face.face(),
+                        faceChannel == null ? "" : faceChannel.id()));
             }
         }
         return res.stream().distinct().toList();
+    }
+
+    // Get the exact signed SCM action bound to one linker face target.
+    // An explicit compatible channel takes precedence; ordinary linker faces
+    // retain their documented directional fallback.
+    public static String scmTargetActionId(@Nullable ScmTarget target) {
+        if (target == null || !target.usesFaceControl()) {
+            return "";
+        }
+        AnalogueControlChannel explicit = AnalogueControlChannel.byId(
+                target.controlChannelId());
+        if (explicit != null) {
+            return explicit.id();
+        }
+        AnalogueControlChannel fallback = FACE_TO_OPTION.get(target.signalFace());
+        return fallback == null ? "" : fallback.id();
     }
 
     // Get the SCM discovery nodes

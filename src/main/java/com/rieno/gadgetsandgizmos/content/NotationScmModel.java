@@ -91,6 +91,14 @@ public final class NotationScmModel {
 
     // Create the notation SCM model
     public static NotationScmModel from(ShipControlMap map) {
+        return from(map, ScmConfigurationProfile.empty());
+    }
+
+    // Build the plotter model from calibrated Sable data while respecting the
+    // player's persistent configuration blacklist. This is a prediction model,
+    // not a cloned or live-actuated second ship.
+    public static NotationScmModel from(ShipControlMap map,
+                                        ScmConfigurationProfile configuration) {
         if (map == null) return empty();
         int surfaces = map.bearings().stream()
                 .flatMap(bearing -> bearing.poses().stream())
@@ -98,9 +106,11 @@ public final class NotationScmModel {
         List<ResponseSample> resp = new ArrayList<>(RESPONSE_SAMPLE_COUNT);
         for (int idx = 0; idx < RESPONSE_SAMPLE_COUNT; idx++) {
             double control = idx / (double) (RESPONSE_SAMPLE_COUNT - 1);
-            resp.add(simulate(map, control));
+            resp.add(simulate(map, control, configuration));
         }
-        int controllableUnits = map.controllableUnitCount();
+        int controllableUnits = (int) map.units().stream().filter(ShipControlMap.PropulsionUnit::controllable)
+                .filter(unit -> configuration == null || !configuration.isConfiguredFor(map)
+                        || configuration.allows(unit)).count();
         boolean hasResponseData = controllableUnits > 0 || surfaces > 0;
         return new NotationScmModel(hasResponseData, controllableUnits, map.bearings().size(),
                 surfaces, map.updatedAt(), resp);
@@ -188,7 +198,8 @@ public final class NotationScmModel {
     }
 
     // Get the simulate
-    private static ResponseSample simulate(ShipControlMap map, double control) {
+    private static ResponseSample simulate(ShipControlMap map, double control,
+                                           ScmConfigurationProfile configuration) {
         Map<Integer, ShipControlMap.BearingResponse> bearingResponses = new LinkedHashMap<>();
         List<ShipControlMap.BearingPose> selectedPoses = new ArrayList<>();
         for (ShipControlMap.BearingUnit bearing : map.bearings()) {
@@ -202,7 +213,8 @@ public final class NotationScmModel {
         Vec3 totalTorque = Vec3.ZERO;
         double speed = 0.0D;
         for (ShipControlMap.PropulsionUnit unit : map.units()) {
-            if (!unit.controllable()) continue;
+            if (!unit.controllable() || configuration != null
+                    && configuration.isConfiguredFor(map) && !configuration.allows(unit)) continue;
             double thrust = calibratedThrust(unit, control);
             ShipControlMap.BearingResponse bearing = bearingResponses.get(unit.index());
             Vec3 pos = unit.rootPosition();

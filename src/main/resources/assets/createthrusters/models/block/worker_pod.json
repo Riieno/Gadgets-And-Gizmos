@@ -1,0 +1,9 @@
+{
+  "parent": "minecraft:block/slab",
+  "textures": {
+    "bottom": "create:block/andesite_casing",
+    "top": "create:block/brass_casing",
+    "side": "create:block/andesite_casing",
+    "particle": "create:block/andesite_casing"
+  }
+}

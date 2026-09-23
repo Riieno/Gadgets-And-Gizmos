@@ -27,6 +27,8 @@ import com.rieno.gadgetsandgizmos.lib.graph.GraphHostServices;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphNodeExecutor;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphServiceKey;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerFailureReason;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerTaskRequest;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ByteTag;
 import net.minecraft.nbt.DoubleTag;
@@ -34,6 +36,7 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
@@ -355,7 +358,7 @@ public final class GraphRuntime {
             if (samplingFrame == null) samplingFrame = new Frame(program);
             updateProfilerOutputs(program, samplingFrame);
         }
-        if (sampleUnconnectedPassiveOutputs && program.needsHudInputSampling()) {
+        if (program.needsHudInputSampling()) {
             if (samplingFrame == null) samplingFrame = new Frame(program);
             updateHudInputs(program, samplingFrame);
         }
@@ -987,6 +990,9 @@ public final class GraphRuntime {
                 textParameters.put(port, frame.value(node, port, operations).asString());
             }
         });
+        if(AdvancedGraphCatalog.isShipSpeedNode(node.type())){
+            parameters.put("speed_fraction", 1.0D);
+        }
         return simulationOnly || controller != null
                 && controller.executeShipControlGraphCommand(
                         currentEventPlayerId, node.id(), node.type(), parameters, textParameters);
@@ -1480,6 +1486,28 @@ public final class GraphRuntime {
                 }
                 followExec(frame, node, "exec", operations);
             }
+            // ------------------------------------WORKER BRIDGE------------------------------------
+            case "request_worker_task" -> {
+                WorkerTaskRequest request = workerTaskRequest(frame, node, operations);
+                WorkerFailureReason failure = simulationOnly || controller == null
+                        ? WorkerFailureReason.none() : controller.requestWorkerTask(request);
+                state.put(workerRequestKey(node), AdvancedGraphDocument.Value.string(request.id().toString()));
+                state.put(workerFailureKey(node), AdvancedGraphDocument.Value.string(failure.code()));
+                frame.seedOutput(node, "request", AdvancedGraphDocument.Value.string(request.id().toString()));
+                frame.seedOutput(node, "failure_reason", AdvancedGraphDocument.Value.string(failure.code()));
+                if (failure.failed()) {
+                    followExec(frame, node, "rejected", operations);
+                    followExec(frame, node, "failed", operations);
+                } else {
+                    followExec(frame, node, "accepted", operations);
+                    followExec(frame, node, "complete", operations);
+                }
+            }
+            case "cancel_worker_task" -> {
+                UUID requestId = workerRequestId(frame.value(node, "request", operations).asString());
+                boolean cancelled = !simulationOnly && controller != null && controller.cancelWorkerTask(requestId);
+                followExec(frame, node, cancelled ? "cancelled" : "not_found", operations);
+            }
             // ------------------------------------STATE / FLOW------------------------------------
             case "variable_set" -> {
                 AdvancedGraphDocument.Value val = node.hasInput("value")
@@ -1657,6 +1685,73 @@ public final class GraphRuntime {
         }
     }
 
+    // Build one reusable task request from a Main Graph bridge node.
+    private WorkerTaskRequest workerTaskRequest(Frame frame, NodeInstruction node, int[] operations) {
+        Set<UUID> workers = new LinkedHashSet<>();
+        ListTag selected = node.source().data().getList("WorkerIds", Tag.TAG_STRING);
+        for (int index = 0; index < selected.size(); index++) {
+            UUID workerId = workerRequestId(selected.getString(index));
+            if (workerId != null) workers.add(workerId);
+        }
+        String task = frame.value(node, "task", operations).asString().strip();
+        if (task.isBlank()) task = "Worker Task";
+        int priority = (int) Math.round(frame.value(node, "priority", operations).asNumber());
+        String interrupt = frame.value(node, "interrupt", operations).asString();
+        WorkerTaskRequest.InterruptPolicy policy = switch (interrupt) {
+            case "force_interrupt" -> WorkerTaskRequest.InterruptPolicy.INTERRUPT_CURRENT;
+            case "only_if_idle" -> WorkerTaskRequest.InterruptPolicy.ONLY_WHEN_IDLE;
+            default -> WorkerTaskRequest.InterruptPolicy.fromId(interrupt);
+        };
+        CompoundTag parameters = new CompoundTag();
+        if (currentEventPlayerId != null) parameters.putUUID("Requester", currentEventPlayerId);
+        if ("request_worker_task".equals(node.type())) {
+            String requestType = frame.value(node, "request_type", operations).asString().strip();
+            String destinationType = frame.value(node, "destination_type", operations).asString().strip();
+            parameters.putString("RequestType", requestType.isBlank() ? "items" : requestType);
+            parameters.putString("DestinationType", destinationType.isBlank() ? "container" : destinationType);
+            parameters.putString("Items", frame.value(node, "items", operations).asString().strip());
+            parameters.putLong("ItemAmount", Math.max(1L,
+                    Math.round(frame.value(node, "item_amount", operations).asNumber())));
+            parameters.putString("Fluids", frame.value(node, "fluids", operations).asString().strip());
+            parameters.putLong("FluidAmount", Math.max(1L,
+                    Math.round(frame.value(node, "fluid_amount", operations).asNumber())));
+            parameters.putLong("FeAmount", Math.max(1L,
+                    Math.round(frame.value(node, "fe_amount", operations).asNumber())));
+            parameters.putString("DestinationPlayer", frame.value(node, "destination_player", operations).asString().strip());
+            parameters.putBoolean("CanCraft", frame.value(node, "can_craft", operations).asBoolean());
+            CompoundTag targets = node.source().data().getCompound("WorkerTargets");
+            copyWorkerRequestTarget(parameters, "ItemDestination", targets.getCompound("item_destination"));
+            copyWorkerRequestTarget(parameters, "FluidDestination", targets.getCompound("fluid_destination"));
+            copyWorkerRequestTarget(parameters, "FeDestination", targets.getCompound("fe_destination"));
+        }
+        return new WorkerTaskRequest(null, task, workers, priority, policy, true, parameters);
+    }
+
+    // Copy one optional direct SCM destination without exposing an addon endpoint through the library request API.
+    private static void copyWorkerRequestTarget(CompoundTag parameters, String key, CompoundTag target) {
+        if (parameters == null || key == null || key.isBlank() || target == null || target.isEmpty()) return;
+        parameters.put(key, target.copy());
+    }
+
+    // Get the persistent state key for one task request bridge node.
+    private static String workerRequestKey(NodeInstruction node) {
+        return node.id() + ":worker_request";
+    }
+
+    // Get the persistent state key for one task request failure.
+    private static String workerFailureKey(NodeInstruction node) {
+        return node.id() + ":worker_failure";
+    }
+
+    // Parse one serialized task request id.
+    private static @Nullable UUID workerRequestId(String value) {
+        try {
+            return value == null || value.isBlank() ? null : UUID.fromString(value);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
     // Check if the ship control init is active
     private boolean shipControlInitActive() {
         return !simulationOnly && controller != null && controller.isShipControlInitializing();
@@ -1828,6 +1923,15 @@ public final class GraphRuntime {
                 yield "success".equals(port)
                         ? AdvancedGraphDocument.Value.bool(false)
                         : AdvancedGraphDocument.Value.string("");
+            }
+            case "request_worker_task" -> {
+                if ("request".equals(port)) {
+                    yield state.getOrDefault(workerRequestKey(node), AdvancedGraphDocument.Value.string(""));
+                }
+                if ("failure_reason".equals(port)) {
+                    yield state.getOrDefault(workerFailureKey(node), AdvancedGraphDocument.Value.string("none"));
+                }
+                yield AdvancedGraphDocument.Value.number(0);
             }
             // ------------------------------------LOGIC / MATH------------------------------------
             case "not" -> AdvancedGraphDocument.Value.bool(!frame.value(node, "value", operations).asBoolean());
@@ -3900,7 +4004,8 @@ public final class GraphRuntime {
                             profilerNodes.add(node);
                     case "hud_element", "advanced_hud_element", "acc_display_widget", "acc_hologram_widget",
                             "acc_display_graph", "acc_display_plotter", "acc_display_external",
-                            "acc_display_crn" ->
+                            "acc_display_crn", "acc_display_shipping_information",
+                            "acc_display_scm_information" ->
                             hudNodes.add(node);
                     default -> {
                     }
@@ -4174,7 +4279,7 @@ public final class GraphRuntime {
         // Check if this needs regular tick
         private boolean needsRegularTick(boolean samplePassiveOutputs) {
             return hasAutomaticEventNodes() || profilerNodes.length > 0
-                    || samplePassiveOutputs && needsHudInputSampling()
+                    || needsHudInputSampling()
                     || samplePassiveOutputs && passiveNodes.length > 0
                     || shipCommandNodes.length > 0;
         }
@@ -4359,6 +4464,10 @@ public final class GraphRuntime {
                     AdvancedGraphDocument.Value.bool(false);
             case "status", "map_id", "coupler_status" ->
                     AdvancedGraphDocument.Value.string("");
+            case "scm_brain_available" -> AdvancedGraphDocument.Value.bool(false);
+            case "scm_brain_state", "scm_brain_reason", "scm_brain_vehicle_name",
+                 "scm_brain_vehicle_id" -> AdvancedGraphDocument.Value.string("");
+            case "scm_brain_data" -> AdvancedGraphDocument.Value.map(new CompoundTag());
             case "shipping_active", "shipping_pilot_present", "shipping_docked",
                  "shipping_waiting", "shipping_diverted", "shipping_needs_refuel",
                  "shipping_target_has_connector", "shipping_manifest_is_cyclic" ->

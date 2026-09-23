@@ -34,9 +34,6 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import org.joml.Matrix4f;
 
 import java.util.Optional;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
 
 // Handle files dropped onto the tablet and send only supported bounded uploads to the server
 public final class DiagnosticTabletLandingZoneClient {
@@ -63,7 +60,6 @@ public final class DiagnosticTabletLandingZoneClient {
     // Handle the render world event
     public static void onRenderWorld(RenderLevelStageEvent evt) {
         if (evt.getStage() != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return;
-        renderConfigTarget(evt);
         Context ctx = context();
         if (ctx == null || ctx.zones().isEmpty()) return;
         Vec3 camera = evt.getCamera().getPosition();
@@ -93,82 +89,6 @@ public final class DiagnosticTabletLandingZoneClient {
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
-
-    // Draw the config target
-    private static void renderConfigTarget(RenderLevelStageEvent evt) {
-        Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft.player == null || minecraft.level == null) return;
-        ItemStack tablet = minecraft.player.getMainHandItem();
-        if (!(tablet.getItem() instanceof DiagnosticTabletItem)) tablet = minecraft.player.getOffhandItem();
-        if (!(tablet.getItem() instanceof DiagnosticTabletItem)) return;
-        DiagnosticTabletData.State state = DiagnosticTabletData.read(tablet);
-        String action = state.pendingAction();
-        if (state.mode() != com.rieno.gadgetsandgizmos.lib.tablet.TabletInteractionMode.READER
-                || !("configure_network".equals(action) || "configure_fuel".equals(action)
-                || "configure_run".equals(action))) return;
-        int col = "configure_fuel".equals(action) ? 0xFFFFD11A : 0xFFB852FF;
-        List<Vec3[]> boxes = new ArrayList<>();
-        if ("configure_run".equals(action) && state.tabletId() != null) {
-            CompoundTag snapshot = DiagnosticTabletClientAppData.get(
-                    DiagnosticTabletData.appId("scm"), false, state.tabletId(), null, null);
-            ListTag targets = snapshot.getList("Targets", Tag.TAG_COMPOUND);
-            for (int targetIndex = 0; targetIndex < targets.size(); targetIndex++) {
-                CompoundTag target = targets.getCompound(targetIndex);
-                if (!target.getBoolean("Selected")) continue;
-                ListTag runs = target.getList("Runs", Tag.TAG_COMPOUND);
-                for (int runIndex = 0; runIndex < runs.size(); runIndex++) {
-                    CompoundTag run = runs.getCompound(runIndex);
-                    if (!run.getBoolean("Selected")) continue;
-                    col = run.getInt("Color");
-                    ListTag endpoints = run.getList("Endpoints", Tag.TAG_COMPOUND);
-                    for (int endpointIndex = 0; endpointIndex < endpoints.size(); endpointIndex++) {
-                        CompoundTag endpoint = endpoints.getCompound(endpointIndex);
-                        if (!endpoint.hasUUID("SubLevel") || !endpoint.contains("Pos", Tag.TAG_LONG)) continue;
-                        boxes.add(configCorners(minecraft,
-                                endpoint.getUUID("SubLevel"),
-                                BlockPos.of(endpoint.getLong("Pos"))));
-                    }
-                }
-            }
-        }
-        if (minecraft.hitResult instanceof BlockHitResult hit) {
-            boxes.add(configCorners(minecraft, null, hit.getBlockPos()));
-        }
-        if (boxes.isEmpty()) return;
-        Vec3 camera = evt.getCamera().getPosition();
-        PoseStack pose = evt.getPoseStack();
-        MultiBufferSource.BufferSource buffers = minecraft.renderBuffers().bufferSource();
-        VertexConsumer lines = buffers.getBuffer(RenderType.lines());
-        pose.pushPose();
-        pose.translate(-camera.x, -camera.y, -camera.z);
-        int[][] edges = {{0, 1}, {1, 3}, {3, 2}, {2, 0}, {4, 5}, {5, 7},
-                {7, 6}, {6, 4}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
-        float red = (col >> 16 & 0xFF) / 255.0F;
-        float green = (col >> 8 & 0xFF) / 255.0F;
-        float blue = (col & 0xFF) / 255.0F;
-        for (Vec3[] corners : boxes) {
-            for (int[] edge : edges) addColoredLine(pose, lines,
-                    corners[edge[0]], corners[edge[1]], red, green, blue);
-        }
-        pose.popPose();
-        buffers.endBatch(RenderType.lines());
-    }
-
-    // Configure the corners
-    private static Vec3[] configCorners(
-            Minecraft minecraft, UUID subLevelId, BlockPos pos
-    ) {
-        BlockEntity anchor = subLevelId == null
-                ? SimulatedHelper.findBlockEntityIncludingSubLevels(minecraft.level, pos)
-                : SimulatedHelper.findLoadedBlockEntityExact(minecraft.level, subLevelId, pos);
-        Vec3[] corners = new Vec3[8];
-        int idx = 0;
-        for (int x = 0; x <= 1; x++) for (int y = 0; y <= 1; y++) for (int z = 0; z <= 1; z++) {
-            Vec3 local = new Vec3(pos.getX() + x, pos.getY() + y, pos.getZ() + z);
-            corners[idx++] = anchor == null ? local : SimulatedHelper.toGlobalWorldPosition(anchor, local);
-        }
-        return corners;
-    }
 
     // Handle the mouse scrolling event
     public static void onMouseScrolling(InputEvent.MouseScrollingEvent evt) {
@@ -304,19 +224,6 @@ public final class DiagnosticTabletLandingZoneClient {
         consumer.addVertex(matrix, (float) to.x, (float) to.y, (float) to.z)
                 .setColor(selected ? 0.18F : 0.55F, selected ? 0.82F : 0.62F,
                         selected ? 1.0F : 0.72F, 0.95F)
-                .setNormal((float) normal.x, (float) normal.y, (float) normal.z);
-    }
-
-    // Add the colored line
-    private static void addColoredLine(PoseStack pose, VertexConsumer consumer,
-                                       Vec3 from, Vec3 to, float red, float green, float blue) {
-        Matrix4f matrix = pose.last().pose();
-        Vec3 normal = to.subtract(from).normalize();
-        consumer.addVertex(matrix, (float) from.x, (float) from.y, (float) from.z)
-                .setColor(red, green, blue, 0.98F)
-                .setNormal((float) normal.x, (float) normal.y, (float) normal.z);
-        consumer.addVertex(matrix, (float) to.x, (float) to.y, (float) to.z)
-                .setColor(red, green, blue, 0.98F)
                 .setNormal((float) normal.x, (float) normal.y, (float) normal.z);
     }
 

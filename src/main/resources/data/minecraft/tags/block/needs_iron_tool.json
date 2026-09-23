@@ -18,6 +18,8 @@
     { "id": "createthrusters:double_button", "required": false },
     { "id": "createthrusters:bidirectional_gearbox", "required": false },
     { "id": "createthrusters:bi_directional_gearshift", "required": false },
+    { "id": "createthrusters:ratchet_cogwheel", "required": false },
+    { "id": "createthrusters:large_ratchet_cogwheel", "required": false },
     { "id": "createthrusters:analogue_joystick", "required": false },
     { "id": "createthrusters:analogue_contraption_controller", "required": false },
     { "id": "createthrusters:advanced_contraption_controller", "required": false },
@@ -39,6 +41,10 @@
     { "id": "createthrusters:variable_transmission", "required": false },
     { "id": "createthrusters:physics_gantry_carriage", "required": false },
     { "id": "createthrusters:physics_gantry_shaft", "required": false },
-    { "id": "createthrusters:physics_gantry_belt_wheel", "required": false }
+    { "id": "createthrusters:physics_gantry_belt_wheel", "required": false },
+    { "id": "createthrusters:smart_vault", "required": false },
+    { "id": "createthrusters:smart_battery", "required": false },
+    { "id": "createthrusters:smart_tank", "required": false },
+    { "id": "createthrusters:worker_pod", "required": false }
   ]
 }

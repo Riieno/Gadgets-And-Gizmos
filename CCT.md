@@ -13,6 +13,8 @@ This page specifies the supported CC:Tweaked surface for Gadgets & Gizmos `1.2.x
 - [API rules](#api-rules)
 - [Peripheral types](#peripheral-types)
 - [Advanced Contraption Controller](#advanced-contraption-controller)
+- [SCM shipping schedule bridge](#scm-shipping-schedule-bridge)
+- [SCM navigation and brain data](#scm-navigation-and-brain-data)
 - [Graph snapshots](#graph-snapshots)
 - [Editing a graph](#editing-a-graph)
 - [Graph handles](#graph-handles)
@@ -33,6 +35,7 @@ This page specifies the supported CC:Tweaked surface for Gadgets & Gizmos `1.2.x
 | --- | --- |
 | Gadgets & Gizmos | `1.2.x` |
 | Graph bridge API | `4` |
+| SCM schedule bridge API | `1` |
 | Minecraft | `1.21.1` |
 | Java | `21` |
 | NeoForge | `21.1.225` or newer compatible version |
@@ -250,6 +253,118 @@ assert(acc:version() >= 4, "This program requires ACC graph API 4")
 | `acc:receive(name, [data])` | Delivers a transport event to this ACC without retransmission. |
 
 `acc.raw` is the wrapped CC peripheral. Use it when a script needs a raw method which the high-level module does not wrap.
+
+## SCM shipping schedule bridge
+
+The Advanced Contraption Controller also exposes its controller-owned Shipping Schedule Scratch graph.
+This is a separate API from the normal ACC control graph and is available through `acc.raw` or a directly
+wrapped `advanced_contraption_controller` peripheral.
+
+| Method | Contract |
+| --- | --- |
+| `getScheduleApiVersion()` | Returns schedule bridge version `1`. |
+| `listScheduleApiMethods()` | Returns the stable schedule method signatures. |
+| `getScheduleApiHelp([method])` | Returns all schedule help or one method's help. |
+| `getScheduleGraph([view])` | Returns the `draft` or `active` controller-owned schedule graph; default is `draft`. |
+| `listScheduleBlockTypes()` | Lists installed Create instructions, wait conditions and Scratch flow blocks. |
+| `getScheduleStatus()` | Returns workspace/pilot state, revisions and current route telemetry. |
+| `getScheduleBlockProperties(nodeId)` | Returns one draft block's editable string properties. |
+| `getScheduleBlockInputs(nodeId)` | Returns one draft block's one-based item/frequency input slots. |
+| `mutateScheduleGraph(expectedRevision, operations)` | Applies up to 512 ordered operations atomically. |
+| `validateScheduleGraph()` | Reports whether the draft contains executable schedule steps. |
+| `applyScheduleGraph(expectedRevision)` | Confirms the revision; successful saves are already active. |
+| `startSchedule()` | Starts or restarts the controller-owned graph without requiring a schedule item. |
+| `pauseSchedule()` / `resumeSchedule()` | Pauses or resumes the installed runtime. |
+| `stopSchedule()` / `restartSchedule()` | Stops and resets, or restarts, from the first step. |
+| `skipSchedule()` | Skips the current step. |
+| `readScheduleItem()` | Explicitly imports the adjacent pilot's held schedule. |
+| `writeScheduleItem()` | Explicitly exports the controller-owned graph to the held schedule. |
+
+A schedule snapshot contains `version`, `revision`, `template`, `cyclic`, `nodes` and `edges`. Each node
+contains `id`, `type`, `label`, `x`, `y`, `parentId`, `cBlock`, `properties` and `inputs`. Each input row
+contains one-based `slot`, `label`, `item` and `count` fields.
+
+Mutation operation names are `append_instruction`, `append_condition`, `append_detached_condition`,
+`attach_condition`, `move_condition`, `detach_condition`, `add_flow`, `remove`, `move`,
+`reorder_instruction`, `set_parent`, `clear_parent`, `place_child`, `connect`, `insert_before`,
+`set_property`, `set_input` and `set_cyclic`. Creation operations may include a unique temporary `id`
+beginning with `$`; later operations in the same batch may use it. Results contain `saved`, `applied`,
+`valid`, `revision`, `code`, `message`, `resolvedIds` and `diagnostics`.
+
+```lua
+local acc = require("gadgetsandgizmos.acc").find()
+local schedule = acc.raw.getScheduleGraph("draft")
+
+local result = acc.raw.mutateScheduleGraph(schedule.revision, {
+    { op = "set_cyclic", value = true }
+})
+assert(result.saved, result.message)
+assert(acc.raw.startSchedule(), "SCM schedule could not start")
+```
+
+## SCM navigation and brain data
+
+Precalculated schedule routes are retained safe geometry, not destination ownership. The schedule chooses
+the active stop. Pre-calculation resolves one concrete dock per ordered schedule stop and creates one
+stop-to-stop chain (including one closing leg for cyclic schedules), rather than an all-to-all candidate
+graph. A cached leg is mandatory only for the exact live terminal it was calculated for; another dock
+which happens to share that schedule-entry index cannot capture the vehicle. A vehicle follows the ordered
+active leg toward its current stop; a temporary live course correction does not replace, reverse or discard
+that route. Docking routes end in
+the terminal area near the ship dock, after which live dock provisioning and final approach take over.
+Vehicles waiting for a busy dock use its provisioned holding placement away from the retained ingress route.
+Normal cross-track error is corrected against a lookahead point on the active retained leg and does not
+create a second rejoin route. For a command without retained geometry, the live planner's accepted safe
+prefix may be followed while planning continues. A yellow dashed destination connection is debug-only,
+unvalidated intent and is never passed to vehicle control as movement geometry.
+
+Reactive collision avoidance is always active for autonomous Navigate, Follow and Dock control, including
+retained-route travel, route rejoin, recovery, holding and final live approach. The legacy
+`avoid_collisions` graph input remains load-compatible but cannot disable this safety layer. Every control
+tick checks the selected travel corridor and current motion against root-world collision shapes and loaded
+moving Sable SubLevels. A detected hazard may temporarily steer, slow, stop or recover in reverse. Ground
+vehicles commit a clear escape to hull-validated bicycle curves instead of treating it as a one-tick
+sideways vector. When a forward curve is not enough, the recovery owns a complete multi-point sequence of
+forward and reverse phases; the selected gear is held for each phase rather than re-decided from heading
+error every tick. If a bounded pose search finds only a safe partial manoeuvre, the vehicle executes that
+prefix and immediately continues planning from its new pose; it does not discard the prefix or enter a
+stopped retry cooldown. An incompatible off-course heading independently triggers this recovery, including
+a clearance-maximising reverse turn when the complete merge has no valid first edge. A newly-arrived live
+blocker can replace even that active manoeuvre immediately while
+the schedule route remains suspended underneath it. Off-course ground rejoin selects a continuous point on
+the current ordered leg at or ahead of its monotonic destination-progress cursor, not an authored waypoint
+or a geometrically closer crossing/later leg. The pose planner approaches that point along the leg tangent,
+so it cannot splice a sharp diagonal into the route or select already-travelled geometry. A blocker splitting
+a leg is bypassed toward the first onward-clear interior point past it. The live planner remains active while
+its longer route search is queued and may splice a temporary detour to that clear point on the retained route.
+Contact with the specifically selected dock face is the sole intentional collision endpoint.
+
+When the SCM configuration's `Acceleration` group contains any units, it is the exclusive analogue speed
+channel in every travel direction. `Forward` and `Backward` are then mutually-exclusive, full-strength
+direction selectors; they are never pulsed or feathered by the speed plan. `Acceleration` gains or maintains
+speed, `Deceleration` reduces speed, and `Brake` performs the stop. If `Acceleration` is empty, legacy
+directional groups retain their analogue drive-strength behaviour.
+
+Traffic intent is shared between SCM vehicles through their containing server dimension, even though each
+vehicle runs in a separate SubLevel `Level`. Exactly one vehicle yields an imminent overlapping, crossing or
+head-on route conflict; live collision avoidance can override that hold to reverse or move clear. Ship dock
+destinations are restored from the complete persisted registry before live pose refresh, copied duplicate
+dock identities are repaired, and destination validity does not require the dock block entity, chunk or
+SubLevel to be loaded. Saved SubLevel ownership normalizes legacy dimension records without loading the
+body. A schedule waits only while the backend snapshot is unreadable; once complete, a genuinely absent
+destination is skipped as invalid.
+
+The `SCM Brain Debug` (`scm_brain_debug`) graph node is populated only for an ACC controlling an SCM
+vehicle. `getGraphNodeOutputs(nodeIdOrAlias)` exposes its live outputs:
+
+| Output | Value |
+| --- | --- |
+| `scm_brain_available` | Whether an SCM vehicle snapshot is available. |
+| `scm_brain_state`, `scm_brain_reason` | Current high-level behavior and reason. |
+| `scm_brain_vehicle_name`, `scm_brain_vehicle_id` | Stable vehicle identity. |
+| `scm_brain_game_time` | Server tick for the snapshot. |
+| `scm_brain_anchor_x`, `scm_brain_anchor_y`, `scm_brain_anchor_z` | Root-world nameplate anchor. |
+| `scm_brain_data` | Complete nested overview, telemetry, command, guidance, route, traffic, collision, speed, control and planner sections. |
 
 ## Graph snapshots
 

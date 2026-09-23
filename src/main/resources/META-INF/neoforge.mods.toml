@@ -90,6 +90,13 @@ ordering="AFTER"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
+modId="simulatedcoasters"
+type="optional"
+versionRange="[0.1.5,)"
+ordering="AFTER"
+side="BOTH"
+
+[[dependencies.${mod_id}]]
 modId="create_connected"
 type="optional"
 versionRange="[1.2.0,)"

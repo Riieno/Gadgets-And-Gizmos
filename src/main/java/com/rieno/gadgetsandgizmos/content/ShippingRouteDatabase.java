@@ -118,6 +118,7 @@ final class ShippingRouteDatabase {
                     bindDock(statement, dock);
                     statement.executeUpdate();
                 }
+                replaceConnectorTargets(connection, dock);
                 replaceLandingZones(connection, dock);
                 connection.commit();
                 return true;
@@ -157,14 +158,17 @@ final class ShippingRouteDatabase {
         if (server == null || dockId == null) {
             return null;
         }
-        try (Connection connection = open(server);
-             PreparedStatement statement = connection.prepareStatement(
-                     "SELECT * FROM ship_docks WHERE dock_id = ?")) {
-            statement.setString(1, dockId.toString());
-            try (ResultSet res = statement.executeQuery()) {
-                return res.next() ? readDock(connection, res) : null;
+        try (Connection connection = open(server)) {
+            ShipDockRegistry.Dock dock;
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "SELECT * FROM ship_docks WHERE dock_id = ?")) {
+                statement.setString(1, dockId.toString());
+                try (ResultSet res = statement.executeQuery()) {
+                    dock = res.next() ? readDockBase(res) : null;
+                }
             }
-        } catch (IOException | SQLException err) {
+            return dock == null ? null : readDockDetails(connection, dock);
+        } catch (IOException | SQLException | RuntimeException err) {
             LOGGER.log(System.Logger.Level.ERROR,
                     "Could not look up shipping dock " + dockId, err);
             return null;
@@ -213,11 +217,54 @@ final class ShippingRouteDatabase {
 
     // Get all shipping route database values
     static List<ShipDockRegistry.Dock> all(MinecraftServer server) {
-        return query(server, """
-                SELECT * FROM ship_docks
-                ORDER BY dimension, address_key, dock_id
-                """, statement -> {
-        });
+        return loadAll(server).docks();
+    }
+
+    // Load every persisted dock while reporting whether the backing store was actually readable.
+    static DockLoad loadAll(MinecraftServer server) {
+        if (server == null) return new DockLoad(List.of(), false);
+        try (Connection connection = open(server)) {
+            List<ShipDockRegistry.Dock> baseDocks = new ArrayList<>();
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    SELECT * FROM ship_docks
+                    ORDER BY dimension, address_key, dock_id
+                    """);
+                 ResultSet res = statement.executeQuery()) {
+                while (res.next()) {
+                    try {
+                        baseDocks.add(readDockBase(res));
+                    } catch (RuntimeException | SQLException err) {
+                        LOGGER.log(System.Logger.Level.WARNING,
+                                "Ignoring an invalid persisted ship dock record", err);
+                    }
+                }
+            }
+            // Child metadata is optional for destination validity. If a connector or landing-zone
+            // row is damaged, retain the dock's durable identity and pose instead of making every
+            // schedule which references it wait forever.
+            List<ShipDockRegistry.Dock> docks = new ArrayList<>(baseDocks.size());
+            for (ShipDockRegistry.Dock dock : baseDocks) {
+                try {
+                    docks.add(readDockDetails(connection, dock));
+                } catch (RuntimeException | SQLException err) {
+                    LOGGER.log(System.Logger.Level.WARNING,
+                            "Could not restore optional metadata for ship dock " + dock.id(), err);
+                    docks.add(dock);
+                }
+            }
+            return new DockLoad(List.copyOf(docks), true);
+        } catch (IOException | SQLException | RuntimeException err) {
+            LOGGER.log(System.Logger.Level.ERROR,
+                    "Could not load the persisted ship dock registry", err);
+            return new DockLoad(List.of(), false);
+        }
+    }
+
+    // Store one complete persistent registry load.
+    record DockLoad(List<ShipDockRegistry.Dock> docks, boolean complete) {
+        DockLoad {
+            docks = docks == null ? List.of() : List.copyOf(docks);
+        }
     }
 
     // Query the shipping route database
@@ -230,15 +277,31 @@ final class ShippingRouteDatabase {
             return List.of();
         }
         List<ShipDockRegistry.Dock> docks = new ArrayList<>();
-        try (Connection connection = open(server);
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            binder.bind(statement);
-            try (ResultSet res = statement.executeQuery()) {
-                while (res.next()) {
-                    docks.add(readDock(connection, res));
+        try (Connection connection = open(server)) {
+            List<ShipDockRegistry.Dock> baseDocks = new ArrayList<>();
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                binder.bind(statement);
+                try (ResultSet res = statement.executeQuery()) {
+                    while (res.next()) {
+                        try {
+                            baseDocks.add(readDockBase(res));
+                        } catch (RuntimeException | SQLException err) {
+                            LOGGER.log(System.Logger.Level.WARNING,
+                                    "Ignoring an invalid persisted ship dock record", err);
+                        }
+                    }
                 }
             }
-        } catch (IOException | SQLException err) {
+            for (ShipDockRegistry.Dock dock : baseDocks) {
+                try {
+                    docks.add(readDockDetails(connection, dock));
+                } catch (RuntimeException | SQLException err) {
+                    LOGGER.log(System.Logger.Level.WARNING,
+                            "Could not restore optional metadata for ship dock " + dock.id(), err);
+                    docks.add(dock);
+                }
+            }
+        } catch (IOException | SQLException | RuntimeException err) {
             LOGGER.log(System.Logger.Level.ERROR,
                     "Could not query shipping routes", err);
         }
@@ -320,6 +383,27 @@ final class ShippingRouteDatabase {
                     )
                     """);
             statement.execute("""
+                    CREATE TABLE IF NOT EXISTS ship_dock_connectors (
+                        dock_id TEXT NOT NULL,
+                        connector_order INTEGER NOT NULL,
+                        sublevel_uuid TEXT,
+                        local_x INTEGER NOT NULL,
+                        local_y INTEGER NOT NULL,
+                        local_z INTEGER NOT NULL,
+                        world_x REAL NOT NULL,
+                        world_y REAL NOT NULL,
+                        world_z REAL NOT NULL,
+                        facing_x REAL NOT NULL,
+                        facing_y REAL NOT NULL,
+                        facing_z REAL NOT NULL,
+                        up_x REAL NOT NULL,
+                        up_y REAL NOT NULL,
+                        up_z REAL NOT NULL,
+                        PRIMARY KEY (dock_id, connector_order),
+                        FOREIGN KEY (dock_id) REFERENCES ship_docks(dock_id) ON DELETE CASCADE
+                    )
+                    """);
+            statement.execute("""
                     CREATE TABLE IF NOT EXISTS ship_dock_landing_zones (
                         dock_id TEXT NOT NULL,
                         zone_id TEXT NOT NULL,
@@ -358,10 +442,55 @@ final class ShippingRouteDatabase {
                     + "ON ship_docks(dimension, packages)");
             statement.execute("CREATE INDEX IF NOT EXISTS ship_docks_sublevel "
                     + "ON ship_docks(sublevel_uuid)");
+            statement.execute("CREATE INDEX IF NOT EXISTS ship_dock_connectors_order "
+                    + "ON ship_dock_connectors(dock_id, connector_order)");
             statement.execute("CREATE INDEX IF NOT EXISTS ship_dock_landing_zones_order "
                     + "ON ship_dock_landing_zones(dock_id, queue_order, zone_id)");
         }
         installLandingZoneAirborneColumn(connection);
+    }
+
+    // Replace every persisted connector target for one dock
+    private static void replaceConnectorTargets(
+            Connection connection,
+            ShipDockRegistry.Dock dock
+    ) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "DELETE FROM ship_dock_connectors WHERE dock_id = ?")) {
+            statement.setString(1, dock.id().toString());
+            statement.executeUpdate();
+        }
+        if (dock.connectorTargets().isEmpty()) return;
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO ship_dock_connectors (
+                    dock_id, connector_order, sublevel_uuid,
+                    local_x, local_y, local_z,
+                    world_x, world_y, world_z,
+                    facing_x, facing_y, facing_z,
+                    up_x, up_y, up_z
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """)) {
+            for (int idx = 0; idx < dock.connectorTargets().size(); idx++) {
+                ShipDockRegistry.ConnectorTarget target = dock.connectorTargets().get(idx);
+                statement.setString(1, dock.id().toString());
+                statement.setInt(2, idx);
+                nullableUuid(statement, 3, target.subLevelId());
+                statement.setInt(4, target.pos().getX());
+                statement.setInt(5, target.pos().getY());
+                statement.setInt(6, target.pos().getZ());
+                statement.setDouble(7, target.worldPosition().x);
+                statement.setDouble(8, target.worldPosition().y);
+                statement.setDouble(9, target.worldPosition().z);
+                statement.setDouble(10, target.facing().x);
+                statement.setDouble(11, target.facing().y);
+                statement.setDouble(12, target.facing().z);
+                statement.setDouble(13, target.up().x);
+                statement.setDouble(14, target.up().y);
+                statement.setDouble(15, target.up().z);
+                statement.addBatch();
+            }
+            statement.executeBatch();
+        }
     }
 
     // Install the landing zone airborne column
@@ -475,13 +604,10 @@ final class ShippingRouteDatabase {
         statement.setLong(28, dock.updatedAt());
     }
 
-    // Read the dock
-    private static ShipDockRegistry.Dock readDock(
-            Connection connection,
-            ResultSet res
-    ) throws SQLException {
+    // Read the durable dock identity and pose without opening nested result sets.
+    private static ShipDockRegistry.Dock readDockBase(ResultSet res) throws SQLException {
         UUID dockId = UUID.fromString(res.getString("dock_id"));
-        ShipDockRegistry.Dock dock = new ShipDockRegistry.Dock(
+        return new ShipDockRegistry.Dock(
                 dockId,
                 net.minecraft.resources.ResourceLocation.parse(res.getString("dimension")),
                 nullableUuid(res, "sublevel_uuid"),
@@ -500,7 +626,56 @@ final class ShippingRouteDatabase {
                 nullableVec3(res, "connector_world_x", "connector_world_y", "connector_world_z"),
                 nullableVec3(res, "connector_facing_x", "connector_facing_y", "connector_facing_z"),
                 res.getLong("updated_at"));
+    }
+
+    // Attach optional connector and landing-zone metadata after the primary row cursor closes.
+    private static ShipDockRegistry.Dock readDockDetails(
+            Connection connection,
+            ShipDockRegistry.Dock base
+    ) throws SQLException {
+        UUID dockId = base.id();
+        ShipDockRegistry.Dock dock = base;
+        List<ShipDockRegistry.ConnectorTarget> connectorTargets =
+                readConnectorTargets(connection, dockId);
+        if (!connectorTargets.isEmpty()) {
+            ShipDockRegistry.ConnectorTarget primary = connectorTargets.getFirst();
+            dock = new ShipDockRegistry.Dock(
+                    dock.id(), dock.dimension(), dock.subLevelId(), dock.pos(),
+                    dock.worldPosition(), dock.facing(), dock.name(), dock.refuel(),
+                    dock.restock(), dock.packages(), primary.subLevelId(), primary.pos(),
+                    primary.worldPosition(), primary.facing(), primary.up(), dock.updatedAt(),
+                    connectorTargets, List.of());
+        }
         return dock.withLandingZones(readLandingZones(connection, dockId));
+    }
+
+    // Read every persisted connector target for one dock
+    private static List<ShipDockRegistry.ConnectorTarget> readConnectorTargets(
+            Connection connection,
+            UUID dockId
+    ) throws SQLException {
+        List<ShipDockRegistry.ConnectorTarget> targets = new ArrayList<>();
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT * FROM ship_dock_connectors
+                WHERE dock_id = ? ORDER BY connector_order
+                """)) {
+            statement.setString(1, dockId.toString());
+            try (ResultSet res = statement.executeQuery()) {
+                while (res.next()) {
+                    targets.add(new ShipDockRegistry.ConnectorTarget(
+                            nullableUuid(res, "sublevel_uuid"),
+                            new BlockPos(res.getInt("local_x"), res.getInt("local_y"),
+                                    res.getInt("local_z")),
+                            new Vec3(res.getDouble("world_x"), res.getDouble("world_y"),
+                                    res.getDouble("world_z")),
+                            new Vec3(res.getDouble("facing_x"), res.getDouble("facing_y"),
+                                    res.getDouble("facing_z")),
+                            new Vec3(res.getDouble("up_x"), res.getDouble("up_y"),
+                                    res.getDouble("up_z"))));
+                }
+            }
+        }
+        return List.copyOf(targets);
     }
 
     // Read the landing zones

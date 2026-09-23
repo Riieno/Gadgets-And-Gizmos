@@ -62,7 +62,12 @@ public final class CTPartialModels {
     public static final PartialModel SCISSOR_PISTON_SHAFT = block("scissor_piston/shaft");
     public static final PartialModel PHYSICS_GANTRY_BELT_SEGMENT = block("physics_gantry_belt_wheel/belt_segment");
 
-    public static final PartialModel ANALOGUE_JOYSTICK_HANDLE = block("analogue_joystick/handle");
+    public static final PartialModel ANALOGUE_JOYSTICK_STICK = block("joystick_v2/stick");
+    public static final PartialModel ANALOGUE_JOYSTICK_SKIRT = block("joystick_v2/skirt");
+    public static final PartialModel RATCHET_COGWHEEL_GEAR = block("ratchet_cogwheel/gear");
+    public static final PartialModel RATCHET_COGWHEEL_SHAFT = block("ratchet_cogwheel/shaft");
+    public static final PartialModel LARGE_RATCHET_COGWHEEL_GEAR = block("large_ratchet_cogwheel/gear");
+    public static final PartialModel LARGE_RATCHET_COGWHEEL_SHAFT = block("large_ratchet_cogwheel/shaft");
     public static final PartialModel DOUBLE_BUTTON_TOP = block("double_button/button_top");
     public static final PartialModel DOUBLE_BUTTON_BOTTOM = block("double_button/button_bottom");
 

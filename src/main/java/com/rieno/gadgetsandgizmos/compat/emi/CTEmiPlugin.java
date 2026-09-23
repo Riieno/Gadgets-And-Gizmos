@@ -11,6 +11,7 @@ package com.rieno.gadgetsandgizmos.compat.emi;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.content.IonThrusterStacks;
 import com.rieno.gadgetsandgizmos.content.SupporterHeads;
+import com.rieno.gadgetsandgizmos.content.WorkerEnergyBatteryItem;
 import com.rieno.gadgetsandgizmos.neoforge.client.AnalogueContraptionControllerConfigScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.AdvancedContraptionControllerScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.AnalogueJoystickConfigScreen;
@@ -155,6 +156,7 @@ public class CTEmiPlugin implements EmiPlugin {
         if (itemStack.isEmpty()) {
             return false;
         }
+        if (WorkerEnergyBatteryItem.isInternal(itemStack)) return true;
         if (SupporterHeads.isSupporterHead(itemStack)) {
             return !CTFeatureToggles.isItemEnabled("player_mannequin");
         }

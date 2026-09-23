@@ -134,10 +134,14 @@ public class AccDisplayBlock extends HorizontalDirectionalBlock
                     : ctx.getClickLocation().z - ctx.getClickedPos().getZ();
             double depthFromFacing = facing.getAxisDirection() == Direction.AxisDirection.NEGATIVE
                     ? axisPosition : 1.0D - axisPosition;
-            z = ctx.getClickedFace() == facing || depthFromFacing < 1.0D / 3.0D
-                    ? Alignment.NEGATIVE
-                    : ctx.getClickedFace() == facing.getOpposite() || depthFromFacing > 2.0D / 3.0D
-                    ? Alignment.POSITIVE : Alignment.CENTER;
+            // A wall click places the display in the adjacent block space.
+            // Its thin model must therefore occupy the face opposite the
+            // clicked side (the supporting wall), not the outward face.
+            z = ctx.getClickedFace() == facing ? Alignment.POSITIVE
+                    : ctx.getClickedFace() == facing.getOpposite() ? Alignment.NEGATIVE
+                    : depthFromFacing < 1.0D / 3.0D ? Alignment.NEGATIVE
+                    : depthFromFacing > 2.0D / 3.0D ? Alignment.POSITIVE
+                    : Alignment.CENTER;
         }
         BlockState placement = defaultBlockState().setValue(FACING, facing)
                 .setValue(Y_ALIGNMENT, y).setValue(Z_ALIGNMENT, z);
