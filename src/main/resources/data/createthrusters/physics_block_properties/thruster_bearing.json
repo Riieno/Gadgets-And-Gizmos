@@ -1,6 +1,6 @@
 {
   "selector": "createthrusters:thruster_bearing",
   "properties": {
-    "sable:mass": 2.0
+    "sable:mass": 0.5
   }
 }

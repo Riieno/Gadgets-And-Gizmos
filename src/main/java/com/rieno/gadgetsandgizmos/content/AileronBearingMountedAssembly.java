@@ -28,6 +28,7 @@ import dev.ryanhcode.sable.sublevel.SubLevel;
 import dev.ryanhcode.sable.sublevel.plot.ServerLevelPlot;
 import dev.ryanhcode.sable.sublevel.storage.SubLevelRemovalReason;
 import dev.ryanhcode.sable.sublevel.system.SubLevelPhysicsSystem;
+import dev.simulated_team.simulated.service.SimConfigService;
 import dev.simulated_team.simulated.util.SimAssemblyHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -38,14 +39,11 @@ import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import org.joml.Quaterniond;
-import org.joml.Quaterniondc;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
 import org.slf4j.Logger;
 
-import java.util.EnumSet;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 // Keep an aileron's mounted body and physical hinge aligned with the bearing target
@@ -59,13 +57,7 @@ final class AileronBearingMountedAssembly {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final Set<ConstraintJointAxis> LOCKED_AXES = EnumSet.of(
-            ConstraintJointAxis.LINEAR_X,
-            ConstraintJointAxis.LINEAR_Y,
-            ConstraintJointAxis.LINEAR_Z,
-            ConstraintJointAxis.ANGULAR_X,
-            ConstraintJointAxis.ANGULAR_Y,
-            ConstraintJointAxis.ANGULAR_Z);
+    private static final double MIN_ROTARY_SERVO_INERTIA = 10.0D;
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -367,16 +359,17 @@ final class AileronBearingMountedAssembly {
         }
 
         Vector3d axis = axisVector(bearing.getHeadDirection(head).getAxis());
-        Quaterniond relativeOrientation = new Quaterniond().rotateAxis(Math.toRadians(angleDegrees), axis);
         Vector3d baseAnchor = getBaseAnchor(bearing);
 
         ServerSubLevel parent = parentFrame.parentBody();
         PhysicsPipeline pipeline = container.physicsSystem().getPipeline();
 
-        if (!ensureJoint(bearing, mountedPos, baseAnchor, relativeOrientation, pipeline, parent, child)) {
+        if (!ensureJoint(bearing, mountedPos, baseAnchor, axis, pipeline, parent, child)) {
             return false;
         }
-        retargetJoint(bearing, mountedPos, baseAnchor, relativeOrientation);
+        if (!setJointServo(angleDegrees, axis, parent, child)) {
+            return false;
+        }
         if (parent != null) {
             pipeline.wakeUp(parent);
         }
@@ -386,7 +379,7 @@ final class AileronBearingMountedAssembly {
 
     // Ensure the joint
     private boolean ensureJoint(AileronBearingBlockEntity bearing, BlockPos mountedPos, Vector3d baseAnchor,
-                                Quaterniond baseFrameOrientation,
+                                Vector3d rotationAxis,
                                 PhysicsPipeline pipeline, ServerSubLevel parent, ServerSubLevel child) {
         if (parent == child) {
             releaseJoint();
@@ -397,9 +390,10 @@ final class AileronBearingMountedAssembly {
         }
         releaseJoint();
         try {
-            Object genericConstraint = createGenericConstraint(baseAnchor, getChildAnchor(bearing, mountedPos), baseFrameOrientation);
-            joint = (PhysicsConstraintHandle) SableConstraintApi.addConstraint(
-                    pipeline, parent, child, genericConstraint);
+            Object rotaryConstraint = SableConstraintApi.rotaryConfiguration(
+                    baseAnchor, getChildAnchor(bearing, mountedPos), rotationAxis, rotationAxis);
+            Object created = SableConstraintApi.addConstraint(pipeline, parent, child, rotaryConstraint);
+            joint = created instanceof PhysicsConstraintHandle handle ? handle : null;
         } catch (ReflectiveOperationException | LinkageError | ClassCastException error) {
             LOGGER.warn("Aileron Bearing constraint creation failed at {}: {}", mountedPos, error.toString());
             joint = null;
@@ -412,28 +406,38 @@ final class AileronBearingMountedAssembly {
         return joint != null && joint.isValid();
     }
 
-    // Retarget the joint
-    private void retargetJoint(AileronBearingBlockEntity bearing, BlockPos mountedPos, Vector3d baseAnchor,
-                               Quaterniond baseFrameOrientation) {
+    // Drive the physical hinge toward the requested aileron angle
+    private boolean setJointServo(double angleDegrees, Vector3dc rotationAxis,
+                                  ServerSubLevel parent, ServerSubLevel child) {
         if (joint == null || !joint.isValid()) {
-            return;
+            return false;
         }
         try {
-            SableConstraintApi.setFrame(joint, 1, baseAnchor, baseFrameOrientation);
-            SableConstraintApi.setFrame(joint, 2, getChildAnchor(bearing, mountedPos), new Quaterniond());
+            double inertia = rotaryServoInertia(parent, child, rotationAxis);
+            double stiffness = SimConfigService.INSTANCE.server().physics.swivelBearingStiffness.get() * inertia;
+            double damping = SimConfigService.INSTANCE.server().physics.swivelBearingDamping.get() * inertia;
+            joint.setMotor(ConstraintJointAxis.ANGULAR_X, Math.toRadians(angleDegrees),
+                    stiffness, damping, false, 0.0D);
             joint.setContactsEnabled(false);
-        } catch (ReflectiveOperationException | LinkageError error) {
-            LOGGER.warn("Aileron Bearing constraint retarget failed at {}: {}", mountedPos, error.toString());
+            return true;
+        } catch (RuntimeException | LinkageError error) {
+            LOGGER.warn("Aileron Bearing rotary servo update failed: {}", error.toString());
             releaseJoint();
+            return false;
         }
     }
 
-    // Create the generic constraint
-    private Object createGenericConstraint(Vector3dc baseAnchor, Vector3dc childAnchor,
-                                           Quaterniondc baseFrameOrientation)
-            throws ReflectiveOperationException {
-        return SableConstraintApi.genericConfiguration(
-                baseAnchor, childAnchor, baseFrameOrientation, new Quaterniond(), LOCKED_AXES);
+    // Calculate the same inertia-scaled servo coefficients used by Simulated's swivel bearing
+    private static double rotaryServoInertia(ServerSubLevel parent, ServerSubLevel child, Vector3dc axis) {
+        Vector3d transformed = new Vector3d();
+        double parentInertia = parent == null ? Double.MAX_VALUE
+                : parent.getMassTracker().getInertiaTensor().transform(axis, transformed).dot(axis);
+        double childInertia = child == null ? Double.MAX_VALUE
+                : child.getMassTracker().getInertiaTensor().transform(axis, transformed).dot(axis);
+        double relevantInertia = parent != null && child != null
+                ? Math.max(parentInertia, childInertia)
+                : Math.min(parentInertia, childInertia);
+        return Math.max(MIN_ROTARY_SERVO_INERTIA, relevantInertia);
     }
 
     // Get the base anchor

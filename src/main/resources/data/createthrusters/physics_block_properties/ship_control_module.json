@@ -1,6 +1,6 @@
 {
   "selector": "createthrusters:ship_control_module",
   "properties": {
-    "sable:mass": 1.0
+    "sable:mass": 0.0
   }
 }

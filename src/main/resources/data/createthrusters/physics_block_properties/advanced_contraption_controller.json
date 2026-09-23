@@ -1,6 +1,6 @@
 {
   "selector": "createthrusters:advanced_contraption_controller",
   "properties": {
-    "sable:mass": 0.5
+    "sable:mass": 0.0
   }
 }

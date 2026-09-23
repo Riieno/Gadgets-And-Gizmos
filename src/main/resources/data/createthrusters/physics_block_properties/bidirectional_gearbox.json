@@ -1,6 +1,6 @@
 {
   "selector": "createthrusters:bidirectional_gearbox",
   "properties": {
-    "sable:mass": 1.0
+    "sable:mass": 0.5
   }
 }

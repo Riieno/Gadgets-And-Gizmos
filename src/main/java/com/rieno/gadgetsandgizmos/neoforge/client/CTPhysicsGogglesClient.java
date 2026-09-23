@@ -245,10 +245,7 @@ public final class CTPhysicsGogglesClient {
         }
 
         if (!isWearingPhysicsGoggles(player)) {
-            requestedSubLevel = null;
-            latestData = null;
-            profilerReportCooldown = 0;
-            clearPortableController();
+            clearState();
             closeInteractionScreen(minecraft);
             return;
         }
@@ -296,6 +293,11 @@ public final class CTPhysicsGogglesClient {
 
     // Apply the data
     public static void applyData(PhysicsGogglesDataPayload payload) {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (!isWearingPhysicsGoggles(player)) {
+            clearState();
+            return;
+        }
         latestData = payload;
         latestDataMillis = System.currentTimeMillis();
     }
@@ -304,7 +306,12 @@ public final class CTPhysicsGogglesClient {
     public static void onRenderGui(RenderGuiEvent.Post evt) {
         Minecraft minecraft = Minecraft.getInstance();
         LocalPlayer player = minecraft.player;
-        if (player == null || minecraft.options.hideGui || !isWearingPhysicsGoggles(player)) {
+        if (player == null || !isWearingPhysicsGoggles(player)) {
+            clearState();
+            closeInteractionScreen(minecraft);
+            return;
+        }
+        if (minecraft.options.hideGui) {
             return;
         }
 
@@ -1405,9 +1412,11 @@ public final class CTPhysicsGogglesClient {
     private static void clearState() {
         requestedSubLevel = null;
         latestData = null;
+        latestDataMillis = 0L;
         requestCooldown = 0;
         profilerReportCooldown = 0;
         lastContextMillis = 0L;
+        HUD_INTERACTION_TARGETS.clear();
         clearPortableController();
         AdvancedHudImageClient.clearServerImages();
         DIAGRAM_RENDERER.close();
