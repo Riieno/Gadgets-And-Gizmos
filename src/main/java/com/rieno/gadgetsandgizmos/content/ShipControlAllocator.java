@@ -35,8 +35,10 @@ public final class ShipControlAllocator {
     private static final int AXES = 6;
     private static final int YAW_TORQUE_AXIS = 4;
     private static final int ITERATIONS = 96;
+    private static final int FOLLOWER_CONSTRAINT_ITERATIONS = 512;
     private static final double REGULARIZATION = 0.0025D;
     private static final double TRANSLATION_PRIORITY_SCALE = 8.0D;
+    private static final double FOLLOWER_YAW_CONSTRAINT_SCALE = 64.0D;
     private static final double STABLE_UP_ALIGNMENT = 0.35D;
     private static final double STABLE_UP_RESIDUAL_LIMIT = 0.18D;
     private static final double STABLE_FORCE_ERROR_LIMIT = 0.025D;
@@ -323,7 +325,7 @@ public final class ShipControlAllocator {
             List<ResolvedCarriage> carriages,
             Vec3 desiredForce
     ) {
-        double[][] normalized = new double[carriages.size()][3];
+        double[][] physical = new double[carriages.size()][3];
         double[] requested = {
                 clamp(desiredForce.x), clamp(desiredForce.y), clamp(desiredForce.z)
         };
@@ -349,17 +351,34 @@ public final class ShipControlAllocator {
             for (int carriageIndex = 0;
                  carriageIndex < carriages.size(); carriageIndex++) {
                 if (capacities[carriageIndex] > 1.0E-9D) {
-                    normalized[carriageIndex][axis] = sign * Mth.clamp(
-                            assigned[carriageIndex] / capacities[carriageIndex],
-                            0.0D, 1.0D);
+                    physical[carriageIndex][axis] = sign * assigned[carriageIndex];
                 }
             }
         }
 
         Vec3[] res = new Vec3[carriages.size()];
         for (int idx = 0; idx < res.length; idx++) {
+            Vec3 correction = carriages.get(idx).demand().forceCorrection();
+            double[] normalized = new double[3];
+            double[] corrected = {
+                    physical[idx][0] + correction.x,
+                    physical[idx][1] + correction.y,
+                    physical[idx][2] + correction.z
+            };
+            for (int axis = 0; axis < corrected.length; axis++) {
+                double sign = Math.signum(corrected[axis]);
+                if (sign == 0.0D) {
+                    continue;
+                }
+                double capacity = directionalCapacity(
+                        map, carriages.get(idx).unitIndices(), axis, sign);
+                if (capacity > 1.0E-9D) {
+                    normalized[axis] = Mth.clamp(corrected[axis] / capacity,
+                            -1.0D, 1.0D);
+                }
+            }
             res[idx] = new Vec3(
-                    normalized[idx][0], normalized[idx][1], normalized[idx][2]);
+                    normalized[0], normalized[1], normalized[2]);
         }
         return res;
     }
@@ -603,16 +622,19 @@ public final class ShipControlAllocator {
                 clamp(desiredTorque.x), clamp(desiredTorque.y), clamp(desiredTorque.z)
         };
         if (!yawTorqueEnabled) {
+            // A carriage coupler leaves yaw compliant. A follower must not
+            // command yaw, but its translational allocation must still
+            // minimise the yaw wrench it injects through that joint.
             target[YAW_TORQUE_AXIS] = 0.0D;
-            for (double[] column : allColumns) {
-                column[YAW_TORQUE_AXIS] = 0.0D;
-            }
-            for (double[] column : columns) {
-                column[YAW_TORQUE_AXIS] = 0.0D;
-            }
         }
         normalizeColumns(allColumns, columns, target, translationScale);
-        solveControls(columns, controls, target);
+        if (!yawTorqueEnabled) {
+            for (double[] column : columns) {
+                column[YAW_TORQUE_AXIS] *= FOLLOWER_YAW_CONSTRAINT_SCALE;
+            }
+        }
+        solveControls(columns, controls, target,
+                yawTorqueEnabled ? ITERATIONS : FOLLOWER_CONSTRAINT_ITERATIONS);
         return allocationResult(columns, controls, target);
     }
 
@@ -657,7 +679,8 @@ public final class ShipControlAllocator {
     private static void solveControls(
             double[][] columns,
             double[] controls,
-            double[] target
+            double[] target,
+            int iterations
     ) {
         double spectralBound = REGULARIZATION;
         for (double[] column : columns) {
@@ -667,7 +690,7 @@ public final class ShipControlAllocator {
         }
         double step = 0.85D / Math.max(0.01D, spectralBound);
         double[] achieved = new double[AXES];
-        for (int iteration = 0; iteration < ITERATIONS; iteration++) {
+        for (int iteration = 0; iteration < Math.max(1, iterations); iteration++) {
             multiply(columns, controls, achieved);
             for (int idx = 0; idx < controls.length; idx++) {
                 double gradient = REGULARIZATION * controls[idx];
@@ -947,15 +970,27 @@ public final class ShipControlAllocator {
 
     // Normalize the physical force
     public static Vec3 normalizePhysicalForce(ShipControlMap map, Vec3 physicalForce) {
+        return normalizePhysicalForce(map, Set.of(), physicalForce);
+    }
+
+    // Normalize a physical force request against one carriage's propulsion
+    public static Vec3 normalizePhysicalForce(
+            ShipControlMap map,
+            Collection<UUID> bodyIds,
+            Vec3 physicalForce
+    ) {
         if (map == null || physicalForce == null) {
             return Vec3.ZERO;
         }
 
+        Set<UUID> selectedBodies = bodyIds == null || bodyIds.isEmpty()
+                ? Set.of() : new LinkedHashSet<>(bodyIds);
         double capacityX = 0.0D;
         double capacityY = 0.0D;
         double capacityZ = 0.0D;
         for (ShipControlMap.PropulsionUnit unit : map.units()) {
-            if (!unit.controllable() || unit.maxThrust() <= 1.0E-9D) {
+            if (!selectedBodies.isEmpty() && !selectedBodies.contains(unit.subLevelId())
+                    || !unit.controllable() || unit.maxThrust() <= 1.0E-9D) {
                 continue;
             }
             Vec3 force = unit.forceDirection().scale(unit.maxThrust());
@@ -968,6 +1003,62 @@ public final class ShipControlAllocator {
                 normalizePhysicalComponent(physicalForce.x, capacityX),
                 normalizePhysicalComponent(physicalForce.y, capacityY),
                 normalizePhysicalComponent(physicalForce.z, capacityZ));
+    }
+
+    // Convert a normalized whole-ship torque request into physical torque
+    public static Vec3 physicalTorqueDemand(ShipControlMap map, Vec3 normalizedTorque) {
+        if (map == null || normalizedTorque == null) {
+            return Vec3.ZERO;
+        }
+        double capacityX = 0.0D;
+        double capacityY = 0.0D;
+        double capacityZ = 0.0D;
+        for (ShipControlMap.PropulsionUnit unit : map.units()) {
+            if (!unit.controllable() || unit.maxThrust() <= 1.0E-9D) {
+                continue;
+            }
+            Vec3 force = unit.forceDirection().scale(unit.maxThrust());
+            Vec3 torque = unit.rootPosition().subtract(map.centerOfMass()).cross(force);
+            capacityX += directionalCapacity(torque.x, normalizedTorque.x);
+            capacityY += directionalCapacity(torque.y, normalizedTorque.y);
+            capacityZ += directionalCapacity(torque.z, normalizedTorque.z);
+        }
+        return new Vec3(
+                clamp(normalizedTorque.x) * capacityX,
+                clamp(normalizedTorque.y) * capacityY,
+                clamp(normalizedTorque.z) * capacityZ);
+    }
+
+    // Normalize a physical local torque request against one carriage's propulsion
+    public static Vec3 normalizePhysicalTorque(
+            ShipControlMap map,
+            Collection<UUID> bodyIds,
+            Vec3 centerOfMass,
+            Vec3 physicalTorque
+    ) {
+        if (map == null || bodyIds == null || bodyIds.isEmpty()
+                || centerOfMass == null || physicalTorque == null) {
+            return Vec3.ZERO;
+        }
+        Set<UUID> selectedBodies = new LinkedHashSet<>(bodyIds);
+        double capacityX = 0.0D;
+        double capacityY = 0.0D;
+        double capacityZ = 0.0D;
+        for (ShipControlMap.PropulsionUnit unit : map.units()) {
+            if (!selectedBodies.contains(unit.subLevelId())
+                    || !unit.controllable() || unit.maxThrust() <= 1.0E-9D) {
+                continue;
+            }
+            Vec3 force = unit.forceDirection().scale(unit.maxThrust());
+            Vec3 torque = unit.rootPosition().subtract(centerOfMass).cross(force);
+            capacityX += directionalCapacity(torque.x, physicalTorque.x);
+            capacityY += directionalCapacity(torque.y, physicalTorque.y);
+            capacityZ += directionalCapacity(torque.z, physicalTorque.z);
+        }
+        return new Vec3(
+                normalizePhysicalComponent(physicalTorque.x, capacityX),
+                normalizePhysicalComponent(physicalTorque.y, capacityY),
+                normalizePhysicalComponent(physicalTorque.z, capacityZ));
     }
 
     // Get the directional capacity
@@ -1020,6 +1111,7 @@ public final class ShipControlAllocator {
             Vec3 centerOfMass,
             double mass,
             Vec3 desiredTorque,
+            Vec3 forceCorrection,
             boolean yawAuthority
     ) {
         // Initialize the carriage demand
@@ -1044,6 +1136,20 @@ public final class ShipControlAllocator {
             centerOfMass = finiteVector(centerOfMass);
             mass = Double.isFinite(mass) && mass > 0.0D ? mass : 0.0D;
             desiredTorque = finiteVector(desiredTorque);
+            forceCorrection = finiteVector(forceCorrection);
+        }
+
+        // Initialize a carriage demand without a rotational force correction
+        public CarriageDemand(
+                UUID carriageId,
+                Set<UUID> bodyIds,
+                Vec3 centerOfMass,
+                double mass,
+                Vec3 desiredTorque,
+                boolean yawAuthority
+        ) {
+            this(carriageId, bodyIds, centerOfMass, mass,
+                    desiredTorque, Vec3.ZERO, yawAuthority);
         }
 
         // Initialize the carriage demand
@@ -1057,7 +1163,7 @@ public final class ShipControlAllocator {
         ) {
             this(carriageId,
                     bodyIds == null ? Set.of() : new LinkedHashSet<>(bodyIds),
-                    centerOfMass, mass, desiredTorque, yawAuthority);
+                    centerOfMass, mass, desiredTorque, Vec3.ZERO, yawAuthority);
         }
     }
 

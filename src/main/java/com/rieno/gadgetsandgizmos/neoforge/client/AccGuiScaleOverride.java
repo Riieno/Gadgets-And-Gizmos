@@ -21,10 +21,10 @@ final class AccGuiScaleOverride {
     private AccGuiScaleOverride() {
     }
 
-    static void apply() {
+    static boolean apply() {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null) {
-            return;
+            return false;
         }
         restoreQueued = false;
         if (playerGuiScale == null) {
@@ -32,7 +32,10 @@ final class AccGuiScaleOverride {
         }
         if (minecraft.options.guiScale().get() != ACC_GUI_SCALE) {
             minecraft.options.guiScale().set(ACC_GUI_SCALE);
+            minecraft.resizeDisplay();
+            return true;
         }
+        return false;
     }
 
     static void restoreAfterExit() {
@@ -54,6 +57,7 @@ final class AccGuiScaleOverride {
             playerGuiScale = null;
             if (minecraft.options.guiScale().get() != scale) {
                 minecraft.options.guiScale().set(scale);
+                minecraft.resizeDisplay();
             }
         });
     }

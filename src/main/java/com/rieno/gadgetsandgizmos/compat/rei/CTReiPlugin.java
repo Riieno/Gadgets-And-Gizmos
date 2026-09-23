@@ -8,10 +8,12 @@ package com.rieno.gadgetsandgizmos.compat.rei;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.content.WorkerEnergyBatteryItem;
 import com.rieno.gadgetsandgizmos.neoforge.client.AdvancedContraptionControllerScreen;
 import me.shedaniel.math.Rectangle;
 import me.shedaniel.rei.api.client.plugins.REIClientPlugin;
 import me.shedaniel.rei.api.client.registry.screen.ExclusionZones;
+import me.shedaniel.rei.api.client.registry.entry.EntryRegistry;
 import me.shedaniel.rei.forge.REIPluginClient;
 
 // Add the addon's REI screen exclusions
@@ -33,5 +35,12 @@ public class CTReiPlugin implements REIClientPlugin {
                         .map(area -> new Rectangle(area.getX(), area.getY(),
                                 area.getWidth(), area.getHeight()))
                         .toList());
+    }
+
+    // Remove internal worker presentation items from REI selection
+    @Override
+    public void registerEntries(EntryRegistry registry) {
+        registry.removeEntryIf(entry -> entry.getValue() instanceof net.minecraft.world.item.ItemStack stack
+                && WorkerEnergyBatteryItem.isInternal(stack));
     }
 }

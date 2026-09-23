@@ -618,6 +618,17 @@ public final class PhotomancyBlueprintCompat {
                     poses));
         }
 
+        List<ShipControlMap.Seat> seats = new ArrayList<>();
+        for (ShipControlMap.Seat seat : map.seats()) {
+            ShipReference reference = captureShipReference(
+                    ctx, seat.subLevelId(), seat.blockPosition(), frames);
+            if (reference == null) {
+                return null;
+            }
+            seats.add(new ShipControlMap.Seat(
+                    reference.subLevelId(), reference.blockPos()));
+        }
+
         // -----------------------------------------------------PORTABLE MAP-----------------------------------------------------
         ShipControlMap portable = new ShipControlMap(
                 map.id(),
@@ -627,6 +638,10 @@ public final class PhotomancyBlueprintCompat {
                 centerOfMass,
                 units,
                 bearings,
+                List.of(),
+                List.of(),
+                List.of(),
+                seats,
                 map.updatedAt());
         CompoundTag portableTag = ShipControlMapSchematicCodec.write(portable);
         writeShipMapFrames(portableTag, frames);
@@ -771,6 +786,17 @@ public final class PhotomancyBlueprintCompat {
                     poses));
         }
 
+        List<ShipControlMap.Seat> seats = new ArrayList<>();
+        for (ShipControlMap.Seat seat : map.seats()) {
+            ShipReference reference = placeShipReference(
+                    ctx, seat.subLevelId(), seat.blockPosition(), frames);
+            if (reference == null) {
+                return null;
+            }
+            seats.add(new ShipControlMap.Seat(
+                    reference.subLevelId(), reference.blockPos()));
+        }
+
         // -----------------------------------------------------PLACED MAP-----------------------------------------------------
         UUID placedRootId = (UUID) invokeNoArgs(ctx, "placedSubLevelUuid");
         BlockPos placedControllerPos = (BlockPos) invokeNoArgs(ctx, "storagePos");
@@ -786,6 +812,10 @@ public final class PhotomancyBlueprintCompat {
                 centerOfMass,
                 units,
                 bearings,
+                List.of(),
+                List.of(),
+                List.of(),
+                seats,
                 System.currentTimeMillis());
         return ShipControlMapSchematicCodec.write(placed);
     }

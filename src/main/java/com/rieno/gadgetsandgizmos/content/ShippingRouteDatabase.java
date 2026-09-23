@@ -158,14 +158,17 @@ final class ShippingRouteDatabase {
         if (server == null || dockId == null) {
             return null;
         }
-        try (Connection connection = open(server);
-             PreparedStatement statement = connection.prepareStatement(
-                     "SELECT * FROM ship_docks WHERE dock_id = ?")) {
-            statement.setString(1, dockId.toString());
-            try (ResultSet res = statement.executeQuery()) {
-                return res.next() ? readDock(connection, res) : null;
+        try (Connection connection = open(server)) {
+            ShipDockRegistry.Dock dock;
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "SELECT * FROM ship_docks WHERE dock_id = ?")) {
+                statement.setString(1, dockId.toString());
+                try (ResultSet res = statement.executeQuery()) {
+                    dock = res.next() ? readDockBase(res) : null;
+                }
             }
-        } catch (IOException | SQLException err) {
+            return dock == null ? null : readDockDetails(connection, dock);
+        } catch (IOException | SQLException | RuntimeException err) {
             LOGGER.log(System.Logger.Level.ERROR,
                     "Could not look up shipping dock " + dockId, err);
             return null;
@@ -214,11 +217,54 @@ final class ShippingRouteDatabase {
 
     // Get all shipping route database values
     static List<ShipDockRegistry.Dock> all(MinecraftServer server) {
-        return query(server, """
-                SELECT * FROM ship_docks
-                ORDER BY dimension, address_key, dock_id
-                """, statement -> {
-        });
+        return loadAll(server).docks();
+    }
+
+    // Load every persisted dock while reporting whether the backing store was actually readable.
+    static DockLoad loadAll(MinecraftServer server) {
+        if (server == null) return new DockLoad(List.of(), false);
+        try (Connection connection = open(server)) {
+            List<ShipDockRegistry.Dock> baseDocks = new ArrayList<>();
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    SELECT * FROM ship_docks
+                    ORDER BY dimension, address_key, dock_id
+                    """);
+                 ResultSet res = statement.executeQuery()) {
+                while (res.next()) {
+                    try {
+                        baseDocks.add(readDockBase(res));
+                    } catch (RuntimeException | SQLException err) {
+                        LOGGER.log(System.Logger.Level.WARNING,
+                                "Ignoring an invalid persisted ship dock record", err);
+                    }
+                }
+            }
+            // Child metadata is optional for destination validity. If a connector or landing-zone
+            // row is damaged, retain the dock's durable identity and pose instead of making every
+            // schedule which references it wait forever.
+            List<ShipDockRegistry.Dock> docks = new ArrayList<>(baseDocks.size());
+            for (ShipDockRegistry.Dock dock : baseDocks) {
+                try {
+                    docks.add(readDockDetails(connection, dock));
+                } catch (RuntimeException | SQLException err) {
+                    LOGGER.log(System.Logger.Level.WARNING,
+                            "Could not restore optional metadata for ship dock " + dock.id(), err);
+                    docks.add(dock);
+                }
+            }
+            return new DockLoad(List.copyOf(docks), true);
+        } catch (IOException | SQLException | RuntimeException err) {
+            LOGGER.log(System.Logger.Level.ERROR,
+                    "Could not load the persisted ship dock registry", err);
+            return new DockLoad(List.of(), false);
+        }
+    }
+
+    // Store one complete persistent registry load.
+    record DockLoad(List<ShipDockRegistry.Dock> docks, boolean complete) {
+        DockLoad {
+            docks = docks == null ? List.of() : List.copyOf(docks);
+        }
     }
 
     // Query the shipping route database
@@ -231,15 +277,31 @@ final class ShippingRouteDatabase {
             return List.of();
         }
         List<ShipDockRegistry.Dock> docks = new ArrayList<>();
-        try (Connection connection = open(server);
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            binder.bind(statement);
-            try (ResultSet res = statement.executeQuery()) {
-                while (res.next()) {
-                    docks.add(readDock(connection, res));
+        try (Connection connection = open(server)) {
+            List<ShipDockRegistry.Dock> baseDocks = new ArrayList<>();
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                binder.bind(statement);
+                try (ResultSet res = statement.executeQuery()) {
+                    while (res.next()) {
+                        try {
+                            baseDocks.add(readDockBase(res));
+                        } catch (RuntimeException | SQLException err) {
+                            LOGGER.log(System.Logger.Level.WARNING,
+                                    "Ignoring an invalid persisted ship dock record", err);
+                        }
+                    }
                 }
             }
-        } catch (IOException | SQLException err) {
+            for (ShipDockRegistry.Dock dock : baseDocks) {
+                try {
+                    docks.add(readDockDetails(connection, dock));
+                } catch (RuntimeException | SQLException err) {
+                    LOGGER.log(System.Logger.Level.WARNING,
+                            "Could not restore optional metadata for ship dock " + dock.id(), err);
+                    docks.add(dock);
+                }
+            }
+        } catch (IOException | SQLException | RuntimeException err) {
             LOGGER.log(System.Logger.Level.ERROR,
                     "Could not query shipping routes", err);
         }
@@ -542,13 +604,10 @@ final class ShippingRouteDatabase {
         statement.setLong(28, dock.updatedAt());
     }
 
-    // Read the dock
-    private static ShipDockRegistry.Dock readDock(
-            Connection connection,
-            ResultSet res
-    ) throws SQLException {
+    // Read the durable dock identity and pose without opening nested result sets.
+    private static ShipDockRegistry.Dock readDockBase(ResultSet res) throws SQLException {
         UUID dockId = UUID.fromString(res.getString("dock_id"));
-        ShipDockRegistry.Dock dock = new ShipDockRegistry.Dock(
+        return new ShipDockRegistry.Dock(
                 dockId,
                 net.minecraft.resources.ResourceLocation.parse(res.getString("dimension")),
                 nullableUuid(res, "sublevel_uuid"),
@@ -567,6 +626,15 @@ final class ShippingRouteDatabase {
                 nullableVec3(res, "connector_world_x", "connector_world_y", "connector_world_z"),
                 nullableVec3(res, "connector_facing_x", "connector_facing_y", "connector_facing_z"),
                 res.getLong("updated_at"));
+    }
+
+    // Attach optional connector and landing-zone metadata after the primary row cursor closes.
+    private static ShipDockRegistry.Dock readDockDetails(
+            Connection connection,
+            ShipDockRegistry.Dock base
+    ) throws SQLException {
+        UUID dockId = base.id();
+        ShipDockRegistry.Dock dock = base;
         List<ShipDockRegistry.ConnectorTarget> connectorTargets =
                 readConnectorTargets(connection, dockId);
         if (!connectorTargets.isEmpty()) {

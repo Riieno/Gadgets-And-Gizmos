@@ -785,7 +785,8 @@ public final class ControllerRedstoneCompat {
             return targetBlockEntity.getLevel();
         }
 
-        return ownerLevel;
+        return SubLevelBlockEntityCollector.resolveTargetLevel(
+                ownerLevel, target == null ? null : target.subLevelId());
     }
 
     // Resolve the target pos

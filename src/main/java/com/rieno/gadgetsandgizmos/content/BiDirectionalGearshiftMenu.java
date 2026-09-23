@@ -41,10 +41,10 @@ public class BiDirectionalGearshiftMenu extends GhostItemMenu<BiDirectionalGears
 
     public static final int PLAYER_SLOTS_X = 48;
     public static final int PLAYER_SLOTS_Y = 164;
-    public static final int SECONDARY_CW_X = 65;
-    public static final int SECONDARY_CCW_X = 89;
-    public static final int PRIMARY_CW_X = 150;
-    public static final int PRIMARY_CCW_X = 174;
+    public static final int PRIMARY_CW_X = 65;
+    public static final int PRIMARY_CCW_X = 89;
+    public static final int SECONDARY_CW_X = 150;
+    public static final int SECONDARY_CCW_X = 174;
     public static final int FIRST_FREQUENCY_Y = 84;
     public static final int SECOND_FREQUENCY_Y = 103;
 

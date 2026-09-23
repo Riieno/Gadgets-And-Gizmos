@@ -96,7 +96,13 @@ import com.rieno.gadgetsandgizmos.lib.control.FrequencyBinding;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.display.AccDisplaySourceRegistry;
-import com.rieno.gadgetsandgizmos.lib.shipping.ShipLogisticsRun;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerFailureReason;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerResourceKey;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerResourceType;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerRoster;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerTask;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerTaskRequest;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerWorkOrder;
 import net.minecraft.core.Direction;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
@@ -151,7 +157,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private static final int GRAPH_OBSERVER_EDGE_BUDGET = 32;
     private static final int GRAPH_RUNTIME_SEND_INTERVAL = 5;
     private static final int ACC_DISPLAY_UPDATE_INTERVAL = 2;
+    private static final int GRAPH_DATA_SCHEMA_REFRESH_INTERVAL = 4;
     private static final long CLIENT_PROFILER_SAMPLE_TIMEOUT_TICKS = 40L;
+    private static final String GRAPH_DATA_SCHEMA_REVISION_TAG = "GraphDataSchemaRevision";
     private static final String GRAPH_VERSIONS_TAG = "AdvancedGraphVersions";
     private static final String SHIPPING_SCHEDULE_DRAFT_GRAPH_TAG = "ShippingScheduleDraftGraph";
     private static final String SHIPPING_SCHEDULE_ACTIVE_GRAPH_TAG = "ShippingScheduleActiveGraph";
@@ -193,10 +201,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private AdvancedGraphDocument shippingScheduleActiveGraph = new AdvancedGraphDocument();
     // Graph runtime
     private final GraphRuntime graphRuntime = new GraphRuntime(this);
-    // Ship stock network cache
-    private final ShipStockNetworkCache shipStockNetworkCache = new ShipStockNetworkCache(this);
-    // Tracked ship logistics runs
-    private final List<ShipLogisticsRun> shipLogisticsRuns = new ArrayList<>();
     // Ship control runtime
     private final ShipControlModuleRuntime shipControlRuntime = new ShipControlModuleRuntime(this);
     // Shipping schedule runtime
@@ -209,6 +213,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private String shipName = "Unnamed Ship";
     // Stable across relocation so an SCM can recover its SQLite manifest after the hull id changes.
     private UUID scmPersistenceId = UUID.randomUUID();
+    // Controller-owned worker-to-pod assignments; pods host runtime but never own workers.
+    private final WorkerRoster workerRoster = new WorkerRoster();
     private @Nullable UUID scmPersistenceSubLevelId;
     private boolean scmPersistenceRestoreAttempted;
     // Whether SCM and schedule route preparation broadcasts its progress to operators
@@ -246,6 +252,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private long lastGraphRuntimeSendTick = Long.MIN_VALUE;
     // Tracks whether graph runtime payload is dirty
     private boolean graphRuntimePayloadDirty;
+    // Remembers non-looping Worker Routines for the currently applied graph revision.
+    private final Set<String> dispatchedWorkerRoutines = new LinkedHashSet<>();
+    // Identifies the applied graph revision used to reset Worker Routine dispatch state.
+    private int dispatchedWorkerRoutineRevision = Integer.MIN_VALUE;
     // Current graph observer sample cursor
     private int graphObserverSampleCursor;
     // Current graph observer sample graph
@@ -409,7 +419,344 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         for (ControllerDiscoveryNode node : discoverAccDisplayTargets()) {
             merged.putIfAbsent(node.nodeId(), node);
         }
+        for (WorkerStorageEndpoint endpoint : WorkerStorageEndpoint.linked(this, true)) {
+            ControllerDiscoveryNode node = endpoint.discoveryNode();
+            merged.putIfAbsent(node.nodeId(), node);
+        }
         return new ArrayList<>(merged.values());
+    }
+
+    // Claim a worker for this controller while leaving the pod as its live station.
+    public void claimWorker(UUID podId, UUID workerId) {
+        workerRoster.assign(workerId, podId);
+        setChanged();
+        sendData();
+    }
+
+    // Release a worker that has left one of this controller's stations.
+    public void releaseWorker(UUID podId, UUID workerId) {
+        workerRoster.release(workerId, podId);
+        setChanged();
+        sendData();
+    }
+
+    // Check controller ownership before dispatching live work from a station.
+    public boolean ownsWorker(UUID workerId, UUID podId) {
+        return workerRoster.owns(workerId, podId);
+    }
+
+    // Dispatch one named Worker Graph task through the controller-owned worker roster.
+    public WorkerFailureReason requestWorkerTask(WorkerTaskRequest request) {
+        if (request == null) return new WorkerFailureReason("invalid_request", "Worker task request is missing");
+        WorkerWorkOrder order = workerGraphOrder(request);
+        if (order == null) {
+            return new WorkerFailureReason("unknown_task", "No matching executable Worker Task Event was found");
+        }
+        List<WorkerPodBlockEntity> pods = WorkerPodBlockEntity.linkedPods(this);
+        if (pods.isEmpty()) return new WorkerFailureReason("no_workers", "No linked Worker Pods are available");
+        if (request.automaticWorkerSelection()) {
+            for (WorkerPodBlockEntity pod : pods) {
+                if (pod.submit(order)) return WorkerFailureReason.none();
+            }
+            return new WorkerFailureReason("no_worker_available", "No assigned worker can carry this task resource");
+        }
+        for (UUID workerId : request.workers()) {
+            UUID stationId = workerRoster.station(workerId);
+            if (stationId == null) continue;
+            for (WorkerPodBlockEntity pod : pods) {
+                if (stationId.equals(pod.podId()) && pod.submit(workerId, order)) {
+                    return WorkerFailureReason.none();
+                }
+            }
+        }
+        return new WorkerFailureReason("selected_workers_unavailable", "The selected workers cannot accept this task");
+    }
+
+    // Cancel one queued Worker Graph task at every linked Worker Pod.
+    public boolean cancelWorkerTask(UUID requestId) {
+        if (requestId == null) return false;
+        boolean cancelled = false;
+        for (WorkerPodBlockEntity pod : WorkerPodBlockEntity.linkedPods(this)) {
+            cancelled |= pod.cancel(requestId);
+        }
+        return cancelled;
+    }
+
+    // Compile one high-level Move / Process / Deposit path from the persisted Worker Graph.
+    private @Nullable WorkerWorkOrder workerGraphOrder(WorkerTaskRequest request) {
+        AdvancedGraphDocument.FunctionGraph workerGraph = activeGraph.functions().stream()
+                .filter(AdvancedContraptionControllerBlockEntity::isWorkerGraphFunction)
+                .findFirst().orElse(null);
+        if (workerGraph == null) return null;
+        AdvancedGraphDocument.Node event = workerGraph.nodes().stream()
+                .filter(node -> "worker_task_event".equals(node.type()))
+                .filter(node -> request.taskName().equals(workerInputString(node, "task_name", "Worker Task")))
+                .findFirst().orElse(null);
+        if (event == null) return null;
+        AdvancedGraphDocument.Node move = workerExecutionTarget(workerGraph, event, "triggered");
+        return workerGraphOrder(workerGraph, move, request);
+    }
+
+    // Compile a worker resource flow which begins at a routine or task-event execution output.
+    private @Nullable WorkerWorkOrder workerGraphOrder(AdvancedGraphDocument.FunctionGraph workerGraph,
+                                                       @Nullable AdvancedGraphDocument.Node move,
+                                                       WorkerTaskRequest request) {
+        if (move == null) return null;
+        WorkerResourceType type = workerMoveType(move.type());
+        if (type == null) return null;
+        AdvancedGraphDocument.Node filter = workerConnectedInput(workerGraph, move, "filter");
+        ResourceLocation resourceId = workerFilterResource(filter, type);
+        ResourceLocation requestedResource = workerRequestedResource(request, type);
+        if (requestedResource != null) resourceId = requestedResource;
+        if (resourceId == null) return null;
+        long amount = Math.max(1L, Math.round(workerInputNumber(move, "amount", 1.0D)));
+        amount = workerRequestedAmount(request, type, amount);
+        AdvancedGraphDocument.Node source = workerConnectedInput(workerGraph, move, "source");
+        UUID sourceId = workerSelectorEndpoint(source);
+        AdvancedGraphDocument.Node next = workerExecutionTarget(workerGraph, move, "complete");
+        WorkerWorkOrder.Mode mode = WorkerWorkOrder.Mode.TRANSFER;
+        UUID processorId = null;
+        UUID destinationId = null;
+        ResourceLocation outputId = resourceId;
+        long outputAmount = amount;
+        if (next != null && "worker_process".equals(next.type())) {
+            mode = WorkerWorkOrder.Mode.PROCESS;
+            AdvancedGraphDocument.Node processorSelector = workerConnectedInput(workerGraph, next, "processor");
+            processorId = workerSelectorEndpoint(processorSelector);
+            if (processorId == null) processorId = workerTargetEndpoint(next, "processor");
+            AdvancedGraphDocument.Node outputFilter = workerConnectedInput(workerGraph, next, "result_item_filter");
+            ResourceLocation configuredOutput = workerFilterResource(outputFilter, type);
+            if (configuredOutput != null) outputId = configuredOutput;
+            next = workerExecutionTarget(workerGraph, next, "complete");
+        } else if (next != null && "worker_craft".equals(next.type())) {
+            mode = WorkerWorkOrder.Mode.AUTO_CRAFT;
+            processorId = workerTargetEndpoint(next, "target");
+            next = workerExecutionTarget(workerGraph, next, "complete");
+        }
+        if (next != null && "worker_deposit".equals(next.type())) {
+            destinationId = workerSelectorEndpoint(workerConnectedInput(workerGraph, next, "destination"));
+        } else if (mode == WorkerWorkOrder.Mode.TRANSFER) {
+            return null;
+        }
+        UUID requestedDestination = workerRequestedDestination(request, type);
+        if (requestedDestination != null) destinationId = requestedDestination;
+        WorkerTask task = new WorkerTask(request.id(), request.taskName(),
+                new WorkerResourceKey(type, resourceId), amount, 0L, request.priority(), true);
+        return new WorkerWorkOrder(request.id(), task, mode, sourceId, destinationId, processorId,
+                new WorkerResourceKey(type, outputId), outputAmount);
+    }
+
+    // Dispatch each enabled default Worker Routine when a compatible worker becomes available.
+    private void dispatchWorkerRoutines() {
+        if (activeGraph.revision() != dispatchedWorkerRoutineRevision) {
+            dispatchedWorkerRoutineRevision = activeGraph.revision();
+            dispatchedWorkerRoutines.clear();
+        }
+        List<WorkerPodBlockEntity> pods = WorkerPodBlockEntity.linkedPods(this);
+        if (pods.isEmpty()) return;
+        for (AdvancedGraphDocument.FunctionGraph workerGraph : activeGraph.functions()) {
+            if (!isWorkerGraphFunction(workerGraph)) continue;
+            for (AdvancedGraphDocument.Node routine : workerGraph.nodes()) {
+                if (!"worker_routine".equals(routine.type())) continue;
+                boolean loops = workerInputBoolean(routine, "loop_routine", true);
+                String routineKey = workerGraph.id() + ":" + routine.id();
+                if (!loops && dispatchedWorkerRoutines.contains(routineKey)) continue;
+                AdvancedGraphDocument.Node move = workerExecutionTarget(workerGraph, routine, "start");
+                UUID requestId = UUID.nameUUIDFromBytes(("worker-routine:" + getBlockPos().asLong()
+                        + ":" + activeGraph.revision() + ":" + routineKey).getBytes(StandardCharsets.UTF_8));
+                WorkerTaskRequest request = new WorkerTaskRequest(requestId, "Worker Routine", Set.of(), 0,
+                        WorkerTaskRequest.InterruptPolicy.QUEUE, true, new CompoundTag());
+                WorkerWorkOrder order = workerGraphOrder(workerGraph, move, request);
+                if (order == null) continue;
+                boolean accepted = false;
+                Set<UUID> selectedWorkers = workerSelectedIds(routine);
+                for (WorkerPodBlockEntity pod : pods) {
+                    if (selectedWorkers.isEmpty()) {
+                        if (pod.submit(order)) {
+                            accepted = true;
+                            break;
+                        }
+                        continue;
+                    }
+                    for (UUID workerId : selectedWorkers) {
+                        if (pod.submit(workerId, order)) accepted = true;
+                    }
+                }
+                if (accepted && !loops) dispatchedWorkerRoutines.add(routineKey);
+            }
+        }
+    }
+
+    // Check whether one private function is the persistent Worker Graph workspace.
+    private static boolean isWorkerGraphFunction(AdvancedGraphDocument.FunctionGraph function) {
+        return function.nodes().stream().anyMatch(node -> "worker_routine".equals(node.type())
+                && node.data().getBoolean("WorkerGraphRoot"));
+    }
+
+    // Find the next worker execution target from a named output.
+    private static @Nullable AdvancedGraphDocument.Node workerExecutionTarget(
+            AdvancedGraphDocument.FunctionGraph graph, AdvancedGraphDocument.Node from, String port) {
+        if (graph == null || from == null) return null;
+        for (AdvancedGraphDocument.Edge edge : graph.edges()) {
+            if (!from.id().equals(edge.fromNode()) || !port.equals(edge.fromPort())) continue;
+            for (AdvancedGraphDocument.Node node : graph.nodes()) {
+                if (node.id().equals(edge.toNode())) return node;
+            }
+        }
+        return null;
+    }
+
+    // Find the data node connected to one worker node input.
+    private static @Nullable AdvancedGraphDocument.Node workerConnectedInput(
+            AdvancedGraphDocument.FunctionGraph graph, AdvancedGraphDocument.Node target, String port) {
+        if (graph == null || target == null) return null;
+        for (AdvancedGraphDocument.Edge edge : graph.edges()) {
+            if (!target.id().equals(edge.toNode()) || !port.equals(edge.toPort())) continue;
+            for (AdvancedGraphDocument.Node node : graph.nodes()) {
+                if (node.id().equals(edge.fromNode())) return node;
+            }
+        }
+        return null;
+    }
+
+    // Resolve a move node to its physical worker resource type.
+    private static @Nullable WorkerResourceType workerMoveType(String type) {
+        return switch (type) {
+            case "worker_move_items" -> WorkerResourceType.ITEM;
+            case "worker_move_fluid" -> WorkerResourceType.FLUID;
+            case "worker_move_fe" -> WorkerResourceType.ENERGY;
+            default -> null;
+        };
+    }
+
+    // Read the first direct resource id configured by one filter.
+    private static @Nullable ResourceLocation workerFilterResource(
+            @Nullable AdvancedGraphDocument.Node filter, WorkerResourceType type) {
+        if (type == WorkerResourceType.ENERGY) return WorkerResourceKey.ENERGY_ID;
+        if (filter == null) return null;
+        String port = type == WorkerResourceType.ITEM ? "items" : "fluids";
+        String configured = workerInputString(filter, port, "");
+        String first = configured.split(",", 2)[0].strip();
+        return first.isBlank() || first.startsWith("#") ? null : ResourceLocation.tryParse(first);
+    }
+
+    // Read the direct resource selection supplied by a Main Graph Worker Request.
+    private static @Nullable ResourceLocation workerRequestedResource(WorkerTaskRequest request,
+                                                                       WorkerResourceType type) {
+        if (request == null || request.parameters() == null) return null;
+        CompoundTag parameters = request.parameters();
+        String configured = switch (type) {
+            case ITEM -> parameters.getString("Items");
+            case FLUID, FUEL -> parameters.getString("Fluids");
+            case ENERGY -> WorkerResourceKey.ENERGY_ID.toString();
+        };
+        String first = configured.split(",", 2)[0].strip();
+        return first.isBlank() || first.startsWith("#") ? null : ResourceLocation.tryParse(first);
+    }
+
+    // Read the amount matching the resource type supplied by a Main Graph Worker Request.
+    private static long workerRequestedAmount(WorkerTaskRequest request, WorkerResourceType type, long fallback) {
+        if (request == null || request.parameters() == null) return fallback;
+        CompoundTag parameters = request.parameters();
+        boolean hasConfiguredResource = switch (type) {
+            case ITEM -> !parameters.getString("Items").isBlank();
+            case FLUID, FUEL -> !parameters.getString("Fluids").isBlank();
+            case ENERGY -> "fe".equalsIgnoreCase(parameters.getString("RequestType"))
+                    || "multiple".equalsIgnoreCase(parameters.getString("RequestType"));
+        };
+        if (!hasConfiguredResource) return fallback;
+        long configuredAmount = switch (type) {
+            case ITEM -> parameters.getLong("ItemAmount");
+            case FLUID, FUEL -> parameters.getLong("FluidAmount");
+            case ENERGY -> parameters.getLong("FeAmount");
+        };
+        return configuredAmount > 0L ? configuredAmount : fallback;
+    }
+
+    // Resolve the selected resource-specific SCM endpoint or online player supplied by a Main Graph Worker Request.
+    private @Nullable UUID workerRequestedDestination(WorkerTaskRequest request, WorkerResourceType type) {
+        if (request == null || request.parameters() == null) return null;
+        if ("player".equalsIgnoreCase(request.parameters().getString("DestinationType"))) {
+            if (level == null || level.getServer() == null) return null;
+            String name = request.parameters().getString("DestinationPlayer").strip();
+            if (name.isBlank()) return null;
+            return level.getServer().getPlayerList().getPlayers().stream()
+                    .filter(player -> name.equalsIgnoreCase(player.getGameProfile().getName()))
+                    .map(ServerPlayer::getUUID).findFirst().orElse(null);
+        }
+        if (!"container".equalsIgnoreCase(request.parameters().getString("DestinationType"))) return null;
+        String key = switch (type) {
+            case ITEM -> "ItemDestination";
+            case FLUID, FUEL -> "FluidDestination";
+            case ENERGY -> "FeDestination";
+        };
+        return workerTargetEndpoint(request.parameters().getCompound(key));
+    }
+
+    // Resolve the explicit SCM endpoint selected by a source, destination or processor selector.
+    private @Nullable UUID workerSelectorEndpoint(@Nullable AdvancedGraphDocument.Node selector) {
+        if (selector == null || !"specific".equals(workerInputString(selector, "mode", "automatic"))) return null;
+        return workerTargetEndpoint(selector, "target");
+    }
+
+    // Resolve a direct target-picker value to its linked Worker endpoint.
+    private @Nullable UUID workerTargetEndpoint(@Nullable AdvancedGraphDocument.Node node, String port) {
+        if (node == null || port == null || port.isBlank()) return null;
+        return workerTargetEndpoint(node.data().getCompound("WorkerTargets").getCompound(port));
+    }
+
+    // Resolve one serialized worker target to its current SCM endpoint identity.
+    private @Nullable UUID workerTargetEndpoint(CompoundTag targetTag) {
+        ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(targetTag);
+        if (target == null) return null;
+        String nodeId = target.nodeId();
+        String prefix = "worker:endpoint:";
+        if (nodeId.startsWith(prefix)) {
+            try {
+                return UUID.fromString(nodeId.substring(prefix.length()));
+            } catch (IllegalArgumentException ignored) {
+                return null;
+            }
+        }
+        return WorkerStorageEndpoint.linked(this, true).stream()
+                .filter(endpoint -> nodeId.equals(endpoint.discoveryNode().nodeId()))
+                .map(WorkerStorageEndpoint::id).findFirst().orElse(null);
+    }
+
+    // Read the explicitly assigned mannequin ids for one Worker Routine.
+    private static Set<UUID> workerSelectedIds(AdvancedGraphDocument.Node routine) {
+        if (routine == null) return Set.of();
+        Set<UUID> selected = new LinkedHashSet<>();
+        ListTag ids = routine.data().getList("WorkerIds", Tag.TAG_STRING);
+        for (int index = 0; index < ids.size(); index++) {
+            try {
+                selected.add(UUID.fromString(ids.getString(index)));
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        return Set.copyOf(selected);
+    }
+
+    // Read a string input default from one persisted worker node.
+    private static String workerInputString(AdvancedGraphDocument.Node node, String port, String fallback) {
+        if (node == null) return fallback;
+        CompoundTag value = node.data().getCompound("Defaults").getCompound(port).getCompound("Payload");
+        String configured = value.getString("Value").strip();
+        return configured.isBlank() ? fallback : configured;
+    }
+
+    // Read a numeric input default from one persisted worker node.
+    private static double workerInputNumber(AdvancedGraphDocument.Node node, String port, double fallback) {
+        if (node == null) return fallback;
+        CompoundTag payload = node.data().getCompound("Defaults").getCompound(port).getCompound("Payload");
+        return payload.contains("Value", Tag.TAG_DOUBLE) ? payload.getDouble("Value") : fallback;
+    }
+
+    // Read a boolean input default from one persisted worker node.
+    private static boolean workerInputBoolean(AdvancedGraphDocument.Node node, String port, boolean fallback) {
+        if (node == null) return fallback;
+        CompoundTag payload = node.data().getCompound("Defaults").getCompound(port).getCompound("Payload");
+        return payload.contains("Value", Tag.TAG_BYTE) ? payload.getBoolean("Value") : fallback;
     }
 
     // Discover the ACC display targets
@@ -516,9 +863,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             shipControlRuntime.resumeAfterLoad(
                     shippingScheduleRuntime.requiresControlAfterLoad());
             shippingScheduleRuntime.resumeAfterLoad();
-            if (!shipLogisticsRuns.isEmpty()) {
-                shipStockNetworkCache.snapshot();
-            }
         }
     }
 
@@ -544,6 +888,12 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             return;
         }
         super.tick();
+        Level currentLevel = getLevel();
+        if (currentLevel != null && !currentLevel.isClientSide
+                && Math.floorMod(currentLevel.getGameTime() + getBlockPos().asLong(),
+                GRAPH_DATA_SCHEMA_REFRESH_INTERVAL) == 0L) {
+            refreshChangedGraphDataSchemas();
+        }
         restoreScmPersistenceIfAvailable();
         syncScmPersistenceSubLevel();
         shipControlRuntime.tick();
@@ -555,16 +905,13 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             setChanged();
             sendData();
         }
-        if (getLevel() != null && !getLevel().isClientSide
-                && Math.floorMod(getLevel().getGameTime() + getBlockPos().asLong(), 4L) == 0L
-                && shipLogisticsRuns.stream().anyMatch(run ->
-                run.resourceType() == ShipLogisticsRun.ResourceType.FUEL)) {
-            ShipCargoAutomation.refuelFromShipRuns(this, List.of(), true, true);
-        }
         if (getLevel() != null) {
             resetStaleMouseAxes();
             checkGraphBindings();
             flushGraphBindingSync();
+            if (!getLevel().isClientSide && Math.floorMod(getLevel().getGameTime() + getBlockPos().asLong(), 10L) == 0L) {
+                dispatchWorkerRoutines();
+            }
             boolean activeGraphHasContent = hasGraphContent(activeGraph);
             boolean anyGraphHasContent = activeGraphHasContent || hasGraphContent(draftGraph);
             List<GraphRuntimeObserver> observers = cachedGraphRuntimeObservers();
@@ -578,9 +925,12 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 trackGraphChannelChanges();
             }
             if (activeGraphHasContent || graphRuntime.hasPendingWork()) {
-                if (graphRuntime.needsRegularTick(activeGraph, true)// !observers.isEmpty())
+                boolean samplePassiveOutputs = !publishedAccDisplays.isEmpty()
+                        || !observers.isEmpty() && Math.floorMod(
+                        getLevel().getGameTime() + getBlockPos().asLong(), 4L) == 0L;
+                if (graphRuntime.needsRegularTick(activeGraph, samplePassiveOutputs)
                         || graphRuntime.hasPendingWork()) {
-                    graphRuntime.tick(activeGraph, true); //!observers.isEmpty());
+                    graphRuntime.tick(activeGraph, samplePassiveOutputs);
                 }
             }
             if (!transientMouseInputs.isEmpty()) {
@@ -611,7 +961,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         shippingScheduleRuntime.prepareForServerShutdown();
         graphRuntime.prepareForServerShutdown();
         shipControlRuntime.prepareForServerShutdown();
-        shipStockNetworkCache.clear();
         cachedGraphRuntimeObservers = List.of();
         graphObserverInputs.clear();
         graphObserverOutputs.clear();
@@ -677,6 +1026,22 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         sendData();
     }
 
+    // Reconcile auto-discovered docking connectors without changing player assignments
+    public void reconcileScmDockingConnectors(
+            java.util.Collection<ShipControlMap.DockingConnector> connectors
+    ) {
+        if (!scmConfigurationProfile.reconcileDockingConnectors(connectors)) return;
+        setChanged();
+        sendData();
+    }
+
+    // Get one ship docking connector's player-selected binding group
+    public ScmConfigurationProfile.DockingConnectorGroup getScmDockingConnectorGroup(
+            UUID subLevelId, BlockPos position
+    ) {
+        return scmConfigurationProfile.dockingConnectorGroup(subLevelId, position);
+    }
+
     // Get optional control-capable suggestions from the last discovery pass.
     // The configuration screen itself may select any live block on the craft.
     public List<ScmConfigurationProfile.UnitReference> getScmConfigurationCandidates() {
@@ -691,6 +1056,11 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         return stored.units().stream().map(ScmConfigurationProfile.UnitReference::of)
                 .distinct().toList();
+    }
+
+    // Get every live docking connector in the assembled ship.
+    public List<ScmConfigurationProfile.DockingConnectorReference> getScmConfigurationDockingConnectors() {
+        return shipControlRuntime.configurationDockingConnectors();
     }
 
     // Get the parent Sable body used by the live calibration viewer.
@@ -715,6 +1085,11 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // reads the assembled craft but deliberately never freezes or pulses it.
     public boolean scanScmConfiguration() {
         return shipControlRuntime.scanConfiguration("scm_configuration", Map.of(), Map.of());
+    }
+
+    // Rebuild the current SCM groups from their live control adapters
+    public boolean reinitializeScmConfiguration() {
+        return shipControlRuntime.rebuildConfiguredControlMap();
     }
 
     // Return the stable configuration identity without requiring a discovery
@@ -751,13 +1126,28 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         requested.actionGroups().forEach((action, group) -> {
             if (AdvancedGraphCatalog.isScmActionDispatchType(action)
                     || ScmConfigurationProfile.isAutoAction(action)
-                    || ScmConfigurationProfile.isAccelerationAction(action)) {
+                    || ScmConfigurationProfile.isAccelerationAction(action)
+                    || ScmConfigurationProfile.isIkAction(action)) {
                 actions.put(action, group);
             }
         });
         ScmConfigurationProfile sanitized = ScmConfigurationProfile.empty();
         sanitized.setOrientationOverride(requested.orientationOverride());
         sanitized.setVehicleType(requested.vehicleType());
+        sanitized.setSteeringType(requested.steeringType());
+        sanitized.setIkGait(requested.ikGait());
+        Set<ScmConfigurationProfile.DockingConnectorReference> liveDockingConnectors =
+                new LinkedHashSet<>(getScmConfigurationDockingConnectors());
+        Map<ScmConfigurationProfile.DockingConnectorReference,
+                ScmConfigurationProfile.DockingConnectorGroup> dockingConnectorGroups =
+                requested.dockingConnectorGroups();
+        if (!liveDockingConnectors.isEmpty()) {
+            dockingConnectorGroups = requested.dockingConnectorGroups().entrySet().stream()
+                    .filter(entry -> liveDockingConnectors.contains(entry.getKey()))
+                    .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue,
+                            (first, second) -> second, LinkedHashMap::new));
+        }
+        sanitized.replaceDockingConnectorGroups(dockingConnectorGroups);
         sanitized.replace(targetMapId, groups, actions,
                 requested.excludedUnits().stream().filter(shipControlRuntime::isConfigurationTarget)
                         .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new)));
@@ -795,6 +1185,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     public String getScmDetectedVehicleType() {
         return shipControlRuntime.detectedVehicleType();
+    }
+
+    public String getScmDetectedSteeringType() {
+        return shipControlRuntime.detectedSteeringType();
     }
 
     // Set the ship control mode
@@ -912,7 +1306,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Remove the shipping schedule
     public ItemStack removeShippingSchedule() {
-        return shippingScheduleRuntime.remove();
+        ItemStack schedule = shippingScheduleRuntime.remove();
+        ShippingScheduleRouteData.bind(schedule, scmPersistenceId);
+        return schedule;
     }
 
     // Check if this has shipping schedule
@@ -932,7 +1328,14 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Copy the shipping schedule
     public ItemStack copyShippingSchedule() {
-        return shippingScheduleRuntime.copyScheduleItem();
+        ItemStack schedule = shippingScheduleRuntime.copyScheduleItem();
+        ShippingScheduleRouteData.bind(schedule, scmPersistenceId);
+        return schedule;
+    }
+
+    // Get the stable SCM route owner id
+    public UUID getScmPersistenceId() {
+        return scmPersistenceId;
     }
 
     // Get the shipping schedule pilot id
@@ -1189,37 +1592,14 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         shipControlRuntime.setDockingMagneticCapture(connectorIndex, active);
     }
 
-    // Get the ship stock network snapshot
-    public ShipStockNetworkCache.Snapshot getShipStockNetworkSnapshot() {
-        return shipStockNetworkCache.snapshot();
-    }
-
-    // Get the ship stock network access
-    public ShipStockNetworkCache.NetworkAccess getShipStockNetworkAccess(
-            UUID subLevelId, BlockPos connectorPosition
-    ) {
-        return shipStockNetworkCache.accessFor(subLevelId, connectorPosition);
-    }
-
-    // Get the ship stock network access
-    public ShipStockNetworkCache.NetworkAccess getShipStockNetworkAccess(
-            UUID subLevelId,
-            BlockPos connectorPosition,
-            Set<ShipLogisticsRun.ResourceType> resourceTypes
-    ) {
-        return shipStockNetworkCache.accessFor(subLevelId, connectorPosition, resourceTypes);
-    }
-
-    // Get the ship logistics run access
-    public ShipStockNetworkCache.NetworkAccess getShipLogisticsRunAccess(
-            ShipLogisticsRun.ResourceType resourceType
-    ) {
-        return shipStockNetworkCache.accessFor(resourceType);
-    }
-
     // Get the mapped ship sublevel ids
     public Set<UUID> getMappedShipSubLevelIds() {
         return shipControlRuntime.mappedSubLevelIds();
+    }
+
+    // Get the mounted seats retained by the SCM map
+    public List<ShipControlMap.Seat> getMappedShipSeats() {
+        return shipControlRuntime.mappedSeats();
     }
 
     // Update the graph mirrors
@@ -1405,73 +1785,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         graphObserverSampleGraph = null;
         graphObserverSampleRevision = Integer.MIN_VALUE;
         if (hadRuntimeData) sendGraphRuntimeData(graphRuntimeObservers());
-    }
-
-    // Get the ship logistics runs
-    public List<ShipLogisticsRun> shipLogisticsRuns() {
-        return List.copyOf(shipLogisticsRuns);
-    }
-
-    // Keep the original flat stock endpoint working
-    public void configureWirelessStockEndpoint(UUID subLevelId, BlockPos pos, boolean fuel) {
-        List<ShipLogisticsRun.ResourceType> types = fuel
-                ? List.of(ShipLogisticsRun.ResourceType.FUEL)
-                : List.of(ShipLogisticsRun.ResourceType.ITEM,
-                ShipLogisticsRun.ResourceType.FLUID, ShipLogisticsRun.ResourceType.ENERGY);
-        for (ShipLogisticsRun.ResourceType type : types) {
-            ShipLogisticsRun run = shipLogisticsRuns.stream()
-                    .filter(candidate -> candidate.resourceType() == type
-                            && candidate.name().equals(type.label() + " Run"))
-                    .findFirst().orElseGet(() -> ShipLogisticsRun.create(
-                            type, type.label() + " Run", List.of()));
-            List<ShipLogisticsRun.Endpoint> endpoints = new ArrayList<>(run.endpoints());
-            ShipLogisticsRun.Endpoint endpoint = new ShipLogisticsRun.Endpoint(subLevelId, pos);
-            if (!endpoints.contains(endpoint)) endpoints.add(endpoint);
-            configureShipLogisticsRun(run.withEndpoints(endpoints));
-        }
-    }
-
-    // Configure the ship logistics run
-    public void configureShipLogisticsRun(ShipLogisticsRun run) {
-        if (run == null) return;
-        shipLogisticsRuns.removeIf(existing -> existing.id().equals(run.id()));
-        shipLogisticsRuns.add(run);
-        shipLogisticsRuns.sort(Comparator.comparing(ShipLogisticsRun::name,
-                String.CASE_INSENSITIVE_ORDER).thenComparing(runValue -> runValue.id().toString()));
-        shipStockNetworkCache.invalidate();
-        setChanged();
-        sendData();
-    }
-
-    // Remove the ship logistics run
-    public boolean removeShipLogisticsRun(UUID runId) {
-        if (runId == null || !shipLogisticsRuns.removeIf(run -> run.id().equals(runId))) {
-            return false;
-        }
-        shipStockNetworkCache.invalidate();
-        setChanged();
-        sendData();
-        return true;
-    }
-
-    // Toggle the ship logistics run endpoint
-    public boolean toggleShipLogisticsRunEndpoint(
-            UUID runId, UUID subLevelId, BlockPos position
-    ) {
-        ShipLogisticsRun run = shipLogisticsRuns.stream()
-                .filter(candidate -> candidate.id().equals(runId)).findFirst().orElse(null);
-        if (run == null || position == null) return false;
-        ShipLogisticsRun.Endpoint endpoint = new ShipLogisticsRun.Endpoint(subLevelId, position);
-        List<ShipLogisticsRun.Endpoint> endpoints = new ArrayList<>(run.endpoints());
-        boolean added;
-        if (endpoints.remove(endpoint)) {
-            added = false;
-        } else {
-            endpoints.add(endpoint);
-            added = true;
-        }
-        configureShipLogisticsRun(run.withEndpoints(endpoints));
-        return added;
     }
 
     // Get the graph runtime observers
@@ -1679,8 +1992,11 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             return false;
         }
         candidate.setRevision(shippingScheduleDraftGraph.revision() + 1);
+        boolean wasFollowing = followsShippingScheduleRoute();
         shippingScheduleDraftGraph = candidate;
         shippingScheduleActiveGraph = candidate.copy();
+        if(wasFollowing != followsShippingScheduleRoute()) shipControlRuntime.resetScheduledRouteFollowing();
+        if(schedule != null && !schedule.entries.isEmpty()) shippingScheduleRuntime.ensureEditableRoutes(schedule);
         setChanged();
         sendData();
         return true;
@@ -1768,6 +2084,15 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             List<ShipControlModuleRuntime.ScheduledRouteDestination> destinations
     ) {
         return shipControlRuntime.queueScheduledRouteDestinations(destinations);
+    }
+
+    public boolean followsShippingScheduleRoute(){
+        return shippingScheduleDraftGraph.variables().getOrDefault(ShippingScheduleGraph.FOLLOW_ROUTE_VARIABLE,
+                AdvancedGraphDocument.Value.bool(true)).asBoolean();
+    }
+
+    boolean createEditableShippingScheduleRoutes(List<ShipControlModuleRuntime.ScheduledRouteDestination> destinations){
+        return shipControlRuntime.createEditableScheduledRoutes(destinations);
     }
 
     // Get detached retained route geometry used to place schedule-owned dock queues.
@@ -2091,7 +2416,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             return;
         }
         releaseAccDisplays();
-        shipStockNetworkCache.clear();
         shipControlRuntime.close();
         if (getLevel() != null && !getLevel().isClientSide) {
             clearGraphTargetWrites(activeGraph);
@@ -2113,7 +2437,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         releaseAccDisplays();
         AccDisplayControllerRegistry.unregister(this);
         AdvancedControllerNamedEventBus.unregister(this);
-        shipStockNetworkCache.clear();
         shipControlRuntime.close();
         super.remove();
     }
@@ -2124,7 +2447,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         releaseAccDisplays();
         AccDisplayControllerRegistry.unregister(this);
         AdvancedControllerNamedEventBus.unregister(this);
-        shipStockNetworkCache.clear();
         shippingScheduleRuntime.suspendForChunkUnload();
         shipControlRuntime.suspendForChunkUnload();
         super.onChunkUnloaded();
@@ -2880,6 +3202,14 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         for (AdvancedGraphDocument.Node node : graph.nodes()) {
             ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
             if (target != null && target.subLevelId() != null) subLevelIds.add(target.subLevelId());
+            CompoundTag workerTargets = node.data().getCompound("WorkerTargets");
+            for (String port : workerTargets.getAllKeys()) {
+                ControllerDiscoveryNode workerTarget = ControllerDiscoveryNode.fromTag(
+                        workerTargets.getCompound(port));
+                if (workerTarget != null && workerTarget.subLevelId() != null) {
+                    subLevelIds.add(workerTarget.subLevelId());
+                }
+            }
         }
     }
 
@@ -3995,6 +4325,24 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             if (!isSafeGraphWriteValue(val)) {
                 return false;
             }
+            CompoundTag groupedFields = dataPortGroup(node, port);
+            if (!groupedFields.isEmpty()) {
+                if (!"map".equals(val.type())) {
+                    return false;
+                }
+                for (String field : groupedFields.getAllKeys()) {
+                    if (!val.payload().contains(field, Tag.TAG_COMPOUND)) continue;
+                    CompoundTag encodedValue = val.payload().getCompound(field);
+                    AdvancedGraphDocument.Value groupedValue = new AdvancedGraphDocument.Value(
+                            encodedValue.getString("Type"), encodedValue.getCompound("Payload"));
+                    if (!isSafeGraphWriteValue(groupedValue)) {
+                        return false;
+                    }
+                    safePorts.add(field);
+                    safeValues.put(field, groupedValue);
+                }
+                continue;
+            }
             safePorts.add(port);
             safeValues.put(port, val);
         }
@@ -4075,12 +4423,13 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         Map<String, String> registeredWritableData =
                 BlockEntityDataAdapterRegistry.writableData(blockEntity);
+        Map<String, GraphValue> registeredWrites = new LinkedHashMap<>();
         for (String port : activePorts) {
             if (registeredWritableData.containsKey(port)) {
-                changed |= BlockEntityDataAdapterRegistry.write(
-                        blockEntity, port, GraphRuntime.toLibraryValue(values.apply(port)));
+                registeredWrites.put(port, GraphRuntime.toLibraryValue(values.apply(port)));
             }
         }
+        changed |= BlockEntityDataAdapterRegistry.writeAll(blockEntity, registeredWrites);
         for (String port : activePorts) {
             if (ExternalBlockEntityDirectControlCompat.writableData(blockEntity).containsKey(port)) {
                 changed |= ExternalBlockEntityDirectControlCompat.writeData(blockEntity, port, values.apply(port));
@@ -4187,7 +4536,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Get the graph direct signal source id
     private String graphDirectSignalSourceId(AdvancedGraphDocument.Node node) {
-        return worldPosition.asLong() + ":graph_output";
+        String nodeId = node == null || node.id() == null ? "unknown" : node.id();
+        return worldPosition.asLong() + ":graph:output:" + nodeId;
     }
 
     // Get the graph direct target reference
@@ -4221,6 +4571,34 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return List.of();
     }
 
+    // Refresh graph data schemas whose target provider changed
+    private void refreshChangedGraphDataSchemas() {
+        boolean activeChanged = graphDataSchemaChanged(activeGraph);
+        boolean draftChanged = graphDataSchemaChanged(draftGraph);
+        if (!activeChanged && !draftChanged) return;
+        if (activeChanged) refreshDataPorts(activeGraph);
+        if (draftChanged) refreshDataPorts(draftGraph);
+        setChanged();
+        sendData();
+    }
+
+    // Check whether one graph has a changed target data schema
+    private boolean graphDataSchemaChanged(AdvancedGraphDocument graph) {
+        for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)) {
+            if (!"get_block_data".equals(node.type()) && !"set_block_data".equals(node.type())) continue;
+            TargetAccess target = resolveGraphTarget(node);
+            if (target == null) continue;
+            BlockEntity blockEntity = target.level().getBlockEntity(target.pos());
+            if (!BlockEntityDataAdapterRegistry.isDataSchemaReady(blockEntity)) continue;
+            long revision = BlockEntityDataAdapterRegistry.dataSchemaRevision(blockEntity);
+            if (!node.data().contains(GRAPH_DATA_SCHEMA_REVISION_TAG, Tag.TAG_LONG)
+                    || node.data().getLong(GRAPH_DATA_SCHEMA_REVISION_TAG) != revision) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Refresh the data ports
     private void refreshDataPorts(AdvancedGraphDocument graph) {
         for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)) {
@@ -4249,6 +4627,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             TargetAccess target = resolveGraphTarget(node);
             if (target == null) continue;
             BlockEntity blockEntity = target.level().getBlockEntity(target.pos());
+            if ((getData || setData) && !BlockEntityDataAdapterRegistry.isDataSchemaReady(blockEntity)) {
+                continue;
+            }
             String aeroworksSection = getData || setData
                     ? configureAeroworksGraphSection(node, blockEntity)
                     : null;
@@ -4256,7 +4637,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                     ? graphDataPorts(target.level(), target.pos(), writable, aeroworksSection)
                     : graphDirectAxisPorts(blockEntity, writable);
             if (getData || setData) {
-                ports = configureDataPortGroups(node, ports);
+                ports = configureDataPortGroups(node, ports, blockEntity, writable);
             } else {
                 clearDataPortGroups(node);
             }
@@ -4268,6 +4649,13 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             node.data().put(writable ? "DynamicInputs" : "DynamicOutputs", ports);
             node.data().put(writable ? "InputOptions" : "OutputOptions",
                     graphDataPortOptions(target.level(), target.pos(), writable));
+            if (writable) {
+                restoreInlineMapInputOptions(node);
+            }
+            if (getData || setData) {
+                node.data().putLong(GRAPH_DATA_SCHEMA_REVISION_TAG,
+                        BlockEntityDataAdapterRegistry.dataSchemaRevision(blockEntity));
+            }
             if (!labels.isEmpty()) {
                 node.data().put("OutputLabels", labels);
             }
@@ -4285,8 +4673,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     }
 
     // Keep valid inline MAP breakout ports when a target refresh replaces its derived port schema.
-    private static void restoreInlineMapPorts(AdvancedGraphDocument.Node node, CompoundTag ports,
-                                              boolean output) {
+    public static void restoreInlineMapPorts(AdvancedGraphDocument.Node node, CompoundTag ports,
+                                             boolean output) {
         if (node == null || ports == null) {
             return;
         }
@@ -4322,6 +4710,57 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         } else {
             node.data().put(mappingsKey, retainedMappings);
         }
+    }
+
+    // Restore selectable values for retained inline MAP input ports
+    public static void restoreInlineMapInputOptions(AdvancedGraphDocument.Node node) {
+        if (node == null) return;
+        CompoundTag mappings = node.data().getCompound(AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG);
+        if (mappings.isEmpty()) return;
+        CompoundTag options = node.data().getCompound("InputOptions").copy();
+        for (String inlinePort : mappings.getAllKeys()) {
+            CompoundTag mapping = mappings.getCompound(inlinePort);
+            String source = mapping.getString(AdvancedGraphCatalog.INLINE_MAP_SOURCE_TAG);
+            String key = mapping.getString(AdvancedGraphCatalog.INLINE_MAP_KEY_TAG);
+            if (source.isBlank() || key.isBlank()
+                    || !dataPortGroup(node, source).contains(key)
+                    || !options.contains(key, Tag.TAG_LIST)) {
+                options.remove(inlinePort);
+                continue;
+            }
+            options.put(inlinePort, options.get(key).copy());
+            normalizeInlineMapOptionDefault(node, inlinePort,
+                    dataPortGroup(node, source).getString(key), options.getList(key, Tag.TAG_STRING));
+        }
+        if (options.isEmpty()) node.data().remove("InputOptions");
+        else node.data().put("InputOptions", options);
+    }
+
+    // Repair defaults created before typed MAP fields retained their value type
+    private static void normalizeInlineMapOptionDefault(AdvancedGraphDocument.Node node, String port,
+                                                        String type, ListTag options) {
+        if (!"string".equals(type) || options == null || options.isEmpty()) return;
+        CompoundTag defaults = node.data().getCompound("Defaults");
+        String current = defaults.getCompound(port).getCompound("Payload").getString("Value");
+        for (int index = 0; index < options.size(); index++) {
+            if (options.getString(index).equals(current)) return;
+        }
+        String selected = options.getString(0);
+        for (int index = 0; index < options.size(); index++) {
+            String candidate = options.getString(index);
+            if (!candidate.isBlank() && current.contains(candidate)) {
+                selected = candidate;
+                break;
+            }
+        }
+        CompoundTag payload = new CompoundTag();
+        payload.putString("Value", selected);
+        CompoundTag encoded = new CompoundTag();
+        encoded.putString("Type", "string");
+        encoded.put("Payload", payload);
+        defaults.put(port, encoded);
+        node.data().put("Defaults", defaults);
+        AdvancedGraphPortState.updatePersistentValueTag(node, port, false, encoded);
     }
 
     // Configure the aeroworks graph section
@@ -4695,6 +5134,21 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Add generated MAP ports while retaining the underlying data-port schema
     public static CompoundTag configureDataPortGroups(AdvancedGraphDocument.Node node, CompoundTag ports) {
+        return configureDataPortGroups(node, ports, Map.of());
+    }
+
+    // Add generated MAP ports and provider-defined groups
+    public static CompoundTag configureDataPortGroups(AdvancedGraphDocument.Node node, CompoundTag ports,
+                                                      BlockEntity blockEntity, boolean writable) {
+        Map<String, Map<String, String>> groups = writable
+                ? BlockEntityDataAdapterRegistry.writableDataPortGroups(blockEntity)
+                : BlockEntityDataAdapterRegistry.readableDataPortGroups(blockEntity);
+        return configureDataPortGroups(node, ports, groups);
+    }
+
+    // Add generated MAP ports and the supplied explicit groups
+    public static CompoundTag configureDataPortGroups(AdvancedGraphDocument.Node node, CompoundTag ports,
+                                                      Map<String, Map<String, String>> explicitGroups) {
         CompoundTag resolved = ports == null ? new CompoundTag() : ports.copy();
         if (node == null || (!"get_block_data".equals(node.type())
                 && !"set_block_data".equals(node.type()))) {
@@ -4704,7 +5158,29 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
         Map<String, String> rawPorts = new LinkedHashMap<>();
         resolved.getAllKeys().forEach(port -> rawPorts.put(port, resolved.getString(port)));
-        Map<String, Map<String, String>> groups = BlockEntityDataPortGroups.group(rawPorts);
+        Map<String, Map<String, String>> groups = new LinkedHashMap<>();
+        Set<String> explicitlyGroupedPorts = new HashSet<>();
+        if (explicitGroups != null) {
+            explicitGroups.forEach((group, entries) -> {
+                if (group == null || group.isBlank() || entries == null || entries.isEmpty()) return;
+                Map<String, String> fields = new LinkedHashMap<>();
+                entries.forEach((port, type) -> {
+                    if (rawPorts.containsKey(port) && explicitlyGroupedPorts.add(port)) {
+                        fields.put(port, rawPorts.get(port));
+                    }
+                });
+                if (!fields.isEmpty()) {
+                    groups.put(group, fields);
+                }
+            });
+        }
+        Map<String, Map<String, String>> inferredGroups = BlockEntityDataPortGroups.group(rawPorts);
+        inferredGroups.forEach((group, entries) -> {
+            boolean overlapsExplicitGroup = entries.keySet().stream().anyMatch(explicitlyGroupedPorts::contains);
+            if (!overlapsExplicitGroup) {
+                groups.putIfAbsent(group, entries);
+            }
+        });
         if (groups.isEmpty()) {
             clearDataPortGroups(node);
             return resolved;
@@ -5057,12 +5533,15 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         BlockEntity blockEntity =
                 SimulatedHelper.findLoadedBlockEntityExact(level, discovery.subLevelId(), discovery.blockPos());
+        Level targetLevel = blockEntity != null && blockEntity.getLevel() != null
+                ? blockEntity.getLevel()
+                : SubLevelBlockEntityCollector.resolveTargetLevel(level, discovery.subLevelId());
         boolean targetLoaded = blockEntity != null || SubLevelBlockEntityCollector.isTargetLoaded(
                 level, discovery.subLevelId(), discovery.blockPos());
-        if (!targetLoaded) {
+        if (!targetLoaded || targetLevel == null) {
             return null;
         }
-        if (blockEntity == null && level.getBlockState(discovery.blockPos()).isAir()) {
+        if (blockEntity == null && targetLevel.getBlockState(discovery.blockPos()).isAir()) {
             ControllerDiscoveryNode current = findCurrentTarget(discovery);
             if (current != null && current.blockPos() != null) {
                 node.data().putString("Target", current.nodeId());
@@ -5072,14 +5551,16 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 blockEntity =
                         SimulatedHelper.findLoadedBlockEntityExact(
                                 level, discovery.subLevelId(), discovery.blockPos());
+                targetLevel = blockEntity != null && blockEntity.getLevel() != null
+                        ? blockEntity.getLevel()
+                        : SubLevelBlockEntityCollector.resolveTargetLevel(level, discovery.subLevelId());
                 targetLoaded = blockEntity != null || SubLevelBlockEntityCollector.isTargetLoaded(
                         level, discovery.subLevelId(), discovery.blockPos());
             }
         }
-        if (!targetLoaded) {
+        if (!targetLoaded || targetLevel == null) {
             return null;
         }
-        Level targetLevel = blockEntity != null && blockEntity.getLevel() != null ? blockEntity.getLevel() : level;
         BlockPos targetPos = blockEntity != null ? blockEntity.getBlockPos() : discovery.blockPos();
         TargetAccess target = new TargetAccess(targetLevel, targetPos, configuredDirection(node, "face"));
         return resolveAttachedDataTarget(node, target);
@@ -5202,9 +5683,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 level, candidate.subLevelId(), candidate.blockPos()) != null) {
             return true;
         }
-        return SubLevelBlockEntityCollector.isTargetLoaded(
-                level, candidate.subLevelId(), candidate.blockPos())
-                && !level.getBlockState(candidate.blockPos()).isAir();
+        return loadedGraphTargetBlockExists(candidate);
     }
 
     // Check if the stored graph target exists
@@ -5217,9 +5696,17 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 level, candidate.subLevelId(), candidate.blockPos()) != null) {
             return true;
         }
-        return SubLevelBlockEntityCollector.isTargetLoaded(
-                level, candidate.subLevelId(), candidate.blockPos())
-                && !level.getBlockState(candidate.blockPos()).isAir();
+        return loadedGraphTargetBlockExists(candidate);
+    }
+
+    // Check a block-only target in the level that actually owns it
+    private boolean loadedGraphTargetBlockExists(ControllerDiscoveryNode candidate) {
+        if (!SubLevelBlockEntityCollector.isTargetLoaded(
+                level, candidate.subLevelId(), candidate.blockPos())) {
+            return false;
+        }
+        Level targetLevel = SubLevelBlockEntityCollector.resolveTargetLevel(level, candidate.subLevelId());
+        return targetLevel != null && !targetLevel.getBlockState(candidate.blockPos()).isAir();
     }
 
     // Refresh the current target
@@ -5294,13 +5781,25 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private boolean reconcileGraphTargets(AdvancedGraphDocument graph) {
         boolean changed = false;
         for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)) {
+            CompoundTag workerTargets = node.data().getCompound("WorkerTargets");
+            for (String port : workerTargets.getAllKeys()) {
+                ControllerDiscoveryNode staleWorker = ControllerDiscoveryNode.fromTag(
+                        workerTargets.getCompound(port));
+                ControllerDiscoveryNode currentWorker = refreshCurrentTarget(staleWorker);
+                if (currentWorker == null || currentWorker.equals(staleWorker)) continue;
+                workerTargets.put(port, currentWorker.toTag());
+                putGraphDefault(node.data(), port, "target", currentWorker.nodeId());
+                changed = true;
+            }
+            if (!workerTargets.isEmpty()) node.data().put("WorkerTargets", workerTargets);
             ControllerDiscoveryNode stale = ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
             ControllerDiscoveryNode current = refreshCurrentTarget(stale);
-            if (current == null || current.equals(stale)) continue;
-            node.data().putString("Target", current.nodeId());
-            node.data().putString("TargetLabel", current.label().isBlank() ? current.nodeId() : current.label());
-            node.data().put("TargetData", current.toTag());
-            changed = true;
+            if (current != null && !current.equals(stale)) {
+                node.data().putString("Target", current.nodeId());
+                node.data().putString("TargetLabel", current.label().isBlank() ? current.nodeId() : current.label());
+                node.data().put("TargetData", current.toTag());
+                changed = true;
+            }
         }
         return changed;
     }
@@ -6401,6 +6900,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         tag.putString(SHIP_NAME_TAG, shipName);
         tag.putUUID(SCM_PERSISTENCE_UUID_TAG, scmPersistenceId);
+        tag.put("WorkerRoster", workerRoster.toTag());
         tag.putBoolean(SCM_DISPLAY_PROGRESS_TAG, scmDisplayProgress);
         tag.putString(SHIP_FLIGHT_BEHAVIOR_TAG, shipFlightBehavior.id());
         tag.putString(SHIP_CONTROL_MODE_TAG,
@@ -6566,6 +7066,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 ? tag.getUUID(SHIP_CONTROL_MAP_ID_TAG) : null);
         scmPersistenceId = tag.hasUUID(SCM_PERSISTENCE_UUID_TAG)
                 ? tag.getUUID(SCM_PERSISTENCE_UUID_TAG) : scmPersistenceId;
+        workerRoster.fromTag(tag.getCompound("WorkerRoster"));
         String restoredShipName = tag.getString(SHIP_NAME_TAG).strip();
         shipName = restoredShipName.isBlank() ? "Unnamed Ship" : restoredShipName;
         scmDisplayProgress = tag.getBoolean(SCM_DISPLAY_PROGRESS_TAG);
@@ -6597,9 +7098,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (!clientPacket) {
             shipControlRuntime.writePersistentCouplerState(tag);
         }
-        ListTag logisticsRuns = new ListTag();
-        for (ShipLogisticsRun run : shipLogisticsRuns) logisticsRuns.add(run.toTag());
-        tag.put("ShipLogisticsRuns", logisticsRuns);
+        tag.remove("ShipLogisticsRuns");
         tag.remove("WirelessStockEndpoints");
         if (clientPacket) {
             tag.remove("AdvancedDraftGraph");
@@ -6635,37 +7134,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (!clientPacket) {
             shipControlRuntime.readPersistentCouplerState(tag);
         }
-        shipLogisticsRuns.clear();
-        ListTag logisticsRuns = tag.getList("ShipLogisticsRuns", Tag.TAG_COMPOUND);
-        for (int idx = 0; idx < logisticsRuns.size(); idx++) {
-            ShipLogisticsRun run = ShipLogisticsRun.fromTag(logisticsRuns.getCompound(idx));
-            if (run != null) shipLogisticsRuns.add(run);
-        }
-        if (shipLogisticsRuns.isEmpty()) {
-            ListTag wireless = tag.getList("WirelessStockEndpoints", Tag.TAG_COMPOUND);
-            List<ShipLogisticsRun.Endpoint> stockEndpoints = new ArrayList<>();
-            List<ShipLogisticsRun.Endpoint> fuelEndpoints = new ArrayList<>();
-            for (int idx = 0; idx < wireless.size(); idx++) {
-                CompoundTag row = wireless.getCompound(idx);
-                if (!row.hasUUID("SubLevel") || !row.contains("Pos", Tag.TAG_LONG)) continue;
-                ShipLogisticsRun.Endpoint endpoint = new ShipLogisticsRun.Endpoint(
-                        row.getUUID("SubLevel"), BlockPos.of(row.getLong("Pos")));
-                (row.getBoolean("Fuel") ? fuelEndpoints : stockEndpoints).add(endpoint);
-            }
-            if (!stockEndpoints.isEmpty()) {
-                shipLogisticsRuns.add(ShipLogisticsRun.create(
-                        ShipLogisticsRun.ResourceType.ITEM, "Imported Item Run", stockEndpoints));
-                shipLogisticsRuns.add(ShipLogisticsRun.create(
-                        ShipLogisticsRun.ResourceType.FLUID, "Imported Fluid Run", stockEndpoints));
-                shipLogisticsRuns.add(ShipLogisticsRun.create(
-                        ShipLogisticsRun.ResourceType.ENERGY, "Imported FE Run", stockEndpoints));
-            }
-            if (!fuelEndpoints.isEmpty()) {
-                shipLogisticsRuns.add(ShipLogisticsRun.create(
-                        ShipLogisticsRun.ResourceType.FUEL, "Imported Fuel Run", fuelEndpoints));
-            }
-        }
-        shipStockNetworkCache.invalidate();
         if (clientPacket && !tag.contains("AdvancedDraftGraph", Tag.TAG_COMPOUND)) {
             draftGraph = retainedClientDraft;
         }

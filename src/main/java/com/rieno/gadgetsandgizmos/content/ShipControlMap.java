@@ -27,6 +27,7 @@ public record ShipControlMap(
         List<DockingConnector> dockingConnectors,
         List<CrnDisplay> crnDisplays,
         List<AccDisplay> accDisplays,
+        List<Seat> seats,
         long updatedAt
 ) {
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -52,6 +53,28 @@ public record ShipControlMap(
         accDisplays = accDisplays == null
                 ? List.of()
                 : accDisplays.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        seats = seats == null
+                ? List.of()
+                : seats.stream().filter(java.util.Objects::nonNull).distinct().toList();
+    }
+
+    // Initialize the ship control map
+    public ShipControlMap(
+            UUID id,
+            String dimension,
+            UUID rootSubLevelId,
+            BlockPos controllerPosition,
+            Vec3 centerOfMass,
+            List<PropulsionUnit> units,
+            List<BearingUnit> bearings,
+            List<DockingConnector> dockingConnectors,
+            List<CrnDisplay> crnDisplays,
+            List<AccDisplay> accDisplays,
+            long updatedAt
+    ) {
+        this(id, dimension, rootSubLevelId, controllerPosition, centerOfMass,
+                units, bearings, dockingConnectors, crnDisplays, accDisplays,
+                List.of(), updatedAt);
     }
 
     // Initialize the ship control map
@@ -68,7 +91,7 @@ public record ShipControlMap(
             long updatedAt
     ) {
         this(id, dimension, rootSubLevelId, controllerPosition, centerOfMass,
-                units, bearings, dockingConnectors, crnDisplays, List.of(), updatedAt);
+                units, bearings, dockingConnectors, crnDisplays, List.of(), List.of(), updatedAt);
     }
 
     // Initialize the ship control map
@@ -84,7 +107,7 @@ public record ShipControlMap(
             long updatedAt
     ) {
         this(id, dimension, rootSubLevelId, controllerPosition, centerOfMass,
-                units, bearings, dockingConnectors, List.of(), List.of(), updatedAt);
+                units, bearings, dockingConnectors, List.of(), List.of(), List.of(), updatedAt);
     }
 
     // Initialize the ship control map
@@ -99,7 +122,7 @@ public record ShipControlMap(
             long updatedAt
     ) {
         this(id, dimension, rootSubLevelId, controllerPosition, centerOfMass,
-                units, bearings, List.of(), List.of(), List.of(), updatedAt);
+                units, bearings, List.of(), List.of(), List.of(), List.of(), updatedAt);
     }
 
     // Initialize the ship control map
@@ -113,7 +136,7 @@ public record ShipControlMap(
             long updatedAt
     ) {
         this(id, dimension, rootSubLevelId, controllerPosition, centerOfMass,
-                units, List.of(), List.of(), List.of(), List.of(), updatedAt);
+                units, List.of(), List.of(), List.of(), List.of(), List.of(), updatedAt);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -158,6 +181,14 @@ public record ShipControlMap(
     public record AccDisplay(UUID subLevelId, BlockPos blockPosition) {
         // Initialize the ACC display
         public AccDisplay {
+            blockPosition = blockPosition == null ? BlockPos.ZERO : blockPosition.immutable();
+        }
+    }
+
+    // Store a mapped seat using its ship-local address
+    public record Seat(UUID subLevelId, BlockPos blockPosition) {
+        // Initialize the mapped seat
+        public Seat {
             blockPosition = blockPosition == null ? BlockPos.ZERO : blockPosition.immutable();
         }
     }

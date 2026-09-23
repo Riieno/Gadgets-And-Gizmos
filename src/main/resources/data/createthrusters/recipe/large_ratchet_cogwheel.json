@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    { "item": "create:large_cogwheel" },
+    { "item": "minecraft:iron_nugget" },
+    { "tag": "c:stripped_logs" }
+  ],
+  "result": {
+    "id": "createthrusters:large_ratchet_cogwheel",
+    "count": 1
+  }
+}

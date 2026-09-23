@@ -33,7 +33,7 @@ public final class AdvancedGraphDocument
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    public static final int CURRENT_VERSION = 10;
+    public static final int CURRENT_VERSION = 11;
     public static final int DEFAULT_MAX_NODES = 512;
     private static final Set<String> RETIRED_NODE_TYPES = Set.of("ship_initialize");
 
@@ -467,6 +467,10 @@ public final class AdvancedGraphDocument
             }
         }
         // ------------------------------------PORT NORMALIZATION------------------------------------
+        if(storedVersion < 11){
+            migrateShipSpeedFractions(graph.nodes);
+            for(FunctionGraph function : graph.functions) migrateShipSpeedFractions(function.nodes);
+        }
         ensureAccDisplayDefaults(graph.nodes);
         removeInactiveCrnTextEdges(graph.nodes, graph.edges);
         syncAccDisplayWidgets(graph.nodes, graph.edges);
@@ -861,6 +865,23 @@ public final class AdvancedGraphDocument
                 if ("number".equals(legacy.type()) && Double.isFinite(legacy.asNumber())) {
                     percent = Math.max(0.0D, Math.min(100.0D, legacy.asNumber() * 100.0D));
                 }
+            }
+            defaults.put("speed", Value.number(percent).toTag());
+            node.data().put("Defaults", defaults);
+            node.data().putBoolean(AdvancedGraphCatalog.SHIP_SPEED_PERCENT_TAG, true);
+        }
+    }
+
+    // Read the copied tags
+    private static void migrateShipSpeedFractions(List<Node> nodes){
+        for(Node node : nodes){
+            if(!AdvancedGraphCatalog.isShipSpeedNode(node.type())
+                    || node.data().getBoolean(AdvancedGraphCatalog.SHIP_SPEED_PERCENT_TAG)) continue;
+            CompoundTag defaults = node.data().getCompound("Defaults");
+            double percent = AdvancedGraphCatalog.defaultShipSpeedPercent(node.type());
+            if(defaults.contains("speed", Tag.TAG_COMPOUND)){
+                double val = Value.fromTag(defaults.getCompound("speed")).asNumber();
+                if(Double.isFinite(val)) percent = Math.max(0.0D, Math.min(100.0D, val <= 1.0D ? val * 100.0D : val));
             }
             defaults.put("speed", Value.number(percent).toTag());
             node.data().put("Defaults", defaults);

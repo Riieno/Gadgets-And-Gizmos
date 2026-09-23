@@ -13,13 +13,16 @@ import com.rieno.gadgetsandgizmos.content.PlayerMannequinCrafting;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariant;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariants;
 import com.rieno.gadgetsandgizmos.content.SupporterHeads;
+import com.rieno.gadgetsandgizmos.content.WorkerEnergyBatteryItem;
 import com.rieno.gadgetsandgizmos.neoforge.client.AnalogueContraptionControllerConfigScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.AdvancedContraptionControllerScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.AnalogueJoystickConfigScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.ClawConfigScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.GyroscopeLinkConfigScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.DiagnosticTabletScreen;
+import com.rieno.gadgetsandgizmos.content.IonThrusterStacks;
 import com.rieno.gadgetsandgizmos.registry.CTFeatureToggles;
+import com.rieno.gadgetsandgizmos.registry.CTItems;
 import com.mojang.logging.LogUtils;
 import com.simibubi.create.compat.jei.GhostIngredientHandler;
 import com.simibubi.create.foundation.gui.menu.AbstractSimiContainerScreen;
@@ -39,6 +42,10 @@ import mezz.jei.api.recipe.RecipeIngredientRole;
 import mezz.jei.api.recipe.RecipeType;
 import mezz.jei.api.recipe.category.IRecipeCategory;
 import mezz.jei.api.registration.IGuiHandlerRegistration;
+import mezz.jei.api.registration.IExtraIngredientRegistration;
+import mezz.jei.api.registration.ISubtypeRegistration;
+import mezz.jei.api.ingredients.subtypes.ISubtypeInterpreter;
+import mezz.jei.api.ingredients.subtypes.UidContext;
 import mezz.jei.api.registration.IRecipeRegistration;
 import mezz.jei.api.runtime.IJeiRuntime;
 import net.minecraft.client.Minecraft;
@@ -105,6 +112,36 @@ public class CTJeiPlugin implements IModPlugin {
     @Override
     public ResourceLocation getPluginUid() {
         return ID;
+    }
+
+    // Register the ion thruster as a distinct Thruster subtype
+    @Override
+    public void registerItemSubtypes(ISubtypeRegistration registration) {
+        if (CTItems.THRUSTER != null) {
+            registration.registerSubtypeInterpreter(CTItems.THRUSTER.get(), new ISubtypeInterpreter<>() {
+                @Override
+                public Object getSubtypeData(ItemStack stack, UidContext context) {
+                    return IonThrusterStacks.isIonThruster(stack) ? "ion_thruster" : null;
+                }
+
+                @Override
+                public String getLegacyStringSubtypeInfo(ItemStack stack, UidContext context) {
+                    return IonThrusterStacks.isIonThruster(stack) ? "ion_thruster" : "";
+                }
+            });
+        }
+    }
+
+    // Add the pre-equipped ion thruster stack to JEI's item list
+    @Override
+    public void registerExtraIngredients(IExtraIngredientRegistration registration) {
+        if (!CTFeatureToggles.isItemEnabled("thruster")) {
+            return;
+        }
+        ItemStack ionThruster = IonThrusterStacks.create();
+        if (!ionThruster.isEmpty()) {
+            registration.addExtraItemStacks(List.of(ionThruster));
+        }
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -323,7 +360,8 @@ public class CTJeiPlugin implements IModPlugin {
     private static void refreshItemIngredients(IJeiRuntime runtime) {
         List<ResourceLocation> restored = new ArrayList<>();
         for (Map.Entry<ResourceLocation, List<ItemStack>> entry : REMOVED_ITEM_STACKS.entrySet()) {
-            if (CTFeatureToggles.isItemEnabled(entry.getKey().getPath())) {
+            if (!isInternalWorkerItem(entry.getKey())
+                    && CTFeatureToggles.isItemEnabled(entry.getKey().getPath())) {
                 runtime.getIngredientManager().addIngredientsAtRuntime(VanillaTypes.ITEM_STACK, entry.getValue());
                 restored.add(entry.getKey());
             }
@@ -331,7 +369,8 @@ public class CTJeiPlugin implements IModPlugin {
         restored.forEach(REMOVED_ITEM_STACKS::remove);
 
         for (Map.Entry<ResourceLocation, List<ItemStack>> entry : KNOWN_ITEM_STACKS.entrySet()) {
-            if (CTFeatureToggles.isItemEnabled(entry.getKey().getPath())
+            if ((!isInternalWorkerItem(entry.getKey())
+                    && CTFeatureToggles.isItemEnabled(entry.getKey().getPath()))
                     || REMOVED_ITEM_STACKS.containsKey(entry.getKey())) {
                 continue;
             }
@@ -405,6 +444,7 @@ public class CTJeiPlugin implements IModPlugin {
 
     // Check if this is a disabled mod item
     private static boolean isDisabledModItem(ItemStack stack) {
+        if (WorkerEnergyBatteryItem.isInternal(stack)) return true;
         if (SupporterHeads.isSupporterHead(stack)) {
             return !CTFeatureToggles.isItemEnabled("player_mannequin");
         }
@@ -415,6 +455,12 @@ public class CTJeiPlugin implements IModPlugin {
     // Check if this is a mod item
     private static boolean isModItem(ResourceLocation id) {
         return id != null && CreateThrusters.MOD_ID.equals(id.getNamespace());
+    }
+
+    // Check whether an id belongs to a render-only worker item
+    private static boolean isInternalWorkerItem(ResourceLocation id) {
+        return id != null && CreateThrusters.MOD_ID.equals(id.getNamespace())
+                && "worker_energy_battery".equals(id.getPath());
     }
 
     // Get the mannequin crafting recipes

@@ -123,6 +123,9 @@ public final class CTSableTrackingCommands {
                         .then(Commands.literal("off")
                                 .executes(ctx -> setScmAiBrainDebug(
                                         ctx.getSource(), false))))
+                .then(Commands.literal("debug_dump")
+                        .requires(src -> src.hasPermission(OP_PERMISSION_LEVEL))
+                        .executes(ctx -> startScmDebugDump(ctx.getSource())))
                 .then(Commands.literal("remove_disabled_items")
                         .requires(src -> src.hasPermission(OP_PERMISSION_LEVEL))
                         .then(Commands.literal("range")
@@ -195,6 +198,21 @@ public final class CTSableTrackingCommands {
         PathfinderDebugRenderService.setBrainEnabled(player, enabled);
         src.sendSuccess(() -> Component.literal("SCM AI brain debug "
                 + (enabled ? "enabled." : "disabled.")), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    // Start a bounded file trace for the SCM vehicle occupied by this operator.
+    private static int startScmDebugDump(CommandSourceStack src)
+            throws CommandSyntaxException {
+        ScmDebugDumpService.StartResult result = ScmDebugDumpService.start(
+                src.getPlayerOrException());
+        if (!result.started()) {
+            src.sendFailure(Component.literal(result.message()));
+            return 0;
+        }
+        src.sendSuccess(() -> Component.literal("Started a five-minute SCM debug dump for "
+                + result.vehicleName() + " (" + result.vehicleId() + ") at "
+                + result.file()), false);
         return Command.SINGLE_SUCCESS;
     }
 

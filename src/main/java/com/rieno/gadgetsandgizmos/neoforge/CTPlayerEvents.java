@@ -27,6 +27,7 @@ import com.rieno.gadgetsandgizmos.content.PhysicsGantryCarriageBlockEntity;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryShaftBlock;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryShaftBlockEntity;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinEntity;
+import com.rieno.gadgetsandgizmos.content.WorkerInventoryMenu;
 import com.rieno.gadgetsandgizmos.content.PortableContraptionControllerRuntime;
 import com.rieno.gadgetsandgizmos.content.RopeWinchUnstickWindow;
 import com.rieno.gadgetsandgizmos.content.ThrusterBlock;
@@ -38,6 +39,7 @@ import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryKind;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryService;
 import com.rieno.gadgetsandgizmos.lib.discovery.INamedBlockEntity;
+import com.rieno.gadgetsandgizmos.lib.item.MiningSpeedSafety;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletInteractionMode;
 import com.rieno.gadgetsandgizmos.neoforge.network.ArmorStandPoseOpenPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ContraptionNetworkLinkerSnapshotPayload;
@@ -128,9 +130,17 @@ public final class CTPlayerEvents {
     public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer serverPlayer) {
             PortableContraptionControllerRuntime.stopAll(serverPlayer);
+            ShippingRouteOverlayService.forget(serverPlayer.getUUID());
         }
         ContraptionNetworkLinkerSnapshotPayload.clearServerState(event.getEntity().getUUID());
         ARMOR_STAND_POSE_GUI_PREFERENCES.remove(event.getEntity().getUUID());
+    }
+
+    // Recover invalid mining speeds produced by modded or over-levelled pickaxe attributes
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void onBreakSpeed(PlayerEvent.BreakSpeed event) {
+        event.setNewSpeed(MiningSpeedSafety.recoverInvalidPickaxeSpeed(
+                event.getEntity(), event.getState(), event.getNewSpeed()));
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -345,10 +355,19 @@ public final class CTPlayerEvents {
         }
         if (event.getLevel().isClientSide()
                 || !(event.getEntity() instanceof ServerPlayer serverPlayer)
-                || !isArmorStandPoseGuiEnabled(serverPlayer)
-                || !canUseArmorStandPoseGui(armorStand)) {
+                ) {
             return;
         }
+
+        if (armorStand instanceof PlayerMannequinEntity mannequin
+                && mannequin.assignedWorkerPod().isPresent()) {
+            WorkerInventoryMenu.open(serverPlayer, mannequin);
+            event.setCancellationResult(InteractionResult.SUCCESS);
+            event.setCanceled(true);
+            return;
+        }
+
+        if (!isArmorStandPoseGuiEnabled(serverPlayer) || !canUseArmorStandPoseGui(armorStand)) return;
 
         if (prefersStrawStatuesPoseGui(serverPlayer)
                 && StrawStatuesPoseGuiCompat.tryOpen(serverPlayer, armorStand)) {

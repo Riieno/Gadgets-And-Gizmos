@@ -13,6 +13,7 @@ import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
 import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import com.rieno.gadgetsandgizmos.content.ThrusterBearingBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity;
+import com.rieno.gadgetsandgizmos.content.RcsThrusterBlockEntity;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.lua.LuaFunction;
 import net.minecraft.core.Direction;
@@ -64,6 +65,49 @@ public class ThrusterBearingPeripheral extends GadgetsPeripheral<ThrusterBearing
     // Get the thrusters
     private Map<String, ThrusterBlockEntity> getThrusters() {
         return blockEntity.getAttachedThrustersById();
+    }
+
+    // Get the RCS thrusters
+    private Map<String, RcsThrusterBlockEntity> getRcsThrusters() {
+        return blockEntity.getAttachedRcsThrustersById();
+    }
+
+    // Resolve one RCS thruster by id or alias
+    private RcsThrusterBlockEntity resolveRcsThruster(String idOrAlias) throws LuaException {
+        Map<String, RcsThrusterBlockEntity> thrusters = getRcsThrusters();
+        RcsThrusterBlockEntity direct = thrusters.get(idOrAlias);
+        if (direct != null) return direct;
+        String normalized = idOrAlias == null ? "" : idOrAlias.trim();
+        for (RcsThrusterBlockEntity thruster : thrusters.values()) {
+            if (normalized.equals(blockEntity.getRcsThrusterAlias(thruster))) return thruster;
+        }
+        throw new LuaException("unknown RCS thruster id or alias '" + idOrAlias + "'");
+    }
+
+    // Parse an RCS nozzle name
+    private static Direction parseRcsNozzle(String nozzle) throws LuaException {
+        String normalized = nozzle == null ? "" : nozzle.trim().toLowerCase(java.util.Locale.ROOT);
+        Direction direction = RcsThrusterBlockEntity.nozzleFromChannel(normalized);
+        if (direction == null || !normalized.equals(direction.getSerializedName())) {
+            throw new LuaException("nozzle must be 'north', 'east', 'south' or 'west'");
+        }
+        return direction;
+    }
+
+    // Build one RCS thruster status table
+    private Map<String, Object> buildRcsThrusterStatus(String id, RcsThrusterBlockEntity thruster) {
+        Map<String, Object> status = new LinkedHashMap<>();
+        status.put("id", id);
+        status.put("alias", blockEntity.getRcsThrusterAlias(thruster));
+        status.put("rpm", thruster.getSpeed());
+        status.put("maxThrust", thruster.getMaxNozzleThrust());
+        for (Direction nozzle : Direction.Plane.HORIZONTAL) {
+            status.put(nozzle.getSerializedName(), Map.of(
+                    "throttle", thruster.getThrottle(nozzle),
+                    "thrust", thruster.getNozzleThrust(nozzle),
+                    "active", thruster.isNozzleActive(nozzle)));
+        }
+        return status;
     }
 
     // Find the thruster id by alias
@@ -328,6 +372,81 @@ public class ThrusterBearingPeripheral extends GadgetsPeripheral<ThrusterBearing
         return thrusters;
     }
 
+    // Get the list of RCS thrusters
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "listRcsThrusters", signature = "listRcsThrusters(): table",
+            description = "Returns the RCS thrusters attached to the bearing head.")
+    public final Map<String, Object> listRcsThrusters() {
+        Map<String, Object> thrusters = new LinkedHashMap<>();
+        for (Map.Entry<String, RcsThrusterBlockEntity> entry : getRcsThrusters().entrySet()) {
+            RcsThrusterBlockEntity thruster = entry.getValue();
+            Map<String, Object> pos = ComputerCraftPositionHelper.blockPosition(thruster);
+            Map<String, Object> data = buildRcsThrusterStatus(entry.getKey(), thruster);
+            data.put("pos", List.of(pos.get("x"), pos.get("y"), pos.get("z")));
+            data.put("position", pos);
+            data.put("localPos", List.of(thruster.getBlockPos().getX(),
+                    thruster.getBlockPos().getY(), thruster.getBlockPos().getZ()));
+            thrusters.put(entry.getKey(), data);
+        }
+        return thrusters;
+    }
+
+    // Get the RCS thruster count
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getRcsThrusterCount", signature = "getRcsThrusterCount(): number",
+            description = "Returns the attached RCS thruster count.")
+    public final int getRcsThrusterCount() {
+        return getRcsThrusters().size();
+    }
+
+    // Set one RCS nozzle throttle
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setRcsThrottle", signature = "setRcsThrottle(id|'all', nozzle, throttle: number 0..1 or 0..100)",
+            description = "Sets one nozzle throttle on an attached RCS thruster.")
+    public final void setRcsThrottle(String id, String nozzle, double throttle) throws LuaException {
+        Direction direction = parseRcsNozzle(nozzle);
+        float normalized = normalizeThrottle(throttle);
+        if (id == null || id.isBlank() || "all".equalsIgnoreCase(id.trim())) {
+            for (RcsThrusterBlockEntity thruster : getRcsThrusters().values()) {
+                thruster.setComputerThrottle(direction, normalized);
+            }
+            return;
+        }
+        resolveRcsThruster(id).setComputerThrottle(direction, normalized);
+    }
+
+    // Get one RCS nozzle throttle
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getRcsThrottle", signature = "getRcsThrottle(id, nozzle): number",
+            description = "Returns one nozzle throttle from an attached RCS thruster.")
+    public final double getRcsThrottle(String id, String nozzle) throws LuaException {
+        return resolveRcsThruster(id).getThrottle(parseRcsNozzle(nozzle));
+    }
+
+    // Clear one RCS nozzle throttle
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "clearRcsThrottle", signature = "clearRcsThrottle(id|'all', nozzle)",
+            description = "Clears one nozzle throttle on an attached RCS thruster.")
+    public final void clearRcsThrottle(String id, String nozzle) throws LuaException {
+        Direction direction = parseRcsNozzle(nozzle);
+        if (id == null || id.isBlank() || "all".equalsIgnoreCase(id.trim())) {
+            for (RcsThrusterBlockEntity thruster : getRcsThrusters().values()) {
+                thruster.clearComputerThrottle(direction);
+            }
+            return;
+        }
+        resolveRcsThruster(id).clearComputerThrottle(direction);
+    }
+
+    // Get one RCS thruster status
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getRcsThrusterStatus", signature = "getRcsThrusterStatus(id): table",
+            description = "Returns the status of one attached RCS thruster.")
+    public final Map<String, Object> getRcsThrusterStatus(String id) throws LuaException {
+        RcsThrusterBlockEntity thruster = resolveRcsThruster(id);
+        return buildRcsThrusterStatus(id, thruster);
+    }
+
     // Get the thruster count
     @LuaFunction(mainThread = true)
     @PeripheralDoc(name = "getThrusterCount", signature = "getThrusterCount(): number",
@@ -369,9 +488,11 @@ public class ThrusterBearingPeripheral extends GadgetsPeripheral<ThrusterBearing
         return Map.of(
                 "bearingType", getType(),
                 "thrusterCount", thrusters.size(),
+                "rcsThrusterCount", getRcsThrusters().size(),
                 "ownedThrusters", List.copyOf(thrusters.keySet()),
                 "aliases", aliases,
-                "thrusters", listThrusters()
+                "thrusters", listThrusters(),
+                "rcsThrusters", listRcsThrusters()
         );
     }
 
@@ -685,6 +806,8 @@ public class ThrusterBearingPeripheral extends GadgetsPeripheral<ThrusterBearing
         status.put("totalLiftCapacity", blockEntity.getAssemblyLiftCapacity());
         status.put("thrusterCount", blockEntity.getAttachedThrustersById().size());
         status.put("thrusters", listThrusters());
+        status.put("rcsThrusterCount", blockEntity.getAttachedRcsThrustersById().size());
+        status.put("rcsThrusters", listRcsThrusters());
         return status;
     }
 

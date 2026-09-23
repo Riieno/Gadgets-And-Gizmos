@@ -15,9 +15,13 @@ import com.rieno.gadgetsandgizmos.content.ThrusterBearingBlockEntity.ControlMode
 import com.rieno.gadgetsandgizmos.neoforge.network.ThrusterBearingRangePayload;
 import net.createmod.catnip.gui.AbstractSimiScreen;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.neoforged.neoforge.network.PacketDistributor;
+import org.lwjgl.glfw.GLFW;
+
+import java.util.Locale;
 
 // Edit the bearing's pitch, yaw and control ranges with paired angle sliders
 public class ThrusterBearingRangeScreen extends AbstractSimiScreen {
@@ -37,6 +41,8 @@ public class ThrusterBearingRangeScreen extends AbstractSimiScreen {
     private static final int RANGE_OPTION_WIDTH = 72;
     private static final int SWIVEL_OPTION_WIDTH = 102;
     private static final int ANGLE_OPTION_GAP = 8;
+    private static final int ANGLE_LABEL_WIDTH = 150;
+    private static final int ANGLE_LABEL_HEIGHT = 24;
 
     private static final int ALT_TRACK_W   = 42;
     private static final int ALT_TRACK_SH  = 200;
@@ -106,6 +112,10 @@ public class ThrusterBearingRangeScreen extends AbstractSimiScreen {
     private double dragStartMinAngleDeg;
     // Drag start max angle in degrees
     private double dragStartMaxAngleDeg;
+    // Current inline angle editor
+    private EditBox angleEditor;
+    // Tracks whether the inline editor is editing the minimum
+    private boolean editingMinAngle;
 
     // Scalable GUI
     private final CTScalableGui scalableGui = new CTScalableGui();
@@ -228,14 +238,21 @@ public class ThrusterBearingRangeScreen extends AbstractSimiScreen {
 
         int textX = guiLeft + 100;
         if (rangeMode) {
-            guiGraphics.drawString(font,
-                Component.translatable("createthrusters.thruster_bearing.min_angle"),
-                textX, guiTop + 34, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
-            guiGraphics.drawString(font, formatAngle(minAngleDeg), textX, guiTop + 46, CTCreateScreenHelper.VALUE_COLOR, false);
-            guiGraphics.drawString(font,
-                Component.translatable("createthrusters.thruster_bearing.max_angle"),
-                textX, guiTop + 60, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
-            guiGraphics.drawString(font, formatAngle(maxAngleDeg), textX, guiTop + 72, CTCreateScreenHelper.VALUE_COLOR, false);
+            if (angleEditor == null || !editingMinAngle) {
+                guiGraphics.drawString(font,
+                    Component.translatable("createthrusters.thruster_bearing.min_angle"),
+                    textX, guiTop + 34, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
+                guiGraphics.drawString(font, formatAngle(minAngleDeg), textX, guiTop + 46, CTCreateScreenHelper.VALUE_COLOR, false);
+            }
+            if (angleEditor == null || editingMinAngle) {
+                guiGraphics.drawString(font,
+                    Component.translatable("createthrusters.thruster_bearing.max_angle"),
+                    textX, guiTop + 60, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
+                guiGraphics.drawString(font, formatAngle(maxAngleDeg), textX, guiTop + 72, CTCreateScreenHelper.VALUE_COLOR, false);
+            }
+            if (angleEditor != null) {
+                angleEditor.render(guiGraphics, mouseX, mouseY, partialTicks);
+            }
         }
 
         CTCreateScreenHelper.renderSeparator(guiGraphics, textX, guiTop + 86, windowWidth - (textX - guiLeft) - 14);
@@ -288,6 +305,24 @@ public class ThrusterBearingRangeScreen extends AbstractSimiScreen {
             return super.mouseClicked(screenMouseX, screenMouseY, btn);
         }
 
+        if (angleEditor != null) {
+            if (angleEditor.mouseClicked(mouseX, mouseY, btn)) {
+                return true;
+            }
+            commitAngleEditor();
+        }
+        if (angleMode == AngleMode.RANGE
+                && inside(mouseX, mouseY, guiLeft + 100, guiTop + 32,
+                ANGLE_LABEL_WIDTH, ANGLE_LABEL_HEIGHT)) {
+            openAngleEditor(true);
+            return true;
+        }
+        if (angleMode == AngleMode.RANGE
+                && inside(mouseX, mouseY, guiLeft + 100, guiTop + 58,
+                ANGLE_LABEL_WIDTH, ANGLE_LABEL_HEIGHT)) {
+            openAngleEditor(false);
+            return true;
+        }
         if (angleMode == AngleMode.RANGE && isOverLeftSlider(mouseX, mouseY)) {
             dragMin = true;
             beginAngleDrag(mouseY);
@@ -324,6 +359,31 @@ public class ThrusterBearingRangeScreen extends AbstractSimiScreen {
         return super.mouseClicked(screenMouseX, screenMouseY, btn);
     }
 
+    // Handle keys while editing an angle
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (angleEditor != null) {
+            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                commitAngleEditor();
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                angleEditor = null;
+                return true;
+            }
+            return angleEditor.keyPressed(keyCode, scanCode, modifiers);
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    // Handle typed characters while editing an angle
+    @Override
+    public boolean charTyped(char codePoint, int modifiers) {
+        return angleEditor != null
+                ? angleEditor.charTyped(codePoint, modifiers)
+                : super.charTyped(codePoint, modifiers);
+    }
+
     // Handle mouse dragged
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int btn, double dragX, double dragY) {
@@ -354,8 +414,47 @@ public class ThrusterBearingRangeScreen extends AbstractSimiScreen {
     // Handle screen removal
     @Override
     public void removed() {
+        commitAngleEditor();
         sendRangeUpdate();
         super.removed();
+    }
+
+    // Open one inline angle editor
+    private void openAngleEditor(boolean minimum) {
+        editingMinAngle = minimum;
+        int y = guiTop + (minimum ? 34 : 60);
+        angleEditor = new EditBox(font, guiLeft + 100, y, ANGLE_LABEL_WIDTH, 20,
+                Component.translatable(minimum
+                        ? "createthrusters.thruster_bearing.min_angle"
+                        : "createthrusters.thruster_bearing.max_angle"));
+        angleEditor.setMaxLength(16);
+        angleEditor.setFilter(ThrusterBearingRangeScreen::isPartialAngle);
+        angleEditor.setValue(String.format(Locale.ROOT, "%.1f", minimum ? minAngleDeg : maxAngleDeg));
+        angleEditor.setCursorPosition(angleEditor.getValue().length());
+        angleEditor.setHighlightPos(0);
+        angleEditor.setFocused(true);
+    }
+
+    // Commit the current inline angle editor
+    private void commitAngleEditor() {
+        if (angleEditor == null) return;
+        try {
+            double value = Mth.clamp(Double.parseDouble(angleEditor.getValue()), -limit, limit);
+            if (editingMinAngle) {
+                minAngleDeg = Math.min(value, maxAngleDeg);
+            } else {
+                maxAngleDeg = Math.max(value, minAngleDeg);
+            }
+            dirty = true;
+        } catch (NumberFormatException ignored) {
+        }
+        angleEditor = null;
+        sendRangeUpdate();
+    }
+
+    // Check whether text is a valid partial angle
+    private static boolean isPartialAngle(String value) {
+        return value != null && value.matches("-?(?:\\d+(?:\\.\\d*)?|\\.\\d*)?");
     }
 
     // Update the dragged value

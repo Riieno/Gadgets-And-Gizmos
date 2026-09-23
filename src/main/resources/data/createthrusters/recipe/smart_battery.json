@@ -1,0 +1,11 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [" R ", "CVC", " R "],
+  "key": {
+    "C": { "item": "create:copper_sheet" },
+    "R": { "item": "minecraft:redstone_block" },
+    "V": { "item": "create:item_vault" }
+  },
+  "result": { "id": "createthrusters:smart_battery", "count": 1 }
+}

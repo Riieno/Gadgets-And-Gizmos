@@ -23,7 +23,6 @@ public final class TransientThrusterControlSync {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     private static final String SHIP_CHANNEL_TAG = "ShipControlClientChannel";
-    private static final String SHIP_MINIMUM_TAG = "ShipControlClientMinimum";
     private static final String SHIP_MAXIMUM_TAG = "ShipControlClientMaximum";
     private static final String SHIP_THROTTLE_TAG = "ShipControlClientThrottle";
     private static final String DIRECT_ACTIVE_TAG = "CreateThrustersDirectThrottleActive";
@@ -49,32 +48,30 @@ public final class TransientThrusterControlSync {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Write the ship envelope
-    public static void writeShipEnvelope(
+    // Write the live ship throttle command
+    public static void writeShipThrottle(
             CompoundTag tag,
             boolean clientPacket,
-            @Nullable ShipEnvelope envelope
+            @Nullable ShipThrottle throttle
     ) {
-        if (!clientPacket || envelope == null) {
+        if (!clientPacket || throttle == null) {
             return;
         }
-        tag.putString(SHIP_CHANNEL_TAG, envelope.channelId());
-        tag.putFloat(SHIP_MINIMUM_TAG, envelope.minimum());
-        tag.putFloat(SHIP_MAXIMUM_TAG, envelope.maximum());
-        tag.putFloat(SHIP_THROTTLE_TAG, envelope.throttle());
+        tag.putString(SHIP_CHANNEL_TAG, throttle.channelId());
+        tag.putFloat(SHIP_MAXIMUM_TAG, throttle.maximum());
+        tag.putFloat(SHIP_THROTTLE_TAG, throttle.throttle());
     }
 
-    // Read the ship envelope
-    public static @Nullable ShipEnvelope readShipEnvelope(
+    // Read the live ship throttle command
+    public static @Nullable ShipThrottle readShipThrottle(
             CompoundTag tag,
             boolean clientPacket
     ) {
         if (!clientPacket || !tag.contains(SHIP_THROTTLE_TAG)) {
             return null;
         }
-        return new ShipEnvelope(
+        return new ShipThrottle(
                 tag.getString(SHIP_CHANNEL_TAG),
-                tag.getFloat(SHIP_MINIMUM_TAG),
                 tag.getFloat(SHIP_MAXIMUM_TAG),
                 tag.getFloat(SHIP_THROTTLE_TAG));
     }
@@ -104,18 +101,16 @@ public final class TransientThrusterControlSync {
         return new DirectThrottle(true, tag.getFloat(DIRECT_THROTTLE_TAG));
     }
 
-    // Store the ship envelope
-    public record ShipEnvelope(
+    // Store the live ship throttle command
+    public record ShipThrottle(
             String channelId,
-            float minimum,
             float maximum,
             float throttle
     ) {
-        // Initialize the ship envelope
-        public ShipEnvelope {
+        // Initialize the live ship throttle command
+        public ShipThrottle {
             channelId = channelId == null ? "" : channelId;
-            minimum = Mth.clamp(minimum, 0.0F, 1.0F);
-            maximum = Mth.clamp(Math.max(minimum, maximum), 0.0F, 1.0F);
+            maximum = Mth.clamp(maximum, 0.0F, 1.0F);
             throttle = Mth.clamp(throttle, 0.0F, 1.0F);
         }
     }

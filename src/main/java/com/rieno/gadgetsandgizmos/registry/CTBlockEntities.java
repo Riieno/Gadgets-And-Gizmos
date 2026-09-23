@@ -33,13 +33,18 @@ import com.rieno.gadgetsandgizmos.content.LauncherEndpointBlockEntity;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryCarriageBlockEntity;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryBeltWheelBlockEntity;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryShaftBlockEntity;
+import com.rieno.gadgetsandgizmos.content.PhysicsStaffAnchorBlockEntity;
 import com.rieno.gadgetsandgizmos.content.PoweredZiplineBlockEntity;
 import com.rieno.gadgetsandgizmos.content.RopeKnotBlockEntity;
 import com.rieno.gadgetsandgizmos.content.RcsThrusterBlockEntity;
+import com.rieno.gadgetsandgizmos.content.RatchetCogwheelBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ScissorPistonArmBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ScissorPistonBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ScissorPistonLinkBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ShippingManifestBlockEntity;
+import com.rieno.gadgetsandgizmos.content.SmartBatteryBlockEntity;
+import com.rieno.gadgetsandgizmos.content.SmartTankBlockEntity;
+import com.rieno.gadgetsandgizmos.content.SmartVaultBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ShipCouplerBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ShipDockBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ThrusterBearingBlockEntity;
@@ -50,6 +55,7 @@ import com.rieno.gadgetsandgizmos.content.VectorBearingBlockEntity;
 import com.rieno.gadgetsandgizmos.content.VectorBearingLinkBlockEntity;
 import com.rieno.gadgetsandgizmos.content.VirtualOrientationSourceBlockEntity;
 import com.rieno.gadgetsandgizmos.content.UniversalDisplayAdapterBlockEntity;
+import com.rieno.gadgetsandgizmos.content.WorkerPodBlockEntity;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.neoforged.neoforge.registries.DeferredHolder;
@@ -152,6 +158,11 @@ public final class CTBlockEntities {
             () -> BlockEntityType.Builder.of(BiDirectionalGearshiftBlockEntity::new, CTBlocks.BI_DIRECTIONAL_GEARSHIFT.get()).build(null));
 
     @Nullable
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<RatchetCogwheelBlockEntity>> RATCHET_COGWHEEL = register("ratchet_cogwheel",
+            () -> BlockEntityType.Builder.of(RatchetCogwheelBlockEntity::new,
+                    CTBlocks.RATCHET_COGWHEEL.get(), CTBlocks.LARGE_RATCHET_COGWHEEL.get()).build(null));
+
+    @Nullable
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<AnalogueJoystickBlockEntity>> ANALOGUE_JOYSTICK = register("analogue_joystick",
             () -> BlockEntityType.Builder.of(AnalogueJoystickBlockEntity::new, CTBlocks.ANALOGUE_JOYSTICK.get()).build(null));
 
@@ -188,6 +199,26 @@ public final class CTBlockEntities {
     @Nullable
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ShippingManifestBlockEntity>> SHIPPING_MANIFEST = register("shipping_manifest",
             () -> BlockEntityType.Builder.of(ShippingManifestBlockEntity::new, CTBlocks.SHIPPING_MANIFEST.get()).build(null));
+
+    @Nullable
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<SmartVaultBlockEntity>> SMART_VAULT =
+            register("smart_vault", () -> BlockEntityType.Builder.of(
+                    SmartVaultBlockEntity::new, CTBlocks.SMART_VAULT.get()).build(null));
+
+    @Nullable
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<SmartBatteryBlockEntity>> SMART_BATTERY =
+            register("smart_battery", () -> BlockEntityType.Builder.of(
+                    SmartBatteryBlockEntity::new, CTBlocks.SMART_BATTERY.get()).build(null));
+
+    @Nullable
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<SmartTankBlockEntity>> SMART_TANK =
+            register("smart_tank", () -> BlockEntityType.Builder.of(
+                    SmartTankBlockEntity::new, CTBlocks.SMART_TANK.get()).build(null));
+
+    @Nullable
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<WorkerPodBlockEntity>> WORKER_POD =
+            register("worker_pod", () -> BlockEntityType.Builder.of(
+                    WorkerPodBlockEntity::new, CTBlocks.WORKER_POD.get()).build(null));
 
     @Nullable
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ShipDockBlockEntity>> SHIP_DOCK = register("ship_dock",
@@ -245,6 +276,10 @@ public final class CTBlockEntities {
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<PhysicsGantryBeltWheelBlockEntity>> PHYSICS_GANTRY_BELT_WHEEL = register("physics_gantry_belt_wheel",
             () -> BlockEntityType.Builder.of(PhysicsGantryBeltWheelBlockEntity::new, CTBlocks.PHYSICS_GANTRY_BELT_WHEEL.get()).build(null));
 
+    @Nullable
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<PhysicsStaffAnchorBlockEntity>> PHYSICS_STAFF_ANCHOR = register("physics_staff_anchor",
+            () -> BlockEntityType.Builder.of(PhysicsStaffAnchorBlockEntity::new, CTBlocks.PHYSICS_STAFF_ANCHOR.get()).build(null));
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -257,14 +292,6 @@ public final class CTBlockEntities {
     @Nullable
     private static <T extends net.minecraft.world.level.block.entity.BlockEntity> DeferredHolder<BlockEntityType<?>, BlockEntityType<T>> register(
             String id, Supplier<BlockEntityType<T>> supplier, String... additionalBlockIds) {
-        if (!CTFeatureToggles.shouldRegisterBlock(id)) {
-            return null;
-        }
-        for (String additionalBlockId : additionalBlockIds) {
-            if (!CTFeatureToggles.shouldRegisterBlock(additionalBlockId)) {
-                return null;
-            }
-        }
         return REGISTRAR.register(id, supplier);
     }
 

@@ -173,15 +173,10 @@ public class DiagnosticTabletItem extends BlockItem {
                 boolean continueLandingZone = DiagnosticTabletData.appId("scm").equals(current.app())
                         && "landing_zone".equals(current.pendingAction())
                         && appData.contains("LandingDraftStart");
-                boolean continueStockNetwork = DiagnosticTabletData.appId("scm").equals(current.app())
-                        && ("configure_network".equals(current.pendingAction())
-                        || "configure_fuel".equals(current.pendingAction())
-                        || "configure_run".equals(current.pendingAction()));
-                boolean continueReader = continueLandingZone || continueStockNetwork;
+                boolean continueReader = continueLandingZone;
                 DiagnosticTabletData.write(ctx.getItemInHand(), current.withMode(
                         continueReader ? TabletInteractionMode.READER : TabletInteractionMode.STANDARD,
-                        continueLandingZone ? "landing_zone"
-                                : continueStockNetwork ? current.pendingAction() : ""));
+                        continueLandingZone ? "landing_zone" : ""));
             }
             return InteractionResult.SUCCESS;
         }

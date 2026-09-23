@@ -133,7 +133,8 @@ public final class PathfinderDebugRenderService {
             boolean routesEnabled = ROUTE_SUBSCRIBERS.contains(subscriber);
             boolean brainsEnabled = BRAIN_SUBSCRIBERS.contains(subscriber);
             List<SablePathfinder.DebugRoute> routes = routesEnabled
-                    ? ShipControlModuleRuntime.pathfinderDebugRoutes(player.serverLevel())
+                    ? ShipControlModuleRuntime.pathfinderDebugRoutes(player.serverLevel(),
+                    ShippingRouteOverlayService.visibleRouteOwners(player.getUUID()))
                     : List.of();
             List<RouteStamp> routeStamps = routeStamps(routes);
             List<AutopilotDebugSnapshot> brains = brainsEnabled
@@ -176,7 +177,8 @@ public final class PathfinderDebugRenderService {
         boolean routesEnabled = ROUTE_SUBSCRIBERS.contains(playerId);
         boolean brainsEnabled = BRAIN_SUBSCRIBERS.contains(playerId);
         List<SablePathfinder.DebugRoute> routes = routesEnabled
-                ? ShipControlModuleRuntime.pathfinderDebugRoutes(player.serverLevel())
+                ? ShipControlModuleRuntime.pathfinderDebugRoutes(player.serverLevel(),
+                ShippingRouteOverlayService.visibleRouteOwners(playerId))
                 : List.of();
         List<AutopilotDebugSnapshot> brains = brainsEnabled
                 ? ShipControlModuleRuntime.autopilotDebugSnapshots(player.serverLevel())

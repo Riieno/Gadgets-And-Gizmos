@@ -13,7 +13,6 @@ import com.mojang.math.Axis;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinEntity;
 import net.minecraft.client.model.HumanoidArmorModel;
 import net.minecraft.client.model.geom.ModelLayers;
-import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.entity.EntityRendererProvider;
 import net.minecraft.client.renderer.entity.LivingEntityRenderer;
 import net.minecraft.client.renderer.entity.layers.CustomHeadLayer;
@@ -23,7 +22,6 @@ import net.minecraft.client.renderer.entity.layers.ItemInHandLayer;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 
-import javax.annotation.Nullable;
 
 // Draw the Player Mannequin
 public class PlayerMannequinRenderer extends LivingEntityRenderer<PlayerMannequinEntity, PlayerMannequinModel> {
@@ -38,6 +36,7 @@ public class PlayerMannequinRenderer extends LivingEntityRenderer<PlayerMannequi
     // Initialize the player mannequin
     public PlayerMannequinRenderer(EntityRendererProvider.Context ctx) {
         super(ctx, new PlayerMannequinModel(ctx.bakeLayer(ModelLayers.PLAYER)), 0.0F);
+        this.addLayer(new PlayerMannequinSkinLayer(this));
         this.addLayer(
                 new HumanoidArmorLayer<>(
                         this,
@@ -72,36 +71,6 @@ public class PlayerMannequinRenderer extends LivingEntityRenderer<PlayerMannequi
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
-
-    // Draw the player mannequin
-    @Override
-    public void render(PlayerMannequinEntity entity, float entityYaw, float partialTick,
-                       PoseStack poseStack,
-                       net.minecraft.client.renderer.MultiBufferSource buffers,
-                       int packedLight) {
-        double distance = entityRenderDispatcher.distanceToSqr(entity);
-        model.configureDetail(distance <= 64.0D, distance <= 576.0D);
-        try {
-            super.render(entity, entityYaw, partialTick, poseStack, buffers, packedLight);
-        } finally {
-            model.configureDetail(true, true);
-        }
-    }
-
-    // Get the render type
-    @Nullable
-    @Override
-    protected RenderType getRenderType(PlayerMannequinEntity entity, boolean bodyVisible, boolean translucent,
-                                       boolean glowing) {
-        ResourceLocation texture = getTextureLocation(entity);
-        if (translucent) {
-            return RenderType.itemEntityTranslucentCull(texture);
-        }
-        if (bodyVisible) {
-            return RenderType.entityCutout(texture);
-        }
-        return glowing ? RenderType.outline(texture) : null;
-    }
 
     // Set up the rotations
     @Override

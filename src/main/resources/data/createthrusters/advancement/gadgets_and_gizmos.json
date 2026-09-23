@@ -1,0 +1,17 @@
+{
+  "display": {
+    "icon": { "id": "createthrusters:analogue_contraption_controller" },
+    "title": { "translate": "advancement.createthrusters.gadgets_and_gizmos.title" },
+    "description": { "translate": "advancement.createthrusters.gadgets_and_gizmos.description" },
+    "background": "createthrusters:textures/block/blackstone-alloy.png",
+    "frame": "task",
+    "show_toast": false,
+    "announce_to_chat": false,
+    "hidden": false
+  },
+  "criteria": {
+    "joined_world": {
+      "trigger": "minecraft:tick"
+    }
+  }
+}

@@ -84,9 +84,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     };
     private static final int SETTINGS_APP_PAGE_SIZE = 5;
     private static final Set<String> READER_ACTIONS = Set.of(
-            "landing_zone", "map_target", "test_target", "assign_items", "assign_fluids",
-            "assign_energy", "assign_fuel", "configure_network", "configure_fuel",
-            "configure_run", "add_waypoint", "bind_channel", "nfc_scan");
+            "landing_zone", "map_target", "test_target", "add_waypoint", "bind_channel", "nfc_scan");
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -157,12 +155,6 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     private int journeyPickerScroll;
     // Current settings app page
     private int settingsAppPage;
-    // Tracks whether SCM stock modal is set
-    private boolean scmStockModal;
-    // Tracks whether SCM run type picker is set
-    private boolean scmRunTypePicker;
-    // Current SCM run scroll
-    private int scmRunScroll;
     // Current nfc property scroll
     private int nfcPropertyScroll;
     // Current observed registry revision
@@ -1145,67 +1137,26 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         }
         // -----------------------------------------------------LOGISTICS-----------------------------------------------------
         if ("logistics".equals(tab)) {
-            if (scmStockModal) {
-                renderScmStockModal(graphics, mouseX, mouseY, app, contentLeft, contentWidth, selected);
-                return;
-            }
-            graphics.drawString(font, "Logistics runs", contentLeft, top + 126,
+            graphics.drawString(font, "Worker-managed storage", contentLeft, top + 126,
                     0xFFF2F4F7, false);
-            drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 194,
-                    top + 120, 54, 20, "Stock", app.accentColor());
-            drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 134,
+            drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 68,
                     top + 120, 68, 20, "Schedule",
                     selected.getBoolean("Pilot") ? app.accentColor() : 0xFF59636E);
-            drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 60,
-                    top + 120, 60, 20, "+ Run", 0xFF43A047);
             if (!"ship".equals(selected.getString("Kind"))) {
                 graphics.drawWordWrap(font, Component.literal(
-                                "Logistics runs belong to a ship controller. Select a ship to edit them."),
+                                "Select a ship controller to view worker-managed storage."),
                         contentLeft, top + 158, contentWidth, 0xFFFFB0A8);
                 return;
             }
-            if (scmRunTypePicker) {
-                String[] types = {"Item", "Fluid", "FE", "Fuel"};
-                int[] colors = {0xFF55D6FF, 0xFF4A8DFF, 0xFFFFD54F, 0xFFFF8A3D};
-                for (int idx = 0; idx < types.length; idx++) {
-                    int width = (contentWidth - 8) / 2;
-                    int x = contentLeft + idx % 2 * (width + 8);
-                    int y = top + 148 + idx / 2 * 38;
-                    drawNativeCard(graphics, x, y, width, 31, colors[idx],
-                            inside(mouseX, mouseY, x, y, width, 31));
-                    graphics.drawString(font, types[idx] + " run", x + 12, y + 11,
-                            0xFFF7F9FB, false);
-                }
-                graphics.drawString(font, "Choose a channel type, then select its blocks and connector",
-                        contentLeft, top + 224, 0xFFAEBAC6, false);
-                return;
-            }
-            ListTag runs = selected.getList("Runs", Tag.TAG_COMPOUND);
-            scmRunScroll = Mth.clamp(scmRunScroll, 0, Math.max(0, runs.size() - 3));
-            if (runs.isEmpty()) {
-                graphics.drawString(font, "No runs yet. Create one to map storage and a connector.",
-                        contentLeft + 8, top + 164, 0xFFAEBAC6, false);
-                return;
-            }
-            for (int visible = 0; visible < 3 && scmRunScroll + visible < runs.size(); visible++) {
-                CompoundTag run = runs.getCompound(scmRunScroll + visible);
-                int y = top + 147 + visible * 28;
-                int col = run.getInt("Color");
-                drawNativeCard(graphics, contentLeft, y, contentWidth, 24, col,
-                        run.getBoolean("Selected"));
-                graphics.fill(contentLeft, y, contentLeft + 4, y + 24, col);
-                String detail = run.getString("Name") + "  |  "
-                        + run.getString("ResourceLabel") + "  |  "
-                        + run.getList("Endpoints", Tag.TAG_COMPOUND).size() + " blocks";
-                graphics.drawString(font, font.plainSubstrByWidth(detail, contentWidth - 166),
-                        contentLeft + 10, y + 8, 0xFFF2F5F8, false);
-                drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 150,
-                        y + 3, 42, 18, "Edit", col);
-                drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 103,
-                        y + 3, 49, 18, "Rename", app.accentColor());
-                drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 49,
-                        y + 3, 46, 18, "Delete", 0xFFE57373);
-            }
+            graphics.drawString(font, "Items: " + selected.getLong("ManagedItems"),
+                    contentLeft + 8, top + 164, 0xFF55D6FF, false);
+            graphics.drawString(font, "Fluids: " + selected.getLong("ManagedFluids"),
+                    contentLeft + 8, top + 186, 0xFF4A8DFF, false);
+            graphics.drawString(font, "FE: " + selected.getLong("ManagedEnergy"),
+                    contentLeft + 8, top + 208, 0xFFFFD54F, false);
+            graphics.drawWordWrap(font, Component.literal(
+                            "Workers use Shipping Manifests and Smart Vaults, Tanks, and Batteries. Mark fuel tanks with the Fuel manifest role."),
+                    contentLeft, top + 238, contentWidth, 0xFFAEBAC6);
             return;
         }
         // -----------------------------------------------------SHIP CONTROLS-----------------------------------------------------
@@ -1226,31 +1177,6 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
                     22, 22, 11, colors[idx]);
             graphics.drawString(font, controls[idx], x + 41, y + 15, 0xFFF6F7F9, false);
         }
-    }
-
-    // Draw the SCM stock modal
-    private void renderScmStockModal(GuiGraphics graphics, int mouseX, int mouseY,
-                                     TabletAppDefinition app, int contentLeft, int contentWidth,
-                                     CompoundTag selected) {
-        graphics.drawString(font, "Ship stock ticker", contentLeft, top + 72,
-                0xFFF4F7FA, false);
-        ListTag stock = selected.getList("Stock", Tag.TAG_COMPOUND);
-        for (int idx = 0; idx < Math.min(6, stock.size()); idx++) {
-            CompoundTag row = stock.getCompound(idx);
-            int y = top + 91 + idx * 20;
-            drawNativeCard(graphics, contentLeft, y, 276, 17, app.accentColor(),
-                    inside(mouseX, mouseY, contentLeft, y, 276, 17));
-            graphics.drawString(font, font.plainSubstrByWidth(row.getString("Name"), 180),
-                    contentLeft + 8, y + 5, 0xFFF2F5F8, false);
-            graphics.drawString(font, Long.toString(row.getLong("Amount")),
-                    contentLeft + 210, y + 5, 0xFFC2CDD8, false);
-        }
-        graphics.drawString(font, "Deliver to player or ship dock", contentLeft + 290, top + 94,
-                0xFFBAC5CF, false);
-        drawSmallButton(graphics, mouseX, mouseY, contentLeft + 290, top + 145,
-                74, 22, "Send", app.accentColor());
-        drawSmallButton(graphics, mouseX, mouseY, contentLeft + 371, top + 145,
-                74, 22, "Close", 0xFF596675);
     }
 
     // Draw the landing zone app
@@ -2409,88 +2335,10 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
             return false;
         }
         if ("logistics".equals(tab)) {
-            // ------------------------------------STOCK MODAL------------------------------------
-            if (scmStockModal) {
-                if (inside(mouseX, mouseY, contentLeft + 371, top + 145, 74, 22)) {
-                    scmStockModal = false;
-                    actionInput.setVisible(false);
-                    return true;
-                }
-                if (inside(mouseX, mouseY, contentLeft + 290, top + 145, 74, 22)) {
-                    send("request_items", actionInput.getValue().strip());
-                    return true;
-                }
-                return false;
-            }
-            if (inside(mouseX, mouseY, contentLeft + contentWidth - 194,
-                    top + 120, 54, 20)) {
-                scmStockModal = true;
-                actionInput.setValue("");
-                actionInput.setHint(Component.literal("Player or ship dock address"));
-                actionInput.setX(contentLeft + 290);
-                actionInput.setY(top + 117);
-                actionInput.setWidth(155);
-                actionInput.setVisible(true);
-                setInitialFocus(actionInput);
+            if (inside(mouseX, mouseY, contentLeft + contentWidth - 68,
+                    top + 120, 68, 20) && selected.getBoolean("Pilot")) {
+                beginAction("schedule");
                 return true;
-            }
-            if (inside(mouseX, mouseY, contentLeft + contentWidth - 134,
-                    top + 120, 68, 20)) {
-                if (selected.getBoolean("Pilot")) beginAction("schedule");
-                return true;
-            }
-            if (inside(mouseX, mouseY, contentLeft + contentWidth - 60,
-                    top + 120, 60, 20)) {
-                scmRunTypePicker = !scmRunTypePicker;
-                return true;
-            }
-            if (!"ship".equals(selected.getString("Kind"))) return false;
-            // ------------------------------------RUN TYPE PICKER------------------------------------
-            if (scmRunTypePicker) {
-                String[] types = {"item", "fluid", "energy", "fuel"};
-                for (int idx = 0; idx < types.length; idx++) {
-                    int width = (contentWidth - 8) / 2;
-                    int x = contentLeft + idx % 2 * (width + 8);
-                    int y = top + 148 + idx / 2 * 38;
-                    if (inside(mouseX, mouseY, x, y, width, 31)) {
-                        beginLogisticsReader("begin_logistics_run", types[idx]);
-                        return true;
-                    }
-                }
-                return false;
-            }
-            ListTag runs = selected.getList("Runs", Tag.TAG_COMPOUND);
-            for (int visible = 0; visible < 3 && scmRunScroll + visible < runs.size(); visible++) {
-                CompoundTag run = runs.getCompound(scmRunScroll + visible);
-                int y = top + 147 + visible * 28;
-                String id = run.getUUID("Id").toString();
-                if (inside(mouseX, mouseY, contentLeft + contentWidth - 150,
-                        y + 3, 42, 18)) {
-                    beginLogisticsReader("edit_logistics_run", id);
-                    return true;
-                }
-                if (inside(mouseX, mouseY, contentLeft + contentWidth - 103,
-                        y + 3, 49, 18)) {
-                    resetEditorInputLayout();
-                    editingAction = "rename_logistics_run";
-                    editingPrompt = "Logistics run name";
-                    editingValuePrefix = id + "|";
-                    actionInput.setValue(run.getString("Name"));
-                    actionInput.setHint(Component.literal("Run name"));
-                    actionInput.setVisible(true);
-                    setInitialFocus(actionInput);
-                    return true;
-                }
-                if (inside(mouseX, mouseY, contentLeft + contentWidth - 49,
-                        y + 3, 46, 18)) {
-                    send("delete_logistics_run", id);
-                    return true;
-                }
-                if (inside(mouseX, mouseY, contentLeft, y,
-                        contentWidth - 155, 24)) {
-                    send("select_logistics_run", id);
-                    return true;
-                }
             }
             return false;
         }
@@ -2772,13 +2620,6 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
             return;
         }
         send(action, "");
-    }
-
-    // Begin the logistics reader
-    private void beginLogisticsReader(String action, String val) {
-        state = state.withMode(TabletInteractionMode.READER, "configure_run");
-        send(action, val);
-        onClose();
     }
 
     // Begin the redstone rename
@@ -3411,20 +3252,6 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
             if (dir != 0) {
                 nfcPropertyScroll = Mth.clamp(nfcPropertyScroll + dir,
                         0, Math.max(0, properties.size() - visible));
-                return true;
-            }
-        }
-        if (isBuiltInApp(app, "scm") && "logistics".equals(activeTab(app).id())
-                && !scmRunTypePicker && inside(mouseX, mouseY,
-                contentLeft(), top + 145, contentWidth(), 82)) {
-            CompoundTag selected = selectedRow(appData(app.id()).getList(
-                    "Targets", Tag.TAG_COMPOUND));
-            ListTag runs = selected == null ? new ListTag()
-                    : selected.getList("Runs", Tag.TAG_COMPOUND);
-            int dir = scrollY > 0.0D ? -1 : scrollY < 0.0D ? 1 : 0;
-            if (dir != 0) {
-                scmRunScroll = Mth.clamp(scmRunScroll + dir,
-                        0, Math.max(0, runs.size() - 3));
                 return true;
             }
         }

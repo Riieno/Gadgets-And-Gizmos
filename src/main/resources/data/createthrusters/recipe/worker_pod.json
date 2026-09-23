@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [" B ", "ACA", "SSS"],
+  "key": {
+    "A": { "item": "create:andesite_alloy" },
+    "B": { "item": "create:brass_casing" },
+    "C": { "item": "create:precision_mechanism" },
+    "S": { "item": "minecraft:smooth_stone_slab" }
+  },
+  "result": { "id": "createthrusters:worker_pod", "count": 1 }
+}

@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
@@ -225,9 +226,10 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
                         isLandingZoneAirborne(zone),
                         pos -> SimulatedHelper.toGlobalWorldPosition(this, pos)))
                 .toList();
+        var rootLevel = SableLevelApi.serverLevel(level);
         return new ShipDockRegistry.Dock(
                 dockId,
-                level.dimension().location(),
+                (rootLevel == null ? level : rootLevel).dimension().location(),
                 subLevelId,
                 worldPosition,
                 resolvedPosition == null ? worldPosition.getCenter() : resolvedPosition,
@@ -242,6 +244,14 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
                 connector == null ? null : connector.worldFacing(),
                 connector == null ? null : connector.worldUp(),
                 System.currentTimeMillis(), connectorTargets, landingZoneTargets);
+    }
+
+    // Replace a copied placement identity without disturbing the original dock's bindings.
+    void replaceDuplicateDockId(UUID replacement) {
+        if (replacement == null || replacement.equals(dockId)) return;
+        dockId = replacement;
+        storageChanged();
+        refreshLinkedConnectorBindings();
     }
 
     // Check if the landing zone is airborne

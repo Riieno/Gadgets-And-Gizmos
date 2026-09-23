@@ -1,7 +1,7 @@
 {
   "selector": "createthrusters:ship_coupler",
   "properties": {
-    "sable:mass": 2.0,
+    "sable:mass": 0.0,
     "sable:friction": 0.0,
     "sable:restitution": 0.0
   }

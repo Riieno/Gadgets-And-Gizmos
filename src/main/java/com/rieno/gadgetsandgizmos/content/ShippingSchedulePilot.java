@@ -207,6 +207,7 @@ public final class ShippingSchedulePilot {
             return;
         }
         ItemStack displayCopy = held.copyWithCount(1);
+        ShippingScheduleRouteData.bind(displayCopy, controller.getScmPersistenceId());
         pilot.setItemSlot(EquipmentSlot.MAINHAND, displayCopy);
         pilot.getPersistentData().putBoolean(SHIPPING_PILOT_TAG, true);
         prepareTrainHat(player, pilot);

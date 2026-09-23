@@ -38,6 +38,8 @@ public final class PlayerMannequinVariants {
     public static final PlayerMannequinVariant CHRISTEROPH = registerBuiltIn("christeroph", Component.literal("Christeroph"));
     public static final PlayerMannequinVariant RAYRAY = registerBuiltIn("rayray", Component.literal("RayRay"));
     public static final PlayerMannequinVariant DJRAG = registerBuiltIn("djrag", Component.literal("Djrag"));
+    public static final PlayerMannequinVariant WANIIII = registerBuiltIn("waniiii_", Component.literal("Waniiii_"));
+    public static final PlayerMannequinVariant ZELAUX = registerBuiltIn("zelaux_", Component.literal("Zelaux_"));
 
     /*--------------------------------------------------------##---------------------------------------------------------
 

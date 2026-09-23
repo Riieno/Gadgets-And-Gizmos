@@ -19,7 +19,9 @@ import com.rieno.gadgetsandgizmos.content.ControllerManifestStore;
 import com.rieno.gadgetsandgizmos.content.ScmConfigurationProfile;
 import com.rieno.gadgetsandgizmos.content.ShippingScheduleGraph;
 import com.rieno.gadgetsandgizmos.content.ShippingScheduleScratchBlocks;
-import com.rieno.gadgetsandgizmos.compat.create.CreateRotationSpeedControllerGraphCompat;
+import com.rieno.gadgetsandgizmos.content.WorkerPodBlockEntity;
+import com.rieno.gadgetsandgizmos.content.WorkerEnergyBatteryItem;
+import com.rieno.gadgetsandgizmos.content.PlayerMannequinEntity;
 import com.rieno.gadgetsandgizmos.compat.simulated.ContraptionDiagramControllerCompat;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode;
@@ -36,10 +38,20 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphPortState;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphSelection;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphTemplates;
 import com.rieno.gadgetsandgizmos.lib.graph.render.GraphWireGeometry;
+import com.rieno.gadgetsandgizmos.lib.graph.render.GraphViewport;
 import com.rieno.gadgetsandgizmos.lib.graph.edit.GraphNodeAlias;
 import com.rieno.gadgetsandgizmos.lib.client.scratch.ScratchBlockSurface;
+import com.rieno.gadgetsandgizmos.lib.client.schedule.CreateScheduleInputScreen;
 import com.rieno.gadgetsandgizmos.lib.scratch.ScratchBlockDefinition;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmControlModeRegistry;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmOrientation;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmSteeringMode;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmLeggedGait;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerProfile;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerEndpointSnapshot;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerResourceType;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerStatusSnapshot;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerWorkOrder;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphValidator;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphVersionHistory;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementStyle;
@@ -58,6 +70,9 @@ import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerProfilerPay
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedHudImageUploadPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AnalogueContraptionControllerDiscoveryRequestPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AnalogueContraptionControllerKeyPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.ShippingRouteVisibilityPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.WorkerPodConfigPayload;
+import com.rieno.gadgetsandgizmos.registry.CTEntityTypes;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.vertex.BufferBuilder;
@@ -76,7 +91,9 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.WidgetSprites;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -93,15 +110,21 @@ import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.material.Fluids;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.network.PacketDistributor;
+import net.neoforged.neoforge.client.extensions.common.IClientFluidTypeExtensions;
+import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.items.SlotItemHandler;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.util.tinyfd.TinyFileDialogs;
 import org.joml.Matrix4f;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -127,6 +150,8 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 
+import static com.rieno.gadgetsandgizmos.neoforge.client.AdvancedGraphScreenSupport.*;
+
 // Edit ACC graphs and manifests without normal menu sync
 public class AdvancedContraptionControllerScreen extends AbstractContainerScreen<AdvancedContraptionControllerMenu> {
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -151,6 +176,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private static final int MIN_GRAPH_WIDTH = 180;
     private static final int TOOLBAR_HEIGHT = 28;
     private static final int GRAPH_TAB_HEIGHT = 23;
+    private static final int GRID_SNAP_MINIMUM = 4;
+    private static final int GRID_SNAP_MAXIMUM = 64;
     private static final int V2_GRID_SPACING = 24;
     private static final int INSPECTOR_SECTION_HEADER_HEIGHT = 16;
     private static final int INSPECTOR_SECTION_DIVIDER_HEIGHT = 5;
@@ -159,6 +186,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private static final int VARIABLE_BROWSER_BUTTON_WIDTH = 34;
     private static final int NODE_WIDTH = 166;
     private static final int NODE_HEADER = 20;
+    private static final Vector3f WORKER_PREVIEW_TRANSLATION = new Vector3f();
+    private static final Quaternionf WORKER_PREVIEW_ROTATION = new Quaternionf().rotateZ((float) Math.PI);
+    private static final Quaternionf WORKER_PREVIEW_CAMERA_ROTATION = new Quaternionf();
     private static final int INLINE_MAP_PORT_INDENT = 8;
     /** First body row in graph units when there is no collapse control. */
     private static final int NODE_BODY_TOP = 25;
@@ -223,7 +253,21 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             "ship_yaw", "ship_yaw_right", "ship_yaw_left",
             "ship_pitch", "ship_pitch_up", "ship_pitch_down",
             "ship_roll", "ship_roll_right", "ship_roll_left",
-            "ship_decelerate", "ship_brake");
+            "ship_decelerate", "ship_brake",
+            ScmConfigurationProfile.dockingConnectorAction(
+                    ScmConfigurationProfile.DockingConnectorGroup.FUEL),
+            ScmConfigurationProfile.dockingConnectorAction(
+                    ScmConfigurationProfile.DockingConnectorGroup.ITEMS),
+            ScmConfigurationProfile.dockingConnectorAction(
+                    ScmConfigurationProfile.DockingConnectorGroup.FE),
+            ScmConfigurationProfile.dockingConnectorAction(
+                    ScmConfigurationProfile.DockingConnectorGroup.FLUIDS),
+            ScmConfigurationProfile.dockingConnectorAction(
+                    ScmConfigurationProfile.DockingConnectorGroup.ANY),
+            ScmConfigurationProfile.dockingConnectorAction(
+                    ScmConfigurationProfile.DockingConnectorGroup.UNASSIGNED));
+    private static final List<String> SCM_AUTO_DETECT_CATEGORIES = List.of(
+            "thrusters", "bearings", "actuators", "propulsion");
     private static final String SCM_BLACKLISTED_GROUP_ID = "__scm_blacklisted";
     private static final int FREQUENCY_MODAL_WIDTH = 228;
     private static final int FREQUENCY_MODAL_HEIGHT = 336;
@@ -234,10 +278,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private static final int MIN_EXECUTION_INPUTS = 2;
     private static final int MAX_EXECUTION_INPUTS = 16;
     private static final List<String> CATEGORY_ORDER = List.of("functions", "events", "profiler", "core", "variables", "logic",
-            "flow", "math", "response", "data", "controller", "ship_control", "shipping_schedule", "hud");
+            "flow", "math", "response", "data", "controller", "worker_bridge", "ship_control", "shipping_schedule", "hud");
     private static final List<String> V2_CATEGORY_ORDER = List.of(
             "core", "functions", "controller", "logic", "math", "data", "ship_control", "shipping_schedule",
-            "variables", "events", "profiler", "flow", "response", "hud");
+            "variables", "events", "profiler", "flow", "response", "worker_bridge", "hud");
+    private static final List<String> WORKER_GRAPH_COMMANDS = List.of(
+            "worker_transfer_item", "worker_transfer_fluid", "worker_transfer_fuel",
+            "worker_transfer_energy", "worker_process", "worker_auto_craft", "worker_frog_port");
+    private static final List<String> WORKER_GRAPH_CATEGORY_ORDER = List.of(
+            "worker", "worker_containers", "worker_filters", "worker_transfer", "worker_actions");
     private static final List<GraphTemplateOption> GRAPH_TEMPLATES = List.of(
             new GraphTemplateOption("blank", "Blank"),
             new GraphTemplateOption("increment_decrement_on_hold", "Increment/Decrement on hold"),
@@ -440,14 +489,34 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private EditBox inspectorValue;
     // Inline SCM workspace vehicle-name editor
     private EditBox scmVehicleName;
+    // Worker Graph name editor
+    private EditBox workerName;
+    // Worker Graph resource id editor
+    private EditBox workerResource;
+    // Worker Graph requested amount editor
+    private EditBox workerAmount;
+    // Worker Graph processed output editor
+    private EditBox workerOutputResource;
+    // Worker Graph processed output amount editor
+    private EditBox workerOutputAmount;
+    // Worker resource picker search editor
+    private EditBox workerResourceSearch;
     // Current pan x
     private double panX = 150;
     // Current pan y
     private double panY = 80;
     // Current zoom
     private double zoom = 1.0;
+    // The graph-unit step used while Shift-dragging nodes
+    private int gridSnapStep = 16;
     // Current browser scroll
     private int browserScroll;
+    // Current Worker Graph library scroll
+    private int workerGraphBrowserScroll;
+    // Current Worker Graph roster scroll
+    private int workerRosterScroll;
+    // Current Worker Graph task-chain scroll
+    private int workerTaskScroll;
     // Current block browser scroll
     private int blockBrowserScroll;
     // Current mini browser scroll
@@ -467,6 +536,41 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // The Schedule tab is a host-only Scratch presentation over a separate
     // AdvancedGraphDocument. It never becomes a global graph-editor mode.
     private boolean scheduleGraphOverview;
+    // Dedicated worker configuration and live status surface
+    private boolean workerGraphOverview;
+    private boolean workerGraphMode;
+    // Worker displayed by the Worker Graph profile card
+    private UUID selectedWorkerGraphWorker;
+    // Tracks whether the profile card worker selector is expanded
+    private boolean workerGraphWorkerListOpen;
+    private WorkerProfile.Job workerJob = WorkerProfile.Job.ANY;
+    private WorkerResourceType workerResourceType = WorkerResourceType.ITEM;
+    private WorkerWorkOrder.Mode workerMode = WorkerWorkOrder.Mode.TRANSFER;
+    private UUID workerSourceEndpoint;
+    private UUID workerDestinationEndpoint;
+    private UUID workerProcessorEndpoint;
+    private boolean workerEnabled;
+    private int selectedWorkerPod;
+    private final Set<UUID> configuredWorkerIds = new LinkedHashSet<>();
+    private String workerValidationMessage = "";
+    private boolean workerResourcePickerOpen;
+    private boolean workerResourcePickerOutput;
+    private WorkerResourceType workerResourcePickerType = WorkerResourceType.ITEM;
+    private String workerResourcePickerNode = "";
+    private String workerResourcePickerPort = "";
+    private int workerResourcePickerScroll;
+    private boolean workerSelectionOpen;
+    private boolean workerSelectionRoster;
+    private String workerSelectionNode = "";
+    private String workerSelectionPort = "workers";
+    private UUID workerSelectionPod;
+    private final Set<UUID> workerSelection = new LinkedHashSet<>();
+    private int workerSelectionScroll;
+    private boolean workerTargetPickerOpen;
+    private String workerTargetPickerNode = "";
+    private String workerTargetPickerPort = "";
+    private int workerTargetPickerScroll;
+    private final Map<UUID, PlayerMannequinEntity> workerPreviewEntities = new LinkedHashMap<>();
     private AdvancedGraphDocument scheduleDraft;
     private AdvancedGraphDocument savedScheduleDraft;
     private String selectedScheduleBlock;
@@ -602,6 +706,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Known SCM bindings. The live preview supplies all other selectable
     // blocks, which are added here as the player selects them.
     private final List<ScmConfigurationProfile.UnitReference> scmConfigurationCandidates = new ArrayList<>();
+    // Server-authoritative live docking connector identities. These remain
+    // usable when the configuration preview is a detached block snapshot.
+    private final Set<ScmConfigurationProfile.DockingConnectorReference>
+            scmConfigurationDockingConnectors = new LinkedHashSet<>();
     // Temporary visual selection used to form one action group or blacklist.
     private final Set<ScmConfigurationProfile.UnitReference> scmConfigurationSelection = new LinkedHashSet<>();
     // Current action to receive the selected unit group.
@@ -680,6 +788,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private String draggingNode;
     // Tracks whether node moved is being dragged
     private boolean draggingNodeMoved;
+    // Tracks whether the toolbar grid-snap slider is being dragged
+    private boolean draggingGridSnapSlider;
     // Current connecting node
     private String connectingNode;
     // Current connecting port
@@ -883,6 +993,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private int profilerReportTicks;
     // Tracks whether advanced contraption is projection rendering
     private boolean projectionRendering;
+    // Tracks whether this screen is an off-screen display projection
+    private boolean projectionScreen;
     // Current projection graph fingerprint
     private int projectionGraphFingerprint;
     // Current projected mouse button
@@ -913,6 +1025,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         inspectorOptionsHeight = preferences.optionsHeight();
         inspectorTargetsHeight = preferences.targetsHeight();
         saveOnClose = preferences.saveOnClose();
+        gridSnapStep = preferences.gridSnapStep();
         collapsedNodes.addAll(preferences.collapsedNodeIds());
         if (v2Ui) {
             collapsedCategories.addAll(V2_CATEGORY_ORDER);
@@ -935,6 +1048,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         lastObservedGogglesOutput = copySingle(menu.getGogglesOutputStack());
         liveGraphTargets.addAll(sortedGraphTargets(currentGraphTargetSeeds()));
         templatePicker = activeNodes().isEmpty() && draft.templateId().isBlank();
+    }
+
+    // Mark this screen as an off-screen display projection before it is initialized
+    void configureForProjection() {
+        projectionScreen = true;
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -1021,6 +1139,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             selectGraphTab(null);
         }
         if (scheduleGraphOverview && !hasShippingScheduleWorkspace()) {
+            selectGraphTab(null);
+        }
+        if ((workerGraphOverview || workerGraphMode) && !hasWorkerWorkspace()) {
             selectGraphTab(null);
         }
         if ((scmConfigurationOpen || scmGraphOverview)
@@ -1165,6 +1286,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Initialize the advanced contraption controller
     @Override
     protected void init() {
+        if (!projectionScreen && AccGuiScaleOverride.apply()) {
+            return;
+        }
         // -----------------------------------------------------LAYOUT STATE-----------------------------------------------------
         boolean preserveLinkerOpen = linkerOpen && !setLinkerOpen(false);
         boolean preserveShareOpen = shareModalOpen;
@@ -1191,9 +1315,12 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             nodeSearch.setTextColor(AdvancedControllerV2Theme.PRIMARY);
             nodeSearch.setTextColorUneditable(AdvancedControllerV2Theme.MUTED);
         }
-        nodeSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview
+        nodeSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview && !workerGraphOverview
                 && !leftSidebarCollapsed && !blockBrowserOpen);
-        nodeSearch.setResponder(val -> browserScroll = 0);
+        nodeSearch.setResponder(val -> {
+            if (workerGraphMode) workerGraphBrowserScroll = 0;
+            else browserScroll = 0;
+        });
         addRenderableWidget(nodeSearch);
 
         blockSearch = new EditBox(font, layoutLeft() + 8, 36, Math.max(48, activeLeftWidth() - 16), 18, Component.literal("Search blocks and items"));
@@ -1203,7 +1330,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             blockSearch.setTextColor(AdvancedControllerV2Theme.PRIMARY);
             blockSearch.setTextColorUneditable(AdvancedControllerV2Theme.MUTED);
         }
-        blockSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview
+        blockSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview && !workerGraphOverview
                 && !leftSidebarCollapsed && blockBrowserOpen);
         blockSearch.setResponder(val -> blockBrowserScroll = 0);
         addRenderableWidget(blockSearch);
@@ -1242,6 +1369,45 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         scmVehicleName.setMaxLength(64);
         scmVehicleName.setVisible(false);
         addRenderableWidget(scmVehicleName);
+
+        workerName = new EditBox(font, 0, 0, 120, 18, Component.literal("Worker name"));
+        workerName.setMaxLength(64);
+        workerName.setHint(Component.literal("Worker name"));
+        workerName.setVisible(false);
+        addRenderableWidget(workerName);
+
+        workerResource = new EditBox(font, 0, 0, 120, 18, Component.literal("Resource id"));
+        workerResource.setMaxLength(128);
+        workerResource.setHint(Component.literal("minecraft:coal"));
+        workerResource.setVisible(false);
+        addRenderableWidget(workerResource);
+
+        workerAmount = new EditBox(font, 0, 0, 120, 18, Component.literal("Requested amount"));
+        workerAmount.setMaxLength(18);
+        workerAmount.setHint(Component.literal("Amount"));
+        workerAmount.setFilter(value -> value.isBlank() || value.chars().allMatch(Character::isDigit));
+        workerAmount.setVisible(false);
+        addRenderableWidget(workerAmount);
+
+        workerOutputResource = new EditBox(font, 0, 0, 120, 18, Component.literal("Output resource id"));
+        workerOutputResource.setMaxLength(128);
+        workerOutputResource.setHint(Component.literal("minecraft:iron_ingot"));
+        workerOutputResource.setVisible(false);
+        addRenderableWidget(workerOutputResource);
+
+        workerOutputAmount = new EditBox(font, 0, 0, 120, 18, Component.literal("Output amount"));
+        workerOutputAmount.setMaxLength(18);
+        workerOutputAmount.setHint(Component.literal("Output amount"));
+        workerOutputAmount.setFilter(value -> value.isBlank() || value.chars().allMatch(Character::isDigit));
+        workerOutputAmount.setVisible(false);
+        addRenderableWidget(workerOutputAmount);
+
+        workerResourceSearch = new EditBox(font, 0, 0, 260, 18, Component.literal("Search resources"));
+        workerResourceSearch.setMaxLength(128);
+        workerResourceSearch.setHint(Component.literal("Filter resources..."));
+        workerResourceSearch.setVisible(false);
+        workerResourceSearch.setResponder(value -> workerResourcePickerScroll = 0);
+        addRenderableWidget(workerResourceSearch);
 
         // The Schedule tab uses the same ACC inspector shell. Its value editor
         // writes the selected block's real ScheduleDataEntry data, rather than
@@ -1671,9 +1837,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             case "events", "profiler" -> 3;
             case "data" -> 4;
             case "math" -> 5;
-            case "flow", "hud" -> 6;
+            case "flow", "hud", "worker" -> 6;
             case "logic" -> 7;
             case "variables" -> 8;
+            case "worker_containers" -> 0;
+            case "worker_filters" -> 4;
+            case "worker_transfer" -> 5;
+            case "worker_actions" -> 7;
             default -> 1;
         };
     }
@@ -2023,6 +2193,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (scmVehicleName != null && !scmGraphOverview && !scmConfigurationOpen) {
             scmVehicleName.setVisible(false);
         }
+        if (!workerGraphOverview) setWorkerEditorsVisible(false);
         graphics.fill(layoutLeft(), 0, layoutRight(), height,
                 v2Ui ? AdvancedControllerV2Theme.CANVAS_BACKGROUND : 0xFF10141C);
         if (scmGraphOverview) {
@@ -2033,6 +2204,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             drawShippingScheduleWorkspace(graphics, mouseX, mouseY);
             graphics.disableScissor();
             drawScheduleCanvasOverlay(graphics);
+        } else if (workerGraphOverview) {
+            drawWorkerGraphWorkspace(graphics, mouseX, mouseY);
         } else if (graphRight() > graphLeft()) {
             graphics.enableScissor(graphLeft(), graphTop(), graphRight(), graphBottom());
             drawGrid(graphics);
@@ -2046,8 +2219,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         // The minimap, zoom/NODES readout and canvas reset controls belong to
         // the editable graph canvas only. SCM is a live 3D workspace.
-        if (v2Ui && !scmGraphOverview && !scheduleGraphOverview) {
-            drawV2CanvasOverlay(graphics);
+        if (!scmGraphOverview && !scheduleGraphOverview && !workerGraphOverview) {
+            if (v2Ui) drawV2CanvasOverlay(graphics);
+            if (workerGraphMode) drawWorkerGraphTaskSummary(graphics);
         }
 
         drawToolbar(graphics);
@@ -2057,6 +2231,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         } else if (scheduleGraphOverview) {
             drawScheduleLibrary(graphics, mouseX, mouseY);
             drawScheduleInspector(graphics, mouseX, mouseY);
+            drawSidebarHandles(graphics);
+        } else if (workerGraphOverview) {
+            drawWorkerSidebars(graphics, mouseX, mouseY);
+            drawSidebarHandles(graphics);
+        } else if (workerGraphMode) {
+            drawWorkerGraphLibrary(graphics, mouseX, mouseY);
+            drawWorkerGraphInspector(graphics, mouseX, mouseY);
             drawSidebarHandles(graphics);
         } else {
             drawLeftBrowser(graphics, mouseX, mouseY);
@@ -2071,6 +2252,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (miniBrowser != null) drawMiniBrowser(graphics, mouseX, mouseY);
         if (hudOpen) drawHud(graphics, mouseX, mouseY);
         if (frequencyModalOpen) drawFrequencyModal(graphics, mouseX, mouseY);
+        if (workerResourcePickerOpen) drawWorkerResourcePicker(graphics, mouseX, mouseY);
+        if (workerTargetPickerOpen) drawWorkerTargetPicker(graphics, mouseX, mouseY);
+        if (workerSelectionOpen) drawWorkerSelection(graphics, mouseX, mouseY);
     }
 
     // Draw the SCM calibration workspace around the actual loaded Sable bodies.
@@ -2159,7 +2343,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         int panelWidth = bounds.right() - panelX - (workspace ? 8 : 14);
         ScmConfigurationSidebarLayout sidebarLayout = scmConfigurationSidebarLayout(bounds, viewBounds);
         int sidebarY = sidebarLayout.contentTop();
-        int controlsY = sidebarY + 94;
+        int autoDetectY = sidebarY + 176;
+        int controlsY = sidebarY + 236;
         AdvancedContraptionControllerBlockEntity controller = activeScmController();
         UiRect vehicleName = scmVehicleNameBounds(panelX, sidebarY, panelWidth);
         if (controller != null && !scmVehicleName.isFocused()) {
@@ -2169,15 +2354,19 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         scmVehicleName.setWidth(vehicleName.width());
         scmVehicleName.setVisible(true);
         graphics.enableScissor(panelX, sidebarLayout.viewportTop(), bounds.right(), sidebarLayout.viewportBottom());
-        graphics.drawString(font, "Vehicle Name", panelX, sidebarY + 2,
+        drawScmConfigurationHeader(graphics, panelX, sidebarY, panelWidth, mouseX, mouseY);
+        graphics.drawString(font, "Vehicle Name", panelX, sidebarY + 58,
                 v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
-        drawScmButton(graphics, panelX, sidebarY + 36, panelWidth,
+        drawScmButton(graphics, panelX, sidebarY + 92, panelWidth,
                 "Apply Vehicle Name", mouseX, mouseY);
         boolean displayProgress = controller != null && controller.scmDisplayProgress();
-        graphics.drawString(font, "Display Progress", panelX, sidebarY + 61,
+        graphics.drawString(font, "Display Progress", panelX, sidebarY + 117,
                 v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
-        drawScmButton(graphics, panelX, sidebarY + 74, panelWidth,
+        drawScmButton(graphics, panelX, sidebarY + 130, panelWidth,
                 displayProgress ? "On" : "Off", mouseX, mouseY);
+        drawScmButton(graphics, panelX, sidebarY + 154, panelWidth,
+                "Re-initialize Groups", mouseX, mouseY);
+        drawScmAutoDetectControls(graphics, panelX, autoDetectY, panelWidth, mouseX, mouseY);
         graphics.drawString(font, "Assign selected blocks", panelX, controlsY + 2,
                 v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFF91D9FF, false);
         graphics.drawString(font, "SCM node / function", panelX, controlsY + 19,
@@ -2260,8 +2449,59 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 Component.literal(label), inside(mouseX, mouseY, x, y, buttonWidth, 18), true);
     }
 
+    // Draw automatic category assignment controls for the live craft preview
+    private void drawScmAutoDetectControls(
+            GuiGraphics graphics, int x, int y, int width, int mouseX, int mouseY
+    ) {
+        graphics.drawString(font, "Auto Detect and assign", x, y + 2,
+                v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFF91D9FF, false);
+        for (int index = 0; index < SCM_AUTO_DETECT_CATEGORIES.size(); index++) {
+            UiRect bounds = scmAutoDetectButtonBounds(x, y, width, index);
+            drawScmButton(graphics, bounds.x(), bounds.y(), bounds.width(),
+                    scmAutoDetectCategoryLabel(SCM_AUTO_DETECT_CATEGORIES.get(index)), mouseX, mouseY);
+        }
+    }
+
+    // Get one three-column automatic assignment button's bounds
+    private static UiRect scmAutoDetectButtonBounds(int x, int y, int width, int index) {
+        int gap = 3;
+        int buttonWidth = Math.max(1, (width - gap * 2) / 3);
+        int column = Math.floorMod(index, 3);
+        int row = index / 3;
+        int buttonX = x + column * (buttonWidth + gap);
+        int adjustedWidth = column == 2 ? x + width - buttonX : buttonWidth;
+        return new UiRect(buttonX, y + 16 + row * 21, adjustedWidth, 18);
+    }
+
+    // Get a compact label for one automatic category
+    private static String scmAutoDetectCategoryLabel(String category) {
+        return switch (category) {
+            case "thrusters" -> "Thrusters";
+            case "bearings" -> "Bearings";
+            case "actuators" -> "Actuators";
+            case "propulsion" -> "Propulsion";
+            default -> "Controls";
+        };
+    }
+
+    // Draw the SCM configuration header with the shared graph-inspector card treatment.
+    private void drawScmConfigurationHeader(GuiGraphics graphics, int x, int y, int panelWidth,
+                                            int mouseX, int mouseY) {
+        renderAdvancedPanel(graphics, x, y, panelWidth, 50);
+        renderControllerOption(graphics, x + 5, y + 6, 38, 38,
+                AdvancedGraphCatalog.categoryColor("ship_control"), true);
+        graphics.renderItem(new ItemStack(BuiltInRegistries.ITEM.get(ResourceLocation.parse("minecraft:compass"))),
+                x + 15, y + 17);
+        graphics.drawString(font, "SCM Configuration", x + 51, y + 9, interfacePrimaryColor(), false);
+        graphics.drawString(font, "Vehicle controls and bindings", x + 51, y + 24,
+                interfaceMutedColor(), false);
+        renderControllerOption(graphics, x + panelWidth - 25, y + 7, 20, 20, 0xFF485B68,
+                inside(mouseX, mouseY, x + panelWidth - 25, y + 7, 20, 20), false);
+        graphics.drawCenteredString(font, "?", x + panelWidth - 15, y + 13, interfacePrimaryColor());
+    }
+
     private UiRect scmVehicleNameBounds(int panelX, int sidebarY, int panelWidth) {
-        return new UiRect(panelX, sidebarY + 14, panelWidth, 18);
+        return new UiRect(panelX, sidebarY + 70, panelWidth, 18);
     }
 
     // Draw the direct SCM block picker used by Get/Set Block Data.  This uses
@@ -2291,8 +2531,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         drawScmBlockPickerFilters(graphics, toolbar.x(), toolbar.y(), toolbar.width(), mouseX, mouseY);
         graphics.fill(preview.x(), preview.y(), preview.right(), preview.bottom(), 0xFF081017);
         UUID rootSubLevelId = blockPickerRootSubLevelId();
-        scmLivePreviewRenderer.setBodies(rootSubLevelId,
-                rootSubLevelId == null ? List.of() : List.of(rootSubLevelId));
+        List<UUID> visibleSubLevels = rootSubLevelId != null
+                && scmConfigurationViewSubLevelIds.contains(rootSubLevelId)
+                ? scmConfigurationViewSubLevelIds
+                : rootSubLevelId == null ? List.of() : List.of(rootSubLevelId);
+        scmLivePreviewRenderer.setBodies(rootSubLevelId, visibleSubLevels);
         scmLivePreviewRenderer.setVisibleFilters(scmBlockPickerFilters);
         scmLivePreviewRenderer.setWireframe(scmBlockPickerWireframe);
         scmLivePreviewRenderer.setWireframeExcludedFilters(scmBlockPickerWireframeExcludedFilters);
@@ -2512,10 +2755,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     private String scmDetectedVehicleType = "airship";
+    private String scmDetectedSteeringType = ScmSteeringMode.CUSTOM.id();
 
     private UiRect scmOrientationButton(UiRect view, int index){
-        if(index == 3) return new UiRect(view.x() + 4,
-                view.y() + SCM_CONFIGURATION_FILTER_HEIGHT + 27, view.width() - 8, 18);
+        if(index >= 3){
+            int buttonWidth = (view.width() - 12) / 2;
+            return new UiRect(view.x() + 4 + (index - 3) * (buttonWidth + 4),
+                    view.y() + SCM_CONFIGURATION_FILTER_HEIGHT + 27, buttonWidth, 18);
+        }
         int buttonWidth = (view.width() - 16) / 3;
         return new UiRect(view.x() + 4 + index * (buttonWidth + 4),
                 view.y() + SCM_CONFIGURATION_FILTER_HEIGHT + 3, buttonWidth, 18);
@@ -2525,9 +2772,19 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         ScmOrientation orientation = scmConfigurationProfile.resolveOrientation(scmDefaultOrientation);
         String[] labels = {"Forward: " + orientation.forward().getName(),
                 "Up: " + orientation.up().getName(),
-scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use ACC defaults",
+                scmConfigurationProfile.orientationOverride() == null
+                        ? "ACC defaults" : "Use ACC defaults",
                 "Vehicle: " + ("auto".equals(scmConfigurationProfile.vehicleType())
-                        ? "Auto (" + scmDetectedVehicleType + ")" : scmConfigurationProfile.vehicleType())};
+                        ? "Auto (" + ScmControlModeRegistry.displayName(scmDetectedVehicleType) + ")"
+                        : ScmControlModeRegistry.displayName(scmConfigurationProfile.vehicleType())),
+                scmConfigurationProfile.usesIkVehicle()
+                        ? "IK Solver: " + ScmLeggedGait.fromId(
+                        scmConfigurationProfile.ikGait()).displayName()
+                        : "Steering: " + (ScmSteeringMode.AUTO.id().equals(
+                        scmConfigurationProfile.steeringType())
+                        ? "Auto (" + ScmSteeringMode.fromId(scmDetectedSteeringType).displayName() + ")"
+                        : ScmSteeringMode.fromId(
+                        scmConfigurationProfile.steeringType()).displayName())};
         for(int index = 0; index < labels.length; index++){
             UiRect button = scmOrientationButton(view, index);
             drawScmButton(graphics, button.x(), button.y(), button.width(), labels[index], mouseX, mouseY);
@@ -2540,15 +2797,27 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
 
     // Cycle only perpendicular local axes; changing a selection never silently flips the other axis.
     private boolean clickScmOrientation(UiRect view, double mouseX, double mouseY){
-        for(int index = 0; index < 4; index++){
+        for(int index = 0; index < 5; index++){
             if(!scmOrientationButton(view, index).contains(mouseX, mouseY)) continue;
             ScmOrientation orientation = scmConfigurationProfile.resolveOrientation(scmDefaultOrientation);
             if(index == 3){
                 List<String> modes = new ArrayList<>();
                 modes.add("auto");
-                modes.addAll(com.rieno.gadgetsandgizmos.lib.scm.ScmControlModeRegistry.serializedIds());
+                modes.addAll(ScmControlModeRegistry.serializedIds());
                 int next = (modes.indexOf(scmConfigurationProfile.vehicleType()) + 1) % modes.size();
                 scmConfigurationProfile.setVehicleType(modes.get(next));
+            } else if(index == 4){
+                if (scmConfigurationProfile.usesIkVehicle()) {
+                    List<ScmLeggedGait> modes = ScmLeggedGait.selections();
+                    int next = (modes.indexOf(ScmLeggedGait.fromId(
+                            scmConfigurationProfile.ikGait())) + 1) % modes.size();
+                    scmConfigurationProfile.setIkGait(modes.get(next).id());
+                } else {
+                    List<ScmSteeringMode> modes = ScmSteeringMode.selections();
+                    int next = (modes.indexOf(ScmSteeringMode.fromId(
+                            scmConfigurationProfile.steeringType())) + 1) % modes.size();
+                    scmConfigurationProfile.setSteeringType(modes.get(next).id());
+                }
             } else if(index == 2){
                 scmConfigurationProfile.setOrientationOverride(null);
             } else {
@@ -2876,7 +3145,7 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         int viewportTop = viewBounds.y();
         int viewportBottom = Math.max(viewportTop + 1, bounds.bottom());
         int availableHeight = viewportBottom - viewportTop;
-        int minimumContentHeight = faceMode ? 424 : 386;
+        int minimumContentHeight = faceMode ? 566 : 528;
         int contentHeight = Math.max(availableHeight, minimumContentHeight);
         int maximumScroll = Math.max(0, contentHeight - availableHeight);
         scmConfigurationSidebarScroll = Mth.clamp(scmConfigurationSidebarScroll, 0, maximumScroll);
@@ -2914,21 +3183,33 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         int panelWidth = bounds.right() - panelX - (scmConfigurationWorkspace() ? 8 : 14);
         ScmConfigurationSidebarLayout sidebarLayout = scmConfigurationSidebarLayout(bounds, viewBounds);
         int sidebarY = sidebarLayout.contentTop();
-        int controlsY = sidebarY + 94;
+        int autoDetectY = sidebarY + 176;
+        int controlsY = sidebarY + 236;
         if (scmVehicleNameBounds(panelX, sidebarY, panelWidth).contains(mouseX, mouseY)) {
             scmVehicleName.mouseClicked(mouseX, mouseY, button);
             scmVehicleName.setFocused(true);
             setFocused(scmVehicleName);
             return true;
         }
-        if (inside(mouseX, mouseY, panelX, sidebarY + 36, panelWidth, 18)) {
+        if (inside(mouseX, mouseY, panelX, sidebarY + 92, panelWidth, 18)) {
             sendScmVehicleName(scmVehicleName.getValue());
             return true;
         }
-        if (inside(mouseX, mouseY, panelX, sidebarY + 74, panelWidth, 18)) {
+        if (inside(mouseX, mouseY, panelX, sidebarY + 130, panelWidth, 18)) {
             AdvancedContraptionControllerBlockEntity controller = activeScmController();
             sendScmDisplayProgress(controller == null || !controller.scmDisplayProgress());
             return true;
+        }
+        if (inside(mouseX, mouseY, panelX, sidebarY + 154, panelWidth, 18)) {
+            sendScmConfiguration("scm_configuration_reinitialize", scmConfigurationProfile.toTag());
+            return true;
+        }
+        for (int index = 0; index < SCM_AUTO_DETECT_CATEGORIES.size(); index++) {
+            if (scmAutoDetectButtonBounds(panelX, autoDetectY, panelWidth, index)
+                    .contains(mouseX, mouseY)) {
+                autoDetectAndAssignScmConfiguration(SCM_AUTO_DETECT_CATEGORIES.get(index));
+                return true;
+            }
         }
         // An open popup owns its entire layer. Do not let the controls below
         // it consume clicks from later rows in the popup.
@@ -3005,6 +3286,9 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
 
     private List<String> scmConfigurationActions() {
         LinkedHashSet<String> actions = new LinkedHashSet<>(SCM_CALIBRATION_ACTIONS);
+        if (scmConfigurationProfile.usesIkVehicle()) {
+            actions.addAll(ScmConfigurationProfile.ikActions(scmConfigurationProfile.ikGait()));
+        }
         if (draft != null) {
             // The binding palette is intentionally limited to the direct
             // physical controls. Legacy autonomous action functions remain
@@ -3013,7 +3297,24 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
                     .filter(SCM_CALIBRATION_ACTIONS::contains)
                     .forEach(actions::add);
         }
-        return List.copyOf(actions);
+        boolean dockingSelection = scmConfigurationSelection.stream()
+                .anyMatch(this::isScmConfigurationDockingConnector);
+        return actions.stream().filter(action -> dockingSelection
+                == ScmConfigurationProfile.isDockingConnectorAction(action)).toList();
+    }
+
+    // Check whether one live selection is a docking connector.
+    private boolean isScmConfigurationDockingConnector(
+            ScmConfigurationProfile.UnitReference reference
+    ) {
+        if (reference == null) return false;
+        ScmConfigurationProfile.DockingConnectorReference connector =
+                new ScmConfigurationProfile.DockingConnectorReference(
+                        reference.subLevelId(), reference.blockPosition());
+        return scmConfigurationDockingConnectors.contains(connector)
+                || scmLivePreviewRenderer.isDockingConnector(
+                new ScmLiveSubLevelPreviewRenderer.PickTarget("", reference.subLevelId(),
+                        reference.blockPosition(), reference.face()));
     }
 
     private String activeScmConfigurationAction() {
@@ -3033,11 +3334,17 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
 
     private String scmConfigurationTargetLabel(String action) {
         if (action == null || action.isBlank()) return "No SCM action available";
+        ScmConfigurationProfile.DockingConnectorGroup dockingGroup =
+                ScmConfigurationProfile.dockingConnectorGroupForAction(action);
+        if (dockingGroup != null) return "Docking Connector: " + dockingGroup.label();
         if (ScmConfigurationProfile.isAutoAction(action)) {
             return "Auto - automatic allocation";
         }
         if (ScmConfigurationProfile.isAccelerationAction(action)) {
             return "Acceleration - analogue speed control";
+        }
+        if (ScmConfigurationProfile.isIkAction(action)) {
+            return ScmConfigurationProfile.ikActionLabel(action);
         }
         AdvancedGraphDocument.FunctionGraph function = draft == null ? null
                 : draft.function(draft.scmActionFunction(action));
@@ -3046,11 +3353,17 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
     }
 
     private static String scmConfigurationActionLabel(String action) {
+        ScmConfigurationProfile.DockingConnectorGroup dockingGroup =
+                ScmConfigurationProfile.dockingConnectorGroupForAction(action);
+        if (dockingGroup != null) return "Docking Connector: " + dockingGroup.label();
         if (ScmConfigurationProfile.isAutoAction(action)) {
             return "Auto";
         }
         if (ScmConfigurationProfile.isAccelerationAction(action)) {
             return "Acceleration";
+        }
+        if (ScmConfigurationProfile.isIkAction(action)) {
+            return ScmConfigurationProfile.ikActionLabel(action);
         }
         return AdvancedGraphCatalog.displayName(action);
     }
@@ -3468,24 +3781,101 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         return Math.max(0, scmConfigurationCandidates.size() - 1);
     }
 
-    private void assignScmConfigurationSelection() {
-        if (scmConfigurationProfile.mapId() == null || scmConfigurationSelection.isEmpty()) {
-            scmConfigurationStatus = "Wait for the live craft view, then select one or more blocks";
+    private void autoDetectAndAssignScmConfiguration(String category) {
+        if (scmConfigurationProfile.mapId() == null) {
+            scmConfigurationStatus = "Wait for the live craft view before detecting controls";
             return;
         }
-        String action = activeScmConfigurationAction();
+        Set<ScmConfigurationProfile.UnitReference> detected = scmConfigurationCandidates.stream()
+                .filter(unit -> scmAutoDetectMatches(unit, category))
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        if (detected.isEmpty()) {
+            scmConfigurationStatus = "No " + scmAutoDetectCategoryLabel(category).toLowerCase(Locale.ROOT)
+                    + " were detected in the loaded craft";
+            return;
+        }
+        scmConfigurationSelection.clear();
+        scmConfigurationSelection.addAll(detected);
+        if (assignScmConfigurationSelection(ScmConfigurationProfile.AUTO_ACTION,
+                ScmControlBindingMode.AUTO)) {
+            scmConfigurationStatus = "Auto-detected and assigned " + detected.size() + " "
+                    + scmAutoDetectCategoryLabel(category).toLowerCase(Locale.ROOT)
+                    + " to Auto";
+        }
+    }
+
+    // Check whether a discovered live control matches one automatic assignment category
+    private boolean scmAutoDetectMatches(ScmConfigurationProfile.UnitReference unit, String category) {
+        if (unit == null || category == null) return false;
+        if (scmLivePreviewRenderer.matchesAutoDetectCategory(
+                unit.subLevelId(), unit.blockPosition(), category)) {
+            return true;
+        }
+        String adapter = unit.adapter().toLowerCase(Locale.ROOT);
+        return switch (category) {
+            case "thrusters" -> adapter.contains("thruster") || adapter.contains("engine")
+                    || adapter.contains("rocket") || adapter.contains("jet") || adapter.contains("fan");
+            case "bearings" -> adapter.contains("bearing") || adapter.contains("rotor")
+                    || adapter.contains("hinge");
+            case "actuators" -> adapter.contains("joint") || adapter.contains("actuator")
+                    || adapter.contains("motor") || adapter.contains("servo") || adapter.contains("piston");
+            case "propulsion" -> adapter.contains("propulsion") || adapter.contains("thruster")
+                    || adapter.contains("engine") || adapter.contains("rocket") || adapter.contains("jet");
+            default -> false;
+        };
+    }
+
+    private void assignScmConfigurationSelection() {
+        assignScmConfigurationSelection(activeScmConfigurationAction(), scmConfigurationControlBindingMode);
+    }
+
+    // Assign selected controls to one action using the requested target scope
+    private boolean assignScmConfigurationSelection(String action, ScmControlBindingMode bindingMode) {
+        if (scmConfigurationProfile.mapId() == null || scmConfigurationSelection.isEmpty()) {
+            scmConfigurationStatus = "Wait for the live craft view, then select one or more blocks";
+            return false;
+        }
+        if (action == null || action.isBlank()) {
+            scmConfigurationStatus = "No SCM action is available for that assignment";
+            return false;
+        }
+        ScmConfigurationProfile.DockingConnectorGroup dockingGroup =
+                ScmConfigurationProfile.dockingConnectorGroupForAction(action);
+        if (dockingGroup != null) {
+            int assigned = 0;
+            int changed = 0;
+            for (ScmConfigurationProfile.UnitReference selected : scmConfigurationSelection) {
+                if (!isScmConfigurationDockingConnector(selected)) continue;
+                assigned++;
+                if (scmConfigurationProfile.setDockingConnectorGroup(
+                        selected.subLevelId(), selected.blockPosition(), dockingGroup)) {
+                    changed++;
+                }
+            }
+            if (assigned == 0) {
+                scmConfigurationStatus = "Select one or more docking connectors in the live craft view";
+                return false;
+            }
+            scmConfigurationDirty |= changed > 0;
+            scmConfigurationStatus = (changed == 0 ? "Already assigned " : "Assigned ")
+                    + assigned + " docking connector"
+                    + (assigned == 1 ? " to " : "s to ") + dockingGroup.label();
+            scmConfigurationSelection.clear();
+            scmLivePreviewRenderer.invalidate();
+            return true;
+        }
         String groupId = "action_" + action;
         Map<String, ScmConfigurationProfile.Group> groups = new LinkedHashMap<>();
         scmConfigurationProfile.groups().forEach(group -> groups.put(group.id(), group));
-        boolean faceMode = scmConfigurationControlBindingMode == ScmControlBindingMode.FACE;
+        boolean faceMode = bindingMode == ScmControlBindingMode.FACE;
         boolean missingFace = faceMode && scmConfigurationSelection.stream()
                 .anyMatch(unit -> unit.face() == null && scmConfigurationInputFace == null);
         if (missingFace) {
             scmConfigurationStatus = "Face mode: click a block face or choose a direction first";
-            return;
+            return false;
         }
         Set<ScmConfigurationProfile.UnitReference> bindings = scmConfigurationSelection.stream()
-                .map(unit -> switch (scmConfigurationControlBindingMode) {
+                .map(unit -> switch (bindingMode) {
                     case AUTO -> unit;
                     case BLOCK -> unit.withFace(null);
                     case FACE -> unit.withFace(unit.face() == null
@@ -3518,6 +3908,7 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         scmConfigurationStatus = "Assigned " + bindings.size() + " block(s) to "
                 + scmConfigurationActionLabel(action);
         scmLivePreviewRenderer.invalidate();
+        return true;
     }
 
     private void removeScmConfigurationSelectionFromGroup(String groupId) {
@@ -3812,13 +4203,679 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         renderTitleBar(graphics, layoutLeft(), 0, layoutRight() - layoutLeft(), TOOLBAR_HEIGHT);
         graphics.fill(layoutLeft(), TOOLBAR_HEIGHT - 1, layoutRight(), TOOLBAR_HEIGHT,
                 v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF314657);
+        drawGridSnapToolbarControl(graphics);
         String title = "Advanced Contraption Controller";
         int titleLeft = layoutLeft() + 276;
-        int titleRight = layoutRight() - 434;
+        int titleRight = layoutRight() - 526;
         if (titleRight - titleLeft >= font.width(title) + 8) {
             graphics.drawCenteredString(font, title, (titleLeft + titleRight) / 2, 10,
                     v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFFE7F4FF);
         }
+    }
+
+    // Draw the shared snap-step control used by every editable graph workspace.
+    private void drawGridSnapToolbarControl(GuiGraphics graphics) {
+        UiRect bounds = gridSnapSliderBounds();
+        if (bounds.width() <= 0) return;
+        graphics.drawString(font, "Grid " + gridSnapStep, bounds.x(), bounds.y() + 5,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFFD2E4F0, false);
+        int trackLeft = bounds.x() + 42;
+        int trackWidth = Math.max(18, bounds.width() - 46);
+        int trackY = bounds.y() + 9;
+        graphics.fill(trackLeft, trackY, trackLeft + trackWidth, trackY + 2,
+                v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF466A82);
+        int handle = trackLeft + (trackWidth - 4) * (gridSnapStep - GRID_SNAP_MINIMUM)
+                / (GRID_SNAP_MAXIMUM - GRID_SNAP_MINIMUM);
+        graphics.fill(handle, trackY - 3, handle + 4, trackY + 5,
+                draggingGridSnapSlider ? interfaceAccentTextColor()
+                        : v2Ui ? AdvancedControllerV2Theme.ACCENT : 0xFF91D9FF);
+    }
+
+    // Get the bounds of the toolbar grid-snap control.
+    private UiRect gridSnapSliderBounds() {
+        return new UiRect(layoutRight() - 392, 5, 84, 18);
+    }
+
+    // Update the shared graph snap size from the toolbar slider.
+    private void updateGridSnapStep(double mouseX) {
+        UiRect bounds = gridSnapSliderBounds();
+        int trackLeft = bounds.x() + 42;
+        int trackWidth = Math.max(18, bounds.width() - 46);
+        double amount = Mth.clamp((mouseX - trackLeft) / trackWidth, 0.0D, 1.0D);
+        int snapped = GRID_SNAP_MINIMUM + (int) Math.round(amount
+                * (GRID_SNAP_MAXIMUM - GRID_SNAP_MINIMUM) / 4.0D) * 4;
+        gridSnapStep = Mth.clamp(snapped, GRID_SNAP_MINIMUM, GRID_SNAP_MAXIMUM);
+    }
+
+    // Draw the dedicated Worker Automation Editor rather than the generic ACC graph chrome.
+    private void drawWorkerAutomationEditor(GuiGraphics graphics, int mouseX, int mouseY) {
+        UiRect canvas = workerAutomationCanvasBounds();
+        graphics.fill(canvas.x(), canvas.y(), canvas.right(), canvas.bottom(), 0xFF07131D);
+        for (int x = canvas.x() + 12; x < canvas.right(); x += 24) {
+            for (int y = canvas.y() + 12; y < canvas.bottom(); y += 24) {
+                graphics.fill(x, y, x + 1, y + 1, 0x5538637B);
+            }
+        }
+        List<WorkerAutomationNodeLayout> layouts = workerAutomationNodeLayouts();
+        graphics.enableScissor(canvas.x(), canvas.y(), canvas.right(), canvas.bottom());
+        drawWorkerAutomationWires(graphics, layouts);
+        for (WorkerAutomationNodeLayout layout : layouts) drawWorkerAutomationNode(graphics, layout, mouseX, mouseY);
+        graphics.disableScissor();
+        if (layouts.isEmpty()) {
+            graphics.drawCenteredString(font, "Add a Worker Routine, then build its automation chain.",
+                    (canvas.x() + canvas.right()) / 2, canvas.y() + 46, 0xFF88A8BA);
+        }
+    }
+
+    // Draw the Worker Automation Editor title bar and its dedicated navigation affordances.
+    private void drawWorkerAutomationHeader(GuiGraphics graphics, int mouseX, int mouseY) {
+        graphics.fill(0, 0, width, 54, 0xFF0A1B28);
+        graphics.fill(0, 53, width, 54, 0xFF31536A);
+        graphics.drawCenteredString(font, "⚙  Worker Graph", width / 2, 11, 0xFFE6F4FF);
+        graphics.drawCenteredString(font, "Worker Automation Editor", width / 2, 25, 0xFF83A8C4);
+        UiRect mainGraph = new UiRect(110, 10, 102, 24);
+        drawWorkerAutomationButton(graphics, mainGraph, "Main Graph", mainGraph.contains(mouseX, mouseY));
+    }
+
+    // Draw a compact top-level Worker Automation Editor button.
+    private void drawWorkerAutomationButton(GuiGraphics graphics, UiRect bounds, String label, boolean hovered) {
+        graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(), hovered ? 0xFF29465C : 0xFF142C3D);
+        graphics.renderOutline(bounds.x(), bounds.y(), bounds.width(), bounds.height(),
+                hovered ? 0xFF63C7EE : 0xFF31566E);
+        graphics.drawCenteredString(font, label, bounds.x() + bounds.width() / 2, bounds.y() + 8,
+                hovered ? 0xFFE5F7FF : 0xFFB7D2E3);
+    }
+
+    // Draw the worker-only node library and its live mannequin roster.
+    private void drawWorkerAutomationLibrary(GuiGraphics graphics, int mouseX, int mouseY) {
+        UiRect bounds = workerAutomationLibraryBounds();
+        graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(), 0xFF0C1D29);
+        graphics.fill(bounds.right() - 1, bounds.y(), bounds.right(), bounds.bottom(), 0xFF2A4D63);
+        graphics.drawString(font, "WORKERS", bounds.x() + 12, bounds.y() + 11, 0xFF9ECBE4, false);
+        int y = bounds.y() + 27;
+        List<WorkerChoice> workers = workerGraphWorkers();
+        for (WorkerChoice worker : workers.stream().limit(2).toList()) {
+            graphics.fill(bounds.x() + 8, y, bounds.right() - 8, y + 30, 0xFF132B3A);
+            graphics.drawString(font, trim(worker.name(), 22), bounds.x() + 14, y + 5, 0xFFE3F2FA, false);
+            graphics.drawString(font, trim(worker.status(), 29), bounds.x() + 14, y + 17, 0xFF80A1B5, false);
+            y += 34;
+        }
+        if (workers.isEmpty()) {
+            graphics.drawString(font, "No linked mannequins", bounds.x() + 12, y + 7, 0xFF80A1B5, false);
+            y += 24;
+        }
+        y += 4;
+        graphics.drawString(font, "NODE LIBRARY", bounds.x() + 12, y + 7, 0xFF9ECBE4, false);
+        if (nodeSearch != null) {
+            nodeSearch.setX(bounds.x() + 10);
+            nodeSearch.setY(y + 17);
+            nodeSearch.setWidth(bounds.width() - 20);
+            nodeSearch.setVisible(true);
+        }
+        y += 43;
+        String query = nodeSearch == null ? "" : nodeSearch.getValue().strip().toLowerCase(Locale.ROOT);
+        for (WorkerAutomationPaletteEntry entry : workerAutomationPalette(query)) {
+            if (entry.category()) {
+                graphics.fill(bounds.x() + 8, y, bounds.right() - 8, y + 18, 0xFF112B3B);
+                graphics.drawString(font, AdvancedGraphCatalog.categoryName(entry.id()).toUpperCase(Locale.ROOT),
+                        bounds.x() + 14, y + 5, 0xFF8BB9D3, false);
+                y += 20;
+            } else {
+                boolean hovered = inside(mouseX, mouseY, bounds.x() + 10, y, bounds.width() - 20, 18);
+                if (hovered) graphics.fill(bounds.x() + 10, y, bounds.right() - 10, y + 18, 0xFF1B4054);
+                int accent = workerAutomationAccent(entry.definition().id());
+                graphics.fill(bounds.x() + 15, y + 5, bounds.x() + 21, y + 13, accent);
+                graphics.drawString(font, trim(AdvancedGraphCatalog.displayName(entry.definition().id()), 27),
+                        bounds.x() + 28, y + 5, 0xFFD9EAF4, false);
+                y += 19;
+            }
+            if (y >= bounds.bottom() - 2) break;
+        }
+    }
+
+    // Draw a focused, node-specific Worker Automation configuration pane.
+    private void drawWorkerAutomationInspector(GuiGraphics graphics, int mouseX, int mouseY) {
+        UiRect bounds = workerAutomationInspectorBounds();
+        graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(), 0xFF0C1D29);
+        graphics.fill(bounds.x(), bounds.y(), bounds.x() + 1, bounds.bottom(), 0xFF2A4D63);
+        graphics.drawString(font, "CONFIG", bounds.x() + 12, bounds.y() + 11, 0xFF9ECBE4, false);
+        AdvancedGraphDocument.Node node = selectedNode();
+        if (node == null) {
+            graphics.drawString(font, "Select a Worker Graph node", bounds.x() + 12, bounds.y() + 38,
+                    0xFF80A1B5, false);
+            return;
+        }
+        AdvancedGraphCatalog.Definition definition = AdvancedGraphCatalog.get(node.type());
+        int accent = AdvancedGraphCatalog.categoryColor(definition == null ? "worker" : definition.category());
+        graphics.fill(bounds.x() + 10, bounds.y() + 27, bounds.right() - 10, bounds.y() + 54, 0xFF142D3D);
+        graphics.fill(bounds.x() + 10, bounds.y() + 27, bounds.x() + 14, bounds.y() + 54, accent);
+        graphics.drawString(font, nodeTitle(node), bounds.x() + 21, bounds.y() + 34, 0xFFE6F4FF, false);
+        graphics.drawString(font, trim(workerAutomationDescription(node), 33), bounds.x() + 21, bounds.y() + 45,
+                0xFF86AABD, false);
+        int y = bounds.y() + 68;
+        for (WorkerAutomationField field : workerAutomationFields(node, bounds.x() + 10, y, bounds.width() - 20)) {
+            boolean hovered = field.bounds().contains(mouseX, mouseY);
+            graphics.fill(field.bounds().x(), field.bounds().y(), field.bounds().right(), field.bounds().bottom(),
+                    hovered ? 0xFF21465B : 0xFF142D3D);
+            graphics.renderOutline(field.bounds().x(), field.bounds().y(), field.bounds().width(), field.bounds().height(),
+                    0xFF315A70);
+            graphics.drawString(font, trim(inputDisplayLabel(node, field.port()), 15), field.bounds().x() + 6,
+                    field.bounds().y() + 5, 0xFF8FB6CA, false);
+            String value = trim(inputValueLabel(node, field.port(), field.type()), 18);
+            graphics.drawString(font, value, field.bounds().right() - 6 - font.width(value), field.bounds().y() + 5,
+                    0xFFE2F3FB, false);
+            y = field.bounds().bottom() + 5;
+            if (y >= bounds.bottom() - 22) break;
+        }
+    }
+
+    // Lay out custom graph cards in the Worker Automation Editor canvas.
+    private List<WorkerAutomationNodeLayout> workerAutomationNodeLayouts() {
+        UiRect canvas = workerAutomationCanvasBounds();
+        List<WorkerAutomationNodeLayout> layouts = new ArrayList<>();
+        for (AdvancedGraphDocument.Node node : activeNodes()) {
+            List<WorkerAutomationField> fields = workerAutomationFields(node, 0, 0, 190);
+            int cardHeight = 42 + fields.size() * 20 + 8;
+            int x = canvas.x() + 20 + (int) Math.round((node.x() + panX) * zoom);
+            int y = canvas.y() + 18 + (int) Math.round((node.y() + panY) * zoom);
+            UiRect bounds = new UiRect(x, y, 198, cardHeight);
+            List<WorkerAutomationField> positioned = workerAutomationFields(node, x + 6, y + 35, 186);
+            layouts.add(new WorkerAutomationNodeLayout(node, bounds, positioned));
+        }
+        return List.copyOf(layouts);
+    }
+
+    // Draw one custom worker node with direct, on-body selectors instead of generic graph ports.
+    private void drawWorkerAutomationNode(GuiGraphics graphics, WorkerAutomationNodeLayout layout,
+                                          int mouseX, int mouseY) {
+        AdvancedGraphDocument.Node node = layout.node();
+        UiRect bounds = layout.bounds();
+        int accent = workerAutomationAccent(node.type());
+        boolean selected = selectedNodes.contains(node.id());
+        graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(), 0xFF132B3A);
+        graphics.renderOutline(bounds.x(), bounds.y(), bounds.width(), bounds.height(),
+                selected ? 0xFF79D4F4 : 0xFF31596F);
+        graphics.fill(bounds.x() + 1, bounds.y() + 1, bounds.right() - 1, bounds.y() + 28, 0xFF193849);
+        graphics.fill(bounds.x() + 1, bounds.y() + 1, bounds.x() + 5, bounds.y() + 28, accent);
+        graphics.fill(bounds.x() + 11, bounds.y() + 8, bounds.x() + 23, bounds.y() + 20, accent);
+        graphics.drawString(font, trim(nodeTitle(node), 22), bounds.x() + 29, bounds.y() + 10, 0xFFE8F5FA, false);
+        for (WorkerAutomationField field : layout.fields()) {
+            boolean hovered = field.bounds().contains(mouseX, mouseY);
+            graphics.fill(field.bounds().x(), field.bounds().y(), field.bounds().right(), field.bounds().bottom(),
+                    hovered ? 0xFF244B60 : 0xFF102432);
+            graphics.drawString(font, trim(inputDisplayLabel(node, field.port()), 11), field.bounds().x() + 5,
+                    field.bounds().y() + 5, 0xFF91B7CA, false);
+            String value = trim(inputValueLabel(node, field.port(), field.type()), 13);
+            graphics.drawString(font, value, field.bounds().right() - 5 - font.width(value), field.bounds().y() + 5,
+                    0xFFE5F4FA, false);
+        }
+    }
+
+    // Draw clean chain wires between custom Worker Automation Editor cards.
+    private void drawWorkerAutomationWires(GuiGraphics graphics, List<WorkerAutomationNodeLayout> layouts) {
+        Map<String, WorkerAutomationNodeLayout> byId = new LinkedHashMap<>();
+        for (WorkerAutomationNodeLayout layout : layouts) byId.put(layout.node().id(), layout);
+        for (AdvancedGraphDocument.Edge edge : activeEdges()) {
+            WorkerAutomationNodeLayout from = byId.get(edge.fromNode());
+            WorkerAutomationNodeLayout to = byId.get(edge.toNode());
+            if (from == null || to == null) continue;
+            int color = "exec".equals(edge.fromPort()) ? 0xFFDAE7EF
+                    : portColor(nodeOutputs(from.node()).getOrDefault(edge.fromPort(), "any"));
+            int startX = from.bounds().right();
+            int startY = from.bounds().y() + 15;
+            int endX = to.bounds().x();
+            int endY = to.bounds().y() + 15;
+            int middleX = (startX + endX) / 2;
+            graphics.fill(Math.min(startX, middleX), startY - 1, Math.max(startX, middleX), startY + 1, color);
+            graphics.fill(middleX - 1, Math.min(startY, endY), middleX + 1, Math.max(startY, endY), color);
+            graphics.fill(Math.min(middleX, endX), endY - 1, Math.max(middleX, endX), endY + 1, color);
+        }
+    }
+
+    // Build the input rows shared by custom worker cards and the worker inspector.
+    private List<WorkerAutomationField> workerAutomationFields(AdvancedGraphDocument.Node node, int x, int y, int width) {
+        List<WorkerAutomationField> fields = new ArrayList<>();
+        for (Map.Entry<String, String> entry : nodeInputs(node).entrySet()) {
+            if ("exec".equals(entry.getValue()) || !isDataPortVisible(node, entry.getKey(), false)) continue;
+            fields.add(new WorkerAutomationField(entry.getKey(), entry.getValue(), new UiRect(x, y, width, 17)));
+            y += 20;
+        }
+        return List.copyOf(fields);
+    }
+
+    // Restrict the bespoke palette to the dedicated Worker Graph node library.
+    private List<WorkerAutomationPaletteEntry> workerAutomationPalette(String query) {
+        List<WorkerAutomationPaletteEntry> entries = new ArrayList<>();
+        for (String category : WORKER_GRAPH_CATEGORY_ORDER) {
+            List<AdvancedGraphCatalog.Definition> definitions = AdvancedGraphCatalog.all().stream()
+                    .filter(definition -> category.equals(definition.category()))
+                    .filter(definition -> isNodeAvailableInEditor(definition.id()))
+                    .filter(definition -> query == null || query.isBlank()
+                            || AdvancedGraphCatalog.displayName(definition.id()).toLowerCase(Locale.ROOT).contains(query))
+                    .toList();
+            if (definitions.isEmpty()) continue;
+            entries.add(new WorkerAutomationPaletteEntry(category, null));
+            definitions.forEach(definition -> entries.add(new WorkerAutomationPaletteEntry(category, definition)));
+        }
+        return List.copyOf(entries);
+    }
+
+    // Describe worker command nodes in the dedicated inspector without borrowing Main Graph copy.
+    private static String workerAutomationDescription(AdvancedGraphDocument.Node node) {
+        return switch (node.type()) {
+            case "worker_routine" -> "Default automation entry";
+            case "worker_task_event" -> "Externally requested task";
+            case "worker_source_container" -> "Where workers collect";
+            case "worker_destination_container" -> "Where workers deliver";
+            case "worker_move_items", "worker_move_fluid", "worker_move_fe" -> "Collect real carried resources";
+            case "worker_deposit" -> "Deliver carried resources";
+            case "worker_process" -> "Run and collect a process";
+            case "worker_craft" -> "Craft with worker inventory";
+            default -> "Worker automation configuration";
+        };
+    }
+
+    // Use a concise colour language that is unique to Worker Automation nodes.
+    private static int workerAutomationAccent(String type) {
+        return switch (type) {
+            case "worker_routine", "worker_task_event" -> 0xFF54A9EE;
+            case "worker_source_container", "worker_destination_container" -> 0xFFD9A948;
+            case "worker_item_filter", "worker_fluid_filter", "worker_tag_filter" -> 0xFF64B9ED;
+            case "worker_move_items", "worker_move_fluid", "worker_move_fe" -> 0xFFF0C94D;
+            case "worker_deposit", "worker_give_items" -> 0xFF5ECC8B;
+            case "worker_process", "worker_craft" -> 0xFFE06B69;
+            case "worker_move_to" -> 0xFFB287E8;
+            default -> 0xFF6D92A8;
+        };
+    }
+
+    // Keep the worker surface fixed and independent from Main Graph sidebar sizing.
+    private UiRect workerAutomationLibraryBounds() {
+        return new UiRect(0, 54, Math.min(260, Math.max(180, width / 4)), Math.max(1, height - 54));
+    }
+
+    // Reserve a separate inspector column for the Worker Automation Editor.
+    private UiRect workerAutomationInspectorBounds() {
+        int width = Math.min(278, Math.max(205, this.width / 4));
+        return new UiRect(this.width - width, 54, width, Math.max(1, height - 54));
+    }
+
+    // Return the central dedicated canvas between worker-specific sidebars.
+    private UiRect workerAutomationCanvasBounds() {
+        UiRect left = workerAutomationLibraryBounds();
+        UiRect right = workerAutomationInspectorBounds();
+        return new UiRect(left.right(), 54, Math.max(1, right.x() - left.right()), Math.max(1, height - 54));
+    }
+
+    // Handle direct controls in the dedicated Worker Automation Editor.
+    private boolean clickWorkerAutomationEditor(double mouseX, double mouseY, int button) {
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
+        UiRect mainGraph = new UiRect(110, 10, 102, 24);
+        if (mainGraph.contains(mouseX, mouseY)) {
+            selectGraphTab(null);
+            return true;
+        }
+        if (inside(mouseX, mouseY, layoutRight() - 220, 5, 60, 18)) {
+            setLinkerOpen(!linkerOpen);
+            return true;
+        }
+        if (toolsToolbarButtonBounds().contains(mouseX, mouseY)) {
+            toolsMenuOpen = !toolsMenuOpen;
+            return true;
+        }
+        if (inside(mouseX, mouseY, layoutLeft() + 4, 5, 42, 18)) {
+            saveAndApplyDraft("save_apply", beginGraphActionToast("Saving and applying graph..."));
+            return true;
+        }
+        if (inside(mouseX, mouseY, layoutLeft() + 52, 5, 44, 18)) {
+            saveAndApplyDraft("apply_save", beginGraphActionToast("Applying graph..."));
+            return true;
+        }
+        UiRect library = workerAutomationLibraryBounds();
+        if (library.contains(mouseX, mouseY)) {
+            if (nodeSearch != null && nodeSearch.mouseClicked(mouseX, mouseY, button)) {
+                nodeSearch.setFocused(true);
+                setFocused(nodeSearch);
+                return true;
+            }
+            int y = library.y() + 27;
+            int workerRows = Math.min(2, workerGraphWorkers().size());
+            y += workerRows == 0 ? 24 : workerRows * 34;
+            y += 4 + 43;
+            String query = nodeSearch == null ? "" : nodeSearch.getValue().strip().toLowerCase(Locale.ROOT);
+            for (WorkerAutomationPaletteEntry entry : workerAutomationPalette(query)) {
+                if (entry.category()) {
+                    y += 20;
+                    continue;
+                }
+                if (inside(mouseX, mouseY, library.x() + 10, y, library.width() - 20, 18)) {
+                    addWorkerAutomationNode(entry.definition().id());
+                    return true;
+                }
+                y += 19;
+            }
+            return true;
+        }
+        UiRect inspector = workerAutomationInspectorBounds();
+        AdvancedGraphDocument.Node selected = selectedNode();
+        if (selected != null && inspector.contains(mouseX, mouseY)) {
+            for (WorkerAutomationField field : workerAutomationFields(selected, inspector.x() + 10,
+                    inspector.y() + 68, inspector.width() - 20)) {
+                if (!field.bounds().contains(mouseX, mouseY)) continue;
+                selectedInputPort = field.port();
+                applyInputControl(selected, field.port(), field.type(), mouseX, mouseY,
+                        field.bounds().x(), field.bounds().width());
+                syncInspector();
+                return true;
+            }
+            return true;
+        }
+        for (WorkerAutomationNodeLayout layout : workerAutomationNodeLayouts()) {
+            if (!layout.bounds().contains(mouseX, mouseY)) continue;
+            selectOnly(layout.node().id());
+            for (WorkerAutomationField field : layout.fields()) {
+                if (!field.bounds().contains(mouseX, mouseY)) continue;
+                selectedInputPort = field.port();
+                applyInputControl(layout.node(), field.port(), field.type(), mouseX, mouseY,
+                        field.bounds().x(), field.bounds().width());
+            }
+            syncInspector();
+            return true;
+        }
+        clearSelection();
+        return true;
+    }
+
+    // Add a custom worker node and append it to the selected execution chain when possible.
+    private void addWorkerAutomationNode(String type) {
+        if (!isNodeAvailableInEditor(type) || activeNodes().size() >= AdvancedGraphDocument.maxNodes()) return;
+        checkpoint();
+        AdvancedGraphDocument.Node previous = selectedNode();
+        UiRect canvas = workerAutomationCanvasBounds();
+        int index = activeNodes().size();
+        double x = 48.0D + (index % 4) * 230.0D;
+        double y = 44.0D + (index / 4) * 175.0D;
+        AdvancedGraphDocument.Node added = new AdvancedGraphDocument.Node(UUID.randomUUID().toString(), type,
+                AdvancedGraphCatalog.displayName(type), x, y,
+                AdvancedGraphNodeFactory.createDefaultData(type, graphNodeFactoryContext()));
+        activeNodes().add(added);
+        if (previous != null) {
+            String output = workerAutomationExecutionOutput(previous);
+            if (output != null && nodeInputs(added).containsValue("exec")) {
+                activeEdges().add(AdvancedGraphFunctions.edge(previous.id(), output, added.id(), "exec"));
+            }
+        }
+        selectOnly(added.id());
+        selectedGroup = null;
+        clearGraphRenderCache();
+        syncInspector();
+    }
+
+    // Select the normal continuation output for one command card.
+    private String workerAutomationExecutionOutput(AdvancedGraphDocument.Node node) {
+        for (String preferred : List.of("start", "triggered", "complete", "arrived", "accepted", "exec")) {
+            if (nodeOutputs(node).getOrDefault(preferred, "").equals("exec")) return preferred;
+        }
+        return nodeOutputs(node).entrySet().stream().filter(entry -> "exec".equals(entry.getValue()))
+                .map(Map.Entry::getKey).findFirst().orElse(null);
+    }
+
+    // Draw the Worker Graph canvas and live task state
+    private void drawWorkerGraphWorkspace(GuiGraphics graphics, int mouseX, int mouseY) {
+        int left = graphLeft();
+        int top = graphTop();
+        int right = graphRight();
+        int bottom = graphBottom();
+        graphics.fill(left, top, right, bottom,
+                v2Ui ? AdvancedControllerV2Theme.CANVAS_BACKGROUND : 0xFF101820);
+        WorkerPodBlockEntity pod = workerPod();
+        int cardWidth = Math.min(430, Math.max(180, right - left - 48));
+        int cardX = left + Math.max(24, (right - left - cardWidth) / 2);
+        int cardY = top + 34;
+        renderAdvancedPanel(graphics, cardX, cardY, cardWidth, 164);
+        graphics.drawString(font, "Worker Base Station", cardX + 14, cardY + 11,
+                interfaceAccentTextColor(), false);
+        if (pod == null) {
+            graphics.drawString(font, "Attach a Worker Pod or add one to the Linker in SCM mode.",
+                    cardX + 14, cardY + 42, interfaceSecondaryColor(), false);
+            return;
+        }
+        var profile = pod.profile();
+        var task = pod.task();
+        graphics.drawString(font, "Assigned", cardX + 14, cardY + 39, interfaceMutedColor(), false);
+        graphics.drawString(font, pod.workerSnapshots().size() + " mannequins", cardX + 104, cardY + 39,
+                interfaceSecondaryColor(), false);
+        graphics.drawString(font, "Status", cardX + 14, cardY + 59, interfaceMutedColor(), false);
+        graphics.drawString(font, trim(pod.status(), 44), cardX + 104, cardY + 59,
+                interfaceSecondaryColor(), false);
+        graphics.drawString(font, "Resource", cardX + 14, cardY + 79, interfaceMutedColor(), false);
+        graphics.drawString(font, task.resource().type().id() + "  " + task.resource().id(),
+                cardX + 104, cardY + 79, interfaceSecondaryColor(), false);
+        graphics.drawString(font, "Progress", cardX + 14, cardY + 99, interfaceMutedColor(), false);
+        graphics.drawString(font, task.completedAmount() + " / " + task.requestedAmount(),
+                cardX + 104, cardY + 99, interfaceSecondaryColor(), false);
+        int progressX = cardX + 14;
+        int progressY = cardY + 124;
+        int progressWidth = cardWidth - 28;
+        graphics.fill(progressX, progressY, progressX + progressWidth, progressY + 9,
+                v2Ui ? AdvancedControllerV2Theme.PANEL_BACKGROUND : 0xFF18232D);
+        double progress = task.requestedAmount() <= 0L ? 0.0D
+                : (double) task.completedAmount() / (double) task.requestedAmount();
+        graphics.fill(progressX + 1, progressY + 1,
+                progressX + 1 + (int) Math.round((progressWidth - 2) * Mth.clamp(progress, 0.0D, 1.0D)),
+                progressY + 8, interfaceAccentTextColor());
+        graphics.drawString(font,
+                "Workers transfer items, fluids, FE and fuel between smart or manifested storage.",
+                cardX + 14, cardY + 144, interfaceMutedColor(), false);
+        drawWorkerEndpoints(graphics, pod, cardX, cardY + 180, cardWidth);
+    }
+
+    // Draw the Linker endpoints and their current resources
+    private void drawWorkerEndpoints(GuiGraphics graphics, WorkerPodBlockEntity pod,
+                                     int x, int y, int width) {
+        int availableHeight = Math.max(0, graphBottom() - y - 14);
+        if (availableHeight < 34) return;
+        renderAdvancedPanel(graphics, x, y, width, availableHeight);
+        graphics.drawString(font, "Contraption Network Linker endpoints", x + 12, y + 10,
+                interfaceAccentTextColor(), false);
+        int rowY = y + 30;
+        for (WorkerEndpointSnapshot endpoint : pod.endpointSnapshots()) {
+            if (rowY + 25 > y + availableHeight) break;
+            graphics.drawString(font, trim(endpoint.label(), 34), x + 12, rowY,
+                    interfaceSecondaryColor(), false);
+            String contents = endpoint.resources().isEmpty() ? "Empty / machine endpoint"
+                    : endpoint.resources().stream().limit(3)
+                    .map(resource -> resource.resource().id() + " " + resource.amount()
+                            + "/" + resource.capacity())
+                    .reduce((left, right) -> left + "  |  " + right).orElse("");
+            graphics.drawString(font, trim(contents, 62), x + 20, rowY + 12,
+                    interfaceMutedColor(), false);
+            rowY += 28;
+        }
+        if (pod.endpointSnapshots().isEmpty()) {
+            graphics.drawString(font, "Add storage or machine targets to the Linker in SCM mode.", x + 12, rowY,
+                    interfaceMutedColor(), false);
+        }
+    }
+
+    // Draw Worker Graph sidebars with the same ACC panel footprint
+    private void drawWorkerSidebars(GuiGraphics graphics, int mouseX, int mouseY) {
+        WorkerPodBlockEntity pod = workerPod();
+        if (!leftSidebarCollapsed) {
+            int left = layoutLeft();
+            renderSidebarPanel(graphics, left, TOOLBAR_HEIGHT, LEFT_WIDTH,
+                    height - TOOLBAR_HEIGHT);
+            graphics.drawString(font, "Base Stations", left + 10, TOOLBAR_HEIGHT + 12,
+                    interfaceAccentTextColor(), false);
+            List<WorkerPodBlockEntity> pods = workerPods();
+            if (pods.isEmpty()) {
+                graphics.drawString(font, "No linked pod", left + 12, TOOLBAR_HEIGHT + 42,
+                        interfaceMutedColor(), false);
+            }
+            for (int index = 0; index < pods.size(); index++) {
+                WorkerPodBlockEntity listed = pods.get(index);
+                UiRect row = workerPodRowBounds(index);
+                renderAdvancedPanel(graphics, row.x(), row.y(), row.width(), row.height());
+                if (index == selectedWorkerPod) {
+                    graphics.renderOutline(row.x(), row.y(), row.width(), row.height(),
+                            interfaceAccentTextColor());
+                }
+                graphics.drawString(font, "Worker Pod " + (index + 1), row.x() + 8, row.y() + 4,
+                        interfaceSecondaryColor(), false);
+                graphics.drawString(font, listed.workerSnapshots().size() + " workers - " + trim(listed.status(), 18),
+                        row.x() + 8, row.y() + 16, interfaceMutedColor(), false);
+            }
+        }
+        if (rightSidebarCollapsed) {
+            setWorkerEditorsVisible(false);
+            return;
+        }
+        int right = graphRight();
+        int panelWidth = layoutRight() - right;
+        renderSidebarPanel(graphics, right, TOOLBAR_HEIGHT, panelWidth,
+                height - TOOLBAR_HEIGHT);
+        graphics.drawString(font, "Worker Setup", right + 10, TOOLBAR_HEIGHT + 12,
+                interfaceAccentTextColor(), false);
+        setWorkerEditorsVisible(true);
+        positionWorkerEditors(right + 8, panelWidth - 16);
+        graphics.drawString(font, "Name", right + 8, TOOLBAR_HEIGHT + 38,
+                interfaceMutedColor(), false);
+        graphics.drawString(font, "Resource ID", right + 8, TOOLBAR_HEIGHT + 82,
+                interfaceMutedColor(), false);
+        graphics.drawString(font, "Amount", right + 8, TOOLBAR_HEIGHT + 126,
+                interfaceMutedColor(), false);
+        drawWorkerButton(graphics, workerJobBounds(), "Job: " + workerJob.id(), mouseX, mouseY);
+        drawWorkerButton(graphics, workerTypeBounds(), "Type: " + workerResourceType.id(), mouseX, mouseY);
+        drawWorkerButton(graphics, workerModeBounds(), "Mode: " + workerMode.id(), mouseX, mouseY);
+        drawWorkerButton(graphics, workerSourceBounds(),
+                "From: " + workerEndpointLabel(workerSourceEndpoint), mouseX, mouseY);
+        if (workerMode == WorkerWorkOrder.Mode.PROCESS || workerMode == WorkerWorkOrder.Mode.AUTO_CRAFT) {
+            drawWorkerButton(graphics, workerProcessorBounds(),
+                    "Machine: " + workerEndpointLabel(workerProcessorEndpoint), mouseX, mouseY);
+        }
+        drawWorkerButton(graphics, workerDestinationBounds(),
+                (workerMode == WorkerWorkOrder.Mode.FROG_PORT ? "Frog Port: " : "To: ")
+                        + workerEndpointLabel(workerDestinationEndpoint), mouseX, mouseY);
+        drawWorkerButton(graphics, workerResourceBrowseBounds(), "...", mouseX, mouseY);
+        if (workerMode == WorkerWorkOrder.Mode.PROCESS || workerMode == WorkerWorkOrder.Mode.AUTO_CRAFT) {
+            graphics.drawString(font, "Output Resource", right + 8, TOOLBAR_HEIGHT + 314,
+                    interfaceMutedColor(), false);
+            graphics.drawString(font, "Output Amount", right + 8, TOOLBAR_HEIGHT + 358,
+                    interfaceMutedColor(), false);
+            drawWorkerButton(graphics, workerOutputBrowseBounds(), "...", mouseX, mouseY);
+        }
+        drawWorkerButton(graphics, workerEnabledBounds(), workerEnabled ? "Enabled" : "Disabled", mouseX, mouseY);
+        drawWorkerButton(graphics, workerConfiguredSelectionBounds(),
+                "Configure Workers: " + configuredWorkerIds.size(), mouseX, mouseY);
+        drawWorkerButton(graphics, workerSaveBounds(), "Apply Worker", mouseX, mouseY);
+        drawWorkerButton(graphics, workerRosterBounds(),
+                "Assign Mannequins: " + pod.assignedWorkerIds().size(), mouseX, mouseY);
+        if (!workerValidationMessage.isBlank()) {
+            graphics.drawString(font, trim(workerValidationMessage, 28), right + 8,
+                    workerSaveBounds().y() + 26, 0xFFFFA05A, false);
+        }
+    }
+
+    // Draw one Worker Graph control
+    private void drawWorkerButton(GuiGraphics graphics, UiRect bounds, String label,
+                                  int mouseX, int mouseY) {
+        renderAdvancedButton(graphics, font, bounds.x(), bounds.y(), bounds.width(), bounds.height(),
+                Component.literal(label), bounds.contains(mouseX, mouseY), true);
+    }
+
+    // Position the Worker Graph text editors
+    private void positionWorkerEditors(int x, int width) {
+        workerName.setX(x);
+        workerName.setY(TOOLBAR_HEIGHT + 50);
+        workerName.setWidth(width);
+        workerResource.setX(x);
+        workerResource.setY(TOOLBAR_HEIGHT + 94);
+        workerResource.setWidth(Math.max(24, width - 30));
+        workerAmount.setX(x);
+        workerAmount.setY(TOOLBAR_HEIGHT + 138);
+        workerAmount.setWidth(width);
+        workerOutputResource.setX(x);
+        workerOutputResource.setY(TOOLBAR_HEIGHT + 326);
+        workerOutputResource.setWidth(Math.max(24, width - 30));
+        workerOutputAmount.setX(x);
+        workerOutputAmount.setY(TOOLBAR_HEIGHT + 370);
+        workerOutputAmount.setWidth(width);
+    }
+
+    // Set all Worker Graph text editor visibility together
+    private void setWorkerEditorsVisible(boolean visible) {
+        if (workerName != null) workerName.setVisible(visible);
+        if (workerResource != null) workerResource.setVisible(visible);
+        if (workerAmount != null) workerAmount.setVisible(visible);
+        boolean processing = workerMode == WorkerWorkOrder.Mode.PROCESS
+                || workerMode == WorkerWorkOrder.Mode.AUTO_CRAFT;
+        if (workerOutputResource != null) workerOutputResource.setVisible(visible && processing);
+        if (workerOutputAmount != null) workerOutputAmount.setVisible(visible && processing);
+    }
+
+    private UiRect workerJobBounds() {
+        return new UiRect(graphRight() + 8, TOOLBAR_HEIGHT + 166,
+                Math.max(24, activeRightWidth() - 16), 18);
+    }
+
+    private UiRect workerTypeBounds() {
+        return new UiRect(graphRight() + 8, TOOLBAR_HEIGHT + 190,
+                Math.max(24, activeRightWidth() - 16), 18);
+    }
+
+    private UiRect workerModeBounds() {
+        return new UiRect(graphRight() + 8, TOOLBAR_HEIGHT + 214,
+                Math.max(24, activeRightWidth() - 16), 18);
+    }
+
+    private UiRect workerSourceBounds() {
+        return new UiRect(graphRight() + 8, TOOLBAR_HEIGHT + 238,
+                Math.max(24, activeRightWidth() - 16), 18);
+    }
+
+    private UiRect workerProcessorBounds() {
+        return new UiRect(graphRight() + 8, TOOLBAR_HEIGHT + 262,
+                Math.max(24, activeRightWidth() - 16), 18);
+    }
+
+    private UiRect workerDestinationBounds() {
+        return new UiRect(graphRight() + 8, TOOLBAR_HEIGHT + 286,
+                Math.max(24, activeRightWidth() - 16), 18);
+    }
+
+    private UiRect workerResourceBrowseBounds() {
+        return new UiRect(layoutRight() - 34, TOOLBAR_HEIGHT + 94, 26, 18);
+    }
+
+    private UiRect workerOutputBrowseBounds() {
+        return new UiRect(layoutRight() - 34, TOOLBAR_HEIGHT + 326, 26, 18);
+    }
+
+    private UiRect workerEnabledBounds() {
+        int y = workerMode == WorkerWorkOrder.Mode.PROCESS || workerMode == WorkerWorkOrder.Mode.AUTO_CRAFT
+                ? TOOLBAR_HEIGHT + 398 : TOOLBAR_HEIGHT + 318;
+        return new UiRect(graphRight() + 8, y,
+                Math.max(24, activeRightWidth() - 16), 18);
+    }
+
+    private UiRect workerSaveBounds() {
+        return new UiRect(graphRight() + 8, workerEnabledBounds().y() + 58,
+                Math.max(24, activeRightWidth() - 16), 20);
+    }
+
+    private UiRect workerConfiguredSelectionBounds() {
+        return new UiRect(graphRight() + 8, workerEnabledBounds().y() + 26,
+                Math.max(24, activeRightWidth() - 16), 20);
+    }
+
+    private UiRect workerRosterBounds() {
+        return new UiRect(graphRight() + 8, workerSaveBounds().y() + 26,
+                Math.max(24, activeRightWidth() - 16), 20);
+    }
+
+    private UiRect workerPodRowBounds(int index) {
+        return new UiRect(layoutLeft() + 8, TOOLBAR_HEIGHT + 34 + index * 30,
+                LEFT_WIDTH - 16, 28);
     }
 
     // Draw the graph tabs
@@ -3834,7 +4891,8 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         graphics.enableScissor(left, top, right, top + GRAPH_TAB_HEIGHT);
         int x = left + 5 - functionTabScroll;
         x = drawGraphTab(graphics, x, top + 3, "Main Graph",
-                !scmGraphOverview && !scheduleGraphOverview && activeFunctionId == null,
+                !scmGraphOverview && !scheduleGraphOverview && !workerGraphOverview && !workerGraphMode
+                        && activeFunctionId == null,
                 mouseX, mouseY, false, false);
         if (hasScmWorkspace()) {
             x = drawGraphTab(graphics, x, top + 3, "SCM Graph",
@@ -3844,7 +4902,12 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             x = drawGraphTab(graphics, x, top + 3, "Schedule",
                     scheduleGraphOverview, mouseX, mouseY, false, false);
         }
+        if (hasWorkerWorkspace()) {
+            x = drawGraphTab(graphics, x, top + 3, "Worker Graph",
+                    workerGraphOverview || workerGraphMode, mouseX, mouseY, false, false);
+        }
         for (AdvancedGraphDocument.FunctionGraph function : draft.functions()) {
+            if (isWorkerPrivateFunction(function)) continue;
             x = drawGraphTab(graphics, x, top + 3, function.name(),
                     function.id().equals(activeFunctionId), mouseX, mouseY, true,
                     function.id().equals(editingFunctionId));
@@ -3909,7 +4972,11 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         if (hasShippingScheduleWorkspace()) {
             width += graphTabWidth("Schedule", false) + 3;
         }
+        if (hasWorkerWorkspace()) {
+            width += graphTabWidth("Worker Graph", false) + 3;
+        }
         for (AdvancedGraphDocument.FunctionGraph function : draft.functions()) {
+            if (isWorkerPrivateFunction(function)) continue;
             width += graphTabWidth(function.name(), true) + 3;
         }
         return width + 7;
@@ -3945,7 +5012,16 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             }
             x += width + 3;
         }
+        if (hasWorkerWorkspace()) {
+            width = graphTabWidth("Worker Graph", false);
+            if (mouseX >= x && mouseX < x + width) {
+                selectWorkerGraphTab();
+                return true;
+            }
+            x += width + 3;
+        }
         for (AdvancedGraphDocument.FunctionGraph function : draft.functions()) {
+            if (isWorkerPrivateFunction(function)) continue;
             width = graphTabWidth(function.name(), true);
             if (mouseX >= x && mouseX < x + width) {
                 if (mouseX >= x + width - 28) {
@@ -4175,7 +5251,8 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
     // Draw the slot
     @Override
     protected void renderSlot(GuiGraphics graphics, Slot slot) {
-        if (scmConfigurationOpen || scmGraphOverview || scheduleGraphOverview || shouldHideGhostSlot(slot)) return;
+        if (scmConfigurationOpen || scmGraphOverview || scheduleGraphOverview
+                || shouldHideGhostSlot(slot)) return;
         if (!ContraptionNetworkLinkerSlotRenderer.renderControllerSlot(graphics, slot)) {
             super.renderSlot(graphics, slot);
         }
@@ -4184,7 +5261,8 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
     // Draw the slot highlight
     @Override
     protected void renderSlotHighlight(GuiGraphics graphics, Slot slot, int mouseX, int mouseY, float partialTick) {
-        if (scmConfigurationOpen || scmGraphOverview || scheduleGraphOverview || shouldHideGhostSlot(slot)) return;
+        if (scmConfigurationOpen || scmGraphOverview || scheduleGraphOverview
+                || shouldHideGhostSlot(slot)) return;
         super.renderSlotHighlight(graphics, slot, mouseX, mouseY, partialTick);
     }
 
@@ -4607,11 +5685,14 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         graphics.drawString(font, v2Ui ? "CONFIG" : "Inspector", x + 10, 38,
                 v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF91D9FF, false);
 
-        drawInspectorSectionHeader(graphics, x, 56, "Schedule", false);
         AdvancedGraphDocument.Node selected = scheduleNode(selectedScheduleBlock);
-        String selectedLabel = selected == null ? "Select a block" : scheduleBlockLabel(selected);
-        graphics.drawString(font, "Selected", x + 10, 82, interfaceMutedColor(), false);
-        graphics.drawString(font, trim(selectedLabel, 25), x + 10, 96, interfacePrimaryColor(), false);
+        if (selected == null) {
+            graphics.drawString(font, "Select a schedule block to configure it.", x + 10, 62,
+                    interfaceMutedColor(), false);
+        } else {
+            drawGraphConfigCard(graphics, x, layoutRight() - x, selected,
+                    scheduleBlockLabel(selected), mouseX, mouseY);
+        }
 
         List<String> properties = schedulePropertyKeys(selected);
         int visiblePropertyRows = scheduleVisiblePropertyRows(properties);
@@ -4621,13 +5702,13 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             selectedScheduleProperty = properties.isEmpty() ? null : properties.getFirst();
         }
         if (selected == null) {
-            graphics.drawString(font, "Select a block to configure it.", x + 10, 118,
+            graphics.drawString(font, "Select a block to configure it.", x + 10, 112,
                     interfaceMutedColor(), false);
         } else if (properties.isEmpty()) {
-            graphics.drawString(font, "This block has no editable values.", x + 10, 118,
+            graphics.drawString(font, "This block has no editable values.", x + 10, 112,
                     interfaceMutedColor(), false);
         } else {
-            graphics.drawString(font, "Properties", x + 10, 118, interfaceSecondaryColor(), false);
+            graphics.drawString(font, "Properties", x + 10, 112, interfaceSecondaryColor(), false);
             for (int row = 0; row < visiblePropertyRows; row++) {
                 int propertyIndex = schedulePropertyScroll + row;
                 String property = properties.get(propertyIndex);
@@ -4659,6 +5740,12 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         }
         syncSchedulePropertyEditor(selected);
         drawInspectorDivider(graphics, x, schedulePropertyDividerY());
+
+        if(selected != null && !ShippingScheduleGraph.isFlowBlock(selected.type())){
+            UiRect configure = scheduleConfigureBounds();
+            renderAdvancedButton(graphics, font, configure.x(), configure.y(), configure.width(), configure.height(),
+                    Component.literal("Configure Block"), configure.contains(mouseX, mouseY), false);
+        }
 
         boolean hasParameters = scheduleInputSlotCount(selected) > 0;
         if (hasParameters) {
@@ -4700,10 +5787,22 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         renderAdvancedButton(graphics, font, display.x(), display.y(), display.width(), display.height(),
                 Component.literal(displayProgress ? "Display Progress: On" : "Display Progress: Off"),
                 display.contains(mouseX, mouseY), displayProgress);
+        UUID routeOwner = controller == null ? null : controller.getScmPersistenceId();
+        boolean routeVisible = ShippingRouteSplineClient.isVisible(routeOwner);
+        UiRect showRoute = scheduleShowRouteBounds();
+        renderAdvancedButton(graphics, font, showRoute.x(), showRoute.y(), showRoute.width(), showRoute.height(),
+                Component.literal(routeVisible ? "Show Route: On" : "Show Route: Off"),
+                showRoute.contains(mouseX, mouseY), routeVisible);
+        boolean followRoute = scheduleDraft.variables().getOrDefault(ShippingScheduleGraph.FOLLOW_ROUTE_VARIABLE,
+                AdvancedGraphDocument.Value.bool(true)).asBoolean();
+        UiRect follow = scheduleFollowRouteBounds();
+        renderAdvancedButton(graphics, font, follow.x(), follow.y(), follow.width(), follow.height(),
+                Component.literal(followRoute ? "Follow Route: On" : "Follow Route: Off"),
+                follow.contains(mouseX, mouseY), followRoute);
         if (calculating) {
             graphics.drawString(font, "Progress " + Math.round(
                     controller.shippingScheduleRoutePrecalculationProgress() * 100.0D) + "%",
-                    x + 10, display.bottom() + 7, interfaceMutedColor(), false);
+                    x + 10, follow.bottom() + 7, interfaceMutedColor(), false);
         }
         graphics.drawString(font, ShippingScheduleGraph.orderedNodes(scheduleDraft).size() + " schedule steps",
                 x + 10, height - 14, v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF899CAA, false);
@@ -4741,6 +5840,22 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
                 deleteRoute.width(), 18);
     }
 
+    private UiRect scheduleShowRouteBounds() {
+        UiRect displayProgress = scheduleDisplayProgressBounds();
+        return new UiRect(displayProgress.x(), displayProgress.bottom() + 4,
+                displayProgress.width(), 18);
+    }
+
+    private UiRect scheduleFollowRouteBounds(){
+        UiRect show = scheduleShowRouteBounds();
+        return new UiRect(show.x(), show.bottom() + 4, show.width(), 18);
+    }
+
+    private UiRect scheduleConfigureBounds(){
+        int x = graphRight() + 9;
+        return new UiRect(x, scheduleActionTop() + 4, Math.max(60, layoutRight() - x - 18), 18);
+    }
+
     private UiRect scheduleDeleteRouteBounds() {
         UiRect precalculate = schedulePrecalculateRouteBounds();
         return new UiRect(precalculate.x(), precalculate.bottom() + 4,
@@ -4764,7 +5879,7 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
 
     private int scheduleActionTop() {
         AdvancedGraphDocument.Node selected = scheduleNode(selectedScheduleBlock);
-        return 128 + scheduleVisiblePropertyRows(schedulePropertyKeys(selected)) * 22;
+        return 128 + schedulePropertyViewportHeight(schedulePropertyKeys(selected));
     }
 
     private int schedulePropertyDividerY() {
@@ -4773,10 +5888,17 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
 
     private int scheduleVisiblePropertyRows(List<String> properties) {
         if (properties == null || properties.isEmpty()) return 0;
-        int defaultHeight = Math.max(22, (height - 286) / 22 * 22);
+        return Math.max(1, Math.min(properties.size(),
+                schedulePropertyViewportHeight(properties) / 22));
+    }
+
+    // Keep the divider at the dragged pixel while rows remain aligned to their fixed height.
+    private int schedulePropertyViewportHeight(List<String> properties) {
+        if (properties == null || properties.isEmpty()) return 0;
+        int defaultHeight = Math.max(22, (height - 336) / 22 * 22);
         int propertyHeight = scheduleInspectorPropertiesHeight <= 0
                 ? defaultHeight : scheduleInspectorPropertiesHeight;
-        return Math.max(1, Math.min(properties.size(), Math.max(1, propertyHeight / 22)));
+        return Mth.clamp(propertyHeight, 22, Math.max(22, Math.min(properties.size() * 22, height - 336)));
     }
 
     private UiRect schedulePropertyBounds(int visibleRow) {
@@ -4805,6 +5927,10 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
     private List<SchedulePropertyChoice> schedulePropertyChoices(AdvancedGraphDocument.Node node, String property) {
         if (property == null) return List.of();
         return switch (property) {
+            case "WaitLogic" -> List.of(new SchedulePropertyChoice("AND", "AND previous"),
+                    new SchedulePropertyChoice("OR", "OR branch"));
+            case "Exact" -> List.of(new SchedulePropertyChoice("0", "At least"),
+                    new SchedulePropertyChoice("1", "Exactly"));
             case "TimeUnit" -> List.of(new SchedulePropertyChoice("0", "Ticks"),
                     new SchedulePropertyChoice("1", "Seconds"), new SchedulePropertyChoice("2", "Minutes"));
             case "Operator" -> List.of(new SchedulePropertyChoice("0", "Greater than"),
@@ -4864,6 +5990,18 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         if (index >= 0 && index < schedulePropertyDropdownChoices.size() && minecraft != null && minecraft.level != null
                 && scheduleDraft != null) {
             SchedulePropertyChoice choice = schedulePropertyDropdownChoices.get(index);
+            if("WaitLogic".equals(schedulePropertyDropdownKey)){
+                String moved = ShippingScheduleGraph.setConditionConjunction(scheduleDraft, schedulePropertyDropdownNode,
+                        "AND".equals(choice.value()), minecraft.level.registryAccess());
+                if(!moved.isBlank()){
+                    selectedScheduleBlock = moved;
+                    selectedScheduleBlocks.clear();
+                    selectedScheduleBlocks.add(moved);
+                    saveShippingScheduleDraft();
+                }
+                closeSchedulePropertyDropdown();
+                return true;
+            }
             if (ShippingScheduleGraph.setProperty(scheduleDraft, schedulePropertyDropdownNode,
                     schedulePropertyDropdownKey, choice.value(), minecraft.level.registryAccess())) {
                 saveShippingScheduleDraft();
@@ -4986,6 +6124,17 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
                 minecraft.level.registryAccess())) {
             saveShippingScheduleDraft();
         }
+    }
+
+    private void openScheduleBlockConfiguration(AdvancedGraphDocument.Node selected){
+        if(selected == null || minecraft == null || minecraft.level == null || scheduleDraft == null) return;
+        var input = ShippingScheduleGraph.scheduleInput(scheduleDraft, selected.id(), minecraft.level.registryAccess());
+        if(input != null) minecraft.setScreen(new CreateScheduleInputScreen(this, input,
+                minecraft.level.registryAccess(), data -> {
+            if(ShippingScheduleGraph.setInputData(scheduleDraft, selected.id(), data, minecraft.level.registryAccess())){
+                saveShippingScheduleDraft();
+            }
+        }));
     }
 
     // Finish a freeform Scratch drag. Dropping on a statement connector
@@ -5469,7 +6618,8 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         editingScheduleInlineProperty = false;
         if (scheduleInlinePropertyValue != null) scheduleInlinePropertyValue.setVisible(false);
         if (handleSidebarHandleClick(mouseX, mouseY, button)) return true;
-        if (inInspectorDivider(mouseY, schedulePropertyDividerY())) {
+        if (!rightSidebarCollapsed && mouseX >= graphRight() && mouseX < layoutRight()
+                && inInspectorDivider(mouseY, schedulePropertyDividerY())) {
             draggingInspectorDivider = InspectorDivider.SCHEDULE_PROPERTIES;
             return true;
         }
@@ -5503,7 +6653,28 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             sendScmDisplayProgress(controller == null || !controller.scmDisplayProgress());
             return true;
         }
+        if (scheduleShowRouteBounds().contains(mouseX, mouseY)) {
+            AdvancedContraptionControllerBlockEntity controller = activeScmController();
+            if (controller != null) {
+                UUID ownerId = controller.getScmPersistenceId();
+                PacketDistributor.sendToServer(new ShippingRouteVisibilityPayload(
+                        ownerId, !ShippingRouteSplineClient.isVisible(ownerId)));
+            }
+            return true;
+        }
         AdvancedGraphDocument.Node selected = scheduleNode(selectedScheduleBlock);
+        if(scheduleFollowRouteBounds().contains(mouseX, mouseY)){
+            boolean follow = scheduleDraft.variables().getOrDefault(ShippingScheduleGraph.FOLLOW_ROUTE_VARIABLE,
+                    AdvancedGraphDocument.Value.bool(true)).asBoolean();
+            scheduleDraft.variables().put(ShippingScheduleGraph.FOLLOW_ROUTE_VARIABLE, AdvancedGraphDocument.Value.bool(!follow));
+            saveShippingScheduleDraft();
+            return true;
+        }
+        if(selected != null && !ShippingScheduleGraph.isFlowBlock(selected.type())
+                && scheduleConfigureBounds().contains(mouseX, mouseY)){
+            openScheduleBlockConfiguration(selected);
+            return true;
+        }
         if (scheduleInputSlotCount(selected) > 0 && scheduleParameterBounds().contains(mouseX, mouseY)) {
             openScheduleParameterEditor(selected);
             return true;
@@ -5739,14 +6910,14 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             int panelWidth = bounds.right() - panelX - 8;
             int sidebarY = scmConfigurationSidebarLayout(bounds, viewBounds).contentTop();
             if (scmConfigurationTargetDropdownOpen) {
-                drawScmTargetDropdown(graphics, panelX, sidebarY + 145, panelWidth, mouseX, mouseY);
+                drawScmTargetDropdown(graphics, panelX, sidebarY + 287, panelWidth, mouseX, mouseY);
             }
             if (scmConfigurationControlModeDropdownOpen) {
-                drawScmControlModeDropdown(graphics, panelX, sidebarY + 183, panelWidth, mouseX, mouseY);
+                drawScmControlModeDropdown(graphics, panelX, sidebarY + 325, panelWidth, mouseX, mouseY);
             }
             if (scmConfigurationControlBindingMode == ScmControlBindingMode.FACE
                     && scmConfigurationFaceDropdownOpen) {
-                drawScmFaceDropdown(graphics, panelX, sidebarY + 221, panelWidth, mouseX, mouseY);
+                drawScmFaceDropdown(graphics, panelX, sidebarY + 363, panelWidth, mouseX, mouseY);
             }
         }
         graphics.pose().popPose();
@@ -5821,8 +6992,11 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         if (scmWorkspaceDropdownOpen()) {
             drawScmWorkspaceDropdowns(graphics, mouseX, mouseY);
         }
-        if (!scmGraphOverview && !scheduleGraphOverview && !hudOpen && !blockingOverlayOpen() && !frequencyModalOpen) {
-            List<Component> nodeBrowserTooltip = nodeBrowserTooltip(mouseX, mouseY);
+        if (!scmGraphOverview && !scheduleGraphOverview && !workerGraphOverview
+                && !hudOpen && !blockingOverlayOpen() && !frequencyModalOpen) {
+            List<Component> nodeBrowserTooltip = workerGraphMode
+                    ? workerGraphBrowserTooltip(mouseX, mouseY)
+                    : nodeBrowserTooltip(mouseX, mouseY);
             if (nodeBrowserTooltip != null) {
                 if (!nodeBrowserTooltip.isEmpty()) {
                     graphics.renderTooltip(font, nodeBrowserTooltip, java.util.Optional.empty(), mouseX, mouseY);
@@ -5910,13 +7084,17 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
 
     // Select the graph tab
     private void selectGraphTab(String functionId) {
-        if (!scmGraphOverview && !scheduleGraphOverview && Objects.equals(activeFunctionId, functionId)) {
+        if (!scmGraphOverview && !scheduleGraphOverview && !workerGraphOverview && !workerGraphMode
+                && Objects.equals(activeFunctionId, functionId)) {
             return;
         }
         boolean leavingScmWorkspace = scmGraphOverview;
         storeViewport();
         scmGraphOverview = false;
         scheduleGraphOverview = false;
+        workerGraphOverview = false;
+        workerGraphMode = false;
+        setWorkerEditorsVisible(false);
         if (schedulePropertyValue != null) schedulePropertyValue.setVisible(false);
         editingScheduleInlineProperty = false;
         if (scheduleInlinePropertyValue != null) scheduleInlinePropertyValue.setVisible(false);
@@ -5935,6 +7113,9 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         storeViewport();
         scmGraphOverview = true;
         scheduleGraphOverview = false;
+        workerGraphOverview = false;
+        workerGraphMode = false;
+        setWorkerEditorsVisible(false);
         if (schedulePropertyValue != null) schedulePropertyValue.setVisible(false);
         editingScheduleInlineProperty = false;
         if (scheduleInlinePropertyValue != null) scheduleInlinePropertyValue.setVisible(false);
@@ -5959,12 +7140,1040 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         return controller != null && controller.hasShippingScheduleWorkspace();
     }
 
+    // Check for the Worker Pod which contributes the Worker Graph tab
+    private boolean hasWorkerWorkspace() {
+        return !workerPods().isEmpty();
+    }
+
+    // Find all adjacent or SCM-linked Worker Pod base stations
+    private List<WorkerPodBlockEntity> workerPods() {
+        AdvancedContraptionControllerBlockEntity controller = menu.getMenuConfigTargetBlockEntity();
+        return controller == null ? List.of() : WorkerPodBlockEntity.linkedPods(controller);
+    }
+
+    // Get the selected attached Worker Pod
+    private WorkerPodBlockEntity workerPod() {
+        List<WorkerPodBlockEntity> pods = workerPods();
+        if (pods.isEmpty()) return null;
+        selectedWorkerPod = Mth.clamp(selectedWorkerPod, 0, pods.size() - 1);
+        return pods.get(selectedWorkerPod);
+    }
+
+    // Get the selected pod's side relative to the ACC
+    private Direction workerPodDirection() {
+        AdvancedContraptionControllerBlockEntity controller = menu.getMenuConfigTargetBlockEntity();
+        WorkerPodBlockEntity selected = workerPod();
+        if (controller == null || selected == null) return Direction.NORTH;
+        BlockPos offset = selected.getBlockPos().subtract(controller.getBlockPos());
+        return Direction.getNearest(offset.getX(), offset.getY(), offset.getZ());
+    }
+
+    // Select and initialize the Worker Graph controls
+    private void selectWorkerGraphTab() {
+        if (!hasWorkerWorkspace()) return;
+        if (Boolean.TRUE.equals(CTConfigs.CLIENT.workerGraphDeveloperMode.get())) {
+            selectGraphTab(null);
+            workerGraphOverview = true;
+            workerGraphMode = false;
+            contextMenu = null;
+            closeMiniBrowser();
+            clearConnection();
+            WorkerPodBlockEntity pod = workerPod();
+            if (pod != null) loadWorkerPodConfiguration(pod);
+            setWorkerEditorsVisible(!rightSidebarCollapsed);
+            return;
+        }
+        selectGraphTab(null);
+        workerGraphOverview = false;
+        workerGraphMode = true;
+        workerGraphBrowserScroll = 0;
+        contextMenu = null;
+        closeMiniBrowser();
+        clearConnection();
+        activeFunctionId = ensureWorkerGraphFunction().id();
+        restoreViewport();
+        clearSelection();
+        clearGraphRenderCache();
+    }
+
+    // Restore the single dedicated Worker Graph function without exposing it as a callable sub-graph.
+    private AdvancedGraphDocument.FunctionGraph ensureWorkerGraphFunction() {
+        List<AdvancedGraphDocument.FunctionGraph> candidates = draft.functions().stream()
+                .filter(AdvancedContraptionControllerScreen::isWorkerGraphWorkspaceCandidate)
+                .toList();
+        if (!candidates.isEmpty()) {
+            AdvancedGraphDocument.FunctionGraph canonical = candidates.getFirst();
+            AdvancedGraphDocument.Node root = canonical.nodes().stream()
+                    .filter(node -> "worker_routine".equals(node.type()))
+                    .findFirst().orElse(null);
+            boolean requiresRepair = root == null || !root.data().getBoolean("WorkerGraphRoot")
+                    || candidates.size() > 1;
+            if (requiresRepair) checkpoint();
+            if (root == null) {
+                CompoundTag data = AdvancedGraphNodeFactory.createDefaultData("worker_routine", graphNodeFactoryContext());
+                data.putBoolean("WorkerGraphRoot", true);
+                root = new AdvancedGraphDocument.Node(UUID.randomUUID().toString(), "worker_routine",
+                        "Worker Routine", 70.0D, 110.0D, data);
+                canonical.nodes().add(root);
+            } else {
+                root.data().putBoolean("WorkerGraphRoot", true);
+            }
+            for (AdvancedGraphDocument.FunctionGraph function : candidates) {
+                if (function == canonical) continue;
+                mergeWorkerGraphWorkspace(canonical, function);
+                AdvancedGraphFunctions.removeFunction(draft, function.id());
+            }
+            return canonical;
+        }
+        checkpoint();
+        AdvancedGraphDocument.FunctionGraph function = new AdvancedGraphDocument.FunctionGraph(
+                UUID.randomUUID().toString(), "Worker Graph");
+        CompoundTag data = AdvancedGraphNodeFactory.createDefaultData("worker_routine", graphNodeFactoryContext());
+        data.putBoolean("WorkerGraphRoot", true);
+        function.nodes().add(new AdvancedGraphDocument.Node(UUID.randomUUID().toString(), "worker_routine",
+                "Worker Routine", 70.0D, 110.0D, data));
+        draft.functions().add(function);
+        return function;
+    }
+
+    // Merge accidental Worker Graph sub-graphs into the retained Worker Graph workspace.
+    private static void mergeWorkerGraphWorkspace(AdvancedGraphDocument.FunctionGraph destination,
+                                                  AdvancedGraphDocument.FunctionGraph source) {
+        if (destination == null || source == null) return;
+        Set<String> existing = destination.nodes().stream().map(AdvancedGraphDocument.Node::id)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        for (AdvancedGraphDocument.Node node : source.nodes()) {
+            if (!existing.add(node.id())) continue;
+            CompoundTag data = node.data().copy();
+            data.remove("WorkerGraphRoot");
+            destination.nodes().add(new AdvancedGraphDocument.Node(node.id(), node.type(), node.label(),
+                    node.x(), node.y(), data));
+        }
+        for (AdvancedGraphDocument.Edge edge : source.edges()) {
+            if (!existing.contains(edge.fromNode()) || !existing.contains(edge.toNode())) continue;
+            destination.edges().add(new AdvancedGraphDocument.Edge(edge.id(), edge.fromNode(), edge.fromPort(),
+                    edge.toNode(), edge.toPort()));
+        }
+        source.groups().forEach(group -> destination.groups().add(group.copy()));
+    }
+
+    // Remove the retired worker-node graph state before restoring direct pod configuration.
+    private void removeWorkerGraphNodes() {
+        Set<String> workerFunctions = draft.functions().stream()
+                .filter(function -> isWorkerTaskFunction(function)
+                        || function.nodes().stream().anyMatch(AdvancedContraptionControllerScreen::isWorkerGraphNode))
+                .map(AdvancedGraphDocument.FunctionGraph::id)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        Set<String> workerNodes = draft.nodes().stream().filter(AdvancedContraptionControllerScreen::isWorkerGraphNode)
+                .map(AdvancedGraphDocument.Node::id)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        if (workerFunctions.isEmpty() && workerNodes.isEmpty()) return;
+        checkpoint();
+        removeWorkerGraphNodes(draft.nodes(), draft.edges(), draft.groups(), workerNodes);
+        draft.functions().removeIf(function -> workerFunctions.contains(function.id()));
+        removeWorkerTaskCalls(draft.nodes(), draft.edges(), draft.groups(), workerFunctions);
+        for (AdvancedGraphDocument.FunctionGraph function : draft.functions()) {
+            removeWorkerTaskCalls(function.nodes(), function.edges(), function.groups(), workerFunctions);
+        }
+        AdvancedGraphFunctions.synchronizeCalls(draft);
+        clearGraphRenderCache();
+    }
+
+    // Remove a retired worker-node set and its edges from one graph body.
+    private static void removeWorkerGraphNodes(List<AdvancedGraphDocument.Node> nodes,
+                                               List<AdvancedGraphDocument.Edge> edges,
+                                               List<CompoundTag> groups, Set<String> removed) {
+        if (removed.isEmpty()) return;
+        nodes.removeIf(node -> removed.contains(node.id()));
+        edges.removeIf(edge -> removed.contains(edge.fromNode()) || removed.contains(edge.toNode()));
+        removeWorkerGraphGroupMembers(groups, removed);
+    }
+
+    // Remove calls which previously targeted a retired Worker Graph task function.
+    private static void removeWorkerTaskCalls(List<AdvancedGraphDocument.Node> nodes,
+                                              List<AdvancedGraphDocument.Edge> edges,
+                                              List<CompoundTag> groups, Set<String> workerFunctions) {
+        if (workerFunctions.isEmpty()) return;
+        Set<String> removed = nodes.stream().filter(node -> AdvancedGraphFunctions.CALL_TYPE.equals(node.type())
+                        && workerFunctions.contains(node.data().getString(AdvancedGraphFunctions.FUNCTION_ID)))
+                .map(AdvancedGraphDocument.Node::id)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        removeWorkerGraphNodes(nodes, edges, groups, removed);
+    }
+
+    // Remove stale comment-group references after removing retired Worker Graph nodes.
+    private static void removeWorkerGraphGroupMembers(List<CompoundTag> groups, Set<String> removed) {
+        for (CompoundTag group : groups) {
+            Set<String> members = new LinkedHashSet<>(AdvancedGraphSelection.commentGroupNodeIds(group));
+            if (members.removeAll(removed)) AdvancedGraphSelection.setCommentGroupNodeIds(group, members);
+        }
+    }
+
+    // Check whether a graph node belongs to the retired worker-node implementation.
+    private static boolean isWorkerGraphNode(AdvancedGraphDocument.Node node) {
+        return node != null && (node.type().startsWith("worker_")
+                || "request_worker_task".equals(node.type()) || "cancel_worker_task".equals(node.type()));
+    }
+
+    // Select one attached pod from the Worker Graph sidebar
+    private void selectWorkerPod(int index) {
+        List<WorkerPodBlockEntity> pods = workerPods();
+        if (index < 0 || index >= pods.size()) return;
+        selectedWorkerPod = index;
+        loadWorkerPodConfiguration(pods.get(index));
+    }
+
+    // Load the first selected worker or safe defaults from one base station
+    private void loadWorkerPodConfiguration(WorkerPodBlockEntity pod) {
+        WorkerWorkOrder order = pod.workOrder();
+        workerJob = pod.profile().job();
+        workerResourceType = pod.task().resource().type();
+        workerMode = order == null ? WorkerWorkOrder.Mode.TRANSFER : order.mode();
+        workerSourceEndpoint = order == null ? null : order.sourceEndpointId();
+        workerDestinationEndpoint = order == null ? null : order.destinationEndpointId();
+        workerProcessorEndpoint = order == null ? null : order.processorEndpointId();
+        workerEnabled = pod.profile().enabled();
+        workerValidationMessage = "";
+        configuredWorkerIds.clear();
+        configuredWorkerIds.addAll(pod.assignedWorkerIds());
+        workerName.setValue(pod.profile().name());
+        workerResource.setValue(pod.task().resource().id().toString());
+        workerAmount.setValue(Long.toString(Math.max(1L, pod.task().requestedAmount())));
+        workerOutputResource.setValue(order == null
+                ? pod.task().resource().id().toString() : order.outputResource().id().toString());
+        workerOutputAmount.setValue(Long.toString(order == null ? 1L : Math.max(1L, order.outputAmount())));
+    }
+
+    // Handle Worker Graph fields and configuration controls
+    private boolean clickWorkerGraphWorkspace(double mouseX, double mouseY, int button) {
+        if (handleSidebarHandleClick(mouseX, mouseY, button)) return true;
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
+        if (!leftSidebarCollapsed) {
+            List<WorkerPodBlockEntity> pods = workerPods();
+            for (int index = 0; index < pods.size(); index++) {
+                if (workerPodRowBounds(index).contains(mouseX, mouseY)) {
+                    selectWorkerPod(index);
+                    return true;
+                }
+            }
+        }
+        if (rightSidebarCollapsed) return true;
+        for (EditBox editor : List.of(workerName, workerResource, workerAmount,
+                workerOutputResource, workerOutputAmount)) {
+            if (editor.mouseClicked(mouseX, mouseY, button)) {
+                editor.setFocused(true);
+                setFocused(editor);
+                return true;
+            }
+        }
+        if (workerJobBounds().contains(mouseX, mouseY)) {
+            WorkerProfile.Job[] jobs = WorkerProfile.Job.values();
+            workerJob = jobs[(workerJob.ordinal() + 1) % jobs.length];
+            return true;
+        }
+        if (workerTypeBounds().contains(mouseX, mouseY)) {
+            WorkerResourceType[] types = WorkerResourceType.values();
+            workerResourceType = types[(workerResourceType.ordinal() + 1) % types.length];
+            if (workerResourceType == WorkerResourceType.ENERGY) {
+                workerResource.setValue("neoforge:energy");
+            }
+            return true;
+        }
+        if (workerModeBounds().contains(mouseX, mouseY)) {
+            WorkerWorkOrder.Mode[] modes = WorkerWorkOrder.Mode.values();
+            workerMode = modes[(workerMode.ordinal() + 1) % modes.length];
+            setWorkerEditorsVisible(true);
+            return true;
+        }
+        if (workerSourceBounds().contains(mouseX, mouseY)) {
+            openWorkerTargetPicker("", "source");
+            return true;
+        }
+        if (workerProcessorBounds().contains(mouseX, mouseY)
+                && (workerMode == WorkerWorkOrder.Mode.PROCESS
+                || workerMode == WorkerWorkOrder.Mode.AUTO_CRAFT)) {
+            openWorkerTargetPicker("", "processor");
+            return true;
+        }
+        if (workerDestinationBounds().contains(mouseX, mouseY)) {
+            openWorkerTargetPicker("", "destination");
+            return true;
+        }
+        if (workerResourceBrowseBounds().contains(mouseX, mouseY)) {
+            openWorkerResourcePicker("", "", false, workerResourceType);
+            return true;
+        }
+        if (workerOutputBrowseBounds().contains(mouseX, mouseY)
+                && (workerMode == WorkerWorkOrder.Mode.PROCESS
+                || workerMode == WorkerWorkOrder.Mode.AUTO_CRAFT)) {
+            openWorkerResourcePicker("", "", true, workerResourceType);
+            return true;
+        }
+        if (workerEnabledBounds().contains(mouseX, mouseY)) {
+            workerEnabled = !workerEnabled;
+            return true;
+        }
+        if (workerConfiguredSelectionBounds().contains(mouseX, mouseY)) {
+            openWorkerSelection("", false);
+            return true;
+        }
+        if (workerSaveBounds().contains(mouseX, mouseY)) {
+            saveWorkerConfiguration();
+            return true;
+        }
+        if (workerRosterBounds().contains(mouseX, mouseY)) {
+            openWorkerSelection("", true);
+            return true;
+        }
+        setFocused(null);
+        return true;
+    }
+
+    // Validate and send the Worker Graph setup through the open ACC menu
+    private void saveWorkerConfiguration() {
+        ResourceLocation resourceId = ResourceLocation.tryParse(workerResource.getValue().strip());
+        if (resourceId == null) {
+            workerValidationMessage = "Invalid resource id";
+            return;
+        }
+        long amount;
+        try {
+            amount = Long.parseLong(workerAmount.getValue());
+        } catch (NumberFormatException ignored) {
+            workerValidationMessage = "Invalid amount";
+            return;
+        }
+        if (amount <= 0L) {
+            workerValidationMessage = "Amount must be positive";
+            return;
+        }
+        ResourceLocation outputResourceId = ResourceLocation.tryParse(workerOutputResource.getValue().strip());
+        if (outputResourceId == null) outputResourceId = resourceId;
+        long outputAmount = 0L;
+        if (workerMode == WorkerWorkOrder.Mode.PROCESS || workerMode == WorkerWorkOrder.Mode.AUTO_CRAFT) {
+            try {
+                outputAmount = Long.parseLong(workerOutputAmount.getValue());
+            } catch (NumberFormatException ignored) {
+                workerValidationMessage = "Invalid output amount";
+                return;
+            }
+            if (outputAmount <= 0L) {
+                workerValidationMessage = "Output amount must be positive";
+                return;
+            }
+        }
+        MenuConfigTarget target = MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId());
+        WorkerPodBlockEntity pod = workerPod();
+        if (pod == null) return;
+        List<UUID> assignedWorkers = List.copyOf(pod.assignedWorkerIds());
+        PacketDistributor.sendToServer(new WorkerPodConfigPayload(target, pod.podId(),
+                assignedWorkers, List.copyOf(configuredWorkerIds), true,
+                workerName.getValue(), workerJob, workerResourceType, resourceId, amount, workerEnabled,
+                workerMode, workerSourceEndpoint, workerDestinationEndpoint, workerProcessorEndpoint,
+                outputResourceId, outputAmount));
+        workerValidationMessage = "Configuration applied";
+    }
+
+    // Cycle through automatic routing and the live Linker endpoints
+    private UUID cycleWorkerEndpoint(UUID current) {
+        WorkerPodBlockEntity pod = workerPod();
+        if (pod == null || pod.endpointSnapshots().isEmpty()) return null;
+        List<UUID> endpoints = pod.endpointSnapshots().stream().map(WorkerEndpointSnapshot::id).toList();
+        if (current == null) return endpoints.getFirst();
+        int index = endpoints.indexOf(current);
+        return index < 0 || index + 1 >= endpoints.size() ? null : endpoints.get(index + 1);
+    }
+
+    // Get a compact endpoint selector label
+    private String workerEndpointLabel(UUID endpointId) {
+        if (endpointId == null) return "Automatic";
+        WorkerPodBlockEntity pod = workerPod();
+        if (pod == null) return "Unavailable";
+        return pod.endpointSnapshots().stream()
+                .filter(endpoint -> endpoint.id().equals(endpointId))
+                .map(endpoint -> trim(endpoint.label(), 18))
+                .findFirst().orElse("Unavailable");
+    }
+
+    // Open the resource picker for a Worker Graph field or worker node port
+    private void openWorkerResourcePicker(String nodeId, String port, boolean output,
+                                          WorkerResourceType resourceType) {
+        workerResourcePickerOpen = true;
+        workerResourcePickerNode = nodeId == null ? "" : nodeId;
+        workerResourcePickerPort = port == null ? "" : port;
+        workerResourcePickerOutput = output;
+        workerResourcePickerType = resourceType == null ? WorkerResourceType.ITEM : resourceType;
+        workerResourcePickerScroll = 0;
+        workerResourceSearch.setValue("");
+        workerResourceSearch.setVisible(true);
+        workerResourceSearch.setFocused(true);
+        setFocused(workerResourceSearch);
+    }
+
+    // Close the worker resource picker
+    private void closeWorkerResourcePicker() {
+        workerResourcePickerOpen = false;
+        workerResourcePickerNode = "";
+        workerResourcePickerPort = "";
+        workerResourceSearch.setVisible(false);
+        workerResourceSearch.setFocused(false);
+        setFocused(null);
+    }
+
+    // Draw the filterable item or fluid picker with registry icons
+    private void drawWorkerResourcePicker(GuiGraphics graphics, int mouseX, int mouseY) {
+        setWorkerEditorsVisible(false);
+        UiRect bounds = workerResourcePickerBounds();
+        graphics.fill(0, 0, width, height, 0xA8000000);
+        renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        graphics.drawString(font, workerResourcePickerOutput ? "Required Output" : "Available Linked Resources",
+                bounds.x() + 12, bounds.y() + 10, interfaceAccentTextColor(), false);
+        workerResourceSearch.setX(bounds.x() + 12);
+        workerResourceSearch.setY(bounds.y() + 28);
+        workerResourceSearch.setWidth(bounds.width() - 24);
+        workerResourceSearch.setVisible(true);
+        List<WorkerResourceChoice> choices = workerResourceChoices();
+        int visible = Math.min(12, choices.size());
+        int end = Math.min(choices.size(), workerResourcePickerScroll + visible);
+        for (int index = workerResourcePickerScroll; index < end; index++) {
+            WorkerResourceChoice choice = choices.get(index);
+            int rowY = bounds.y() + 54 + (index - workerResourcePickerScroll) * 22;
+            boolean hovered = inside(mouseX, mouseY, bounds.x() + 10, rowY,
+                    bounds.width() - 20, 20);
+            graphics.fill(bounds.x() + 10, rowY, bounds.right() - 10, rowY + 20,
+                    hovered ? 0xFF314657 : 0xFF18232D);
+            renderWorkerResourceIcon(graphics, choice.id(), bounds.x() + 12, rowY + 2);
+            graphics.drawString(font, trim(choice.id().toString(), 42), bounds.x() + 34, rowY + 6,
+                    interfaceSecondaryColor(), false);
+            if (!workerResourcePickerOutput) {
+                String amount = Long.toString(choice.amount());
+                graphics.drawString(font, amount, bounds.right() - 14 - font.width(amount), rowY + 6,
+                        interfaceMutedColor(), false);
+            }
+        }
+        if (choices.isEmpty()) {
+            graphics.drawString(font, workerResourcePickerOutput ? "No matching registry entries."
+                            : "No matching resources in linked containers.",
+                    bounds.x() + 14, bounds.y() + 62, interfaceMutedColor(), false);
+        }
+    }
+
+    // Draw an item directly or a fluid's bucket as its picker icon
+    private void renderWorkerResourceIcon(GuiGraphics graphics, ResourceLocation id, int x, int y) {
+        ItemStack stack = ItemStack.EMPTY;
+        if (workerResourcePickerType == WorkerResourceType.ITEM) {
+            stack = new ItemStack(BuiltInRegistries.ITEM.get(id));
+        } else if (workerResourcePickerType == WorkerResourceType.FLUID
+                || workerResourcePickerType == WorkerResourceType.FUEL) {
+            var fluid = BuiltInRegistries.FLUID.get(id);
+            if (fluid != Fluids.EMPTY) {
+                FluidStack fluidStack = new FluidStack(fluid, 1000);
+                IClientFluidTypeExtensions extensions = IClientFluidTypeExtensions.of(fluid);
+                TextureAtlasSprite sprite = Minecraft.getInstance().getTextureAtlas(InventoryMenu.BLOCK_ATLAS)
+                        .apply(extensions.getStillTexture(fluidStack));
+                int tint = extensions.getTintColor(fluidStack);
+                float red = ((tint >> 16) & 0xFF) / 255.0F;
+                float green = ((tint >> 8) & 0xFF) / 255.0F;
+                float blue = (tint & 0xFF) / 255.0F;
+                float alpha = ((tint >> 24) & 0xFF) == 0 ? 1.0F : ((tint >> 24) & 0xFF) / 255.0F;
+                graphics.blit(x, y, 0, 16, 16, sprite, red, green, blue, alpha);
+                return;
+            }
+        }
+        if (!stack.isEmpty()) graphics.renderItem(stack, x, y);
+    }
+
+    // Build the filtered resource list from linked contents or the full game registry
+    private List<WorkerResourceChoice> workerResourceChoices() {
+        Map<ResourceLocation, Long> choices = new LinkedHashMap<>();
+        if (workerResourcePickerOutput) {
+            if (workerResourcePickerType == WorkerResourceType.ITEM) {
+                BuiltInRegistries.ITEM.keySet().stream()
+                        .filter(id -> !(BuiltInRegistries.ITEM.get(id) instanceof WorkerEnergyBatteryItem))
+                        .forEach(id -> choices.put(id, 0L));
+            } else if (workerResourcePickerType == WorkerResourceType.FLUID
+                    || workerResourcePickerType == WorkerResourceType.FUEL) {
+                BuiltInRegistries.FLUID.keySet().stream()
+                        .filter(id -> BuiltInRegistries.FLUID.get(id) != Fluids.EMPTY)
+                        .forEach(id -> choices.put(id, 0L));
+            } else {
+                choices.put(ResourceLocation.fromNamespaceAndPath("neoforge", "energy"), 0L);
+            }
+        } else {
+            List<WorkerPodBlockEntity> pods = workerResourcePickerNode.isBlank()
+                    ? (workerPod() == null ? List.of() : List.of(workerPod())) : workerPods();
+            for (WorkerPodBlockEntity pod : pods) {
+                for (WorkerEndpointSnapshot endpoint : pod.endpointSnapshots()) {
+                    for (WorkerEndpointSnapshot.ResourceAmount amount : endpoint.resources()) {
+                        boolean matchingType = amount.resource().type() == workerResourcePickerType
+                                || workerResourcePickerType == WorkerResourceType.FUEL
+                                && amount.resource().type() == WorkerResourceType.FLUID;
+                        if (amount.amount() <= 0L || !matchingType) continue;
+                        choices.merge(amount.resource().id(), amount.amount(), Long::sum);
+                    }
+                }
+            }
+        }
+        String query = workerResourceSearch.getValue().strip().toLowerCase(Locale.ROOT);
+        return choices.entrySet().stream()
+                .filter(entry -> query.isBlank()
+                        || entry.getKey().toString().toLowerCase(Locale.ROOT).contains(query))
+                .sorted(Map.Entry.comparingByKey(Comparator.comparing(ResourceLocation::toString)))
+                .map(entry -> new WorkerResourceChoice(entry.getKey(), entry.getValue()))
+                .toList();
+    }
+
+    private UiRect workerResourcePickerBounds() {
+        int pickerWidth = Math.min(460, width - 32);
+        int pickerHeight = Math.min(338, height - 48);
+        return new UiRect((width - pickerWidth) / 2, (height - pickerHeight) / 2,
+                pickerWidth, pickerHeight);
+    }
+
+    // Apply a resource picker selection
+    private void selectWorkerResource(ResourceLocation id) {
+        if (workerResourcePickerNode.isBlank()) {
+            if (workerResourcePickerOutput) workerOutputResource.setValue(id.toString());
+            else workerResource.setValue(id.toString());
+        } else {
+            AdvancedGraphDocument.Node node = findNode(workerResourcePickerNode);
+            if (node != null) {
+                checkpoint();
+                String selection = id.toString();
+                if (workerResourcePickerOutput) {
+                    String current = inputString(node, workerResourcePickerPort, "");
+                    boolean alreadySelected = java.util.Arrays.stream(current.split(","))
+                            .map(String::strip).anyMatch(selection::equals);
+                    if (!current.isBlank() && !alreadySelected) selection = current + ", " + selection;
+                }
+                putInputDefault(node, workerResourcePickerPort, "string", selection);
+                selectOnly(node.id());
+                syncInspector();
+            }
+        }
+        closeWorkerResourcePicker();
+    }
+
+    // Handle resource picker clicks
+    private boolean clickWorkerResourcePicker(double mouseX, double mouseY, int button) {
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
+        UiRect bounds = workerResourcePickerBounds();
+        if (!bounds.contains(mouseX, mouseY)) {
+            closeWorkerResourcePicker();
+            return true;
+        }
+        if (workerResourceSearch.mouseClicked(mouseX, mouseY, button)) {
+            workerResourceSearch.setFocused(true);
+            setFocused(workerResourceSearch);
+            return true;
+        }
+        List<WorkerResourceChoice> choices = workerResourceChoices();
+        int visible = Math.min(12, choices.size());
+        int end = Math.min(choices.size(), workerResourcePickerScroll + visible);
+        for (int index = workerResourcePickerScroll; index < end; index++) {
+            int rowY = bounds.y() + 54 + (index - workerResourcePickerScroll) * 22;
+            if (inside(mouseX, mouseY, bounds.x() + 10, rowY, bounds.width() - 20, 20)) {
+                selectWorkerResource(choices.get(index).id());
+                return true;
+            }
+        }
+        return true;
+    }
+
+    // Open the multi-worker selector for a graph node, pod setup or pod roster
+    private void openWorkerSelection(String nodeId, boolean roster) {
+        openWorkerSelection(nodeId, "workers", roster);
+    }
+
+    // Open the multi-worker selector for one typed Worker Graph input.
+    private void openWorkerSelection(String nodeId, String port, boolean roster) {
+        workerSelectionOpen = true;
+        workerSelectionRoster = roster;
+        workerSelectionNode = nodeId == null ? "" : nodeId;
+        workerSelectionPort = port == null || port.isBlank() ? "workers" : port;
+        WorkerPodBlockEntity pod = workerPod();
+        workerSelectionPod = pod == null ? null : pod.podId();
+        workerSelection.clear();
+        if (!workerSelectionNode.isBlank()) {
+            AdvancedGraphDocument.Node node = findNode(workerSelectionNode);
+            if (node != null) {
+                ListTag ids = node.data().getList("WorkerIds", Tag.TAG_STRING);
+                for (int index = 0; index < ids.size(); index++) {
+                    try {
+                        workerSelection.add(UUID.fromString(ids.getString(index)));
+                    } catch (IllegalArgumentException ignored) {
+                    }
+                }
+            }
+        } else if (roster && pod != null) {
+            workerSelection.addAll(pod.assignedWorkerIds());
+        } else {
+            workerSelection.addAll(configuredWorkerIds);
+        }
+        workerSelectionScroll = 0;
+        setWorkerEditorsVisible(false);
+    }
+
+    // Close the multi-worker selector
+    private void closeWorkerSelection() {
+        workerSelectionOpen = false;
+        workerSelectionRoster = false;
+        workerSelectionNode = "";
+        workerSelectionPort = "workers";
+        workerSelectionPod = null;
+        workerSelection.clear();
+        setWorkerEditorsVisible(workerGraphOverview && !rightSidebarCollapsed);
+    }
+
+    // Draw assigned workers with their skin, location and active queue
+    private void drawWorkerSelection(GuiGraphics graphics, int mouseX, int mouseY) {
+        setWorkerEditorsVisible(false);
+        UiRect bounds = workerSelectionBounds();
+        graphics.fill(0, 0, width, height, 0xA8000000);
+        renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        String title = workerSelectionRoster ? "Assign Mannequins"
+                : workerSelectionNode.isBlank() ? "Configure Workers" : "Assign Workers to Node";
+        graphics.drawString(font, title, bounds.x() + 12, bounds.y() + 10,
+                interfaceAccentTextColor(), false);
+        List<WorkerChoice> choices = workerChoices();
+        int visible = workerSelectionVisibleRows(bounds);
+        int end = Math.min(choices.size(), workerSelectionScroll + visible);
+        for (int index = workerSelectionScroll; index < end; index++) {
+            WorkerChoice choice = choices.get(index);
+            int rowY = bounds.y() + 30 + (index - workerSelectionScroll) * 54;
+            boolean selected = workerSelection.contains(choice.id());
+            boolean hovered = inside(mouseX, mouseY, bounds.x() + 10, rowY,
+                    bounds.width() - 20, 50);
+            graphics.fill(bounds.x() + 10, rowY, bounds.right() - 10, rowY + 50,
+                    hovered ? 0xFF314657 : 0xFF18232D);
+            if (selected) graphics.renderOutline(bounds.x() + 10, rowY,
+                    bounds.width() - 20, 50, interfaceAccentTextColor());
+            graphics.drawString(font, selected ? "[x]" : "[ ]", bounds.x() + 16, rowY + 20,
+                    selected ? interfaceAccentTextColor() : interfaceMutedColor(), false);
+            renderWorkerPreview(graphics, choice, bounds.x() + 54, rowY + 47);
+            int textX = bounds.x() + 86;
+            graphics.drawString(font, trim(choice.name(), 30), textX, rowY + 5,
+                    interfaceSecondaryColor(), false);
+            graphics.drawString(font, trim(workerLocation(choice), 52), textX, rowY + 17,
+                    interfaceMutedColor(), false);
+            graphics.drawString(font, trim(choice.status(), 52), textX, rowY + 29,
+                    interfaceMutedColor(), false);
+            String queue = choice.currentOrder() == null ? "Queue: idle"
+                    : "Now: " + choice.currentOrder().task().name()
+                    + "  |  planned: " + choice.plannedOrders();
+            graphics.drawString(font, trim(queue, 52), textX, rowY + 40,
+                    interfaceMutedColor(), false);
+        }
+        if (choices.isEmpty()) {
+            graphics.drawString(font, workerSelectionRoster
+                            ? "No unassigned mannequins are within 16 blocks of this pod."
+                            : "No workers are assigned to the available base stations.",
+                    bounds.x() + 14, bounds.y() + 42, interfaceMutedColor(), false);
+        }
+        drawWorkerButton(graphics, workerSelectionAllBounds(bounds), "All", mouseX, mouseY);
+        drawWorkerButton(graphics, workerSelectionNoneBounds(bounds), "None", mouseX, mouseY);
+        drawWorkerButton(graphics, workerSelectionCancelBounds(bounds), "Cancel", mouseX, mouseY);
+        drawWorkerButton(graphics, workerSelectionApplyBounds(bounds), "Apply", mouseX, mouseY);
+    }
+
+    // Build the workers visible to the active multi-select purpose
+    private List<WorkerChoice> workerChoices() {
+        List<WorkerPodBlockEntity> pods = workerSelectionNode.isBlank()
+                ? selectedWorkerPods() : workerPods();
+        Map<UUID, WorkerChoice> choices = new LinkedHashMap<>();
+        for (WorkerPodBlockEntity pod : pods) {
+            for (WorkerStatusSnapshot snapshot : pod.workerSnapshots()) {
+                choices.put(snapshot.workerId(), WorkerChoice.from(snapshot));
+            }
+            if (!workerSelectionRoster) continue;
+            UUID subLevelId = SimulatedHelper.getContainingSubLevelId(pod);
+            for (PlayerMannequinEntity mannequin : pod.assignableMannequins()) {
+                choices.putIfAbsent(mannequin.getUUID(), WorkerChoice.from(mannequin, subLevelId));
+            }
+        }
+        return choices.values().stream()
+                .sorted(Comparator.comparing(WorkerChoice::name, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+    }
+
+    // Resolve the pod selected when the modal opened
+    private List<WorkerPodBlockEntity> selectedWorkerPods() {
+        if (workerSelectionPod == null) return List.of();
+        return workerPods().stream().filter(pod -> workerSelectionPod.equals(pod.podId())).toList();
+    }
+
+    // Render a cached player-skin mannequin preview
+    private void renderWorkerPreview(GuiGraphics graphics, WorkerChoice choice, int x, int y) {
+        if (minecraft == null || minecraft.level == null) return;
+        PlayerMannequinEntity preview = workerPreviewEntities.get(choice.id());
+        if (preview == null) {
+            try {
+                preview = CTEntityTypes.PLAYER_MANNEQUIN.get().create(minecraft.level);
+            } catch (RuntimeException ignored) {
+                return;
+            }
+            if (preview == null) return;
+            preview.applyMannequinDefaults();
+            workerPreviewEntities.put(choice.id(), preview);
+        }
+        preview.setVariant(choice.skinVariant());
+        InventoryScreen.renderEntityInInventory(graphics, x, y, 20.0F,
+                WORKER_PREVIEW_TRANSLATION, WORKER_PREVIEW_ROTATION,
+                WORKER_PREVIEW_CAMERA_ROTATION, preview);
+    }
+
+    // Describe one worker's world or sub-level position
+    private static String workerLocation(WorkerChoice choice) {
+        String space = choice.subLevelId() == null ? "World"
+                : "SCM " + choice.subLevelId().toString().substring(0, 8);
+        BlockPos pos = choice.position();
+        return space + "  " + pos.getX() + ", " + pos.getY() + ", " + pos.getZ();
+    }
+
+    // Handle worker selection modal clicks
+    private boolean clickWorkerSelection(double mouseX, double mouseY, int button) {
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
+        UiRect bounds = workerSelectionBounds();
+        if (workerSelectionCancelBounds(bounds).contains(mouseX, mouseY)) {
+            closeWorkerSelection();
+            return true;
+        }
+        List<WorkerChoice> choices = workerChoices();
+        if (workerSelectionAllBounds(bounds).contains(mouseX, mouseY)) {
+            choices.forEach(choice -> workerSelection.add(choice.id()));
+            return true;
+        }
+        if (workerSelectionNoneBounds(bounds).contains(mouseX, mouseY)) {
+            workerSelection.clear();
+            return true;
+        }
+        if (workerSelectionApplyBounds(bounds).contains(mouseX, mouseY)) {
+            applyWorkerSelection();
+            closeWorkerSelection();
+            return true;
+        }
+        int visible = workerSelectionVisibleRows(bounds);
+        int end = Math.min(choices.size(), workerSelectionScroll + visible);
+        for (int index = workerSelectionScroll; index < end; index++) {
+            int rowY = bounds.y() + 30 + (index - workerSelectionScroll) * 54;
+            if (!inside(mouseX, mouseY, bounds.x() + 10, rowY, bounds.width() - 20, 50)) continue;
+            UUID id = choices.get(index).id();
+            if (!workerSelection.remove(id)) workerSelection.add(id);
+            return true;
+        }
+        return true;
+    }
+
+    // Apply a node worker set, setup worker set or base-station roster
+    private void applyWorkerSelection() {
+        if (!workerSelectionNode.isBlank()) {
+            AdvancedGraphDocument.Node node = findNode(workerSelectionNode);
+            if (node == null) return;
+            checkpoint();
+            ListTag ids = new ListTag();
+            workerSelection.forEach(id -> ids.add(StringTag.valueOf(id.toString())));
+            node.data().put("WorkerIds", ids);
+            String port = nodeInputs(node).containsKey(workerSelectionPort) ? workerSelectionPort : "workers";
+            String type = nodeInputs(node).getOrDefault(port, "string");
+            putInputDefault(node, port, type, workerSelection.isEmpty()
+                    ? "All assigned workers" : workerSelection.size() + " selected workers");
+            selectOnly(node.id());
+            syncInspector();
+            return;
+        }
+        if (!workerSelectionRoster) {
+            configuredWorkerIds.clear();
+            configuredWorkerIds.addAll(workerSelection);
+            return;
+        }
+        WorkerPodBlockEntity pod = selectedWorkerPods().stream().findFirst().orElse(null);
+        if (pod == null) return;
+        configuredWorkerIds.retainAll(workerSelection);
+        sendWorkerRoster(pod, List.copyOf(workerSelection));
+        workerValidationMessage = "Worker roster applied";
+    }
+
+    // Send a roster-only update without replacing any worker queues
+    private void sendWorkerRoster(WorkerPodBlockEntity pod, List<UUID> assignedWorkers) {
+        ResourceLocation resourceId = ResourceLocation.tryParse(workerResource.getValue().strip());
+        if (resourceId == null) resourceId = ResourceLocation.withDefaultNamespace("air");
+        ResourceLocation outputId = ResourceLocation.tryParse(workerOutputResource.getValue().strip());
+        if (outputId == null) outputId = resourceId;
+        long amount = parsePositiveLong(workerAmount.getValue(), 1L);
+        long outputAmount = parsePositiveLong(workerOutputAmount.getValue(), 1L);
+        MenuConfigTarget target = MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId());
+        PacketDistributor.sendToServer(new WorkerPodConfigPayload(target, pod.podId(), assignedWorkers,
+                List.of(), false, workerName.getValue(), workerJob, workerResourceType, resourceId, amount,
+                workerEnabled, workerMode, workerSourceEndpoint, workerDestinationEndpoint,
+                workerProcessorEndpoint, outputId, outputAmount));
+    }
+
+    // Parse a positive worker amount for roster-only packets
+    private static long parsePositiveLong(String value, long fallback) {
+        try {
+            return Math.max(1L, Long.parseLong(value));
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
+    private UiRect workerSelectionBounds() {
+        int modalWidth = Math.min(640, width - 32);
+        int modalHeight = Math.min(420, height - 40);
+        return new UiRect((width - modalWidth) / 2, (height - modalHeight) / 2,
+                modalWidth, modalHeight);
+    }
+
+    private static int workerSelectionVisibleRows(UiRect bounds) {
+        return Math.max(1, (bounds.height() - 78) / 54);
+    }
+
+    private static UiRect workerSelectionAllBounds(UiRect bounds) {
+        return new UiRect(bounds.x() + 10, bounds.bottom() - 32, 54, 20);
+    }
+
+    private static UiRect workerSelectionNoneBounds(UiRect bounds) {
+        return new UiRect(bounds.x() + 70, bounds.bottom() - 32, 54, 20);
+    }
+
+    private static UiRect workerSelectionCancelBounds(UiRect bounds) {
+        return new UiRect(bounds.right() - 142, bounds.bottom() - 32, 62, 20);
+    }
+
+    private static UiRect workerSelectionApplyBounds(UiRect bounds) {
+        return new UiRect(bounds.right() - 74, bounds.bottom() - 32, 64, 20);
+    }
+
+    // Open an SCM endpoint selector for worker setup or a worker node target port
+    private void openWorkerTargetPicker(String nodeId, String port) {
+        workerTargetPickerOpen = true;
+        workerTargetPickerNode = nodeId == null ? "" : nodeId;
+        workerTargetPickerPort = port == null ? "" : port;
+        workerTargetPickerScroll = 0;
+        setWorkerEditorsVisible(false);
+    }
+
+    // Close the SCM endpoint selector
+    private void closeWorkerTargetPicker() {
+        workerTargetPickerOpen = false;
+        workerTargetPickerNode = "";
+        workerTargetPickerPort = "";
+        setWorkerEditorsVisible(workerGraphOverview && !rightSidebarCollapsed);
+    }
+
+    // Draw linked endpoint contents for an explicit source, machine or destination
+    private void drawWorkerTargetPicker(GuiGraphics graphics, int mouseX, int mouseY) {
+        setWorkerEditorsVisible(false);
+        UiRect bounds = workerTargetPickerBounds();
+        graphics.fill(0, 0, width, height, 0xA8000000);
+        renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        graphics.drawString(font, "Select SCM Target: " + workerTargetPickerPort,
+                bounds.x() + 12, bounds.y() + 10, interfaceAccentTextColor(), false);
+        List<WorkerTargetChoice> choices = workerTargetChoices();
+        int visible = workerTargetVisibleRows(bounds);
+        int end = Math.min(choices.size(), workerTargetPickerScroll + visible);
+        for (int index = workerTargetPickerScroll; index < end; index++) {
+            WorkerTargetChoice choice = choices.get(index);
+            int rowY = bounds.y() + 30 + (index - workerTargetPickerScroll) * 42;
+            boolean hovered = inside(mouseX, mouseY, bounds.x() + 10, rowY,
+                    bounds.width() - 20, 38);
+            graphics.fill(bounds.x() + 10, rowY, bounds.right() - 10, rowY + 38,
+                    hovered ? 0xFF314657 : 0xFF18232D);
+            graphics.drawString(font, trim(choice.snapshot().label(), 48), bounds.x() + 16, rowY + 5,
+                    interfaceSecondaryColor(), false);
+            BlockPos pos = choice.snapshot().position();
+            String location = pos.getX() + ", " + pos.getY() + ", " + pos.getZ();
+            graphics.drawString(font, location, bounds.right() - 16 - font.width(location), rowY + 5,
+                    interfaceMutedColor(), false);
+            String contents = choice.snapshot().resources().isEmpty() ? "Empty / machine endpoint"
+                    : choice.snapshot().resources().stream().limit(3)
+                    .map(resource -> resource.resource().id() + " " + resource.amount()
+                            + "/" + resource.capacity())
+                    .reduce((left, right) -> left + "  |  " + right).orElse("");
+            graphics.drawString(font, trim(contents, 70), bounds.x() + 22, rowY + 21,
+                    interfaceMutedColor(), false);
+        }
+        if (choices.isEmpty()) {
+            graphics.drawString(font, "No compatible targets are linked in SCM mode.",
+                    bounds.x() + 14, bounds.y() + 44, interfaceMutedColor(), false);
+        }
+        drawWorkerButton(graphics, workerTargetClearBounds(bounds), "Automatic / Clear", mouseX, mouseY);
+        drawWorkerButton(graphics, workerTargetCancelBounds(bounds), "Cancel", mouseX, mouseY);
+    }
+
+    // Build endpoint choices from every linked base station snapshot
+    private List<WorkerTargetChoice> workerTargetChoices() {
+        Map<UUID, WorkerEndpointSnapshot> snapshots = new LinkedHashMap<>();
+        List<WorkerPodBlockEntity> pods = workerTargetPickerNode.isBlank()
+                ? (workerPod() == null ? List.of() : List.of(workerPod())) : workerPods();
+        for (WorkerPodBlockEntity pod : pods) {
+            for (WorkerEndpointSnapshot snapshot : pod.endpointSnapshots()) {
+                snapshots.putIfAbsent(snapshot.id(), snapshot);
+            }
+        }
+        return snapshots.values().stream()
+                .sorted(Comparator.comparing(WorkerEndpointSnapshot::label, String.CASE_INSENSITIVE_ORDER))
+                .map(snapshot -> new WorkerTargetChoice(snapshot,
+                        new ControllerDiscoveryNode("worker:endpoint:" + snapshot.id(),
+                                ControllerDiscoveryKind.MACHINE,
+                                snapshot.subLevelId() == null ? "worker:world"
+                                        : "worker:" + snapshot.subLevelId(),
+                                snapshot.blockId(), snapshot.label(), snapshot.subLevelId(), snapshot.position())))
+                .toList();
+    }
+
+    // Handle endpoint picker clicks
+    private boolean clickWorkerTargetPicker(double mouseX, double mouseY, int button) {
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
+        UiRect bounds = workerTargetPickerBounds();
+        if (workerTargetCancelBounds(bounds).contains(mouseX, mouseY)) {
+            closeWorkerTargetPicker();
+            return true;
+        }
+        if (workerTargetClearBounds(bounds).contains(mouseX, mouseY)) {
+            selectWorkerTarget(null);
+            return true;
+        }
+        List<WorkerTargetChoice> choices = workerTargetChoices();
+        int visible = workerTargetVisibleRows(bounds);
+        int end = Math.min(choices.size(), workerTargetPickerScroll + visible);
+        for (int index = workerTargetPickerScroll; index < end; index++) {
+            int rowY = bounds.y() + 30 + (index - workerTargetPickerScroll) * 42;
+            if (inside(mouseX, mouseY, bounds.x() + 10, rowY, bounds.width() - 20, 38)) {
+                selectWorkerTarget(choices.get(index));
+                return true;
+            }
+        }
+        return true;
+    }
+
+    // Apply one endpoint to a setup control or worker graph node port
+    private void selectWorkerTarget(WorkerTargetChoice choice) {
+        if (!workerTargetPickerNode.isBlank()) {
+            AdvancedGraphDocument.Node node = findNode(workerTargetPickerNode);
+            if (node != null) {
+                checkpoint();
+                CompoundTag targets = node.data().getCompound("WorkerTargets");
+                if (choice == null) {
+                    targets.remove(workerTargetPickerPort);
+                    putInputDefault(node, workerTargetPickerPort, "target", "");
+                    if ("worker_source_container".equals(node.type())
+                            || "worker_destination_container".equals(node.type())) {
+                        putInputDefault(node, "mode", "string", "automatic");
+                    }
+                } else {
+                    targets.put(workerTargetPickerPort, choice.target().toTag());
+                    putInputDefault(node, workerTargetPickerPort, "target", choice.target().nodeId());
+                    if ("worker_source_container".equals(node.type())
+                            || "worker_destination_container".equals(node.type())) {
+                        putInputDefault(node, "mode", "string", "specific");
+                    }
+                }
+                node.data().put("WorkerTargets", targets);
+                selectOnly(node.id());
+                syncInspector();
+            }
+        } else {
+            UUID endpoint = choice == null ? null : choice.snapshot().id();
+            switch (workerTargetPickerPort) {
+                case "source" -> workerSourceEndpoint = endpoint;
+                case "processor" -> workerProcessorEndpoint = endpoint;
+                case "destination" -> workerDestinationEndpoint = endpoint;
+                default -> {
+                }
+            }
+        }
+        closeWorkerTargetPicker();
+    }
+
+    private UiRect workerTargetPickerBounds() {
+        int modalWidth = Math.min(580, width - 32);
+        int modalHeight = Math.min(380, height - 40);
+        return new UiRect((width - modalWidth) / 2, (height - modalHeight) / 2,
+                modalWidth, modalHeight);
+    }
+
+    private static int workerTargetVisibleRows(UiRect bounds) {
+        return Math.max(1, (bounds.height() - 78) / 42);
+    }
+
+    private static UiRect workerTargetClearBounds(UiRect bounds) {
+        return new UiRect(bounds.x() + 10, bounds.bottom() - 32, 112, 20);
+    }
+
+    private static UiRect workerTargetCancelBounds(UiRect bounds) {
+        return new UiRect(bounds.right() - 74, bounds.bottom() - 32, 64, 20);
+    }
+
+    private record WorkerResourceChoice(ResourceLocation id, long amount) {
+    }
+
+    // Display one assigned mannequin in the multi-worker modal
+    private record WorkerChoice(UUID id, String name, UUID subLevelId, BlockPos position,
+                                String status, String skinVariant, WorkerWorkOrder currentOrder,
+                                int plannedOrders) {
+        private static WorkerChoice from(WorkerStatusSnapshot snapshot) {
+            return new WorkerChoice(snapshot.workerId(), snapshot.name(), snapshot.subLevelId(),
+                    snapshot.position(), snapshot.status(), snapshot.skinVariant(),
+                    snapshot.currentOrder(), snapshot.plannedOrders().size());
+        }
+
+        private static WorkerChoice from(PlayerMannequinEntity mannequin, UUID subLevelId) {
+            String name = mannequin.hasCustomName() ? mannequin.getCustomName().getString() : "Mannequin";
+            return new WorkerChoice(mannequin.getUUID(), name, subLevelId, mannequin.blockPosition(),
+                    "Available for assignment", mannequin.getVariant().id(), null, 0);
+        }
+    }
+
+    // Pair an endpoint snapshot with the graph target written to a worker node
+    private record WorkerTargetChoice(WorkerEndpointSnapshot snapshot, ControllerDiscoveryNode target) {
+    }
+
+    // Persisted worker command chain rendered as one fixed Worker Graph task group.
+    private record WorkerTaskChain(AdvancedGraphDocument.FunctionGraph function,
+                                   AdvancedGraphDocument.Node root,
+                                   List<AdvancedGraphDocument.Node> steps, Set<UUID> workerIds) {
+    }
+
+    // Screen layout for one Worker Graph task group.
+    private record WorkerTaskLayout(WorkerTaskChain chain, String title, UiRect bounds,
+                                    List<WorkerTaskStepLayout> steps, List<WorkerChoice> workers) {
+    }
+
+    // Screen layout for one worker command card inside a task group.
+    private record WorkerTaskStepLayout(AdvancedGraphDocument.Node node, String label, UiRect bounds,
+                                        List<WorkerTaskField> fields) {
+    }
+
+    // One directly selectable worker-command value in the custom task card.
+    private record WorkerTaskField(AdvancedGraphDocument.Node node, String port, String type, UiRect bounds) {
+    }
+
+    // One on-body value selector in the dedicated Worker Automation Editor.
+    private record WorkerAutomationField(String port, String type, UiRect bounds) {
+    }
+
+    // One custom-rendered Worker Automation Editor node card.
+    private record WorkerAutomationNodeLayout(AdvancedGraphDocument.Node node, UiRect bounds,
+                                              List<WorkerAutomationField> fields) {
+    }
+
+    // One grouped palette row in the dedicated Worker Automation Editor.
+    private record WorkerAutomationPaletteEntry(String id, AdvancedGraphCatalog.Definition definition) {
+        private boolean category() {
+            return definition == null;
+        }
+    }
+
     // Select the conditional host-owned Scratch schedule surface.
     private void selectShippingScheduleTab() {
         if (scheduleGraphOverview || !hasShippingScheduleWorkspace()) return;
         storeViewport();
         scheduleGraphOverview = true;
         scmGraphOverview = false;
+        workerGraphOverview = false;
+        workerGraphMode = false;
+        setWorkerEditorsVisible(false);
         activeFunctionId = null;
         if (scheduleDraft == null) {
             scheduleDraft = menu.getInitialShippingScheduleDraft();
@@ -5988,7 +8197,7 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
 
     // Apply the shared ACC editor GUI-scale override after initial layout.
     private void applyAccGuiScale() {
-        AccGuiScaleOverride.apply();
+        if (!projectionScreen) AccGuiScaleOverride.apply();
     }
 
     // Queue restoration after the active GUI layer has finished changing.
@@ -6348,12 +8557,12 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             leftSidebarCollapsed = true;
         }
         if (nodeSearch != null) {
-            nodeSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview
+            nodeSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview && !workerGraphOverview
                     && !leftSidebarCollapsed && !blockBrowserOpen);
             nodeSearch.setWidth(Math.max(48, activeLeftWidth() - 16));
         }
         if (blockSearch != null) {
-            blockSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview
+            blockSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview && !workerGraphOverview
                     && !leftSidebarCollapsed && blockBrowserOpen);
             blockSearch.setWidth(Math.max(48, activeLeftWidth() - 16));
         }
@@ -6366,6 +8575,7 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         if (scheduleInlinePropertyValue != null && !scheduleGraphOverview) {
             scheduleInlinePropertyValue.setVisible(false);
         }
+        if (rightSidebarCollapsed || !workerGraphOverview) setWorkerEditorsVisible(false);
     }
 
     // Get the stable recipe viewer gui area
@@ -7683,6 +9893,7 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
 
     // Check if the data port is visible
     private boolean isDataPortVisible(AdvancedGraphDocument.Node node, String port, boolean output) {
+        if (!output && isWorkerRequestNode(node) && !workerRequestPortVisible(node, port)) return false;
         if (graphRenderCacheDocument != draft) {
             prepareGraphRenderCache();
         }
@@ -7692,6 +9903,35 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             return (output ? layout.visibleOutputs() : layout.visibleInputs()).contains(port);
         }
         return !isNodeCollapsed(node) || !canCollapse(node);
+    }
+
+    // Check whether one Worker Request input applies to its selected resource and destination modes.
+    private boolean workerRequestPortVisible(AdvancedGraphDocument.Node node, String port) {
+        if (node == null || port == null) return true;
+        if (Set.of("exec", "worker", "worker_group", "workers", "request_type", "destination_type", "priority",
+                "requester", "task", "interrupt", "wait_for_completion").contains(port)) return true;
+        String requestType = inputString(node, "request_type", "items").toLowerCase(Locale.ROOT);
+        String destinationType = inputString(node, "destination_type", "container").toLowerCase(Locale.ROOT);
+        boolean multiple = "multiple".equals(requestType);
+        boolean items = multiple || "items".equals(requestType);
+        boolean fluids = multiple || "fluids".equals(requestType);
+        boolean fe = multiple || "fe".equals(requestType);
+        if ("can_craft".equals(port)) return items;
+        if ("items".equals(port) || "item_amount".equals(port) || "item_destination".equals(port)) {
+            return items && (!"item_destination".equals(port) || "container".equals(destinationType));
+        }
+        if ("fluids".equals(port) || "fluid_amount".equals(port) || "fluid_destination".equals(port)) {
+            return fluids && (!"fluid_destination".equals(port) || "container".equals(destinationType));
+        }
+        if ("fe_amount".equals(port) || "fe_destination".equals(port)) {
+            return fe && (!"fe_destination".equals(port) || "container".equals(destinationType));
+        }
+        return !"destination_player".equals(port) || "player".equals(destinationType);
+    }
+
+    // Check whether a Main Graph node is the dynamic Worker Request bridge.
+    private static boolean isWorkerRequestNode(AdvancedGraphDocument.Node node) {
+        return node != null && "request_worker_task".equals(node.type());
     }
 
     // Get the non exec port count
@@ -7730,6 +9970,11 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             return;
         }
         renderSidebarPanel(graphics, left, TOOLBAR_HEIGHT, activeLeftWidth(), height - TOOLBAR_HEIGHT);
+        if (nodeSearch != null) {
+            nodeSearch.setX(left + 8);
+            nodeSearch.setY(36);
+            nodeSearch.setWidth(Math.max(48, activeLeftWidth() - 16));
+        }
         graphics.fill(left + activeLeftWidth() - 1, TOOLBAR_HEIGHT, left + activeLeftWidth(), height,
                 v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF344A5C);
         graphics.drawString(font, blockBrowserOpen ? "Block Browser" : v2Ui ? "NODE LIBRARY" : "Node Browser",
@@ -7749,6 +9994,1150 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         }
         if (blockBrowserOpen) drawBlockBrowser(graphics, mouseX, mouseY);
         else drawNodeBrowser(graphics, mouseX, mouseY);
+    }
+
+    // Draw the Worker Graph's dedicated mannequin profile and worker-only node library.
+    private void drawWorkerGraphLibrary(GuiGraphics graphics, int mouseX, int mouseY) {
+        int left = layoutLeft();
+        if (leftSidebarCollapsed) {
+            if (nodeSearch != null) nodeSearch.setVisible(false);
+            renderSidebarPanel(graphics, left, TOOLBAR_HEIGHT, SIDEBAR_HANDLE_WIDTH, height - TOOLBAR_HEIGHT);
+            return;
+        }
+        int panelWidth = activeLeftWidth();
+        renderSidebarPanel(graphics, left, TOOLBAR_HEIGHT, panelWidth, height - TOOLBAR_HEIGHT);
+        graphics.fill(left + panelWidth - 1, TOOLBAR_HEIGHT, left + panelWidth, height,
+                v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF344A5C);
+
+        int profileTop = TOOLBAR_HEIGHT + 6;
+        int profileBottom = profileTop + 128;
+        renderAdvancedPanel(graphics, left + 8, profileTop, panelWidth - 16, profileBottom - profileTop);
+        List<WorkerChoice> workers = workerGraphWorkers();
+        WorkerChoice worker = workerGraphSelectedWorker(workers);
+        renderControllerOption(graphics, left + 15, profileTop + 8, 40, 48,
+                AdvancedGraphCatalog.categoryColor("worker"), false);
+        if (worker != null) {
+            renderWorkerPreview(graphics, worker, left + 35, profileTop + 53);
+            UiRect selector = workerGraphWorkerSelectorBounds();
+            renderControllerOption(graphics, selector.x(), selector.y(), selector.width(), selector.height(),
+                    AdvancedGraphCatalog.categoryColor("worker"), selector.contains(mouseX, mouseY), false);
+            graphics.drawString(font, "Worker: " + trim(worker.name(), Math.max(6, selector.width() / 7)),
+                    selector.x() + 5, selector.y() + 4, interfacePrimaryColor(), false);
+            graphics.drawString(font, workerGraphWorkerListOpen ? "^" : "v", selector.right() - 10,
+                    selector.y() + 4, interfaceMutedColor(), false);
+            graphics.drawString(font, "Status: " + trim(worker.status(), 22), left + 63, profileTop + 22,
+                    0xFF6ED18A, false);
+            String task = worker.currentOrder() == null ? "Idle" : worker.currentOrder().task().name();
+            graphics.drawString(font, "Current: " + trim(task, 22), left + 63, profileTop + 36,
+                    interfaceSecondaryColor(), false);
+        } else {
+            graphics.drawString(font, "Worker: none assigned", left + 63, profileTop + 14,
+                    interfaceSecondaryColor(), false);
+            graphics.drawString(font, "Place a mannequin on a linked pod.", left + 63, profileTop + 30,
+                    interfaceMutedColor(), false);
+        }
+        int statWidth = Math.max(1, (panelWidth - 38) / 3);
+        drawWorkerGraphProfileStat(graphics, left + 15, profileTop + 70, statWidth, "Backpack",
+                worker == null ? "0/0" : "Ready");
+        drawWorkerGraphProfileStat(graphics, left + 15 + statWidth + 4, profileTop + 70, statWidth,
+                "Curios", "0/6");
+        drawWorkerGraphProfileStat(graphics, left + 15 + (statWidth + 4) * 2, profileTop + 70, statWidth,
+                "Mode", "Follow");
+
+        if (workerGraphWorkerListOpen) drawWorkerGraphWorkerList(graphics, workers, mouseX, mouseY);
+
+        int searchTop = workerGraphLibrarySearchTop();
+        if (nodeSearch != null) {
+            nodeSearch.setX(left + 10);
+            nodeSearch.setY(searchTop);
+            nodeSearch.setWidth(Math.max(48, panelWidth - 20));
+            nodeSearch.setVisible(true);
+            if (v2Ui) {
+                AdvancedControllerV2Theme.drawRoundedRect(graphics, nodeSearch.getX() - 2, nodeSearch.getY() - 1,
+                        nodeSearch.getWidth() + 4, nodeSearch.getHeight() + 2, 4, AdvancedControllerV2Theme.BORDER);
+                AdvancedControllerV2Theme.drawRoundedRect(graphics, nodeSearch.getX() - 1, nodeSearch.getY(),
+                        nodeSearch.getWidth() + 2, nodeSearch.getHeight(), 3, AdvancedControllerV2Theme.CANVAS_BACKGROUND);
+            }
+        }
+        drawWorkerGraphNodeBrowser(graphics, mouseX, mouseY);
+    }
+
+    // Draw one compact worker-profile status value.
+    private void drawWorkerGraphProfileStat(GuiGraphics graphics, int x, int y, int width, String label, String value) {
+        renderControllerOption(graphics, x, y, width, 45, AdvancedGraphCatalog.categoryColor("worker"), false);
+        graphics.drawCenteredString(font, trim(value, Math.max(4, width / 7)), x + width / 2, y + 12,
+                interfacePrimaryColor());
+        graphics.drawCenteredString(font, trim(label, Math.max(4, width / 7)), x + width / 2, y + 29,
+                interfaceMutedColor());
+    }
+
+    // Get the Worker Graph search-field top edge.
+    private int workerGraphLibrarySearchTop() {
+        return TOOLBAR_HEIGHT + 154 + workerGraphWorkerListHeight();
+    }
+
+    // Get the selected worker, keeping the profile valid as linked pods change.
+    private WorkerChoice workerGraphSelectedWorker(List<WorkerChoice> workers) {
+        if (workers == null || workers.isEmpty()) {
+            selectedWorkerGraphWorker = null;
+            return null;
+        }
+        for (WorkerChoice worker : workers) {
+            if (worker.id().equals(selectedWorkerGraphWorker)) return worker;
+        }
+        selectedWorkerGraphWorker = workers.getFirst().id();
+        return workers.getFirst();
+    }
+
+    // Get the clickable worker selector inside the Worker Graph profile card.
+    private UiRect workerGraphWorkerSelectorBounds() {
+        int left = layoutLeft();
+        int panelWidth = activeLeftWidth();
+        return new UiRect(left + 61, TOOLBAR_HEIGHT + 13, Math.max(1, panelWidth - 78), 16);
+    }
+
+    // Get the height reserved below the profile card by its worker roster.
+    private int workerGraphWorkerListHeight() {
+        if (!workerGraphWorkerListOpen) return 0;
+        return Math.min(5, workerGraphWorkers().size()) * 20 + 6;
+    }
+
+    // Draw the controller-wide worker list used to choose the profile card worker.
+    private void drawWorkerGraphWorkerList(GuiGraphics graphics, List<WorkerChoice> workers, int mouseX, int mouseY) {
+        if (workers.isEmpty()) return;
+        int left = layoutLeft();
+        int panelWidth = activeLeftWidth();
+        int top = TOOLBAR_HEIGHT + 136;
+        int rows = Math.min(5, workers.size());
+        renderAdvancedPanel(graphics, left + 8, top, panelWidth - 16, rows * 20 + 6);
+        for (int index = 0; index < rows; index++) {
+            WorkerChoice choice = workers.get(index);
+            int y = top + 3 + index * 20;
+            boolean selected = choice.id().equals(selectedWorkerGraphWorker);
+            boolean hovered = inside(mouseX, mouseY, left + 12, y, panelWidth - 24, 18);
+            renderControllerOption(graphics, left + 12, y, panelWidth - 24, 18,
+                    AdvancedGraphCatalog.categoryColor("worker"), selected || hovered, false);
+            graphics.drawString(font, selected ? ">" : " ", left + 17, y + 5,
+                    selected ? interfaceAccentTextColor() : interfaceMutedColor(), false);
+            graphics.drawString(font, trim(choice.name(), 19), left + 28, y + 5,
+                    interfacePrimaryColor(), false);
+            graphics.drawString(font, trim(choice.status(), 14), left + panelWidth - 12
+                    - font.width(trim(choice.status(), 14)), y + 5, interfaceMutedColor(), false);
+        }
+    }
+
+    // Get the Worker Graph worker-node palette top edge.
+    private int workerGraphLibraryPaletteTop() {
+        return workerGraphLibrarySearchTop() + 35;
+    }
+
+    // Draw the Worker Graph node browser with the same collapsible category treatment as the main graph.
+    private void drawWorkerGraphNodeBrowser(GuiGraphics graphics, int mouseX, int mouseY) {
+        int left = layoutLeft();
+        int panelWidth = activeLeftWidth();
+        int top = workerGraphLibraryPaletteTop();
+        String query = nodeSearch == null ? "" : nodeSearch.getValue().trim().toLowerCase(Locale.ROOT);
+        List<BrowserEntry> entries = nodeBrowserEntries(query);
+        int viewportHeight = Math.max(1, height - top);
+        int contentHeight = browserContentHeight(entries);
+        workerGraphBrowserScroll = Mth.clamp(workerGraphBrowserScroll, 0,
+                Math.max(0, contentHeight - viewportHeight));
+        int y = top - workerGraphBrowserScroll;
+        graphics.enableScissor(left, top, left + panelWidth, height);
+        for (BrowserEntry entry : entries) {
+            int rowHeight = browserEntryRowHeight(entry);
+            if (y + rowHeight >= top && y < height) {
+                if (v2Ui) {
+                    drawWorkerGraphV2BrowserEntry(graphics, entry, left, panelWidth, y, rowHeight, mouseX, mouseY);
+                } else {
+                    drawWorkerGraphClassicBrowserEntry(graphics, entry, left, panelWidth, y, rowHeight, mouseX, mouseY);
+                }
+            }
+            y += rowHeight;
+        }
+        graphics.disableScissor();
+        drawSidebarScrollTrack(graphics, left + panelWidth - 5, top + 2, 3,
+                Math.max(1, height - top - 4), contentHeight, viewportHeight, workerGraphBrowserScroll);
+    }
+
+    // Draw a Worker Graph browser entry through the V2 main-graph theme primitives.
+    private void drawWorkerGraphV2BrowserEntry(GuiGraphics graphics, BrowserEntry entry, int left, int panelWidth,
+                                               int y, int rowHeight, int mouseX, int mouseY) {
+        if (entry.category()) {
+            int color = nodeTitlebarColor(entry.id());
+            boolean collapsed = collapsedCategories.contains(entry.id());
+            boolean hovered = inside(mouseX, mouseY, left + 4, y - 1, panelWidth - 8, rowHeight);
+            AdvancedControllerV2Theme.drawBrowserCategory(graphics, left + 4, y - 1, panelWidth - 8, rowHeight,
+                    color, collapsed, hovered);
+            graphics.drawString(font, collapsed ? ">" : "v", left + 12, y + 7, color, false);
+            graphics.drawString(font, v2CategoryName(entry.id()).toUpperCase(Locale.ROOT), left + 27, y + 7,
+                    AdvancedControllerV2Theme.SECONDARY, false);
+            return;
+        }
+        boolean hovered = inside(mouseX, mouseY, left + 7, y, panelWidth - 14, rowHeight - 1);
+        AdvancedControllerV2Theme.drawBrowserNode(graphics, left + 7, y, panelWidth - 14, rowHeight - 1,
+                nodeTitlebarColor(browserEntryCategory(entry.id())), hovered);
+        graphics.drawString(font, trim(browserEntryName(entry.id()).toUpperCase(Locale.ROOT), 27),
+                left + 23, y + 4, AdvancedControllerV2Theme.PRIMARY, false);
+    }
+
+    // Draw a Worker Graph browser entry through the classic main-graph theme primitives.
+    private void drawWorkerGraphClassicBrowserEntry(GuiGraphics graphics, BrowserEntry entry, int left, int panelWidth,
+                                                    int y, int rowHeight, int mouseX, int mouseY) {
+        if (entry.category()) {
+            renderControllerOption(graphics, left + 5, y - 2, panelWidth - 10, 16,
+                    nodeTitlebarColor(entry.id()), false, false);
+            drawCategoryChevron(graphics, font, left + 8, y, 12, entry.id(), collapsedCategories.contains(entry.id()));
+            graphics.drawString(font, AdvancedGraphCatalog.categoryName(entry.id()), left + 25, y + 1,
+                    nodeTitleTextColor(entry.id()), false);
+            return;
+        }
+        boolean hovered = inside(mouseX, mouseY, left + 8, y - 1, panelWidth - 15, 14);
+        if (hovered) graphics.fill(left + 8, y - 1, left + panelWidth - 7, y + 13, 0x663B617C);
+        renderCategorySwatch(graphics, left + 15, y + 6, browserEntryCategory(entry.id()));
+        graphics.drawString(font, trim(browserEntryName(entry.id()), 29), left + 24, y + 1, 0xFFD7E8F4, false);
+    }
+
+    // Draw the Worker Graph configuration panel with the standard ACC inspector treatment.
+    private void drawWorkerGraphInspector(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (rightSidebarCollapsed) return;
+        int x = graphRight();
+        int panelWidth = layoutRight() - x;
+        renderSidebarPanel(graphics, x, TOOLBAR_HEIGHT, panelWidth, height - TOOLBAR_HEIGHT);
+        graphics.fill(x, TOOLBAR_HEIGHT, x + 1, height,
+                v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF344A5C);
+        graphics.drawString(font, "CONFIG", x + 10, 38, interfaceMutedColor(), false);
+        AdvancedGraphDocument.Node node = selectedNode();
+        if (node == null) {
+            graphics.drawString(font, "Select a Worker Graph node to configure it.", x + 10, 62,
+                    interfaceMutedColor(), false);
+            return;
+        }
+        int accent = drawGraphConfigCard(graphics, x, panelWidth, node,
+                workerAutomationDescription(node), mouseX, mouseY);
+        drawWorkerGraphInspectorTabs(graphics, x, node, accent);
+        int y = workerGraphInspectorFieldsTop();
+        List<WorkerAutomationField> fields = workerGraphConfigFields(node, x + 8, y, panelWidth - 16);
+        for (WorkerAutomationField field : fields) {
+            drawWorkerGraphInspectorField(graphics, node, field, mouseX, mouseY);
+            y = field.bounds().bottom() + 3;
+            if (y >= height - 24) break;
+        }
+        if (workerInspectorShowsItemFilter(node)) drawWorkerGraphItemFilter(graphics, node, y, mouseX, mouseY);
+    }
+
+    // Draw the shared graph-node configuration card used by every graph inspector.
+    private int drawGraphConfigCard(GuiGraphics graphics, int x, int panelWidth,
+                                    AdvancedGraphDocument.Node node, String description,
+                                    int mouseX, int mouseY) {
+        AdvancedGraphCatalog.Definition definition = AdvancedGraphCatalog.get(node.type());
+        int accent = AdvancedGraphCatalog.categoryColor(definition == null ? "core" : definition.category());
+        renderAdvancedPanel(graphics, x + 6, 48, panelWidth - 12, 50);
+        renderControllerOption(graphics, x + 11, 54, 38, 38, accent, true);
+        ItemStack icon = graphInspectorIcon(node);
+        if (!icon.isEmpty()) graphics.renderItem(icon, x + 21, 65);
+        else graphics.drawCenteredString(font, graphInspectorGlyph(node), x + 30, 68, interfacePrimaryColor());
+        int titleWidth = Math.max(8, (panelWidth - 96) / 6);
+        graphics.drawString(font, trim(nodeTitle(node), titleWidth), x + 57, 57, interfacePrimaryColor(), false);
+        graphics.drawString(font, trim(description, titleWidth), x + 57, 72, interfaceMutedColor(), false);
+        renderControllerOption(graphics, x + panelWidth - 31, 55, 20, 20, 0xFF485B68,
+                inside(mouseX, mouseY, x + panelWidth - 31, 55, 20, 20), false);
+        graphics.drawCenteredString(font, "?", x + panelWidth - 21, 61, interfacePrimaryColor());
+        return accent;
+    }
+
+    // Get the compact inventory icon used by the shared graph-node configuration card.
+    private static ItemStack graphInspectorIcon(AdvancedGraphDocument.Node node) {
+        ItemStack worker = workerInspectorIcon(node);
+        if (!worker.isEmpty()) return worker;
+        AdvancedGraphCatalog.Definition definition = node == null ? null : AdvancedGraphCatalog.get(node.type());
+        String id = definition == null ? "" : switch (definition.category()) {
+            case "events" -> "minecraft:bell";
+            case "logic", "flow" -> "minecraft:repeater";
+            case "math" -> "minecraft:redstone";
+            case "data", "variables" -> "minecraft:book";
+            case "controller" -> "minecraft:comparator";
+            case "ship_control" -> "minecraft:compass";
+            case "shipping_schedule" -> "minecraft:clock";
+            default -> "";
+        };
+        return id.isBlank() ? ItemStack.EMPTY : new ItemStack(BuiltInRegistries.ITEM.get(ResourceLocation.parse(id)));
+    }
+
+    // Get the fallback glyph used when a graph-node configuration card has no item icon.
+    private static String graphInspectorGlyph(AdvancedGraphDocument.Node node) {
+        AdvancedGraphCatalog.Definition definition = node == null ? null : AdvancedGraphCatalog.get(node.type());
+        return definition == null ? "*" : switch (definition.category()) {
+            case "events" -> "!";
+            case "logic", "flow" -> ">";
+            case "math" -> "+";
+            case "data", "variables" -> "#";
+            case "controller" -> "@";
+            default -> "*";
+        };
+    }
+
+    // Describe a normal graph node for the shared configuration card.
+    private static String graphInspectorDescription(AdvancedGraphDocument.Node node) {
+        if (node == null) return "Select a node to configure it";
+        if (isWorkerGraphNode(node)) return workerAutomationDescription(node);
+        AdvancedGraphCatalog.Definition definition = AdvancedGraphCatalog.get(node.type());
+        return definition == null ? "Graph node configuration"
+                : AdvancedGraphCatalog.categoryName(definition.category()) + " node configuration";
+    }
+
+    // Render one standard ACC property row with a fixed label and an editable control surface.
+    private void drawWorkerGraphInspectorField(GuiGraphics graphics, AdvancedGraphDocument.Node node,
+                                               WorkerAutomationField field, int mouseX, int mouseY) {
+        UiRect bounds = field.bounds();
+        boolean hovered = bounds.contains(mouseX, mouseY);
+        boolean selected = field.port().equals(selectedInputPort);
+        String label = trim(inputDisplayLabel(node, field.port()), Math.max(4, bounds.width() / 14));
+        int labelWidth = Math.min(86, Math.max(54, bounds.width() / 3));
+        int valueLeft = bounds.x() + labelWidth + 4;
+        int valueWidth = Math.max(42, bounds.right() - valueLeft);
+        graphics.drawString(font, label, bounds.x() + 3, bounds.y() + 6, interfaceSecondaryColor(), false);
+        renderControllerOption(graphics, valueLeft, bounds.y(), valueWidth, bounds.height(), portColor(field.type()),
+                hovered || selected, false);
+        if ("boolean".equals(field.type())) {
+            boolean enabled = inputBoolean(node, field.port());
+            int switchX = bounds.right() - 27;
+            graphics.fill(switchX, bounds.y() + 5, switchX + 20, bounds.y() + 15,
+                    enabled ? 0xFF4C9E70 : 0xFF394952);
+            graphics.fill(enabled ? switchX + 11 : switchX + 2, bounds.y() + 6,
+                    enabled ? switchX + 18 : switchX + 9, bounds.y() + 14,
+                    enabled ? 0xFFCAF4D8 : 0xFFB7C3C7);
+            return;
+        }
+        if ("target".equals(field.type())) {
+            renderControllerOption(graphics, valueLeft + 2, bounds.y() + 2, 17, Math.max(13, bounds.height() - 4),
+                    portColor(field.type()), false, false);
+            graphics.drawCenteredString(font, "*", valueLeft + 10, bounds.y() + 5, interfacePrimaryColor());
+            valueLeft += 20;
+        }
+        String value = workerInspectorFieldValue(node, field);
+        int available = Math.max(4, (bounds.right() - 10 - valueLeft) / 6);
+        value = trim(value, available);
+        graphics.drawString(font, value, bounds.right() - 8 - font.width(value), bounds.y() + 6,
+                interfacePrimaryColor(), false);
+        if (!"target".equals(field.type()) && !inputOptions(node, field.port()).isEmpty()) {
+            graphics.drawString(font, "v", bounds.right() - 13, bounds.y() + 6, interfaceMutedColor(), false);
+        }
+    }
+
+    // Get the inventory-style icon used by the standard Worker Graph inspector header.
+    private static ItemStack workerInspectorIcon(AdvancedGraphDocument.Node node) {
+        String id = switch (node.type()) {
+            case "worker_source_container", "worker_destination_container", "worker_move_items", "worker_deposit" -> "minecraft:chest";
+            case "worker_move_fluid", "worker_fluid_filter" -> "minecraft:water_bucket";
+            case "worker_move_fe" -> "minecraft:lightning_rod";
+            case "worker_process" -> "minecraft:anvil";
+            case "worker_craft" -> "minecraft:crafting_table";
+            default -> "";
+        };
+        if (id.isBlank()) return ItemStack.EMPTY;
+        return new ItemStack(BuiltInRegistries.ITEM.get(ResourceLocation.parse(id)));
+    }
+
+    // Check whether the selected node owns or consumes an item filter.
+    private static boolean workerInspectorShowsItemFilter(AdvancedGraphDocument.Node node) {
+        return node != null && ("worker_item_filter".equals(node.type()) || "worker_move_items".equals(node.type()));
+    }
+
+    // Draw the item-filter section using the same slot and whitelist treatment as the normal controller inspector.
+    private void drawWorkerGraphItemFilter(GuiGraphics graphics, AdvancedGraphDocument.Node node, int top,
+                                           int mouseX, int mouseY) {
+        if (top >= height - 86) return;
+        int x = graphRight();
+        int width = layoutRight() - x;
+        int panelLeft = x + 8;
+        int panelWidth = width - 16;
+        int y = top + 2;
+        graphics.drawString(font, "Item Filter", panelLeft + 2, y + 3, interfaceSecondaryColor(), false);
+        UiRect mode = new UiRect(panelLeft + Math.max(78, panelWidth - 116), y - 3, 96, 18);
+        renderControllerOption(graphics, mode.x(), mode.y(), mode.width(), mode.height(), 0xFF4A9C6D,
+                mode.contains(mouseX, mouseY), false);
+        graphics.drawCenteredString(font, "Whitelist", mode.x() + mode.width() / 2, mode.y() + 5,
+                interfacePrimaryColor());
+        y += 21;
+        List<ItemStack> items = workerInspectorFilterStacks(node);
+        for (int index = 0; index < 7; index++) {
+            int slotX = panelLeft + index * 27;
+            renderControllerOption(graphics, slotX, y, 24, 24, 0xFF657783,
+                    inside(mouseX, mouseY, slotX, y, 24, 24), false);
+            if (index < items.size()) graphics.renderItem(items.get(index), slotX + 4, y + 4);
+            else if (index == items.size()) graphics.drawCenteredString(font, "+", slotX + 12, y + 7,
+                    interfaceMutedColor());
+        }
+        y += 29;
+        renderControllerOption(graphics, panelLeft, y, panelWidth, 20, AdvancedGraphCatalog.categoryColor("worker_filters"),
+                inside(mouseX, mouseY, panelLeft, y, panelWidth, 20), false);
+        String tags = workerInspectorFilterTags(node);
+        graphics.drawString(font, "Tag:", panelLeft + 5, y + 6, interfaceMutedColor(), false);
+        graphics.drawString(font, trim(tags.isBlank() ? "unset" : tags, Math.max(5, panelWidth / 7)), panelLeft + 33, y + 6,
+                interfaceSecondaryColor(), false);
+        graphics.drawString(font, "x", panelLeft + panelWidth - 15, y + 6, interfaceMutedColor(), false);
+        y += 25;
+        graphics.drawString(font, "Match NBT Data", panelLeft + 2, y + 4, interfaceSecondaryColor(), false);
+        boolean match = workerInspectorFilterMatchComponents(node);
+        graphics.fill(panelLeft + panelWidth - 26, y + 2, panelLeft + panelWidth - 6, y + 12,
+                match ? 0xFF4C9E70 : 0xFF394952);
+        graphics.fill(match ? panelLeft + panelWidth - 15 : panelLeft + panelWidth - 24, y + 3,
+                match ? panelLeft + panelWidth - 8 : panelLeft + panelWidth - 17, y + 11,
+                match ? 0xFFCAF4D8 : 0xFFB7C3C7);
+    }
+
+    // Resolve selected item ids to the slot icons used by the inspector filter panel.
+    private List<ItemStack> workerInspectorFilterStacks(AdvancedGraphDocument.Node node) {
+        AdvancedGraphDocument.Node filter = workerInspectorFilterNode(node);
+        if (filter == null) return List.of();
+        List<ItemStack> stacks = new ArrayList<>();
+        for (String value : inputString(filter, "items", "").split(",")) {
+            ResourceLocation id = ResourceLocation.tryParse(value.strip());
+            if (id == null) continue;
+            ItemStack stack = new ItemStack(BuiltInRegistries.ITEM.get(id));
+            if (!stack.isEmpty()) stacks.add(stack);
+        }
+        return List.copyOf(stacks);
+    }
+
+    // Resolve the connected item filter when a movement node owns the configuration section.
+    private AdvancedGraphDocument.Node workerInspectorFilterNode(AdvancedGraphDocument.Node node) {
+        if ("worker_item_filter".equals(node.type())) return node;
+        for (AdvancedGraphDocument.Edge edge : activeEdges()) {
+            if (!edge.toNode().equals(node.id()) || !"filter".equals(edge.toPort())) continue;
+            AdvancedGraphDocument.Node candidate = findNode(edge.fromNode());
+            if (candidate != null && "worker_item_filter".equals(candidate.type())) return candidate;
+        }
+        return null;
+    }
+
+    // Get the tag summary displayed by the standard item-filter panel.
+    private String workerInspectorFilterTags(AdvancedGraphDocument.Node node) {
+        AdvancedGraphDocument.Node filter = workerInspectorFilterNode(node);
+        return filter == null ? "" : inputString(filter, "tags", "");
+    }
+
+    // Get the component matching state displayed by the standard item-filter panel.
+    private boolean workerInspectorFilterMatchComponents(AdvancedGraphDocument.Node node) {
+        AdvancedGraphDocument.Node filter = workerInspectorFilterNode(node);
+        return filter != null && inputBoolean(filter, "match_components");
+    }
+
+    // Get a compact rendered value for one Worker Graph configuration field.
+    private String workerInspectorFieldValue(AdvancedGraphDocument.Node node, WorkerAutomationField field) {
+        if ("target".equals(field.type())) {
+            ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(
+                    node.data().getCompound("WorkerTargets").getCompound(field.port()));
+            return target == null ? "unset" : target.label();
+        }
+        String value = inputValueLabel(node, field.port(), field.type());
+        return value == null || value.isBlank() ? "unset" : value;
+    }
+
+    // Get the simple category glyph used by the dense Worker Graph inspector header.
+    private static String workerInspectorGlyph(AdvancedGraphDocument.Node node) {
+        if (node == null) return "*";
+        return switch (node.type()) {
+            case "worker_source_container", "worker_destination_container", "worker_move_items", "worker_deposit" -> "#";
+            case "worker_move_fluid", "worker_fluid_filter" -> "~";
+            case "worker_move_fe" -> "+";
+            case "worker_process" -> "@";
+            case "worker_craft" -> "C";
+            default -> "*";
+        };
+    }
+
+    // Get the first row below the compact Worker Graph inspector tabs.
+    private static int workerGraphInspectorFieldsTop() {
+        return 140;
+    }
+
+    // Draw the resource and condition tabs used by the Worker Graph inspector.
+    private void drawWorkerGraphInspectorTabs(GuiGraphics graphics, int x, AdvancedGraphDocument.Node node, int accent) {
+        List<String> tabs = List.of("Items", "Fluids", "FE", "Conditions");
+        int tabX = x + 8;
+        int available = Math.max(4, layoutRight() - x - 16);
+        int gaps = 3 * (tabs.size() - 1);
+        int unit = Math.max(28, (available - gaps) / 5);
+        for (int index = 0; index < tabs.size(); index++) {
+            String tab = tabs.get(index);
+            int remaining = x + 8 + available - tabX;
+            int tabWidth = index == tabs.size() - 1 ? remaining
+                    : Math.min(remaining, "Conditions".equals(tab) ? unit * 2 : unit);
+            boolean active = workerGraphInspectorTabActive(node, tab);
+            renderControllerOption(graphics, tabX, 104, tabWidth, 28, active ? accent : 0xFF485B68, active, false);
+            graphics.drawCenteredString(font, trim(tab, Math.max(2, tabWidth / 6)), tabX + tabWidth / 2, 113,
+                    active ? interfacePrimaryColor() : interfaceMutedColor());
+            tabX += tabWidth + 3;
+        }
+    }
+
+    // Determine the active configuration tab for one Worker Graph node.
+    private static boolean workerGraphInspectorTabActive(AdvancedGraphDocument.Node node, String tab) {
+        return switch (tab) {
+            case "Fluids" -> "worker_move_fluid".equals(node.type()) || "worker_fluid_filter".equals(node.type());
+            case "FE" -> "worker_move_fe".equals(node.type());
+            case "Conditions" -> "worker_task_event".equals(node.type());
+            default -> !"worker_move_fluid".equals(node.type()) && !"worker_move_fe".equals(node.type());
+        };
+    }
+
+    // Order Worker Graph configuration fields the same way they are presented in the mockup.
+    private List<WorkerAutomationField> workerGraphConfigFields(AdvancedGraphDocument.Node node, int x, int y, int width) {
+        List<String> order = workerFilterConfigOrder(node);
+        if (order.isEmpty()) order = List.of("workers", "source", "destination", "processor", "target", "filter", "items", "fluid",
+                "fe", "amount", "amount_mode", "minimum_source_reserve", "operation", "recipe", "count",
+                "collect_result", "retry", "timeout", "mode", "preference", "search_range", "task_name",
+                "default_priority", "interrupt_policy", "resume_previous_task", "allow_re_entry");
+        List<WorkerAutomationField> fields = new ArrayList<>();
+        Map<String, String> inputs = nodeInputs(node);
+        for (String port : order) {
+            String type = inputs.get(port);
+            if (type == null || "exec".equals(type) || !isDataPortVisible(node, port, false)) continue;
+            fields.add(new WorkerAutomationField(port, type, new UiRect(x, y, width, 20)));
+            y += 24;
+        }
+        for (Map.Entry<String, String> input : inputs.entrySet()) {
+            if (order.contains(input.getKey()) || "exec".equals(input.getValue())
+                    || !isDataPortVisible(node, input.getKey(), false)) continue;
+            fields.add(new WorkerAutomationField(input.getKey(), input.getValue(), new UiRect(x, y, width, 20)));
+            y += 24;
+        }
+        return List.copyOf(fields);
+    }
+
+    // Keep filter configuration dense and ordered exactly as the Worker Graph filter inspector presents it.
+    private static List<String> workerFilterConfigOrder(AdvancedGraphDocument.Node node) {
+        if (node == null) return List.of();
+        return switch (node.type()) {
+            case "worker_item_filter" -> List.of("items", "mode", "enabled", "ignore_damage",
+                    "match_components", "match_mod", "tags");
+            case "worker_fluid_filter" -> List.of("fluids", "mode", "enabled", "match_components", "tags");
+            case "worker_tag_filter" -> List.of("tags", "mode", "match");
+            default -> List.of();
+        };
+    }
+
+    // Handle Worker Graph node-library selection without exposing Main Graph entries.
+    private boolean handleWorkerGraphLibraryClick(double mouseX, double mouseY, int button) {
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
+        List<WorkerChoice> workers = workerGraphWorkers();
+        if (workerGraphWorkerSelectorBounds().contains(mouseX, mouseY)) {
+            workerGraphWorkerListOpen = !workerGraphWorkerListOpen;
+            return true;
+        }
+        if (workerGraphWorkerListOpen) {
+            int top = TOOLBAR_HEIGHT + 136;
+            int rows = Math.min(5, workers.size());
+            for (int index = 0; index < rows; index++) {
+                int y = top + 3 + index * 20;
+                if (!inside(mouseX, mouseY, layoutLeft() + 12, y, activeLeftWidth() - 24, 18)) continue;
+                selectedWorkerGraphWorker = workers.get(index).id();
+                workerGraphWorkerListOpen = false;
+                return true;
+            }
+        }
+        if (nodeSearch != null && nodeSearch.mouseClicked(mouseX, mouseY, button)) {
+            nodeSearch.setFocused(true);
+            setFocused(nodeSearch);
+            return true;
+        }
+        int y = workerGraphLibraryPaletteTop() - workerGraphBrowserScroll;
+        String query = nodeSearch == null ? "" : nodeSearch.getValue().trim().toLowerCase(Locale.ROOT);
+        for (BrowserEntry entry : nodeBrowserEntries(query)) {
+            int rowHeight = browserEntryRowHeight(entry);
+            if (mouseY >= y - 2 && mouseY < y + rowHeight - 2) {
+                if (entry.category()) {
+                    toggle(collapsedCategories, entry.id());
+                } else {
+                    AdvancedGraphDocument.Node added = addNode(entry.id(), graphCenterX(), graphCenterY());
+                    if (added != null) {
+                        selectOnly(added.id());
+                        selectedGroup = null;
+                        syncInspector();
+                    }
+                }
+                return true;
+            }
+            y += rowHeight;
+        }
+        return true;
+    }
+
+    // Handle direct configuration controls in the Worker Graph inspector.
+    private boolean handleWorkerGraphInspectorClick(double mouseX, double mouseY, int button) {
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
+        AdvancedGraphDocument.Node node = selectedNode();
+        if (node == null) return true;
+        int panelWidth = layoutRight() - graphRight();
+        for (WorkerAutomationField field : workerGraphConfigFields(node, graphRight() + 8,
+                workerGraphInspectorFieldsTop(), panelWidth - 16)) {
+            if (!field.bounds().contains(mouseX, mouseY)) continue;
+            selectedInputPort = field.port();
+            applyInputControl(node, field.port(), field.type(), mouseX, mouseY,
+                    field.bounds().x(), field.bounds().width());
+            syncInspector();
+            if (inspectorValue != null && inspectorValue.visible) {
+                inspectorValue.setX(field.bounds().x() + 86);
+                inspectorValue.setY(field.bounds().y());
+                inspectorValue.setWidth(Math.max(46, field.bounds().width() - 90));
+            }
+            return true;
+        }
+        return true;
+    }
+
+    // Draw the ordered worker-command summary below the graph canvas.
+    private void drawWorkerGraphTaskSummary(GuiGraphics graphics) {
+        List<AdvancedGraphDocument.Node> nodes = activeNodes().stream()
+                .filter(AdvancedContraptionControllerScreen::isWorkerGraphNode)
+                .sorted(Comparator.comparingDouble(AdvancedGraphDocument.Node::x)
+                        .thenComparingDouble(AdvancedGraphDocument.Node::y))
+                .limit(6)
+                .toList();
+        if (nodes.isEmpty()) return;
+        int panelWidth = Math.min(500, Math.max(260, graphRight() - graphLeft() - 210));
+        int panelHeight = 82;
+        int x = graphLeft() + Math.max(10, (graphRight() - graphLeft() - panelWidth) / 2);
+        int y = graphBottom() - panelHeight - 10;
+        renderAdvancedPanel(graphics, x, y, panelWidth, panelHeight);
+        graphics.drawString(font, "Task Queue / Chain Summary", x + 9, y + 8, interfacePrimaryColor(), false);
+        int rowY = y + 27;
+        for (int index = 0; index < nodes.size(); index++) {
+            AdvancedGraphDocument.Node node = nodes.get(index);
+            int column = index / 3;
+            int row = index % 3;
+            int entryX = x + 10 + column * (panelWidth - 20) / 2;
+            int entryY = rowY + row * 16;
+            renderControllerOption(graphics, entryX, entryY, (panelWidth - 28) / 2, 14,
+                    AdvancedGraphCatalog.categoryColor("worker"), false, false);
+            graphics.drawString(font, Integer.toString(index + 1), entryX + 4, entryY + 3, interfaceMutedColor(), false);
+            graphics.drawString(font, trim(nodeTitle(node), 23), entryX + 30, entryY + 3, interfaceSecondaryColor(), false);
+        }
+    }
+
+    // Draw controller-owned workers and the commands used to build their live graph.
+    private void drawWorkerGraphRoster(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (leftSidebarCollapsed) return;
+        int left = layoutLeft();
+        int top = TOOLBAR_HEIGHT;
+        int viewportTop = top + 26;
+        int viewportHeight = Math.max(1, height - viewportTop);
+        List<WorkerChoice> workers = workerGraphWorkers();
+        int contentHeight = WORKER_GRAPH_COMMANDS.size() * 22 + 24 + workers.size() * 54 + 8;
+        workerRosterScroll = Mth.clamp(workerRosterScroll, 0, Math.max(0, contentHeight - viewportHeight));
+        renderSidebarPanel(graphics, left, top, LEFT_WIDTH, height - top);
+        graphics.drawString(font, "Workers", left + 10, top + 10, interfaceAccentTextColor(), false);
+        graphics.enableScissor(left, viewportTop, left + activeLeftWidth(), height);
+        int y = viewportTop + 2 - workerRosterScroll;
+        graphics.drawString(font, "TASK ACTIONS", left + 10, y + 4, interfaceMutedColor(), false);
+        y += 16;
+        for (String command : WORKER_GRAPH_COMMANDS) {
+            boolean hovered = inside(mouseX, mouseY, left + 8, y, activeLeftWidth() - 16, 20);
+            AdvancedGraphCatalog.Definition definition = AdvancedGraphCatalog.get(command);
+            renderAdvancedButton(graphics, font, left + 8, y, activeLeftWidth() - 16, 20,
+                    Component.literal("+ " + AdvancedGraphCatalog.displayName(command)), hovered, true);
+            y += 22;
+        }
+        y += 4;
+        graphics.drawString(font, "MANNEQUINS", left + 10, y + 4, interfaceMutedColor(), false);
+        y += 16;
+        for (WorkerChoice worker : workers) {
+            boolean hovered = inside(mouseX, mouseY, left + 8, y, activeLeftWidth() - 16, 50);
+            graphics.fill(left + 8, y, left + activeLeftWidth() - 8, y + 50,
+                    hovered ? 0xFF314657 : 0xFF18232D);
+            renderWorkerPreview(graphics, worker, left + 30, y + 47);
+            int textX = left + 62;
+            graphics.drawString(font, trim(worker.name(), 21), textX, y + 5,
+                    interfaceSecondaryColor(), false);
+            graphics.drawString(font, trim(worker.status(), 27), textX, y + 17,
+                    interfaceMutedColor(), false);
+            String task = worker.currentOrder() == null ? "Idle" : worker.currentOrder().task().name();
+            graphics.drawString(font, trim(task, 27), textX, y + 29,
+                    interfaceMutedColor(), false);
+            graphics.drawString(font, trim(workerLocation(worker), 27), textX, y + 40,
+                    interfaceMutedColor(), false);
+            y += 54;
+        }
+        if (workers.isEmpty()) {
+            graphics.drawString(font, "Place a mannequin on a linked pod.", left + 10, y + 4,
+                    interfaceMutedColor(), false);
+        }
+        graphics.disableScissor();
+        drawSidebarScrollTrack(graphics, left + activeLeftWidth() - 5, viewportTop, 3, viewportHeight,
+                contentHeight, viewportHeight, workerRosterScroll);
+    }
+
+    // Draw the fixed task-chain workspace used only by the Worker Graph.
+    private void drawWorkerTaskWorkspace(GuiGraphics graphics, int mouseX, int mouseY) {
+        int left = graphLeft();
+        int top = graphTop();
+        int right = graphRight();
+        int bottom = graphBottom();
+        graphics.fill(left, top, right, bottom,
+                v2Ui ? AdvancedControllerV2Theme.CANVAS_BACKGROUND : 0xFF101820);
+        int contentHeight = workerTaskContentHeight();
+        workerTaskScroll = Mth.clamp(workerTaskScroll, 0, Math.max(0, contentHeight - (bottom - top)));
+        List<WorkerTaskLayout> tasks = workerTaskLayouts();
+        if (tasks.isEmpty()) {
+            graphics.drawCenteredString(font, "Create a task action from the left sidebar to start a worker chain.",
+                    (left + right) / 2, top + 36, interfaceMutedColor());
+            graphics.drawCenteredString(font, "Trigger the chain from Main Graph with normal execution wiring.",
+                    (left + right) / 2, top + 52, interfaceMutedColor());
+            return;
+        }
+        for (WorkerTaskLayout task : tasks) drawWorkerTask(graphics, task, mouseX, mouseY);
+        drawSidebarScrollTrack(graphics, right - 5, top + 4, 3, Math.max(1, bottom - top - 8),
+                contentHeight, Math.max(1, bottom - top), workerTaskScroll);
+    }
+
+    // Get the unscrolled height of every fixed Worker Graph task card.
+    private int workerTaskContentHeight() {
+        int height = 16;
+        for (WorkerTaskChain chain : workerTaskChains()) {
+            height += 50;
+            for (AdvancedGraphDocument.Node step : chain.steps()) {
+                int fields = (int) nodeInputs(step).entrySet().stream()
+                        .filter(input -> !"exec".equals(input.getValue()))
+                        .filter(input -> isDataPortVisible(step, input.getKey(), false)).count();
+                height += Math.max(28, 28 + fields * 19) + 8;
+            }
+            height += 18;
+        }
+        return height;
+    }
+
+    // Draw one fixed-size task group and its ordered worker-command chain.
+    private void drawWorkerTask(GuiGraphics graphics, WorkerTaskLayout task, int mouseX, int mouseY) {
+        UiRect bounds = task.bounds();
+        renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        graphics.fill(bounds.x() + 1, bounds.y() + 1, bounds.right() - 1, bounds.y() + 28,
+                v2Ui ? 0xFF30465A : 0xFF20384A);
+        graphics.drawString(font, task.title(), bounds.x() + 10, bounds.y() + 10,
+                interfaceSecondaryColor(), false);
+        int previewX = bounds.right() - 16;
+        for (WorkerChoice worker : task.workers()) {
+            previewX -= 28;
+            renderWorkerPreview(graphics, worker, previewX + 10, bounds.y() + 27);
+        }
+        if (task.workers().isEmpty()) {
+            graphics.drawString(font, "All compatible workers", bounds.x() + 10, bounds.y() + 34,
+                    interfaceMutedColor(), false);
+        }
+        for (WorkerTaskStepLayout step : task.steps()) {
+            UiRect stepBounds = step.bounds();
+            boolean hovered = stepBounds.contains(mouseX, mouseY);
+            graphics.fill(stepBounds.x(), stepBounds.y(), stepBounds.right(), stepBounds.bottom(),
+                    hovered ? 0xFF263B4C : 0xFF1A2934);
+            graphics.renderOutline(stepBounds.x(), stepBounds.y(), stepBounds.width(), stepBounds.height(),
+                    portColor("target"));
+            graphics.drawString(font, step.label(), stepBounds.x() + 8, stepBounds.y() + 6,
+                    interfaceSecondaryColor(), false);
+            for (WorkerTaskField field : step.fields()) {
+                UiRect fieldBounds = field.bounds();
+                boolean fieldHovered = fieldBounds.contains(mouseX, mouseY);
+                renderControllerOption(graphics, fieldBounds.x(), fieldBounds.y(), fieldBounds.width(),
+                        fieldBounds.height(), portColor(field.type()), fieldHovered, false);
+                graphics.drawString(font, trim(inputDisplayLabel(field.node(), field.port()), 13),
+                        fieldBounds.x() + 5, fieldBounds.y() + 4, nodeMutedTextColor(), false);
+                String value = trim(inputValueLabel(field.node(), field.port(), field.type()), 19);
+                graphics.drawString(font, value, fieldBounds.right() - 5 - font.width(value), fieldBounds.y() + 4,
+                        nodeValueTextColor(), false);
+            }
+        }
+    }
+
+    // Build non-overlapping fixed task groups from execution-linked worker commands.
+    private List<WorkerTaskLayout> workerTaskLayouts() {
+        List<WorkerTaskChain> chains = workerTaskChains();
+        if (chains.isEmpty()) return List.of();
+        Map<UUID, WorkerChoice> workers = new LinkedHashMap<>();
+        for (WorkerChoice worker : workerGraphWorkers()) workers.put(worker.id(), worker);
+        int canvasWidth = Math.max(260, graphRight() - graphLeft() - 32);
+        int width = Math.min(500, canvasWidth);
+        int x = graphLeft() + Math.max(16, (canvasWidth - width) / 2);
+        int y = graphTop() + 16 - workerTaskScroll;
+        List<WorkerTaskLayout> layouts = new ArrayList<>();
+        for (int index = 0; index < chains.size(); index++) {
+            WorkerTaskChain chain = chains.get(index);
+            List<WorkerChoice> assigned = chain.workerIds().stream().map(workers::get)
+                    .filter(Objects::nonNull).limit(5).toList();
+            int stepY = y + 50;
+            List<WorkerTaskStepLayout> steps = new ArrayList<>();
+            for (int stepIndex = 0; stepIndex < chain.steps().size(); stepIndex++) {
+                AdvancedGraphDocument.Node node = chain.steps().get(stepIndex);
+                List<WorkerTaskField> fields = new ArrayList<>();
+                int fieldY = stepY + 24;
+                for (Map.Entry<String, String> input : nodeInputs(node).entrySet()) {
+                    if ("exec".equals(input.getValue()) || !isDataPortVisible(node, input.getKey(), false)) continue;
+                    fields.add(new WorkerTaskField(node, input.getKey(), input.getValue(),
+                            new UiRect(x + 8, fieldY, width - 16, 17)));
+                    fieldY += 19;
+                }
+                UiRect stepBounds = new UiRect(x + 8, stepY, width - 16, Math.max(28, fieldY - stepY + 4));
+                steps.add(new WorkerTaskStepLayout(node, "Step " + (stepIndex + 1) + ": " + nodeTitle(node),
+                        stepBounds, List.copyOf(fields)));
+                stepY = stepBounds.bottom() + 8;
+            }
+            UiRect bounds = new UiRect(x, y, width, Math.max(58, stepY - y + 4));
+            String title = workerTaskTitle(chain, index);
+            layouts.add(new WorkerTaskLayout(chain, title, bounds, List.copyOf(steps), assigned));
+            y = bounds.bottom() + 14;
+        }
+        return List.copyOf(layouts);
+    }
+
+    // Build each task chain from the private worker task functions.
+    private List<WorkerTaskChain> workerTaskChains() {
+        List<WorkerTaskChain> chains = new ArrayList<>();
+        for (AdvancedGraphDocument.FunctionGraph function : draft.functions()) {
+            if (!isWorkerTaskFunction(function)) continue;
+            addWorkerTaskChains(function, chains);
+        }
+        return List.copyOf(chains);
+    }
+
+    // Collect the worker command chains stored directly in the Main Graph before migration.
+    private List<WorkerTaskChain> rootWorkerTaskChains() {
+        Map<String, AdvancedGraphDocument.Node> commands = new LinkedHashMap<>();
+        for (AdvancedGraphDocument.Node node : draft.nodes()) {
+            if (isWorkerCommand(node)) commands.put(node.id(), node);
+        }
+        if (commands.isEmpty()) return List.of();
+        return collectWorkerTaskChains(null, commands, draft.edges());
+    }
+
+    // Collect the command chains from one graph body.
+    private static List<WorkerTaskChain> collectWorkerTaskChains(
+            AdvancedGraphDocument.FunctionGraph function,
+            Map<String, AdvancedGraphDocument.Node> commands, List<AdvancedGraphDocument.Edge> edges) {
+        Map<String, List<AdvancedGraphDocument.Node>> next = new LinkedHashMap<>();
+        Set<String> hasWorkerPredecessor = new LinkedHashSet<>();
+        for (AdvancedGraphDocument.Edge edge : edges) {
+            AdvancedGraphDocument.Node from = commands.get(edge.fromNode());
+            AdvancedGraphDocument.Node to = commands.get(edge.toNode());
+            if (from == null || to == null || !"exec".equals(edge.fromPort()) || !"exec".equals(edge.toPort())) continue;
+            next.computeIfAbsent(from.id(), ignored -> new ArrayList<>()).add(to);
+            hasWorkerPredecessor.add(to.id());
+        }
+        List<AdvancedGraphDocument.Node> roots = commands.values().stream()
+                .filter(node -> !hasWorkerPredecessor.contains(node.id())).toList();
+        Set<String> consumed = new LinkedHashSet<>();
+        List<WorkerTaskChain> chains = new ArrayList<>();
+        for (AdvancedGraphDocument.Node root : roots) addWorkerTaskChain(function, root, next, consumed, chains);
+        for (AdvancedGraphDocument.Node node : commands.values()) addWorkerTaskChain(function, node, next, consumed, chains);
+        return List.copyOf(chains);
+    }
+
+    // Collect a linear display chain while keeping branching commands in the same task group.
+    private static void addWorkerTaskChain(AdvancedGraphDocument.FunctionGraph function,
+                                           AdvancedGraphDocument.Node root,
+                                           Map<String, List<AdvancedGraphDocument.Node>> next,
+                                           Set<String> consumed, List<WorkerTaskChain> chains) {
+        if (root == null || !consumed.add(root.id())) return;
+        List<AdvancedGraphDocument.Node> steps = new ArrayList<>();
+        ArrayDeque<AdvancedGraphDocument.Node> pending = new ArrayDeque<>();
+        pending.add(root);
+        while (!pending.isEmpty()) {
+            AdvancedGraphDocument.Node node = pending.removeFirst();
+            steps.add(node);
+            for (AdvancedGraphDocument.Node child : next.getOrDefault(node.id(), List.of())) {
+                if (consumed.add(child.id())) pending.addLast(child);
+            }
+        }
+        Set<UUID> workers = new LinkedHashSet<>();
+        for (AdvancedGraphDocument.Node step : steps) {
+            ListTag ids = step.data().getList("WorkerIds", Tag.TAG_STRING);
+            for (int index = 0; index < ids.size(); index++) {
+                try {
+                    workers.add(UUID.fromString(ids.getString(index)));
+                } catch (IllegalArgumentException ignored) {
+                }
+            }
+        }
+        chains.add(new WorkerTaskChain(function, root, List.copyOf(steps), Set.copyOf(workers)));
+    }
+
+    // Get the displayed title for one worker task group.
+    private String workerTaskTitle(WorkerTaskChain chain, int index) {
+        if (chain.function() != null) return chain.function().name();
+        String alias = chain.root().data().getString(GraphNodeAlias.DATA_KEY).strip();
+        return alias.isBlank() ? "Task " + (index + 1) + " — " + nodeTitle(chain.root()) : alias;
+    }
+
+    // Check whether one graph node belongs in the Worker Graph task view.
+    private static boolean isWorkerCommand(AdvancedGraphDocument.Node node) {
+        return node != null && node.type().startsWith("worker_");
+    }
+
+    // Check whether one private function body belongs exclusively to the Worker Graph.
+    private static boolean isWorkerTaskFunction(AdvancedGraphDocument.FunctionGraph function) {
+        return function != null && function.nodes().stream().anyMatch(node ->
+                AdvancedGraphFunctions.INPUT_TYPE.equals(node.type()) && node.data().getBoolean("WorkerTask"));
+    }
+
+    // Check whether a private function is the dedicated Worker Graph workspace.
+    private static boolean isWorkerGraphFunction(AdvancedGraphDocument.FunctionGraph function) {
+        return function != null && function.nodes().stream().anyMatch(node ->
+                "worker_routine".equals(node.type()) && node.data().getBoolean("WorkerGraphRoot"));
+    }
+
+    // Check whether a function is an older Worker Graph workspace that needs migration to the root marker.
+    private static boolean isWorkerGraphWorkspaceCandidate(AdvancedGraphDocument.FunctionGraph function) {
+        return isWorkerGraphFunction(function) || function != null
+                && "Worker Graph".equals(function.name())
+                && function.nodes().stream().anyMatch(AdvancedContraptionControllerScreen::isWorkerGraphNode);
+    }
+
+    // Check whether a function belongs to a private Worker Graph workspace.
+    private static boolean isWorkerPrivateFunction(AdvancedGraphDocument.FunctionGraph function) {
+        return isWorkerTaskFunction(function) || isWorkerGraphWorkspaceCandidate(function);
+    }
+
+    // Collect the command chains from one persisted Worker Graph task function.
+    private static void addWorkerTaskChains(AdvancedGraphDocument.FunctionGraph function,
+                                            List<WorkerTaskChain> destination) {
+        Map<String, AdvancedGraphDocument.Node> commands = new LinkedHashMap<>();
+        for (AdvancedGraphDocument.Node node : function.nodes()) {
+            if (isWorkerCommand(node)) commands.put(node.id(), node);
+        }
+        if (!commands.isEmpty()) destination.addAll(collectWorkerTaskChains(function, commands, function.edges()));
+    }
+
+    // Draw SCM-linked target summaries instead of the normal graph inspector in Worker Graph mode.
+    private void drawWorkerGraphNetwork(GuiGraphics graphics) {
+        if (rightSidebarCollapsed) return;
+        int right = graphRight();
+        renderSidebarPanel(graphics, right, TOOLBAR_HEIGHT, layoutRight() - right, height - TOOLBAR_HEIGHT);
+        graphics.drawString(font, "Worker Network", right + 10, TOOLBAR_HEIGHT + 12,
+                interfaceAccentTextColor(), false);
+        int y = TOOLBAR_HEIGHT + 34;
+        Map<UUID, WorkerEndpointSnapshot> endpoints = new LinkedHashMap<>();
+        for (WorkerPodBlockEntity pod : workerPods()) {
+            for (WorkerEndpointSnapshot endpoint : pod.endpointSnapshots()) endpoints.putIfAbsent(endpoint.id(), endpoint);
+        }
+        for (WorkerEndpointSnapshot endpoint : endpoints.values()) {
+            if (y + 28 > height) break;
+            graphics.drawString(font, trim(endpoint.label(), 26), right + 10, y,
+                    interfaceSecondaryColor(), false);
+            String summary = endpoint.resources().isEmpty() ? "Machine / empty" : endpoint.resources().stream()
+                    .limit(1).map(resource -> resource.resource().id() + " " + resource.amount())
+                    .findFirst().orElse("Machine / empty");
+            graphics.drawString(font, trim(summary, 29), right + 14, y + 12,
+                    interfaceMutedColor(), false);
+            y += 30;
+        }
+        if (endpoints.isEmpty()) {
+            graphics.drawString(font, "Link targets in SCM mode.", right + 10, y,
+                    interfaceMutedColor(), false);
+        }
+    }
+
+    // Get the controller-wide roster without treating a pod as a worker owner.
+    private List<WorkerChoice> workerGraphWorkers() {
+        Map<UUID, WorkerChoice> workers = new LinkedHashMap<>();
+        for (WorkerPodBlockEntity pod : workerPods()) {
+            for (WorkerStatusSnapshot snapshot : pod.workerSnapshots()) {
+                workers.put(snapshot.workerId(), WorkerChoice.from(snapshot));
+            }
+        }
+        return workers.values().stream()
+                .sorted(Comparator.comparing(WorkerChoice::name, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+    }
+
+    // Add a Worker Graph palette command to the live controller graph.
+    private boolean clickWorkerGraphRoster(double mouseX, double mouseY, int button) {
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
+        int y = TOOLBAR_HEIGHT + 28 - workerRosterScroll + 16;
+        for (String command : WORKER_GRAPH_COMMANDS) {
+            if (inside(mouseX, mouseY, layoutLeft() + 8, y, activeLeftWidth() - 16, 20)) {
+                addWorkerTaskStep(command);
+                return true;
+            }
+            y += 22;
+        }
+        return true;
+    }
+
+    // Add a task root or append a command to the selected Worker Graph chain.
+    private void addWorkerTaskStep(String command) {
+        AdvancedGraphDocument.Node previous = selectedNode();
+        AdvancedGraphDocument.FunctionGraph function = workerTaskFunction(previous);
+        checkpoint();
+        if (function == null) function = createWorkerTaskFunction();
+        CompoundTag data = AdvancedGraphNodeFactory.createDefaultData(command, graphNodeFactoryContext());
+        AdvancedGraphDocument.Node added = new AdvancedGraphDocument.Node(
+                UUID.randomUUID().toString(), command, "", 270.0D,
+                90.0D + function.nodes().size() * 110.0D, data);
+        function.nodes().add(added);
+        if (isWorkerCommand(previous) && function.nodes().stream().anyMatch(node -> node.id().equals(previous.id()))) {
+            function.edges().add(AdvancedGraphFunctions.edge(previous.id(), "exec", added.id(), "exec"));
+        } else {
+            AdvancedGraphDocument.Node input = workerTaskInput(function);
+            if (input != null) function.edges().add(AdvancedGraphFunctions.edge(input.id(), "exec", added.id(), "exec"));
+        }
+        selectOnly(added.id());
+        selectedGroup = null;
+        syncInspector();
+    }
+
+    // Create a callable worker task function with a single execution entry point.
+    private AdvancedGraphDocument.FunctionGraph createWorkerTaskFunction() {
+        AdvancedGraphDocument.FunctionGraph function = new AdvancedGraphDocument.FunctionGraph(
+                UUID.randomUUID().toString(), nextFunctionName("Worker Task"));
+        CompoundTag inputData = new CompoundTag();
+        CompoundTag inputPorts = new CompoundTag();
+        inputPorts.putString("exec", "exec");
+        inputData.put("DynamicOutputs", inputPorts);
+        inputData.putBoolean("WorkerTask", true);
+        function.nodes().add(new AdvancedGraphDocument.Node(UUID.randomUUID().toString(),
+                AdvancedGraphFunctions.INPUT_TYPE, "Task Start", 40.0D, 90.0D, inputData));
+        draft.functions().add(function);
+        AdvancedGraphFunctions.synchronizeCalls(draft);
+        return function;
+    }
+
+    // Get the Worker Graph function which owns one command node.
+    private AdvancedGraphDocument.FunctionGraph workerTaskFunction(AdvancedGraphDocument.Node node) {
+        if (node == null) return null;
+        return draft.functions().stream().filter(AdvancedContraptionControllerScreen::isWorkerTaskFunction)
+                .filter(function -> function.nodes().stream().anyMatch(candidate -> candidate.id().equals(node.id())))
+                .findFirst().orElse(null);
+    }
+
+    // Get the tagged entry node for one Worker Graph task function.
+    private static AdvancedGraphDocument.Node workerTaskInput(AdvancedGraphDocument.FunctionGraph function) {
+        if (function == null) return null;
+        return function.nodes().stream().filter(node -> AdvancedGraphFunctions.INPUT_TYPE.equals(node.type())
+                && node.data().getBoolean("WorkerTask")).findFirst().orElse(null);
+    }
+
+    // Move legacy root-graph worker chains into private callable Worker Graph task functions.
+    private void migrateRootWorkerTasks() {
+        List<WorkerTaskChain> chains = rootWorkerTaskChains();
+        if (chains.isEmpty()) return;
+        checkpoint();
+        for (WorkerTaskChain chain : chains) migrateRootWorkerTask(chain);
+        AdvancedGraphFunctions.synchronizeCalls(draft);
+        clearGraphRenderCache();
+    }
+
+    // Preserve a root worker chain's wiring while replacing it with one callable task function.
+    private void migrateRootWorkerTask(WorkerTaskChain chain) {
+        Set<String> commandIds = chain.steps().stream().map(AdvancedGraphDocument.Node::id)
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        if (commandIds.isEmpty()) return;
+        String requestedName = chain.root().data().getString(GraphNodeAlias.DATA_KEY).strip();
+        AdvancedGraphDocument.FunctionGraph function = new AdvancedGraphDocument.FunctionGraph(
+                UUID.randomUUID().toString(), nextFunctionName(requestedName.isBlank() ? "Worker Task" : requestedName));
+        CompoundTag inputData = new CompoundTag();
+        CompoundTag inputPorts = new CompoundTag();
+        inputPorts.putString("exec", "exec");
+        inputData.put("DynamicOutputs", inputPorts);
+        inputData.putBoolean("WorkerTask", true);
+        AdvancedGraphDocument.Node input = new AdvancedGraphDocument.Node(UUID.randomUUID().toString(),
+                AdvancedGraphFunctions.INPUT_TYPE, "Task Start", 40.0D, 90.0D, inputData);
+        CompoundTag outputData = new CompoundTag();
+        CompoundTag outputPorts = new CompoundTag();
+        outputData.put("DynamicInputs", outputPorts);
+        AdvancedGraphDocument.Node output = new AdvancedGraphDocument.Node(UUID.randomUUID().toString(),
+                AdvancedGraphFunctions.OUTPUT_TYPE, "Task Complete", 520.0D, 90.0D, outputData);
+        AdvancedGraphDocument.Node call = new AdvancedGraphDocument.Node(UUID.randomUUID().toString(),
+                AdvancedGraphFunctions.CALL_TYPE, function.name(), chain.root().x(), chain.root().y(), new CompoundTag());
+        function.nodes().add(input);
+        function.nodes().addAll(chain.steps());
+        function.nodes().add(output);
+
+        Map<String, String> inputBoundaryPorts = new LinkedHashMap<>();
+        Map<String, String> outputBoundaryPorts = new LinkedHashMap<>();
+        inputBoundaryPorts.put(chain.root().id() + "\u0000exec", "exec");
+        Set<String> usedInputs = new LinkedHashSet<>(Set.of("exec"));
+        Set<String> usedOutputs = new LinkedHashSet<>();
+        List<AdvancedGraphDocument.Edge> replacementEdges = new ArrayList<>();
+        for (AdvancedGraphDocument.Edge edge : new ArrayList<>(draft.edges())) {
+            boolean fromTask = commandIds.contains(edge.fromNode());
+            boolean toTask = commandIds.contains(edge.toNode());
+            if (fromTask && toTask) {
+                function.edges().add(edge);
+                continue;
+            }
+            if (!fromTask && toTask) {
+                String boundary = edge.toNode() + "\u0000" + edge.toPort();
+                String port = inputBoundaryPorts.get(boundary);
+                if (port == null) {
+                    AdvancedGraphDocument.Node target = findNode(edge.toNode());
+                    port = uniqueFunctionPort(edge.toPort(), usedInputs);
+                    inputBoundaryPorts.put(boundary, port);
+                    inputPorts.putString(port, target == null ? "any" : nodeInputs(target).getOrDefault(edge.toPort(), "any"));
+                    function.edges().add(AdvancedGraphFunctions.edge(input.id(), port, edge.toNode(), edge.toPort()));
+                }
+                replacementEdges.add(AdvancedGraphFunctions.edge(edge.fromNode(), edge.fromPort(), call.id(), port));
+                continue;
+            }
+            if (fromTask) {
+                String boundary = edge.fromNode() + "\u0000" + edge.fromPort();
+                String port = outputBoundaryPorts.get(boundary);
+                if (port == null) {
+                    AdvancedGraphDocument.Node source = findNode(edge.fromNode());
+                    port = uniqueFunctionPort(edge.fromPort(), usedOutputs);
+                    outputBoundaryPorts.put(boundary, port);
+                    outputPorts.putString(port, source == null ? "any" : nodeOutputs(source).getOrDefault(edge.fromPort(), "any"));
+                    function.edges().add(AdvancedGraphFunctions.edge(edge.fromNode(), edge.fromPort(), output.id(), port));
+                }
+                replacementEdges.add(AdvancedGraphFunctions.edge(call.id(), port, edge.toNode(), edge.toPort()));
+            }
+        }
+        function.edges().add(AdvancedGraphFunctions.edge(input.id(), "exec", chain.root().id(), "exec"));
+        input.data().put("DynamicOutputs", inputPorts);
+        output.data().put("DynamicInputs", outputPorts);
+        draft.nodes().removeIf(node -> commandIds.contains(node.id()));
+        draft.edges().removeIf(edge -> commandIds.contains(edge.fromNode()) || commandIds.contains(edge.toNode()));
+        draft.functions().add(function);
+        AdvancedGraphFunctions.configureCall(call, function);
+        draft.nodes().add(call);
+        draft.edges().addAll(replacementEdges);
+    }
+
+    // Handle direct body selectors in the custom Worker Graph task cards.
+    private boolean clickWorkerTaskWorkspace(double mouseX, double mouseY, int button) {
+        if (!inGraph(mouseX, mouseY)) return true;
+        if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) return true;
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
+        for (WorkerTaskLayout task : workerTaskLayouts()) {
+            for (WorkerTaskStepLayout step : task.steps()) {
+                for (WorkerTaskField field : step.fields()) {
+                    if (!field.bounds().contains(mouseX, mouseY)) continue;
+                    selectOnly(field.node().id());
+                    selectedInputPort = field.port();
+                    applyWorkerTaskInput(field, mouseX, mouseY);
+                    return true;
+                }
+                if (step.bounds().contains(mouseX, mouseY)) {
+                    selectOnly(step.node().id());
+                    selectedInputPort = null;
+                    return true;
+                }
+            }
+        }
+        clearSelection();
+        return true;
+    }
+
+    // Apply one custom Worker Graph task-card selector.
+    private void applyWorkerTaskInput(WorkerTaskField field, double mouseX, double mouseY) {
+        AdvancedGraphDocument.Node node = field.node();
+        String port = field.port();
+        String type = field.type();
+        if ("resource_type".equals(port) && "string".equals(type)) {
+            checkpoint();
+            String current = inputString(node, port, "item");
+            putInputDefault(node, port, type, "fluid".equalsIgnoreCase(current) ? "item" : "fluid");
+            return;
+        }
+        UiRect bounds = field.bounds();
+        applyInputControl(node, port, type, mouseX, mouseY, bounds.x(), bounds.width());
     }
 
     // Draw the node browser
@@ -7913,11 +11302,14 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             }
             categories.computeIfAbsent(definition.category(), ignored -> new ArrayList<>()).add(definition);
         }
-        for (AdvancedGraphDocument.FunctionGraph function : draft.functions()) {
-            AdvancedGraphCatalog.Definition definition = functionDefinition(function);
-            String searchable = function.name() + " function";
-            if (!query.isBlank() && !searchable.toLowerCase(Locale.ROOT).contains(query)) continue;
-            categories.computeIfAbsent("functions", ignored -> new ArrayList<>()).add(definition);
+        if (!workerGraphMode) {
+            for (AdvancedGraphDocument.FunctionGraph function : draft.functions()) {
+                if (isWorkerPrivateFunction(function)) continue;
+                AdvancedGraphCatalog.Definition definition = functionDefinition(function);
+                String searchable = function.name() + " function";
+                if (!query.isBlank() && !searchable.toLowerCase(Locale.ROOT).contains(query)) continue;
+                categories.computeIfAbsent("functions", ignored -> new ArrayList<>()).add(definition);
+            }
         }
         if (v2Ui && showDocumentation) {
             res.add(new BrowserEntry(DOCUMENTATION_CATEGORY, true));
@@ -7925,7 +11317,9 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
                 res.add(new BrowserEntry("sticky_note", false));
             }
         }
-        for (String category : v2Ui ? V2_CATEGORY_ORDER : CATEGORY_ORDER) {
+        List<String> categoryOrder = workerGraphMode ? WORKER_GRAPH_CATEGORY_ORDER
+                : v2Ui ? V2_CATEGORY_ORDER : CATEGORY_ORDER;
+        for (String category : categoryOrder) {
             List<AdvancedGraphCatalog.Definition> definitions = categories.get(category);
             if (definitions == null || definitions.isEmpty()) continue;
             res.add(new BrowserEntry(category, true));
@@ -8004,7 +11398,8 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         });
         BuiltInRegistries.ITEM.stream().forEach(item -> {
             ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
-            if (id == null || (!query.isBlank() && !id.toString().contains(query))) return;
+            if (item instanceof WorkerEnergyBatteryItem || id == null
+                    || (!query.isBlank() && !id.toString().contains(query))) return;
             groups.computeIfAbsent(id.getNamespace() + " items", ignored -> new ArrayList<>())
                     .add(new RegistryEntry(id.toString(), new ItemStack(item), false));
         });
@@ -8057,36 +11452,25 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         } else if (selectedNode != null) {
             AdvancedGraphDocument.Node node = selectedNode;
             if (node != null) {
-                int col = AdvancedGraphCatalog.categoryColor(AdvancedGraphCatalog.get(node.type()).category());
-                if (v2Ui) {
-                    AdvancedControllerV2Theme.drawOption(
-                            graphics, x + 8, 56, layoutRight() - x - 16, 20, col, true, true);
-                } else {
-                    graphics.fill(x + 8, 56, layoutRight() - 8, 76, col);
-                }
-                graphics.drawString(font, nodeTitle(node), x + 14, 62,
-                        v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFFFFFFFF, false);
-                graphics.drawString(font, node.type(), x + 10, 84,
-                        v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF91A9B8, false);
-                graphics.drawString(font, "node_id: " + trim(node.id(), 24), x + 10, 96,
-                        v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF91A9B8, false);
+                drawGraphConfigCard(graphics, x, layoutRight() - x, node,
+                        graphInspectorDescription(node), -1, -1);
                 String property = editableProperty(node);
                 String editableInputLabelPort = editableInputLabelPort(node, selectedInputPort);
                 String selectedOutputPort = selectedOutputPort(node, selectedInputPort);
                 if (NODE_ALIAS_PROPERTY.equals(selectedInputPort)) {
-                    graphics.drawString(font, "Alias", x + 10, 108,
+                    graphics.drawString(font, "Alias", x + 10, 112,
                             interfaceSecondaryColor(), false);
                 } else if (editableInputLabelPort != null) {
-                    graphics.drawString(font, "Input name: " + humanPort(editableInputLabelPort), x + 10, 108,
+                    graphics.drawString(font, "Input name: " + humanPort(editableInputLabelPort), x + 10, 112,
                             interfaceSecondaryColor(), false);
                 } else if (selectedOutputPort != null) {
-                    graphics.drawString(font, "Output value: " + humanPort(selectedOutputPort), x + 10, 108,
+                    graphics.drawString(font, "Output value: " + humanPort(selectedOutputPort), x + 10, 112,
                             interfaceSecondaryColor(), false);
                 } else if (property != null) {
-                    graphics.drawString(font, property, x + 10, 108, interfaceSecondaryColor(), false);
+                    graphics.drawString(font, property, x + 10, 112, interfaceSecondaryColor(), false);
                 } else if (isHudNode(node) || isConstructorNode(node)) {
                     graphics.drawString(font, "Right-click an input to rename; Shift-right-click removes it.",
-                            x + 10, 108,
+                            x + 10, 112,
                             interfaceMutedColor(), false);
                 }
                 int y = 148;
@@ -8552,7 +11936,7 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         int height = 17; // Alias
         if (hasSwitchTypeControl(node)) height += 17;
         if (hasPropertyControl(node)) height += 17;
-        for (var port : AdvancedGraphCatalog.inputs(node).entrySet()) {
+        for (var port : nodeInputs(node).entrySet()) {
             if ("exec".equals(port.getValue())
                     || ("curve".equals(node.type()) && "value".equals(port.getKey()))) continue;
             height += "frequency".equals(port.getValue()) ? 22 : 17;
@@ -8622,6 +12006,7 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
                 leftSidebarCollapsed, rightSidebarCollapsed,
                 inspectorOptionsCollapsed, inspectorTargetsCollapsed, inspectorVariablesCollapsed,
                 inspectorOptionsHeight, inspectorTargetsHeight, saveOnClose,
+                gridSnapStep,
                 Set.copyOf(collapsedNodes)));
     }
 
@@ -8909,9 +12294,9 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         imageWidth = layoutRight() - layoutLeft();
         leftPos = layoutLeft();
         resize(minecraft, width, height);
-        if (nodeSearch != null) nodeSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview
+        if (nodeSearch != null) nodeSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview && !workerGraphOverview
                 && !leftSidebarCollapsed && !blockBrowserOpen);
-        if (blockSearch != null) blockSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview
+        if (blockSearch != null) blockSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview && !workerGraphOverview
                 && !leftSidebarCollapsed && blockBrowserOpen);
         RecipeViewerVisibility.recalculateEmi();
     }
@@ -9075,6 +12460,10 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
                     }
                     else {
                         putInputDefault(node, dropdown.port(), dropdown.type(), val);
+                        if (isWorkerRequestNode(node) && ("request_type".equals(dropdown.port())
+                                || "destination_type".equals(dropdown.port()))) {
+                            clearGraphRenderCache();
+                        }
                         if ("face".equals(dropdown.port())
                                 && ("get_block_data".equals(node.type())
                                 || "set_block_data".equals(node.type()))) {
@@ -9474,9 +12863,17 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (mouseY >= 5 && mouseY < 23 && super.mouseClicked(mouseX, mouseY, button)) return true;
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && gridSnapSliderBounds().contains(mouseX, mouseY)) {
+            draggingGridSnapSlider = true;
+            updateGridSnapStep(mouseX);
+            return true;
+        }
 
         // ------------------------------------OVERLAY INPUT------------------------------------
 
+        if (workerSelectionOpen) return clickWorkerSelection(mouseX, mouseY, button);
+        if (workerTargetPickerOpen) return clickWorkerTargetPicker(mouseX, mouseY, button);
+        if (workerResourcePickerOpen) return clickWorkerResourcePicker(mouseX, mouseY, button);
         if (scmBlockPickerOpen) {
             return clickScmBlockPicker(mouseX, mouseY, button);
         }
@@ -9527,19 +12924,6 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             return true;
         }
         if (handleGraphTabClick(mouseX, mouseY, button)) return true;
-        if (scmGraphOverview) return clickScmGraphWorkspace(mouseX, mouseY, button);
-        if (scheduleGraphOverview) return clickShippingScheduleWorkspace(mouseX, mouseY, button);
-
-        AdvancedGraphDocument.Node activeSticky = findNode(editingStickyNode);
-        if (activeSticky != null && button == GLFW.GLFW_MOUSE_BUTTON_LEFT
-                && stickyTextAreaAt(activeSticky, mouseX, mouseY)) {
-            positionStickyCaret(activeSticky, mouseX, mouseY, hasShiftDown());
-            return true;
-        }
-        if (editingStickyNode != null) {
-            finishStickyEditing();
-        }
-
         if (linkerOpen && mouseX >= linkerX && mouseX <= linkerX + LINKER_MODAL_WIDTH
                 && mouseY >= linkerY && mouseY <= linkerY + 22) {
             if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
@@ -9553,15 +12937,31 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             return true;
         }
         if (linkerOpen) return true;
+        if (scmGraphOverview) return clickScmGraphWorkspace(mouseX, mouseY, button);
+        if (scheduleGraphOverview) return clickShippingScheduleWorkspace(mouseX, mouseY, button);
+        if (workerGraphOverview) return clickWorkerGraphWorkspace(mouseX, mouseY, button);
+
+        AdvancedGraphDocument.Node activeSticky = findNode(editingStickyNode);
+        if (activeSticky != null && button == GLFW.GLFW_MOUSE_BUTTON_LEFT
+                && stickyTextAreaAt(activeSticky, mouseX, mouseY)) {
+            positionStickyCaret(activeSticky, mouseX, mouseY, hasShiftDown());
+            return true;
+        }
+        if (editingStickyNode != null) {
+            finishStickyEditing();
+        }
 
         if (handleSidebarHandleClick(mouseX, mouseY, button)) return true;
 
-        if (!leftSidebarCollapsed && mouseX >= layoutLeft() && mouseX < layoutLeft() + activeLeftWidth() && mouseY >= 59) {
+        if (!leftSidebarCollapsed && mouseX >= layoutLeft() && mouseX < layoutLeft() + activeLeftWidth()
+                && mouseY >= (workerGraphMode ? TOOLBAR_HEIGHT : 59)) {
+            if (workerGraphMode) return handleWorkerGraphLibraryClick(mouseX, mouseY, button);
             return blockBrowserOpen ? handleBlockBrowserClick(mouseX, mouseY, button)
                     : handleNodeBrowserClick(mouseX, mouseY, button);
         }
 
         if (!rightSidebarCollapsed && mouseX >= graphRight() && mouseX < layoutRight() && mouseY >= TOOLBAR_HEIGHT) {
+            if (workerGraphMode) return handleWorkerGraphInspectorClick(mouseX, mouseY, button);
             if (handleInspectorCurveClick(mouseX, mouseY, button)) return true;
             if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT
                     && (rightClickHudInspector(mouseX, mouseY)
@@ -9853,6 +13253,10 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
         wireMouseX = mouseX;
         wireMouseY = mouseY;
+        if (draggingGridSnapSlider && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            updateGridSnapStep(mouseX);
+            return true;
+        }
         if (scmBlockPickerOpen) {
             UiRect preview = scmBlockPickerPreviewBounds(scmBlockPickerBounds());
             if (blockPickerRootSubLevelId() != null && preview.contains(mouseX, mouseY)) {
@@ -9896,8 +13300,14 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
                         dragged = promoteDraggedScheduleBlock(dragged, mouseX, mouseY);
                         if (dragged == null) continue;
                     }
+                    double x = dragged.x() + dragX / scheduleZoom;
+                    double y = dragged.y() + dragY / scheduleZoom;
+                    if (hasShiftDown()) {
+                        x = snapGraphCoordinate(x);
+                        y = snapGraphCoordinate(y);
+                    }
                     ShippingScheduleGraph.moveBlock(scheduleDraft, dragged.id(),
-                            dragged.x() + dragX / scheduleZoom, dragged.y() + dragY / scheduleZoom);
+                            x, y);
                 }
                 draggingScheduleBlockMoved |= dragX != 0.0D || dragY != 0.0D;
             }
@@ -10022,6 +13432,11 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
     // Handle mouse released
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (draggingGridSnapSlider && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            draggingGridSnapSlider = false;
+            saveUiPreferences();
+            return true;
+        }
         draggingOptionDropdownThumb = false;
         if (scmBlockPickerOpen) {
             UiRect preview = scmBlockPickerPreviewBounds(scmBlockPickerBounds());
@@ -10248,6 +13663,26 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         // -----------------------------------------------------MODAL WINDOWS-----------------------------------------------------
+        if (workerSelectionOpen) {
+            int maximum = Math.max(0, workerChoices().size()
+                    - workerSelectionVisibleRows(workerSelectionBounds()));
+            workerSelectionScroll = Mth.clamp(
+                    workerSelectionScroll - (int) Math.signum(scrollY), 0, maximum);
+            return true;
+        }
+        if (workerTargetPickerOpen) {
+            int maximum = Math.max(0, workerTargetChoices().size()
+                    - workerTargetVisibleRows(workerTargetPickerBounds()));
+            workerTargetPickerScroll = Mth.clamp(
+                    workerTargetPickerScroll - (int) Math.signum(scrollY), 0, maximum);
+            return true;
+        }
+        if (workerResourcePickerOpen) {
+            int maximum = Math.max(0, workerResourceChoices().size() - 12);
+            workerResourcePickerScroll = Mth.clamp(
+                    workerResourcePickerScroll - (int) Math.signum(scrollY), 0, maximum);
+            return true;
+        }
         if (scmBlockPickerOpen) {
             UiRect preview = scmBlockPickerPreviewBounds(scmBlockPickerBounds());
             if (blockPickerRootSubLevelId() != null && preview.contains(mouseX, mouseY)) {
@@ -10272,7 +13707,7 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             int panelWidth = bounds.right() - panelX - (scmConfigurationWorkspace() ? 8 : 14);
             ScmConfigurationSidebarLayout sidebarLayout = scmConfigurationSidebarLayout(bounds, viewBounds);
             if (scmConfigurationTargetDropdownOpen
-                    && scmConfigurationTargetDropdownBounds(panelX, sidebarLayout.contentTop() + 145, panelWidth)
+                    && scmConfigurationTargetDropdownBounds(panelX, sidebarLayout.contentTop() + 287, panelWidth)
                     .contains(mouseX, mouseY)) {
                 int visible = Math.min(SCM_CONFIGURATION_DROPDOWN_VISIBLE_ROWS,
                         scmConfigurationActions().size());
@@ -10333,7 +13768,7 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
                     functionTabScroll - (int) Math.round(scrollY * 32.0D), 0, maximum);
             return true;
         }
-        if ((scmGraphOverview || scheduleGraphOverview) && inGraph(mouseX, mouseY)) {
+        if ((scmGraphOverview || scheduleGraphOverview || workerGraphOverview) && inGraph(mouseX, mouseY)) {
             return true;
         }
         // ------------------------------------DROPDOWN SCROLL------------------------------------
@@ -10401,8 +13836,13 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             return true;
         }
         if (!leftSidebarCollapsed && mouseX >= layoutLeft() && mouseX < layoutLeft() + activeLeftWidth()) {
-            if (blockBrowserOpen) blockBrowserScroll = Math.max(0, blockBrowserScroll - (int) (scrollY * 34));
-            else browserScroll = Math.max(0, browserScroll - (int) (scrollY * 34));
+            if (workerGraphMode) {
+                workerGraphBrowserScroll = Math.max(0, workerGraphBrowserScroll - (int) (scrollY * 34));
+            } else if (blockBrowserOpen) {
+                blockBrowserScroll = Math.max(0, blockBrowserScroll - (int) (scrollY * 34));
+            } else {
+                browserScroll = Math.max(0, browserScroll - (int) (scrollY * 34));
+            }
             return true;
         }
         if (!rightSidebarCollapsed && mouseX >= graphRight() && mouseX < layoutRight() && mouseY >= TOOLBAR_HEIGHT) {
@@ -10439,6 +13879,27 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
     // Handle key pressed
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (workerSelectionOpen) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) closeWorkerSelection();
+            else if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                applyWorkerSelection();
+                closeWorkerSelection();
+            }
+            return true;
+        }
+        if (workerTargetPickerOpen) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) closeWorkerTargetPicker();
+            return true;
+        }
+        if (workerResourcePickerOpen) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) closeWorkerResourcePicker();
+            else workerResourceSearch.keyPressed(keyCode, scanCode, modifiers);
+            return true;
+        }
+        if (workerGraphOverview && hasControlDown() && keyCode == GLFW.GLFW_KEY_S) {
+            saveWorkerConfiguration();
+            return true;
+        }
         if ((scmConfigurationOpen || scmGraphOverview) && hasControlDown() && keyCode == GLFW.GLFW_KEY_S) {
             saveAndApplyDraft("save_apply", beginGraphActionToast("Saving ACC and SCM..."));
             return true;
@@ -10515,6 +13976,11 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             return true;
         }
         // ------------------------------------WINDOW CONTROLS------------------------------------
+        if(scheduleGraphOverview && keyCode == GLFW.GLFW_KEY_ESCAPE
+                && schedulePropertyDropdownBounds != null){
+            closeSchedulePropertyDropdown();
+            return true;
+        }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             if (contextMenu != null || optionDropdown != null || miniBrowser != null
                     || templatePicker || linkerOpen || shareModalOpen || graphHistoryOpen || toolsMenuOpen) {
@@ -10552,6 +14018,21 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
                 saveShippingScheduleDraft();
                 return true;
             }
+            if(keyCode == GLFW.GLFW_KEY_F2){
+                openScheduleBlockConfiguration(scheduleNode(selectedScheduleBlock));
+                return true;
+            }
+            if(hasAltDown() && (keyCode == GLFW.GLFW_KEY_UP || keyCode == GLFW.GLFW_KEY_DOWN)){
+                String moved = ShippingScheduleGraph.moveCondition(scheduleDraft, selectedScheduleBlock,
+                        keyCode == GLFW.GLFW_KEY_UP ? -1 : 1, minecraft.level.registryAccess());
+                if(!moved.isBlank()){
+                    selectedScheduleBlock = moved;
+                    selectedScheduleBlocks.clear();
+                    selectedScheduleBlocks.add(moved);
+                    saveShippingScheduleDraft();
+                }
+                return true;
+            }
             if (hasControlDown() && keyCode == GLFW.GLFW_KEY_A) {
                 selectedScheduleBlocks.clear();
                 for (AdvancedGraphDocument.Node node : ShippingScheduleGraph.orderedBlocks(scheduleDraft)) {
@@ -10586,6 +14067,12 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
                 editingScheduleInlineProperty = false;
                 if (scheduleInlinePropertyValue != null) scheduleInlinePropertyValue.setVisible(false);
                 return true;
+            }
+            return true;
+        }
+        if (workerGraphOverview) {
+            if (getFocused() instanceof EditBox editBox && editBox.visible) {
+                editBox.keyPressed(keyCode, scanCode, modifiers);
             }
             return true;
         }
@@ -10654,6 +14141,8 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
     // Handle typed characters
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
+        if (workerSelectionOpen || workerTargetPickerOpen) return true;
+        if (workerResourcePickerOpen) return workerResourceSearch.charTyped(codePoint, modifiers);
         if (hudOpen) {
             if (getFocused() instanceof EditBox editBox) {
                 return editBox.charTyped(codePoint, modifiers);
@@ -10865,7 +14354,7 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             row--;
         }
         // ------------------------------------INPUT CONTROLS------------------------------------
-        for (var port : AdvancedGraphCatalog.inputs(node).entrySet()) {
+        for (var port : nodeInputs(node).entrySet()) {
             if ("exec".equals(port.getValue()) || ("curve".equals(node.type()) && "value".equals(port.getKey()))) continue;
             if (!isDataPortVisible(node, port.getKey(), false)) continue;
             if (row-- != 0) continue;
@@ -10876,7 +14365,8 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             if ("number".equals(port.getValue()) && bodySliderTrack(node, port.getKey()).containsX(mouseX, 6)) {
                 startSliderDrag(node, port.getKey(), false, mouseX);
             } else if (!inputOptions(node, port.getKey()).isEmpty()
-                    || List.of("boolean", "direction", "frequency", "target").contains(port.getValue())) {
+                    || List.of("boolean", "direction", "frequency", "target").contains(port.getValue())
+                    || isWorkerModalInput(node, port.getKey(), port.getValue())) {
                 int controlInset = inputControlInset(node, port.getKey());
                 applyInputControl(node, port.getKey(), port.getValue(), mouseX, mouseY,
                         x + 5 + controlInset, NODE_WIDTH * zoom - 10 - controlInset);
@@ -11541,7 +15031,7 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
 
     // Expose the current keys of a MAP output as direct ports on the same node.
     private void inlineBreakoutMapOutput(AdvancedGraphDocument.Node node, String sourcePort) {
-        CompoundTag entries = GraphRuntime.splitListOutputsFor(currentPortValue(node, sourcePort, true));
+        CompoundTag entries = mapBreakoutEntries(node, sourcePort, true);
         if (entries.isEmpty()) {
             showGraphToast("MAP has no readable entries to break out", GraphActionToastSeverity.WARNING);
             return;
@@ -11566,7 +15056,7 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
 
     // Expose the current keys of a MAP input as editable direct inputs on the same node.
     private void inlineBreakoutMapInput(AdvancedGraphDocument.Node node, String sourcePort) {
-        CompoundTag entries = GraphRuntime.splitListOutputsFor(currentPortValue(node, sourcePort, false));
+        CompoundTag entries = mapBreakoutEntries(node, sourcePort, false);
         if (entries.isEmpty()) {
             showGraphToast("MAP has no readable entries to break out", GraphActionToastSeverity.WARNING);
             return;
@@ -11574,6 +15064,7 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         checkpoint();
         CompoundTag mappings = node.data().getCompound(AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG).copy();
         CompoundTag dynamicInputs = node.data().getCompound("DynamicInputs").copy();
+        CompoundTag inputOptions = node.data().getCompound("InputOptions").copy();
         for (String key : entries.getAllKeys()) {
             String inlinePort = inlineMapPortName(node, sourcePort, key, false, mappings);
             CompoundTag mapping = new CompoundTag();
@@ -11581,14 +15072,33 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             mapping.putString(AdvancedGraphCatalog.INLINE_MAP_KEY_TAG, key);
             mappings.put(inlinePort, mapping);
             dynamicInputs.putString(inlinePort, entries.getString(key));
-            putInputDefault(node, inlinePort, entries.getString(key),
-                    GraphRuntime.structuredValue(currentPortValue(node, sourcePort, false), key));
+            if (inputOptions.contains(key, Tag.TAG_LIST)) {
+                inputOptions.put(inlinePort, inputOptions.get(key).copy());
+            }
+            AdvancedGraphDocument.Value initialValue = GraphRuntime.structuredValue(
+                    currentPortValue(node, sourcePort, false), key);
+            ListTag options = inputOptions.getList(key, Tag.TAG_STRING);
+            if ("string".equals(entries.getString(key)) && !options.isEmpty()
+                    && options.stream().map(Tag::getAsString)
+                    .noneMatch(initialValue.asString()::equals)) {
+                initialValue = AdvancedGraphDocument.Value.string(options.getString(0));
+            }
+            putInputDefault(node, inlinePort, entries.getString(key), initialValue);
         }
         node.data().put(AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG, mappings);
         node.data().put("DynamicInputs", dynamicInputs);
+        if (inputOptions.isEmpty()) node.data().remove("InputOptions");
+        else node.data().put("InputOptions", inputOptions);
         clearGraphRenderCache();
         syncInspector();
         showGraphToast("MAP fields added to node inputs", GraphActionToastSeverity.SUCCESS);
+    }
+
+    // Get typed MAP breakout entries from a generated data-port schema or the current MAP value
+    private CompoundTag mapBreakoutEntries(AdvancedGraphDocument.Node node, String sourcePort, boolean output) {
+        CompoundTag schema = AdvancedContraptionControllerBlockEntity.dataPortGroup(node, sourcePort);
+        return schema.isEmpty() ? GraphRuntime.splitListOutputsFor(
+                currentPortValue(node, sourcePort, output)) : schema;
     }
 
     // Collapse an unwired MAP breakout back into its parent port
@@ -12320,12 +15830,23 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
 
     // Replace the moved node
     private void replaceMovedNode(int idx, AdvancedGraphDocument.Node node, double dx, double dy) {
+        double x = node.x() + dx;
+        double y = node.y() + dy;
+        if (hasShiftDown()) {
+            x = snapGraphCoordinate(x);
+            y = snapGraphCoordinate(y);
+        }
         AdvancedGraphDocument.Node moved = new AdvancedGraphDocument.Node(
-                node.id(), node.type(), node.label(), node.x() + dx, node.y() + dy, node.data());
+                node.id(), node.type(), node.label(), x, y, node.data());
         activeNodes().set(idx, moved);
         if (graphRenderCacheDocument == draft) {
             graphRenderNodes.put(moved.id(), moved);
         }
+    }
+
+    // Align one graph-space coordinate to the configured Shift-drag grid.
+    private double snapGraphCoordinate(double coordinate) {
+        return Math.round(coordinate / gridSnapStep) * (double) gridSnapStep;
     }
 
     // Select the marquee
@@ -12971,7 +16492,7 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
                 && !AdvancedGraphCatalog.isScmFunctionPrimitiveType(type)) {
             return false;
         }
-        if (activeFunction() != null && isStandaloneExecSource(type)) {
+        if (activeFunction() != null && isStandaloneExecSource(type) && !workerGraphMode) {
             return false;
         }
         AdvancedContraptionControllerBlockEntity controller = menu.getMenuConfigTargetBlockEntity();
@@ -12981,6 +16502,15 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         if (AdvancedGraphCatalog.isShipControlType(type)) {
             return controller != null && controller.hasShipControlModule();
         }
+        AdvancedGraphCatalog.Definition definition = AdvancedGraphCatalog.get(type);
+        if (workerGraphMode) {
+            return definition != null && definition.category().startsWith("worker")
+                    && !"worker_bridge".equals(definition.category());
+        }
+        if (definition != null && definition.category().startsWith("worker")) {
+            return "worker_bridge".equals(definition.category()) ? !workerGraphMode : workerGraphMode;
+        }
+        if (type.startsWith("worker_")) return false;
         if ("acc_display_scm_information".equals(type)) {
             return controller != null && controller.hasShipControlModule();
         }
@@ -13435,30 +16965,22 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
                 && mouseY >= y && mouseY <= y + nodeHeight(node) * zoom;
     }
 
-    // Check if the pointer is near the node
-    static boolean pointerNearNode(double mouseX, double mouseY, int nodeX, int nodeY,
-                                   int nodeWidth, int nodeHeight, int margin) {
-        return mouseX >= nodeX - margin && mouseX <= nodeX + nodeWidth + margin
-                && mouseY >= nodeY - margin && mouseY <= nodeY + nodeHeight + margin;
-    }
-
-    // Check if the bounds intersect the viewport
-    static boolean intersectsViewport(int x, int y, int width, int height,
-                                      int viewportLeft, int viewportTop,
-                                      int viewportRight, int viewportBottom, int margin) {
-        int right = x + Math.max(1, width);
-        int bottom = y + Math.max(1, height);
-        return right >= viewportLeft - margin && x <= viewportRight + margin
-                && bottom >= viewportTop - margin && y <= viewportBottom + margin;
-    }
-
     // Find the node
     private AdvancedGraphDocument.Node findNode(String id) {
         if (id == null) return null;
         if (graphRenderCacheDocument == draft) {
-            return graphRenderNodes.get(id);
+            AdvancedGraphDocument.Node cached = graphRenderNodes.get(id);
+            if (cached != null) return cached;
         }
-        return activeNodes().stream().filter(node -> node.id().equals(id)).findFirst().orElse(null);
+        AdvancedGraphDocument.Node active = activeNodes().stream()
+                .filter(node -> node.id().equals(id)).findFirst().orElse(null);
+        if (active != null) return active;
+        for (AdvancedGraphDocument.FunctionGraph function : draft.functions()) {
+            AdvancedGraphDocument.Node nested = function.nodes().stream()
+                    .filter(node -> node.id().equals(id)).findFirst().orElse(null);
+            if (nested != null) return nested;
+        }
+        return null;
     }
 
     // Get the selected node
@@ -13594,22 +17116,27 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
 
     // Get the screen x
     private int screenX(double graphX) {
-        return (int) (graphLeft() + panX + graphX * zoom);
+        return (int) graphViewport().screenX(graphX);
     }
 
     // Get the screen y
     private int screenY(double graphY) {
-        return (int) (graphTop() + panY + graphY * zoom);
+        return (int) graphViewport().screenY(graphY);
     }
 
     // Get the graph x
     private double graphX(double screenX) {
-        return (screenX - graphLeft() - panX) / zoom;
+        return graphViewport().graphX(screenX);
     }
 
     // Get the graph y
     private double graphY(double screenY) {
-        return (screenY - graphTop() - panY) / zoom;
+        return graphViewport().graphY(screenY);
+    }
+
+    // Get the active graph viewport
+    private GraphViewport graphViewport() {
+        return new GraphViewport(graphLeft(), graphTop(), panX, panY, zoom);
     }
 
     // Restore the viewport
@@ -14189,6 +17716,11 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             return trim(valueOrUnset(first) + " + " + valueOrUnset(second), 18);
         }
         if ("target".equals(type)) {
+            if (isWorkerGraphNode(node) || isWorkerRequestNode(node)) {
+                ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(
+                        node.data().getCompound("WorkerTargets").getCompound(port));
+                return valueOrUnset(target == null ? inputString(node, port, "") : target.label());
+            }
             String sectionLabel = node.data().getString(AeroworksControllerCompat.GRAPH_SECTION_LABEL_KEY);
             return valueOrUnset(sectionLabel.isBlank() ? node.data().getString("TargetLabel") : sectionLabel);
         }
@@ -14433,7 +17965,18 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             return;
         }
         if ("target".equals(type)) {
-            cycleTarget(node, port);
+            if (node.type().startsWith("worker_") || isWorkerRequestNode(node)) openWorkerTargetPicker(node.id(), port);
+            else cycleTarget(node, port);
+            return;
+        }
+        if ((isWorkerGraphNode(node) || isWorkerRequestNode(node)) && (("workers".equals(port) && "string".equals(type))
+                || "worker".equals(type) || "worker_group".equals(type))) {
+            openWorkerSelection(node.id(), port, false);
+            return;
+        }
+        if (isWorkerResourceInput(node, port, type)) {
+            boolean appendSelection = "items".equals(port) || "fluids".equals(port);
+            openWorkerResourcePicker(node.id(), port, appendSelection, workerResourceType(node, port));
             return;
         }
         List<String> opts = inputOptions(node, port);
@@ -14461,6 +18004,38 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             default -> {
             }
         }
+        if (isWorkerRequestNode(node) && ("request_type".equals(port) || "destination_type".equals(port))) {
+            clearGraphRenderCache();
+        }
+    }
+
+    // Check whether a node-body value opens one of the dedicated worker selectors.
+    private static boolean isWorkerModalInput(AdvancedGraphDocument.Node node, String port, String type) {
+        return (isWorkerGraphNode(node) || isWorkerRequestNode(node))
+                && (("workers".equals(port) && "string".equals(type))
+                || "worker".equals(type) || "worker_group".equals(type)
+                || isWorkerResourceInput(node, port, type));
+    }
+
+    // Check whether a worker field represents a selectable resource rather than free-form text.
+    private static boolean isWorkerResourceInput(AdvancedGraphDocument.Node node, String port, String type) {
+        return (isWorkerGraphNode(node) || isWorkerRequestNode(node)) && "string".equals(type)
+                && ("item".equals(port) || "fluid".equals(port) || "resource".equals(port)
+                || "fuel".equals(port) || "input".equals(port) || "output".equals(port)
+                || "items".equals(port) || "fluids".equals(port));
+    }
+
+    // Resolve the resource selector type for one worker command input.
+    private WorkerResourceType workerResourceType(AdvancedGraphDocument.Node node, String port) {
+        if ("worker_transfer_fuel".equals(node.type())) return WorkerResourceType.FUEL;
+        if (isWorkerRequestNode(node) && "fluids".equals(port)) return WorkerResourceType.FLUID;
+        if ("worker_move_fluid".equals(node.type()) || "worker_fluid_filter".equals(node.type())
+                || "worker_transfer_fluid".equals(node.type())
+                || (("worker_process".equals(node.type()) || "worker_auto_craft".equals(node.type()))
+                && "fluid".equalsIgnoreCase(inputString(node, "resource_type", "item")))) {
+            return WorkerResourceType.FLUID;
+        }
+        return WorkerResourceType.ITEM;
     }
 
     // Start the slider drag
@@ -14840,6 +18415,24 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             setBlockBrowserOpen(true);
             return;
         }
+        if (node.type().startsWith("worker_")) {
+            CompoundTag workerTargets = node.data().getCompound("WorkerTargets");
+            ControllerDiscoveryNode currentTarget = ControllerDiscoveryNode.fromTag(
+                    workerTargets.getCompound(port));
+            int current = -1;
+            for (int index = 0; index < opts.size(); index++) {
+                if (currentTarget != null && opts.get(index).nodeId().equals(currentTarget.nodeId())) {
+                    current = index;
+                    break;
+                }
+            }
+            ControllerDiscoveryNode target = opts.get((current + 1) % opts.size());
+            checkpoint();
+            workerTargets.put(port, target.toTag());
+            node.data().put("WorkerTargets", workerTargets);
+            putInputDefault(node, port, "target", target.nodeId());
+            return;
+        }
         int current = -1;
         for (int i = 0; i < opts.size(); i++) if (opts.get(i).nodeId().equals(node.data().getString("Target"))) current = i;
         ControllerDiscoveryNode target = opts.get((current + 1) % opts.size());
@@ -14925,6 +18518,10 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             return;
         }
         blockEntity = targetLevel.getBlockEntity(targetPos);
+        if ((getData || setData) && !com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataAdapterRegistry
+                .isDataSchemaReady(blockEntity)) {
+            return;
+        }
         String aeroworksSection = getData || setData
                 ? AdvancedContraptionControllerBlockEntity.configureAeroworksGraphSection(node, blockEntity)
                 : null;
@@ -14933,10 +18530,11 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
                         targetLevel, targetPos, writable, aeroworksSection)
                 : AdvancedContraptionControllerBlockEntity.graphDirectAxisPorts(blockEntity, writable);
         if (getData || setData) {
-            ports = AdvancedContraptionControllerBlockEntity.configureDataPortGroups(node, ports);
+            ports = AdvancedContraptionControllerBlockEntity.configureDataPortGroups(node, ports, blockEntity, writable);
         } else {
             AdvancedContraptionControllerBlockEntity.clearDataPortGroups(node);
         }
+        AdvancedContraptionControllerBlockEntity.restoreInlineMapPorts(node, ports, !writable);
         CompoundTag options = AdvancedContraptionControllerBlockEntity.graphDataPortOptions(
                 targetLevel, targetPos, writable);
         CompoundTag labels = getData && !writable
@@ -14949,6 +18547,9 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         node.data().remove("OutputLabels");
         node.data().put(writable ? "DynamicInputs" : "DynamicOutputs", ports);
         node.data().put(writable ? "InputOptions" : "OutputOptions", options);
+        if (writable) {
+            AdvancedContraptionControllerBlockEntity.restoreInlineMapInputOptions(node);
+        }
         if (!labels.isEmpty()) {
             node.data().put("OutputLabels", labels);
         }
@@ -15024,7 +18625,7 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             opts = opts.stream().filter(target ->
                     isAccDisplayTarget(target) || isDisplayAdapterTarget(target)).toList();
         } else if (node.type().startsWith("acc_display_") || isAccDisplayWidgetType(node.type())) {
-            opts = opts.stream().filter(AdvancedContraptionControllerScreen::isAccDisplayTarget).toList();
+            opts = opts.stream().filter(AdvancedGraphScreenSupport::isAccDisplayTarget).toList();
         } else if ("linker_face_input".equals(node.type()) || "discovered_target_input".equals(node.type())) {
             opts = opts.stream().filter(target -> target.kind() != ControllerDiscoveryKind.LINKER_FACE_OUTPUT).toList();
         } else if ("linker_face_output".equals(node.type()) || "direct_target_output".equals(node.type())
@@ -15048,7 +18649,7 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         List<ControllerDiscoveryNode> opts = liveGraphTargets.isEmpty()
                 ? sortedGraphTargets(currentGraphTargetSeeds())
                 : List.copyOf(liveGraphTargets);
-        return opts.stream().filter(AdvancedContraptionControllerScreen::isDisplayAdapterTarget).toList();
+        return opts.stream().filter(AdvancedGraphScreenSupport::isDisplayAdapterTarget).toList();
     }
 
     // Get the graph SCM target options
@@ -15251,6 +18852,10 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         scmConfigurationScanning = scanning;
         scmConfigurationStatus = status == null ? "" : status;
         scmDetectedVehicleType = candidates == null ? "airship" : candidates.getString("DetectedVehicleType");
+        scmDetectedSteeringType = candidates == null
+                || !candidates.contains("DetectedSteeringType", Tag.TAG_STRING)
+                ? ScmSteeringMode.CUSTOM.id()
+                : candidates.getString("DetectedSteeringType");
         scmDefaultOrientation = ScmOrientation.fromTag(candidates == null ? null
                 : candidates.getCompound("DefaultOrientation"))
                 .orElse(ScmOrientation.fromMount(Direction.NORTH, Direction.UP));
@@ -15274,6 +18879,19 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             }
         }
         scmConfigurationCandidates.clear();
+        scmConfigurationDockingConnectors.clear();
+        scmConfigurationProfile.dockingConnectorGroups().keySet().forEach(
+                scmConfigurationDockingConnectors::add);
+        ListTag dockingConnectors = candidates == null ? new ListTag()
+                : candidates.getList("DockingConnectors", Tag.TAG_COMPOUND);
+        for (int index = 0; index < dockingConnectors.size(); index++) {
+            ScmConfigurationProfile.DockingConnectorReference connector =
+                    ScmConfigurationProfile.DockingConnectorReference.fromTag(
+                            dockingConnectors.getCompound(index));
+            if (connector.isValid()) {
+                scmConfigurationDockingConnectors.add(connector);
+            }
+        }
         scmConfigurationViewSubLevelIds.clear();
         if (rootSubLevelId != null) scmConfigurationViewSubLevelIds.add(rootSubLevelId);
         ListTag bodies = candidates == null ? new ListTag()
@@ -15523,6 +19141,9 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
 
     // Get the input options
     private List<String> inputOptions(AdvancedGraphDocument.Node node, String port) {
+        if (node != null && "request_worker_task".equals(node.type()) && "task".equals(port)) {
+            return workerTaskEventNames();
+        }
         if (isShipTargetPointInput(node, port)) {
             return AdvancedGraphCatalog.shipTargetPointOptions();
         }
@@ -15542,9 +19163,27 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             return soundEventOptions;
         }
         List<String> opts = new ArrayList<>();
-        var values = node.data().getCompound("InputOptions").getList(port, net.minecraft.nbt.Tag.TAG_STRING);
+        CompoundTag configuredOptions = node.data().getCompound("InputOptions");
+        var values = configuredOptions.getList(port, net.minecraft.nbt.Tag.TAG_STRING);
+        if (values.isEmpty()) {
+            CompoundTag mapping = node.data().getCompound(AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG)
+                    .getCompound(port);
+            String sourceKey = mapping.getString(AdvancedGraphCatalog.INLINE_MAP_KEY_TAG);
+            if (!sourceKey.isBlank()) {
+                values = configuredOptions.getList(sourceKey, net.minecraft.nbt.Tag.TAG_STRING);
+            }
+        }
         for (int idx = 0; idx < values.size(); idx++) opts.add(values.getString(idx));
         return opts;
+    }
+
+    // List task-event names exposed by the controller's dedicated Worker Graph.
+    private List<String> workerTaskEventNames() {
+        return draft.functions().stream().filter(AdvancedContraptionControllerScreen::isWorkerGraphFunction)
+                .flatMap(function -> function.nodes().stream())
+                .filter(node -> "worker_task_event".equals(node.type()))
+                .map(node -> inputString(node, "task_name", "Worker Task"))
+                .filter(name -> !name.isBlank()).distinct().sorted().toList();
     }
 
     // Check if this is ship target point input
@@ -15617,7 +19256,7 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             return new double[]{0, Math.max(1, AllConfigs.server().kinetics.maxRotationSpeed.get())};
         }
         if (AdvancedGraphCatalog.isShipSpeedPort(node, port)) {
-            return new double[]{0, 10};
+            return new double[]{0, 100};
         }
         if ("ship_telemetry".equals(node.type())
                 && "collision_detection_distance".equals(port)) {
@@ -15773,31 +19412,12 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
 
     // Get the graph default
     private static CompoundTag graphDefault(String type, Object val) {
-        CompoundTag entry = new CompoundTag();
-        CompoundTag payload = new CompoundTag();
-        entry.putString("Type", type);
-        if (val instanceof Boolean bool) payload.putBoolean("Value", bool);
-        else if (val instanceof Number num) payload.putDouble("Value", num.doubleValue());
-        else if (val instanceof CompoundTag compound) payload.merge(compound.copy());
-        else payload.putString("Value", String.valueOf(val));
-        entry.put("Payload", payload);
-        return entry;
+        return AdvancedGraphExecutionPortSupport.graphDefault(type, val);
     }
 
     // Get the graph default
     private static CompoundTag graphDefault(String type, AdvancedGraphDocument.Value val) {
-        if (val == null) return graphDefault(type, "");
-        return switch (type) {
-            case "boolean" -> graphDefault(type, val.asBoolean());
-            case "number" -> graphDefault(type, val.asNumber());
-            case "string", "direction" -> graphDefault(type, val.asString());
-            default -> {
-                CompoundTag entry = new CompoundTag();
-                entry.putString("Type", type);
-                entry.put("Payload", val.payload().copy());
-                yield entry;
-            }
-        };
+        return AdvancedGraphExecutionPortSupport.graphDefault(type, val);
     }
 
     // Put the input default
@@ -15810,7 +19430,7 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
                     node, port, false, defaults.getCompound(port));
         }
         if (AdvancedGraphCatalog.isShipSpeedPort(node, port)) {
-            node.data().remove(AdvancedGraphCatalog.SHIP_SPEED_PERCENT_TAG);
+            node.data().putBoolean(AdvancedGraphCatalog.SHIP_SPEED_PERCENT_TAG, true);
         }
         CompoundTag prefilledInputs = node.data().getCompound("PrefilledInputs");
         if (prefilledInputs.contains(port)) {
@@ -16629,26 +20249,22 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
 
     // Check if this is an execution splitter type
     private static boolean isExecutionSplitterType(String type) {
-        return "parallel_execution".equals(type) || "sequenced_execution".equals(type)
-                || "switch".equals(type);
+        return AdvancedGraphExecutionPortSupport.isExecutionSplitterType(type);
     }
 
     // Check if this is an execution splitter node
     private static boolean isExecutionSplitterNode(AdvancedGraphDocument.Node node) {
-        return node != null && isExecutionSplitterType(node.type());
+        return AdvancedGraphExecutionPortSupport.isExecutionSplitterNode(node);
     }
 
     // Get the execution output count
     private static int executionOutputCount(AdvancedGraphDocument.Node node) {
-        if (node == null) return MIN_EXECUTION_OUTPUTS;
-        return clampExecOutputs(node.data().contains("OutputCount", Tag.TAG_INT)
-                ? node.data().getInt("OutputCount")
-                : MIN_EXECUTION_OUTPUTS);
+        return AdvancedGraphExecutionPortSupport.executionOutputCount(node);
     }
 
     // Clamp the exec outputs
     private static int clampExecOutputs(int count) {
-        return Mth.clamp(count, MIN_EXECUTION_OUTPUTS, MAX_EXECUTION_OUTPUTS);
+        return AdvancedGraphExecutionPortSupport.clampExecOutputs(count);
     }
 
     // Set the execution output count
@@ -16705,105 +20321,38 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
 
     // Put the execution outputs
     private static void putExecutionOutputs(String type, CompoundTag data, int count) {
-        int clamped = clampExecOutputs(count);
-        boolean dataSwitch = "switch".equals(type)
-                && AdvancedGraphCatalog.SWITCH_DATA_TYPE.equalsIgnoreCase(
-                data.getString(AdvancedGraphCatalog.SWITCH_TYPE_TAG));
-        if (dataSwitch) {
-            CompoundTag inputs = data.getCompound("DynamicInputs");
-            inputs.getAllKeys().stream()
-                    .filter(port -> port.startsWith("case_"))
-                    .toList().forEach(inputs::remove);
-            CompoundTag types = data.getCompound(
-                    AdvancedGraphPortState.SWITCH_CASE_TYPES_TAG);
-            CompoundTag defaults = data.getCompound("Defaults");
-            for (int idx = 0; idx < clamped; idx++) {
-                String port = executionOutputPort(type, idx);
-                String caseType = AdvancedGraphPortState.switchCaseType(data, port);
-                types.putString(port, caseType);
-                inputs.putString(port, caseType);
-                if (!defaults.contains(port)) {
-                    defaults.put(port, graphDefault(caseType,
-                            AdvancedGraphPortState.defaultValue(caseType)));
-                }
-            }
-            String defaultType = AdvancedGraphPortState.switchCaseType(data, "default");
-            types.putString("default", defaultType);
-            if (!defaults.contains("default")) {
-                defaults.put("default", graphDefault(defaultType,
-                        AdvancedGraphPortState.defaultValue(defaultType)));
-            }
-            data.put("DynamicInputs", inputs);
-            data.put("Defaults", defaults);
-            data.put(AdvancedGraphPortState.SWITCH_CASE_TYPES_TAG, types);
-            data.remove("DynamicOutputs");
-            return;
-        }
-        CompoundTag inputs = data.getCompound("DynamicInputs");
-        inputs.getAllKeys().stream()
-                .filter(port -> port.startsWith("case_"))
-                .toList().forEach(inputs::remove);
-        if (inputs.isEmpty()) data.remove("DynamicInputs");
-        else data.put("DynamicInputs", inputs);
-        CompoundTag outputs = new CompoundTag();
-        for (int idx = 0; idx < clamped; idx++) {
-            outputs.putString(executionOutputPort(type, idx), "exec");
-        }
-        data.put("DynamicOutputs", outputs);
+        AdvancedGraphExecutionPortSupport.putExecutionOutputs(type, data, count);
     }
 
     // Check if the execution ports match
     private static boolean executionPortsMatch(
             AdvancedGraphDocument.Node node, CompoundTag ports, int count) {
-        long casePortCount = ports.getAllKeys().stream()
-                .filter(port -> port.startsWith(
-                        "switch".equals(node.type()) ? "case_" : "exec_"))
-                .count();
-        if (casePortCount != count) return false;
-        for (int idx = 0; idx < count; idx++) {
-            String port = executionOutputPort(node.type(), idx);
-            String expected = AdvancedGraphCatalog.switchDataMode(node)
-                    ? AdvancedGraphPortState.switchCaseType(node, port)
-                    : AdvancedGraphCatalog.switchOutputType(node);
-            if (!expected.equals(ports.getString(port))) return false;
-        }
-        return true;
+        return AdvancedGraphExecutionPortSupport.executionPortsMatch(node, ports, count);
     }
 
     // Get the execution output port
     private static String executionOutputPort(String type, int zeroBasedIndex) {
-        return "switch".equals(type) ? "case_" + zeroBasedIndex : "exec_" + (zeroBasedIndex + 1);
+        return AdvancedGraphExecutionPortSupport.executionOutputPort(type, zeroBasedIndex);
     }
 
     // Check if the execution output was removed
     private static boolean removedExecutionOutput(String type, String port, int count) {
-        String prefix = "switch".equals(type) ? "case_" : "exec_";
-        if (port == null || !port.startsWith(prefix)) return false;
-        try {
-            int idx = Integer.parseInt(port.substring(prefix.length()));
-            return "switch".equals(type) ? idx >= count : idx > count;
-        } catch (NumberFormatException ignored) {
-            return false;
-        }
+        return AdvancedGraphExecutionPortSupport.removedExecutionOutput(type, port, count);
     }
 
     // Check if this is an execution combiner type
     private static boolean isExecutionCombinerType(String type) {
-        return "exec_combine".equals(type);
+        return AdvancedGraphExecutionPortSupport.isExecutionCombinerType(type);
     }
 
     // Check if this is an execution combiner node
     private static boolean isExecutionCombinerNode(AdvancedGraphDocument.Node node) {
-        return node != null && isExecutionCombinerType(node.type());
+        return AdvancedGraphExecutionPortSupport.isExecutionCombinerNode(node);
     }
 
     // Get the execution input count
     private static int executionInputCount(AdvancedGraphDocument.Node node) {
-        if (node == null) return MIN_EXECUTION_INPUTS;
-        int count = node.data().contains("InputCount", Tag.TAG_INT)
-                ? node.data().getInt("InputCount")
-                : MIN_EXECUTION_INPUTS;
-        return Mth.clamp(count, MIN_EXECUTION_INPUTS, MAX_EXECUTION_INPUTS);
+        return AdvancedGraphExecutionPortSupport.executionInputCount(node);
     }
 
     // Set the execution input count
@@ -16820,31 +20369,17 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
 
     // Put the execution inputs
     private static void putExecutionInputs(CompoundTag data, int count) {
-        CompoundTag inputs = new CompoundTag();
-        int clamped = Mth.clamp(count, MIN_EXECUTION_INPUTS, MAX_EXECUTION_INPUTS);
-        for (int idx = 1; idx <= clamped; idx++) {
-            inputs.putString("exec_" + idx, "exec");
-        }
-        data.put("DynamicInputs", inputs);
+        AdvancedGraphExecutionPortSupport.putExecutionInputs(data, count);
     }
 
     // Check if the execution inputs match
     private static boolean executionInputsMatch(CompoundTag inputs, int count) {
-        if (inputs == null || inputs.getAllKeys().size() != count) return false;
-        for (int idx = 1; idx <= count; idx++) {
-            if (!"exec".equals(inputs.getString("exec_" + idx))) return false;
-        }
-        return true;
+        return AdvancedGraphExecutionPortSupport.executionInputsMatch(inputs, count);
     }
 
     // Check if the execution input was removed
     private static boolean removedExecutionInput(String port, int count) {
-        if (port == null || !port.startsWith("exec_")) return false;
-        try {
-            return Integer.parseInt(port.substring("exec_".length())) > count;
-        } catch (NumberFormatException ignored) {
-            return false;
-        }
+        return AdvancedGraphExecutionPortSupport.removedExecutionInput(port, count);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -19235,7 +22770,8 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
     // SCM configuration has an independent persistent model, so it deliberately
     // does not serialize or overwrite the graph draft while the modal is open.
     private void sendScmConfiguration(String action, CompoundTag profile) {
-        if ("scm_configuration_save".equals(action)) {
+        if ("scm_configuration_save".equals(action)
+                || "scm_configuration_reinitialize".equals(action)) {
             scmConfigurationSavePending = true;
         }
         MenuConfigTarget target = MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId());
@@ -19448,19 +22984,6 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Get the human port
-    private static String humanPort(String val) {
-        if (val == null || val.isBlank()) return "Unset";
-        String[] words = val.split("_");
-        StringBuilder res = new StringBuilder();
-        for (String word : words) {
-            if (word.isBlank()) continue;
-            if (!res.isEmpty()) res.append(' ');
-            res.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
-        }
-        return res.isEmpty() ? "Unset" : res.toString();
-    }
-
     // Get the node browser tooltip
     private List<Component> nodeBrowserTooltip(double mouseX, double mouseY) {
         if (frequencyModalOpen || hudOpen) {
@@ -19490,6 +23013,26 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
             return null;
         }
         int rowY = 86 - browserScroll;
+        String query = nodeSearch == null ? "" : nodeSearch.getValue().trim().toLowerCase(Locale.ROOT);
+        for (BrowserEntry entry : nodeBrowserEntries(query)) {
+            int rowHeight = browserEntryRowHeight(entry);
+            if (mouseY >= rowY - 2 && mouseY < rowY + rowHeight - 2) {
+                return browserEntryTooltip(entry);
+            }
+            rowY += rowHeight;
+        }
+        return List.of();
+    }
+
+    // Get Worker Graph library tooltips using its profile-aware browser offset.
+    private List<Component> workerGraphBrowserTooltip(double mouseX, double mouseY) {
+        if (frequencyModalOpen || hudOpen || leftSidebarCollapsed
+                || mouseX < layoutLeft() || mouseX >= layoutLeft() + activeLeftWidth()) {
+            return null;
+        }
+        int top = workerGraphLibraryPaletteTop();
+        if (mouseY < top || mouseY >= height) return null;
+        int rowY = top - workerGraphBrowserScroll;
         String query = nodeSearch == null ? "" : nodeSearch.getValue().trim().toLowerCase(Locale.ROOT);
         for (BrowserEntry entry : nodeBrowserEntries(query)) {
             int rowHeight = browserEntryRowHeight(entry);
@@ -19673,13 +23216,6 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         };
     }
 
-    // Check if this is rotation speed controller speed
-    private static boolean isRotationSpeedControllerSpeed(AdvancedGraphDocument.Node node, String port) {
-        return "set_block_data".equals(node.type()) && "speed".equals(port)
-                && CreateRotationSpeedControllerGraphCompat.BLOCK_ID.equalsIgnoreCase(
-                node.data().getCompound("TargetData").getString("BlockId"));
-    }
-
     // Get the graph value label
     private String graphValueLabel(AdvancedGraphDocument.Value val, String type) {
         if (val == null) return "...";
@@ -19707,62 +23243,11 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         };
     }
 
-    // Trim the advanced contraption controller
-    private static String trim(String val, int max) {
-        if (val == null) return "";
-        return val.length() <= max ? val : val.substring(0, Math.max(0, max - 3)) + "...";
-    }
-
-    // Check if this is inside
-    private static boolean inside(double mouseX, double mouseY, int x, int y, int width, int height) {
-        return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height;
-    }
-
-    // Get the value or unset
-    private static String valueOrUnset(String val) {
-        return val == null || val.isBlank() ? "unset" : val;
-    }
-
-    // Check if this uses binding
-    private static boolean usesBinding(AdvancedGraphDocument.Node node) {
-        return node != null && (node.type().startsWith("controller_")
-                || "gamepad_input".equals(node.type())
-                || node.type().startsWith("local_redstone")
-                || "event_channel_change".equals(node.type())
-                || "event_redstone_change".equals(node.type()));
-    }
-
     // Get the binding options
     private List<AdvancedContraptionControllerMenu.GraphBindingOption> bindingOptions(
             AdvancedGraphDocument.Node node) {
         return node != null && "gamepad_input".equals(node.type())
                 ? menu.getGamepadBindingOptions() : menu.getGraphBindingOptions();
-    }
-
-    // Get the binding options title
-    private static String bindingOptionsTitle(AdvancedGraphDocument.Node node) {
-        return node != null && "gamepad_input".equals(node.type())
-                ? "Gamepad Controls" : "Configured Key Bindings";
-    }
-
-    // Check if this uses target
-    private static boolean usesTarget(AdvancedGraphDocument.Node node) {
-        return node != null && (node.type().contains("target") || node.type().startsWith("linker_face")
-                || node.type().startsWith("acc_display_")
-                || "get_block_data".equals(node.type()) || "set_block_data".equals(node.type()));
-    }
-
-    // Check if this supports SCM block target
-    private static boolean supportsScmBlockTarget(AdvancedGraphDocument.Node node) {
-        return node != null && ("get_block_data".equals(node.type())
-                || "set_block_data".equals(node.type())
-                || "discovered_target_input".equals(node.type())
-                || "direct_target_output".equals(node.type()));
-    }
-
-    private static boolean supportsScmBlockPicker(AdvancedGraphDocument.Node node) {
-        return node != null && ("get_block_data".equals(node.type())
-                || "set_block_data".equals(node.type()));
     }
 
     // Direct block data access is available on any assembled sub-level. It is
@@ -19773,30 +23258,6 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
 
     private UUID blockPickerRootSubLevelId() {
         return menu.getContentSubLevelId();
-    }
-
-    private static boolean isShippingInformationNodeType(String type) {
-        return "acc_display_crn".equals(type) || "acc_display_shipping_information".equals(type);
-    }
-
-    // Check if this is an ACC display target
-    private static boolean isAccDisplayTarget(ControllerDiscoveryNode target) {
-        if (target == null) {
-            return false;
-        }
-        return target.kind() == ControllerDiscoveryKind.DISPLAY
-                || target.blockId().startsWith("createthrusters:acc_display");
-    }
-
-    // Check if this is a display adapter target
-    private static boolean isDisplayAdapterTarget(ControllerDiscoveryNode target) {
-        return target != null && (target.kind() == ControllerDiscoveryKind.DISPLAY_ADAPTER
-                || "createthrusters:universal_display_adapter".equals(target.blockId()));
-    }
-
-    // Toggle a set value
-    private static <T> void toggle(Set<T> values, T val) {
-        if (!values.add(val)) values.remove(val);
     }
 
     // Handle the V2 toolbar button
@@ -19837,292 +23298,4 @@ scmConfigurationProfile.orientationOverride() == null ? "ACC defaults" : "Use AC
         }
     }
 
-    // Store the browser entry
-    private record BrowserEntry(String id, boolean category) {
-    }
-
-    // Store the graph template option
-    private record GraphTemplateOption(String id, String label) {
-    }
-
-    // Store the registry entry
-    private record RegistryEntry(String id, ItemStack stack, boolean header) {
-    }
-
-    // One scroll-aware layout pass for the SCM assignment sidebar.
-    private record ScmConfigurationSidebarLayout(int contentTop, int viewportTop, int viewportBottom,
-                                                 int contentHeight, int maximumScroll) {
-        private int viewportHeight() {
-            return Math.max(1, viewportBottom - viewportTop);
-        }
-    }
-
-    // Store the port hit
-    private record PortHit(AdvancedGraphDocument.Node node, String port, boolean output) {
-    }
-
-    // Store the force write hit
-    private record ForceWriteHit(AdvancedGraphDocument.Node node, String port) {
-    }
-
-    // Store the port position
-    private record PortPosition(int x, int y) {
-    }
-
-    // Handle the node port layout
-    private static final class NodePortLayout {
-        // Tracked inputs
-        private final Map<String, String> inputs;
-        // Tracked outputs
-        private final Map<String, String> outputs;
-        // Tracked visible inputs
-        private final Set<String> visibleInputs;
-        // Tracked visible outputs
-        private final Set<String> visibleOutputs;
-        // Tracked connected inputs
-        private final Set<String> connectedInputs;
-        // Output offsets
-        private final Map<String, Integer> outputOffsets;
-        // Output labels
-        private final Map<String, List<FormattedCharSequence>> outputLabels;
-        // Tracks whether collapsible is set
-        private final boolean collapsible;
-        // Tracks whether collapsed is set
-        private final boolean collapsed;
-        // Output data height
-        private int outputDataHeight;
-
-        // Initialize the node port layout
-        private NodePortLayout(Map<String, String> inputs, Map<String, String> outputs,
-                               Set<String> visibleInputs, Set<String> visibleOutputs,
-                               Set<String> connectedInputs, Map<String, Integer> outputOffsets,
-                               Map<String, List<FormattedCharSequence>> outputLabels,
-                               boolean collapsible, boolean collapsed) {
-            this.inputs = inputs;
-            this.outputs = outputs;
-            this.visibleInputs = visibleInputs;
-            this.visibleOutputs = visibleOutputs;
-            this.connectedInputs = connectedInputs;
-            this.outputOffsets = outputOffsets;
-            this.outputLabels = outputLabels;
-            this.collapsible = collapsible;
-            this.collapsed = collapsed;
-        }
-
-        // Get the inputs
-        private Map<String, String> inputs() {
-            return inputs;
-        }
-
-        // Get the outputs
-        private Map<String, String> outputs() {
-            return outputs;
-        }
-
-        // Get the visible inputs
-        private Set<String> visibleInputs() {
-            return visibleInputs;
-        }
-
-        // Get the visible outputs
-        private Set<String> visibleOutputs() {
-            return visibleOutputs;
-        }
-
-        // Get the connected inputs
-        private Set<String> connectedInputs() {
-            return connectedInputs;
-        }
-
-        // Get the output offsets
-        private Map<String, Integer> outputOffsets() {
-            return outputOffsets;
-        }
-
-        // Get the output labels
-        private Map<String, List<FormattedCharSequence>> outputLabels() {
-            return outputLabels;
-        }
-
-        // Check if the node can be collapsed
-        private boolean collapsible() {
-            return collapsible;
-        }
-
-        // Check if the node is collapsed
-        private boolean collapsed() {
-            return collapsed;
-        }
-
-        // Get the output data height
-        private int outputDataHeight() {
-            return outputDataHeight;
-        }
-
-        // Set the output data height
-        private void setOutputDataHeight(int outputDataHeight) {
-            this.outputDataHeight = Math.max(0, outputDataHeight);
-        }
-    }
-
-    // Store the sticky edit line
-    private record StickyEditLine(String text, int start, int end) {
-    }
-
-    // Store the slider track
-    private record SliderTrack(int left, int right) {
-        // Get the width
-        private int width() {
-            return Math.max(1, right - left);
-        }
-
-        // Check if this contains x
-        private boolean containsX(double mouseX, int margin) {
-            return mouseX >= left - margin && mouseX <= right + margin;
-        }
-    }
-
-    // Store the clipboard bounds
-    private record ClipboardBounds(double left, double top, double right, double bottom) {
-        // Get the center x
-        private double centerX() {
-            return (left + right) * 0.5D;
-        }
-
-        // Get the center y
-        private double centerY() {
-            return (top + bottom) * 0.5D;
-        }
-    }
-
-    // Store the inspector sections
-    private record InspectorSections(int optionsHeaderTop, int optionsTop, int optionsBottom,
-                                     int optionsDividerTop, int targetsHeaderTop, int targetsTop,
-                                     int targetsBottom, int targetsDividerTop, int variablesHeaderTop,
-                                     int variablesTop, int variablesBottom) {
-    }
-
-    // Define the inspector divider values
-    private enum InspectorDivider {
-        OPTIONS,
-        TARGETS,
-        SCHEDULE_PROPERTIES
-    }
-
-    // Define the HUD designer color control values
-    private enum HudDesignerColorControl {
-        HUE,
-        SATURATION,
-        VALUE,
-        ALPHA
-    }
-
-    // Store the HUD designer hsv
-    private record HudDesignerHsv(int rgb, float hue, float saturation, float value) {
-    }
-
-    // Store the UI rect
-    private record UiRect(int x, int y, int width, int height) {
-        // Get the right
-        private int right() {
-            return x + width;
-        }
-
-        // Get the bottom
-        private int bottom() {
-            return y + height;
-        }
-
-        // Check if this contains the value
-        private boolean contains(double mouseX, double mouseY) {
-            return mouseX >= x && mouseX < right() && mouseY >= y && mouseY < bottom();
-        }
-    }
-
-    // One projected selectable block in the SCM calibration viewport.
-    private record ScmCalibrationPoint(int x, int y) {
-    }
-
-    // One visible row in the compact SCM calibration group browser. A null
-    // unit denotes the collapsible group header; child rows name its assigned
-    // live blocks without turning the modal back into a flat actuator dump.
-    private record ScmConfigurationGroupRow(String groupId, String label,
-                                            ScmConfigurationProfile.UnitReference unit,
-                                            int color, int memberCount) {
-        private boolean header() {
-            return unit == null;
-        }
-    }
-
-    // Face mode keeps a side as part of the visual identity so different SCM
-    // functions on one block remain independently visible. The other modes
-    // intentionally collapse to the whole block.
-    private record ScmBlockKey(UUID subLevelId, BlockPos blockPosition, Direction face) {
-        private ScmBlockKey {
-            blockPosition = blockPosition == null ? BlockPos.ZERO : blockPosition.immutable();
-        }
-    }
-
-    private record ScmSimulationField(String label, String port) {
-    }
-
-    private enum ScmControlBindingMode {
-        AUTO("Auto"),
-        BLOCK("Block"),
-        FACE("Face");
-
-        private final String label;
-
-        ScmControlBindingMode(String label) {
-            this.label = label;
-        }
-
-        private String label() {
-            return label;
-        }
-    }
-
-    // Store the context menu
-    private record ContextMenu(int x, int y, List<String> items, String query,
-                               PortContext port) {
-    }
-
-    // Store port context
-    private record PortContext(String nodeId, String port, boolean output) {
-    }
-
-    // Store the option dropdown
-    private record OptionDropdown(int x, int y, int width, String nodeId, String port, String type,
-                                  List<String> options, boolean property, int scroll,
-                                  boolean searchable) {
-    }
-
-    // One explicit value/label pair for a Create schedule enum selector.
-    private record SchedulePropertyChoice(String value, String label) {
-    }
-
-    // Store the dropdown scrollbar
-    private record DropdownScrollbar(
-            int trackX,
-            int trackTop,
-            int trackHeight,
-            int thumbTop,
-            int thumbHeight,
-            int thumbTravel,
-            int maximumScroll
-    ) {
-    }
-
-    // Store the embedded image
-    private record EmbeddedImage(String mimeType, String base64) {
-    }
-
-    // Handle the image reference size exception
-    private static final class ImageReferenceSizeException extends RuntimeException {
-    }
-
-    // Store the mini browser
-    private record MiniBrowser(int x, int y, List<AdvancedGraphCatalog.Definition> definitions,
-                               String wireNode, String wirePort, boolean wireOutput) {
-    }
 }

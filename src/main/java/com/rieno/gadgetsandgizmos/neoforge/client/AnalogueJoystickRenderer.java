@@ -14,6 +14,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.math.Axis;
 import com.simibubi.create.foundation.blockEntity.renderer.SafeBlockEntityRenderer;
+import dev.engine_room.flywheel.lib.model.baked.PartialModel;
 import net.createmod.catnip.render.CachedBuffers;
 import net.createmod.catnip.render.SuperByteBuffer;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -50,7 +51,6 @@ public class AnalogueJoystickRenderer extends SafeBlockEntityRenderer<AnalogueJo
                               MultiBufferSource bufferSource, int light, int overlay) {
         BlockState state = be.getBlockState();
         VertexConsumer vertexConsumer = bufferSource.getBuffer(RenderType.cutoutMipped());
-        SuperByteBuffer handle = CachedBuffers.partial(CTPartialModels.ANALOGUE_JOYSTICK_HANDLE, state);
         double renderLocalX = be.getVisualLocalX(partialTicks);
         double renderLocalZ = be.getVisualLocalZ(partialTicks);
         AttachFace face = state.getValue(AnalogueJoystickBlock.FACE);
@@ -59,15 +59,10 @@ public class AnalogueJoystickRenderer extends SafeBlockEntityRenderer<AnalogueJo
             renderLocalZ = -renderLocalZ;
         }
 
-        ms.pushPose();
-        applyFacing(ms, state);
-        ms.translate(0.5D, 0.3125D, 0.5D);
-
-        ms.mulPose(Axis.ZP.rotationDegrees((float) (renderLocalX * be.getMaxTiltDegrees())));
-        ms.mulPose(Axis.XP.rotationDegrees((float) (-renderLocalZ * be.getMaxTiltDegrees())));
-        ms.translate(-0.5D, -0.3125D, -0.5D);
-        handle.light(light).renderInto(ms, vertexConsumer);
-        ms.popPose();
+        renderPartial(CTPartialModels.ANALOGUE_JOYSTICK_STICK, 1.0f, state, renderLocalX, renderLocalZ,
+                be.getMaxTiltDegrees(), ms, vertexConsumer, light);
+        renderPartial(CTPartialModels.ANALOGUE_JOYSTICK_SKIRT, 0.5f, state, renderLocalX, renderLocalZ,
+                be.getMaxTiltDegrees(), ms, vertexConsumer, light);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -85,5 +80,20 @@ public class AnalogueJoystickRenderer extends SafeBlockEntityRenderer<AnalogueJo
         ms.mulPose(Axis.YP.rotationDegrees(yRotation));
         ms.mulPose(Axis.XP.rotationDegrees(AnalogueJoystickBlock.getXRotationDegrees(state)));
         ms.translate(-0.5D, 0.0D, -0.5D);
+    }
+
+    // Draw one moving joystick partial
+    private static void renderPartial(PartialModel model, float angleScale, BlockState state,
+                                      double renderLocalX, double renderLocalZ, float maxTiltDegrees,
+                                      PoseStack ms, VertexConsumer vertexConsumer, int light) {
+        SuperByteBuffer partial = CachedBuffers.partial(model, state);
+        ms.pushPose();
+        applyFacing(ms, state);
+        ms.translate(0.5D, 0.125D, 0.5D);
+        ms.mulPose(Axis.ZP.rotationDegrees((float) (renderLocalX * maxTiltDegrees * angleScale)));
+        ms.mulPose(Axis.XP.rotationDegrees((float) (-renderLocalZ * maxTiltDegrees * angleScale)));
+        ms.translate(-0.5D, -0.125D, -0.5D);
+        partial.light(light).renderInto(ms, vertexConsumer);
+        ms.popPose();
     }
 }

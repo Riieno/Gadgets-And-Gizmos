@@ -1,0 +1,18 @@
+{
+  "parent": "createthrusters:gadgets_and_gizmos",
+  "display": {
+    "icon": { "id": "createthrusters:advanced_contraption_controller" },
+    "title": { "translate": "advancement.createthrusters.advanced_contraption_controller.title" },
+    "description": { "translate": "advancement.createthrusters.advanced_contraption_controller.description" },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "has_advanced_contraption_controller": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": { "items": [{ "items": ["createthrusters:advanced_contraption_controller"] }] }
+    }
+  }
+}

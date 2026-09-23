@@ -17,7 +17,9 @@ import com.rieno.gadgetsandgizmos.particle.worldspace.WorldSpaceParticleEmitter;
 import com.rieno.gadgetsandgizmos.lib.physics.SubLevelParticleOcclusion;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDataProvider;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
+import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
 import com.rieno.gadgetsandgizmos.lib.physics.SablePointImpulseApi;
 import com.rieno.gadgetsandgizmos.particle.ColoredCloudParticleOptions;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
@@ -187,10 +189,20 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
     @Deprecated public static final int SLOT_MODIFIER = SLOT_LENS;
     private static final double DEFAULT_MAX_THRUST = 960.0;
     private static final double DEFAULT_BEAM_THRUST_MULTIPLIER = 1.5D;
-    private static final Map<String, String> GRAPH_CONTROL_DATA = Map.of(
-            "throttle", "number",
-            "plume_color_ratio", "number",
-            "beam_max_opacity", "number");
+    private static final Map<String, String> GRAPH_CONTROL_DATA = createGraphControlData();
+
+    // Create the graph-controllable thruster configuration schema
+    private static Map<String, String> createGraphControlData() {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("throttle", "number");
+        fields.put("min_throttle", "number");
+        fields.put("max_throttle", "number");
+        fields.put("beam_max_opacity", "number");
+        fields.put("plume_color_ratio", "number");
+        fields.put("enabled", "boolean");
+        fields.put("control_mode", "string");
+        return Collections.unmodifiableMap(fields);
+    }
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -308,8 +320,8 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
 
     // Tracked direct signals
     private final Map<String, Float> directSignals = new LinkedHashMap<>();
-    // Current ship control envelope
-    private @org.jetbrains.annotations.Nullable ShipControlEnvelope shipControlEnvelope;
+    // Current live ship throttle command
+    private @org.jetbrains.annotations.Nullable ShipControlThrottle shipControlThrottle;
     // Tracked ship control damage protected sub levels
     private final Map<String, Set<UUID>> shipControlDamageProtectedSubLevels =
             new LinkedHashMap<>();
@@ -390,6 +402,8 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
     private boolean persistentTickStateDirty;
     // Tracks whether client sync is pending
     private boolean clientSyncPending;
+    // Server-calculated fuel consumption synchronized for client tooltips
+    private double syncedFuelConsumptionMbPerTick;
     // Tracks whether update air flow is set
     private boolean updateAirFlow = true;
     // Last airflow direction
@@ -1038,10 +1052,20 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         return GRAPH_CONTROL_DATA;
     }
 
+    // Get the graph writable options
+    @Override
+    public Map<String, List<String>> graphWritableOptions() {
+        return Map.of("control_mode", List.of("auto", "redstone", "computer"));
+    }
+
     // Read the graph data
     @Override
     public AdvancedGraphDocument.Value readGraphData(String field) {
         return switch (field) {
+            case "enabled" -> AdvancedGraphDocument.Value.bool(isEnabled());
+            case "min_throttle" -> AdvancedGraphDocument.Value.number(getMinThrottle());
+            case "max_throttle" -> AdvancedGraphDocument.Value.number(getMaxThrottle());
+            case "control_mode" -> AdvancedGraphDocument.Value.string(getControlMode().name().toLowerCase());
             case "throttle" -> AdvancedGraphDocument.Value.number(getThrottle());
             case "plume_color_ratio" -> AdvancedGraphDocument.Value.number(getPlumeColorRatio());
             case "beam_max_opacity" -> AdvancedGraphDocument.Value.number(getBeamMaxOpacity());
@@ -1052,23 +1076,95 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
     // Write the graph data
     @Override
     public boolean writeGraphData(String field, AdvancedGraphDocument.Value value) {
-        if (!GRAPH_CONTROL_DATA.containsKey(field) || value == null) {
+        if (field == null || value == null || !GRAPH_CONTROL_DATA.containsKey(field)) {
             return false;
         }
-        double requested = value.asNumber();
-        if (!Double.isFinite(requested)) {
-            return false;
-        }
-        float normalized = (float) Mth.clamp(requested, 0.0D, 1.0D);
-        switch (field) {
-            case "throttle" -> setThrottle(normalized);
-            case "plume_color_ratio" -> setPlumeColorRatio(normalized);
-            case "beam_max_opacity" -> setBeamMaxOpacity(normalized);
-            default -> {
-                return false;
+        return writeGraphValues(Map.of(field, GraphRuntime.toLibraryValue(value)));
+    }
+
+    // Apply coordinated graph controls in one thruster configuration update
+    @Override
+    public boolean writeGraphValues(Map<String, GraphValue> values) {
+        if (values == null || values.isEmpty()) return false;
+        boolean enabled = isEnabled();
+        float minThrottle = getMinThrottle();
+        float maxThrottle = getMaxThrottle();
+        ControlMode mode = getControlMode();
+        float beamMaxOpacity = getBeamMaxOpacity();
+        float plumeColorRatio = getPlumeColorRatio();
+        boolean filterSound = isFilterSoundEnabled();
+        boolean filterParticles = isFilterParticlesEnabled();
+        boolean filterDamage = isFilterDamageEnabled();
+        boolean focusedRejectAirPressure = isFocusedAirPressureRejectionEnabled();
+        Float throttle = null;
+        boolean hasConfiguration = false;
+        for (Map.Entry<String, GraphValue> entry : values.entrySet()) {
+            String field = entry.getKey();
+            GraphValue graphValue = entry.getValue();
+            if (field == null || graphValue == null || !GRAPH_CONTROL_DATA.containsKey(field)) continue;
+            AdvancedGraphDocument.Value value = GraphRuntime.fromLibraryValue(graphValue);
+            switch (field) {
+                case "enabled" -> {
+                    enabled = value.asBoolean();
+                    hasConfiguration = true;
+                }
+                case "min_throttle" -> {
+                    float requested = graphThrottle(value);
+                    if (!Float.isNaN(requested)) {
+                        minThrottle = requested;
+                        hasConfiguration = true;
+                    }
+                }
+                case "max_throttle" -> {
+                    float requested = graphThrottle(value);
+                    if (!Float.isNaN(requested)) {
+                        maxThrottle = requested;
+                        hasConfiguration = true;
+                    }
+                }
+                case "control_mode" -> {
+                    try {
+                        mode = ControlMode.valueOf(value.asString().trim().toUpperCase());
+                        hasConfiguration = true;
+                    } catch (IllegalArgumentException ignored) {
+                    }
+                }
+                case "plume_color_ratio" -> {
+                    float requested = graphThrottle(value);
+                    if (!Float.isNaN(requested)) {
+                        plumeColorRatio = requested;
+                        hasConfiguration = true;
+                    }
+                }
+                case "beam_max_opacity" -> {
+                    float requested = graphThrottle(value);
+                    if (!Float.isNaN(requested)) {
+                        beamMaxOpacity = requested;
+                        hasConfiguration = true;
+                    }
+                }
+                case "throttle" -> {
+                    float requested = graphThrottle(value);
+                    if (!Float.isNaN(requested)) throttle = requested;
+                }
+                default -> {
+                }
             }
         }
-        return true;
+        if (hasConfiguration) {
+            applyConfiguration(enabled, minThrottle, maxThrottle, mode, beamMaxOpacity, plumeColorRatio,
+                    filterSound, filterParticles, filterDamage, focusedRejectAirPressure);
+        }
+        if (throttle != null) {
+            setThrottle(throttle);
+        }
+        return hasConfiguration || throttle != null;
+    }
+
+    // Read one normalized throttle value from a graph input
+    private static float graphThrottle(AdvancedGraphDocument.Value value) {
+        double requested = value.asNumber();
+        return Double.isFinite(requested) ? (float) Mth.clamp(requested, 0.0D, 1.0D) : Float.NaN;
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -1101,30 +1197,29 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         markTickStateChanged(true);
     }
 
-    // Apply the ship control envelope
-    public void applyShipControlEnvelope(String channelId, float minimum, float maximum, float throttle) {
+    // Apply one live ship throttle command with its maximum throttle modifier
+    public void applyShipControlThrottle(String channelId, float throttle, float maximum) {
         String normalizedChannel = channelId == null || channelId.isBlank() ? "ship_control" : channelId;
-        float clampedMinimum = Mth.clamp(minimum, 0.0f, 1.0f);
-        float clampedMaximum = Mth.clamp(Math.max(clampedMinimum, maximum), 0.0f, 1.0f);
+        float clampedMaximum = Mth.clamp(maximum, 0.0f, 1.0f);
         float clampedThrottle = Mth.clamp(throttle, 0.0f, 1.0f);
-        if (clampedThrottle <= 1.0E-4f) {
-            clearShipControlEnvelope(normalizedChannel);
+        if (clampedMaximum <= 1.0E-4f || clampedThrottle <= 1.0E-4f) {
+            clearShipControlThrottle(normalizedChannel);
             return;
         }
-        ShipControlEnvelope requested =
-                new ShipControlEnvelope(normalizedChannel, clampedMinimum, clampedMaximum, clampedThrottle);
-        if (requested.equals(shipControlEnvelope)) {
+        ShipControlThrottle requested =
+                new ShipControlThrottle(normalizedChannel, clampedMaximum, clampedThrottle);
+        if (requested.equals(shipControlThrottle)) {
             return;
         }
-        shipControlEnvelope = requested;
+        shipControlThrottle = requested;
         markTickStateChanged(true);
     }
 
-    // Clear the ship control envelope
-    public void clearShipControlEnvelope(String channelId) {
+    // Clear the live ship throttle command
+    public void clearShipControlThrottle(String channelId) {
         String normalizedChannel = channelId == null || channelId.isBlank() ? "ship_control" : channelId;
-        if (shipControlEnvelope != null && shipControlEnvelope.channelId().equals(normalizedChannel)) {
-            shipControlEnvelope = null;
+        if (shipControlThrottle != null && shipControlThrottle.channelId().equals(normalizedChannel)) {
+            shipControlThrottle = null;
             markTickStateChanged(true);
         }
     }
@@ -1163,8 +1258,8 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
     public boolean releaseOrphanedShipControl(String channelId) {
         String normalizedChannel = channelId == null || channelId.isBlank() ? "ship_control" : channelId;
         boolean changed = false;
-        if (shipControlEnvelope != null && shipControlEnvelope.channelId().equals(normalizedChannel)) {
-            shipControlEnvelope = null;
+        if (shipControlThrottle != null && shipControlThrottle.channelId().equals(normalizedChannel)) {
+            shipControlThrottle = null;
             changed = true;
         }
         if (directSignals.remove(normalizedChannel) != null) {
@@ -1212,8 +1307,8 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
 
     // Get the throttle
     public float getThrottle() {
-        return level != null && level.isClientSide && shipControlEnvelope != null
-                ? shipControlEnvelope.throttle()
+        return level != null && level.isClientSide && shipControlThrottle != null
+                ? shipControlThrottle.throttle()
                 : throttle;
     }
 
@@ -1482,6 +1577,9 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
 
     // Get the max throttle
     public float getMaxThrottle() {
+        if (level != null && level.isClientSide && shipControlThrottle != null) {
+            return shipControlThrottle.maximum();
+        }
         return maxThrottle;
     }
 
@@ -1559,6 +1657,14 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
 
     // Get the fuel consumption mb per tick
     public double getFuelConsumptionMbPerTick() {
+        if (level == null || level.isClientSide) {
+            return syncedFuelConsumptionMbPerTick;
+        }
+        return calculateFuelConsumptionMbPerTick();
+    }
+
+    // Calculate the current server-authoritative fuel consumption
+    private double calculateFuelConsumptionMbPerTick() {
         if (focusedMode || !isActive() || infiniteSolidFuel || solidFuelTicks > 0) {
             return 0.0D;
         }
@@ -3011,18 +3117,17 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         if (!legacyShipControlPersistence) {
             tag.putInt(SHIP_CONTROL_PERSISTENCE_VERSION_TAG, SHIP_CONTROL_PERSISTENCE_VERSION);
         }
-        if (shipControlEnvelope != null) {
+        if (shipControlThrottle != null) {
             tag.putBoolean(SHIP_CONTROL_OVERRIDE_ACTIVE_TAG, true);
             tag.putString(SHIP_CONTROL_RESTORE_MODE_TAG, controlMode.name());
             tag.putFloat(SHIP_CONTROL_RESTORE_THROTTLE_TAG, computerThrottle);
-            TransientThrusterControlSync.writeShipEnvelope(
+            TransientThrusterControlSync.writeShipThrottle(
                     tag,
                     clientPacket,
-                    new TransientThrusterControlSync.ShipEnvelope(
-                            shipControlEnvelope.channelId(),
-                            shipControlEnvelope.minimum(),
-                            shipControlEnvelope.maximum(),
-                            shipControlEnvelope.throttle()));
+                    new TransientThrusterControlSync.ShipThrottle(
+                            shipControlThrottle.channelId(),
+                            shipControlThrottle.maximum(),
+                            shipControlThrottle.throttle()));
         }
         tag.putFloat("Throttle", throttle);
         tag.putFloat("RedstoneThrottle", redstoneThrottle);
@@ -3040,6 +3145,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         tag.putString("AssemblyComputerCraftAlias", ccAlias);
         tag.putString("ControlMode", controlMode.name());
         tag.putDouble("FuelDrainAccumulator", fractionalFuelDrain);
+        tag.putDouble("FuelConsumptionMbPerTick", calculateFuelConsumptionMbPerTick());
         tag.putBoolean("SoulThruster", soulThruster);
         tag.putBoolean("PeacefulMode", peacefulMode);
         tag.putBoolean("FilterSound", filterSound);
@@ -3113,7 +3219,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         // -----------------------------------------------------SERVER STATE-----------------------------------------------------
         if (!clientPacket) {
             directSignals.clear();
-            shipControlEnvelope = null;
+            shipControlThrottle = null;
             if (tag.getBoolean(SHIP_CONTROL_OVERRIDE_ACTIVE_TAG)) {
                 computerThrottle = tag.contains(SHIP_CONTROL_RESTORE_THROTTLE_TAG)
                         ? tag.getFloat(SHIP_CONTROL_RESTORE_THROTTLE_TAG)
@@ -3133,21 +3239,21 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
                             && controlMode == ControlMode.COMPUTER
                             && computerThrottle > 1.0E-4F;
         } else {
-            TransientThrusterControlSync.ShipEnvelope clientEnvelope =
-                    TransientThrusterControlSync.readShipEnvelope(tag, true);
+            TransientThrusterControlSync.ShipThrottle clientThrottle =
+                    TransientThrusterControlSync.readShipThrottle(tag, true);
             if (tag.getBoolean(SHIP_CONTROL_OVERRIDE_ACTIVE_TAG)
-                    && clientEnvelope != null) {
-                shipControlEnvelope = new ShipControlEnvelope(
-                        clientEnvelope.channelId(),
-                        clientEnvelope.minimum(),
-                        clientEnvelope.maximum(),
-                        clientEnvelope.throttle());
+                    && clientThrottle != null) {
+                shipControlThrottle = new ShipControlThrottle(
+                        clientThrottle.channelId(),
+                        clientThrottle.maximum(),
+                        clientThrottle.throttle());
             } else {
-                shipControlEnvelope = null;
+                shipControlThrottle = null;
             }
         }
         // ------------------------------------FUEL AND EFFECT SETTINGS------------------------------------
         fractionalFuelDrain = tag.getDouble("FuelDrainAccumulator");
+        syncedFuelConsumptionMbPerTick = tag.getDouble("FuelConsumptionMbPerTick");
         soulThruster = tag.getBoolean("SoulThruster");
         peacefulMode = tag.getBoolean("PeacefulMode");
         filterSound = !tag.contains("FilterSound") || tag.getBoolean("FilterSound");
@@ -3294,9 +3400,12 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         if (!focusedMode) {
             tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.goggle.thruster.fuel_stored"),
                     CTTooltipHelper.value(getFuelAmount() + " / " + getFuelCapacity(), ChatFormatting.BLUE)));
+            double consumption = getFuelConsumptionMbPerTick();
+            String consumptionText = consumption > 0.0D && consumption < 0.001D
+                    ? String.format(java.util.Locale.ROOT, "%.6f mB/t", consumption)
+                    : String.format(java.util.Locale.ROOT, "%.3f mB/t", consumption);
             tooltip.add(CTTooltipHelper.line(Component.literal("Fuel Consumption"),
-                    CTTooltipHelper.value(String.format(java.util.Locale.ROOT, "%.3f mB/t",
-                            getFuelConsumptionMbPerTick()), ChatFormatting.GOLD)));
+                    CTTooltipHelper.value(consumptionText, ChatFormatting.GOLD)));
         } else {
             int requiredFePerTick = getRequiredBeamFePerTick();
             tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.goggle.thruster.fe_stored"),
@@ -3507,11 +3616,10 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
 
     // Get the applied throttle
     public float getAppliedThrottle() {
-        if (shipControlEnvelope != null) {
+        if (shipControlThrottle != null) {
             float requested = Mth.clamp(
-                    shipControlEnvelope.throttle() + stabilizerThrottleOffset, 0.0f, 1.0f);
-            return applyThrottleRange(requested,
-                    shipControlEnvelope.minimum(), shipControlEnvelope.maximum());
+                    shipControlThrottle.throttle() + stabilizerThrottleOffset, 0.0f, 1.0f);
+            return requested * shipControlThrottle.maximum();
         }
         return applyThrottleRange(throttle + stabilizerThrottleOffset);
     }
@@ -3546,8 +3654,8 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         return Mth.lerp(normalizedThrottle, min, max);
     }
 
-    // Store the ship control envelope
-    private record ShipControlEnvelope(String channelId, float minimum, float maximum, float throttle) {
+    // Store the live ship throttle command
+    private record ShipControlThrottle(String channelId, float maximum, float throttle) {
     }
 
     // Handle the thruster air current

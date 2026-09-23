@@ -1,0 +1,18 @@
+{
+  "parent": "createthrusters:physics_staff",
+  "display": {
+    "icon": { "id": "createthrusters:physics_goggles" },
+    "title": { "translate": "advancement.createthrusters.physics_goggles.title" },
+    "description": { "translate": "advancement.createthrusters.physics_goggles.description" },
+    "frame": "goal",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "has_physics_goggles": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": { "items": [{ "items": ["createthrusters:physics_goggles"] }] }
+    }
+  }
+}

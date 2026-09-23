@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
+import com.rieno.gadgetsandgizmos.compat.scm.OptionalScmCompatibility;
 import com.rieno.gadgetsandgizmos.content.EntityLauncherItem;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletRedstoneLinkRuntime;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletDatabase;
@@ -18,15 +19,17 @@ import com.rieno.gadgetsandgizmos.content.PlayerMannequinCrafting;
 import com.rieno.gadgetsandgizmos.content.SupporterHeadWanderingTraderTrades;
 import com.rieno.gadgetsandgizmos.content.PortableContraptionControllerRuntime;
 import com.rieno.gadgetsandgizmos.content.ShipControlMapStore;
-import com.rieno.gadgetsandgizmos.content.WirelessDockingTransfer;
 import com.rieno.gadgetsandgizmos.neoforge.CTCommonEvents;
 import com.rieno.gadgetsandgizmos.neoforge.ControllerGraphWebServer;
 import com.rieno.gadgetsandgizmos.neoforge.CTMobHeadDrops;
 import com.rieno.gadgetsandgizmos.neoforge.CTSableTrackingCommands;
 import com.rieno.gadgetsandgizmos.neoforge.CTServerFeatureCleanup;
 import com.rieno.gadgetsandgizmos.neoforge.PathfinderDebugRenderService;
+import com.rieno.gadgetsandgizmos.neoforge.ScmDebugDumpService;
+import com.rieno.gadgetsandgizmos.neoforge.ShippingRouteOverlayService;
 import com.rieno.gadgetsandgizmos.registry.CTFeatureToggles;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
+import com.rieno.gadgetsandgizmos.registry.CTMountedSeats;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
@@ -47,13 +50,15 @@ public final class CreateThrustersNeoForge {
     public CreateThrustersNeoForge(IEventBus modEventBus, ModContainer modContainer) {
         CTConfigs.register(modContainer);
         CTFeatureToggles.prepareDedicatedServerRegistration();
+        CTMountedSeats.register();
+        OptionalScmCompatibility.register();
 
         NeoForge.EVENT_BUS.addListener(CTCommonEvents::addReloadListeners);
         NeoForge.EVENT_BUS.addListener(CTSableTrackingCommands::registerCommands);
-        NeoForge.EVENT_BUS.addListener(WirelessDockingTransfer::onServerStarted);
-        NeoForge.EVENT_BUS.addListener(WirelessDockingTransfer::onServerStopped);
         NeoForge.EVENT_BUS.addListener(CTServerFeatureCleanup::onServerTick);
         NeoForge.EVENT_BUS.addListener(PathfinderDebugRenderService::onServerTick);
+        NeoForge.EVENT_BUS.addListener(ScmDebugDumpService::onServerTick);
+        NeoForge.EVENT_BUS.addListener(ShippingRouteOverlayService::onServerTick);
         NeoForge.EVENT_BUS.addListener(PortableContraptionControllerRuntime::postServerTick);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletRedstoneLinkRuntime::onServerTick);
         NeoForge.EVENT_BUS.addListener(PortableContraptionControllerRuntime::onChunkLoad);
@@ -68,6 +73,8 @@ public final class CreateThrustersNeoForge {
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletFriendDatabase::onServerStopped);
         NeoForge.EVENT_BUS.addListener(CTServerFeatureCleanup::onServerStopped);
         NeoForge.EVENT_BUS.addListener(PathfinderDebugRenderService::onServerStopped);
+        NeoForge.EVENT_BUS.addListener(ScmDebugDumpService::onServerStopped);
+        NeoForge.EVENT_BUS.addListener(ShippingRouteOverlayService::onServerStopped);
         NeoForge.EVENT_BUS.addListener(ControllerGraphWebServer::onServerStarted);
         NeoForge.EVENT_BUS.addListener(ControllerGraphWebServer::onServerStopped);
         NeoForge.EVENT_BUS.addListener(PlayerMannequinCrafting::onAnvilUpdate);

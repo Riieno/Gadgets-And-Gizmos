@@ -1,92 +1,24 @@
 {
-  "credit": "Adapted from Aeronautics gyroscopic propeller bearing",
-  "texture_size": [
-    32,
-    32
-  ],
-  "textures": {
-    "2": "createthrusters:block/vector_bearing",
-    "particle": "createthrusters:block/vector_bearing_side"
-  },
-  "elements": [
-    {
-      "from": [
-        0,
-        -8,
-        -1
-      ],
-      "to": [
-        1,
-        -1,
-        1
-      ],
-      "rotation": {
-        "angle": 0,
-        "axis": "y",
-        "origin": [
-          8,
-          0,
-          8
-        ]
-      },
-      "faces": {
-        "north": {
-          "uv": [
-            11,
-            1,
-            11.5,
-            4.5
-          ],
-          "texture": "#2"
-        },
-        "east": {
-          "uv": [
-            11,
-            1,
-            12,
-            4.5
-          ],
-          "texture": "#2"
-        },
-        "south": {
-          "uv": [
-            11,
-            1,
-            11.5,
-            4.5
-          ],
-          "texture": "#2"
-        },
-        "west": {
-          "uv": [
-            11,
-            1,
-            12,
-            4.5
-          ],
-          "texture": "#2"
-        },
-        "up": {
-          "uv": [
-            11,
-            1,
-            12,
-            1.5
-          ],
-          "rotation": 90,
-          "texture": "#2"
-        },
-        "down": {
-          "uv": [
-            11,
-            1,
-            12,
-            1.5
-          ],
-          "rotation": 270,
-          "texture": "#2"
-        }
-      }
-    }
-  ]
+	"format_version": "1.9.0",
+	"credit": "Made with Blockbench",
+	"texture_size": [128, 128],
+	"textures": {
+		"1": "createthrusters:block/vector_bearing",
+		"particle": "createthrusters:block/vector_bearing"
+	},
+	"elements": [
+		{
+			"from": [0, -8, -1],
+			"to": [1, -1, 1],
+			"rotation": {"angle": 0, "axis": "y", "origin": [-9, -6, -2]},
+			"faces": {
+				"north": {"uv": [3.75, 4.875, 3.875, 5.75], "texture": "#1"},
+				"east": {"uv": [3.5, 4.875, 3.75, 5.75], "texture": "#1"},
+				"south": {"uv": [4.125, 4.875, 4.25, 5.75], "texture": "#1"},
+				"west": {"uv": [3.875, 4.875, 4.125, 5.75], "texture": "#1"},
+				"up": {"uv": [3.875, 4.875, 3.75, 4.625], "texture": "#1"},
+				"down": {"uv": [4, 4.625, 3.875, 4.875], "texture": "#1"}
+			}
+		}
+	]
 }

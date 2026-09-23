@@ -46,7 +46,7 @@ public final class GenericBlockEntityDataAdapter implements BlockEntityDataAdapt
 
     @Override
     public List<BlockEntityDataPort> ports(BlockEntity target) {
-        return List.of(BlockEntityDataPort.readWrite(DATA_PORT, "map"));
+        return List.of(BlockEntityDataPort.readable(DATA_PORT, "map"));
     }
 
     @Override

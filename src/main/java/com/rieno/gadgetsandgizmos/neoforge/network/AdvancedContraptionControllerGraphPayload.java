@@ -295,6 +295,20 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                                     "Could not start SCM configuration scan",
                             controller.getDraftGraph().revision(), false, false, List.of());
                 }
+                case "scm_configuration_reinitialize" -> {
+                    boolean validOrientation = !payload.graph().contains("Orientation")
+                            || ScmOrientation.fromTag(payload.graph().getCompound("Orientation")).isPresent();
+                    boolean saved = validOrientation && controller.replaceScmConfigurationProfile(
+                            ScmConfigurationProfile.fromTag(payload.graph()));
+                    boolean started = saved && controller.reinitializeScmConfiguration();
+                    persistPortable = saved;
+                    sendScmConfiguration(context, payload.target(), controller, true);
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), started,
+                            started ? "SCM groups are reinitializing" : !validOrientation
+                                    ? "Forward and up must be valid perpendicular directions"
+                                    : "Could not reinitialize SCM groups",
+                            controller.getDraftGraph().revision(), false, false, List.of());
+                }
                 case "scm_configuration_save" -> {
                     boolean validOrientation = !payload.graph().contains("Orientation")
                             || ScmOrientation.fromTag(payload.graph().getCompound("Orientation")).isPresent();
@@ -457,6 +471,8 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
         if (!(ctx.player() instanceof ServerPlayer player) || target == null || controller == null) {
             return;
         }
+        List<ScmConfigurationProfile.DockingConnectorReference> liveDockingConnectors =
+                controller.getScmConfigurationDockingConnectors();
         CompoundTag profile = controller.getScmConfigurationProfile().toTag();
         if (controller.getScmConfigurationMapId() != null) {
             profile.putUUID("MapId", controller.getScmConfigurationMapId());
@@ -464,11 +480,17 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
         CompoundTag candidates = new CompoundTag();
         candidates.put("DefaultOrientation", controller.getScmDefaultOrientation().toTag());
         candidates.putString("DetectedVehicleType", controller.getScmDetectedVehicleType());
+        candidates.putString("DetectedSteeringType", controller.getScmDetectedSteeringType());
         ListTag entries = new ListTag();
         controller.getScmConfigurationCandidates().stream().limit(2048).forEach(unit -> {
             entries.add(unit.toTag());
         });
         candidates.put("Units", entries);
+        ListTag dockingConnectors = new ListTag();
+        liveDockingConnectors.forEach(reference ->
+                dockingConnectors.add(reference.toTag(
+                        ScmConfigurationProfile.DockingConnectorGroup.ANY)));
+        candidates.put("DockingConnectors", dockingConnectors);
         ListTag viewSubLevels = new ListTag();
         controller.getScmConfigurationViewSubLevelIds().forEach(id -> {
             CompoundTag body = new CompoundTag();

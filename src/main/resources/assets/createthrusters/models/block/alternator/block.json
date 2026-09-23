@@ -5,7 +5,7 @@
 	"textures": {
 		"2": "createthrusters:block/bidirectional_gearshift/bi-directional-gearshift",
 		"3": "createthrusters:block/fuel_oxidizer/fuel_oxidizer_main",
-		"4": "createthrusters:block/thruster/ion_engine",
+		"4": "createthrusters:block/alternator/ion_engine",
 		"arc": "createthrusters:block/alternator/alternator_arc",
 		"vu": "createthrusters:block/alternator/alternator_vu",
 		"particle": "create:block/axis"

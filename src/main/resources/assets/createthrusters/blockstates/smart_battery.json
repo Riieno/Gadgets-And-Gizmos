@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "axis=x,large=false": { "model": "createthrusters:block/smart_battery", "y": 90 },
+    "axis=x,large=true": { "model": "createthrusters:block/smart_battery", "y": 90 },
+    "axis=z,large=false": { "model": "createthrusters:block/smart_battery" },
+    "axis=z,large=true": { "model": "createthrusters:block/smart_battery" }
+  }
+}

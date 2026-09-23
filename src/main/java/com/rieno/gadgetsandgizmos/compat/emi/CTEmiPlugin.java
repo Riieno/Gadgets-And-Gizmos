@@ -9,7 +9,9 @@ package com.rieno.gadgetsandgizmos.compat.emi;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.CreateThrusters;
+import com.rieno.gadgetsandgizmos.content.IonThrusterStacks;
 import com.rieno.gadgetsandgizmos.content.SupporterHeads;
+import com.rieno.gadgetsandgizmos.content.WorkerEnergyBatteryItem;
 import com.rieno.gadgetsandgizmos.neoforge.client.AnalogueContraptionControllerConfigScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.AdvancedContraptionControllerScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.AnalogueJoystickConfigScreen;
@@ -17,6 +19,7 @@ import com.rieno.gadgetsandgizmos.neoforge.client.ClawConfigScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.GyroscopeLinkConfigScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.DiagnosticTabletScreen;
 import com.rieno.gadgetsandgizmos.registry.CTFeatureToggles;
+import com.rieno.gadgetsandgizmos.registry.CTItems;
 import com.mojang.logging.LogUtils;
 import com.simibubi.create.foundation.gui.menu.GhostItemMenu;
 import com.simibubi.create.foundation.gui.menu.GhostItemSubmitPacket;
@@ -25,6 +28,7 @@ import dev.emi.emi.api.EmiPlugin;
 import dev.emi.emi.api.EmiRegistry;
 import dev.emi.emi.api.recipe.EmiRecipe;
 import dev.emi.emi.api.stack.EmiIngredient;
+import dev.emi.emi.api.stack.Comparison;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.api.widget.Bounds;
 import net.createmod.catnip.platform.CatnipServices;
@@ -97,11 +101,25 @@ public class CTEmiPlugin implements EmiPlugin {
                             consumer.accept(new Bounds(rect.getX(), rect.getY(), rect.getWidth(), rect.getHeight())));
                 }
             });
+            registerIonThruster(registry);
             registry.removeEmiStacks(CTEmiPlugin::isDisabledModStack);
             registry.removeRecipes(CTEmiPlugin::hasDisabledOutput);
         } catch (Throwable throwable) {
 
             CT_LOGGER.warn("[CT][EMI] Disabled EMI drag-drop integration due to compatibility error", throwable);
+        }
+    }
+
+    // Add the focused Thruster as a separate EMI entry
+    private static void registerIonThruster(EmiRegistry registry) {
+        if (CTItems.THRUSTER == null || !CTFeatureToggles.isItemEnabled("thruster")) {
+            return;
+        }
+        registry.setDefaultComparison(CTItems.THRUSTER.get(), Comparison.compareData(stack ->
+                IonThrusterStacks.isIonThruster(stack.getItemStack())));
+        ItemStack ionThruster = IonThrusterStacks.create();
+        if (!ionThruster.isEmpty()) {
+            registry.addEmiStack(EmiStack.of(ionThruster));
         }
     }
 
@@ -138,6 +156,7 @@ public class CTEmiPlugin implements EmiPlugin {
         if (itemStack.isEmpty()) {
             return false;
         }
+        if (WorkerEnergyBatteryItem.isInternal(itemStack)) return true;
         if (SupporterHeads.isSupporterHead(itemStack)) {
             return !CTFeatureToggles.isItemEnabled("player_mannequin");
         }

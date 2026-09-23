@@ -87,6 +87,9 @@ public final class SchematicBlockEntityConfigPayload {
     public static void clearShipDockPlacementIdentity(CompoundTag tag) {
         if (tag != null) {
             tag.remove(SHIP_DOCK_ID_TAG);
+            if (tag.contains(PAYLOAD_TAG, Tag.TAG_COMPOUND)) {
+                tag.getCompound(PAYLOAD_TAG).remove(SHIP_DOCK_ID_TAG);
+            }
         }
     }
 

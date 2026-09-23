@@ -137,6 +137,19 @@ public final class ShipDockRegistry {
             return;
         }
         Dock prev = docks.get(observed.id());
+        if (prev != null && !samePhysicalDock(prev, observed)) {
+            // A persisted placement remains authoritative even while its chunk or SubLevel is
+            // unloaded. Never overwrite it just because the copied block which reused its UUID
+            // happened to initialize first during this session.
+            UUID replacement;
+            do {
+                replacement = UUID.randomUUID();
+            } while (docks.containsKey(replacement));
+            blockEntity.replaceDuplicateDockId(replacement);
+            observed = blockEntity.createRouteRecord();
+            if (observed == null) return;
+            prev = docks.get(observed.id());
+        }
         Dock dock = preserveLoadingConnectorTargets(
                 prev, observed, connectorBindingsAuthoritative);
         boolean definitionChanged = !sameDefinition(prev, dock);
@@ -217,7 +230,9 @@ public final class ShipDockRegistry {
         ensureLoaded();
         return docks.values().stream()
                 .filter(dock -> dock.dimension().equals(dimension))
-                .map(dock -> resolve(dock, true))
+                // Registry discovery is backed by durable records. A schedule listing its
+                // destinations must never force the physical dock, SubLevel or chunk to load.
+                .map(dock -> resolve(dock, false))
                 .filter(Objects::nonNull)
                 .sorted(DOCK_ORDER)
                 .toList();
@@ -314,6 +329,12 @@ public final class ShipDockRegistry {
         return revision;
     }
 
+    // Check whether the complete durable dock snapshot has been read into memory.
+    synchronized boolean persistentSnapshotReady() {
+        ensureLoaded();
+        return loaded;
+    }
+
     // Get the nearest
     public @Nullable Dock nearest(
             ResourceLocation dimension,
@@ -384,12 +405,33 @@ public final class ShipDockRegistry {
         if (loaded) {
             return;
         }
-        for (Dock dock : ShippingRouteDatabase.all(server)) {
-            docks.put(dock.id(), dock);
-            indexDock(dock);
+        ShippingRouteDatabase.DockLoad snapshot = ShippingRouteDatabase.loadAll(server);
+        if (!snapshot.complete()) {
+            return;
+        }
+        for (Dock dock : snapshot.docks()) {
+            Dock normalized = normalizePersistedDimension(dock);
+            docks.putIfAbsent(normalized.id(), normalized);
+            indexDock(docks.get(normalized.id()));
+            if (!normalized.dimension().equals(dock.dimension())) {
+                ShippingRouteDatabase.upsert(server, normalized);
+            }
         }
         loaded = true;
         revision++;
+    }
+
+    // Migrate records written from a SubLevel view to their containing server dimension using
+    // Sable's saved tracking-point metadata; this does not load the body or its chunks.
+    private Dock normalizePersistedDimension(Dock dock) {
+        if (dock == null || dock.subLevelId() == null) {
+            return dock;
+        }
+        ServerLevel containing = SubLevelBlockEntityCollector.findContainingServerLevel(
+                server, dock.subLevelId());
+        ResourceLocation dimension = containing == null
+                ? dock.dimension() : containing.dimension().location();
+        return dimension.equals(dock.dimension()) ? dock : dock.withDimension(dimension);
     }
 
     // Check if this uses the same definition
@@ -417,6 +459,16 @@ public final class ShipDockRegistry {
                 && Objects.equals(first.connectorUp(), second.connectorUp())
                 && Objects.equals(first.connectorTargets(), second.connectorTargets())
                 && sameLandingZones(first.landingZones(), second.landingZones());
+    }
+
+    // Check whether two durable records identify the same physical dock placement.
+    private static boolean samePhysicalDock(Dock first, Dock second) {
+        if (!Objects.equals(first.subLevelId(), second.subLevelId())
+                || !Objects.equals(first.pos(), second.pos())) {
+            return false;
+        }
+        return first.subLevelId() != null
+                || Objects.equals(first.dimension(), second.dimension());
     }
 
     // Check if this uses the same landing zones
@@ -960,6 +1012,14 @@ public final class ShipDockRegistry {
                     name, refuel, restock, packages, connectorSubLevelId, connectorPos,
                     connectorWorldPosition, connectorFacing, connectorUp, updatedAt,
                     connectorTargets, zones);
+        }
+
+        // Copy the durable dock into its containing server dimension.
+        Dock withDimension(ResourceLocation nextDimension) {
+            return new Dock(id, nextDimension, subLevelId, pos, worldPosition, facing,
+                    name, refuel, restock, packages, connectorSubLevelId, connectorPos,
+                    connectorWorldPosition, connectorFacing, connectorUp, updatedAt,
+                    connectorTargets, landingZones);
         }
 
         // Get the approach

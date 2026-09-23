@@ -21,6 +21,7 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.core.Direction;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import org.joml.Quaternionf;
 
@@ -54,8 +55,7 @@ public class AileronBearingRenderer extends KineticBlockEntityRenderer<AileronBe
         if (!VisualizationManager.supportsVisualization(be.getLevel())) {
             renderShaft(be, ms, buffer, light);
         }
-        renderHead(be, partialTicks, ms, buffer, light, BearingHead.PRIMARY);
-        renderHead(be, partialTicks, ms, buffer, light, BearingHead.SECONDARY);
+        renderHeads(be, ms, buffer, light);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -66,16 +66,27 @@ public class AileronBearingRenderer extends KineticBlockEntityRenderer<AileronBe
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+    // Draw the SCM preview partials
+    static boolean renderPreview(BlockEntity entity, BlockState state, PoseStack ms,
+                                 MultiBufferSource buffer, int light) {
+        if (!(entity instanceof AileronBearingBlockEntity bearing)) {
+            return false;
+        }
+        renderShaft(bearing, ms, buffer, light);
+        renderHeads(bearing, ms, buffer, light);
+        return true;
+    }
+
     // Draw the shaft
-    private void renderShaft(AileronBearingBlockEntity be, PoseStack ms, MultiBufferSource buffer, int light) {
+    private static void renderShaft(AileronBearingBlockEntity be, PoseStack ms, MultiBufferSource buffer, int light) {
         Direction.Axis axis = be.getShaftAxis();
         renderShaftHalf(be, ms, buffer, light, Direction.fromAxisAndDirection(axis, Direction.AxisDirection.POSITIVE));
         renderShaftHalf(be, ms, buffer, light, Direction.fromAxisAndDirection(axis, Direction.AxisDirection.NEGATIVE));
     }
 
     // Draw the shaft half
-    private void renderShaftHalf(AileronBearingBlockEntity be, PoseStack ms, MultiBufferSource buffer,
-                                 int light, Direction dir) {
+    private static void renderShaftHalf(AileronBearingBlockEntity be, PoseStack ms, MultiBufferSource buffer,
+                                        int light, Direction dir) {
         BlockState state = be.getBlockState();
         SuperByteBuffer shaft = CachedBuffers.partialFacing((PartialModel) AllPartialModels.SHAFT_HALF, state, dir);
         float angle = getAngleForBe(be, be.getBlockPos(), dir.getAxis());
@@ -83,9 +94,15 @@ public class AileronBearingRenderer extends KineticBlockEntityRenderer<AileronBe
         shaft.renderInto(ms, buffer.getBuffer(RenderType.solid()));
     }
 
+    // Draw the bearing heads
+    private static void renderHeads(AileronBearingBlockEntity be, PoseStack ms, MultiBufferSource buffer, int light) {
+        renderHead(be, ms, buffer, light, BearingHead.PRIMARY);
+        renderHead(be, ms, buffer, light, BearingHead.SECONDARY);
+    }
+
     // Draw the head
-    private void renderHead(AileronBearingBlockEntity be, float partialTicks, PoseStack ms,
-                            MultiBufferSource buffer, int light, BearingHead head) {
+    private static void renderHead(AileronBearingBlockEntity be, PoseStack ms,
+                                   MultiBufferSource buffer, int light, BearingHead head) {
         if (be.isMountedAssemblyPresent(head)) {
             return;
         }

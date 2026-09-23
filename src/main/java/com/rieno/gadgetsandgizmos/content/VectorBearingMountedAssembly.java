@@ -89,6 +89,10 @@ final class VectorBearingMountedAssembly {
     private ServerSubLevel jointParent;
     // Current joint child
     private ServerSubLevel jointChild;
+    // Last orientation applied to the joint frame
+    private final Quaterniond jointTargetOrientation = new Quaterniond();
+    // Tracks whether the joint frame has received an orientation
+    private boolean jointTargetOrientationInitialized;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -493,7 +497,9 @@ final class VectorBearingMountedAssembly {
                 pipeline, parent, child)) {
             return false;
         }
-        retargetJoint(mountedPos, facing, accepted.baseAnchor(), accepted.baseFrameOrientation());
+        if (!hasJointTargetOrientation(accepted.baseFrameOrientation())) {
+            retargetJoint(mountedPos, facing, accepted.baseAnchor(), accepted.baseFrameOrientation());
+        }
         if (parent != null) {
             pipeline.wakeUp(parent);
         }
@@ -545,6 +551,8 @@ final class VectorBearingMountedAssembly {
             SableConstraintApi.setFrame(joint, 1, baseAnchor, baseFrameOrientation);
             SableConstraintApi.setFrame(joint, 2, getChildAnchor(mountedPos, facing), new Quaterniond());
             joint.setContactsEnabled(false);
+            jointTargetOrientation.set(baseFrameOrientation);
+            jointTargetOrientationInitialized = true;
         } catch (ReflectiveOperationException | LinkageError error) {
             LOGGER.warn("Vector Bearing constraint retarget failed at {}: {}", mountedPos, error.toString());
             releaseJoint();
@@ -557,6 +565,18 @@ final class VectorBearingMountedAssembly {
             throws ReflectiveOperationException {
         return SableConstraintApi.genericConfiguration(
                 baseAnchor, childAnchor, baseFrameOrientation, new Quaterniond(), MOUNT_JOINT_AXES);
+    }
+
+    // Check whether the joint already targets this orientation
+    private boolean hasJointTargetOrientation(Quaterniondc targetOrientation) {
+        if (!jointTargetOrientationInitialized) {
+            return false;
+        }
+        double dot = Math.abs(jointTargetOrientation.x() * targetOrientation.x()
+                + jointTargetOrientation.y() * targetOrientation.y()
+                + jointTargetOrientation.z() * targetOrientation.z()
+                + jointTargetOrientation.w() * targetOrientation.w());
+        return dot >= 1.0D - 1.0E-10D;
     }
 
     // Get the base anchor
@@ -662,6 +682,8 @@ final class VectorBearingMountedAssembly {
         joint = null;
         jointParent = null;
         jointChild = null;
+        jointTargetOrientation.identity();
+        jointTargetOrientationInitialized = false;
     }
 
     // Clear the child sublevel

@@ -68,6 +68,8 @@ public class PlayerMannequinModel extends PlayerModel<PlayerMannequinEntity> {
         applyPose(this.leftLeg, entity.getLeftLegPose());
         applyPose(this.rightLeg, entity.getRightLegPose());
 
+        applyWorkerAnimation(entity, ageInTicks);
+
         if (entity.isPassenger()) {
             this.leftLeg.xRot = -1.4137167F;
             this.leftLeg.yRot = (float) (Math.PI / 10.0);
@@ -84,7 +86,7 @@ public class PlayerMannequinModel extends PlayerModel<PlayerMannequinEntity> {
         this.leftPants.copyFrom(this.leftLeg);
         this.rightPants.copyFrom(this.rightLeg);
 
-        showAllLayers(entity);
+        showBaseOnly(entity);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -110,6 +112,12 @@ public class PlayerMannequinModel extends PlayerModel<PlayerMannequinEntity> {
         this.rightSleeve.visible = renderSkinLayers && showArms;
         this.leftPants.visible = renderSkinLayers;
         this.rightPants.visible = renderSkinLayers;
+        this.hat.skipDraw = !renderSkinLayers;
+        this.jacket.skipDraw = !renderSkinLayers;
+        this.leftSleeve.skipDraw = !renderSkinLayers || !showArms;
+        this.rightSleeve.skipDraw = !renderSkinLayers || !showArms;
+        this.leftPants.skipDraw = !renderSkinLayers;
+        this.rightPants.skipDraw = !renderSkinLayers;
     }
 
     // Configure the detail
@@ -132,6 +140,12 @@ public class PlayerMannequinModel extends PlayerModel<PlayerMannequinEntity> {
         this.rightSleeve.visible = false;
         this.leftPants.visible = false;
         this.rightPants.visible = false;
+        this.hat.skipDraw = true;
+        this.jacket.skipDraw = true;
+        this.leftSleeve.skipDraw = true;
+        this.rightSleeve.skipDraw = true;
+        this.leftPants.skipDraw = true;
+        this.rightPants.skipDraw = true;
     }
 
     // Show the skin layers only
@@ -149,6 +163,12 @@ public class PlayerMannequinModel extends PlayerModel<PlayerMannequinEntity> {
         this.rightSleeve.visible = renderSkinLayers && showArms;
         this.leftPants.visible = renderSkinLayers;
         this.rightPants.visible = renderSkinLayers;
+        this.hat.skipDraw = !renderSkinLayers;
+        this.jacket.skipDraw = !renderSkinLayers;
+        this.leftSleeve.skipDraw = !renderSkinLayers || !showArms;
+        this.rightSleeve.skipDraw = !renderSkinLayers || !showArms;
+        this.leftPants.skipDraw = !renderSkinLayers;
+        this.rightPants.skipDraw = !renderSkinLayers;
     }
 
     // Apply the pose
@@ -156,5 +176,38 @@ public class PlayerMannequinModel extends PlayerModel<PlayerMannequinEntity> {
         part.xRot = rotations.getX() * DEG_TO_RAD;
         part.yRot = rotations.getY() * DEG_TO_RAD;
         part.zRot = rotations.getZ() * DEG_TO_RAD;
+    }
+
+    // Apply live walking, carrying and interaction motion for Worker Pods
+    private void applyWorkerAnimation(PlayerMannequinEntity entity, float ageInTicks) {
+        PlayerMannequinEntity.WorkerAnimation animation = entity.workerAnimation();
+        if (animation == PlayerMannequinEntity.WorkerAnimation.IDLE) return;
+        float stride = (float) Math.sin(ageInTicks * 0.72F) * 0.75F;
+        boolean walking = animation == PlayerMannequinEntity.WorkerAnimation.WALK
+                || animation == PlayerMannequinEntity.WorkerAnimation.CARRY_WALK;
+        boolean carrying = animation == PlayerMannequinEntity.WorkerAnimation.CARRY_IDLE
+                || animation == PlayerMannequinEntity.WorkerAnimation.CARRY_WALK;
+        if (walking) {
+            this.rightLeg.xRot = stride;
+            this.leftLeg.xRot = -stride;
+        }
+        if (carrying) {
+            float sway = walking ? stride * 0.08F : 0.0F;
+            this.rightArm.xRot = -1.18F - sway;
+            this.rightArm.yRot = -0.52F;
+            this.rightArm.zRot = 0.16F;
+            this.leftArm.xRot = -1.18F + sway;
+            this.leftArm.yRot = 0.52F;
+            this.leftArm.zRot = -0.16F;
+            return;
+        }
+        if (animation == PlayerMannequinEntity.WorkerAnimation.INTERACT) {
+            float reach = 0.2F + (float) Math.sin(ageInTicks * 1.4F) * 0.18F;
+            this.rightArm.xRot = -1.25F - reach;
+            this.leftArm.xRot = -0.45F;
+            return;
+        }
+        this.rightArm.xRot = -stride;
+        this.leftArm.xRot = stride;
     }
 }

@@ -70,8 +70,8 @@ final class ControllerSqliteStore {
 
     private static final String DATABASE_NAME = "gadgets_graphs.db";
     private static final Map<Path, Connection> CONNECTIONS = new LinkedHashMap<>();
-    private static final LinkerTargetCache LINKER_TARGET_CACHE = new LinkerTargetCache();
-    private static final Map<Connection, Map<String, ControllerWriteState>> CONTROLLER_WRITE_CACHE =
+    private static final ControllerSqliteLinkerTargetCache LINKER_TARGET_CACHE = new ControllerSqliteLinkerTargetCache();
+    private static final Map<Connection, Map<String, ControllerSqliteControllerWriteState>> CONTROLLER_WRITE_CACHE =
             new IdentityHashMap<>();
     private static final Set<Path> MIGRATED_LINKER_PATHS = new LinkedHashSet<>();
     private static final String TAG_LINKER_ID = "LinkerId";
@@ -127,68 +127,6 @@ final class ControllerSqliteStore {
         LinkerTargets load() throws SQLException;
     }
 
-    // Handle the linker target cache
-    static final class LinkerTargetCache {
-        // Tracked entries
-        private final Map<Connection, Map<String, LinkerTargets>> entries = new IdentityHashMap<>();
-
-        // Get the linker target cache value
-        @Nullable LinkerTargets get(Connection connection, String manifestId) {
-            Map<String, LinkerTargets> connectionEntries = entries.get(connection);
-            return connectionEntries == null ? null : connectionEntries.get(manifestId);
-        }
-
-        // Put the linker target cache
-        void put(Connection connection, String manifestId, LinkerTargets targets) {
-            entries.computeIfAbsent(connection, ignored -> new LinkedHashMap<>()).put(manifestId, targets);
-        }
-
-        // Load or cache linker targets
-        LinkerTargets getOrLoad(Connection connection, String manifestId, LinkerTargetLoader loader)
-                throws SQLException {
-            LinkerTargets cached = get(connection, manifestId);
-            if (cached != null) {
-                return cached;
-            }
-            LinkerTargets loaded = loader.load();
-            put(connection, manifestId, loaded);
-            return loaded;
-        }
-
-        // Invalidate the linker target cache
-        void invalidate(Connection connection, String manifestId) {
-            Map<String, LinkerTargets> connectionEntries = entries.get(connection);
-            if (connectionEntries == null) {
-                return;
-            }
-            connectionEntries.remove(manifestId);
-            if (connectionEntries.isEmpty()) {
-                entries.remove(connection);
-            }
-        }
-
-        // Clear the linker target cache
-        void clear(Connection connection) {
-            entries.remove(connection);
-        }
-
-        // Clear the linker target cache
-        void clearAll() {
-            entries.clear();
-        }
-
-        // Get the connection count
-        int connectionCount() {
-            return entries.size();
-        }
-
-        // Get the entry count
-        int entryCount(Connection connection) {
-            Map<String, LinkerTargets> connectionEntries = entries.get(connection);
-            return connectionEntries == null ? 0 : connectionEntries.size();
-        }
-    }
-
     // Store the indexed owner
     private record IndexedOwner(String ownerType, String ownerId, String nodeId) {
     }
@@ -206,51 +144,6 @@ final class ControllerSqliteStore {
     record ScmPersistenceBinding(UUID scmId, String manifestId) {
     }
 
-    // Store controller write state
-    private record ControllerWriteState(
-            String kind,
-            String dimension,
-            BlockPos position,
-            String subLevelId,
-            String insertedLinkerId,
-            CompoundTag controllerData,
-            CompoundTag draftGraph,
-            CompoundTag activeGraph,
-            CompoundTag graphHistory,
-            int revision,
-            String hash
-    ) {
-        // Check if this matches the value
-        private boolean matches(
-                String requestedKind,
-                String requestedDimension,
-                BlockPos requestedPosition,
-                String requestedSubLevelId,
-                String requestedInsertedLinkerId,
-                CompoundTag requestedControllerData,
-                CompoundTag requestedDraftGraph,
-                CompoundTag requestedActiveGraph,
-                CompoundTag requestedGraphHistory
-        ) {
-            return kind.equals(requestedKind)
-                    && dimension.equals(requestedDimension)
-                    && position.equals(requestedPosition)
-                    && subLevelId.equals(requestedSubLevelId)
-                    && insertedLinkerId.equals(requestedInsertedLinkerId)
-                    && controllerData.equals(requestedControllerData)
-                    && draftGraph.equals(requestedDraftGraph)
-                    && activeGraph.equals(requestedActiveGraph)
-                    && graphHistory.equals(requestedGraphHistory);
-        }
-
-        // Get the snapshot
-        private ControllerManifestStore.ManifestSnapshot snapshot(String id) {
-            return new ControllerManifestStore.ManifestSnapshot(
-                    id, revision, hash, ControllerManifestStore.STORAGE_VERSION, kind,
-                    controllerData.copy(), draftGraph.copy(), activeGraph.copy(), new CompoundTag());
-        }
-    }
-
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -260,11 +153,11 @@ final class ControllerSqliteStore {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Get the cached controller write
-    private static @Nullable ControllerWriteState cachedControllerWrite(
+    private static @Nullable ControllerSqliteControllerWriteState cachedControllerWrite(
             Connection connection,
             String id
     ) {
-        Map<String, ControllerWriteState> entries = CONTROLLER_WRITE_CACHE.get(connection);
+        Map<String, ControllerSqliteControllerWriteState> entries = CONTROLLER_WRITE_CACHE.get(connection);
         return entries == null ? null : entries.get(id);
     }
 
@@ -272,7 +165,7 @@ final class ControllerSqliteStore {
     private static void cacheControllerWrite(
             Connection connection,
             String id,
-            ControllerWriteState state
+            ControllerSqliteControllerWriteState state
     ) {
         CONTROLLER_WRITE_CACHE.computeIfAbsent(
                 connection, ignored -> new LinkedHashMap<>()).put(id, state);
@@ -280,7 +173,7 @@ final class ControllerSqliteStore {
 
     // Invalidate the ctrl write
     private static void invalidateCtrlWrite(Connection connection, String id) {
-        Map<String, ControllerWriteState> entries = CONTROLLER_WRITE_CACHE.get(connection);
+        Map<String, ControllerSqliteControllerWriteState> entries = CONTROLLER_WRITE_CACHE.get(connection);
         if (entries == null) {
             return;
         }
@@ -341,7 +234,7 @@ final class ControllerSqliteStore {
                         draftGraph,
                         activeGraph,
                         new CompoundTag());
-                cacheControllerWrite(connection, manifestId, new ControllerWriteState(
+                cacheControllerWrite(connection, manifestId, new ControllerSqliteControllerWriteState(
                         snapshot.kind(), res.getString("dimension"),
                         new BlockPos(res.getInt("block_x"), res.getInt("block_y"),
                                 res.getInt("block_z")),
@@ -615,7 +508,7 @@ final class ControllerSqliteStore {
         BlockPos pos = ownerPos == null ? BlockPos.ZERO : ownerPos;
         String subLevel = subLevelId == null ? "" : subLevelId.toString();
         String insertedLinker = insertedLinkerManifestId == null ? "" : insertedLinkerManifestId;
-        ControllerWriteState cached = cachedControllerWrite(connection, id);
+        ControllerSqliteControllerWriteState cached = cachedControllerWrite(connection, id);
         if (cached != null && cached.matches(
                 kind, dimension, pos, subLevel, insertedLinker,
                 controllerCopy, draftCopy, activeCopy, historyCopy)) {
@@ -695,7 +588,7 @@ final class ControllerSqliteStore {
             ControllerManifestStore.ManifestSnapshot snapshot = new ControllerManifestStore.ManifestSnapshot(id, revision, hash,
                     ControllerManifestStore.STORAGE_VERSION, kind, controllerCopy, draftCopy, activeCopy,
                     new CompoundTag());
-            cacheControllerWrite(connection, id, new ControllerWriteState(
+            cacheControllerWrite(connection, id, new ControllerSqliteControllerWriteState(
                     kind, dimension, pos, subLevel, insertedLinker,
                     controllerCopy.copy(), draftCopy.copy(), activeCopy.copy(), historyCopy.copy(),
                     revision, hash));

@@ -2,6 +2,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerData;
+import com.rieno.gadgetsandgizmos.content.ThrusterBearingLinkBlockEntity;
 import com.rieno.gadgetsandgizmos.lib.client.render.SubLevelPreviewRenderer;
 import com.simibubi.create.content.kinetics.base.IRotate;
 import dev.ryanhcode.sable.api.sublevel.ClientSubLevelContainer;
@@ -39,6 +40,8 @@ final class ScmLiveSubLevelPreviewRenderer {
         KINETIC("Kinetic Blocks"),
         PROPULSION("Propulsion Blocks"),
         THRUSTERS("Thrusters"),
+        JOINTS_AND_ACTUATORS("Joints and Actuators"),
+        DOCKING_CONNECTORS("Docking Connectors"),
         REDSTONE("Redstone");
 
         private final String label;
@@ -180,6 +183,27 @@ final class ScmLiveSubLevelPreviewRenderer {
                 target.position(), target.face())).toList();
     }
 
+    // Check whether a picked preview block is a docking connector
+    boolean isDockingConnector(PickTarget target) {
+        if (target == null || target.subLevelId() == null) return false;
+        return preview.block(target.subLevelId(), target.position())
+                .map(block -> isDockingConnector(block.state())).orElse(false);
+    }
+
+    // Check whether one live preview block belongs to an SCM automatic assignment category
+    boolean matchesAutoDetectCategory(UUID subLevelId, BlockPos position, String category) {
+        if (subLevelId == null || position == null || category == null) return false;
+        return preview.block(subLevelId, position).map(block -> switch (category) {
+            case "thrusters" -> containsAny(blockPath(block.state()),
+                    "thruster", "engine", "rocket", "jet", "fan");
+            case "bearings" -> containsAny(blockPath(block.state()),
+                    "bearing", "rotor", "hinge");
+            case "actuators" -> isJointOrActuator(block.state());
+            case "propulsion" -> isPropulsion(block.state());
+            default -> false;
+        }).orElse(false);
+    }
+
     void setVisibleFilters(Collection<Filter> filters) {
         Set<Filter> normalized = filters == null || filters.isEmpty()
                 ? EnumSet.noneOf(Filter.class) : EnumSet.copyOf(filters);
@@ -244,6 +268,8 @@ final class ScmLiveSubLevelPreviewRenderer {
                 case KINETIC -> block.state().getBlock() instanceof IRotate;
                 case PROPULSION -> isPropulsion(block.state());
                 case THRUSTERS -> containsAny(blockPath(block.state()), "thruster");
+                case JOINTS_AND_ACTUATORS -> isJointOrActuator(block.state());
+                case DOCKING_CONNECTORS -> isDockingConnector(block.state());
                 case REDSTONE -> isRedstone(block.state());
             }) return true;
         }
@@ -255,6 +281,13 @@ final class ScmLiveSubLevelPreviewRenderer {
         return containsAny(path, "thruster", "propulsion", "engine", "rocket", "jet", "sail", "fan");
     }
 
+    // Check whether a block is a movable joint or controlled mechanical actuator
+    private static boolean isJointOrActuator(BlockState state) {
+        String path = blockPath(state);
+        return containsAny(path, "joint", "actuator", "motor", "bearing", "rotor", "hinge",
+                "piston", "servo", "gearshift");
+    }
+
     private static boolean isRedstone(BlockState state) {
         if (state == null) return false;
         if (state.hasProperty(BlockStateProperties.POWERED) || state.hasProperty(BlockStateProperties.POWER)
@@ -263,6 +296,14 @@ final class ScmLiveSubLevelPreviewRenderer {
         }
         return containsAny(blockPath(state), "redstone", "lever", "button", "repeater", "comparator",
                 "observer", "torch", "lamp", "wire", "contact", "gearshift", "link");
+    }
+
+    // Check whether this is a supported Simulated docking connector
+    private static boolean isDockingConnector(BlockState state) {
+        if (state == null) return false;
+        ResourceLocation id = BuiltInRegistries.BLOCK.getKey(state.getBlock());
+        return id != null && "simulated".equals(id.getNamespace())
+                && "docking_connector".equals(id.getPath());
     }
 
     private static String blockPath(BlockState state) {
@@ -286,8 +327,26 @@ final class ScmLiveSubLevelPreviewRenderer {
         }
     }
 
-    private static void renderOptionalBlockEntityDetails(BlockEntity blockEntity, BlockState state, PoseStack pose,
-                                                         MultiBufferSource buffers, int light, int overlay) {
-        EmbeddedCopycatsKineticRenderer.render(blockEntity, state, pose, buffers, light, overlay);
+    private static boolean renderOptionalBlockEntityDetails(BlockEntity blockEntity, BlockState state, PoseStack pose,
+                                                            MultiBufferSource buffers, int light, int overlay) {
+        if (blockEntity instanceof ThrusterBearingLinkBlockEntity) {
+            // Retain the link's ordinary block model exactly once. Its shared
+            // kinetic fallback would rotate that complete model over itself.
+            ThrusterBearingRenderer.renderPreview(blockEntity, state, pose, buffers, light);
+            return true;
+        }
+        if (RcsThrusterRenderer.renderPreview(blockEntity, state, pose, buffers, light)) {
+            return true;
+        }
+        if (AileronBearingRenderer.renderPreview(blockEntity, state, pose, buffers, light)) {
+            return true;
+        }
+        if (VectorBearingRenderer.renderPreview(blockEntity, state, pose, buffers, light)) {
+            return true;
+        }
+        if (ThrusterBearingRenderer.renderPreview(blockEntity, state, pose, buffers, light)) {
+            return true;
+        }
+        return EmbeddedCopycatsKineticRenderer.render(blockEntity, state, pose, buffers, light, overlay);
     }
 }

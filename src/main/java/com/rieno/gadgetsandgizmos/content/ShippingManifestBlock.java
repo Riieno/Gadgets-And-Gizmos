@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.mojang.serialization.MapCodec;
 import com.rieno.gadgetsandgizmos.compat.createdieselgenerators.CreateDieselGeneratorsManifestCompat;
+import com.rieno.gadgetsandgizmos.lib.power.LongEnergyStorage;
 import com.rieno.gadgetsandgizmos.neoforge.network.ShippingManifestOpenPayload;
 import com.rieno.gadgetsandgizmos.util.ThrusterFuelData;
 import com.simibubi.create.AllShapes;
@@ -130,7 +131,8 @@ public class ShippingManifestBlock extends FaceAttachedHorizontalDirectionalBloc
         IItemHandler itemHandler = findItemHandler(ctx.getLevel(), targetPos, targetSide);
         IFluidHandler fluidHandler = findFluidHandler(ctx.getLevel(), targetPos, targetSide);
         IEnergyStorage energyHandler = findEnergyHandler(ctx.getLevel(), targetPos, targetSide);
-        if (itemHandler == null && fluidHandler == null && energyHandler == null) {
+        LongEnergyStorage longEnergyHandler = findLongEnergyHandler(ctx.getLevel(), targetPos);
+        if (itemHandler == null && fluidHandler == null && energyHandler == null && longEnergyHandler == null) {
             return null;
         }
         return state.setValue(SHOW_BLANK, fluidHandler != null || energyHandler != null);
@@ -161,14 +163,16 @@ public class ShippingManifestBlock extends FaceAttachedHorizontalDirectionalBloc
         IFluidHandler fluidHandler = resolveFluidHandler(level, targetPos, targetSide,
                 manifest != null && manifest.isCombinedManifest());
         IEnergyStorage energyHandler = findEnergyHandler(level, targetPos, targetSide);
-        if (itemHandler == null && fluidHandler == null && energyHandler == null) {
+        LongEnergyStorage longEnergyHandler = findLongEnergyHandler(level, targetPos);
+        if (itemHandler == null && fluidHandler == null && energyHandler == null && longEnergyHandler == null) {
             return InteractionResult.PASS;
         }
 
         if (player instanceof ServerPlayer serverPlayer) {
             PacketDistributor.sendToPlayer(serverPlayer,
-                    new ShippingManifestOpenPayload(createClipboardContent(
-                            itemHandler, fluidHandler, energyHandler)));
+                    new ShippingManifestOpenPayload(pos, manifest == null ? 0 : manifest.resourceUses(),
+                            manifest == null ? 0 : manifest.availableResourceUses(), createClipboardContent(
+                            itemHandler, fluidHandler, energyHandler, longEnergyHandler)));
         }
         return InteractionResult.CONSUME;
     }
@@ -237,7 +241,8 @@ public class ShippingManifestBlock extends FaceAttachedHorizontalDirectionalBloc
 
     // Create the clipboard content
     private static ClipboardContent createClipboardContent(@Nullable IItemHandler itemHandler,
-            @Nullable IFluidHandler fluidHandler, @Nullable IEnergyStorage energyHandler) {
+            @Nullable IFluidHandler fluidHandler, @Nullable IEnergyStorage energyHandler,
+            @Nullable LongEnergyStorage longEnergyHandler) {
         List<ManifestEntry> items = itemHandler == null ? List.of() : collectItems(itemHandler);
         FluidContents fluids = fluidHandler == null ? FluidContents.EMPTY : collectFluids(fluidHandler);
         List<List<ClipboardEntry>> pages;
@@ -248,13 +253,15 @@ public class ShippingManifestBlock extends FaceAttachedHorizontalDirectionalBloc
         } else {
             pages = createItemPages(items);
         }
-        if (energyHandler != null) {
+        if (energyHandler != null || longEnergyHandler != null) {
+            long stored = longEnergyHandler == null ? energyHandler.getEnergyStored()
+                    : longEnergyHandler.getEnergyStored();
+            long capacity = longEnergyHandler == null ? energyHandler.getMaxEnergyStored()
+                    : longEnergyHandler.getMaxEnergyStored();
             pages = new ArrayList<>(pages);
             pages.add(List.of(new ClipboardEntry(false, Component.translatable(
                     "gui.createthrusters.shipping_manifest.energy",
-                    energyHandler.getEnergyStored(), energyHandler.getMaxEnergyStored(),
-                    formatPercent(energyHandler.getEnergyStored(),
-                            energyHandler.getMaxEnergyStored())))));
+                    stored, capacity, formatPercent(stored, capacity)))));
         }
         return new ClipboardContent(ClipboardOverrides.ClipboardType.WRITTEN, pages, true);
     }
@@ -452,6 +459,13 @@ public class ShippingManifestBlock extends FaceAttachedHorizontalDirectionalBloc
     ) {
         return level == null ? null : level.getCapability(
                 Capabilities.EnergyStorage.BLOCK, pos, side);
+    }
+
+    // Find exact FE storage exposed by the target block entity
+    public static @Nullable LongEnergyStorage findLongEnergyHandler(Level level, BlockPos pos) {
+        if (level == null || pos == null || !level.isLoaded(pos)) return null;
+        BlockEntity blockEntity = level.getBlockEntity(pos);
+        return blockEntity instanceof LongEnergyStorage storage ? storage : null;
     }
 
     // Collect the items

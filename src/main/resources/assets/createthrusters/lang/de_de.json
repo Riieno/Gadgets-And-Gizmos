@@ -1255,6 +1255,7 @@
   "item.createthrusters.blackstone_alloy": "Blackstone-Legierung",
   "item.createthrusters.blackstone_sheet": "Blackstone-Blatt",
   "block.createthrusters.blackstone_alloy_block": "Blackstone-Legierungsblock",
+  "block.createthrusters.blackstone_casing": "Blackstone-Gehäuse",
   "block.createthrusters.rcs_thruster": "RCS-Triebwerk",
   "block.createthrusters.rcs_thruster.tooltip.summary": "Ein kompaktes, treibstoffloses Steuertriebwerk mit vier getrennt geregelten Düsen.",
   "block.createthrusters.rcs_thruster.tooltip.condition1": "Drehkraft über die untere Welle zuführen",

@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
+import com.rieno.gadgetsandgizmos.lib.shipping.ScheduleConditionGroups;
 import com.simibubi.create.content.trains.schedule.IScheduleInput;
 import com.simibubi.create.content.trains.schedule.Schedule;
 import com.simibubi.create.content.trains.schedule.ScheduleEntry;
@@ -58,6 +59,8 @@ public final class ShippingScheduleGraph {
     public static final String FLOW_REPEAT_TAG = "Repeat";
     public static final String FLOW_TARGET_TAG = "Target";
     public static final String CYCLIC_VARIABLE = "__shipping_schedule_cyclic";
+    public static final String FOLLOW_ROUTE_VARIABLE = "__shipping_schedule_follow_route";
+    public static final String PROGRESS_VARIABLE = "__shipping_schedule_progress";
     public static final String INSTRUCTION_PREFIX = "shipping_schedule:instruction:";
     public static final String CONDITION_PREFIX = "shipping_schedule:condition:";
     public static final String FLOW_PREFIX = "shipping_schedule:flow:";
@@ -94,6 +97,8 @@ public final class ShippingScheduleGraph {
         graph.setTemplateId(TEMPLATE_ID);
         if (schedule == null) return graph;
         graph.variables().put(CYCLIC_VARIABLE, AdvancedGraphDocument.Value.bool(schedule.cyclic));
+        graph.variables().put(FOLLOW_ROUTE_VARIABLE, AdvancedGraphDocument.Value.bool(true));
+        graph.variables().put(PROGRESS_VARIABLE, AdvancedGraphDocument.Value.number(schedule.savedProgress));
         String previous = null;
         double y = 80.0D;
         for (ScheduleEntry entry : schedule.entries) {
@@ -128,7 +133,9 @@ public final class ShippingScheduleGraph {
         }
         if (entries.isEmpty()) return null;
         AdvancedGraphDocument.Value cyclic = graph.variables().get(CYCLIC_VARIABLE);
-        return new Schedule(entries, cyclic != null && cyclic.asBoolean(), 0);
+        int progress = Math.max(0, Math.min(entries.size() - 1,
+                (int) graph.variables().getOrDefault(PROGRESS_VARIABLE, AdvancedGraphDocument.Value.number(0)).asNumber()));
+        return new Schedule(entries, cyclic != null && cyclic.asBoolean(), progress);
     }
 
     // Check whether a graph still represents the installed legacy schedule.
@@ -633,6 +640,7 @@ public final class ShippingScheduleGraph {
         if (graph == null) return;
         graph.setTemplateId(TEMPLATE_ID);
         graph.variables().putIfAbsent(CYCLIC_VARIABLE, AdvancedGraphDocument.Value.bool(false));
+        graph.variables().putIfAbsent(FOLLOW_ROUTE_VARIABLE, AdvancedGraphDocument.Value.bool(true));
     }
 
     // Resolve the graph's next-edge chain, appending disconnected legacy blocks in their stored order.
@@ -1031,6 +1039,9 @@ public final class ShippingScheduleGraph {
             if (value != null && isSimpleProperty(value)) properties.put(key, value.getAsString());
         }
         addImplicitEditableProperties(node, properties);
+        if(isConditionBlock(node.type()) && !isDetachedCondition(node)){
+            properties.put("WaitLogic", node.data().getInt(CONDITION_INDEX_TAG) > 0 ? "AND" : "OR");
+        }
         return Map.copyOf(properties);
     }
 
@@ -1040,8 +1051,10 @@ public final class ShippingScheduleGraph {
         if (key == null) return "Value";
         if ("Text".equals(key) && node != null && node.type().endsWith("destination")) return "Destination";
         if ("Text".equals(key) && node != null && node.type().endsWith("park_at")) return "Dock";
+        if ("Exact".equals(key) && node != null && node.type().endsWith("player_count")) return "Count rule";
         if (FLOW_REPEAT_TAG.equals(key)) return "Repeat count";
         if (FLOW_TARGET_TAG.equals(key)) return "Jump target";
+        if("WaitLogic".equals(key)) return "Wait logic";
         return key.replace('_', ' ');
     }
 
@@ -1063,7 +1076,7 @@ public final class ShippingScheduleGraph {
 
     private static String primaryPropertyKey(Map<String, String> properties) {
         if (properties == null || properties.isEmpty()) return "";
-        for (String preferred : List.of("Text", "Destination", "Dock", "Threshold", "Value", "Time",
+        for (String preferred : List.of("Text", "Destination", "Dock", "Count", "Threshold", "Value", "Time",
                 FLOW_REPEAT_TAG, FLOW_TARGET_TAG)) {
             if (properties.containsKey(preferred)) return preferred;
         }
@@ -1079,6 +1092,7 @@ public final class ShippingScheduleGraph {
         if (graph == null || nodeId == null || key == null || key.isBlank()) return false;
         AdvancedGraphDocument.Node node = node(graph, nodeId);
         if (node == null) return false;
+        if("WaitLogic".equals(key)) return !setConditionConjunction(graph, nodeId, "AND".equals(value), registries).isBlank();
         if (isFlowBlock(node.type())) {
             putSimpleValue(node.data(), key, value);
             return true;
@@ -1133,8 +1147,40 @@ public final class ShippingScheduleGraph {
         return entry.conditions.get(group).get(index).getData();
     }
 
+    // Match Create's condition columns: AND within a column, OR between columns
+    public static String setConditionConjunction(AdvancedGraphDocument graph, String nodeId, boolean and,
+                                                  HolderLookup.Provider registries){
+        AdvancedGraphDocument.Node child = node(graph, nodeId);
+        AdvancedGraphDocument.Node owner = instructionNode(graph, nodeId);
+        if(child == null || owner == null || !isConditionBlock(child.type()) || isDetachedCondition(child)) return "";
+        ScheduleEntry entry = ScheduleEntry.fromTag(registries, owner.data().getCompound(ENTRY_TAG));
+        if(entry == null) return "";
+        ScheduleConditionGroups.Position position = ScheduleConditionGroups.setConjunction(entry.conditions,
+                child.data().getInt(CONDITION_GROUP_TAG), child.data().getInt(CONDITION_INDEX_TAG), and);
+        if(position == null) return "";
+        owner.data().put(ENTRY_TAG, entry.write(registries));
+        rebuildConditionBlocks(graph, owner, entry, registries);
+        reflowInstructionStack(graph, owner.id());
+        return conditionNodeId(graph, owner.id(), position.group(), position.index());
+    }
+
+    public static String moveCondition(AdvancedGraphDocument graph, String nodeId, int direction,
+                                        HolderLookup.Provider registries){
+        AdvancedGraphDocument.Node child = node(graph, nodeId);
+        AdvancedGraphDocument.Node owner = instructionNode(graph, nodeId);
+        if(child == null || owner == null || !isConditionBlock(child.type()) || isDetachedCondition(child)) return "";
+        ScheduleEntry entry = ScheduleEntry.fromTag(registries, owner.data().getCompound(ENTRY_TAG));
+        if(entry == null) return "";
+        ScheduleConditionGroups.Position position = ScheduleConditionGroups.move(entry.conditions,
+                child.data().getInt(CONDITION_GROUP_TAG), child.data().getInt(CONDITION_INDEX_TAG), direction);
+        if(position == null) return "";
+        owner.data().put(ENTRY_TAG, entry.write(registries));
+        rebuildConditionBlocks(graph, owner, entry, registries);
+        return conditionNodeId(graph, owner.id(), position.group(), position.index());
+    }
+
     // Resolve an editable ScheduleDataEntry as Create's public schedule-input interface.
-    private static IScheduleInput scheduleInput(AdvancedGraphDocument graph, String nodeId,
+    public static IScheduleInput scheduleInput(AdvancedGraphDocument graph, String nodeId,
                                                 HolderLookup.Provider registries) {
         AdvancedGraphDocument.Node node = node(graph, nodeId);
         if (node != null && isDetachedCondition(node)) return detachedCondition(node, registries);
@@ -1142,6 +1188,29 @@ public final class ShippingScheduleGraph {
         if (node == null || instruction == null || !instruction.data().contains(ENTRY_TAG)) return null;
         ScheduleEntry entry = ScheduleEntry.fromTag(registries, instruction.data().getCompound(ENTRY_TAG));
         return scheduleInput(entry, node);
+    }
+
+    // Save all native input fields, including selectors omitted from default NBT
+    public static boolean setInputData(AdvancedGraphDocument graph, String nodeId, CompoundTag data,
+                                       HolderLookup.Provider registries){
+        AdvancedGraphDocument.Node node = node(graph, nodeId);
+        if(node == null || data == null) return false;
+        if(isDetachedCondition(node)){
+            ScheduleWaitCondition condition = detachedCondition(node, registries);
+            if(condition == null) return false;
+            condition.setData(registries, data.copy());
+            node.data().put(DETACHED_CONDITION_TAG, condition.write(registries));
+            return true;
+        }
+        AdvancedGraphDocument.Node owner = instructionNode(graph, nodeId);
+        if(owner == null || !owner.data().contains(ENTRY_TAG)) return false;
+        ScheduleEntry entry = ScheduleEntry.fromTag(registries, owner.data().getCompound(ENTRY_TAG));
+        IScheduleInput input = scheduleInput(entry, node);
+        if(input == null) return false;
+        input.setData(registries, data.copy());
+        owner.data().put(ENTRY_TAG, entry.write(registries));
+        rebuildConditionBlocks(graph, owner, entry, registries);
+        return true;
     }
 
     // Resolve the selected entry member after its parent ScheduleEntry has been parsed.
@@ -1179,12 +1248,20 @@ public final class ShippingScheduleGraph {
         if (isConditionBlock(type) && type.endsWith("redstone_link")) {
             properties.putIfAbsent("Inverted", "0");
         }
+        if (isConditionBlock(type) && type.endsWith("player_count")) {
+            properties.putIfAbsent("Count", "1");
+            properties.putIfAbsent("Exact", "1");
+        }
     }
 
     private static void ensureImplicitProperty(CompoundTag data, AdvancedGraphDocument.Node node, String key) {
         if (data == null || data.contains(key) || key == null) return;
         if ("Inverted".equals(key) && node != null && node.type().endsWith("redstone_link")) {
             data.putInt(key, 0);
+        }
+        if (node != null && node.type().endsWith("player_count")) {
+            if ("Count".equals(key)) data.putInt(key, 1);
+            if ("Exact".equals(key)) data.putInt(key, 1);
         }
     }
 
@@ -1246,7 +1323,14 @@ public final class ShippingScheduleGraph {
     // Create one registered Create condition.
     private static ScheduleWaitCondition createCondition(ResourceLocation id) {
         for (Pair<ResourceLocation, Supplier<? extends ScheduleWaitCondition>> entry : Schedule.CONDITION_TYPES) {
-            if (id.equals(entry.getFirst())) return entry.getSecond().get();
+            if (id.equals(entry.getFirst())) {
+                ScheduleWaitCondition condition = entry.getSecond().get();
+                if (condition != null && "player_count".equals(id.getPath())) {
+                    condition.getData().putInt("Count", 1);
+                    condition.getData().putInt("Exact", 1);
+                }
+                return condition;
+            }
         }
         return null;
     }

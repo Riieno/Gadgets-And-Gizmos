@@ -9,6 +9,8 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.lib.scm.ScmOrientation;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmLeggedGait;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmSteeringMode;
 import org.jetbrains.annotations.Nullable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -30,7 +32,7 @@ import java.util.UUID;
 // curves. Unit references deliberately use sub-level/block identities instead of
 // calibration indices, which may change when a craft is rescanned.
 public final class ScmConfigurationProfile {
-    private static final int VERSION = 6;
+    private static final int VERSION = 9;
     /**
      * Optional profile-only grouping. It is not a graph node, but its selected
      * units are read as direct live adapters just like units in a flight-action
@@ -44,10 +46,13 @@ public final class ScmConfigurationProfile {
      * craft's drive chain.
      */
     public static final String ACCELERATION_ACTION = "scm_acceleration";
+    private static final String DOCKING_CONNECTOR_ACTION_PREFIX = "scm_docking_connector_";
 
     private UUID mapId;
     private @Nullable ScmOrientation orientationOverride;
     private String vehicleType = "auto";
+    private String steeringType = ScmSteeringMode.AUTO.id();
+    private String ikGait = ScmLeggedGait.QUADRUPED.id();
 
     public String vehicleType() { return vehicleType; }
 
@@ -55,9 +60,97 @@ public final class ScmConfigurationProfile {
         vehicleType = com.rieno.gadgetsandgizmos.lib.scm.ScmVehicleClassifier.isSelection(selection)
                 ? selection : "auto";
     }
+
+    public String steeringType() { return steeringType; }
+
+    public void setSteeringType(String selection) {
+        steeringType = ScmSteeringMode.isSelection(selection)
+                ? ScmSteeringMode.fromId(selection).id() : ScmSteeringMode.AUTO.id();
+    }
+
+    // Get the selected IK gait
+    public String ikGait() {
+        return ikGait;
+    }
+
+    // Set the selected IK gait
+    public void setIkGait(String selection) {
+        ikGait = ScmLeggedGait.isSelection(selection)
+                ? ScmLeggedGait.fromId(selection).id() : ScmLeggedGait.QUADRUPED.id();
+    }
+
+    // Check whether this profile requests the IK vehicle mode
+    public boolean usesIkVehicle() {
+        return "ik".equals(vehicleType);
+    }
+
+    // Get the available IK role actions for the selected gait
+    public static List<String> ikActions(String gaitId) {
+        ScmLeggedGait gait = ScmLeggedGait.fromId(gaitId);
+        int legs = gait == ScmLeggedGait.CUSTOM ? 8 : gait.legCount();
+        List<String> actions = new ArrayList<>();
+        for (int index = 1; index <= legs; index++) {
+            actions.add("ik_leg_" + index + "_yaw");
+            actions.add("ik_leg_" + index + "_hip");
+            actions.add("ik_leg_" + index + "_knee");
+            actions.add("ik_leg_" + index + "_ankle");
+            actions.add("ik_leg_" + index + "_extension");
+            actions.add("ik_leg_" + index + "_propulsion");
+        }
+        for (int index = 1; index <= 2; index++) {
+            actions.add("ik_arm_" + index + "_yaw");
+            actions.add("ik_arm_" + index + "_hip");
+            actions.add("ik_arm_" + index + "_knee");
+        }
+        return List.copyOf(actions);
+    }
+
+    // Check whether this is a persisted IK role action
+    public static boolean isIkAction(String action) {
+        if (action == null || !action.startsWith("ik_")) return false;
+        String[] parts = action.split("_");
+        if (parts.length != 4 || !("leg".equals(parts[1]) || "arm".equals(parts[1]))) return false;
+        try {
+            int index = Integer.parseInt(parts[2]);
+            if (index < 1 || index > ("leg".equals(parts[1]) ? 8 : 2)) return false;
+        } catch (NumberFormatException ignored) {
+            return false;
+        }
+        return switch (parts[3]) {
+            case "yaw", "hip", "knee" -> true;
+            case "ankle" -> "leg".equals(parts[1]);
+            case "extension", "propulsion" -> "leg".equals(parts[1]);
+            default -> false;
+        };
+    }
+
+    // Get the player-facing IK action label
+    public static String ikActionLabel(String action) {
+        if (!isIkAction(action)) return "";
+        String[] parts = action.split("_");
+        boolean leg = "leg".equals(parts[1]);
+        String limb = (leg ? "Leg " : "Counterbalance Arm ") + parts[2];
+        String role = leg ? switch (parts[3]) {
+            case "yaw" -> "hip swivel (optional)";
+            case "hip" -> "upper-leg hinge";
+            case "knee" -> "lower-leg hinge";
+            case "ankle" -> "foot-level hinge (optional)";
+            case "extension" -> "leg extension actuator (optional)";
+            case "propulsion" -> "foot propulsion (optional)";
+            default -> parts[3];
+        } : switch (parts[3]) {
+            case "yaw" -> "shoulder swivel (optional)";
+            case "hip" -> "shoulder lift";
+            case "knee" -> "elbow hinge";
+            default -> parts[3];
+        };
+        return limb + " " + role;
+    }
     private final List<Group> groups = new ArrayList<>();
     private final Map<String, String> actionGroups = new LinkedHashMap<>();
     private final Set<UnitReference> excludedUnits = new LinkedHashSet<>();
+    private final Map<DockingConnectorReference, DockingConnectorGroup> dockingConnectorGroups =
+            new LinkedHashMap<>();
 
     public static ScmConfigurationProfile empty() {
         return new ScmConfigurationProfile();
@@ -95,6 +188,62 @@ public final class ScmConfigurationProfile {
         return Set.copyOf(excludedUnits);
     }
 
+    // Get the player-selected docking connector groups
+    public Map<DockingConnectorReference, DockingConnectorGroup> dockingConnectorGroups() {
+        return Map.copyOf(dockingConnectorGroups);
+    }
+
+    // Get one connector's group, defaulting newly discovered connectors to Any
+    public DockingConnectorGroup dockingConnectorGroup(UUID subLevelId, BlockPos blockPosition) {
+        return dockingConnectorGroups.getOrDefault(
+                new DockingConnectorReference(subLevelId, blockPosition), DockingConnectorGroup.ANY);
+    }
+
+    // Reconcile the persistent connector list with the live assembled ship
+    public boolean reconcileDockingConnectors(Collection<ShipControlMap.DockingConnector> connectors) {
+        Set<DockingConnectorReference> live = new LinkedHashSet<>();
+        if (connectors != null) {
+            for (ShipControlMap.DockingConnector connector : connectors) {
+                if (connector != null && connector.subLevelId() != null) {
+                    live.add(new DockingConnectorReference(
+                            connector.subLevelId(), connector.blockPosition()));
+                }
+            }
+        }
+        boolean changed = dockingConnectorGroups.keySet().removeIf(reference -> !live.contains(reference));
+        for (DockingConnectorReference reference : live) {
+            if (dockingConnectorGroups.putIfAbsent(reference, DockingConnectorGroup.ANY) == null) {
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    // Replace the player-selected docking connector groups
+    public void replaceDockingConnectorGroups(
+            Map<DockingConnectorReference, DockingConnectorGroup> requestedGroups
+    ) {
+        dockingConnectorGroups.clear();
+        if (requestedGroups == null) return;
+        requestedGroups.forEach((reference, group) -> {
+            if (reference != null && reference.isValid() && group != null) {
+                dockingConnectorGroups.put(reference, group);
+            }
+        });
+    }
+
+    // Assign one live docking connector to a binding group
+    public boolean setDockingConnectorGroup(
+            UUID subLevelId, BlockPos blockPosition, DockingConnectorGroup group
+    ) {
+        DockingConnectorReference reference = new DockingConnectorReference(subLevelId, blockPosition);
+        if (!reference.isValid() || group == null) return false;
+        DockingConnectorGroup previous = dockingConnectorGroups.get(reference);
+        if (group == previous) return false;
+        dockingConnectorGroups.put(reference, group);
+        return true;
+    }
+
     public boolean isConfiguredFor(ShipControlMap map) {
         return map != null && mapId != null && mapId.equals(map.id());
     }
@@ -105,6 +254,23 @@ public final class ScmConfigurationProfile {
 
     public static boolean isAccelerationAction(String action) {
         return ACCELERATION_ACTION.equals(action);
+    }
+
+    // Check whether an SCM configuration action assigns docking connectors
+    public static boolean isDockingConnectorAction(String action) {
+        return dockingConnectorGroupForAction(action) != null;
+    }
+
+    // Resolve the binding group selected by a docking connector action
+    public static @Nullable DockingConnectorGroup dockingConnectorGroupForAction(String action) {
+        if (action == null || !action.startsWith(DOCKING_CONNECTOR_ACTION_PREFIX)) return null;
+        return DockingConnectorGroup.fromId(action.substring(DOCKING_CONNECTOR_ACTION_PREFIX.length()));
+    }
+
+    // Get the SCM configuration action that assigns a docking connector group
+    public static String dockingConnectorAction(DockingConnectorGroup group) {
+        return DOCKING_CONNECTOR_ACTION_PREFIX
+                + (group == null ? DockingConnectorGroup.ANY : group).id();
     }
 
     /**
@@ -229,7 +395,8 @@ public final class ScmConfigurationProfile {
         groups.clear();
         if (requestedGroups != null) {
             requestedGroups.stream().filter(Objects::nonNull)
-                    .map(Group::normalized).forEach(groups::add);
+                    .map(Group::normalized).filter(group -> !group.units().isEmpty())
+                    .forEach(groups::add);
         }
         actionGroups.clear();
         if (requestedActionGroups != null) {
@@ -253,6 +420,8 @@ public final class ScmConfigurationProfile {
         CompoundTag tag = new CompoundTag();
         tag.putInt("Version", VERSION);
         tag.putString("VehicleType", vehicleType);
+        tag.putString("SteeringType", steeringType);
+        tag.putString("IkGait", ikGait);
         if(orientationOverride != null){
             tag.put("Orientation", orientationOverride.toTag());
         }
@@ -268,6 +437,10 @@ public final class ScmConfigurationProfile {
         ListTag excludedTags = new ListTag();
         excludedUnits.forEach(unit -> excludedTags.add(unit.toTag()));
         tag.put("ExcludedUnits", excludedTags);
+        ListTag connectorTags = new ListTag();
+        dockingConnectorGroups.forEach((reference, group) -> connectorTags.add(
+                reference.toTag(group)));
+        tag.put("DockingConnectorGroups", connectorTags);
         return tag;
     }
 
@@ -279,10 +452,14 @@ public final class ScmConfigurationProfile {
         profile.mapId = tag.hasUUID("MapId") ? tag.getUUID("MapId") : null;
         profile.orientationOverride = ScmOrientation.fromTag(tag.getCompound("Orientation")).orElse(null);
         profile.setVehicleType(tag.contains("VehicleType") ? tag.getString("VehicleType") : "auto");
+        profile.setSteeringType(tag.contains("SteeringType")
+                ? tag.getString("SteeringType") : ScmSteeringMode.CUSTOM.id());
+        profile.setIkGait(tag.contains("IkGait") ? tag.getString("IkGait")
+                : ScmLeggedGait.QUADRUPED.id());
         ListTag groupTags = tag.getList("Groups", Tag.TAG_COMPOUND);
         for (int index = 0; index < groupTags.size() && profile.groups.size() < 128; index++) {
             Group group = Group.fromTag(groupTags.getCompound(index));
-            if (!group.id().isBlank() && profile.groups.stream()
+            if (!group.id().isBlank() && !group.units().isEmpty() && profile.groups.stream()
                     .noneMatch(value -> value.id().equals(group.id()))) {
                 profile.groups.add(group);
             }
@@ -302,7 +479,82 @@ public final class ScmConfigurationProfile {
                 profile.excludedUnits.add(unit);
             }
         }
+        ListTag connectorTags = tag.getList("DockingConnectorGroups", Tag.TAG_COMPOUND);
+        for (int index = 0; index < connectorTags.size()
+                && profile.dockingConnectorGroups.size() < 512; index++) {
+            CompoundTag entry = connectorTags.getCompound(index);
+            DockingConnectorReference reference = DockingConnectorReference.fromTag(entry);
+            if (reference.isValid()) {
+                profile.dockingConnectorGroups.put(reference,
+                        DockingConnectorGroup.fromId(entry.getString("Group")));
+            }
+        }
         return profile;
+    }
+
+    // Store the available docking connector binding groups
+    public enum DockingConnectorGroup {
+        FUEL("fuel", "Fuel"),
+        ITEMS("items", "Items"),
+        FE("fe", "FE"),
+        FLUIDS("fluids", "Fluids"),
+        ANY("any", "Any"),
+        UNASSIGNED("unassigned", "Unassigned");
+
+        private final String id;
+        private final String label;
+
+        DockingConnectorGroup(String id, String label) {
+            this.id = id;
+            this.label = label;
+        }
+
+        // Get the stable group id
+        public String id() {
+            return id;
+        }
+
+        // Get the player-facing group label
+        public String label() {
+            return label;
+        }
+
+        // Resolve a stored group id
+        public static DockingConnectorGroup fromId(String id) {
+            for (DockingConnectorGroup group : values()) {
+                if (group.id.equalsIgnoreCase(id)) return group;
+            }
+            return ANY;
+        }
+    }
+
+    // Store one docking connector's stable assembled block identity
+    public record DockingConnectorReference(UUID subLevelId, BlockPos blockPosition) {
+        public DockingConnectorReference {
+            blockPosition = blockPosition == null ? BlockPos.ZERO : blockPosition.immutable();
+        }
+
+        // Check whether this identifies a real assembled connector
+        public boolean isValid() {
+            return subLevelId != null;
+        }
+
+        // Write the connector binding safely
+        public CompoundTag toTag(DockingConnectorGroup group) {
+            CompoundTag tag = new CompoundTag();
+            if (subLevelId != null) tag.putUUID("SubLevelId", subLevelId);
+            tag.putLong("Position", blockPosition.asLong());
+            tag.putString("Group", (group == null ? DockingConnectorGroup.ANY : group).id());
+            return tag;
+        }
+
+        // Read one docking connector binding
+        public static DockingConnectorReference fromTag(CompoundTag tag) {
+            return new DockingConnectorReference(tag.hasUUID("SubLevelId")
+                    ? tag.getUUID("SubLevelId") : null,
+                    tag.contains("Position", Tag.TAG_LONG)
+                            ? BlockPos.of(tag.getLong("Position")) : BlockPos.ZERO);
+        }
     }
 
     public record Group(String id, String label, Set<UnitReference> units) {

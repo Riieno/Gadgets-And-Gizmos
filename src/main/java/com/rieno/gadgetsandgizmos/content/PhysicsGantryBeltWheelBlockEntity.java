@@ -21,6 +21,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
@@ -28,7 +29,9 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 // Drive a gantry cable while keeping its remote wheel loaded without joining both ships structurally
 public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
@@ -42,6 +45,11 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     private static final long LINK_RESOLVE_RETRY_TICKS = 20L;
+    private static final long ASSEMBLY_TRANSFER_TIMEOUT_TICKS = 40L;
+    private static final Map<BeltWheelMoveKey, BeltWheelMoveTarget> ASSEMBLY_TRANSFER_TARGETS =
+            new ConcurrentHashMap<>();
+    private static final Map<BeltWheelMoveTransition, BeltWheelMoveKey> ASSEMBLY_TRANSFER_KEYS =
+            new ConcurrentHashMap<>();
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -66,6 +74,14 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
     private transient PhysicsGantryBeltWheelBlockEntity cachedLinkedWheel;
     // Next linked wheel resolve tick
     private transient long nextLinkedWheelResolveTick = Long.MIN_VALUE;
+    // Endpoint location before the current Sable transfer rewrites normal link data
+    @Nullable
+    private transient BlockPos assemblyTransferLinkedPos;
+    // Endpoint sub-level before the current Sable transfer rewrites normal link data
+    @Nullable
+    private transient UUID assemblyTransferLinkedSubLevelId;
+    // Last tick at which the transfer endpoint may be used
+    private transient long assemblyTransferExpiresAtTick;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -96,6 +112,7 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
             return;
         }
 
+        retargetLinkedWheelAfterAssemblyTransfer();
         boolean nextReceiveFromLink = linkedPos != null && linkedPos.equals(source);
         if (receivesFromLinkedWheel != nextReceiveFromLink) {
             receivesFromLinkedWheel = nextReceiveFromLink;
@@ -175,6 +192,49 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
         }
     }
 
+    // Record the source endpoint before Sable serializes it to its new location.
+    public void beginAssemblyTransfer(ServerLevel originLevel, BlockPos oldPos, BlockPos newPos) {
+        if (!hasLinkedTarget()) {
+            return;
+        }
+
+        UUID sourceSubLevelId = SimulatedHelper.getContainingSubLevelId(this);
+        assemblyTransferLinkedPos = linkedPos.immutable();
+        assemblyTransferLinkedSubLevelId = linkedSubLevelId;
+        BeltWheelMoveKey sourceKey = new BeltWheelMoveKey(
+                originLevel.dimension().location().toString(), oldPos.immutable(), sourceSubLevelId);
+        long expiresAtTick = originLevel.getGameTime() + ASSEMBLY_TRANSFER_TIMEOUT_TICKS;
+        ASSEMBLY_TRANSFER_TARGETS.put(sourceKey,
+                new BeltWheelMoveTarget(newPos.immutable(), null, false, expiresAtTick));
+        ASSEMBLY_TRANSFER_KEYS.put(new BeltWheelMoveTransition(
+                        originLevel.dimension().location().toString(), oldPos.immutable(), newPos.immutable()),
+                sourceKey);
+    }
+
+    // Record the endpoint Sable created so its linked wheel can retarget on the next tick.
+    public void finishAssemblyTransfer(ServerLevel originLevel, BlockPos oldPos, BlockPos newPos) {
+        BeltWheelMoveTransition transition = new BeltWheelMoveTransition(
+                originLevel.dimension().location().toString(), oldPos.immutable(), newPos.immutable());
+        BeltWheelMoveKey sourceKey = ASSEMBLY_TRANSFER_KEYS.get(transition);
+        if (sourceKey == null) {
+            return;
+        }
+
+        long expiresAtTick = originLevel.getGameTime() + ASSEMBLY_TRANSFER_TIMEOUT_TICKS;
+        assemblyTransferExpiresAtTick = expiresAtTick;
+        ASSEMBLY_TRANSFER_TARGETS.put(sourceKey, new BeltWheelMoveTarget(
+                newPos.immutable(), SimulatedHelper.getContainingSubLevelId(this), true, expiresAtTick));
+
+        // Sable transfers the wheels one at a time. Once the second endpoint
+        // arrives, repair both sides immediately instead of waiting for an
+        // eventual block-entity tick in the newly created sub-level.
+        retargetLinkedWheelAfterAssemblyTransfer();
+        PhysicsGantryBeltWheelBlockEntity linkedWheel = resolveLinkedWheel();
+        if (linkedWheel != null && wasMovedByAssemblyTransfer(linkedWheel)) {
+            linkedWheel.retargetLinkedWheelAfterAssemblyTransfer();
+        }
+    }
+
     // Resolve the linked wheel
     @Nullable
     public PhysicsGantryBeltWheelBlockEntity resolveLinkedWheel() {
@@ -203,8 +263,9 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
             return linkedWheel;
         }
 
-        if (linkedSubLevelId == null
-                && SubLevelBlockEntityCollector.isSubLevelPlotPosition(level, linkedPos)) {
+        UUID currentSubLevelId = SimulatedHelper.getContainingSubLevelId(this);
+        if (linkedSubLevelId == null && (currentSubLevelId != null
+                || SubLevelBlockEntityCollector.isSubLevelPlotPosition(level, linkedPos))) {
             PhysicsGantryBeltWheelBlockEntity migratedTarget =
                     SimulatedHelper.findBlockEntityIncludingSubLevels(
                             level, linkedPos, PhysicsGantryBeltWheelBlockEntity.class);
@@ -292,12 +353,82 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
         nextLinkedWheelResolveTick = Long.MIN_VALUE;
     }
 
+    // Update an endpoint that was moved in the same Sable assembly operation.
+    private void retargetLinkedWheelAfterAssemblyTransfer() {
+        if (level == null || linkedPos == null) {
+            return;
+        }
+
+        long gameTime = level.getGameTime();
+        pruneExpiredAssemblyTransfers(gameTime);
+        boolean hasTransferReference = assemblyTransferLinkedPos != null
+                && assemblyTransferExpiresAtTick >= gameTime;
+        BlockPos lookupPos = hasTransferReference ? assemblyTransferLinkedPos : linkedPos;
+        UUID lookupSubLevelId = hasTransferReference ? assemblyTransferLinkedSubLevelId : linkedSubLevelId;
+        if (assemblyTransferLinkedPos != null && !hasTransferReference) {
+            clearAssemblyTransferReference();
+        }
+        BeltWheelMoveKey linkedKey = new BeltWheelMoveKey(
+                level.dimension().location().toString(), lookupPos, lookupSubLevelId);
+        BeltWheelMoveTarget movedTarget = ASSEMBLY_TRANSFER_TARGETS.get(linkedKey);
+        if (movedTarget == null || !movedTarget.complete()) {
+            return;
+        }
+
+        if (linkedPos.equals(movedTarget.position())
+                && Objects.equals(linkedSubLevelId, movedTarget.subLevelId())) {
+            return;
+        }
+
+        linkedPos = movedTarget.position();
+        linkedSubLevelId = movedTarget.subLevelId();
+        clearAssemblyTransferReference();
+        invalidateLinkedWheelCache();
+        refreshKineticLink();
+        setChanged();
+        sendData();
+    }
+
+    // Remove expired transfer data after every endpoint has had a chance to retarget.
+    private static void pruneExpiredAssemblyTransfers(long gameTime) {
+        ASSEMBLY_TRANSFER_TARGETS.entrySet().removeIf(entry -> entry.getValue().expiresAtTick() < gameTime);
+        ASSEMBLY_TRANSFER_KEYS.entrySet().removeIf(entry ->
+                !ASSEMBLY_TRANSFER_TARGETS.containsKey(entry.getValue()));
+    }
+
+    // Clear the temporary source endpoint once the pair has been remapped.
+    private void clearAssemblyTransferReference() {
+        assemblyTransferLinkedPos = null;
+        assemblyTransferLinkedSubLevelId = null;
+        assemblyTransferExpiresAtTick = 0L;
+    }
+
+    // Check whether the endpoint was already recreated by the current transfer.
+    private static boolean wasMovedByAssemblyTransfer(PhysicsGantryBeltWheelBlockEntity wheel) {
+        UUID subLevelId = SimulatedHelper.getContainingSubLevelId(wheel);
+        return ASSEMBLY_TRANSFER_TARGETS.values().stream().anyMatch(target -> target.complete()
+                && target.position().equals(wheel.getBlockPos())
+                && Objects.equals(target.subLevelId(), subLevelId));
+    }
+
     // Get the endpoint key
     private static String endpointKey(PhysicsGantryBeltWheelBlockEntity be) {
         UUID subLevelId = SimulatedHelper.getContainingSubLevelId(be);
         String subLevel = subLevelId == null ? "world" : subLevelId.toString();
         BlockPos pos = be.getBlockPos();
         return subLevel + ":" + pos.getX() + ":" + pos.getY() + ":" + pos.getZ();
+    }
+
+    // Identify an endpoint before Sable transfers it.
+    private record BeltWheelMoveKey(String dimension, BlockPos position, UUID subLevelId) {
+    }
+
+    // Identify one Sable transfer operation.
+    private record BeltWheelMoveTransition(String dimension, BlockPos oldPos, BlockPos newPos) {
+    }
+
+    // Store the endpoint Sable recreated for a pending transfer.
+    private record BeltWheelMoveTarget(BlockPos position, UUID subLevelId, boolean complete, long expiresAtTick) {
     }
 
     // Write the physics gantry belt wheel
@@ -334,6 +465,12 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
         if (savedLinkedSubLevelId != null) {
             tag.putUUID("LinkedSubLevelId", savedLinkedSubLevelId);
         }
+        if (!clientPacket && assemblyTransferLinkedPos != null) {
+            tag.putLong("AssemblyTransferLinkedPos", assemblyTransferLinkedPos.asLong());
+            if (assemblyTransferLinkedSubLevelId != null) {
+                tag.putUUID("AssemblyTransferLinkedSubLevelId", assemblyTransferLinkedSubLevelId);
+            }
+        }
         tag.putBoolean("ReceivesFromLinkedWheel", receivesFromLinkedWheel);
     }
 
@@ -366,6 +503,11 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
                 || !Objects.equals(previousLinkedSubLevelId, linkedSubLevelId)) {
             invalidateLinkedWheelCache();
         }
+        assemblyTransferLinkedPos = tag.contains("AssemblyTransferLinkedPos")
+                ? BlockPos.of(tag.getLong("AssemblyTransferLinkedPos")) : null;
+        assemblyTransferLinkedSubLevelId = tag.contains("AssemblyTransferLinkedSubLevelId")
+                ? tag.getUUID("AssemblyTransferLinkedSubLevelId") : null;
+        assemblyTransferExpiresAtTick = 0L;
         receivesFromLinkedWheel = tag.getBoolean("ReceivesFromLinkedWheel");
         if (!clientPacket && tag.contains("GeneratedLinkSpeed")) {
             rebuildKineticNetworkOnLoad();

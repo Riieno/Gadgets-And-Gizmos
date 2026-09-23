@@ -16,12 +16,14 @@ import com.simibubi.create.content.equipment.wrench.IWrenchable;
 import com.simibubi.create.content.kinetics.simpleRelays.ICogWheel;
 import com.simibubi.create.content.kinetics.base.RotatedPillarKineticBlock;
 import com.simibubi.create.foundation.block.IBE;
+import dev.ryanhcode.sable.api.block.BlockSubLevelAssemblyListener;
 import com.simibubi.create.content.kinetics.belt.item.BeltConnectorItem;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.ItemInteractionResult;
@@ -45,7 +47,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 // Pair two kinetic belt wheels across the physical gantry cable
-public class PhysicsGantryBeltWheelBlock extends RotatedPillarKineticBlock implements IBE<PhysicsGantryBeltWheelBlockEntity>, ICogWheel, IWrenchable {
+public class PhysicsGantryBeltWheelBlock extends RotatedPillarKineticBlock
+        implements IBE<PhysicsGantryBeltWheelBlockEntity>, ICogWheel, IWrenchable, BlockSubLevelAssemblyListener {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -279,10 +282,26 @@ public class PhysicsGantryBeltWheelBlock extends RotatedPillarKineticBlock imple
     // Handle the remove event
     @Override
     public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean isMoving) {
-        if (!state.is(newState.getBlock())) {
+        if (!isMoving && !state.is(newState.getBlock())) {
             withBlockEntityDo(level, pos, be -> be.breakLink(true));
         }
         super.onRemove(state, level, pos, newState, isMoving);
+    }
+
+    // Preserve both ends of a belt when Sable moves them into or out of a sub-level.
+    @Override
+    public void beforeMove(ServerLevel originLevel, ServerLevel resultingLevel, BlockState newState,
+                           BlockPos oldPos, BlockPos newPos) {
+        withBlockEntityDo(originLevel, oldPos,
+                be -> be.beginAssemblyTransfer(originLevel, oldPos, newPos));
+    }
+
+    // Complete the pending endpoint remap after Sable has recreated the block entity.
+    @Override
+    public void afterMove(ServerLevel originLevel, ServerLevel resultingLevel, BlockState newState,
+                          BlockPos oldPos, BlockPos newPos) {
+        withBlockEntityDo(resultingLevel, newPos,
+                be -> be.finishAssemblyTransfer(originLevel, oldPos, newPos));
     }
 
     // Check if this has a shaft on the side

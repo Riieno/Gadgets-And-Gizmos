@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.registry;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.CreateThrusters;
+import com.rieno.gadgetsandgizmos.content.IonThrusterStacks;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariant;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariants;
 import com.rieno.gadgetsandgizmos.content.SupporterHeads;
@@ -113,9 +114,11 @@ public final class CTCreativeTabs {
         row = addSectionBanner(displayItems, BLOCKS_SECTION, row);
         int blockCount = 0;
         blockCount += accept(displayItems, searchItems, CTItems.THRUSTER);
+        blockCount += acceptStack(displayItems, searchItems, IonThrusterStacks.create());
         blockCount += accept(displayItems, searchItems, CTItems.SMALL_THRUSTER);
         blockCount += accept(displayItems, searchItems, CTItems.RCS_THRUSTER);
         blockCount += accept(displayItems, searchItems, CTItems.BLACKSTONE_ALLOY_BLOCK);
+        blockCount += accept(displayItems, searchItems, CTItems.BLACKSTONE_CASING);
         blockCount += accept(displayItems, searchItems, CTItems.FUEL_OXIDIZER);
         blockCount += accept(displayItems, searchItems, CTItems.ALTERNATOR);
         blockCount += accept(displayItems, searchItems, CTItems.ANDESITE_CABLE);
@@ -138,6 +141,8 @@ public final class CTCreativeTabs {
         blockCount += accept(displayItems, searchItems, CTItems.GYRO_REDSTONE_BRIDGE);
         blockCount += accept(displayItems, searchItems, CTItems.BIDIRECTIONAL_GEARBOX);
         blockCount += accept(displayItems, searchItems, CTItems.BI_DIRECTIONAL_GEARSHIFT);
+        blockCount += accept(displayItems, searchItems, CTItems.RATCHET_COGWHEEL);
+        blockCount += accept(displayItems, searchItems, CTItems.LARGE_RATCHET_COGWHEEL);
         blockCount += accept(displayItems, searchItems, CTItems.VERTICAL_BIDIRECTIONAL_GEARBOX);
         blockCount += accept(displayItems, searchItems, CTItems.ANALOGUE_JOYSTICK);
         blockCount += accept(displayItems, searchItems, CTItems.ANALOGUE_CONTRAPTION_CONTROLLER);
@@ -154,6 +159,10 @@ public final class CTCreativeTabs {
         blockCount += accept(displayItems, searchItems, CTItems.ADVANCED_NAVIGATION_TABLE);
         blockCount += accept(displayItems, searchItems, CTItems.DIAGNOSTIC_TABLET);
         blockCount += accept(displayItems, searchItems, CTItems.SHIPPING_MANIFEST);
+        blockCount += accept(displayItems, searchItems, CTItems.SMART_VAULT);
+        blockCount += accept(displayItems, searchItems, CTItems.SMART_BATTERY);
+        blockCount += accept(displayItems, searchItems, CTItems.SMART_TANK);
+        blockCount += accept(displayItems, searchItems, CTItems.WORKER_POD);
         row = padSection(displayItems, row, blockCount);
 
         // -----------------------------------------------------ITEMS-----------------------------------------------------

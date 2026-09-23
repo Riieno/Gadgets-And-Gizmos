@@ -2461,47 +2461,4 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         }
     }
 
-    // Store the tilt command
-    private record TiltCommand(double xDegrees, double zDegrees, Vec3 direction, ControlMode sourceMode,
-                               boolean active) {
-        // Get the neutral
-        static TiltCommand neutral(ControlMode sourceMode) {
-            return new TiltCommand(0.0D, 0.0D, new Vec3(0.0D, 1.0D, 0.0D), sourceMode, false);
-        }
-
-        // Create the tilt command from local vector
-        static TiltCommand fromLocalVector(double localX, double localZ, double maxTiltDegrees,
-                                           ControlMode sourceMode, boolean active) {
-            return fromDegrees(localZ * maxTiltDegrees, localX * maxTiltDegrees,
-                    maxTiltDegrees, sourceMode, active);
-        }
-
-        // Create the tilt command from degrees
-        static TiltCommand fromDegrees(double xDegrees, double zDegrees, double maxTiltDegrees,
-                                       ControlMode sourceMode, boolean active) {
-            double max = Math.max(0.0D, maxTiltDegrees);
-            double length = Math.hypot(xDegrees, zDegrees);
-            if (length > max && length > 1.0E-6D) {
-                double scale = max / length;
-                xDegrees *= scale;
-                zDegrees *= scale;
-            }
-            Vec3 dir = OrientationMath.directionFromAngles(Math.toRadians(xDegrees), Math.toRadians(zDegrees));
-            return new TiltCommand(xDegrees, zDegrees, dir, sourceMode, active);
-        }
-
-        // Copy the tilt command with the source
-        TiltCommand withSource(ControlMode sourceMode) {
-            return new TiltCommand(xDegrees, zDegrees, direction, sourceMode, active);
-        }
-    }
-
-    // Store the direct tilt input
-    private record DirectTiltInput(double localX, double localZ, double value) {
-    }
-
-    // Store the mounted sail sample
-    private record MountedSailSample(double power, double radius) {
-        private static final MountedSailSample EMPTY = new MountedSailSample(0.0D, 0.0D);
-    }
 }

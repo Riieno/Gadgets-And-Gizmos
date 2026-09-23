@@ -208,6 +208,8 @@ public final class CTConfigs {
         public final ModConfigSpec.BooleanValue preferStrawStatuesPoserGui;
         // Advanced controller V2 UI
         public final ModConfigSpec.BooleanValue advancedControllerV2Ui;
+        // Show the direct Worker Pod developer setup screen instead of the Worker Graph
+        public final ModConfigSpec.BooleanValue workerGraphDeveloperMode;
         // Thruster max volume
         public final ModConfigSpec.DoubleValue thrusterMaxVolume;
         // Thruster particle scale
@@ -239,6 +241,9 @@ public final class CTConfigs {
             advancedControllerV2Ui = builder
                     .comment("Use the V2 node graph interface for Advanced Contraption Controllers")
                     .define("advancedControllerV2Ui", true);
+            workerGraphDeveloperMode = builder
+                    .comment("Use the direct Worker Pod developer setup screen instead of the Worker Graph")
+                    .define("workerGraphDeveloperMode", false);
             thrusterMaxVolume = builder
                     .comment("Maximum local volume multiplier for thruster sounds (0 disables local thruster audio)")
                     .defineInRange("thrusterMaxVolume", 1.0D, 0.0D, 2.0D);

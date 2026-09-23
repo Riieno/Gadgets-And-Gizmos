@@ -174,8 +174,6 @@ final class DiagnosticTabletAutoApp {
         data.putLong("Cargo", resources.items());
         data.putLong("Fluids", resources.fluids());
         data.putLong("Energy", resources.energy());
-        data.putInt("StockNetworks",
-                controller.getShipStockNetworkSnapshot().networks().size());
         data.putBoolean("Pilot", controller.hasShippingSchedule());
         data.putLong("SampleTick", ctx.player().serverLevel().getGameTime());
         return data;

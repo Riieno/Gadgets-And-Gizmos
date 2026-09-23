@@ -656,12 +656,13 @@ public final class AccDisplayGuiProjection {
                         -TEXTURE_IDS.incrementAndGet(), minecraft.player.getInventory(), controller);
                 graph = new AdvancedContraptionControllerScreen(menu,
                         minecraft.player.getInventory(), Component.literal("Advanced Contraption Controller"));
-                guiWidth = minecraft.getWindow().getGuiScaledWidth();
-                guiHeight = minecraft.getWindow().getGuiScaledHeight();
+                graph.configureForProjection();
+                guiWidth = safeGuiDimension(minecraft.getWindow().getGuiScaledWidth(), 320);
+                guiHeight = safeGuiDimension(minecraft.getWindow().getGuiScaledHeight(), 240);
                 graph.init(minecraft, guiWidth, guiHeight);
             }
-            int nextWidth = minecraft.getWindow().getGuiScaledWidth();
-            int nextHeight = minecraft.getWindow().getGuiScaledHeight();
+            int nextWidth = safeGuiDimension(minecraft.getWindow().getGuiScaledWidth(), guiWidth);
+            int nextHeight = safeGuiDimension(minecraft.getWindow().getGuiScaledHeight(), guiHeight);
             if (nextWidth != guiWidth || nextHeight != guiHeight) {
                 guiWidth = nextWidth;
                 guiHeight = nextHeight;
@@ -676,6 +677,12 @@ public final class AccDisplayGuiProjection {
                 plotter.init(minecraft, guiWidth, guiHeight);
             }
             return true;
+        }
+
+        // Keep synthetic screen dimensions inside the range accepted by GUI integration mods
+        private static int safeGuiDimension(int value, int fallback) {
+            int resolved = value > 1 ? value : Math.max(2, fallback);
+            return Math.min(9_999_999, resolved);
         }
 
         // Draw the frame

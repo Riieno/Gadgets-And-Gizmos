@@ -16,6 +16,7 @@ import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget;
 import com.rieno.gadgetsandgizmos.neoforge.network.AileronBearingConfigPayload;
 import com.simibubi.create.foundation.gui.menu.AbstractSimiContainerScreen;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
@@ -23,6 +24,7 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.EnumMap;
 import java.util.List;
@@ -51,6 +53,9 @@ public class AileronBearingScreen extends AbstractSimiContainerScreen<AileronBea
     private static final int SLIDER_HIT_HEIGHT = 18;
     private static final int HANDLE_WIDTH = 6;
     private static final int HANDLE_HEIGHT = 17;
+    private static final int RANGE_LABEL_Y = 65;
+    private static final int RANGE_LABEL_WIDTH = 22;
+    private static final int RANGE_LABEL_HEIGHT = 11;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -82,6 +87,12 @@ public class AileronBearingScreen extends AbstractSimiContainerScreen<AileronBea
     private double dragStartMinAngle;
     // Current drag start max angle
     private double dragStartMaxAngle;
+    // Current inline angle editor
+    private EditBox angleEditor;
+    // Head being edited inline
+    private BearingHead editingHead;
+    // Tracks whether the inline editor is editing the minimum
+    private boolean editingMinAngle;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -152,6 +163,19 @@ public class AileronBearingScreen extends AbstractSimiContainerScreen<AileronBea
                 || activeHead == head && !draggingMinHandle;
         CTCreateScreenHelper.renderTntHorizontalRangeMinHandle(graphics, minX, sliderCenterY, minHovered);
         CTCreateScreenHelper.renderTntHorizontalRangeMaxHandle(graphics, maxX, sliderCenterY, maxHovered);
+        int labelY = y + RANGE_LABEL_Y;
+        int minLabelCenter = sliderLeft;
+        int maxLabelCenter = sliderLeft + SLIDER_ACTIVE_WIDTH;
+        if (angleEditor == null || editingHead != head) {
+            graphics.drawCenteredString(font, Component.literal(formatAngleLabel(minAngles.get(head))),
+                    minLabelCenter, labelY,
+                    CTCreateScreenHelper.SUBTLE_TEXT_COLOR);
+            graphics.drawCenteredString(font, Component.literal(formatAngleLabel(maxAngles.get(head))),
+                    maxLabelCenter, labelY,
+                    CTCreateScreenHelper.SUBTLE_TEXT_COLOR);
+        } else {
+            angleEditor.render(graphics, mouseX, mouseY, 0.0F);
+        }
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -177,6 +201,16 @@ public class AileronBearingScreen extends AbstractSimiContainerScreen<AileronBea
         mouseX = scalableGui.mouseX(mouseX);
         mouseY = scalableGui.mouseY(mouseY);
         if (btn == 0) {
+            if (angleEditor != null) {
+                if (angleEditor.mouseClicked(mouseX, mouseY, btn)) {
+                    return true;
+                }
+                commitAngleEditor();
+            }
+            if (openRangeEndpointEditor(mouseX, mouseY, BearingHead.PRIMARY)
+                    || openRangeEndpointEditor(mouseX, mouseY, BearingHead.SECONDARY)) {
+                return true;
+            }
             if (beginRangeDrag(mouseX, mouseY, BearingHead.PRIMARY)) {
                 return true;
             }
@@ -185,6 +219,50 @@ public class AileronBearingScreen extends AbstractSimiContainerScreen<AileronBea
             }
         }
         return super.mouseClicked(screenMouseX, screenMouseY, btn);
+    }
+
+    // Open a range endpoint editor by clicking its label
+    private boolean openRangeEndpointEditor(double mouseX, double mouseY, BearingHead head) {
+        int sliderLeft = leftPos + sliderX(head);
+        int labelY = topPos + RANGE_LABEL_Y;
+        int minWidth = Math.max(RANGE_LABEL_WIDTH, font.width(formatAngleLabel(minAngles.get(head))) + 2);
+        if (inside(mouseX, mouseY, sliderLeft - minWidth / 2, labelY - 1,
+                minWidth, RANGE_LABEL_HEIGHT)) {
+            openAngleEditor(head, true);
+            return true;
+        }
+        int maxWidth = Math.max(RANGE_LABEL_WIDTH, font.width(formatAngleLabel(maxAngles.get(head))) + 2);
+        if (inside(mouseX, mouseY, sliderLeft + SLIDER_ACTIVE_WIDTH - maxWidth / 2, labelY - 1,
+                maxWidth, RANGE_LABEL_HEIGHT)) {
+            openAngleEditor(head, false);
+            return true;
+        }
+        return false;
+    }
+
+    // Handle keys while editing an angle
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (angleEditor != null) {
+            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                commitAngleEditor();
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                closeAngleEditor();
+                return true;
+            }
+            return angleEditor.keyPressed(keyCode, scanCode, modifiers);
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    // Handle typed characters while editing an angle
+    @Override
+    public boolean charTyped(char codePoint, int modifiers) {
+        return angleEditor != null
+                ? angleEditor.charTyped(codePoint, modifiers)
+                : super.charTyped(codePoint, modifiers);
     }
 
     // Handle mouse dragged
@@ -216,8 +294,54 @@ public class AileronBearingScreen extends AbstractSimiContainerScreen<AileronBea
     // Handle the close event
     @Override
     public void onClose() {
+        commitAngleEditor();
         sendConfig();
         super.onClose();
+    }
+
+    // Open one inline angle editor
+    private void openAngleEditor(BearingHead head, boolean minimum) {
+        editingHead = head;
+        editingMinAngle = minimum;
+        int x = leftPos + sliderX(head) - 9;
+        int y = topPos + RANGE_LABEL_Y - 3;
+        angleEditor = new EditBox(font, x, y, SLIDER_ACTIVE_WIDTH + 18, 16,
+                Component.literal((minimum ? "Min" : "Max") + " angle"));
+        angleEditor.setMaxLength(16);
+        angleEditor.setFilter(AileronBearingScreen::isPartialAngle);
+        angleEditor.setValue(String.format(Locale.ROOT, "%.1f",
+                minimum ? minAngles.get(head) : maxAngles.get(head)));
+        angleEditor.setCursorPosition(angleEditor.getValue().length());
+        angleEditor.setHighlightPos(0);
+        angleEditor.setFocused(true);
+    }
+
+    // Commit the current inline angle editor
+    private void commitAngleEditor() {
+        if (angleEditor == null || editingHead == null) return;
+        try {
+            double value = Mth.clamp(Double.parseDouble(angleEditor.getValue()), -rangeLimit(), rangeLimit());
+            if (editingMinAngle) {
+                minAngles.put(editingHead, Math.min(value, maxAngles.get(editingHead)));
+            } else {
+                maxAngles.put(editingHead, Math.max(value, minAngles.get(editingHead)));
+            }
+            dirty = true;
+        } catch (NumberFormatException ignored) {
+        }
+        closeAngleEditor();
+        if (dirty) sendConfig();
+    }
+
+    // Close the inline angle editor
+    private void closeAngleEditor() {
+        angleEditor = null;
+        editingHead = null;
+    }
+
+    // Check whether text is a valid partial angle
+    private static boolean isPartialAngle(String value) {
+        return value != null && value.matches("-?(?:\\d+(?:\\.\\d*)?|\\.\\d*)?");
     }
 
     // Begin the range drag
@@ -419,6 +543,11 @@ public class AileronBearingScreen extends AbstractSimiContainerScreen<AileronBea
     // Get the range limit
     private double rangeLimit() {
         return CTConfigs.COMMON.bearingMaxPivotAngleDeg.get();
+    }
+
+    // Format one live range endpoint label
+    private static String formatAngleLabel(double val) {
+        return String.format(Locale.ROOT, "%.1f\u00B0", val);
     }
 
     // Format the angle

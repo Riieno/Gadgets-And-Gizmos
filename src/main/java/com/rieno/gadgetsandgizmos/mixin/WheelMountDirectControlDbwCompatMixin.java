@@ -9,10 +9,14 @@ package com.rieno.gadgetsandgizmos.mixin;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.compat.computercraft.WheelMountControlBridge;
+import com.rieno.gadgetsandgizmos.compat.offroad.WheelMountTerrainRaycastCompatibility;
 import com.rieno.gadgetsandgizmos.lib.control.IDirectControlReceiver;
+import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyTopologyCache;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import dev.ryanhcode.sable.api.physics.handle.RigidBodyHandle;
+import dev.ryanhcode.sable.mixinterface.clip_overwrite.ClipContextExtension;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
+import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -25,6 +29,7 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
@@ -33,7 +38,7 @@ import java.util.Locale;
 // Route Wheel Mount Direct Control DBW Compat through the addon's direct-control API
 @Mixin(targets = "dev.ryanhcode.offroad.content.blocks.wheel_mount.WheelMountBlockEntity")
 public abstract class WheelMountDirectControlDbwCompatMixin extends SmartBlockEntity
-        implements IDirectControlReceiver, WheelMountControlBridge {
+        implements IDirectControlReceiver, WheelMountControlBridge, WheelMountTerrainRaycastCompatibility {
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -94,6 +99,10 @@ public abstract class WheelMountDirectControlDbwCompatMixin extends SmartBlockEn
     // Current physical sample position z
     @Unique
     private double ct$physicalSamplePositionZ;
+    // Cached connected assembly used to keep suspension terrain casts off the mounting vehicle
+    @Unique
+    private final SableAssemblyTopologyCache ct$wheelMountTerrainTopology =
+            new SableAssemblyTopologyCache();
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -197,6 +206,23 @@ public abstract class WheelMountDirectControlDbwCompatMixin extends SmartBlockEn
         cir.setReturnValue(-(blended / 15.0D) * Math.PI / 4.0D * (2.0D / 3.0D));
     }
 
+    // Keep the suspension from treating its connected bearing assembly as terrain
+    @Redirect(
+            method = "computeMaxExtensionToTerrain",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Ldev/ryanhcode/sable/mixinterface/clip_overwrite/ClipContextExtension;sable$setIgnoredSubLevel(Ldev/ryanhcode/sable/sublevel/SubLevel;)V",
+                    remap = false
+            ),
+            require = 1,
+            remap = false
+    )
+    private void ct$ignoreConnectedAssemblyTerrain(
+            ClipContextExtension context, SubLevel wheelSubLevel
+    ) {
+        ct$configureWheelMountTerrainCast(context, wheelSubLevel);
+    }
+
     // Capture the physical wheel impulse
     @Inject(
             method = "sable$physicsTick",
@@ -226,6 +252,12 @@ public abstract class WheelMountDirectControlDbwCompatMixin extends SmartBlockEn
     // Convert the wheel mount direct control DBW compat to redstone
     private static int ct$toRedstone(float val) {
         return Mth.clamp(Mth.ceil(val * 15.0f), 0, 15);
+    }
+
+    // Get the terrain topology cache
+    @Override
+    public SableAssemblyTopologyCache ct$getWheelMountTerrainTopology() {
+        return ct$wheelMountTerrainTopology;
     }
 
     // Get the left override

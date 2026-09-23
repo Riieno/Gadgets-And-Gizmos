@@ -11,6 +11,7 @@ package com.rieno.gadgetsandgizmos.content;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDataProvider;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
+import com.rieno.gadgetsandgizmos.lib.power.LongEnergyStorage;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
 import com.simibubi.create.api.equipment.goggles.IHaveGoggleInformation;
@@ -26,6 +27,7 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.neoforged.neoforge.items.IItemHandler;
@@ -58,11 +60,18 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
     private static final String TAG_MANUAL_GRAPH_TEXT = "ManualGraphText";
     private static final String TAG_MANIFEST_COLOR = "ManifestColor";
     private static final String TAG_MANIFEST_GLOWING = "ManifestGlowing";
+    private static final String TAG_RESOURCE_USES = "ResourceUses";
+    private static final String TAG_RESOURCE_USES_CONFIGURED = "ResourceUsesConfigured";
     private static final String TAG_PREVIEW = "Preview";
     private static final String TAG_STACK = "Stack";
     private static final String TAG_AMOUNT = "Amount";
     private static final String TAG_TEXT = "Text";
     public static final int DEFAULT_MANIFEST_COLOR = 0x2F8F4E;
+    public static final int USE_ITEMS = 1;
+    public static final int USE_FLUIDS = 1 << 1;
+    public static final int USE_FUEL = 1 << 2;
+    public static final int USE_ENERGY = 1 << 3;
+    private static final int ALL_RESOURCE_USES = USE_ITEMS | USE_FLUIDS | USE_FUEL | USE_ENERGY;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -83,9 +92,9 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
     // Tracks whether fluid handler is available
     private boolean hasFluidHandler;
     // Current energy
-    private int energy;
+    private long energy;
     // Current energy capacity
-    private int energyCapacity;
+    private long energyCapacity;
     // Tracks whether combined manifest is set
     private boolean combinedManifest;
     // Current manual graph text
@@ -96,6 +105,10 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
     private int manifestColor = DEFAULT_MANIFEST_COLOR;
     // Tracks whether manifest glowing is set
     private boolean manifestGlowing;
+    // Selected worker resource uses
+    private int resourceUses;
+    // Tracks whether resource uses were selected by the player
+    private boolean resourceUsesConfigured;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -159,6 +172,7 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
                 combinedManifest);
         IEnergyStorage energyHandler = ShippingManifestBlock.findEnergyHandler(
                 level, targetPos, targetSide);
+        LongEnergyStorage longEnergyHandler = ShippingManifestBlock.findLongEnergyHandler(level, targetPos);
         if ((fluidHandler != null || energyHandler != null)
                 && !state.getValue(ShippingManifestBlock.SHOW_BLANK)) {
             level.setBlock(worldPosition, state.setValue(ShippingManifestBlock.SHOW_BLANK, true),
@@ -170,8 +184,12 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
         ShippingManifestBlock.FluidContents fluids = fluidHandler == null
                 ? ShippingManifestBlock.FluidContents.EMPTY
                 : ShippingManifestBlock.collectFluids(fluidHandler);
-        int nextEnergy = energyHandler == null ? 0 : energyHandler.getEnergyStored();
-        int nextEnergyCapacity = energyHandler == null ? 0 : energyHandler.getMaxEnergyStored();
+        long nextEnergy = longEnergyHandler != null ? longEnergyHandler.getEnergyStored()
+                : energyHandler == null ? 0L : energyHandler.getEnergyStored();
+        long nextEnergyCapacity = longEnergyHandler != null ? longEnergyHandler.getMaxEnergyStored()
+                : energyHandler == null ? 0L : energyHandler.getMaxEnergyStored();
+        int nextResourceUses = resourceUsesConfigured ? resourceUses
+                : detectedResourceUses(itemHandler, fluidHandler, energyHandler, longEnergyHandler);
 
         int nextItemTypes = items.size();
         int nextFluidTypes = fluids.entries.size();
@@ -195,7 +213,7 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
                     Component.translatable("gui.createthrusters.shipping_manifest.empty_fluids").getString() + " "
                             + compactFluidFill(0L, fluids.totalCapacity)));
         }
-        if (energyHandler != null) {
+        if (energyHandler != null || longEnergyHandler != null) {
             nextDisplayEntries.add(textDisplay(Component.translatable(
                     "gui.createthrusters.shipping_manifest.energy",
                     nextEnergy, nextEnergyCapacity,
@@ -205,6 +223,7 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
         if (itemTypes == nextItemTypes && fluidTypes == nextFluidTypes
                 && hasFluidHandler == nextHasFluidHandler
                 && energy == nextEnergy && energyCapacity == nextEnergyCapacity
+                && resourceUses == nextResourceUses
                 && entriesMatch(displayEntries, nextDisplayEntries)) {
             return;
         }
@@ -214,6 +233,7 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
         hasFluidHandler = nextHasFluidHandler;
         energy = nextEnergy;
         energyCapacity = nextEnergyCapacity;
+        resourceUses = nextResourceUses;
         displayEntries = List.copyOf(nextDisplayEntries);
         setChanged();
         sendData();
@@ -276,6 +296,102 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
     // Check if this is combined manifest
     public boolean isCombinedManifest() {
         return combinedManifest;
+    }
+
+    // Get the selected worker resource uses
+    public int resourceUses() {
+        return (resourceUsesConfigured ? resourceUses : detectedDefaultResourceUses())
+                & ALL_RESOURCE_USES;
+    }
+
+    // Check whether workers may use items through this manifest
+    public boolean usesItems() {
+        return (resourceUses() & USE_ITEMS) != 0;
+    }
+
+    // Check whether workers may use ordinary fluids through this manifest
+    public boolean usesFluids() {
+        return (resourceUses() & USE_FLUIDS) != 0;
+    }
+
+    // Check whether workers may use fuel through this manifest
+    public boolean usesFuel() {
+        return (resourceUses() & USE_FUEL) != 0;
+    }
+
+    // Check whether workers may use FE through this manifest
+    public boolean usesEnergy() {
+        return (resourceUses() & USE_ENERGY) != 0;
+    }
+
+    // Get the resource uses available from the attached storage
+    public int availableResourceUses() {
+        if (level == null) return 0;
+        BlockState state = getBlockState();
+        BlockPos targetPos = ShippingManifestBlock.attachedTargetPos(worldPosition, state);
+        Direction targetSide = ShippingManifestBlock.attachedTargetSide(state);
+        IFluidHandler fluids = ShippingManifestBlock.resolveFluidHandler(
+                level, targetPos, targetSide, combinedManifest);
+        int uses = detectedResourceUses(
+                ShippingManifestBlock.findItemHandler(level, targetPos, targetSide), fluids,
+                ShippingManifestBlock.findEnergyHandler(level, targetPos, targetSide),
+                ShippingManifestBlock.findLongEnergyHandler(level, targetPos));
+        return fluids == null ? uses : uses | USE_FUEL;
+    }
+
+    // Detect the default worker roles without automatically treating every fluid as fuel
+    private int detectedDefaultResourceUses() {
+        if (level == null) return resourceUses;
+        BlockState state = getBlockState();
+        BlockPos targetPos = ShippingManifestBlock.attachedTargetPos(worldPosition, state);
+        Direction targetSide = ShippingManifestBlock.attachedTargetSide(state);
+        return detectedResourceUses(
+                ShippingManifestBlock.findItemHandler(level, targetPos, targetSide),
+                ShippingManifestBlock.resolveFluidHandler(level, targetPos, targetSide, combinedManifest),
+                ShippingManifestBlock.findEnergyHandler(level, targetPos, targetSide),
+                ShippingManifestBlock.findLongEnergyHandler(level, targetPos));
+    }
+
+    // Update the worker resource uses selected by the player
+    public boolean setResourceUses(int uses) {
+        int allowed = availableResourceUses();
+        int nextUses = uses & allowed & ALL_RESOURCE_USES;
+        if (resourceUsesConfigured && resourceUses == nextUses) return false;
+        resourceUses = nextUses;
+        resourceUsesConfigured = true;
+        setChanged();
+        sendData();
+        return true;
+    }
+
+    // Get the selected resource uses for a manifested storage target
+    public static int attachedResourceUses(Level level, BlockPos targetPos) {
+        if (level == null || targetPos == null) return -1;
+        int uses = 0;
+        boolean found = false;
+        for (Direction direction : Direction.values()) {
+            BlockPos manifestPos = targetPos.relative(direction);
+            if (!(level.getBlockEntity(manifestPos) instanceof ShippingManifestBlockEntity manifest)
+                    || !(manifest.getBlockState().getBlock() instanceof ShippingManifestBlock)) continue;
+            if (!ShippingManifestBlock.attachedTargetPos(manifestPos,
+                    manifest.getBlockState()).equals(targetPos)) continue;
+            uses |= manifest.resourceUses();
+            found = true;
+        }
+        return found ? uses & ALL_RESOURCE_USES : -1;
+    }
+
+    // Detect the default resource uses from the attached storage capabilities
+    private static int detectedResourceUses(
+            IItemHandler items,
+            IFluidHandler fluids,
+            IEnergyStorage energy,
+            LongEnergyStorage longEnergy
+    ) {
+        int uses = items == null ? 0 : USE_ITEMS;
+        if (fluids != null) uses |= USE_FLUIDS;
+        if (energy != null || longEnergy != null) uses |= USE_ENERGY;
+        return uses;
     }
 
     // Get the manifest color
@@ -397,6 +513,8 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
         tag.putBoolean(TAG_COMBINED_MANIFEST, combinedManifest);
         tag.putInt(TAG_MANIFEST_COLOR, manifestColor);
         tag.putBoolean(TAG_MANIFEST_GLOWING, manifestGlowing);
+        tag.putInt(TAG_RESOURCE_USES, resourceUses());
+        tag.putBoolean(TAG_RESOURCE_USES_CONFIGURED, resourceUsesConfigured);
         tag.putString(TAG_MANUAL_GRAPH_TEXT, manualGraphText);
     }
 
@@ -407,6 +525,8 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
         tag.putBoolean(TAG_COMBINED_MANIFEST, combinedManifest);
         tag.putInt(TAG_MANIFEST_COLOR, manifestColor);
         tag.putBoolean(TAG_MANIFEST_GLOWING, manifestGlowing);
+        tag.putInt(TAG_RESOURCE_USES, resourceUses());
+        tag.putBoolean(TAG_RESOURCE_USES_CONFIGURED, resourceUsesConfigured);
         if (!manualGraphText.isBlank()) {
             tag.putString(TAG_MANUAL_GRAPH_TEXT, manualGraphText);
         }
@@ -415,8 +535,8 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
         }
         tag.putInt(TAG_ITEM_TYPES, itemTypes);
         tag.putInt(TAG_FLUID_TYPES, fluidTypes);
-        tag.putInt(TAG_ENERGY, energy);
-        tag.putInt(TAG_ENERGY_CAPACITY, energyCapacity);
+        tag.putLong(TAG_ENERGY, energy);
+        tag.putLong(TAG_ENERGY_CAPACITY, energyCapacity);
         tag.putBoolean(TAG_HAS_FLUID_HANDLER, hasFluidHandler);
         ListTag previewTag = new ListTag();
         for (DisplayEntry entry : displayEntries) {
@@ -438,14 +558,16 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
                 ? tag.getInt(TAG_MANIFEST_COLOR) & 0xFFFFFF
                 : getStateManifestColor();
         manifestGlowing = tag.getBoolean(TAG_MANIFEST_GLOWING);
+        resourceUses = tag.getInt(TAG_RESOURCE_USES) & ALL_RESOURCE_USES;
+        resourceUsesConfigured = tag.getBoolean(TAG_RESOURCE_USES_CONFIGURED);
         manualGraphText = tag.getString(TAG_MANUAL_GRAPH_TEXT);
         if (!clientPacket) {
             return;
         }
         itemTypes = tag.getInt(TAG_ITEM_TYPES);
         fluidTypes = tag.getInt(TAG_FLUID_TYPES);
-        energy = tag.getInt(TAG_ENERGY);
-        energyCapacity = tag.getInt(TAG_ENERGY_CAPACITY);
+        energy = tag.getLong(TAG_ENERGY);
+        energyCapacity = tag.getLong(TAG_ENERGY_CAPACITY);
         hasFluidHandler = tag.getBoolean(TAG_HAS_FLUID_HANDLER);
         ListTag previewTag = tag.getList(TAG_PREVIEW, Tag.TAG_COMPOUND);
         List<DisplayEntry> loadedEntries = new ArrayList<>(previewTag.size());

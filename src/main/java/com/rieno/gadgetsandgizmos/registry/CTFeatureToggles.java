@@ -90,6 +90,7 @@ public final class CTFeatureToggles {
         define(blocks, "thruster", true);
         define(blocks, "rcs_thruster", true);
         define(blocks, "blackstone_alloy_block", true);
+        define(blocks, "blackstone_casing", true);
         define(blocks, "fuel_oxidizer", true);
         define(blocks, "thruster_bearing", true);
         define(blocks, "thruster_bearing_link", true);
@@ -107,6 +108,8 @@ public final class CTFeatureToggles {
         define(blocks, "gyro_redstone_bridge", false);
         define(blocks, "bidirectional_gearbox", true);
         define(blocks, "bi_directional_gearshift", true);
+        define(blocks, "ratchet_cogwheel", true);
+        define(blocks, "large_ratchet_cogwheel", true);
         define(blocks, "analogue_joystick", true);
         define(blocks, "analogue_contraption_controller", true);
         define(blocks, "contraption_network_linker_plane", true);
@@ -131,6 +134,7 @@ public final class CTFeatureToggles {
         define(blocks, "physics_gantry_carriage", true);
         define(blocks, "physics_gantry_shaft", true);
         define(blocks, "physics_gantry_belt_wheel", true);
+        define(blocks, "physics_staff_anchor", true);
         BLOCK_DEFAULTS = immutableCopy(blocks);
 
         LinkedHashMap<String, Boolean> items = new LinkedHashMap<>();
@@ -141,6 +145,7 @@ public final class CTFeatureToggles {
         define(items, "computation_mechanism", true);
         define(items, "incomplete_computation_mechanism", true);
         define(items, "blackstone_alloy_block", true);
+        define(items, "blackstone_casing", true);
         define(items, "small_thruster", true);
         define(items, "fuel_oxidizer", true);
         define(items, "thruster_bearing", true);
@@ -155,6 +160,8 @@ public final class CTFeatureToggles {
         define(items, "gyro_redstone_bridge", false);
         define(items, "bidirectional_gearbox", true);
         define(items, "bi_directional_gearshift", true);
+        define(items, "ratchet_cogwheel", true);
+        define(items, "large_ratchet_cogwheel", true);
         define(items, "vertical_bidirectional_gearbox", true);
         define(items, "analogue_joystick", true);
         define(items, "analogue_contraption_controller", true);
@@ -228,6 +235,7 @@ public final class CTFeatureToggles {
         itemBlockDependencies.put("thruster", "thruster");
         itemBlockDependencies.put("rcs_thruster", "rcs_thruster");
         itemBlockDependencies.put("blackstone_alloy_block", "blackstone_alloy_block");
+        itemBlockDependencies.put("blackstone_casing", "blackstone_casing");
         itemBlockDependencies.put("small_thruster", "thruster");
         itemBlockDependencies.put("fuel_oxidizer", "fuel_oxidizer");
         itemBlockDependencies.put("thruster_bearing", "thruster_bearing");
@@ -242,6 +250,8 @@ public final class CTFeatureToggles {
         itemBlockDependencies.put("gyro_redstone_bridge", "gyro_redstone_bridge");
         itemBlockDependencies.put("bidirectional_gearbox", "bidirectional_gearbox");
         itemBlockDependencies.put("bi_directional_gearshift", "bi_directional_gearshift");
+        itemBlockDependencies.put("ratchet_cogwheel", "ratchet_cogwheel");
+        itemBlockDependencies.put("large_ratchet_cogwheel", "large_ratchet_cogwheel");
         itemBlockDependencies.put("vertical_bidirectional_gearbox", "bidirectional_gearbox");
         itemBlockDependencies.put("analogue_joystick", "analogue_joystick");
         itemBlockDependencies.put("analogue_contraption_controller", "analogue_contraption_controller");
@@ -390,24 +400,6 @@ public final class CTFeatureToggles {
         StartupFeatureValues values = readStartupFeatureValues();
         applyServerOverrides(values.blocks(), values.items(), values.entities());
         dedicatedServerRegistrationPrepared = true;
-    }
-
-    // Check if this should register block
-    public static boolean shouldRegisterBlock(String id) {
-        if (!FMLEnvironment.dist.isDedicatedServer()) {
-            return true;
-        }
-        prepareDedicatedServerRegistration();
-        return isBlockEnabled(id);
-    }
-
-    // Check if this should register item
-    public static boolean shouldRegisterItem(String id) {
-        if (!FMLEnvironment.dist.isDedicatedServer()) {
-            return true;
-        }
-        prepareDedicatedServerRegistration();
-        return isItemEnabled(id);
     }
 
     // Apply the server overrides

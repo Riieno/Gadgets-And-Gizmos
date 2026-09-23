@@ -93,7 +93,11 @@ import com.rieno.gadgetsandgizmos.neoforge.network.ServerboundZiplineInputPacket
 import com.rieno.gadgetsandgizmos.neoforge.network.ServerboundZiplineMountPacket;
 import com.rieno.gadgetsandgizmos.neoforge.network.ShippingManifestOpenPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ShippingManifestRefreshPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.ShippingManifestUsesPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ShippingAutoRefuelPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.ShippingRouteEditPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.ShippingRouteSplinePayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.ShippingRouteVisibilityPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ShipDockConfigPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ShipDockOpenPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ThrusterConfigPayload;
@@ -101,6 +105,7 @@ import com.rieno.gadgetsandgizmos.neoforge.network.ThrusterFuelTankPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ThrusterSlotPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ThrusterBearingRangePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.VectorBearingConfigPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.WorkerPodConfigPayload;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.registry.CTEntityTypes;
 import com.rieno.gadgetsandgizmos.util.MobHauntingConversions;
@@ -259,10 +264,20 @@ public final class CTCommonEvents {
                 // ------------------------------------SHIPPING / TOOLS------------------------------------
                 registrar.playToServer(ShippingManifestRefreshPayload.TYPE, ShippingManifestRefreshPayload.STREAM_CODEC,
                                 ShippingManifestRefreshPayload::handle);
+                registrar.playToServer(ShippingManifestUsesPayload.TYPE, ShippingManifestUsesPayload.STREAM_CODEC,
+                                ShippingManifestUsesPayload::handle);
                 registrar.playToServer(ShippingAutoRefuelPayload.TYPE, ShippingAutoRefuelPayload.STREAM_CODEC,
                                 ShippingAutoRefuelPayload::handle);
+                registrar.playToServer(ShippingRouteVisibilityPayload.TYPE,
+                                ShippingRouteVisibilityPayload.STREAM_CODEC,
+                                ShippingRouteVisibilityPayload::handle);
+                registrar.playToServer(ShippingRouteEditPayload.TYPE,
+                                ShippingRouteEditPayload.STREAM_CODEC,
+                                ShippingRouteEditPayload::handle);
                 registrar.playToServer(ShipDockConfigPayload.TYPE, ShipDockConfigPayload.STREAM_CODEC,
                                 ShipDockConfigPayload::handle);
+                registrar.playToServer(WorkerPodConfigPayload.TYPE, WorkerPodConfigPayload.STREAM_CODEC,
+                                WorkerPodConfigPayload::handle);
                 registrar.playToServer(DiagnosticTabletActionPayload.TYPE, DiagnosticTabletActionPayload.STREAM_CODEC,
                                 DiagnosticTabletActionPayload::handle);
                 registrar.playToServer(ContraptionNetworkLinkerSyncPayload.TYPE, ContraptionNetworkLinkerSyncPayload.STREAM_CODEC,
@@ -332,6 +347,9 @@ public final class CTCommonEvents {
                 registrar.playToClient(PathfinderDebugRendererPayload.TYPE,
                                 PathfinderDebugRendererPayload.STREAM_CODEC,
                                 PathfinderDebugRendererPayload::handle);
+                registrar.playToClient(ShippingRouteSplinePayload.TYPE,
+                                ShippingRouteSplinePayload.STREAM_CODEC,
+                                ShippingRouteSplinePayload::handle);
                 // ------------------------------------CLIENT RUNTIME / CONFIG------------------------------------
                 registrar.playToClient(ControllerRuntimeSyncPayload.TYPE, ControllerRuntimeSyncPayload.STREAM_CODEC,
                                 ControllerRuntimeSyncPayload::handle);
@@ -461,6 +479,21 @@ public final class CTCommonEvents {
         if (CTBlockEntities.INDUSTRIAL_MOTOR != null) {
             evt.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, CTBlockEntities.INDUSTRIAL_MOTOR.get(),
                     (IndustrialMotorBlockEntity be, Direction side) -> be.getEnergyStorage());
+        }
+        if (CTBlockEntities.SMART_VAULT != null) {
+            evt.registerBlockEntity(Capabilities.ItemHandler.BLOCK, CTBlockEntities.SMART_VAULT.get(),
+                    (com.rieno.gadgetsandgizmos.content.SmartVaultBlockEntity be, Direction side) ->
+                            be.getItemHandler());
+        }
+        if (CTBlockEntities.SMART_TANK != null) {
+            evt.registerBlockEntity(Capabilities.FluidHandler.BLOCK, CTBlockEntities.SMART_TANK.get(),
+                    (com.rieno.gadgetsandgizmos.content.SmartTankBlockEntity be, Direction side) ->
+                            be.getFluidHandler());
+        }
+        if (CTBlockEntities.SMART_BATTERY != null) {
+            evt.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, CTBlockEntities.SMART_BATTERY.get(),
+                    (com.rieno.gadgetsandgizmos.content.SmartBatteryBlockEntity be, Direction side) ->
+                            be.getEnergyHandler());
         }
         // ------------------------------------OPTIONAL COMPAT------------------------------------
         if (ModList.get().isLoaded("computercraft")) {

@@ -23,6 +23,7 @@ import net.createmod.catnip.data.Iterate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Vec3i;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -32,7 +33,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.WeakHashMap;
 
 // Keep a physics gantry shaft linked to its carriage across root and Sable levels
 public class PhysicsGantryShaftBlockEntity extends KineticBlockEntity
@@ -46,6 +49,7 @@ public class PhysicsGantryShaftBlockEntity extends KineticBlockEntity
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     private static final double SEQUENCE_EPSILON = 1.0E-6D;
+    private static final Map<Level, TrackedCarriageSnapshot> TRACKED_CARRIAGE_SNAPSHOTS = new WeakHashMap<>();
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -61,6 +65,10 @@ public class PhysicsGantryShaftBlockEntity extends KineticBlockEntity
     private Level previousLevelRef;
     // Previous shaft pos
     private BlockPos previousShaftPos;
+    // Connected carriage cache tick
+    private long connectedCarriageCacheTick = Long.MIN_VALUE;
+    // Connected carriage cache
+    private List<PhysicsGantryCarriageBlockEntity> connectedCarriageCache = List.of();
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -112,15 +120,19 @@ public class PhysicsGantryShaftBlockEntity extends KineticBlockEntity
             return;
         }
 
-        if (previousLevelRef != null && previousShaftPos != null
-                && (previousLevelRef != level || !previousShaftPos.equals(worldPosition))) {
+        boolean firstObservation = previousLevelRef == null || previousShaftPos == null;
+        boolean movedBetweenLevels = !firstObservation
+                && (previousLevelRef != level || !previousShaftPos.equals(worldPosition));
+        if (movedBetweenLevels) {
             moveAdjacentDisassembledCarriagesAcrossLevels(previousLevelRef, previousShaftPos, level, worldPosition);
         }
 
         previousLevelRef = level;
         previousShaftPos = worldPosition.immutable();
 
-        pullAdjacentDisassembledCarriagesIntoCurrentLevel();
+        if (firstObservation || movedBetweenLevels) {
+            pullAdjacentDisassembledCarriagesIntoCurrentLevel();
+        }
     }
     // Validate the attached carriage blocks
     public void checkAttachedCarriageBlocks() {
@@ -151,7 +163,8 @@ public class PhysicsGantryShaftBlockEntity extends KineticBlockEntity
             if (blockEntity instanceof PhysicsGantryCarriageBlockEntity carriage) {
                 carriageBlockEntity = carriage;
             } else {
-                carriageBlockEntity = SimulatedHelper.findBlockEntityIncludingSubLevels(level, offset, PhysicsGantryCarriageBlockEntity.class);
+                carriageBlockEntity = SubLevelBlockEntityCollector.findLoadedIncludingSubLevels(
+                        level, offset, PhysicsGantryCarriageBlockEntity.class);
             }
 
             if (carriageBlockEntity != null && carriageBlockEntity.hasActiveAttachmentAnchor()) {
@@ -170,6 +183,10 @@ public class PhysicsGantryShaftBlockEntity extends KineticBlockEntity
         if (level == null || getBlockState().getBlock() != CTBlocks.PHYSICS_GANTRY_SHAFT.get()) {
             return List.of();
         }
+        long gameTime = level.getGameTime();
+        if (connectedCarriageCacheTick == gameTime) {
+            return connectedCarriageCache;
+        }
 
         List<PhysicsGantryCarriageBlockEntity> carriages = new ArrayList<>();
         Set<PhysicsGantryCarriageBlockEntity> seen = Collections.newSetFromMap(new IdentityHashMap<>());
@@ -183,7 +200,7 @@ public class PhysicsGantryShaftBlockEntity extends KineticBlockEntity
             BlockEntity local = level.getBlockEntity(carriagePos);
             PhysicsGantryCarriageBlockEntity carriage = local instanceof PhysicsGantryCarriageBlockEntity found
                     ? found
-                    : SimulatedHelper.findBlockEntityIncludingSubLevels(
+                    : SubLevelBlockEntityCollector.findLoadedIncludingSubLevels(
                             level, carriagePos, PhysicsGantryCarriageBlockEntity.class);
             if (carriage == null || carriage.isRemoved()) {
                 continue;
@@ -200,15 +217,14 @@ public class PhysicsGantryShaftBlockEntity extends KineticBlockEntity
         }
 
         Direction shaftDirection = getBlockState().getValue(PhysicsGantryShaftBlock.FACING);
-        for (SubLevel subLevel : SableLevelApi.subLevels(level)) {
-            for (BlockEntity blockEntity : SubLevelBlockEntityCollector.getBlockEntities(subLevel)) {
-                if (blockEntity instanceof PhysicsGantryCarriageBlockEntity carriage
-                        && carriage.isAttachedToShaftBlock(worldPosition, shaftDirection)) {
-                    addConnectedCarriage(carriages, seen, carriage);
-                }
+        for (PhysicsGantryCarriageBlockEntity carriage : trackedSubLevelCarriages(level)) {
+            if (carriage.isAttachedToShaftBlock(worldPosition, shaftDirection)) {
+                addConnectedCarriage(carriages, seen, carriage);
             }
         }
-        return List.copyOf(carriages);
+        connectedCarriageCacheTick = gameTime;
+        connectedCarriageCache = List.copyOf(carriages);
+        return connectedCarriageCache;
     }
 
     // Get the connected block entities
@@ -230,6 +246,39 @@ public class PhysicsGantryShaftBlockEntity extends KineticBlockEntity
         if (!carriage.isRemoved() && seen.add(carriage)) {
             carriages.add(carriage);
         }
+    }
+
+    // Collect sub-level carriages once per root level tick instead of once per shaft block
+    private static List<PhysicsGantryCarriageBlockEntity> trackedSubLevelCarriages(Level level) {
+        ServerLevel rootLevel = SableLevelApi.serverLevel(level);
+        Level cacheLevel = rootLevel == null ? level : rootLevel;
+        long gameTime = cacheLevel.getGameTime();
+        synchronized (TRACKED_CARRIAGE_SNAPSHOTS) {
+            TrackedCarriageSnapshot cached = TRACKED_CARRIAGE_SNAPSHOTS.get(cacheLevel);
+            if (cached != null && cached.gameTime() == gameTime) {
+                return cached.carriages();
+            }
+
+            List<PhysicsGantryCarriageBlockEntity> carriages = new ArrayList<>();
+            Set<PhysicsGantryCarriageBlockEntity> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+            for (SubLevel subLevel : SableLevelApi.subLevels(cacheLevel)) {
+                for (BlockEntity blockEntity : SubLevelBlockEntityCollector.getBlockEntities(subLevel)) {
+                    if (blockEntity instanceof PhysicsGantryCarriageBlockEntity carriage
+                            && !carriage.isRemoved() && seen.add(carriage)) {
+                        carriages.add(carriage);
+                    }
+                }
+            }
+            List<PhysicsGantryCarriageBlockEntity> snapshot = List.copyOf(carriages);
+            TRACKED_CARRIAGE_SNAPSHOTS.put(cacheLevel,
+                    new TrackedCarriageSnapshot(gameTime, snapshot));
+            return snapshot;
+        }
+    }
+
+    // Store one per-level, per-tick carriage snapshot
+    private record TrackedCarriageSnapshot(long gameTime,
+                                            List<PhysicsGantryCarriageBlockEntity> carriages) {
     }
 
     // Handle the speed changed event
@@ -257,7 +306,8 @@ public class PhysicsGantryShaftBlockEntity extends KineticBlockEntity
         if (other instanceof PhysicsGantryCarriageBlockEntity carriage) {
             carriageBlockEntity = carriage;
         } else {
-            carriageBlockEntity = SimulatedHelper.findBlockEntityIncludingSubLevels(level, other.getBlockPos(), PhysicsGantryCarriageBlockEntity.class);
+            carriageBlockEntity = SubLevelBlockEntityCollector.findLoadedIncludingSubLevels(
+                    level, other.getBlockPos(), PhysicsGantryCarriageBlockEntity.class);
         }
 
         if (carriageBlockEntity == null || !carriageBlockEntity.hasActiveAttachmentAnchor()) {
@@ -342,7 +392,8 @@ public class PhysicsGantryShaftBlockEntity extends KineticBlockEntity
             }
 
             PhysicsGantryCarriageBlockEntity carriage =
-                    SimulatedHelper.findBlockEntityIncludingSubLevels(level, carriagePos, PhysicsGantryCarriageBlockEntity.class);
+                    SubLevelBlockEntityCollector.findLoadedIncludingSubLevels(
+                            level, carriagePos, PhysicsGantryCarriageBlockEntity.class);
             if (carriage == null || carriage.isRemoved() || carriage.isAssembledToSubLevel()) {
                 continue;
             }

@@ -1,0 +1,18 @@
+{
+  "parent": "createthrusters:processing_upgrade_haunting_t2",
+  "display": {
+    "icon": { "id": "createthrusters:processing_upgrade_haunting_t3" },
+    "title": { "translate": "advancement.createthrusters.processing_upgrade.haunting_t3.title" },
+    "description": { "translate": "advancement.createthrusters.processing_upgrade.description" },
+    "frame": "task",
+    "show_toast": true,
+    "announce_to_chat": true,
+    "hidden": false
+  },
+  "criteria": {
+    "has_processing_upgrade_haunting_t3": {
+      "trigger": "minecraft:inventory_changed",
+      "conditions": { "items": [{ "items": ["createthrusters:processing_upgrade_haunting_t3"] }] }
+    }
+  }
+}

@@ -51,8 +51,12 @@ public class PlayerMannequinSkinLayer extends RenderLayer<PlayerMannequinEntity,
 
         PlayerMannequinModel model = getParentModel();
         model.showSkinLayersOnly(entity);
-        VertexConsumer consumer = buffer.getBuffer(RenderType.entityNoOutline(getTextureLocation(entity)));
-        model.renderToBuffer(poseStack, consumer, packedLight, LivingEntityRenderer.getOverlayCoords(entity, 0.0F));
-        model.showBaseOnly(entity);
+        try {
+            VertexConsumer consumer = buffer.getBuffer(RenderType.entityTranslucent(getTextureLocation(entity)));
+            model.renderToBuffer(poseStack, consumer, packedLight,
+                    LivingEntityRenderer.getOverlayCoords(entity, 0.0F));
+        } finally {
+            model.showBaseOnly(entity);
+        }
     }
 }

@@ -387,7 +387,8 @@ public final class AdvancedGraphCatalog {
                         "force_full_initialization", "boolean",
                         "ignore_bearings", "boolean",
                         "ignore_sails", "boolean",
-                        "ignore_thrusters", "boolean"),
+                        "ignore_thrusters", "boolean",
+                        "ignore_docking_connectors", "boolean"),
                 initOutputs(), true);
         register("ship_stop_initialization", "ship_control",
                 Map.of("exec", "exec"), commandOutputs(), false);
@@ -462,6 +463,8 @@ public final class AdvancedGraphCatalog {
         register("ship_strafe_right", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_ascend", "ship_control", amountInputs(), commandOutputs(), false);
         register("ship_descend", "ship_control", amountInputs(), commandOutputs(), false);
+        register("ship_jump", "ship_control", amountInputs(), commandOutputs(), false);
+        register("ship_crouch", "ship_control", amountInputs(), commandOutputs(), false);
         register("ship_stabilize", "ship_control",
                 Map.of("exec", "exec", "strength", "number"), commandOutputs(), true);
         register("ship_decelerate", "ship_control",
@@ -564,6 +567,9 @@ public final class AdvancedGraphCatalog {
         register("shipping_travel_metrics", "ship_control", Map.of(), Map.ofEntries(
                 Map.entry("shipping_active", "boolean"),
                 Map.entry("shipping_pilot_present", "boolean"),
+                Map.entry("shipping_seated_players", "number"),
+                Map.entry("shipping_seat_count", "number"),
+                Map.entry("shipping_available_seats", "number"),
                 Map.entry("shipping_docked", "boolean"),
                 Map.entry("shipping_waiting", "boolean"),
                 Map.entry("shipping_diverted", "boolean"),
@@ -621,6 +627,114 @@ public final class AdvancedGraphCatalog {
                 commandOutputs(), false);
         register("shipping_skip", "shipping_schedule", Map.of("exec", "exec"),
                 commandOutputs(), false);
+        // ------------------------------------WORKER GRAPH------------------------------------
+        register("worker_routine", "worker", Map.of("workers", "string", "loop_routine", "boolean", "idle_delay", "number"),
+                Map.of("start", "exec", "worker", "worker"), true);
+        register("worker_task_event", "worker", Map.ofEntries(
+                Map.entry("task_name", "string"), Map.entry("default_priority", "number"),
+                Map.entry("interrupt_policy", "string"), Map.entry("resume_previous_task", "boolean"),
+                Map.entry("allow_re_entry", "boolean")), Map.ofEntries(
+                Map.entry("triggered", "exec"), Map.entry("worker", "worker"),
+                Map.entry("requester", "entity"), Map.entry("priority", "number"),
+                Map.entry("request", "task_request")), true);
+        register("worker_source_container", "worker_containers", Map.ofEntries(
+                Map.entry("mode", "string"), Map.entry("target", "target"),
+                Map.entry("preference", "string"), Map.entry("search_range", "number")),
+                Map.of("source", "container_selector"), false);
+        register("worker_destination_container", "worker_containers", Map.ofEntries(
+                Map.entry("mode", "string"), Map.entry("target", "target"),
+                Map.entry("preference", "string"), Map.entry("search_range", "number")),
+                Map.of("destination", "container_selector"), false);
+        register("worker_item_filter", "worker_filters", Map.ofEntries(
+                Map.entry("tags", "tag_filter"), Map.entry("enabled", "boolean"),
+                Map.entry("mode", "string"), Map.entry("items", "string"),
+                Map.entry("match_components", "boolean"), Map.entry("ignore_damage", "boolean"),
+                Map.entry("match_mod", "string")), Map.of("filter", "item_filter"), false);
+        register("worker_fluid_filter", "worker_filters", Map.ofEntries(
+                Map.entry("tags", "tag_filter"), Map.entry("enabled", "boolean"),
+                Map.entry("mode", "string"), Map.entry("fluids", "string"),
+                Map.entry("match_components", "boolean")), Map.of("filter", "fluid_filter"), false);
+        register("worker_tag_filter", "worker_filters", Map.ofEntries(
+                Map.entry("mode", "string"), Map.entry("match", "string"), Map.entry("tags", "string")),
+                Map.of("filter", "tag_filter"), false);
+        register("worker_move_items", "worker_transfer", Map.ofEntries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("source", "container_selector"),
+                Map.entry("filter", "item_filter"), Map.entry("amount", "number"),
+                Map.entry("amount_mode", "string"), Map.entry("retry", "boolean"),
+                Map.entry("timeout", "number")), Map.ofEntries(
+                Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                Map.entry("items", "item_payload"), Map.entry("moved_amount", "number"),
+                Map.entry("failure_reason", "failure_reason")), true);
+        register("worker_move_fluid", "worker_transfer", Map.ofEntries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("source", "container_selector"),
+                Map.entry("filter", "fluid_filter"), Map.entry("amount", "number"),
+                Map.entry("amount_mode", "string"), Map.entry("retry", "boolean"),
+                Map.entry("timeout", "number")), Map.ofEntries(
+                Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                Map.entry("fluid", "fluid_payload"), Map.entry("moved_amount", "number"),
+                Map.entry("failure_reason", "failure_reason")), true);
+        register("worker_move_fe", "worker_transfer", Map.ofEntries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("source", "container_selector"),
+                Map.entry("amount", "number"), Map.entry("amount_mode", "string"),
+                Map.entry("minimum_source_reserve", "number"), Map.entry("retry", "boolean")),
+                Map.ofEntries(Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                        Map.entry("fe", "fe_payload"), Map.entry("moved_amount", "number"),
+                        Map.entry("failure_reason", "failure_reason")), true);
+        register("worker_deposit", "worker_transfer", Map.ofEntries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("destination", "container_selector"),
+                Map.entry("items", "item_payload"), Map.entry("fluid", "fluid_payload"),
+                Map.entry("fe", "fe_payload"), Map.entry("amount_mode", "string"),
+                Map.entry("retry", "boolean"), Map.entry("return_remainder", "boolean")),
+                Map.ofEntries(Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                        Map.entry("remaining_items", "item_payload"),
+                        Map.entry("remaining_fluid", "fluid_payload"),
+                        Map.entry("remaining_fe", "fe_payload"),
+                        Map.entry("failure_reason", "failure_reason")), true);
+        register("worker_process", "worker_actions", Map.ofEntries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("processor", "target"),
+                Map.entry("items", "item_payload"), Map.entry("fluid", "fluid_payload"),
+                Map.entry("fe", "fe_payload"), Map.entry("result_item_filter", "item_filter"),
+                Map.entry("result_fluid_filter", "fluid_filter"), Map.entry("operation", "string"),
+                Map.entry("collect_result", "boolean"), Map.entry("timeout", "number")),
+                Map.ofEntries(Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                        Map.entry("items", "item_payload"), Map.entry("fluid", "fluid_payload"),
+                        Map.entry("fe", "fe_payload"), Map.entry("failure_reason", "failure_reason")), true);
+        register("worker_craft", "worker_actions", Map.ofEntries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("target", "target"),
+                Map.entry("items", "item_payload"), Map.entry("recipe", "string"),
+                Map.entry("count", "number"), Map.entry("use_worker_inventory", "boolean")),
+                Map.ofEntries(Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                        Map.entry("items", "item_payload"), Map.entry("failure_reason", "failure_reason")), true);
+        register("worker_give_items", "worker_actions", Map.ofEntries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("items", "item_payload"),
+                Map.entry("recipient", "entity"), Map.entry("follow_recipient", "boolean"),
+                Map.entry("drop_if_full", "boolean"), Map.entry("timeout", "number")),
+                Map.ofEntries(Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                        Map.entry("remaining_items", "item_payload"),
+                        Map.entry("failure_reason", "failure_reason")), true);
+        register("worker_move_to", "worker_actions", Map.ofEntries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("target", "target"), Map.entry("entity", "entity"),
+                Map.entry("position", "position"), Map.entry("target_mode", "string"),
+                Map.entry("stopping_distance", "number"), Map.entry("follow_moving_target", "boolean"),
+                Map.entry("timeout", "number")), Map.ofEntries(Map.entry("arrived", "exec"),
+                Map.entry("failed", "exec"), Map.entry("failure_reason", "failure_reason")), true);
+        register("request_worker_task", "worker_bridge", Map.ofEntries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"),
+                Map.entry("worker_group", "worker_group"), Map.entry("workers", "string"),
+                Map.entry("request_type", "string"), Map.entry("destination_type", "string"),
+                Map.entry("priority", "number"), Map.entry("requester", "entity"), Map.entry("task", "string"),
+                Map.entry("items", "string"), Map.entry("item_amount", "number"),
+                Map.entry("item_destination", "target"), Map.entry("fluids", "string"),
+                Map.entry("fluid_amount", "number"), Map.entry("fluid_destination", "target"),
+                Map.entry("fe_amount", "number"), Map.entry("fe_destination", "target"),
+                Map.entry("destination_player", "string"), Map.entry("can_craft", "boolean"),
+                Map.entry("interrupt", "string"), Map.entry("wait_for_completion", "boolean")),
+                Map.ofEntries(Map.entry("accepted", "exec"), Map.entry("rejected", "exec"),
+                        Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                        Map.entry("request", "task_request"),
+                        Map.entry("failure_reason", "failure_reason")), true);
+        register("cancel_worker_task", "worker_bridge", Map.of("exec", "exec", "request", "task_request"),
+                Map.of("cancelled", "exec", "not_found", "exec"), true);
     }
 
     // Initialize the advanced graph catalog
@@ -738,6 +852,8 @@ public final class AdvancedGraphCatalog {
                 || "ship_reverse".equals(type)
                 || "ship_ascend".equals(type)
                 || "ship_descend".equals(type)
+                || "ship_jump".equals(type)
+                || "ship_crouch".equals(type)
                 || "ship_yaw".equals(type)
                 || "ship_yaw_left".equals(type)
                 || "ship_yaw_right".equals(type)
@@ -872,8 +988,7 @@ public final class AdvancedGraphCatalog {
             boolean connected
     ) {
         if (!isShipSpeedPort(node, port)
-                || connected
-                || !node.data().getBoolean(SHIP_SPEED_PERCENT_TAG)) {
+                || !connected && !node.data().getBoolean(SHIP_SPEED_PERCENT_TAG)) {
             return val;
         }
         double percent = Double.isFinite(val)
@@ -1369,6 +1484,8 @@ public final class AdvancedGraphCatalog {
             case "ship_strafe_right" -> "Strafe Right";
             case "ship_ascend" -> "Ascend";
             case "ship_descend" -> "Descend";
+            case "ship_jump" -> "Jump";
+            case "ship_crouch" -> "Crouch";
             case "ship_stabilize" -> "Stabilize";
             case "ship_decelerate" -> "Decelerate";
             case "ship_brake" -> "Brake";
@@ -1389,6 +1506,24 @@ public final class AdvancedGraphCatalog {
             case "shipping_resume" -> "Resume";
             case "shipping_restart" -> "Restart";
             case "shipping_skip" -> "Skip";
+            // ------------------------------------WORKER GRAPH------------------------------------
+            case "worker_routine" -> "Worker Routine";
+            case "worker_task_event" -> "Worker Task Event";
+            case "worker_source_container" -> "Source Container";
+            case "worker_destination_container" -> "Destination Container";
+            case "worker_item_filter" -> "Item Filter";
+            case "worker_fluid_filter" -> "Fluid Filter";
+            case "worker_tag_filter" -> "Tag Filter";
+            case "worker_move_items" -> "Move Items";
+            case "worker_move_fluid" -> "Move Fluid";
+            case "worker_move_fe" -> "Move FE";
+            case "worker_deposit" -> "Deposit";
+            case "worker_process" -> "Process";
+            case "worker_craft" -> "Craft";
+            case "worker_give_items" -> "Give Items";
+            case "worker_move_to" -> "Move To";
+            case "request_worker_task" -> "Worker Request";
+            case "cancel_worker_task" -> "Cancel Worker Task";
             case "adrc_nth_order" -> "ADRC Nth Order";
             default -> titleCase(id);
         };
@@ -1413,6 +1548,12 @@ public final class AdvancedGraphCatalog {
             case "functions" -> "Functions";
             case "ship_control" -> "Ship Control";
             case "shipping_schedule" -> "Shipping Schedule";
+            case "worker" -> "Worker";
+            case "worker_containers" -> "Containers";
+            case "worker_filters" -> "Filters";
+            case "worker_transfer" -> "Transfer";
+            case "worker_actions" -> "Actions";
+            case "worker_bridge" -> "Worker";
             default -> titleCase(category);
         };
     }
@@ -1435,6 +1576,12 @@ public final class AdvancedGraphCatalog {
             case "functions" -> 0xFF8F73D8;
             case "ship_control" -> 0xFF4FC3C8;
             case "shipping_schedule" -> 0xFFDB8C4B;
+            case "worker" -> 0xFFF0C75E;
+            case "worker_containers" -> 0xFFBC8A55;
+            case "worker_filters" -> 0xFF5D9FE3;
+            case "worker_transfer" -> 0xFF59C58B;
+            case "worker_actions" -> 0xFFA57AE7;
+            case "worker_bridge" -> 0xFFF0C75E;
             default -> 0xFF7D8A99;
         };
     }
