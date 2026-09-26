@@ -146,7 +146,7 @@ public class JVMGraphCompiler {
                 throw new IllegalArgumentException("Node %s with type `%s` has no %s port".formatted(edge.fromNode(), nodeA.typeStr, edge.fromPort()));
             }
             if(snapEdge.portB == -1) {
-                throw new IllegalArgumentException("Node %s with type `%s` has no %s port".formatted(edge.toNode(), nodeB.typeStr, edge.toPort()));
+                throw new IllegalArgumentException("Node %s with type `%s` has no `%s` port".formatted(edge.toNode(), nodeB.typeStr, edge.toPort()));
             }
             nodeA.outputEdge(snapEdge.portA, snapEdge);
             nodeB.inputs[snapEdge.portB] = snapEdge;

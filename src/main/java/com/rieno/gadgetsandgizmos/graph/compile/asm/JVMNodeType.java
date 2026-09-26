@@ -7,6 +7,7 @@ import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapEdge;
 import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapNode;
 import com.rieno.gadgetsandgizmos.graph.compile.util.GeneratorHelper;
 import com.rieno.gadgetsandgizmos.graph.compile.util.UnboundStateField;
+import com.rieno.gadgetsandgizmos.graph.eval.EvaluatableNode;
 import com.rieno.gadgetsandgizmos.graph.type.ValueType;
 import com.rieno.gadgetsandgizmos.graph.type.ValueTypes;
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
@@ -19,9 +20,10 @@ import org.jetbrains.annotations.Nullable;
 import java.lang.reflect.Field;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 
-public abstract class JVMNodeType {
+public abstract class JVMNodeType extends EvaluatableNode {
     @Getter
     public final Object2ObjectLinkedOpenHashMap<String, ValueType<?>> declaredInputPort;
     @Getter
@@ -119,7 +121,5 @@ public abstract class JVMNodeType {
         return null;
     }
 
-    public void compileCustomControlFlow(GeneratorHelper mv, SnapNode sourceNode, CompilationContext context) {
-
-    }
+    public void compileCustomControlFlow(GeneratorHelper mv, SnapNode sourceNode, CompilationContext context) {}
 }

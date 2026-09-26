@@ -1,4 +1,4 @@
-package com.rieno.gadgetsandgizmos.graph.compile.node_type.generic;
+package com.rieno.gadgetsandgizmos.graph.compile.node_type.generic.record;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
@@ -26,20 +26,20 @@ import org.objectweb.asm.Type;
 import java.lang.reflect.RecordComponent;
 import java.util.List;
 
-public class GenericNodeType extends JVMNodeType {
+public class GenericRecordFunctionNode extends JVMNodeType {
     private final MyBody inlinedBody;
-    private static final Cache<Integer, InlinedGenericNodeType.MyBody<?, ?>> inlinedBodies = CacheBuilder.
+    private static final Cache<Integer, InlinedGenericRecordFunctionNode.MyBody<?, ?>> inlinedBodies = CacheBuilder.
         newBuilder()
         .weakValues()
         .build();
     private static int inlinedBodiesIdx = 0;
     protected final int inlinedBodyIndex = inlinedBodiesIdx++;
-    private final Handle getBodyHandle = HandleExtractor.getMethod(GenericNodeType::body);
+    private final Handle getBodyHandle = HandleExtractor.getMethod(GenericRecordFunctionNode::body);
     private final Handle invokeBodyHandle = HandleExtractor.<MyBody, Record, Record>getMethod(MyBody::calculate);
     public final Class<? extends Record> recordIn, recordOut;
 
     @SneakyThrows
-    protected <In extends Record, Out extends Record> GenericNodeType(MyBody<In, Out> inlinedBody, Class<In> recordIn, Class<Out> recordOut) {
+    protected <In extends Record, Out extends Record> GenericRecordFunctionNode(MyBody<In, Out> inlinedBody, Class<In> recordIn, Class<Out> recordOut) {
         super();
         checkParam(recordIn, "inputType");
         checkParam(recordOut, "outputType");

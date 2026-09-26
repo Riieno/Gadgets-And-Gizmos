@@ -9,12 +9,11 @@ import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import lombok.SneakyThrows;
 import net.neoforged.neoforge.common.util.Lazy;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 import org.objectweb.asm.Type;
-import org.objectweb.asm.tree.ClassNode;
-import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.*;
 
 import java.lang.reflect.Constructor;
-import java.lang.reflect.Method;
 import java.lang.reflect.RecordComponent;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -24,6 +23,18 @@ public class RecordInfo {
     public final Object2ObjectArrayMap<String, Type> fieldMap = new Object2ObjectArrayMap<>();
     public final Lazy<Object2ObjectMap<String, MethodNode>> methodMap;
     public final Constructor<?> canonicalCtor;
+
+    @Nullable
+    public String toPropertyName(AbstractInsnNode insn) {
+        String name;
+        if(insn instanceof MethodInsnNode method) {
+            if(!method.desc.startsWith("()")) return null;
+            name = method.name;
+        } else if(insn instanceof FieldInsnNode method) {
+            name = method.name;
+        } else return null;
+        return fieldMap.containsKey(name) ? name : null;
+    }
 
     public MethodNode findMethod(String name, String methodDesc, boolean checkReturnType) {
         MethodNode node = methodMap.get().get(methodKey(name, methodDesc));

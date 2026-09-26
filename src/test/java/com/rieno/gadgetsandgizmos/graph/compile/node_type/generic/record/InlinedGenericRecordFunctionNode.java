@@ -1,4 +1,4 @@
-package com.rieno.gadgetsandgizmos.graph.compile.node_type.generic;
+package com.rieno.gadgetsandgizmos.graph.compile.node_type.generic.record;
 
 import com.llamalad7.mixinextras.expression.impl.flow.FlowValue;
 import com.llamalad7.mixinextras.expression.impl.flow.postprocessing.InstantiationInfo;
@@ -8,6 +8,8 @@ import com.rieno.gadgetsandgizmos.graph.compile.CompilationContext;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.Inputs;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.Outputs;
 import com.rieno.gadgetsandgizmos.graph.compile.node_type.generic.util.RecordInfo;
+import com.rieno.gadgetsandgizmos.graph.compile.node_type.generic.util.UsageInterpreter;
+import com.rieno.gadgetsandgizmos.graph.compile.node_type.generic.util.UsageStatistics;
 import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapNode;
 import com.rieno.gadgetsandgizmos.graph.compile.util.*;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
@@ -33,7 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-public class InlinedGenericNodeType extends GenericNodeType {
+public class InlinedGenericRecordFunctionNode extends GenericRecordFunctionNode {
 
     private static final InsnList DUMMY = new InsnList();
     protected final CodeStats codeStats;
@@ -41,7 +43,7 @@ public class InlinedGenericNodeType extends GenericNodeType {
     /**
      * Caller sensitive, DO NOT WRAP
      */
-    public <In extends Record, Out extends Record> InlinedGenericNodeType(Class<In> recordIn, Class<Out> recordOut, MyBody<In, Out> inlinedBody) {
+    public <In extends Record, Out extends Record> InlinedGenericRecordFunctionNode(Class<In> recordIn, Class<Out> recordOut, MyBody<In, Out> inlinedBody) {
         this(inlinedBody, recordIn, recordOut, collectStats(PtrExtractor.tryExtractMethod(1)));
 
         //handleBody = execBody(handle);
@@ -49,7 +51,7 @@ public class InlinedGenericNodeType extends GenericNodeType {
     }
 
     @SneakyThrows
-    protected <In extends Record, Out extends Record> InlinedGenericNodeType(MyBody<In, Out> inlinedBody, Class<In> recordIn, Class<Out> recordOut, CodeStats codeStats) {
+    protected <In extends Record, Out extends Record> InlinedGenericRecordFunctionNode(MyBody<In, Out> inlinedBody, Class<In> recordIn, Class<Out> recordOut, CodeStats codeStats) {
         super(inlinedBody, recordIn, recordOut);
         this.codeStats = codeStats;
         //handleBody = execBody(handle);
@@ -243,7 +245,7 @@ public class InlinedGenericNodeType extends GenericNodeType {
                     }));
                     continue;
                 } else if(node instanceof MethodInsnNode || node instanceof FieldInsnNode) {
-                    String prop = recordProp(node, inputRecord);
+                    String prop = inputRecord.toPropertyName(node);
                     if(prop == null) break shortcut;
                     shortcut2: {
                         if(!UsageInterpreter.isInput(topStack(frames[i], 1))) break shortcut2;
@@ -297,21 +299,9 @@ public class InlinedGenericNodeType extends GenericNodeType {
         return found;
     }
 
-    @Nullable
-    private static String recordProp(AbstractInsnNode insn, RecordInfo recordInfo) {
-        String name;
-        if(insn instanceof MethodInsnNode method) {
-            if(!method.desc.startsWith("()")) return null;
-            name = method.name;
-        } else if(insn instanceof FieldInsnNode method) {
-            name = method.name;
-        } else return null;
-        return recordInfo.fieldMap.containsKey(name) ? name : null;
-    }
-
 
     @Nullable
-    private static List<String> propsInCanonicalCtor(AbstractInsnNode abstractInsnNode, RecordInfo recordInfo) {
+    public static List<String> propsInCanonicalCtor(AbstractInsnNode abstractInsnNode, RecordInfo recordInfo) {
         if(!(abstractInsnNode instanceof MethodInsnNode methodInsnNode)) return null;
         if(!methodInsnNode.owner.equals(recordInfo.type.getInternalName())) {
             return null;
@@ -360,7 +350,7 @@ public class InlinedGenericNodeType extends GenericNodeType {
         }
     }
 
-    interface Compiler {
+    public interface Compiler {
         void compileOutputPortCalculations(GeneratorHelper mv, SnapNode snapNode, Inputs inputs, Outputs outputs, CompoundTag data, CompilationContext context);
     }
 }

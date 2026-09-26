@@ -1,12 +1,17 @@
-package com.rieno.gadgetsandgizmos.graph.compile.node_type.generic;
+package com.rieno.gadgetsandgizmos.graph.compile.node_type.generic.util;
 
 import com.llamalad7.mixinextras.expression.impl.flow.FlowInterpreter;
 import com.llamalad7.mixinextras.expression.impl.flow.FlowValue;
 import com.llamalad7.mixinextras.expression.impl.flow.postprocessing.FlowPostProcessor;
 import com.machinezoo.noexception.throwing.ThrowingFunction;
+import com.rieno.gadgetsandgizmos.graph.compile.util.BoxingTool;
 import com.rieno.gadgetsandgizmos.graph.compile.util.Handle;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
 import lombok.SneakyThrows;
+import lombok.ToString;
+import lombok.experimental.Accessors;
 import org.jetbrains.annotations.NotNull;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.*;
@@ -19,7 +24,7 @@ import java.lang.invoke.MethodHandles;
 import java.lang.reflect.Field;
 import java.util.*;
 
-class FlowInterpreterExt extends FlowInterpreter {
+public class FlowInterpreterExt extends FlowInterpreter {
     public final Map<VarInsnNode, Type> localTypes = field(this, type -> type.getDeclaredField("localTypes"));
     public final Map<AbstractInsnNode, FlowValue> cache = field(this, type -> type.getDeclaredField("cache"));
     public final List<FlowPostProcessor> postProcessors = new ObjectArrayList<>(
@@ -161,11 +166,24 @@ class FlowInterpreterExt extends FlowInterpreter {
         return (T) field.get(obj);
     }
 
-    public record Result(
-        Frame<FlowValue>[] frames,
-        List<FlowValue> values,
-        Map<AbstractInsnNode, FlowValue> cache
-    ) {
+    @Getter
+    @Accessors(fluent = true)
+    @EqualsAndHashCode
+    @ToString
+    public static class Result {
+        protected final Frame<FlowValue>[] frames;
+        protected final List<FlowValue> values;
+        protected final Map<AbstractInsnNode, FlowValue> cache;
+
+        public Result(
+            Frame<FlowValue>[] frames,
+            List<FlowValue> values,
+            Map<AbstractInsnNode, FlowValue> cache
+        ) {
+            this.frames = frames;
+            this.values = values;
+            this.cache = cache;
+        }
 
     }
 }
