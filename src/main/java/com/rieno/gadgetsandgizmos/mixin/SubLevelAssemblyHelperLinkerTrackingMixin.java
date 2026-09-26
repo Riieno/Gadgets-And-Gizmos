@@ -29,14 +29,26 @@ public abstract class SubLevelAssemblyHelperLinkerTrackingMixin {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Move the linker targets
+    // Record controller movement before Sable moves its tracking points.
     @Inject(method = "moveTrackingPoints", at = @At("HEAD"))
-    private static void createthrusters$moveLinkerTargets(ServerLevel level,
-                                                          BoundingBox3ic bounds,
-                                                          ServerSubLevel destinationSubLevel,
-                                                          SubLevelAssemblyHelper.AssemblyTransform transform,
-                                                          CallbackInfo ci) {
+    private static void createthrusters$prepareLinkerTargets(ServerLevel level,
+                                                             BoundingBox3ic bounds,
+                                                             ServerSubLevel destinationSubLevel,
+                                                             SubLevelAssemblyHelper.AssemblyTransform transform,
+                                                             CallbackInfo ci) {
         ContraptionNetworkLinkerTracker.get(level.getServer())
-                .remapAssemblyTargets(level, bounds, destinationSubLevel, transform);
+                .prepareAssemblyTargets(level, bounds, destinationSubLevel, transform);
+    }
+
+    // Resolve moved targets after Sable has written their authoritative
+    // tracking-point position and sub-level UUID.
+    @Inject(method = "moveTrackingPoints", at = @At("TAIL"))
+    private static void createthrusters$finishLinkerTargets(ServerLevel level,
+                                                            BoundingBox3ic bounds,
+                                                            ServerSubLevel destinationSubLevel,
+                                                            SubLevelAssemblyHelper.AssemblyTransform transform,
+                                                            CallbackInfo ci) {
+        ContraptionNetworkLinkerTracker.get(level.getServer())
+                .finishAssemblyTargets(level, transform);
     }
 }

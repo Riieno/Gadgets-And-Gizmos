@@ -195,6 +195,18 @@ public final class ControllerRedstoneCompat {
     public static double sampleWrittenTarget(@Nullable Level ownerLevel,
                                              @Nullable ControllerDirectTargetReference target,
                                              String sourceId) {
+        return sampleWrittenTarget(ownerLevel, target, sourceId, false);
+    }
+
+    public static double sampleWrittenRedstoneTarget(@Nullable Level ownerLevel,
+                                                     @Nullable ControllerDirectTargetReference target,
+                                                     String sourceId) {
+        return sampleWrittenTarget(ownerLevel, target, sourceId, true);
+    }
+
+    private static double sampleWrittenTarget(@Nullable Level ownerLevel,
+                                              @Nullable ControllerDirectTargetReference target,
+                                              String sourceId, boolean redstoneOnly) {
         if (ownerLevel == null || target == null || !target.isBound()
                 || target.blockPos() == null || sourceId == null || sourceId.isBlank()) {
             return 0.0D;
@@ -221,7 +233,10 @@ public final class ControllerRedstoneCompat {
                     targetLevel, resolvedTarget.subLevelId(), targetPos, planeFace, sourceId) / 15.0D;
         }
         String compatMode = resolvedTarget.compatModeId();
-        if (DIRECT_ADAPTER.equals(compatMode) || targetBe instanceof RcsThrusterBlockEntity) {
+        if (redstoneOnly && (DIRECT_ADAPTER.equals(compatMode) || targetBe instanceof RcsThrusterBlockEntity)) {
+            compatMode = VIRTUAL_BLOCK_REDSTONE;
+        }
+        if (!redstoneOnly && (DIRECT_ADAPTER.equals(compatMode) || targetBe instanceof RcsThrusterBlockEntity)) {
             return sampleTarget(ownerLevel, sourceId, resolvedTarget);
         }
         Direction face;
@@ -245,6 +260,23 @@ public final class ControllerRedstoneCompat {
                                    @Nullable BlockEntity targetBe,
                                    String sourceId,
                                    float value) {
+        writeTarget(ownerLevel, target, targetBe, sourceId, value, false);
+    }
+
+    // Redstone remains independent of a block's analogue/data control adapter.
+    public static void writeRedstoneTarget(@Nullable Level ownerLevel,
+                                           @Nullable ControllerDirectTargetReference target,
+                                           @Nullable BlockEntity targetBe,
+                                           String sourceId,
+                                           int strength) {
+        writeTarget(ownerLevel, target, targetBe, sourceId, Mth.clamp(strength, 0, 15) / 15.0f, true);
+    }
+
+    private static void writeTarget(@Nullable Level ownerLevel,
+                                    @Nullable ControllerDirectTargetReference target,
+                                    @Nullable BlockEntity targetBe,
+                                    String sourceId,
+                                    float value, boolean redstoneOnly) {
         if (ownerLevel == null || target == null || !target.isBound() || target.blockPos() == null
                 || sourceId == null || sourceId.isBlank()) {
             return;
@@ -275,9 +307,10 @@ public final class ControllerRedstoneCompat {
         }
 
         // ------------------------------------DIRECT ADAPTERS------------------------------------
+        value = Float.isNaN(value) ? 0.0f : Mth.clamp(value, 0.0f, 1.0f);
         String optionChannelId = resolveDirectSignalChannelId(sourceId, resolvedTarget);
         // -----------------------------------------------------RCS CHANNELS-----------------------------------------------------
-        if (resolvedTargetBe instanceof RcsThrusterBlockEntity rcsThruster) {
+        if (!redstoneOnly && resolvedTargetBe instanceof RcsThrusterBlockEntity rcsThruster) {
             Direction nozzle = RcsThrusterBlockEntity.nozzleFromChannel(optionChannelId);
             if (nozzle != null) {
                 rcsThruster.setControllerThrottle(nozzle, sourceId, value);
@@ -286,7 +319,7 @@ public final class ControllerRedstoneCompat {
         }
 
         Direction planeFace = ContraptionNetworkLinkerData.resolveFaceFromDirectTarget(resolvedTarget);
-        int strength = Mth.clamp(Mth.ceil(value * 15.0f), 0, 15);
+        int strength = Mth.clamp(Math.round(value * 15.0f), 0, 15);
         if (ContraptionNetworkLinkerData.isLinkerFaceOutputTarget(resolvedTarget) && planeFace != null) {
             ContraptionNetworkLinkerSignalBus.setPlaneSignal(
                     targetLevel,
@@ -300,6 +333,9 @@ public final class ControllerRedstoneCompat {
 
         // -----------------------------------------------------COMPAT MODES-----------------------------------------------------
         String compatMode = resolvedTarget.compatModeId();
+        if (redstoneOnly && (DIRECT_ADAPTER.equals(compatMode) || resolvedTargetBe instanceof RcsThrusterBlockEntity)) {
+            compatMode = VIRTUAL_BLOCK_REDSTONE;
+        }
         if (DIRECT_ADAPTER.equals(compatMode)
                 && AeroworksControllerCompat.applyDirectSignal(resolvedTargetBe, optionChannelId, sourceId, value)) {
             return;

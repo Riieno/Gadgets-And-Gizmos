@@ -1295,7 +1295,19 @@ public final class GraphRuntime {
     private void followExec(Frame frame, NodeInstruction fromNode, String fromPort, int[] operations) {
         for (ExecEdge edge : fromNode.execTargets(fromPort)) {
             putExecutionPulse(edge.edgeKey(), currentGameTime);
+            executeExecTarget(frame, edge, operations);
+        }
+    }
+
+    // Run each fan-out branch independently. A bad target must be reported
+    // without suppressing the remaining outputs from the same event.
+    private void executeExecTarget(Frame frame, ExecEdge edge, int[] operations) {
+        try {
             executeNode(frame, edge.target(), edge.incomingPort(), operations);
+        } catch (RuntimeException err) {
+            NodeInstruction target = edge.target();
+            diagnostics.add(new AdvancedGraphValidator.Diagnostic(
+                    "error", "execution", err.getMessage(), target == null ? "" : target.id()));
         }
     }
 
@@ -1382,7 +1394,7 @@ public final class GraphRuntime {
             }
             case "direct_target_output" -> {
                 double val = frame.value(node, "value", operations).asNumber();
-                double clampedValue = Mth.clamp(val, 0.0, 1.0);
+                double clampedValue = GraphSignalRange.toDirectControl(val);
                 if (!node.bindingId().isBlank()) {
                     queueBindingOutput(node.bindingId(), clampedValue);
                 }
@@ -1393,15 +1405,14 @@ public final class GraphRuntime {
                             : frame.value(node, port, operations));
                 }
                 desiredValues.put(AdvancedContraptionControllerBlockEntity.GRAPH_RAW_DIRECT_SIGNAL_PORT,
-                        AdvancedGraphDocument.Value.number(val));
+                        AdvancedGraphDocument.Value.number(Double.isFinite(val) ? val : GraphSignalRange.outputStrength(val)));
                 if (!simulationOnly) {
                     Set<String> changedPorts = AdvancedGraphOutputDelta.changedPorts(
                             controller, node.source(), desiredValues);
-                    if (!changedPorts.isEmpty()) {
-                        if (controller.setGraphTargetData(node.source(), changedPorts, desiredValues::get)) {
-                            AdvancedGraphOutputDelta.recordApplied(
-                                    controller, node.source(), changedPorts, desiredValues);
-                        }
+                    if (!changedPorts.isEmpty()
+                            && controller.setGraphTargetData(node.source(), changedPorts, desiredValues::get)) {
+                        AdvancedGraphOutputDelta.recordApplied(
+                                controller, node.source(), changedPorts, desiredValues);
                     }
                 }
                 followExec(frame, node, "exec", operations);
@@ -1419,22 +1430,21 @@ public final class GraphRuntime {
                             : frame.value(node, port, operations));
                 }
                 desiredValues.put(AdvancedContraptionControllerBlockEntity.GRAPH_RAW_DIRECT_SIGNAL_PORT,
-                        AdvancedGraphDocument.Value.number(val));
+                        AdvancedGraphDocument.Value.number(Double.isFinite(val) ? val : GraphSignalRange.outputStrength(val)));
                 if (!simulationOnly) {
                     Set<String> changedPorts = AdvancedGraphOutputDelta.changedPorts(
                             controller, node.source(), desiredValues);
-                    if (!changedPorts.isEmpty()) {
-                        if (controller.setGraphTargetData(node.source(), changedPorts, desiredValues::get)) {
-                            AdvancedGraphOutputDelta.recordApplied(
-                                    controller, node.source(), changedPorts, desiredValues);
-                        }
+                    if (!changedPorts.isEmpty()
+                            && controller.setGraphTargetData(node.source(), changedPorts, desiredValues::get)) {
+                        AdvancedGraphOutputDelta.recordApplied(
+                                controller, node.source(), changedPorts, desiredValues);
                     }
                 }
                 followExec(frame, node, "exec", operations);
             }
             case "local_redstone_output", "wireless_frequency_output" -> {
                 double val = frame.value(node, "value", operations).asNumber();
-                queueBindingOutput(node.bindingId(), Mth.clamp(Math.round(val), 0.0, 15.0) / 15.0);
+                queueBindingOutput(node.bindingId(), GraphSignalRange.toNormalizedRedstone(val));
                 followExec(frame, node, "exec", operations);
             }
             case "set_block_data" -> {
@@ -1644,6 +1654,10 @@ public final class GraphRuntime {
                 pendingReset = true;
                 if (pendingOutputs != null) {
                     pendingOutputs.clear();
+                }
+                if (!simulationOnly && controller != null) {
+                    controller.resetGraphTargetOutputs();
+                    AdvancedGraphOutputDelta.invalidateSamples(controller);
                 }
                 followExec(frame, node, "exec", operations);
             }

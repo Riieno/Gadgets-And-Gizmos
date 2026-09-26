@@ -15,6 +15,7 @@ import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
@@ -34,6 +35,8 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.gameevent.GameEvent;
 
+import java.net.URI;
+
 // Keep a mannequin's player skin, pose and equipment state synchronized
 public class PlayerMannequinEntity extends ArmorStand {
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -45,6 +48,10 @@ public class PlayerMannequinEntity extends ArmorStand {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     private static final String VARIANT_TAG = "PlayerMannequinVariant";
+    private static final String ORIGINAL_VARIANT_TAG = "OriginalSupporterVariant";
+    private static final String REMOTE_SKIN_URL_TAG = "RemoteSkinUrl";
+    private static final String STEVE_SKIN_TAG = "SteveSkin";
+    private static final String SLIM_SKIN_TAG = "SlimSkin";
     private static final String KINETIC_CURRENCY_REWARD_POSE_TAG = "KineticCurrencyRewardPose";
     private static final EquipmentSlot[] DROPPED_EQUIPMENT_SLOTS = {
             EquipmentSlot.MAINHAND,
@@ -62,6 +69,12 @@ public class PlayerMannequinEntity extends ArmorStand {
     private static final Rotations DEFAULT_RIGHT_LEG_POSE = new Rotations(1.0F, 0.0F, 1.0F);
     private static final EntityDataAccessor<String> DATA_VARIANT =
             SynchedEntityData.defineId(PlayerMannequinEntity.class, EntityDataSerializers.STRING);
+    private static final EntityDataAccessor<String> DATA_REMOTE_SKIN_URL =
+            SynchedEntityData.defineId(PlayerMannequinEntity.class, EntityDataSerializers.STRING);
+    private static final EntityDataAccessor<Boolean> DATA_STEVE_SKIN =
+            SynchedEntityData.defineId(PlayerMannequinEntity.class, EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<Boolean> DATA_SLIM_SKIN =
+            SynchedEntityData.defineId(PlayerMannequinEntity.class, EntityDataSerializers.BOOLEAN);
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -74,6 +87,8 @@ public class PlayerMannequinEntity extends ArmorStand {
 
     // Tracks whether kinetic currency reward pose is set
     private boolean kineticCurrencyRewardPose;
+    // The supporter variant this mannequin was originally placed as
+    private String originalSupporterVariantId = PlayerMannequinVariants.DEFAULT_ID;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -107,6 +122,9 @@ public class PlayerMannequinEntity extends ArmorStand {
     protected void defineSynchedData(SynchedEntityData.Builder builder) {
         super.defineSynchedData(builder);
         builder.define(DATA_VARIANT, PlayerMannequinVariants.DEFAULT_ID);
+        builder.define(DATA_REMOTE_SKIN_URL, "");
+        builder.define(DATA_STEVE_SKIN, false);
+        builder.define(DATA_SLIM_SKIN, false);
     }
 
     // Add the additional save data
@@ -114,6 +132,10 @@ public class PlayerMannequinEntity extends ArmorStand {
     public void addAdditionalSaveData(CompoundTag tag) {
         super.addAdditionalSaveData(tag);
         tag.putString(VARIANT_TAG, getVariant().id());
+        tag.putString(ORIGINAL_VARIANT_TAG, getOriginalSupporterVariant().id());
+        if (!remoteSkinUrl().isBlank()) tag.putString(REMOTE_SKIN_URL_TAG, remoteSkinUrl());
+        if (usesSteveSkin()) tag.putBoolean(STEVE_SKIN_TAG, true);
+        if (usesSlimSkin()) tag.putBoolean(SLIM_SKIN_TAG, true);
         if (kineticCurrencyRewardPose) {
             tag.putBoolean(KINETIC_CURRENCY_REWARD_POSE_TAG, true);
         }
@@ -124,6 +146,12 @@ public class PlayerMannequinEntity extends ArmorStand {
     public void readAdditionalSaveData(CompoundTag tag) {
         super.readAdditionalSaveData(tag);
         setVariant(tag.getString(VARIANT_TAG));
+        originalSupporterVariantId = tag.contains(ORIGINAL_VARIANT_TAG, Tag.TAG_STRING)
+                ? PlayerMannequinVariants.byIdOrDefault(tag.getString(ORIGINAL_VARIANT_TAG)).id()
+                : getVariant().id();
+        setRemoteSkinUrl(tag.getString(REMOTE_SKIN_URL_TAG));
+        setSteveSkin(tag.getBoolean(STEVE_SKIN_TAG));
+        setSlimSkin(tag.getBoolean(SLIM_SKIN_TAG));
         kineticCurrencyRewardPose = tag.getBoolean(KINETIC_CURRENCY_REWARD_POSE_TAG);
     }
 
@@ -234,6 +262,7 @@ public class PlayerMannequinEntity extends ArmorStand {
     public void setVariant(String variantId) {
         PlayerMannequinVariant variant = PlayerMannequinVariants.byIdOrDefault(variantId);
         this.entityData.set(DATA_VARIANT, variant.id());
+        setSlimSkin(variant.slim());
     }
 
     // Set the variant
@@ -241,10 +270,53 @@ public class PlayerMannequinEntity extends ArmorStand {
         setVariant(variant == null ? PlayerMannequinVariants.DEFAULT_ID : variant.id());
     }
 
+    // Get the supporter variant this mannequin should return when broken
+    public PlayerMannequinVariant getOriginalSupporterVariant() {
+        return PlayerMannequinVariants.byIdOrDefault(originalSupporterVariantId);
+    }
+
+    // Set the supporter variant this mannequin should return when broken
+    public void setOriginalSupporterVariant(PlayerMannequinVariant variant) {
+        originalSupporterVariantId = (variant == null ? getVariant() : variant).id();
+    }
+
+    // Get the verified Mojang skin texture URL assigned to this mannequin
+    public String remoteSkinUrl() {
+        return entityData.get(DATA_REMOTE_SKIN_URL);
+    }
+
+    // Set the verified Mojang skin texture URL assigned to this mannequin
+    public void setRemoteSkinUrl(String skinUrl) {
+        String normalized = skinUrl == null ? "" : skinUrl.strip();
+        if (!verifiedSkinUrl(normalized)) normalized = "";
+        entityData.set(DATA_REMOTE_SKIN_URL, normalized);
+    }
+
+    // Check whether this mannequin should render the Steve fallback skin
+    public boolean usesSteveSkin() {
+        return entityData.get(DATA_STEVE_SKIN);
+    }
+
+    // Set whether this mannequin should render the Steve fallback skin
+    public void setSteveSkin(boolean steveSkin) {
+        entityData.set(DATA_STEVE_SKIN, steveSkin);
+        if (steveSkin) setSlimSkin(false);
+    }
+
+    // Check whether this mannequin uses the three-pixel slim player arm model
+    public boolean usesSlimSkin() {
+        return entityData.get(DATA_SLIM_SKIN);
+    }
+
+    // Set whether this mannequin uses the three-pixel slim player arm model
+    public void setSlimSkin(boolean slimSkin) {
+        entityData.set(DATA_SLIM_SKIN, slimSkin);
+    }
+
     // Get the pick result
     @Override
     public ItemStack getPickResult() {
-        return SupporterHeads.createStack(getVariant());
+        return SupporterHeads.createStack(getOriginalSupporterVariant());
     }
 
     // Damage the mannequin
@@ -267,9 +339,10 @@ public class PlayerMannequinEntity extends ArmorStand {
 
     // Create the break stack
     private ItemStack createBreakStack() {
-        ItemStack stack = SupporterHeads.createStack(getVariant());
+        PlayerMannequinVariant originalVariant = getOriginalSupporterVariant();
+        ItemStack stack = SupporterHeads.createStack(originalVariant);
         Component customName = getCustomName();
-        if (customName != null && !customName.getString().equals(getVariant().displayName().getString())) {
+        if (customName != null && !customName.getString().equals(originalVariant.displayName().getString())) {
             stack.set(DataComponents.CUSTOM_NAME, customName);
         }
         return stack;
@@ -328,5 +401,18 @@ public class PlayerMannequinEntity extends ArmorStand {
         return CTItems.MUSIC_DISC_KINETIC_CURRENCY != null
                 && !stack.isEmpty()
                 && stack.is(CTItems.MUSIC_DISC_KINETIC_CURRENCY.get());
+    }
+
+    // Check that a remote skin URL remains on Mojang's dedicated texture host
+    private static boolean verifiedSkinUrl(String skinUrl) {
+        if (skinUrl == null || skinUrl.isBlank() || skinUrl.length() > 2048) return false;
+        try {
+            URI uri = URI.create(skinUrl);
+            return "https".equalsIgnoreCase(uri.getScheme())
+                    && "textures.minecraft.net".equalsIgnoreCase(uri.getHost())
+                    && uri.getUserInfo() == null && uri.getPort() == -1;
+        } catch (IllegalArgumentException ignored) {
+            return false;
+        }
     }
 }

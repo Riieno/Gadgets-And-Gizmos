@@ -52,6 +52,8 @@ import com.rieno.gadgetsandgizmos.neoforge.network.AnalogueJoystickGhostSlotsPay
 import com.rieno.gadgetsandgizmos.neoforge.network.ArmorStandPoseOpenPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ArmorStandPosePreferencePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ArmorStandPoseSyncPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.MannequinSkinChangePayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.MannequinSkinChangeResultPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ClawGhostSlotsPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ContraptionNetworkLinkerSnapshotPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ContraptionNetworkLinkerSyncPayload;
@@ -267,6 +269,8 @@ public final class CTCommonEvents {
                                 ContraptionNetworkLinkerSyncPayload::handle);
                 registrar.playToServer(ArmorStandPoseSyncPayload.TYPE, ArmorStandPoseSyncPayload.STREAM_CODEC,
                                 ArmorStandPoseSyncPayload::handle);
+                registrar.playToServer(MannequinSkinChangePayload.TYPE, MannequinSkinChangePayload.STREAM_CODEC,
+                                MannequinSkinChangePayload::handle);
                 registrar.playToServer(ArmorStandPosePreferencePayload.TYPE, ArmorStandPosePreferencePayload.STREAM_CODEC,
                                 ArmorStandPosePreferencePayload::handle);
                 // ------------------------------------ROPES / LAUNCHERS------------------------------------
@@ -299,6 +303,9 @@ public final class CTCommonEvents {
                                 ShipDockOpenPayload::handle);
                 registrar.playToClient(ArmorStandPoseOpenPayload.TYPE, ArmorStandPoseOpenPayload.STREAM_CODEC,
                                 ArmorStandPoseOpenPayload::handle);
+                registrar.playToClient(MannequinSkinChangeResultPayload.TYPE,
+                                MannequinSkinChangeResultPayload.STREAM_CODEC,
+                                MannequinSkinChangeResultPayload::handle);
                 registrar.playToClient(AdvancedControllerSharedGraphsPayload.TYPE, AdvancedControllerSharedGraphsPayload.STREAM_CODEC,
                                 AdvancedControllerSharedGraphsPayload::handle);
                 registrar.playToClient(AdvancedControllerPublicSharePayload.TYPE,

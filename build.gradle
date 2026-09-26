@@ -239,6 +239,18 @@ def validateMixinConfig = tasks.register('validateMixinConfig') {
 
 dependencies {
     bundledSqlite 'org.xerial:sqlite-jdbc:3.46.1.3'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testImplementation 'org.mockito:mockito-core:5.14.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testRuntimeOnly files(selectedLocalJars.files.findAll { it.name.startsWith('synaxis-') }.collect { jar ->
+        zipTree(jar).matching { include 'META-INF/jarjar/joml-primitives-*.jar' }
+    })
+    testRuntimeOnly files(selectedLocalJars.files.findAll { it.name.startsWith('create-') }.collect { jar ->
+        zipTree(jar).matching {
+            include 'META-INF/jarjar/Registrate-*.jar'
+            include 'META-INF/jarjar/ponder-*.jar'
+        }
+    })
     compileOnly selectedLocalJars
     compileOnly files(requiredSableJar)
     compileOnly files(libraryJarFile)
@@ -260,6 +272,18 @@ sourceSets {
         java.srcDir 'src/docgen/java'
         compileClasspath += sourceSets.main.output + configurations.compileClasspath
         runtimeClasspath += output + compileClasspath
+    }
+}
+
+sourceSets.test {
+    compileClasspath += configurations.compileClasspath
+    runtimeClasspath += configurations.compileClasspath
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    classpath += fileTree(layout.buildDirectory.dir('moddev/artifacts')) {
+        include '*minecraft-resources.jar'
     }
 }
 

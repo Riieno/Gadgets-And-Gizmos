@@ -33,9 +33,22 @@ public class PlayerMannequinRenderer extends LivingEntityRenderer<PlayerMannequi
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+    private final PlayerMannequinModel wideModel;
+    private final PlayerMannequinModel slimModel;
+
     // Initialize the player mannequin
     public PlayerMannequinRenderer(EntityRendererProvider.Context ctx) {
-        super(ctx, new PlayerMannequinModel(ctx.bakeLayer(ModelLayers.PLAYER)), 0.0F);
+        this(ctx,
+                new PlayerMannequinModel(ctx.bakeLayer(ModelLayers.PLAYER), false),
+                new PlayerMannequinModel(ctx.bakeLayer(ModelLayers.PLAYER_SLIM), true));
+    }
+
+    // Initialize both player arm model variants
+    private PlayerMannequinRenderer(EntityRendererProvider.Context ctx, PlayerMannequinModel wideModel,
+                                    PlayerMannequinModel slimModel) {
+        super(ctx, wideModel, 0.0F);
+        this.wideModel = wideModel;
+        this.slimModel = slimModel;
         this.addLayer(new PlayerMannequinSkinLayer(this));
         this.addLayer(
                 new HumanoidArmorLayer<>(
@@ -61,7 +74,7 @@ public class PlayerMannequinRenderer extends LivingEntityRenderer<PlayerMannequi
     // Get the texture location
     @Override
     public ResourceLocation getTextureLocation(PlayerMannequinEntity entity) {
-        return PlayerMannequinSkinResolver.texture(entity.getVariant());
+        return PlayerMannequinSkinResolver.texture(entity);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -71,6 +84,14 @@ public class PlayerMannequinRenderer extends LivingEntityRenderer<PlayerMannequi
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
+
+    // Select the matching model before Minecraft renders the base model and every layer
+    @Override
+    public void render(PlayerMannequinEntity entity, float entityYaw, float partialTick, PoseStack poseStack,
+                       net.minecraft.client.renderer.MultiBufferSource buffer, int packedLight) {
+        this.model = entity.usesSlimSkin() ? slimModel : wideModel;
+        super.render(entity, entityYaw, partialTick, poseStack, buffer, packedLight);
+    }
 
     // Set up the rotations
     @Override

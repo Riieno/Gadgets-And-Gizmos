@@ -284,7 +284,8 @@ public final class AdvancedGraphCatalog {
         register("split_list", "data", Map.of("value", "any"), Map.of(), false);
         register("break_out", "data", Map.of("value", "any"), Map.of(), false);
         register("get_block_data", "data", Map.of("target", "target"), Map.of("data", "map"), false);
-        register("set_block_data", "data", Map.of("exec", "exec", "target", "target"), Map.of("exec", "exec", "success", "boolean"), false);
+        register("set_block_data", "data", Map.of("exec", "exec", "target", "target",
+                GraphSignalRange.REDSTONE_SIGNAL_PORT, "number"), Map.of("exec", "exec", "success", "boolean"), false);
         register("hud_element", "hud", Map.of("label", "string", "visible", "boolean"), Map.of(), true);
         register("advanced_hud_element", "hud", Map.of("label", "string", "visible", "boolean"), Map.of(), true);
         register("acc_display_widget", "hud", Map.ofEntries(

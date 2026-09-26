@@ -47,8 +47,8 @@ public class PlayerMannequinModel extends PlayerModel<PlayerMannequinEntity> {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Initialize the player mannequin model
-    public PlayerMannequinModel(ModelPart root) {
-        super(root, false);
+    public PlayerMannequinModel(ModelPart root, boolean slim) {
+        super(root, slim);
     }
 
     // Set up the anim

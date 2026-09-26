@@ -35,7 +35,8 @@ public final class PlayerMannequinVariants {
 
     public static final PlayerMannequinVariant RIIENO = registerBuiltIn("riieno", Component.literal("Riieno"));
     public static final PlayerMannequinVariant BIGJIM = registerBuiltIn("bigjim", Component.literal("BigJim"));
-    public static final PlayerMannequinVariant CHRISTEROPH = registerBuiltIn("christeroph", Component.literal("Christeroph"));
+    public static final PlayerMannequinVariant CHRISTEROPH =
+            registerBuiltIn("christeroph", Component.literal("Christeroph"), true);
     public static final PlayerMannequinVariant RAYRAY = registerBuiltIn("rayray", Component.literal("RayRay"));
     public static final PlayerMannequinVariant DJRAG = registerBuiltIn("djrag", Component.literal("Djrag"));
 
@@ -53,19 +54,32 @@ public final class PlayerMannequinVariants {
 
     // Register a built-in mannequin variant
     private static PlayerMannequinVariant registerBuiltIn(String id, Component displayName) {
+        return registerBuiltIn(id, displayName, false);
+    }
+
+    // Register a built-in mannequin variant with its matching player arm model
+    private static PlayerMannequinVariant registerBuiltIn(String id, Component displayName, boolean slim) {
         String normalizedId = normalize(id);
-        return register(normalizedId, displayName, THANKS_KEY_PREFIX + normalizedId, REASON_KEY_PREFIX + normalizedId);
+        return register(normalizedId, displayName, THANKS_KEY_PREFIX + normalizedId,
+                REASON_KEY_PREFIX + normalizedId, slim);
     }
 
     // Register the player mannequin variants
     public static synchronized PlayerMannequinVariant register(String id, Component displayName, String reasonTranslationKey) {
-        return register(id, displayName, THANKS_KEY_PREFIX + "generic", reasonTranslationKey);
+        return register(id, displayName, THANKS_KEY_PREFIX + "generic", reasonTranslationKey, false);
     }
 
     // Register the player mannequin variants
     public static synchronized PlayerMannequinVariant register(String id, Component displayName,
                                                                String thanksTranslationKey,
                                                                String reasonTranslationKey) {
+        return register(id, displayName, thanksTranslationKey, reasonTranslationKey, false);
+    }
+
+    // Register one player mannequin variant with its matching slim or wide player arm model
+    public static synchronized PlayerMannequinVariant register(String id, Component displayName,
+                                                               String thanksTranslationKey,
+                                                               String reasonTranslationKey, boolean slim) {
         String normalizedId = normalize(id);
         PlayerMannequinVariant variant = new PlayerMannequinVariant(
                 normalizedId,
@@ -73,7 +87,8 @@ public final class PlayerMannequinVariants {
                 thanksTranslationKey,
                 reasonTranslationKey,
                 ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID,
-                        "textures/models/entity/" + normalizedId + ".png"));
+                        "textures/models/entity/" + normalizedId + ".png"),
+                slim);
         VARIANTS.put(normalizedId, variant);
         return variant;
     }

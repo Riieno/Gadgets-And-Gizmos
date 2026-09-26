@@ -517,6 +517,17 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         clientSyncPending |= syncClient;
     }
 
+    // Publish control changes in the issuing tick. Fuel accounting can use the
+    // staggered background sync, but applying that delay to controls makes a
+    // group commanded together appear to switch in an arbitrary order.
+    private void syncControlState() {
+        markTickStateChanged(false);
+        if (level != null && !level.isClientSide) {
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+            clientSyncPending = false;
+        }
+    }
+
     // Update the client
     private void tickClient() {
         tickAirCurrent(true);
@@ -940,7 +951,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         signalStrength = updatedSignalStrength;
         redstoneThrottle = signalStrength / 15.0f;
         refreshThrottle();
-        markTickStateChanged(true);
+        syncControlState();
     }
 
     // Get the fuel tank
@@ -1032,7 +1043,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         computerThrottle = clamped;
         controlMode = ControlMode.COMPUTER;
         refreshThrottle();
-        markTickStateChanged(true);
+        syncControlState();
     }
 
     // Get the graph readable data
@@ -1194,7 +1205,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         computerThrottle = getDirectThrottle();
         controlMode = ControlMode.COMPUTER;
         refreshThrottle();
-        markTickStateChanged(true);
+        syncControlState();
     }
 
     // Apply the ship control envelope
@@ -1213,7 +1224,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
             return;
         }
         shipControlEnvelope = requested;
-        markTickStateChanged(true);
+        syncControlState();
     }
 
     // Clear the ship control envelope
@@ -1221,7 +1232,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         String normalizedChannel = channelId == null || channelId.isBlank() ? "ship_control" : channelId;
         if (shipControlEnvelope != null && shipControlEnvelope.channelId().equals(normalizedChannel)) {
             shipControlEnvelope = null;
-            markTickStateChanged(true);
+            syncControlState();
         }
     }
 
@@ -2892,6 +2903,9 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
 
     // Apply the haunting damage
     private void applyHauntingDamage(LivingEntity livingEntity, Level world) {
+        if (world.isClientSide) {
+            return;
+        }
         if (!CTConfigs.COMMON.enableThrusterMobHaunting.get()) {
             clearHauntingConversion(livingEntity);
             return;

@@ -173,6 +173,9 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                 case "template" -> {
                     controller.selectTemplate(payload.argument());
                     persistPortable = true;
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), true,
+                            "Template Loaded", controller.getDraftGraph().revision(),
+                            true, true, List.of());
                 }
                 case "reset_outputs" -> {
                     controller.resetAllChannels();

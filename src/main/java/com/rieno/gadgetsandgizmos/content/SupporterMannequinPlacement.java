@@ -185,6 +185,7 @@ public final class SupporterMannequinPlacement {
     // Apply the selected variant to a new mannequin
     private static void applyVariant(PlayerMannequinEntity mannequin, PlayerMannequinVariant variant) {
         mannequin.setVariant(variant);
+        mannequin.setOriginalSupporterVariant(variant);
         mannequin.setCustomName(variant.displayName());
         mannequin.setCustomNameVisible(false);
         mannequin.applyMannequinDefaults();

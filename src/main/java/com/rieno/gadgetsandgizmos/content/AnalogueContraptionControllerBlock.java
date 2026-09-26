@@ -294,8 +294,14 @@ public class AnalogueContraptionControllerBlock extends CTDirectionalBlock
     // Get the drops
     @Override
     protected List<ItemStack> getDrops(BlockState state, LootParams.Builder builder) {
-        List<ItemStack> drops = new ArrayList<>(super.getDrops(state, builder));
         BlockEntity blockEntity = builder.getOptionalParameter(LootContextParams.BLOCK_ENTITY);
+        if (blockEntity instanceof AnalogueContraptionControllerBlockEntity controller
+                && controller.isAssemblyTransferPending()) {
+            // Sable serializes the block entity into its destination.  A move is
+            // not a harvest and must never emit a second controller item.
+            return List.of();
+        }
+        List<ItemStack> drops = new ArrayList<>(super.getDrops(state, builder));
         if (blockEntity instanceof AnalogueContraptionControllerBlockEntity controller
                 && !controller.isRestoringEmbeddedBlock()) {
             BlockState embeddedState = controller.getEmbeddedBlockState();
@@ -487,7 +493,7 @@ public class AnalogueContraptionControllerBlock extends CTDirectionalBlock
             if (blockEntity instanceof AnalogueContraptionControllerBlockEntity controller) {
                 if (controller.isDestructiveRemovalPending()) {
                     controller.onDestroyed();
-                } else {
+                } else if (!controller.isAssemblyTransferPending()) {
                     controller.onExternalRelocation();
                 }
             }

@@ -8,7 +8,8 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
-import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariant;
+import com.rieno.gadgetsandgizmos.content.PlayerMannequinEntity;
+import net.minecraft.client.resources.DefaultPlayerSkin;
 import net.minecraft.resources.ResourceLocation;
 
 // Load Player Mannequin skins
@@ -33,8 +34,14 @@ final class PlayerMannequinSkinResolver {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Get the texture
-    static ResourceLocation texture(PlayerMannequinVariant variant) {
-        return variant.skinTexture();
+    // Get the skin texture
+    static ResourceLocation texture(PlayerMannequinEntity mannequin) {
+        if (mannequin == null || mannequin.usesSteveSkin()) return DefaultPlayerSkin.getDefaultTexture();
+        String remoteSkin = mannequin.remoteSkinUrl();
+        if (!remoteSkin.isBlank()) {
+            ResourceLocation texture = AdvancedHudImageClient.resolveTexture(remoteSkin);
+            return texture == null ? DefaultPlayerSkin.getDefaultTexture() : texture;
+        }
+        return mannequin.getVariant().skinTexture();
     }
 }

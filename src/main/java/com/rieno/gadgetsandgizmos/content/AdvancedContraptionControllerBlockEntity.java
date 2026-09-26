@@ -18,6 +18,7 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDataProvider;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementBinding;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementStyle;
 import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
+import com.rieno.gadgetsandgizmos.content.advanced.GraphSignalRange;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphTemplates;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphValidator;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphVersionHistory;
@@ -1088,7 +1089,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         graphRuntime.beginPreviewSample(graph);
         Map<String, AdvancedGraphDocument.Node> nodes = new LinkedHashMap<>();
-        for (AdvancedGraphDocument.Node node : graph.nodes()) {
+        // Include function nodes when resolving preview values too.
+        for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)) {
             nodes.put(node.id(), node);
         }
         Set<String> sampledInputs = new HashSet<>();
@@ -1440,6 +1442,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (graph == null || expectedRevision != draftGraph.revision()) {
             return false;
         }
+        resetDeletedGraphOutputs(draftGraph, graph);
+        resetDeletedGraphTargetWrites(draftGraph, graph);
         AdvancedGraphPortState.mergePersistentValues(draftGraph, graph);
         AdvancedGraphPortState.mergePersistentValues(activeGraph, graph);
         graphVersions.pushIfChanged(draftGraph, graph);
@@ -1756,7 +1760,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                     level, worldPosition.asLong() + ":graph");
         }
         Map<String, GraphRouteConfig> graphOwnedRoutes = new LinkedHashMap<>();
-        for (AdvancedGraphDocument.Node node : graph.nodes()) {
+        for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)) {
             clearStaleOutputRoute(node);
             String firstId = node.data().getString("FrequencyFirst");
             String secondId = node.data().getString("FrequencySecond");
@@ -1951,7 +1955,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Clear the graph outputs
     private void clearGraphOutputs(AdvancedGraphDocument graph) {
         Map<String, Double> resetValues = new LinkedHashMap<>();
-        for (AdvancedGraphDocument.Node node : graph.nodes()) {
+        for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)) {
             if (!node.type().endsWith("_output")) continue;
             String binding = node.data().getString("BindingId");
             if (binding.isBlank()) binding = node.data().getString("RouteBindingId");
@@ -1965,66 +1969,186 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Clear the graph target writes
     private void clearGraphTargetWrites(AdvancedGraphDocument graph) {
-        if (graph == null || graph.nodes().isEmpty()) {
+        if (graph == null) {
             return;
         }
-        for (AdvancedGraphDocument.Node node : graph.nodes()) {
-            if (node == null || (!"set_block_data".equals(node.type())
-                    && !"direct_target_output".equals(node.type())
-                    && !"linker_face_output".equals(node.type()))) {
+        for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)) {
+            if (!isGraphTargetOutputNode(node)) {
                 continue;
             }
             Set<String> resetPorts = graphTargetResetPorts(graph, node);
             if (resetPorts.isEmpty()) {
                 continue;
             }
-            setGraphTargetData(node, resetPorts, port -> AdvancedGraphDocument.Value.number(0.0));
+            resetGraphTargetWrite(node, resetPorts);
         }
+    }
+
+    // Reset every block target currently controlled by the active graph.
+    public void resetGraphTargetOutputs() {
+        if (getLevel() == null || getLevel().isClientSide) {
+            return;
+        }
+        clearGraphTargetWrites(activeGraph);
+    }
+
+    // Reset target writes belonging to output nodes deleted from a saved draft.
+    private void resetDeletedGraphTargetWrites(AdvancedGraphDocument previous,
+                                               AdvancedGraphDocument replacement) {
+        if (previous == null) {
+            return;
+        }
+        List<AdvancedGraphDocument.Node> replacementNodes = graphNodesIncludingFunctions(replacement);
+        for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(previous)) {
+            if (!isGraphTargetOutputNode(node)) {
+                continue;
+            }
+            Set<String> resetPorts = new LinkedHashSet<>(graphTargetResetPorts(previous, node));
+            for (AdvancedGraphDocument.Node replacementNode : replacementNodes) {
+                if (sameGraphOutputTarget(node, replacementNode)) {
+                    resetPorts.removeAll(graphTargetResetPorts(replacement, replacementNode));
+                }
+            }
+            if (!resetPorts.isEmpty()) {
+                resetGraphTargetWrite(node, resetPorts);
+            }
+        }
+    }
+
+    // Reset values left by output bindings deleted from a saved draft.
+    private void resetDeletedGraphOutputs(AdvancedGraphDocument previous,
+                                          AdvancedGraphDocument replacement) {
+        if (previous == null) {
+            return;
+        }
+        Set<String> retainedBindings = new LinkedHashSet<>();
+        for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(replacement)) {
+            if (!isGraphOutputNode(node)) continue;
+            String binding = graphOutputBinding(node);
+            if (!binding.isBlank()) retainedBindings.add(binding);
+        }
+        Map<String, Double> resetValues = new LinkedHashMap<>();
+        for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(previous)) {
+            if (!isGraphOutputNode(node)) continue;
+            String binding = graphOutputBinding(node);
+            if (!binding.isBlank() && !retainedBindings.contains(binding)) {
+                resetValues.put(binding, 0.0D);
+            }
+        }
+        if (!resetValues.isEmpty()) {
+            setGraphBindingValues(resetValues, false);
+        }
+    }
+
+    // Reset one graph target output to its node defaults.
+    private void resetGraphTargetWrite(AdvancedGraphDocument.Node node, Set<String> ports) {
+        setGraphTargetData(node, ports, port -> graphTargetResetValue(node, port));
+    }
+
+    // Get a typed default for one graph target write.
+    private AdvancedGraphDocument.Value graphTargetResetValue(AdvancedGraphDocument.Node node, String port) {
+        if (GraphSignalRange.REDSTONE_SIGNAL_PORT.equals(port)) {
+            return AdvancedGraphDocument.Value.number(0);
+        }
+        CompoundTag defaults = node.data().getCompound("Defaults");
+        if (defaults.contains(port, Tag.TAG_COMPOUND)) {
+            CompoundTag value = defaults.getCompound(port);
+            return new AdvancedGraphDocument.Value(value.getString("Type"), value.getCompound("Payload"));
+        }
+        CompoundTag groupedPorts = dataPortGroup(node, port);
+        if (!groupedPorts.isEmpty()) {
+            CompoundTag values = new CompoundTag();
+            for (String field : groupedPorts.getAllKeys()) {
+                values.put(field, graphValueTag(graphTargetResetValue(node, field)));
+            }
+            return AdvancedGraphDocument.Value.map(values);
+        }
+        return graphDefaultValue(AdvancedGraphCatalog.inputs(node).get(port));
+    }
+
+    // Create a neutral graph value of one port type.
+    private static AdvancedGraphDocument.Value graphDefaultValue(String type) {
+        return switch (type == null ? "" : type) {
+            case "boolean" -> AdvancedGraphDocument.Value.bool(false);
+            case "string" -> AdvancedGraphDocument.Value.string("");
+            case "direction" -> AdvancedGraphDocument.Value.direction("");
+            case "frequency" -> AdvancedGraphDocument.Value.frequency(new CompoundTag());
+            case "target" -> AdvancedGraphDocument.Value.target(new CompoundTag());
+            case "list" -> AdvancedGraphDocument.Value.list(new CompoundTag());
+            case "map" -> AdvancedGraphDocument.Value.map(new CompoundTag());
+            default -> AdvancedGraphDocument.Value.number(0.0D);
+        };
     }
 
     // Get the graph target reset ports
     static Set<String> graphTargetResetPorts(AdvancedGraphDocument graph, AdvancedGraphDocument.Node node) {
-        if (graph == null || node == null) {
+        if (graph == null || !isGraphTargetOutputNode(node)) {
             return Set.of();
         }
         Set<String> resetPorts = new LinkedHashSet<>();
-        boolean aeroworksController = isAeroworksControllerGraphTarget(node);
         if (!"set_block_data".equals(node.type())) {
             resetPorts.add("direct_signal");
             resetPorts.addAll(DIRECT_AXIS_CHANNELS);
+            return resetPorts;
         }
-        for (AdvancedGraphDocument.Edge edge : graph.edges()) {
-            if (edge != null && node.id().equals(edge.toNode())
-                    && (isResettableGraphTargetPort(edge.toPort())
-                    || aeroworksController && isAeroworksControllerPort(edge.toPort()))) {
-                resetPorts.add(edge.toPort());
+        CompoundTag prefilledInputs = node.data().getCompound("PrefilledInputs");
+        for (AdvancedGraphDocument.Edge edge : graphEdgesForNode(graph, node)) {
+            if (edge != null && node.id().equals(edge.toNode())) {
+                String port = graphTargetSourcePort(node, edge.toPort());
+                if (isGraphTargetWritablePort(node, port)) {
+                    resetPorts.add(port);
+                }
             }
         }
         for (String port : node.data().getCompound("Defaults").getAllKeys()) {
-            if (isResettableGraphTargetPort(port)
-                    || aeroworksController && isAeroworksControllerPort(port)) {
-                resetPorts.add(port);
+            String sourcePort = graphTargetSourcePort(node, port);
+            if (!prefilledInputs.contains(port) && isGraphTargetWritablePort(node, sourcePort)) {
+                resetPorts.add(sourcePort);
+            }
+        }
+        for (String port : node.data().getCompound("ForceWriteInputs").getAllKeys()) {
+            String sourcePort = graphTargetSourcePort(node, port);
+            if (node.data().getCompound("ForceWriteInputs").getBoolean(port)
+                    && isGraphTargetWritablePort(node, sourcePort)) {
+                resetPorts.add(sourcePort);
             }
         }
         return resetPorts;
     }
 
-    // Check if this is a resettable graph target port
-    private static boolean isResettableGraphTargetPort(String port) {
-        return "direct_signal".equals(port) || DIRECT_AXIS_CHANNELS.contains(port);
+    // Check if this node can write graph target data.
+    private static boolean isGraphTargetOutputNode(AdvancedGraphDocument.Node node) {
+        return node != null && ("set_block_data".equals(node.type())
+                || "direct_target_output".equals(node.type())
+                || "linker_face_output".equals(node.type()));
     }
 
-    // Check if this is an aeroworks controller graph target
-    private static boolean isAeroworksControllerGraphTarget(AdvancedGraphDocument.Node node) {
-        ControllerDiscoveryNode target = node == null ? null
-                : ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
-        return target != null && AeroworksControllerCompat.CONTROL_DESK.equalsIgnoreCase(target.blockId());
+    // Check if one Set Data port can write to the target.
+    private static boolean isGraphTargetWritablePort(AdvancedGraphDocument.Node node, String port) {
+        if (port == null || port.isBlank()
+                || "exec".equals(port) || "target".equals(port) || "face".equals(port)
+                || "state_waterlogged".equals(port)) {
+            return false;
+        }
+        return AdvancedGraphCatalog.inputs(node).containsKey(port);
     }
 
-    // Check if this is an aeroworks controller port
-    private static boolean isAeroworksControllerPort(String port) {
-        return port != null && (port.startsWith("controller_socket_")
-                || port.startsWith("controller_part_"));
+    // Resolve an inline MAP child to the parent port written by the runtime.
+    private static String graphTargetSourcePort(AdvancedGraphDocument.Node node, String port) {
+        String source = node.data().getCompound(AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG)
+                .getCompound(port).getString(AdvancedGraphCatalog.INLINE_MAP_SOURCE_TAG);
+        return source.isBlank() ? port : source;
+    }
+
+    // Check whether two output nodes write to the same target and face.
+    private static boolean sameGraphOutputTarget(AdvancedGraphDocument.Node first,
+                                                 AdvancedGraphDocument.Node second) {
+        if (!isGraphTargetOutputNode(first) || !isGraphTargetOutputNode(second)) {
+            return false;
+        }
+        return Objects.equals(first.data().getCompound("TargetData"), second.data().getCompound("TargetData"))
+                && Objects.equals(first.data().getCompound("Defaults").getCompound("face"),
+                second.data().getCompound("Defaults").getCompound("face"));
     }
 
     // Clear the graph routed state
@@ -2036,7 +2160,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 graphOwnedCustomBindings.add(entry.id());
             }
         }
-        for (AdvancedGraphDocument.Node node : graph.nodes()) {
+        for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)) {
             String binding = node.data().getString("BindingId");
             if (binding.isBlank()) binding = node.data().getString("RouteBindingId");
             if (binding.isBlank()) binding = node.data().getString("Channel");
@@ -2112,10 +2236,11 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Select the template
     public void selectTemplate(String templateId) {
+        int nextRevision = Math.max(0, draftGraph.revision()) + 1;
         AdvancedGraphDocument template = AdvancedGraphTemplates.create(templateId);
         graphVersions.pushIfChanged(draftGraph, template);
         draftGraph = template;
-        draftGraph.setRevision(1);
+        draftGraph.setRevision(nextRevision);
         applyDraft();
     }
 
@@ -3388,6 +3513,11 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             }
         }
         // Read direct controls and optional integrations
+        if (GraphSignalRange.REDSTONE_SIGNAL_PORT.equals(port)) {
+            return AdvancedGraphDocument.Value.number(Math.round(
+                    ControllerRedstoneCompat.sampleWrittenRedstoneTarget(
+                            level, graphDirectTargetReference(node), graphDirectSignalSourceId(node)) * 15.0D));
+        }
         if ("direct_signal".equals(port)) {
             Double signal = ExternalBlockEntityDirectControlCompat.sampleDirectSignal(blockEntity);
             if (signal != null) return AdvancedGraphDocument.Value.number(signal);
@@ -3545,6 +3675,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         Set<String> safePorts = new LinkedHashSet<>();
         for (String port : activePorts) {
             AdvancedGraphDocument.Value val = values.apply(port);
+            if (GraphSignalRange.REDSTONE_SIGNAL_PORT.equals(port) && val != null
+                    && !Double.isFinite(val.asNumber())) {
+                val = AdvancedGraphDocument.Value.number(GraphSignalRange.outputStrength(val.asNumber()));
+            }
             if (!isSafeGraphWriteValue(val)) {
                 return false;
             }
@@ -3589,7 +3723,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             CompoundTag writablePorts = graphDataPorts(
                     target.level(), target.pos(), true, aeroworksSection);
             for (String port : activePorts) {
-                if (!writablePorts.contains(port)) {
+                if (!GraphSignalRange.REDSTONE_SIGNAL_PORT.equals(port) && !writablePorts.contains(port)) {
                     return false;
                 }
             }
@@ -3682,6 +3816,15 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             }
         }
         // Write direct controls and remaining integrations
+        if (activePorts.contains(GraphSignalRange.REDSTONE_SIGNAL_PORT)) {
+            ControllerDirectTargetReference redstoneTarget = graphDirectTargetReference(node);
+            if (redstoneTarget != null && redstoneTarget.isBound()) {
+                ControllerRedstoneCompat.writeRedstoneTarget(level, redstoneTarget, null,
+                        graphDirectSignalSourceId(node),
+                        GraphSignalRange.outputStrength(values.apply(GraphSignalRange.REDSTONE_SIGNAL_PORT).asNumber()));
+                changed = true;
+            }
+        }
         if (activePorts.contains("direct_signal") && !nixieDirectSignalHandled
                 && !CreateRotationSpeedControllerGraphCompat.hasActiveWritePort(blockEntity, activePorts)) {
             float clampedSignal = (float) net.minecraft.util.Mth.clamp(values.apply("direct_signal").asNumber(), 0, 1);
@@ -4957,6 +5100,16 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return storedGraphTargetExists(stale) ? stale : current;
     }
 
+    // Update graph-owned target records after the linker tracker has persisted
+    // a Sable assembly/disassembly remap.
+    @Override
+    public void onTrackedLinkerDataUpdated() {
+        super.onTrackedLinkerDataUpdated();
+        if (getLevel() != null && !getLevel().isClientSide) {
+            reconcileGraphTargets();
+        }
+    }
+
     // Reconcile the graph targets
     private void reconcileGraphTargets() {
         boolean activeChanged = reconcileGraphTargets(activeGraph);
@@ -4970,8 +5123,12 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             refreshDataPorts(activeGraph);
             applyGraphBindings(activeGraph);
             setGraphBindingValues(outputValues, false);
+            graphRuntime.compile(activeGraph);
         }
-        if (draftChanged) refreshDataPorts(draftGraph);
+        if (draftChanged) {
+            refreshDataPorts(draftGraph);
+        }
+        saveControllerManifestNow();
         setChanged();
         sendData();
     }
@@ -4979,7 +5136,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Get the graph output values
     private Map<String, Double> graphOutputValues(AdvancedGraphDocument graph) {
         Map<String, Double> values = new LinkedHashMap<>();
-        for (AdvancedGraphDocument.Node node : graph.nodes()) {
+        for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)) {
             if (!isGraphOutputNode(node)) continue;
             String binding = graphOutputBinding(node);
             if (!binding.isBlank()) values.put(binding, getGraphBindingValue(binding));
@@ -5224,7 +5381,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             return false;
         }
         boolean changed = false;
-        for (AdvancedGraphDocument.Node node : graph.nodes()) {
+        for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)) {
             if (node == null || !node.data().contains("TargetData", Tag.TAG_COMPOUND)) {
                 continue;
             }

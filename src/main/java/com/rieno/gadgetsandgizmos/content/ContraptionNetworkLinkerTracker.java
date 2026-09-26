@@ -104,6 +104,10 @@ public final class ContraptionNetworkLinkerTracker extends SavedData {
 
     // Tracked linkers
     private final Map<UUID, LinkerRecord> trackedLinkers = new LinkedHashMap<>();
+    // Sable owns movement of tracking points. Retain the affected linker ids
+    // until its authoritative move has completed.
+    private final Map<SubLevelAssemblyHelper.AssemblyTransform, Set<UUID>> pendingAssemblyTargetSync =
+            new IdentityHashMap<>();
     // Targets indexed by node id
     private final Map<String, List<IndexedTarget>> targetsByNodeId = new LinkedHashMap<>();
     // Tracks whether target index is dirty
@@ -463,11 +467,12 @@ public final class ContraptionNetworkLinkerTracker extends SavedData {
         return ids;
     }
 
-    // Remap the assembly targets
-    public void remapAssemblyTargets(ServerLevel level,
-                                     BoundingBox3ic assemblyBounds,
-                                     @Nullable ServerSubLevel destinationSubLevel,
-                                     SubLevelAssemblyHelper.AssemblyTransform transform) {
+    // Prepare controller locations before Sable transfers block entities. Target
+    // tracking points must not be transformed here because Sable does that next.
+    public void prepareAssemblyTargets(ServerLevel level,
+                                       BoundingBox3ic assemblyBounds,
+                                       @Nullable ServerSubLevel destinationSubLevel,
+                                       SubLevelAssemblyHelper.AssemblyTransform transform) {
         if (level == null || assemblyBounds == null || transform == null) {
             return;
         }
@@ -475,7 +480,10 @@ public final class ContraptionNetworkLinkerTracker extends SavedData {
         ServerLevel resultingLevel = transform.getLevel();
         boolean changedDimension = resultingLevel != level;
         boolean changed = false;
-        for (LinkerRecord linker : trackedLinkers.values()) {
+        Set<UUID> movedTargetLinkers = new LinkedHashSet<>();
+        for (Map.Entry<UUID, LinkerRecord> entry : trackedLinkers.entrySet()) {
+            UUID linkerId = entry.getKey();
+            LinkerRecord linker = entry.getValue();
             if (!Objects.equals(linker.dimensionId, dimensionId)) {
                 continue;
             }
@@ -483,7 +491,8 @@ public final class ContraptionNetworkLinkerTracker extends SavedData {
                     && linker.controller.movesWithAssemblyBounds(assemblyBounds);
             boolean allUnattachedTargetsMoved = linker.controller == null
                     && !linker.targets.isEmpty()
-                    && linker.targets.stream().allMatch(
+                    && linker.targets.stream().allMatch(target -> target.movesWithAssemblyBounds(assemblyBounds));
+            boolean targetsMoved = linker.targets.stream().anyMatch(
                     target -> target.movesWithAssemblyBounds(assemblyBounds));
             if (controllerMoved) {
                 changed |= linker.controller.remapAssemblyLocation(
@@ -493,13 +502,59 @@ public final class ContraptionNetworkLinkerTracker extends SavedData {
                 linker.dimensionId = resultingLevel.dimension().location().toString();
                 changed = true;
             }
-            for (TargetRecord target : linker.targets) {
-                if (changedDimension && target.movesWithAssemblyBounds(assemblyBounds)) {
-                    target.removeTrackingPoint(level);
-                }
-                changed |= target.remapAssemblyTarget(
-                        resultingLevel, assemblyBounds, destinationSubLevel, transform);
+            if (targetsMoved) {
+                movedTargetLinkers.add(linkerId);
             }
+        }
+        pendingAssemblyTargetSync.put(transform, movedTargetLinkers);
+        if (changed) {
+            setDirty();
+        }
+    }
+
+    // Rewrite linker targets from Sable's moved tracking points at the end of
+    // the transfer. This preserves world, sub-level and nested-sub-level ids.
+    public void finishAssemblyTargets(ServerLevel level,
+                                      SubLevelAssemblyHelper.AssemblyTransform transform) {
+        if (level == null || transform == null) {
+            return;
+        }
+        Set<UUID> linkerIds = pendingAssemblyTargetSync.remove(transform);
+        if (linkerIds == null || linkerIds.isEmpty()) {
+            return;
+        }
+        boolean changed = false;
+        for (UUID linkerId : linkerIds) {
+            LinkerRecord record = trackedLinkers.get(linkerId);
+            if (record == null || record.controller == null) {
+                continue;
+            }
+            boolean targetsChanged = false;
+            for (TargetRecord target : record.targets) {
+                targetsChanged |= target.resolve(level);
+            }
+            if (!targetsChanged) {
+                continue;
+            }
+            changed = true;
+            ServerLevel controllerLevel = resolveLevel(level.getServer(), record.controller.dimensionId);
+            AnalogueContraptionControllerBlockEntity controller = controllerLevel == null
+                    ? null : resolveController(controllerLevel, record.controller);
+            if (controller == null) {
+                continue;
+            }
+            ItemStack linker = controller.getStoredLinker();
+            ContraptionNetworkLinkerData.TargetReadResult targetRead =
+                    ContraptionNetworkLinkerData.readAuthoritativeTargets(linker);
+            if (!targetRead.authoritative() || linker.isEmpty() || !linkerId.equals(targetRead.linkerId())) {
+                continue;
+            }
+            ReconcileResult result = reconcileTrackedLinker(record, level, linker,
+                    targetRead.targets(), targetRead.editMode(), targetRead.targetMode());
+            if (result.itemChanged()) {
+                controller.onTrackedLinkerDataUpdated();
+            }
+            changed |= result.changed();
         }
         if (changed) {
             setDirty();
@@ -625,8 +680,8 @@ public final class ContraptionNetworkLinkerTracker extends SavedData {
             String previousNodeId = target.nodeId;
             String nextNodeId = target.rebuildNodeId();
             if (!Objects.equals(previousNodeId, nextNodeId)) {
-                target.rememberNodeId(previousNodeId);
                 target.nodeId = nextNodeId;
+                target.rememberNodeId(previousNodeId);
                 changed = true;
                 identityChanged = true;
             }
@@ -850,6 +905,7 @@ public final class ContraptionNetworkLinkerTracker extends SavedData {
 
             String nextNodeId = recordTarget.rebuildNodeId();
             if (!Objects.equals(previousNodeId, nextNodeId)) {
+                recordTarget.nodeId = nextNodeId;
                 recordTarget.rememberNodeId(previousNodeId);
                 rewrittenNodeIds.put(previousNodeId, nextNodeId);
                 trackerChanged = true;
@@ -1261,8 +1317,9 @@ public final class ContraptionNetworkLinkerTracker extends SavedData {
             String nextNodeId = ContraptionNetworkLinkerData.nodeIdForTarget(target);
             boolean preserveTrackedIdentity = preserveTrackedLocation || pendingFaceQuarterTurns != 0;
             if (!preserveTrackedIdentity && !Objects.equals(nodeId, nextNodeId)) {
-                rememberNodeId(nodeId);
+                String previousNodeId = nodeId;
                 nodeId = nextNodeId;
+                rememberNodeId(previousNodeId);
                 changed = true;
             }
             if (!Objects.equals(blockId, target.blockId())) {
@@ -1557,9 +1614,12 @@ public final class ContraptionNetworkLinkerTracker extends SavedData {
                 BlockEntity blockEntity = SimulatedHelper.findBlockEntity(level, currentSubLevelId, currentLocalPos);
                 if (blockEntity != null) {
                     state = blockEntity.getBlockState();
-                } else if (SubLevelBlockEntityCollector.getSubLevel(level, currentSubLevelId) instanceof Level subLevel
-                        && subLevel.hasChunkAt(currentLocalPos)) {
-                    state = subLevel.getBlockState(currentLocalPos);
+                } else {
+                    Level targetLevel = targetLevel(level);
+                    if (targetLevel != null && SubLevelBlockEntityCollector.isTargetLoaded(
+                            level, currentSubLevelId, currentLocalPos)) {
+                        state = targetLevel.getBlockState(currentLocalPos);
+                    }
                 }
             }
             if (state == null || !(state.getBlock() instanceof ContraptionNetworkLinkerPlaneBlock)
@@ -1750,8 +1810,7 @@ public final class ContraptionNetworkLinkerTracker extends SavedData {
             if (currentSubLevelId == null) {
                 return level;
             }
-            Object subLevel = SubLevelBlockEntityCollector.getSubLevel(level, currentSubLevelId);
-            return subLevel instanceof Level resolved ? resolved : null;
+            return SubLevelBlockEntityCollector.resolveTargetLevel(level, currentSubLevelId);
         }
 
         // Define the face support status values

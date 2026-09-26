@@ -8,11 +8,9 @@ package com.rieno.gadgetsandgizmos.compat.create;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
-import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEntity;
 import com.rieno.gadgetsandgizmos.lib.kinetics.BearingHead;
 import com.rieno.gadgetsandgizmos.content.AileronBearingBlockEntity;
 import com.rieno.gadgetsandgizmos.content.AnalogueContraptionControllerBlock;
-import com.rieno.gadgetsandgizmos.content.AnalogueContraptionControllerBlockEntity;
 import com.rieno.gadgetsandgizmos.content.BiDirectionalGearboxBlock;
 import com.rieno.gadgetsandgizmos.content.ClawBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerPlaneBlock;
@@ -158,6 +156,9 @@ public final class CTCreateContraptionCompat {
     // Check whether movement is necessary
     private static CheckResult isMovementNecessary(BlockState state, Level level, BlockPos pos) {
         Block block = state.getBlock();
+        if (block instanceof AnalogueContraptionControllerBlock) {
+            return CheckResult.SUCCESS;
+        }
         return block == CTBlocks.ROPE_KNOT.get() || block == CTBlocks.LAUNCHER_ENDPOINT.get()
                 || block == CTBlocks.CONTRAPTION_NETWORK_LINKER_PLANE.get()
                 ? CheckResult.SUCCESS
@@ -167,6 +168,11 @@ public final class CTCreateContraptionCompat {
     // Check whether movement is allowed
     private static CheckResult isMovementAllowed(BlockState state, Level level, BlockPos pos) {
         Block block = state.getBlock();
+        if (block instanceof AnalogueContraptionControllerBlock) {
+            // Graphs, bindings, inventory and embedded blocks are serialized
+            // with the controller. An active controller is still movable.
+            return CheckResult.SUCCESS;
+        }
         if (block == CTBlocks.CONTRAPTION_NETWORK_LINKER_PLANE.get()) {
             return CheckResult.SUCCESS;
         }
@@ -199,13 +205,6 @@ public final class CTCreateContraptionCompat {
             return CheckResult.FAIL;
         }
         if (blockEntity instanceof PhysicsGantryBeltWheelBlockEntity wheel && wheel.hasLinkedTarget()) {
-            return CheckResult.FAIL;
-        }
-        if (blockEntity instanceof AdvancedContraptionControllerBlockEntity) {
-            return CheckResult.FAIL;
-        }
-        if (blockEntity instanceof AnalogueContraptionControllerBlockEntity controller
-                && (!controller.canMoveWithCreateContraption() || controller.getEmbeddedSlabState() != null)) {
             return CheckResult.FAIL;
         }
         if (blockEntity instanceof EntityLauncherAnchorBlockEntity anchor
@@ -243,6 +242,9 @@ public final class CTCreateContraptionCompat {
     // Check whether the block is brittle
     private static CheckResult isBrittle(BlockState state) {
         Block block = state.getBlock();
+        if (block instanceof AnalogueContraptionControllerBlock) {
+            return CheckResult.FAIL;
+        }
         if (block == CTBlocks.CONTRAPTION_NETWORK_LINKER_PLANE.get()) {
             return CheckResult.FAIL;
         }

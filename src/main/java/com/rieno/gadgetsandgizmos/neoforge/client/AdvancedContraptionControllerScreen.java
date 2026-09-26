@@ -129,6 +129,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private static final String DOCUMENTATION_CATEGORY = "documentation";
     private static final String HUD_FIELD_LABELS = "HudFieldLabels";
     private static final String CONSTRUCTOR_LABEL_PREFIX = "input_label:";
+    private static final String FUNCTION_LABEL_PREFIX = "function_label:";
     private static final String NODE_ALIAS_PROPERTY = "node_alias";
     private static final int MAX_CONSTRUCTOR_INPUTS = 32;
     private static final String WIDGET_ELEMENTS = "WidgetElements";
@@ -1873,10 +1874,16 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             Tag dynamicInputs = node.data().get("DynamicInputs");
             Tag dynamicOutputs = node.data().get("DynamicOutputs");
             Tag outputLabels = node.data().get("OutputLabels");
+            Tag functionPortLabels = node.data().get(AdvancedGraphFunctions.PORT_LABELS);
+            Tag functionInputLabels = node.data().get(AdvancedGraphFunctions.CALL_INPUT_LABELS);
+            Tag functionOutputLabels = node.data().get(AdvancedGraphFunctions.CALL_OUTPUT_LABELS);
             Tag dataPortGroups = node.data().get(AdvancedGraphCatalog.DATA_PORT_GROUPS_TAG);
             signature = 31 * signature + (dynamicInputs == null ? 0 : dynamicInputs.hashCode());
             signature = 31 * signature + (dynamicOutputs == null ? 0 : dynamicOutputs.hashCode());
             signature = 31 * signature + (outputLabels == null ? 0 : outputLabels.hashCode());
+            signature = 31 * signature + (functionPortLabels == null ? 0 : functionPortLabels.hashCode());
+            signature = 31 * signature + (functionInputLabels == null ? 0 : functionInputLabels.hashCode());
+            signature = 31 * signature + (functionOutputLabels == null ? 0 : functionOutputLabels.hashCode());
             signature = 31 * signature + (dataPortGroups == null ? 0 : dataPortGroups.hashCode());
             signature = 31 * signature + Boolean.hashCode(node.data().getBoolean(
                     AdvancedGraphCatalog.COLLAPSE_INPUTS_TO_MAP_TAG));
@@ -3396,8 +3403,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 PortPosition pos = portPosition(node, port.getKey(), false);
                 if (!portWithinViewport(pos)) continue;
                 drawExecDiamond(graphics, pos);
-                if (isExecutionCombinerNode(node)) {
-                    drawNodeString(graphics, humanPort(port.getKey()),
+                if (isExecutionCombinerNode(node) || isFunctionOutputNode(node)) {
+                    String label = isFunctionOutputNode(node) ? inputDisplayLabel(node, port.getKey())
+                            : humanPort(port.getKey());
+                    drawNodeString(graphics, label,
                             pos.x() + 9, pos.y() - 4, 0xFFC8D7E3);
                 }
                 continue;
@@ -3413,8 +3422,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 if (!portWithinViewport(pos)) continue;
                 drawExecDiamond(graphics, pos);
                 if ("branch".equals(node.type()) || isExecutionSplitterNode(node)
-                        || isShipCompletionPort(node, port.getKey())) {
-                    String label = humanPort(port.getKey());
+                        || isShipCompletionPort(node, port.getKey()) || isFunctionInputNode(node)) {
+                    String label = isFunctionInputNode(node) ? outputDisplayLabel(node, port.getKey())
+                            : humanPort(port.getKey());
                     drawNodeStringRight(graphics, label, x + width - 9, pos.y() - 4, 0xFFC8D7E3);
                 }
                 continue;
@@ -4179,13 +4189,17 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     graphics.drawString(font, "Alias", x + 10, 108,
                             interfaceSecondaryColor(), false);
                 } else if (editableInputLabelPort != null) {
-                    graphics.drawString(font, "Input name: " + humanPort(editableInputLabelPort), x + 10, 108,
+                    String nameType = isFunctionInterfaceNode(node) ? "Port" : "Input";
+                    graphics.drawString(font, nameType + " name: " + humanPort(editableInputLabelPort), x + 10, 108,
                             interfaceSecondaryColor(), false);
                 } else if (selectedOutputPort != null) {
                     graphics.drawString(font, "Output value: " + humanPort(selectedOutputPort), x + 10, 108,
                             interfaceSecondaryColor(), false);
                 } else if (property != null) {
                     graphics.drawString(font, property, x + 10, 108, interfaceSecondaryColor(), false);
+                } else if (isFunctionInterfaceNode(node)) {
+                    graphics.drawString(font, "Right-click a port name to rename.", x + 10, 108,
+                            interfaceMutedColor(), false);
                 } else if (isHudNode(node) || isConstructorNode(node)) {
                     graphics.drawString(font, "Right-click an input to rename; Shift-right-click removes it.",
                             x + 10, 108,
@@ -5575,7 +5589,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             if (handleInspectorCurveClick(mouseX, mouseY, button)) return true;
             if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT
                     && (rightClickHudInspector(mouseX, mouseY)
-                    || rightClickConstructorInspector(mouseX, mouseY))) return true;
+                    || rightClickConstructorInspector(mouseX, mouseY)
+                    || rightClickFunctionInterfaceInspector(mouseX, mouseY))) return true;
             if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && handleInspectorClick(mouseX, mouseY)) return true;
             super.mouseClicked(mouseX, mouseY, button);
             return true;
@@ -6048,7 +6063,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (node != null) {
             if (handleBodyCurveClick(node, mouseX, mouseY, GLFW.GLFW_MOUSE_BUTTON_RIGHT)
                     || rightClickHudBody(node, mouseX, mouseY)
-                    || rightClickConstructor(node, mouseX, mouseY)) {
+                    || rightClickConstructor(node, mouseX, mouseY)
+                    || rightClickFunctionInterface(node, mouseX, mouseY)) {
                 return;
             }
             selectedGroup = null;
@@ -6744,6 +6760,37 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         return true;
     }
 
+    // Handle a right click on a function interface port label
+    private boolean rightClickFunctionInterface(AdvancedGraphDocument.Node node,
+                                                double mouseX, double mouseY) {
+        if (!isFunctionInterfaceNode(node)) return false;
+        String port = functionInterfaceBodyPortAt(node, mouseX, mouseY);
+        if (port == null) return false;
+        checkpoint();
+        selectOnly(node.id());
+        selectedInputPort = FUNCTION_LABEL_PREFIX + port;
+        syncInspector();
+        int rowHeight = Math.max(10, (int) (15 * zoom));
+        int rowY;
+        if (isFunctionOutputNode(node)) {
+            if ("exec".equals(AdvancedGraphCatalog.inputs(node).get(port))) {
+                rowY = portPosition(node, port, false).y() - rowHeight / 2;
+            } else {
+                int visibleRow = 0;
+                for (var entry : AdvancedGraphCatalog.inputs(node).entrySet()) {
+                    if ("exec".equals(entry.getValue())) continue;
+                    if (entry.getKey().equals(port)) break;
+                    visibleRow++;
+                }
+                rowY = nodeBodyTop(node, screenY(node.y())) + visibleRow * rowHeight;
+            }
+        } else {
+            rowY = portPosition(node, port, true).y() - rowHeight / 2;
+        }
+        openBodyEditor(node, FUNCTION_LABEL_PREFIX + port, rowY, rowHeight);
+        return true;
+    }
+
     // Handle a right click in the constructor inspector
     private boolean rightClickConstructorInspector(double mouseX, double mouseY) {
         AdvancedGraphDocument.Node node = selectedNode();
@@ -6766,6 +6813,32 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 ensureDynamicConstructor(node);
                 if (!AdvancedGraphCatalog.inputs(node).containsKey(port.getKey())) return true;
                 selectedInputPort = CONSTRUCTOR_LABEL_PREFIX + port.getKey();
+                editingBodyValue = false;
+                syncInspector();
+                inspectorValue.setFocused(true);
+                setFocused(inspectorValue);
+                return true;
+            }
+            rowY += rowHeight;
+        }
+        return false;
+    }
+
+    // Handle a right click on a function output label in the inspector
+    private boolean rightClickFunctionInterfaceInspector(double mouseX, double mouseY) {
+        AdvancedGraphDocument.Node node = selectedNode();
+        if (!isFunctionOutputNode(node) || inspectorOptionsCollapsed) return false;
+        InspectorSections sections = inspectorSections(node);
+        if (mouseY < sections.optionsTop() || mouseY >= sections.optionsBottom()) return false;
+        int rowY = sections.optionsTop() - inspectorOptionsScroll;
+        rowY += 17;
+        rowY += propertyControlCount(node) * 17;
+        for (var port : AdvancedGraphCatalog.inputs(node).entrySet()) {
+            if ("exec".equals(port.getValue())) continue;
+            int rowHeight = "frequency".equals(port.getValue()) ? 22 : 17;
+            if (mouseY >= rowY - 3 && mouseY < rowY + rowHeight - 4) {
+                checkpoint();
+                selectedInputPort = FUNCTION_LABEL_PREFIX + port.getKey();
                 editingBodyValue = false;
                 syncInspector();
                 inspectorValue.setFocused(true);
@@ -7682,10 +7755,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             checkpoint();
             draft = AdvancedGraphTemplates.create(templateId);
             restoreViewport();
-            draft.setRevision(savedDraft.revision());
+            draft.setRevision(savedDraft.revision() + 1);
             synchronizeComparePorts();
             clearSelection();
-            send("template", templateId);
+            savedDraft = draft.copy();
+            draftDirty = false;
+            long requestId = beginGraphActionToast("Loading template...");
+            pendingGraphSaves.put(requestId, draft.copy());
+            send("template", templateId, requestId);
         }
         templatePicker = false;
         return true;
@@ -11192,7 +11269,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Check if this is a redstone value
     private static boolean isRedstoneValue(AdvancedGraphDocument.Node node, String port) {
-        return "value".equals(port) && (node.type().startsWith("local_redstone")
+        return "redstone_signal_strength".equals(port)
+                || "value".equals(port) && (node.type().startsWith("local_redstone")
                 || node.type().startsWith("wireless_frequency")
                 || node.type().startsWith("linker_face")
                 || "event_redstone_change".equals(node.type()));
@@ -11200,7 +11278,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Check if this is a whole number value
     private static boolean isWholeNumberValue(AdvancedGraphDocument.Node node, String port) {
-        return isRedstoneValue(node, port)
+        return isRedstoneValue(node, port) && !node.type().endsWith("_output")
+                && !"set_block_data".equals(node.type())
                 || "list_get".equals(node.type()) && "index".equals(port)
                 || "substring".equals(node.type())
                 && ("start_index".equals(port) || "end_index".equals(port))
@@ -11502,8 +11581,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the input display label
     private String inputDisplayLabel(AdvancedGraphDocument.Node node, String port) {
+        String functionCallLabel = functionCallPortLabel(node, port, false);
+        if (!functionCallLabel.isBlank()) return functionCallLabel;
         String inlineMapLabel = inlineMapPortLabel(node, port, false);
         if (!inlineMapLabel.isBlank()) return inlineMapLabel;
+        if (isFunctionOutputNode(node)) {
+            return functionInterfacePortLabel(node, port);
+        }
         if (isHudNode(node)) {
             return hudFieldLabel(node, port);
         }
@@ -11515,7 +11599,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the output display label
     private String outputDisplayLabel(AdvancedGraphDocument.Node node, String port) {
-        String label = inlineMapPortLabel(node, port, true);
+        String label = functionCallPortLabel(node, port, true);
+        if (label.isBlank()) {
+            label = isFunctionInputNode(node) ? functionInterfacePortLabel(node, port)
+                    : inlineMapPortLabel(node, port, true);
+        }
         if (label.isBlank()) {
             label = node.data().getCompound("OutputLabels").getString(port);
         }
@@ -11537,6 +11625,28 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (key.isBlank()) return "";
         int separator = key.lastIndexOf('.');
         return humanPort(separator < 0 ? key : key.substring(separator + 1));
+    }
+
+    // Get the function interface port label
+    private String functionInterfacePortLabel(AdvancedGraphDocument.Node node, String port) {
+        if (!functionInterfacePort(node, port)) return humanPort(port);
+        String label = node.data().getCompound(AdvancedGraphFunctions.PORT_LABELS).getString(port);
+        return label.isBlank() ? humanPort(port) : label;
+    }
+
+    // Get the mirrored interface label on a function call
+    private String functionCallPortLabel(AdvancedGraphDocument.Node node, String port, boolean output) {
+        if (node == null || !AdvancedGraphFunctions.CALL_TYPE.equals(node.type())) return "";
+        String key = output ? AdvancedGraphFunctions.CALL_OUTPUT_LABELS
+                : AdvancedGraphFunctions.CALL_INPUT_LABELS;
+        return node.data().getCompound(key).getString(port);
+    }
+
+    // Check if this is a function interface port
+    private static boolean functionInterfacePort(AdvancedGraphDocument.Node node, String port) {
+        if (port == null || port.isBlank()) return false;
+        return isFunctionInputNode(node) && AdvancedGraphCatalog.outputs(node).containsKey(port)
+                || isFunctionOutputNode(node) && AdvancedGraphCatalog.inputs(node).containsKey(port);
     }
 
     // Get the inline MAP child port indent
@@ -11856,6 +11966,33 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         return null;
     }
 
+    // Get the function interface body port at a label
+    private String functionInterfaceBodyPortAt(AdvancedGraphDocument.Node node,
+                                               double mouseX, double mouseY) {
+        if (isFunctionOutputNode(node)) {
+            String input = hudBodyPortAt(node, mouseX, mouseY);
+            if (input != null) return input;
+            for (var port : AdvancedGraphCatalog.inputs(node).entrySet()) {
+                if (!"exec".equals(port.getValue())) continue;
+                PortPosition position = portPosition(node, port.getKey(), false);
+                if (Math.abs(mouseY - position.y()) <= 7) return port.getKey();
+            }
+            return null;
+        }
+        if (!isFunctionInputNode(node)) return null;
+        int left = screenX(node.x()) + 5;
+        int right = screenX(node.x()) + (int) (NODE_WIDTH * zoom) - 5;
+        if (mouseX < left || mouseX > right) return null;
+        for (var port : AdvancedGraphCatalog.outputs(node).entrySet()) {
+            if (!"exec".equals(port.getValue()) && !isDataPortVisible(node, port.getKey(), true)) continue;
+            PortPosition position = portPosition(node, port.getKey(), true);
+            int halfHeight = "exec".equals(port.getValue()) ? 7
+                    : Math.max(6, (int) Math.ceil(outputDataPortRowHeight(node, port.getKey()) * zoom / 2.0D));
+            if (Math.abs(mouseY - position.y()) <= halfHeight) return port.getKey();
+        }
+        return null;
+    }
+
     // Check if this is a HUD reserved port
     private boolean isHudReservedPort(String port) {
         return "label".equals(port) || "visible".equals(port);
@@ -11877,7 +12014,32 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Get the editable input label port
     private String editableInputLabelPort(AdvancedGraphDocument.Node node, String selectedPort) {
         String hudPort = hudEditableLabelPort(node, selectedPort);
-        return hudPort == null ? constructorEditableLabelPort(node, selectedPort) : hudPort;
+        if (hudPort != null) return hudPort;
+        String constructorPort = constructorEditableLabelPort(node, selectedPort);
+        return constructorPort == null ? functionEditableLabelPort(node, selectedPort) : constructorPort;
+    }
+
+    // Get the function editable label port
+    private String functionEditableLabelPort(AdvancedGraphDocument.Node node, String selectedPort) {
+        if (!isFunctionInterfaceNode(node) || selectedPort == null
+                || !selectedPort.startsWith(FUNCTION_LABEL_PREFIX)) {
+            return null;
+        }
+        String port = selectedPort.substring(FUNCTION_LABEL_PREFIX.length());
+        return functionInterfacePort(node, port) ? port : null;
+    }
+
+    // Rename the function interface port label
+    private void renameFunctionInterfacePort(AdvancedGraphDocument.Node node, String port, String requested) {
+        if (!functionInterfacePort(node, port) || requested == null) return;
+        String next = requested.strip();
+        if (next.isBlank()) return;
+        if (next.length() > 64) next = next.substring(0, 64);
+        CompoundTag labels = node.data().getCompound(AdvancedGraphFunctions.PORT_LABELS);
+        labels.putString(port, next);
+        node.data().put(AdvancedGraphFunctions.PORT_LABELS, labels);
+        AdvancedGraphFunctions.synchronizeCalls(draft);
+        clearGraphRenderCache();
     }
 
     // Get the HUD field label
@@ -14494,7 +14656,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return;
         }
         if (labelEditable) {
-            setInspectorValue(inputDisplayLabel(node, editableInputLabelPort));
+            setInspectorValue(isFunctionInputNode(node)
+                    ? outputDisplayLabel(node, editableInputLabelPort)
+                    : inputDisplayLabel(node, editableInputLabelPort));
             return;
         }
         if (inputEditable) {
@@ -14592,6 +14756,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (editableInputLabelPort != null) {
             if (isHudNode(node)) {
                 renameHudFieldLabel(node, editableInputLabelPort, val);
+            } else if (isFunctionInterfaceNode(node)) {
+                renameFunctionInterfacePort(node, editableInputLabelPort, val);
             } else {
                 renameConstructorInput(node, editableInputLabelPort, val);
             }
@@ -15070,7 +15236,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 if (inOptions && mouseY >= rowY - 3 && mouseY < rowY + rowHeight - 4) {
                     String label = inputDisplayLabel(node, port.getKey());
                     String hint = (isHudNode(node) && !isHudReservedPort(port.getKey())
-                            || isConstructorNode(node) && constructorValuePort(node, port.getKey()))
+                            || isConstructorNode(node) && constructorValuePort(node, port.getKey())
+                            || functionInterfacePort(node, port.getKey()))
                             ? " - right-click to rename" : "";
                     return label + " (" + humanPort(port.getValue()) + ")" + hint;
                 }

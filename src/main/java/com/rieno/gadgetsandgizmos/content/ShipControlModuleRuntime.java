@@ -857,6 +857,7 @@ public final class ShipControlModuleRuntime {
             if (isInitializing()) {
                 fail("Control module detached during initialization", null);
             }
+            releaseNavResidency();
             cancelPostLoadPoseHold();
             clearThrusterProtection();
             releaseControlActuators();
@@ -1793,6 +1794,18 @@ public final class ShipControlModuleRuntime {
 
     // Check if this is module attached
     public boolean isModuleAttached() {
+        if (isPhysicallyMountedOnShipControlModule()) {
+            return true;
+        }
+        Level level = controller.getLevel();
+        if (level == null || CTBlocks.ACC_DISPLAY_SLAB == null) {
+            return false;
+        }
+        return level.getBlockState(controller.getBlockPos().below()).is(CTBlocks.ACC_DISPLAY_SLAB.get());
+    }
+
+    // Check whether the ACC is physically mounted on a Ship Control Module.
+    private boolean isPhysicallyMountedOnShipControlModule() {
         if (CTBlocks.SHIP_CONTROL_MODULE == null) {
             return false;
         }
@@ -1805,9 +1818,7 @@ public final class ShipControlModuleRuntime {
         if (level == null) {
             return false;
         }
-        BlockState support = level.getBlockState(controller.getBlockPos().below());
-        return support.is(module) || CTBlocks.ACC_DISPLAY_SLAB != null
-                && support.is(CTBlocks.ACC_DISPLAY_SLAB.get());
+        return level.getBlockState(controller.getBlockPos().below()).is(module);
     }
 
     // Check if this is initializing
@@ -2119,7 +2130,6 @@ public final class ShipControlModuleRuntime {
         if (!changed) {
             return;
         }
-        releaseNavResidency();
         clearThrusterProtection();
         releaseControlAuthority();
         releaseControlActuators();
@@ -5444,14 +5454,12 @@ public final class ShipControlModuleRuntime {
     // Update the control
     private void tickControl() {
         if (map == null) {
-            releaseNavResidency();
             return;
         }
         ServerSubLevel currentRoot = containingServerSubLevel();
         if (currentRoot == null || !map.rootSubLevelId().equals(currentRoot.getUniqueId())) {
             clearThrusterProtection();
             releaseControlActuators();
-            releaseNavResidency();
             phase = Phase.ERROR;
             status = "Contraption changed; initialize the control module again";
             return;
@@ -8657,23 +8665,27 @@ public final class ShipControlModuleRuntime {
                 .min().orElse(0.0D);
     }
 
-    // Retain the navigation root
+    // Keep a physically mounted SCM's complete ship resident.
     private void retainNavigationRoot() {
-        UUID owner = mapId;
-        ServerSubLevel root = containingServerSubLevel();
-        if (owner == null || root == null || root.isRemoved()) {
-            return;
-        }
-        navigationResidency(owner).retain(root);
-    }
-
-    // Update the nav residency
-    private void updateNavResidency(ServerSubLevel root) {
-        UUID owner = mapId;
-        if (owner == null || root == null || root.isRemoved()) {
+        if (!isPhysicallyMountedOnShipControlModule()) {
             releaseNavResidency();
             return;
         }
+        ServerSubLevel root = containingServerSubLevel();
+        if (root == null || root.isRemoved()) {
+            releaseNavResidency();
+            return;
+        }
+        updateNavResidency(root);
+    }
+
+    // Synchronize the SCM residency independently of map and schedule state.
+    private void updateNavResidency(ServerSubLevel root) {
+        if (!isPhysicallyMountedOnShipControlModule() || root == null || root.isRemoved()) {
+            releaseNavResidency();
+            return;
+        }
+        UUID owner = scmResidencyOwner(root);
         UUID rootId = root.getUniqueId();
         List<SubLevel> connected = connectedShipSubLevels(root);
         long topologyGeneration = connectedSubLevelsTick;
@@ -8685,6 +8697,15 @@ public final class ShipControlModuleRuntime {
         navigationResidency(owner).synchronize(connected);
         navigationResidencySyncTick = topologyGeneration;
         navigationResidencySyncRootId = rootId;
+    }
+
+    // Create a durable owner key before an SCM has an initialized control map.
+    private UUID scmResidencyOwner(ServerSubLevel root) {
+        String manifest = controller.controllerManifestId();
+        String identity = manifest.isBlank()
+                ? root.getUniqueId() + ":" + controller.getBlockPos().asLong()
+                : manifest;
+        return UUID.nameUUIDFromBytes(("scm/" + identity).getBytes(StandardCharsets.UTF_8));
     }
 
     // Get the navigation residency
