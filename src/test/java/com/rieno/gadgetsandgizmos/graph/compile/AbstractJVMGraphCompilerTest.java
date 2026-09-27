@@ -2,7 +2,7 @@ package com.rieno.gadgetsandgizmos.graph.compile;
 
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.graph.compile.debug.DebugProps;
-import com.rieno.gadgetsandgizmos.graph.compile.node_type.data.BlockData;
+import com.rieno.gadgetsandgizmos.graph.compile.node_def.data.BlockData;
 import net.minecraft.nbt.*;
 import org.apache.commons.io.file.PathUtils;
 import org.jetbrains.annotations.NotNull;

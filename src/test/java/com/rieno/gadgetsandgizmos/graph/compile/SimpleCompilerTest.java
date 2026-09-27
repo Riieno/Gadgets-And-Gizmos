@@ -20,6 +20,7 @@ class SimpleCompilerTest extends AbstractJVMGraphCompilerTest {
 
     @Test
     void minus() {
+        setClassSubName("minus");
         test(1, 2, "-", -1);
         test(2, 1, "-", 1);
     }
@@ -64,6 +65,7 @@ class SimpleCompilerTest extends AbstractJVMGraphCompilerTest {
         doc.setRevision(doc.revision() + 1);
         var one = value(DoubleTag.valueOf(a));
         var two = value(DoubleTag.valueOf(b));
+
 
         var plus = binary(type, one, "value", two, "value");
         assertEquals(AdvancedGraphDocument.Value.number(c), output(plus, "c"));
