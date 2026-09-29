@@ -122,4 +122,8 @@ public abstract class JVMNodeType extends EvaluatableNode {
     }
 
     public void compileCustomControlFlow(GeneratorHelper mv, SnapNode sourceNode, CompilationContext context) {}
+
+    public String nameForErrors() {
+        return toString();
+    }
 }

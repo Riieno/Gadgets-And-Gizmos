@@ -118,6 +118,9 @@ public class GeneratorHelper extends GeneratorAdapter {
     public void invoke(java.lang.reflect.Method method) {
         InsnAdapter.invoke(this, method);
     }
+    public void invoke(org.objectweb.asm.Handle method) {
+        InsnAdapter.invoke(this, method);
+    }
 
     public void invoke(Constructor<?> method) {
         InsnAdapter.invoke(this, method);

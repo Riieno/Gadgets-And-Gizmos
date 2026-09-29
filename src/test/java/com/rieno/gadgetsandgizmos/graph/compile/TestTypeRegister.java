@@ -17,6 +17,32 @@ import org.objectweb.asm.Type;
 public class TestTypeRegister extends JVMRegistry implements DefHelper {
 
     public static void register() {
+        register("inline", DefHelper.unary((Num2 nums00) -> {
+                var nums0 = nums00;
+                var nums = nums0;
+                double tmp = Math.pow(nums.a, nums.b());
+                Out out = new Out(Math.pow(tmp, nums.b));
+                return out;
+            }
+        ));
+        register("inline_in", DefHelper.unary((Num2 nums) -> {
+            double tmp = Math.pow(nums.a, nums.b);
+            TestSink.consume(nums);
+            return new Out(Math.pow(tmp, nums.b));
+        }));
+        register("inline_in_out", DefHelper.unary((Num2 nums) -> {
+            double tmp = Math.pow(nums.a, nums.b);
+            Out out = new Out(Math.pow(tmp, nums.b));
+            TestSink.consume(nums);
+            TestSink.consume(out);
+            return out;
+        }));
+        register("inline_out", DefHelper.unary((Num2 nums) -> {
+            double tmp = Math.pow(nums.a, nums.b);
+            Out out = new Out(Math.pow(tmp, nums.b));
+            TestSink.consume(out);
+            return out;
+        }));
         final ConstDValue value = new ConstDValue();
         register("const", value);
         //register("+", new BinOpNode(Opcodes.DADD));
@@ -32,33 +58,6 @@ public class TestTypeRegister extends JVMRegistry implements DefHelper {
         register("math0", DefHelper.numberBin((a, b) -> {
             double tmp = Math.pow(a, b);
             return Math.pow(tmp, b);
-        }));
-        register("inline", new InlinedGenericNodeType(Num2.class, Out.class,
-            (Num2 nums00) -> {
-                var nums0 = nums00;
-                var nums = nums0;
-                double tmp = Math.pow(nums.a, nums.b());
-                Out out = new Out(Math.pow(tmp, nums.b));
-                return out;
-            }
-        ));
-        register("inline_in", new InlinedGenericNodeType(Num2.class, Out.class, (nums) -> {
-            double tmp = Math.pow(nums.a, nums.b);
-            TestSink.consume(nums);
-            return new Out(Math.pow(tmp, nums.b));
-        }));
-        register("inline_in_out", DefHelper.unary((Num2 nums) -> {
-            double tmp = Math.pow(nums.a, nums.b);
-            Out out = new Out(Math.pow(tmp, nums.b));
-            TestSink.consume(nums);
-            TestSink.consume(out);
-            return out;
-        }));
-        register("inline_out", new InlinedGenericNodeType(Num2.class, Out.class, (nums) -> {
-            double tmp = Math.pow(nums.a, nums.b);
-            Out out = new Out(Math.pow(tmp, nums.b));
-            TestSink.consume(out);
-            return out;
         }));
         register("gate", new Gate());
         register("tick", new TickerNode());

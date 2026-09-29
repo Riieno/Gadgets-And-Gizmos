@@ -25,11 +25,14 @@ public final class IOValue {
 
     @Setter
     private boolean couldRemoveRecordVariables;
-    @Setter
-    private boolean doRemoveIntermediateVariable;
+    //@Setter
+    //private boolean flatVariable;
     private final RecordInfo recordInfo;
     @Setter
     private boolean couldRemoveBoxing;
+    @Builder.Default()
+    @Setter
+    private IOValueVariableState variableState=IOValueVariableState.KEEP;
 
     private final boolean needToBeFlat;
 

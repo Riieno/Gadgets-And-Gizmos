@@ -111,12 +111,16 @@ public class ProcessedLambda {
                 options.flatInputPredicate().test(CompileUtil.type2class(argumentType), argumentTypes, i)
             );
             val.couldRemoveRecordVariables(val.usage().onlyFields() && val.isRecord() && val.needToBeFlat());
-            val.doRemoveIntermediateVariable(val.doRemoveIntermediateVariable()||val.couldRemoveRecordVariables());
-
             Type unboxedType = BoxingTool.getUnboxedType(val.type());
             if(unboxedType != null) {
                 val.couldRemoveBoxing(val.needToBeFlat() && val.usage().onlyUnwrapperAndReturn());
+
+                val.variableState(IOValueVariableState.forBox(val.couldRemoveBoxing(),val.needToBeFlat()));
                 //outputValue.couldReduceVariable(true);
+            }else{
+
+                val.variableState(IOValueVariableState.forRecord(val.couldRemoveRecordVariables(),val.needToBeFlat()));
+
             }
         }
         {
@@ -239,12 +243,12 @@ public class ProcessedLambda {
                     IOValue outputValue = cachedOutputValue(outputValues, topStack(frames[i + 1], 1), rawOutputValue);
                     if(outputValue.recordInfo() != null && outputValue.usage().onlyReturn() && outputValue.flowValue().getInsn() == node && outputValue.needToBeFlat()) {
                         if(node instanceof TypeInsnNode typeInsn && typeInsn.getOpcode() == Opcodes.NEW) {
-                            if(typeInsn.desc.equals(rawOutputValue.type().getInternalName())) {
+                            if(typeInsn.desc.equals(outputValue.type().getInternalName())) {
 
                                 InstantiationInfo instantiationInfo = outputValue.flowValue().getDecoration(FlowDecorations.INSTANTIATION_INFO);
                                 List<String> props = propsInCanonicalCtor(instantiationInfo.initCall.getInsn(), outputValue.recordInfo());
                                 if(props == null) break shortcut;
-                                outputValue.doRemoveIntermediateVariable(true);
+                                outputValue.variableState(IOValueVariableState.FLAT_RECORD_NO_VARIABLE);
                                 replacedNodes.put(CompileUtil.indexOf(instantiationInfo.initCall.getInsn()), List.of(storePorts(props)));
                                 if(i + 1 < originalInsnArray.length && originalInsnArray[i + 1].getOpcode() == Opcodes.DUP) {
                                     ignoreInsn.add(i + 1);
@@ -269,17 +273,23 @@ public class ProcessedLambda {
                     FlowValue local1 = topStack(frame, 1);
                     int argI = UsageInterpreter.getArgumentIndex(local1);
                     if(argI >= 0) {
-                        IOValue inputValue = inputValues[argI];
-                        if(!inputValue.doRemoveIntermediateVariable()) {
+                        IOValueVariableState var = inputValues[argI].variableState();
+                        if(var.loadInputFromInputPort()) {
                             String name = argumentDefNames.get(argI);
                             transformedNodes.add(compilable("transformed VarInsn loadInput#" +argI, (mv, snapNode, inputs, outputs, data, context) -> {
                                 inputs.load(mv,name);
                             }));
+                            continue;
+                        }else if(!var.loadStoreNormalVariable()){
+                            continue;
                         }
-                        continue;
                     }
-                    if(UsageInterpreter.isOutput(local1) && cachedOutputValue(outputValues, local1, rawOutputValue).doRemoveIntermediateVariable())
-                        continue;
+                    if(UsageInterpreter.isOutput(local1)) {
+                        IOValueVariableState val = cachedOutputValue(outputValues, local1, rawOutputValue).variableState();
+                        if(!val.keep() || !val.loadStoreNormalVariable()) {
+                            continue;
+                        }
+                    }
 
 
                     int varIdx = varNode.var;
@@ -303,7 +313,8 @@ public class ProcessedLambda {
                         if(argIndex < 0) break shortcut2;
                         IOValue inputValue = inputValues[argIndex];
                         if(inputValue.recordInfo() != null) {
-                            if(inputValue.doRemoveIntermediateVariable()) {
+                            IOValueVariableState var = inputValue.variableState();
+                            if(!var.keep()) {
                                 String prop = inputValue.recordInfo().toPropertyName(node);
                                 if(prop == null) break shortcut;
                                 transformedNodes.add(compilable("load input#" + prop, (mv, snapNode, inputs, outputs, data, context) -> {
@@ -324,16 +335,11 @@ public class ProcessedLambda {
                 }
                 if(node.getOpcode() == Opcodes.ARETURN) {
                     IOValue outputValue = cachedOutputValue(outputValues, topStack(frames[i], 1), rawOutputValue);
-                    if(!outputValue.couldRemoveRecordVariables()) continue;
-                    RecordInfo outputRecord = outputValue.recordInfo();
-                    for(Map.Entry<String, Type> entry : outputRecord.fieldMap.entrySet()) {
-                        transformedNodes.add(new InsnNode(Opcodes.DUP));
-                        String port = entry.getKey();
-                        Type type = entry.getValue();
-                        transformedNodes.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, outputRecord.type.getInternalName(), port, "()" + type.getDescriptor(), false));
-                        transformedNodes.add(compilable("output_destruct#" + port, (mv, snapNode, inputs, outputs, data, context) -> {
-                            outputs.store(mv, port);
-                        }));
+                    if(!outputValue.variableState().keep()) continue;
+                    if(outputValue.isRecord()){
+                        recordDestructor(transformedNodes, outputValue);
+                    }else{
+                        boxDestructor(transformedNodes, outputValue,outputPortRef);
                     }
 
                     continue;
@@ -374,6 +380,29 @@ public class ProcessedLambda {
             argumentDefNames,
             options
         );
+    }
+
+    private static void boxDestructor(ObjectArrayList<AbstractInsnNode> transformedNodes, IOValue outputValue, OutputPortRef outputPortRef) {
+        BoxingTool.Entry boxingEntry = BoxingTool.boxingEntry(outputValue.type());
+        if(boxingEntry==null)return;
+        outputPortRef.used=true;
+        Handle unboxingMethod = boxingEntry.unboxingMethod();
+        transformedNodes.add(compilable("output_destruct_unbox", (mv, snapNode, inputs, outputs, data, context) -> {
+            mv.invoke(unboxingMethod);
+            outputs.store(mv, outputPortRef.name);
+        }));
+    }
+    private static void recordDestructor(ObjectArrayList<AbstractInsnNode> transformedNodes, IOValue outputValue) {
+        RecordInfo outputRecord = outputValue.recordInfo();
+        for(Map.Entry<String, Type> entry : outputRecord.fieldMap.entrySet()) {
+            transformedNodes.add(new InsnNode(Opcodes.DUP));
+            String port = entry.getKey();
+            Type type = entry.getValue();
+            transformedNodes.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, outputRecord.type.getInternalName(), port, "()" + type.getDescriptor(), false));
+            transformedNodes.add(compilable("output_destruct#" + port, (mv, snapNode, inputs, outputs, data, context) -> {
+                outputs.store(mv, port);
+            }));
+        }
     }
 
     private static void addRecordFields(Object2ObjectOpenHashMap<Type, Set<String>> fields, Type type) {
@@ -436,7 +465,7 @@ public class ProcessedLambda {
 
     private static @NotNull AbstractInsnNode makeInputRecordVar(IOValue value, int argIndex, int byteCodeArgIndex) {
         return compilable("input_record_var#" + argIndex, (mv, snapNode, inputs, outputs, data, context) -> {
-            String localInputRecordVar = "var_" + snapNode.id + "input_record_" + argIndex;
+            String localInputRecordVar = "var_" + snapNode.id + "_inrecord_" + argIndex;
             RecordInfo inputRecord = value.recordInfo();
             int i = mv.newLocal(localInputRecordVar, inputRecord.type);
             context.varMap.put(byteCodeArgIndex, i);

@@ -88,6 +88,7 @@ public class NodeFlowGenerator {
     public static @NotNull Inputs defaultInputs(SnapNode node) {
         return (mv, inputPortName) -> {
             int portIndex = node.inputPort(inputPortName);
+            if(portIndex<0)throw new IllegalArgumentException("Unknown input port '%s' for '%s'".formatted(portIndex,node.type.nameForErrors()));
             GeneratorHelper.PortVarEntry existedEntry = mv.findEntry(node, portIndex);
             if(existedEntry != null) {
                 mv.loadLocal(existedEntry);
