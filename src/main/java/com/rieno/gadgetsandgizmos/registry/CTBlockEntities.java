@@ -27,7 +27,6 @@ import com.rieno.gadgetsandgizmos.content.DiagnosticTabletBlockEntity;
 import com.rieno.gadgetsandgizmos.content.EntityLauncherAnchorBlockEntity;
 import com.rieno.gadgetsandgizmos.content.FuelOxidizerBlockEntity;
 import com.rieno.gadgetsandgizmos.content.GyroscopeLinkBlockEntity;
-import com.rieno.gadgetsandgizmos.content.GyroRedstoneBridgeBlockEntity;
 import com.rieno.gadgetsandgizmos.content.IndustrialMotorBlockEntity;
 import com.rieno.gadgetsandgizmos.content.LauncherEndpointBlockEntity;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryCarriageBlockEntity;
@@ -47,13 +46,13 @@ import com.rieno.gadgetsandgizmos.content.SmartTankBlockEntity;
 import com.rieno.gadgetsandgizmos.content.SmartVaultBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ShipCouplerBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ShipDockBlockEntity;
+import com.rieno.gadgetsandgizmos.content.ShipControlModuleBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ThrusterBearingBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ThrusterBearingLinkBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity;
 import com.rieno.gadgetsandgizmos.content.VariableTransmissionBlockEntity;
 import com.rieno.gadgetsandgizmos.content.VectorBearingBlockEntity;
 import com.rieno.gadgetsandgizmos.content.VectorBearingLinkBlockEntity;
-import com.rieno.gadgetsandgizmos.content.VirtualOrientationSourceBlockEntity;
 import com.rieno.gadgetsandgizmos.content.UniversalDisplayAdapterBlockEntity;
 import com.rieno.gadgetsandgizmos.content.WorkerPodBlockEntity;
 import net.minecraft.core.registries.Registries;
@@ -75,6 +74,10 @@ public final class CTBlockEntities {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     public static final DeferredRegister<BlockEntityType<?>> REGISTRAR = DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, CreateThrusters.MOD_ID);
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ShipControlModuleBlockEntity>> SHIP_CONTROL_MODULE =
+            register("ship_control_module", () -> BlockEntityType.Builder.of(
+                    ShipControlModuleBlockEntity::new, CTBlocks.SHIP_CONTROL_MODULE.get()).build(null));
 
     @Nullable
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ThrusterBlockEntity>> THRUSTER = register("thruster",
@@ -140,14 +143,6 @@ public final class CTBlockEntities {
             () -> BlockEntityType.Builder.of(DoubleButtonBlockEntity::new,
                     CTBlocks.DOUBLE_BUTTON.get(), CTBlocks.COPYCAT_DOUBLE_BUTTON.get()).build(null),
             "copycat_double_button");
-
-    @Nullable
-    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<VirtualOrientationSourceBlockEntity>> VIRTUAL_ORIENTATION_SOURCE = register("virtual_orientation_source",
-            () -> BlockEntityType.Builder.of(VirtualOrientationSourceBlockEntity::new, CTBlocks.VIRTUAL_ORIENTATION_SOURCE.get()).build(null));
-
-    @Nullable
-    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<GyroRedstoneBridgeBlockEntity>> GYRO_REDSTONE_BRIDGE = register("gyro_redstone_bridge",
-            () -> BlockEntityType.Builder.of(GyroRedstoneBridgeBlockEntity::new, CTBlocks.GYRO_REDSTONE_BRIDGE.get()).build(null));
 
     @Nullable
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<BiDirectionalGearboxBlockEntity>> BIDIRECTIONAL_GEARBOX = register("bidirectional_gearbox",

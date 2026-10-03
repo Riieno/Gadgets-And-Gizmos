@@ -65,6 +65,8 @@ import com.rieno.gadgetsandgizmos.lib.scm.ScmControlModeRegistry;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmCommandRouting;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmLeggedGait;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmLeggedLocomotion;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmArticulatedIk;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmLocomotionFrame;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmTankSteering;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmSteeringMode;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmSteeringGeometry;
@@ -384,8 +386,6 @@ public final class ShipControlModuleRuntime {
     private @Nullable UUID calDirMapId;
     // Tracked applied control values
     private final Map<Integer, Double> appliedControlValues = new LinkedHashMap<>();
-    // Retained articulated joint targets for the live IK feedback loop
-    private final Map<Integer, Double> ikJointTargetValues = new LinkedHashMap<>();
     // Tracked closed-loop face values
     private final Map<String, Double> regulatedFaceControlValues = new HashMap<>();
     // Cached optional articulated body relations for the current IK control tick
@@ -396,8 +396,10 @@ public final class ShipControlModuleRuntime {
     private int ikAutoCandidateJointCount;
     private int ikAutoLinkedJointCount;
     private int ikAutoChainCount;
-    // Retained planted feet for the live procedural IK gait
+    // Phase-driven state for the live procedural IK gait
     private final ScmLeggedLocomotion.GaitState ikGaitState = new ScmLeggedLocomotion.GaitState();
+    private final List<AutopilotDebugSnapshot.Entry> ikDebugEntries = new ArrayList<>();
+    private int ikGeometryFingerprint;
     // Tracked control bearings
     private final Map<Integer, BearingActuator> controlBearings = new LinkedHashMap<>();
     // Selected bearing poses
@@ -1051,6 +1053,9 @@ public final class ShipControlModuleRuntime {
             sections.add(autopilotFinalDemandSection(autopilotControlDemand));
         }
         if(!speedControlBranches.isEmpty()) sections.add(autopilotSpeedOutputsSection());
+        if(isControlMode(ScmBuiltinControlModes.IK_ID) && !ikDebugEntries.isEmpty()){
+            sections.add(new AutopilotDebugSnapshot.Section("IK locomotion", List.copyOf(ikDebugEntries)));
+        }
         sections.add(autopilotPlannerSection());
         cachedAutopilotDebugSnapshot = new AutopilotDebugSnapshot(
                 vehicleId, controller.getShipName(), anchor,
@@ -2801,6 +2806,7 @@ public final class ShipControlModuleRuntime {
             if (isInitializing()) {
                 fail("Control module detached during initialization", null);
             }
+            releaseNavResidency();
             cancelPostLoadPoseHold();
             clearThrusterProtection();
             releaseControlActuators();
@@ -3182,8 +3188,7 @@ public final class ShipControlModuleRuntime {
         restoreCalActuators();
         rootSubLevel = serverSubLevel;
         initializationFilters = filters == null ? InitializationFilters.NONE : filters;
-        initializationV2 = CTConfigs.SERVER.enableScmInitializationV2.get()
-                || isControlMode(ScmBuiltinControlModes.CAR_ID);
+        initializationV2 = isControlMode(ScmBuiltinControlModes.CAR_ID);
         Map<UUID, ForeignScmMap> detectedForeignMaps =
                 foreignScmMaps(initializationTopology, true);
         suppressedForeignTopologyFingerprint =
@@ -4618,7 +4623,6 @@ public final class ShipControlModuleRuntime {
         if (!changed) {
             return;
         }
-        releaseNavResidency();
         clearThrusterProtection();
         releaseControlAuthority();
         releaseControlActuators();
@@ -7394,13 +7398,22 @@ public final class ShipControlModuleRuntime {
         mainCarriageMapValidationRevisions.keySet().retainAll(activeMainCarriageMapIds);
         dirtyMainCarriageMapIds.retainAll(activeMainCarriageMapIds);
         primaryOwned.add(root.getUniqueId());
+        Map<UUID, SubLevel> liveBodies = connectedShipSubLevelIndex(root);
+        Set<UUID> mappedBodies = mapSubLevelIds(primaryMap);
+        Set<UUID> articulatedBodies = new LinkedHashSet<>(ScmSubLevelRelationRegistry.connected(
+                primaryOwned, optionalSubLevelRelations(root)));
+        articulatedBodies.retainAll(mappedBodies);
+        articulatedBodies.retainAll(liveBodies.keySet());
+        primaryOwned.addAll(articulatedBodies);
+        Set<UUID> compositionBodies = new LinkedHashSet<>(topology.loadedBodyIds());
+        compositionBodies.addAll(articulatedBodies);
         ScmMapCompositionApi.Fragment<AssemblyMapSource> primary =
                 new ScmMapCompositionApi.Fragment<>(
                         primaryMap.id(), root.getUniqueId(), primaryOwned,
                         new AssemblyMapSource(primaryMap, false, controller));
         ScmMapCompositionApi.Composition<AssemblyMapSource> composition =
                 ScmMapCompositionApi.compose(
-                        primary, attached, topology.loadedBodyIds());
+                        primary, attached, compositionBodies);
         Set<AssemblyUnitIdentity> automaticCarriageUnits =
                 automaticCarriageUnitIdentities(
                         composition, activeMainCarriageMapIds);
@@ -7411,7 +7424,7 @@ public final class ShipControlModuleRuntime {
             activeAssemblyTopology = topology;
             activeScmActuatorOwners = scmActuatorOwners(composition);
             activeAutomaticCarriageUnits = automaticCarriageUnits;
-            activeAssemblySubLevelIds = topology.loadedBodyIds();
+            activeAssemblySubLevelIds = Set.copyOf(compositionBodies);
             activeCarriageCount = attached.size();
             absorbedScmMapCount = foreignMaps.size();
             lastMainCarriageMapSafetyRefreshTick = mainCarriageMaps.isEmpty()
@@ -7429,7 +7442,7 @@ public final class ShipControlModuleRuntime {
         activeScmActuatorOwners = scmActuatorOwners(composition);
         activeAutomaticCarriageUnits = automaticCarriageUnits;
         activeAssemblyMapSignature = signature;
-        activeAssemblySubLevelIds = topology.loadedBodyIds();
+        activeAssemblySubLevelIds = Set.copyOf(compositionBodies);
         activeCarriageCount = attached.size();
         absorbedScmMapCount = foreignMaps.size();
         lastMainCarriageMapSafetyRefreshTick = mainCarriageMaps.isEmpty()
@@ -8485,14 +8498,12 @@ public final class ShipControlModuleRuntime {
     private void tickControl() {
         if (map == null) {
             releaseScheduleSplineConstraint();
-            releaseNavResidency();
             return;
         }
         ServerSubLevel currentRoot = containingServerSubLevel();
         if (currentRoot == null || !map.rootSubLevelId().equals(currentRoot.getUniqueId())) {
             clearThrusterProtection();
             releaseControlActuators();
-            releaseNavResidency();
             phase = Phase.ERROR;
             status = "Contraption changed; initialize the control module again";
             return;
@@ -10942,6 +10953,8 @@ public final class ShipControlModuleRuntime {
 
     // Check if this is a control mode
     private boolean isControlMode(ResourceLocation modeId) {
+        if (ScmBuiltinControlModes.IK_ID.equals(modeId)
+                && !ScmBuiltinControlModes.isIkEnabled()) return false;
         return controller.getShipControlMode().id().equals(modeId);
     }
 
@@ -11381,7 +11394,8 @@ public final class ShipControlModuleRuntime {
         Map<String, Integer> groupWinners = new HashMap<>();
         for (int idx = 0; idx < currentMap.units().size(); idx++) {
             ShipControlMap.PropulsionUnit unit = currentMap.units().get(idx);
-            if (!unit.controllable() || isAccelerationControlUnit(currentMap, unit)) {
+            if (!unit.controllable() || isAccelerationControlUnit(currentMap, unit)
+                    || isIkOwnedJoint(currentMap, unit)) {
                 continue;
             }
             Actuator actuator = controlActuators.get(idx);
@@ -11419,7 +11433,8 @@ public final class ShipControlModuleRuntime {
         }
         for (int idx = 0; idx < currentMap.units().size(); idx++) {
             Actuator actuator = controlActuators.get(idx);
-            if (isAccelerationControlUnit(currentMap, currentMap.units().get(idx))) {
+            if (isAccelerationControlUnit(currentMap, currentMap.units().get(idx))
+                    || isIkOwnedJoint(currentMap, currentMap.units().get(idx))) {
                 continue;
             }
             ShipControlMap.PropulsionUnit unit = currentMap.units().get(idx);
@@ -11950,7 +11965,7 @@ public final class ShipControlModuleRuntime {
             mappedLevels.put(unit.index(), ScmSpeedGroupAllocator.controlForEffort(samples, efforts[idx]));
         }
         for (ShipControlMap.PropulsionUnit unit : currentMap.units()) {
-            if (!isAccelerationControlUnit(currentMap, unit)) {
+            if (!isAccelerationControlUnit(currentMap, unit) || isIkOwnedJoint(currentMap, unit)) {
                 continue;
             }
             Actuator actuator = controlActuators.get(unit.index());
@@ -12087,7 +12102,7 @@ public final class ShipControlModuleRuntime {
         Set<ScmConfigurationProfile.UnitReference> brakeUnits =
                 configuration.brakeUnits();
         for (ShipControlMap.PropulsionUnit unit : currentMap.units()) {
-            if (!unit.controllable()) {
+            if (!unit.controllable() || isIkOwnedJoint(currentMap, unit)) {
                 continue;
             }
             boolean reducesSpeed = decelerationUnits.stream().anyMatch(reference ->
@@ -12495,6 +12510,7 @@ public final class ShipControlModuleRuntime {
     private void applyIkLocomotion(
             ShipControlMap currentMap, ControlDemand demand, Telemetry telemetry
     ) {
+        ikDebugEntries.clear();
         ScmConfigurationProfile configuration = controller.getScmConfigurationProfile();
         ServerSubLevel root = rootSubLevel != null ? rootSubLevel : containingServerSubLevel();
         if (configuration == null || currentMap == null || root == null
@@ -12502,6 +12518,12 @@ public final class ShipControlModuleRuntime {
             return;
         }
         ScmLeggedGait gait = ScmLeggedGait.fromId(configuration.ikGait());
+        int fingerprint = Objects.hash(configuration.mapId(), configuration.groups(),
+                configuration.actionGroups(), configuration.ikGait(), configuration.orientationOverride());
+        if(ikGeometryFingerprint != fingerprint){
+            ikGaitState.clear();
+            ikGeometryFingerprint = fingerprint;
+        }
         List<ScmSubLevelRelationRegistry.Relation> relations = ikSubLevelRelations(root);
         List<IkLimbBinding> bindings = new ArrayList<>();
         List<ScmLeggedLocomotion.Contact> contacts = new ArrayList<>();
@@ -12527,21 +12549,22 @@ public final class ShipControlModuleRuntime {
             Vec3 fallbackFoot = ikLiveRolePosition(root, currentMap, ankle);
             if (fallbackFoot == null) fallbackFoot = ikLiveRolePosition(root, currentMap, extension);
             if (fallbackFoot == null) fallbackFoot = kneePosition.add(0.0D, -1.0D, 0.0D);
-            Vec3 footPosition = ikFootPosition(root, relationFootSources(knee, ankle, extension),
-                    directFootChildren(knee, ankle, extension), relations, fallbackFoot);
-            double coxa = Math.max(0.125D, ikDistance(
+            IkFootPosition foot = ikAssignedFootPosition(root,
+                    ikArticulatedRoles(yaw, hip, knee, ankle, extension), relations, fallbackFoot);
+            Vec3 footPosition = foot.position();
+            double coxa = yaw.empty() ? 0.0D : Math.max(0.125D, ikDistance(
                     ikLiveRolePosition(root, currentMap, yaw), hipPosition));
             double upper = Math.max(0.25D, ikDistance(hipPosition, kneePosition));
             double lower = Math.max(0.25D, ikDistance(kneePosition, footPosition));
             String limbId = "leg_" + index;
             Vec3 rootHip = hipPosition.subtract(currentMap.centerOfMass());
-            ScmLeggedLocomotion.Limb limb = new ScmLeggedLocomotion.Limb(
+            ScmLeggedLocomotion.Limb limb = ikReferenceLimb(new ScmLeggedLocomotion.Limb(
                     limbId, ScmLeggedLocomotion.LimbKind.LEG, rootHip,
                     footPosition.subtract(hipPosition), coxa, upper, lower,
-                    gait.phaseOffset(index - 1, legs), 0.0D, 0.0D, 0.0D);
+                    gait.phaseOffset(index - 1, legs), 0.0D, 0.0D, 0.0D));
             bindings.add(new IkLimbBinding(limbId, limb, yaw, hip, knee, ankle, extension,
-                    ikArticulatedRoles(yaw, hip, knee, ankle), propulsion, hipPosition,
-                    footPosition, null));
+                    ikArticulatedRoles(yaw, hip, knee, ankle, extension), propulsion, hipPosition,
+                    footPosition, foot.subLevelId()));
             contacts.add(ikFootContact(root, currentMap, limbId, hipPosition, footPosition));
         }
         for (int index = 1; index <= 2; index++) {
@@ -12556,20 +12579,24 @@ public final class ShipControlModuleRuntime {
             if (hipPosition == null) continue;
             Vec3 kneePosition = ikLiveRolePosition(root, currentMap, knee);
             if (kneePosition == null) kneePosition = hipPosition.add(0.0D, -0.75D, 0.0D);
-            Vec3 handPosition = kneePosition.add(0.0D, -0.75D, 0.0D);
-            ScmLeggedLocomotion.Limb limb = new ScmLeggedLocomotion.Limb(
+            IkFootPosition hand = ikAssignedFootPosition(root,
+                    ikArticulatedRoles(yaw, hip, knee), relations,
+                    kneePosition.add(0.0D, -0.75D, 0.0D));
+            Vec3 handPosition = hand.position();
+            ScmLeggedLocomotion.Limb limb = ikReferenceLimb(new ScmLeggedLocomotion.Limb(
                     "arm_" + index, ScmLeggedLocomotion.LimbKind.ARM,
                     hipPosition.subtract(currentMap.centerOfMass()),
                     handPosition.subtract(hipPosition),
                     Math.max(0.125D, ikDistance(ikLiveRolePosition(root, currentMap, yaw), hipPosition)),
                     Math.max(0.25D, ikDistance(hipPosition, kneePosition)),
                     Math.max(0.25D, ikDistance(kneePosition, handPosition)),
-                    index == 1 ? 0.0D : 0.5D, 0.0D, 0.0D, 0.0D);
+                    index == 1 ? 0.0D : 0.5D, 0.0D, 0.0D, 0.0D));
             bindings.add(new IkLimbBinding("arm_" + index, limb, yaw, hip, knee,
                     IkRoleBinding.EMPTY, IkRoleBinding.EMPTY, ikArticulatedRoles(yaw, hip, knee),
-                    IkRoleBinding.EMPTY, hipPosition, handPosition, null));
+                    IkRoleBinding.EMPTY, hipPosition, handPosition, hand.subLevelId()));
         }
-        if (bindings.stream().noneMatch(binding -> binding.id().startsWith("leg_"))) {
+        if (configuration.usesAutomaticIkBindings()
+                && bindings.stream().noneMatch(binding -> binding.id().startsWith("leg_"))) {
             bindings = ikAutoLimbBindings(configuration, currentMap, root, relations, gait);
             contacts.clear();
             for (IkLimbBinding binding : bindings) {
@@ -12586,32 +12613,26 @@ public final class ShipControlModuleRuntime {
             }
         }
         if (bindings.isEmpty()) return;
-        Set<Integer> activeIkJoints = bindings.stream().flatMap(binding ->
-                binding.articulatedJoints().stream()).flatMap(binding -> binding.units().stream())
-                .map(ShipControlMap.PropulsionUnit::index).collect(java.util.stream.Collectors.toSet());
-        ikJointTargetValues.keySet().removeIf(index -> !activeIkJoints.contains(index));
-        Vec3 forward = controllerForwardRoot();
-        Vec3 up = controllerUpRoot();
-        Vec3 right = normalize(forward.cross(up), new Vec3(1.0D, 0.0D, 0.0D));
+        ScmLocomotionFrame gaitFrame = ikGaitFrame();
         Vec3 controlForce = finite(demand.controlForce());
-        Vec3 command = new Vec3(Mth.clamp(controlForce.dot(right), -1.0D, 1.0D), 0.0D,
-                Mth.clamp(controlForce.dot(forward), -1.0D, 1.0D));
+        Vec3 command = new Vec3(Mth.clamp(controlForce.dot(gaitFrame.right()), -1.0D, 1.0D), 0.0D,
+                Mth.clamp(controlForce.dot(gaitFrame.forward()), -1.0D, 1.0D));
         double yawDemand = Mth.clamp(ScmControlAxes.yawRightDemand(
-                demand.controlTorque(), up, false), -1.0D, 1.0D);
+                demand.controlTorque(), gaitFrame.up(), false), -1.0D, 1.0D);
         double crouchDemand = ikPostureDemand("ship_crouch");
         double jumpDemand = ikPostureDemand("ship_jump");
         double motion = Mth.clamp(command.length(), 0.0D, 1.0D);
         double gaitDemand = Math.max(motion, Math.abs(yawDemand));
         double phase = ikGaitState.advancePhase(gaitDemand, 0.05D,
-                0.75D + gaitDemand * 0.45D);
-        Vec3 localVelocity = SableTransformApi.toLocalDirection(root, telemetry.velocity());
+                0.45D + gaitDemand * 0.25D);
+        Vec3 localVelocity = gaitFrame.toLocal(worldDirectionToRoot(telemetry.velocity()));
         boolean airborne = contacts.stream().noneMatch(ScmLeggedLocomotion.Contact::grounded)
                 || jumpDemand > 1.0E-3D && localVelocity.y > 0.35D;
         ScmLeggedLocomotion.Posture posture = new ScmLeggedLocomotion.Posture(
                 crouchDemand, jumpDemand, airborne);
         ScmLeggedLocomotion.Input input = new ScmLeggedLocomotion.Input(
                 Vec3.ZERO, command, yawDemand, 0.0D,
-                phase, 0.35D, 1.25D, 0.45D, 0.35D, 0.85D);
+                phase, gait.swingFraction(), 1.25D, 0.45D, 0.35D, 0.85D);
         ScmLeggedLocomotion.Plan plan = ScmLeggedLocomotion.solve(
                 input, bindings.stream().map(IkLimbBinding::limb).toList(), contacts,
                 ScmLeggedLocomotion.BodyMotion.NONE, null, posture);
@@ -12620,8 +12641,13 @@ public final class ShipControlModuleRuntime {
             if (!binding.id().startsWith("leg_")) continue;
             ScmLeggedLocomotion.LimbTarget target = plan.targets().get(binding.id());
             if (target == null) continue;
-            plannedContacts.add(ikFootContact(root, currentMap, binding.id(), binding.hipPosition(),
-                    binding.hipPosition().add(target.footPosition())));
+            ScmLeggedLocomotion.Contact terrain = ikFootContact(root, currentMap, binding.id(),
+                    binding.hipPosition(), binding.hipPosition().add(gaitFrame.toBody(target.footPosition())));
+            ScmLeggedLocomotion.Contact measured = contacts.stream()
+                    .filter(contact -> contact.limbId().equals(binding.id())).findFirst().orElse(terrain);
+            plannedContacts.add(new ScmLeggedLocomotion.Contact(binding.id(), measured.grounded(),
+                    measured.position(), terrain.surfaceDetected() ? terrain.footPosition() : measured.footPosition(),
+                    terrain.surfaceDetected() || measured.surfaceDetected()));
         }
         plan = ScmLeggedLocomotion.solve(input, bindings.stream().map(IkLimbBinding::limb).toList(),
                 plannedContacts, new ScmLeggedLocomotion.BodyMotion(localVelocity, 0.05D),
@@ -12630,20 +12656,117 @@ public final class ShipControlModuleRuntime {
             ScmLeggedLocomotion.LimbTarget target = plan.targets().get(binding.id());
             if (target == null) continue;
             ScmLeggedLocomotion.JointAngles angles = target.angles();
+            ScmLeggedLocomotion.Contact contact = contacts.stream()
+                    .filter(val -> val.limbId().equals(binding.id())).findFirst().orElse(null);
+            ikDebugEntries.add(debugEntry(binding.id(), (target.stance() ? "stance" : "swing")
+                    + " | phase " + debugDecimal(target.phase())
+                    + " | contact " + debugBoolean(contact != null && contact.grounded())
+                    + " | foot target " + debugVector(target.footPosition())));
             ScmLeggedLocomotion.JointAngles rest = ScmLeggedLocomotion.inverseKinematics(
                     binding.limb(), binding.limb().defaultFootPosition());
-            ikApplyJoint(currentMap, binding.yaw(), angles.yaw() - rest.yaw());
-            ikApplyJoint(currentMap, binding.hip(), angles.hip() - rest.hip());
-            ikApplyJoint(currentMap, binding.knee(), angles.knee() - rest.knee());
-            ikApplyJoint(currentMap, binding.ankle(),
-                    ScmLeggedLocomotion.ankleCompensation(angles, rest));
+            IkLimbControl limbControl = ikApplyRedundantLimb(
+                    root, currentMap, binding, target, relations, gaitFrame);
+            if(limbControl == IkLimbControl.HOLD){
+                ikApplyPropulsion(currentMap, binding.propulsion(), 0.0D);
+                continue;
+            }
+            if(limbControl == IkLimbControl.ANALYTICAL){
+                ikApplyJoint(currentMap, binding.yaw(), angles.yaw() - rest.yaw());
+                ikApplyJoint(currentMap, binding.hip(), angles.hip() - rest.hip());
+                ikApplyJoint(currentMap, binding.knee(), angles.knee() - rest.knee());
+                ikApplyJoint(currentMap, binding.ankle(),
+                        ScmLeggedLocomotion.ankleCompensation(angles, rest));
+            }else if(limbControl == IkLimbControl.MEASURED){
+                ikApplyJoint(currentMap, binding.ankle(),
+                        ScmLeggedLocomotion.ankleCompensation(angles, rest));
+            }
             ikApplyExtension(currentMap, binding.extension(), angles.reach() - rest.reach(),
-                    angles.reach(), binding.limb().upperLength() + binding.limb().lowerLength());
-            ikApplyRedundantLimb(root, currentMap, binding, target, relations);
+                    angles.reach(), binding.limb().upperLength() + binding.limb().lowerLength(),
+                    limbControl == IkLimbControl.MEASURED);
             if (binding.id().startsWith("leg_")) {
                 ikApplyPropulsion(currentMap, binding.propulsion(), target.stance() ? motion : 0.0D);
             }
         }
+    }
+
+    // Keep ordinary force allocation from pulsing an IK motor back to neutral
+    private boolean isIkOwnedJoint(ShipControlMap map, ShipControlMap.PropulsionUnit unit){
+        if(!isControlMode(ScmBuiltinControlModes.IK_ID) || !unit.adapter().contains("joint")) return false;
+        ScmConfigurationProfile profile = controller.getScmConfigurationProfile();
+        if(profile == null || !profile.isConfiguredFor(map)) return false;
+        Set<ScmConfigurationProfile.UnitReference> refs = new HashSet<>(profile.autoUnits());
+        refs.addAll(profile.unitsForActions(profile.actionGroups().keySet().stream()
+                .filter(ScmConfigurationProfile::isIkAction).filter(action -> !action.endsWith("_propulsion"))
+                .toList()));
+        return refs.stream().anyMatch(ref -> configurationReferenceMatchesUnit(ref, unit));
+    }
+
+    // Build the walking basis from the controller's authored forward and up directions
+    private ScmLocomotionFrame ikGaitFrame(){
+        ScmOrientation orientation = ikOrientation();
+        return ScmLocomotionFrame.fromUpAndForward(ctrlDirToRoot(orientation.upVector()),
+                ctrlDirToRoot(orientation.forwardVector()));
+    }
+
+    // Resolve the frame authored for IK, falling back to the controller mounting frame
+    private ScmOrientation ikOrientation(){
+        ScmConfigurationProfile profile = controller.getScmConfigurationProfile();
+        ScmOrientation mounted = controller.getScmOrientation();
+        return profile == null ? mounted : profile.resolveOrientation(mounted);
+    }
+
+    // Centre each leg's stride below its hip instead of adopting a displaced foot as neutral
+    private ScmLeggedLocomotion.Limb ikReferenceLimb(ScmLeggedLocomotion.Limb measured){
+        ScmLocomotionFrame frame = ikGaitFrame();
+        Vec3 foot = frame.toLocal(measured.defaultFootPosition());
+        if(measured.kind() == ScmLeggedLocomotion.LimbKind.LEG){
+            double reach = measured.upperLength() + measured.lowerLength();
+            double lateral = Mth.clamp(foot.x, -reach * 0.25D, reach * 0.25D);
+            foot = new Vec3(lateral, -reach * 0.82D, 0.0D);
+        }
+        return ikGaitState.referenceLimb(new ScmLeggedLocomotion.Limb(measured.id(), measured.kind(),
+                frame.toLocal(measured.hipPosition()), foot, measured.coxaLength(),
+                measured.upperLength(), measured.lowerLength(), measured.phaseOffset(),
+                measured.yawOffset(), measured.hipOffset(), measured.kneeOffset()));
+    }
+
+    // Follow only the assigned chain, treating a motor connection as bidirectional
+    private IkFootPosition ikAssignedFootPosition(ServerSubLevel root, List<IkRoleBinding> roles,
+            List<ScmSubLevelRelationRegistry.Relation> relations, Vec3 fallback){
+        UUID bodyId = root.getUniqueId();
+        for(ShipControlMap.PropulsionUnit unit : ikOrderedUnits(root, roles, relations)){
+            ScmSubLevelRelationRegistry.Relation relation = ikAutoRelationForUnit(root, unit, relations);
+            if(relation == null) continue;
+            if(bodyId.equals(relation.parentSubLevelId())) bodyId = relation.childSubLevelId();
+            else if(bodyId.equals(relation.childSubLevelId())) bodyId = relation.parentSubLevelId();
+        }
+        for(IkRoleBinding role : roles){
+            for(ShipControlMap.BearingUnit bearing : role.bearings()){
+                if(!bearing.childSubLevelIds().isEmpty()) bodyId = bearing.childSubLevelIds().getFirst();
+            }
+        }
+        if(root.getUniqueId().equals(bodyId)) return new IkFootPosition(fallback, null);
+        return new IkFootPosition(ikBodyCenterPosition(root, bodyId, fallback), bodyId);
+    }
+
+    // Order authored motors by their physical links and collapse duplicate face bindings
+    private List<ShipControlMap.PropulsionUnit> ikOrderedUnits(ServerSubLevel root, List<IkRoleBinding> roles,
+            List<ScmSubLevelRelationRegistry.Relation> relations){
+        Map<String, ShipControlMap.PropulsionUnit> unique = new LinkedHashMap<>();
+        for(IkRoleBinding role : roles){
+            for(ShipControlMap.PropulsionUnit unit : role.units()){
+                unique.putIfAbsent(unit.subLevelId() + ":" + unit.blockPosition().asLong(), unit);
+            }
+        }
+        Map<ScmSubLevelRelationRegistry.Relation, ShipControlMap.PropulsionUnit> linked = new LinkedHashMap<>();
+        for(ShipControlMap.PropulsionUnit unit : unique.values()){
+            ScmSubLevelRelationRegistry.Relation relation = ikAutoRelationForUnit(root, unit, relations);
+            if(relation != null) linked.putIfAbsent(relation, unit);
+        }
+        List<ScmSubLevelRelationRegistry.Relation> chain =
+                ScmSubLevelRelationRegistry.orderedChain(root.getUniqueId(), linked.keySet());
+        return chain.size() == unique.size() ? chain.stream().map(linked::get).toList()
+                : List.copyOf(unique.values());
     }
 
     // Resolve one player-authored IK action to live propulsion and bearing controls
@@ -12659,7 +12782,29 @@ public final class ShipControlModuleRuntime {
         List<ShipControlMap.BearingUnit> bearings = currentMap.bearings().stream()
                 .filter(bearing -> references.stream().anyMatch(reference ->
                         configurationReferenceMatchesBearing(reference, bearing))).toList();
-        return new IkRoleBinding(units, bearings);
+        boolean resolved = references.stream().allMatch(reference ->
+                units.stream().anyMatch(unit -> configurationReferenceMatchesUnit(reference, unit))
+                        || bearings.stream().anyMatch(bearing -> configurationReferenceMatchesBearing(reference, bearing)));
+        if(!resolved){
+            ikDebugEntries.add(debugEntry(action, "Assigned " + references.size()
+                    + " | mapped motors " + units.size() + " | bearings " + bearings.size()
+                    + " | missing from active map", AutopilotDebugSnapshot.Tone.WARNING));
+            for(ScmConfigurationProfile.UnitReference reference : references){
+                if(units.stream().anyMatch(unit -> configurationReferenceMatchesUnit(reference, unit))
+                        || bearings.stream().anyMatch(bearing -> configurationReferenceMatchesBearing(reference, bearing))) continue;
+                List<String> adapters = currentMap.units().stream().filter(reference::sameBlock)
+                        .map(ShipControlMap.PropulsionUnit::adapter).distinct().toList();
+                boolean bodyPresent = currentMap.units().stream().anyMatch(unit ->
+                        Objects.equals(reference.subLevelId(), unit.subLevelId()));
+                ikDebugEntries.add(debugEntry(action + " binding",
+                        reference.subLevelId() + " | " + reference.blockPosition().toShortString()
+                                + " | selected adapter " + reference.adapter() + " | face " + reference.face()
+                                + (adapters.isEmpty() ? bodyPresent ? " | block absent from map" : " | body absent from map"
+                                : " | mapped adapters " + String.join(", ", adapters)),
+                        AutopilotDebugSnapshot.Tone.WARNING));
+            }
+        }
+        return new IkRoleBinding(units, bearings, resolved);
     }
 
     // Resolve unlabelled articulated Auto controls into leg and arm chains
@@ -12881,15 +13026,15 @@ public final class ShipControlModuleRuntime {
         Vec3 fallbackFoot = ikRolePosition(root, extension);
         if (fallbackFoot == null) fallbackFoot = kneePosition.add(0.0D, -1.0D, 0.0D);
         Vec3 footPosition = ikBodyCenterPosition(root, chain.leafBodyId(), fallbackFoot);
-        double coxa = Math.max(0.125D, ikDistance(ikRolePosition(root, yaw), hipPosition));
+        double coxa = yaw.empty() ? 0.0D : Math.max(0.125D, ikDistance(ikRolePosition(root, yaw), hipPosition));
         double upper = Math.max(0.25D, ikDistance(hipPosition, kneePosition));
         double lower = Math.max(0.25D, ikDistance(kneePosition, footPosition));
-        ScmLeggedLocomotion.Limb limb = new ScmLeggedLocomotion.Limb(
+        ScmLeggedLocomotion.Limb limb = ikReferenceLimb(new ScmLeggedLocomotion.Limb(
                 id, arm ? ScmLeggedLocomotion.LimbKind.ARM : ScmLeggedLocomotion.LimbKind.LEG,
                 hipPosition.subtract(currentMap.centerOfMass()), footPosition.subtract(hipPosition),
                 coxa, upper, lower, arm ? phaseIndex * 0.5D
                         : gait.phaseOffset(phaseIndex, Math.max(1, phaseCount)),
-                0.0D, 0.0D, 0.0D);
+                0.0D, 0.0D, 0.0D));
         List<IkRoleBinding> articulated = rotary.stream()
                 .map(ShipControlModuleRuntime::ikAutoRoleBinding).toList();
         return new IkLimbBinding(id, limb, yaw, hip, knee, IkRoleBinding.EMPTY, extension,
@@ -12899,7 +13044,8 @@ public final class ShipControlModuleRuntime {
     // Collect the player-assigned revolute roles in chain order
     private static List<IkRoleBinding> ikArticulatedRoles(IkRoleBinding... roles) {
         if (roles == null || roles.length == 0) return List.of();
-        return Arrays.stream(roles).filter(binding -> binding != null && !binding.empty())
+        return Arrays.stream(roles).filter(binding -> binding != null
+                        && (!binding.empty() || !binding.resolved()))
                 .toList();
     }
 
@@ -12918,84 +13064,17 @@ public final class ShipControlModuleRuntime {
         return source == null ? null : rootPosition(root, source, bearing.blockPosition().getCenter());
     }
 
-    // Get every body which can own the automatic foot body below an IK joint
-    private static Set<UUID> relationFootSources(
-            IkRoleBinding knee, IkRoleBinding ankle, IkRoleBinding extension
-    ) {
-        Set<UUID> sources = new LinkedHashSet<>();
-        for (ShipControlMap.PropulsionUnit unit : knee.units()) sources.add(unit.subLevelId());
-        for (ShipControlMap.PropulsionUnit unit : ankle.units()) sources.add(unit.subLevelId());
-        for (ShipControlMap.PropulsionUnit unit : extension.units()) sources.add(unit.subLevelId());
-        for (ShipControlMap.BearingUnit bearing : knee.bearings()) sources.add(bearing.hostSubLevelId());
-        for (ShipControlMap.BearingUnit bearing : ankle.bearings()) sources.add(bearing.hostSubLevelId());
-        for (ShipControlMap.BearingUnit bearing : extension.bearings()) {
-            sources.add(bearing.hostSubLevelId());
-        }
-        return Set.copyOf(sources);
-    }
 
-    // Get native bearing children which directly form an IK foot body
-    private static Set<UUID> directFootChildren(
-            IkRoleBinding knee, IkRoleBinding ankle, IkRoleBinding extension
-    ) {
-        Set<UUID> children = new LinkedHashSet<>();
-        for (ShipControlMap.BearingUnit bearing : knee.bearings()) {
-            children.addAll(bearing.childSubLevelIds());
-        }
-        for (ShipControlMap.BearingUnit bearing : ankle.bearings()) {
-            children.addAll(bearing.childSubLevelIds());
-        }
-        for (ShipControlMap.BearingUnit bearing : extension.bearings()) {
-            children.addAll(bearing.childSubLevelIds());
-        }
-        return Set.copyOf(children);
-    }
-
-    // Resolve the deepest connected child body as the foot body for an IK limb
-    private static Vec3 ikFootPosition(
-            ServerSubLevel root, Set<UUID> sources, Set<UUID> directChildren,
-            List<ScmSubLevelRelationRegistry.Relation> relations, Vec3 fallback
-    ) {
-        if (sources == null || sources.isEmpty()) {
-            return fallback;
-        }
-        Map<UUID, List<UUID>> children = new LinkedHashMap<>();
-        if (relations != null) {
-            for (ScmSubLevelRelationRegistry.Relation relation : relations) {
-                children.computeIfAbsent(relation.parentSubLevelId(), ignored -> new ArrayList<>())
-                        .add(relation.childSubLevelId());
-            }
-        }
-        ArrayDeque<UUID> pending = new ArrayDeque<>(sources);
-        if (directChildren != null) pending.addAll(directChildren);
-        Set<UUID> visited = new LinkedHashSet<>();
-        UUID footId = directChildren == null ? null
-                : directChildren.stream().reduce((left, right) -> right).orElse(null);
-        while (!pending.isEmpty()) {
-            UUID current = pending.removeFirst();
-            if (!visited.add(current)) continue;
-            List<UUID> next = children.getOrDefault(current, List.of());
-            for (UUID child : next) {
-                footId = child;
-                pending.addLast(child);
-            }
-        }
-        if (footId == null || sources.contains(footId)) {
-            footId = visited.stream().filter(id -> !sources.contains(id)).reduce((left, right) -> right)
-                    .orElse(null);
-        }
-        SubLevel foot = footId == null ? null : SableLevelApi.subLevel(root.getLevel(), footId);
-        return foot == null || foot.isRemoved() ? fallback
-                : rootPosition(root, foot, foot.getPlot().getCenterBlock().getCenter());
-    }
-
-    // Get the current root-space center of one known articulated leaf body
+    // Track the sole of the leaf body, not the centre of its allocated storage plot
     private static Vec3 ikBodyCenterPosition(
             ServerSubLevel root, @Nullable UUID bodyId, Vec3 fallback
     ) {
         SubLevel body = bodyId == null ? null : SableLevelApi.subLevel(root.getLevel(), bodyId);
-        return body == null || body.isRemoved() ? fallback
-                : rootPosition(root, body, body.getPlot().getCenterBlock().getCenter());
+        if(body == null || body.isRemoved()) return fallback;
+        var bounds = body.getPlot().getBoundingBox();
+        if(bounds == null || bounds.maxY() < bounds.minY()) return fallback;
+        return rootPosition(root, body, new Vec3((bounds.minX() + bounds.maxX() + 1.0D) * 0.5D,
+                bounds.minY(), (bounds.minZ() + bounds.maxZ() + 1.0D) * 0.5D));
     }
 
     // Probe automatic foot bodies against terrain and other non-owned sub-levels
@@ -13006,20 +13085,24 @@ public final class ShipControlModuleRuntime {
         Level level = controller.getLevel();
         if (level == null) return new ScmLeggedLocomotion.Contact(limbId, false, Vec3.ZERO);
         Vec3 worldFoot = SableTransformApi.toWorldPosition(root, footPosition);
+        Vec3 worldUp = rootDirectionToWorld(ctrlDirToRoot(ikOrientation().upVector())).normalize();
         Set<UUID> ownBodies = connectedShipSubLevels(root).stream()
                 .map(SubLevel::getUniqueId).collect(java.util.stream.Collectors.toUnmodifiableSet());
         double probeHeight = 1.5D;
         double probeRange = 3.25D;
+        Vec3 probeOrigin = worldFoot.add(worldUp.scale(probeHeight));
+        Vec3 probeDirection = worldUp.scale(-1.0D);
         double distance = SubLevelParticleOcclusion.findBlockingDistance(level, null,
-                worldFoot.add(0.0D, probeHeight, 0.0D), new Vec3(0.0D, -1.0D, 0.0D),
-                probeRange, true, ownBodies);
+                probeOrigin, probeDirection, probeRange, true, ownBodies);
         if (distance >= probeRange - 0.01D) {
             return new ScmLeggedLocomotion.Contact(limbId, false, Vec3.ZERO);
         }
-        Vec3 impactWorld = worldFoot.add(0.0D, probeHeight - distance, 0.0D);
+        Vec3 impactWorld = probeOrigin.add(probeDirection.scale(distance));
         Vec3 impactRoot = SableTransformApi.toLocalPosition(root, impactWorld);
-        return new ScmLeggedLocomotion.Contact(limbId, true,
-                impactRoot.subtract(currentMap.centerOfMass()), impactRoot.subtract(hipPosition));
+        boolean grounded = Math.abs(distance - probeHeight) <= 0.125D;
+        return new ScmLeggedLocomotion.Contact(limbId, grounded,
+                ikGaitFrame().toLocal(impactRoot.subtract(currentMap.centerOfMass())),
+                ikGaitFrame().toLocal(impactRoot.subtract(hipPosition)), true);
     }
 
     // Get a role's position from its current articulated sub-level transform
@@ -13039,49 +13122,128 @@ public final class ShipControlModuleRuntime {
     private Vec3 ikLiveFootPosition(
             ServerSubLevel root, ShipControlMap currentMap, IkLimbBinding binding
     ) {
+        if (binding.footSubLevelId() != null) {
+            return ikBodyCenterPosition(root, binding.footSubLevelId(), binding.footPosition());
+        }
         Vec3 foot = ikLiveRolePosition(root, currentMap, binding.ankle());
         if (foot == null) foot = ikLiveRolePosition(root, currentMap, binding.extension());
         return foot == null ? binding.footPosition() : foot;
     }
 
-    // Apply a live damped-least-squares correction across every discovered rotary joint
-    private boolean ikApplyRedundantLimb(
+    // Solve the full rotary chain once from its measured pose and native motor angles
+    private IkLimbControl ikApplyRedundantLimb(
             ServerSubLevel root, ShipControlMap currentMap, IkLimbBinding binding,
             ScmLeggedLocomotion.LimbTarget target,
-            List<ScmSubLevelRelationRegistry.Relation> relations
+            List<ScmSubLevelRelationRegistry.Relation> relations, ScmLocomotionFrame gaitFrame
     ) {
-        if (binding == null || target == null || binding.articulatedJoints().size() < 2) {
-            return false;
+        if (binding == null || target == null) {
+            return IkLimbControl.HOLD;
         }
+        List<ShipControlMap.PropulsionUnit> ordered = ikOrderedUnits(root, binding.articulatedJoints(), relations);
+        boolean synaxis = ordered.stream().anyMatch(unit -> unit.adapter().contains("synaxis_revolute"));
+        if(!synaxis) return IkLimbControl.ANALYTICAL;
+        boolean incomplete = !binding.hip().resolved() || !binding.knee().resolved()
+                || binding.articulatedJoints().stream().anyMatch(role -> !role.resolved());
         List<IkRoleBinding> controls = new ArrayList<>();
-        List<ScmLeggedLocomotion.ArticulatedJoint> joints = new ArrayList<>();
-        for (IkRoleBinding role : binding.articulatedJoints()) {
-            if (role.units().isEmpty()) continue;
-            ShipControlMap.PropulsionUnit unit = role.units().getFirst();
-            Actuator actuator = ikActuator(currentMap, unit);
-            if (actuator == null || !actuator.kind().contains("synaxis_revolute")) continue;
-            SubLevel source = SableLevelApi.subLevel(root.getLevel(), unit.subLevelId());
-            Vec3 position = source == null ? unit.rootPosition()
-                    : rootPosition(root, source, actuator.localForcePosition());
-            Vec3 axis = source == null ? unit.forceDirection()
-                    : rootDirection(root, source, actuator.localForceDirection());
-            if (axis.lengthSqr() <= 1.0E-8D) continue;
-            controls.add(role);
-            joints.add(new ScmLeggedLocomotion.ArticulatedJoint(
-                    position, axis, 1.0D, 0.12D));
-        }
-        if (joints.size() < 2) return false;
-        Vec3 hip = ikLiveRolePosition(root, currentMap, binding.hip());
-        if (hip == null) hip = binding.hipPosition();
+        List<ScmArticulatedIk.Joint> joints = new ArrayList<>();
+        List<Double> motorDirections = new ArrayList<>();
+        Set<Integer> selected = new HashSet<>();
+        UUID upstream = root.getUniqueId();
         Vec3 foot = ikLiveFootPosition(root, currentMap, binding);
-        Vec3 desiredFoot = hip.add(target.footPosition());
-        ScmLeggedLocomotion.RedundantIkSolution solution = ScmLeggedLocomotion.solveRedundantIk(
-                foot, desiredFoot, joints, 0.06D, 0.25D);
-        if (solution.jointDeltas().size() != controls.size()) return false;
-        for (int index = 0; index < controls.size(); index++) {
-            ikApplyJointDelta(currentMap, controls.get(index), solution.jointDeltas().get(index));
+        Vec3 hip = ikLiveRolePosition(root, currentMap, binding.hip());
+        if(hip == null) hip = binding.hipPosition();
+        Vec3 knee = ikLiveRolePosition(root, currentMap, binding.knee());
+        boolean conflictingLimits = false;
+        for(ShipControlMap.PropulsionUnit unit : ordered){
+            if(!selected.add(unit.index())) continue;
+            ScmSubLevelRelationRegistry.Relation relation = ikAutoRelationForUnit(root, unit, relations);
+            double direction = 1.0D;
+            if(relation != null){
+                if(upstream.equals(relation.childSubLevelId())){
+                    direction = -1.0D;
+                    upstream = relation.parentSubLevelId();
+                }else if(upstream.equals(relation.parentSubLevelId())){
+                    upstream = relation.childSubLevelId();
+                }else{
+                    incomplete = true;
+                }
+            }
+            if(!unit.adapter().contains("synaxis_revolute")) continue;
+            if(binding.ankle().units().contains(unit)) continue;
+            Actuator actuator = ikActuator(currentMap, unit);
+            if(!ikIsSynaxisRotaryJoint(actuator)){
+                incomplete = true;
+                BlockEntity motor = SimulatedHelper.findLoadedBlockEntityExact(
+                        root.getLevel(), unit.subLevelId(), unit.blockPosition());
+                ikDebugEntries.add(debugEntry(binding.id() + " motor " + unit.index(),
+                        (motor == null ? "Block entity unavailable" : "Probe unavailable/disconnected")
+                                + " | " + unit.subLevelId() + " | " + unit.blockPosition(),
+                        AutopilotDebugSnapshot.Tone.WARNING));
+                continue;
+            }
+            controls.add(new IkRoleBinding(List.of(unit), List.of()));
+            SubLevel source = SableLevelApi.subLevel(root.getLevel(), unit.subLevelId());
+            if(source == null || relation == null){
+                incomplete = true;
+                ikDebugEntries.add(debugEntry(binding.id() + " motor " + unit.index(),
+                        source == null ? "Missing live joint body" : "Missing live joint relation",
+                        AutopilotDebugSnapshot.Tone.WARNING));
+                continue;
+            }
+            Vec3 position = rootPosition(root, source, actuator.localForcePosition());
+            Vec3 axis = rootDirection(root, source, actuator.localForceDirection()).scale(direction);
+            if(axis.lengthSqr() <= 1.0E-8D){
+                incomplete = true;
+                continue;
+            }
+            double motorAngle = actuator.neutralControl() + actuator.read().thrust();
+            double angle = motorAngle * direction;
+            double minimum = direction < 0.0D ? -actuator.maxControl() : actuator.minControl();
+            double maximum = direction < 0.0D ? -actuator.minControl() : actuator.maxControl();
+            double preferred = knee != null && binding.knee().units().contains(unit)
+                    ? ScmArticulatedIk.preferredBendAngle(hip, knee, foot, axis,
+                    gaitFrame.up(), gaitFrame.forward(), angle, target.angles().knee()) : angle;
+            ScmArticulatedIk.Joint joint = new ScmArticulatedIk.Joint(position, axis, angle,
+                    minimum, maximum, preferred);
+            if(knee != null && binding.hip().units().contains(unit)){
+                try{
+                    joint = ScmArticulatedIk.restrictSwing(joint, knee,
+                            gaitFrame.up().scale(-1.0D), Math.toRadians(80.0D));
+                }catch(IllegalArgumentException ignored){
+                    conflictingLimits = true;
+                }
+            }
+            joints.add(joint);
+            motorDirections.add(direction);
         }
-        return true;
+        if(conflictingLimits || incomplete || joints.size() < 2){
+            for(IkRoleBinding control : controls) ikApplyJointDelta(currentMap, control, 0.0D);
+            ikDebugEntries.add(debugEntry(binding.id() + " solver",
+                    conflictingLimits ? "Holding: proximal swing cone conflicts with authored motor limits"
+                            : "Holding: incomplete measured chain | " + joints.size() + " rotary joints",
+                    AutopilotDebugSnapshot.Tone.WARNING));
+            return IkLimbControl.HOLD;
+        }
+        ikDebugEntries.add(debugEntry(binding.id() + " solver",
+                "Measured chain: " + joints.size() + " rotary joints"));
+        Vec3 desiredFoot = hip.add(gaitFrame.toBody(target.footPosition()));
+        ScmArticulatedIk.Solution solution = ScmArticulatedIk.solve(foot, desiredFoot, joints);
+        ikDebugEntries.add(debugEntry(binding.id() + " error", "Tracking "
+                + debugDecimal(desiredFoot.distanceTo(foot)) + " | solved residual "
+                + debugDecimal(solution.residual().length())));
+        for (int index = 0; index < controls.size(); index++) {
+            ikApplyJointDelta(currentMap, controls.get(index),
+                    (solution.angles().get(index) - joints.get(index).angle())
+                            * motorDirections.get(index));
+            ShipControlMap.PropulsionUnit unit = controls.get(index).units().getFirst();
+            ikDebugEntries.add(debugEntry(binding.id() + " motor " + unit.index(),
+                    "Measured " + debugDecimal(Math.toDegrees(
+                            joints.get(index).angle() * motorDirections.get(index)))
+                            + " | sent " + debugDecimal(Math.toDegrees(appliedControlValues
+                            .getOrDefault(unit.index(), joints.get(index).angle())))
+                            + " deg | root axis " + debugVector(joints.get(index).axis())));
+        }
+        return IkLimbControl.MEASURED;
     }
 
     // Apply an incremental joint target so the Synaxis PID loop follows the live pose
@@ -13093,12 +13255,10 @@ public final class ShipControlModuleRuntime {
             Actuator actuator = ikActuator(currentMap, unit);
             if (actuator == null) continue;
             double current = actuator.neutralControl() + actuator.read().thrust();
-            double previous = ikJointTargetValues.getOrDefault(unit.index(), current);
-            double control = actuator.kind().contains("synaxis_revolute")
-                    ? Mth.clamp(previous + Mth.clamp(radians, -0.25D, 0.25D),
+            double control = ikIsSynaxisRotaryJoint(actuator)
+                    ? Mth.clamp(current + Mth.clamp(radians, -0.35D, 0.35D),
                     actuator.minControl(), actuator.maxControl())
                     : ikAngularControl(actuator, radians);
-            ikJointTargetValues.put(unit.index(), control);
             applyAllocatedControl(unit.index(), actuator, control);
         }
         double degrees = Math.toDegrees(radians);
@@ -13119,7 +13279,6 @@ public final class ShipControlModuleRuntime {
             Actuator actuator = ikActuator(currentMap, unit);
             if (actuator == null) continue;
             double control = ikAngularControl(actuator, radians);
-            ikJointTargetValues.put(unit.index(), control);
             applyAllocatedControl(unit.index(), actuator, control);
         }
         double degrees = Math.toDegrees(radians);
@@ -13136,14 +13295,16 @@ public final class ShipControlModuleRuntime {
     // Apply an extension target to all controls assigned to an IK role
     private void ikApplyExtension(
             ShipControlMap currentMap, IkRoleBinding binding, double displacement,
-            double reach, double maximumReach
+            double reach, double maximumReach, boolean holdAtNeutral
     ) {
         if (binding == null || binding.empty()) return;
         for (ShipControlMap.PropulsionUnit unit : binding.units()) {
             Actuator actuator = ikActuator(currentMap, unit);
             if (actuator == null) continue;
+            if (ikIsSynaxisRotaryJoint(actuator)) continue;
             double range = Math.max(1.0E-6D, actuator.maxControl() - actuator.minControl());
-            double control = actuator.kind().contains("synaxis_linear")
+            double control = holdAtNeutral ? actuator.neutralControl()
+                    : actuator.kind().contains("synaxis_linear")
                     ? actuator.neutralControl() + displacement
                     : Mth.lerp(Mth.clamp(reach / Math.max(1.0E-6D, maximumReach), 0.0D, 1.0D),
                     actuator.minControl(), actuator.maxControl());
@@ -13184,12 +13345,17 @@ public final class ShipControlModuleRuntime {
 
     // Convert one analytical angular solution to an actuator-native target
     private static double ikAngularControl(Actuator actuator, double radians) {
-        if (actuator.kind().contains("synaxis_revolute")) {
+        if (ikIsSynaxisRotaryJoint(actuator)) {
             return Mth.clamp(actuator.neutralControl() + radians,
                     actuator.minControl(), actuator.maxControl());
         }
         double ratio = Mth.clamp((radians + Math.PI) / (Math.PI * 2.0D), 0.0D, 1.0D);
         return Mth.lerp(ratio, actuator.minControl(), actuator.maxControl());
+    }
+
+    // Check whether an actuator is a Synaxis rotary joint of either dynamic motor type
+    private static boolean ikIsSynaxisRotaryJoint(@Nullable Actuator actuator) {
+        return actuator != null && actuator.kind().contains("synaxis_revolute");
     }
 
     // Get cached optional articulated relations for a single server control tick
@@ -17310,9 +17476,7 @@ public final class ShipControlModuleRuntime {
         externalConnectionProbeRootId = rootId;
         lastExternalConnectionProbeTick = gameTime;
         SableAssemblyTopologyApi.Topology cached = assemblyTopologyCache.get(root);
-        SableAssemblyTopologyApi.Topology observed = SableAssemblyTopologyApi.discover(
-                root, (owner, actor) -> isAssemblyTopologyActor(actor),
-                (owner, actor, target) -> SableAssemblyConnection.Kind.STRUCTURAL);
+        SableAssemblyTopologyApi.Topology observed = discoverAssemblyTopology(root);
         if (observed.available() && (!cached.available()
                 || !observed.fingerprint().equals(cached.fingerprint()))) {
             assemblyTopologyCache.invalidate();
@@ -17326,7 +17490,11 @@ public final class ShipControlModuleRuntime {
         return SableAssemblyTopologyApi.discover(
                 root,
                 (owner, actor) -> isAssemblyTopologyActor(actor),
-                (owner, actor, target) -> SableAssemblyConnection.Kind.STRUCTURAL);
+                (owner, actor, target) -> SableAssemblyConnection.Kind.STRUCTURAL,
+                optionalSubLevelRelations(root).stream().map(relation ->
+                        new SableAssemblyTopologyApi.Edge(relation.parentSubLevelId(),
+                                relation.childSubLevelId(), SableAssemblyConnection.Kind.STRUCTURAL))
+                        .toList());
     }
 
     // Get the connected ship sublevel index
@@ -17494,23 +17662,28 @@ public final class ShipControlModuleRuntime {
                 .min().orElse(0.0D);
     }
 
-    // Retain the navigation root
+    // Keep a physically mounted SCM's complete ship resident.
     private void retainNavigationRoot() {
-        UUID owner = mapId;
-        ServerSubLevel root = containingServerSubLevel();
-        if (owner == null || root == null || root.isRemoved()) {
-            return;
-        }
-        navigationResidency(owner).retain(root);
-    }
-
-    // Update the nav residency
-    private void updateNavResidency(ServerSubLevel root) {
-        UUID owner = mapId;
-        if (owner == null || root == null || root.isRemoved()) {
+        if (!controller.isMountedOnShipControlModule()) {
             releaseNavResidency();
             return;
         }
+        ServerSubLevel root = containingServerSubLevel();
+        if (root == null || root.isRemoved()) {
+            releaseNavResidency();
+            return;
+        }
+        updateNavResidency(root);
+    }
+
+    // Synchronize the SCM residency independently of map and schedule state.
+    private void updateNavResidency(ServerSubLevel root) {
+        if (!controller.isMountedOnShipControlModule()
+                || root == null || root.isRemoved()) {
+            releaseNavResidency();
+            return;
+        }
+        UUID owner = controller.getScmPersistenceId();
         UUID rootId = root.getUniqueId();
         List<SubLevel> connected = connectedShipSubLevels(root);
         long topologyGeneration = connectedSubLevelsTick;
@@ -17935,6 +18108,8 @@ public final class ShipControlModuleRuntime {
         collisionProbeCacheTick = Long.MIN_VALUE;
         collisionProbeCache.clear();
         ikGaitState.clear();
+        ikGeometryFingerprint = 0;
+        ikDebugEntries.clear();
         connectedSubLevelsTick = Long.MIN_VALUE;
         connectedSubLevelsRootId = null;
         connectedLoadingSupportRefreshTick = Long.MIN_VALUE;
@@ -18662,6 +18837,8 @@ public final class ShipControlModuleRuntime {
                     ownerLevel, linkedTargets, linkedSubLevels, directionFrame, suggestedDir,
                     owningController.getShipControlMode().id().equals(
                             ScmBuiltinControlModes.CAR_ID))) {
+                if(!Objects.equals(linked.target().subLevelId(), unit.subLevelId())
+                        || !linked.target().blockPosition().equals(unit.blockPosition())) continue;
                 ScmProbeActuator candidate = new ScmProbeActuator(
                         linked.level(), linked.target(), linked.blockEntity(), linked.probe());
                 if (adapter.equals(candidate.kind())
@@ -19614,7 +19791,7 @@ public final class ShipControlModuleRuntime {
         @Override
         public void apply(double control){
             if (rebindLiveProbe()) {
-                probe.apply(Mth.clamp(control, minControl(), maxControl()));
+                probe.apply(probe.clampControl(control));
             }
         }
 
@@ -25043,6 +25220,13 @@ public final class ShipControlModuleRuntime {
         }
     }
 
+    // Store a live end-effector and its articulated leaf body
+    private record IkFootPosition(Vec3 position, @Nullable UUID subLevelId) {
+        private IkFootPosition {
+            position = finite(position);
+        }
+    }
+
     // Store one in-progress undirected Auto joint path
     private record AutoIkPath(List<AutoIkJoint> joints, UUID endpoint, Set<UUID> visitedBodies) {
         private AutoIkPath {
@@ -25051,12 +25235,21 @@ public final class ShipControlModuleRuntime {
         }
     }
 
+    // Keep incomplete physical chains separate from analytical bearing controls
+    private enum IkLimbControl { ANALYTICAL, MEASURED, HOLD }
+
     // Store the controls selected for one IK role
     private record IkRoleBinding(
             List<ShipControlMap.PropulsionUnit> units,
-            List<ShipControlMap.BearingUnit> bearings
+            List<ShipControlMap.BearingUnit> bearings,
+            boolean resolved
     ) {
         private static final IkRoleBinding EMPTY = new IkRoleBinding(List.of(), List.of());
+
+        private IkRoleBinding(List<ShipControlMap.PropulsionUnit> units,
+                List<ShipControlMap.BearingUnit> bearings){
+            this(units, bearings, true);
+        }
 
         private IkRoleBinding {
             units = units == null ? List.of() : List.copyOf(units);
@@ -25087,7 +25280,7 @@ public final class ShipControlModuleRuntime {
         private IkLimbBinding {
             articulatedJoints = articulatedJoints == null ? List.of()
                     : articulatedJoints.stream().filter(Objects::nonNull)
-                    .filter(binding -> !binding.empty()).toList();
+                    .filter(binding -> !binding.empty() || !binding.resolved()).toList();
         }
     }
 

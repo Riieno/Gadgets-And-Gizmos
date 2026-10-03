@@ -62,6 +62,7 @@ public record GraphV2ThemeSyncPayload(GraphV2ThemeData.Palette palette) implemen
 
     // Apply the client palette
     private static void applyClientPalette(GraphV2ThemeData.Palette palette) {
+        GraphV2ThemeData.setCurrent(palette);
         try {
             Class<?> type = Class.forName(
                     "com.rieno.gadgetsandgizmos.neoforge.client.AdvancedControllerV2Theme",

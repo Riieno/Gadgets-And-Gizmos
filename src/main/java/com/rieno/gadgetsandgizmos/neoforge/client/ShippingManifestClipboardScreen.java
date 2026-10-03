@@ -10,13 +10,17 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 import com.rieno.gadgetsandgizmos.mixin.ClipboardScreenAccessor;
 import com.rieno.gadgetsandgizmos.content.ShippingManifestBlockEntity;
+import com.rieno.gadgetsandgizmos.neoforge.network.ShippingManifestLockPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ShippingManifestUsesPayload;
 import com.simibubi.create.content.equipment.clipboard.ClipboardScreen;
 import com.simibubi.create.foundation.gui.widget.IconButton;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.ArrayList;
@@ -37,9 +41,13 @@ public class ShippingManifestClipboardScreen extends ClipboardScreen {
     private final BlockPos manifestPos;
     private final int availableResourceUses;
     private final List<Button> useButtons = new ArrayList<>();
+    private final List<ItemStack> containerLockFilters = new ArrayList<>();
+    private final List<ContainerLockSlot> containerLockSlots = new ArrayList<>();
     private int resourceUses;
     private boolean useSelectorOpen;
+    private boolean containerLocked;
     private Button useSelectorButton;
+    private Button containerLockButton;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -55,12 +63,20 @@ public class ShippingManifestClipboardScreen extends ClipboardScreen {
             DataComponentMap components,
             BlockPos manifestPos,
             int resourceUses,
-            int availableResourceUses
+            int availableResourceUses,
+            boolean containerLocked,
+            List<ItemStack> containerLockFilters
     ) {
         super(targetSlot, components, null);
         this.manifestPos = manifestPos == null ? BlockPos.ZERO : manifestPos.immutable();
         this.resourceUses = resourceUses;
         this.availableResourceUses = availableResourceUses;
+        this.containerLocked = containerLocked;
+        if (containerLockFilters != null) {
+            for (ItemStack filter : containerLockFilters) {
+                if (!filter.isEmpty()) this.containerLockFilters.add(filter.copyWithCount(1));
+            }
+        }
     }
 
     // Initialize the shipping manifest clipboard
@@ -84,7 +100,21 @@ public class ShippingManifestClipboardScreen extends ClipboardScreen {
         addUseButton(x, y + 44, ShippingManifestBlockEntity.USE_FLUIDS, "Fluids");
         addUseButton(x, y + 66, ShippingManifestBlockEntity.USE_FUEL, "Fuel");
         addUseButton(x, y + 88, ShippingManifestBlockEntity.USE_ENERGY, "FE");
+        containerLockButton = addRenderableWidget(Button.builder(containerLockLabel(), ignored -> {
+            containerLocked = !containerLocked;
+            syncContainerLock();
+            refreshContainerLock();
+        }).bounds(x, y + 112, 190, 20).build());
+        for (int index = 0; index < 9; index++) {
+            int slotX = x + (index % 5) * 38;
+            int slotY = y + 134 + index / 5 * 22;
+            int filterIndex = index;
+            Button button = addRenderableWidget(Button.builder(containerLockSlotLabel(filterIndex),
+                    ignored -> setContainerLockFilter(filterIndex)).bounds(slotX, slotY, 36, 20).build());
+            containerLockSlots.add(new ContainerLockSlot(slotX, slotY, filterIndex, button));
+        }
         refreshUseSelector();
+        refreshContainerLock();
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -98,6 +128,33 @@ public class ShippingManifestClipboardScreen extends ClipboardScreen {
     // Handle screen removal
     @Override
     public void removed() {
+    }
+
+    // Remove a ghost item from the container lock with the secondary mouse button
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (button == 1) {
+            for (ContainerLockSlot slot : containerLockSlots) {
+                if (mouseX < slot.x || mouseX >= slot.x + 36 || mouseY < slot.y || mouseY >= slot.y + 20) continue;
+                if (slot.index < containerLockFilters.size()) {
+                    containerLockFilters.remove(slot.index);
+                    syncContainerLock();
+                    refreshContainerLock();
+                }
+                return true;
+            }
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    // Draw configured lock item previews over their ghost-slot buttons
+    @Override
+    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        super.render(graphics, mouseX, mouseY, partialTick);
+        for (ContainerLockSlot slot : containerLockSlots) {
+            if (slot.index >= containerLockFilters.size()) continue;
+            graphics.renderItem(containerLockFilters.get(slot.index), slot.x + 10, slot.y + 2);
+        }
     }
 
     // Add one selectable resource use to the drop-down list
@@ -115,6 +172,51 @@ public class ShippingManifestClipboardScreen extends ClipboardScreen {
         resourceUses &= availableResourceUses;
         PacketDistributor.sendToServer(new ShippingManifestUsesPayload(manifestPos, resourceUses));
         refreshUseSelector();
+    }
+
+    // Assign the held item to one container lock filter slot
+    private void setContainerLockFilter(int index) {
+        if (Minecraft.getInstance().player == null) return;
+        ItemStack held = Minecraft.getInstance().player.getMainHandItem();
+        if (held.isEmpty()) return;
+        while (containerLockFilters.size() <= index) containerLockFilters.add(ItemStack.EMPTY);
+        containerLockFilters.set(index, held.copyWithCount(1));
+        trimContainerLockFilters();
+        syncContainerLock();
+        refreshContainerLock();
+    }
+
+    // Persist the complete lock state so the server remains authoritative
+    private void syncContainerLock() {
+        PacketDistributor.sendToServer(new ShippingManifestLockPayload(manifestPos, containerLocked,
+                containerLockFilters.stream().filter(filter -> !filter.isEmpty()).map(ItemStack::copy).toList()));
+    }
+
+    // Remove empty trailing ghost slots from the local lock state
+    private void trimContainerLockFilters() {
+        while (!containerLockFilters.isEmpty() && containerLockFilters.getLast().isEmpty()) {
+            containerLockFilters.removeLast();
+        }
+    }
+
+    // Refresh the lock control and its ghost-filter buttons
+    private void refreshContainerLock() {
+        if (containerLockButton != null) containerLockButton.setMessage(containerLockLabel());
+        for (ContainerLockSlot slot : containerLockSlots) {
+            slot.button.setMessage(containerLockSlotLabel(slot.index));
+            slot.button.active = containerLocked;
+        }
+    }
+
+    // Build the container lock toggle label
+    private Component containerLockLabel() {
+        return Component.literal((containerLocked ? "[x] " : "[ ] ") + "Lock container to filters");
+    }
+
+    // Build one container lock ghost-slot label
+    private Component containerLockSlotLabel(int index) {
+        return Component.literal(index < containerLockFilters.size() && !containerLockFilters.get(index).isEmpty()
+                ? " " : "+");
     }
 
     // Refresh the multi-select drop-down labels and visibility
@@ -157,5 +259,9 @@ public class ShippingManifestClipboardScreen extends ClipboardScreen {
         boolean available = (availableResourceUses & use) != 0;
         return Component.literal((selected ? "[x] " : "[ ] ") + label
                 + (available ? "" : " (unavailable)"));
+    }
+
+    // Track one interactive container lock ghost-slot button
+    private record ContainerLockSlot(int x, int y, int index, Button button) {
     }
 }

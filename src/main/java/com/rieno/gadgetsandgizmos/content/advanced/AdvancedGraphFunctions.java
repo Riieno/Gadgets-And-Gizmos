@@ -33,6 +33,9 @@ public final class AdvancedGraphFunctions {
     public static final String FUNCTION_ID = "FunctionId";
     public static final String RUNTIME_FUNCTION_ID = "RuntimeFunctionId";
     public static final String RUNTIME_SOURCE_NODE_ID = "RuntimeSourceNodeId";
+    public static final String PORT_LABELS = "FunctionPortLabels";
+    public static final String CALL_INPUT_LABELS = "FunctionInputLabels";
+    public static final String CALL_OUTPUT_LABELS = "FunctionOutputLabels";
     public static final String SCM_DISPATCH_ACTION = "ScmDispatchAction";
     private static final String EXPANSION_STACK = "FunctionExpansionStack";
     private static final String ARGUMENT_PREFIX = "__function_arg__";
@@ -90,6 +93,16 @@ public final class AdvancedGraphFunctions {
         return res;
     }
 
+    // Get the display labels for the function inputs
+    public static Map<String, String> inputLabels(AdvancedGraphDocument.FunctionGraph function) {
+        return interfaceLabels(function, INPUT_TYPE, true);
+    }
+
+    // Get the display labels for the function outputs
+    public static Map<String, String> outputLabels(AdvancedGraphDocument.FunctionGraph function) {
+        return interfaceLabels(function, OUTPUT_TYPE, false);
+    }
+
     // Configure the call
     public static void configureCall(AdvancedGraphDocument.Node call,
                                      AdvancedGraphDocument.FunctionGraph function) {
@@ -99,6 +112,8 @@ public final class AdvancedGraphFunctions {
         call.data().putString(FUNCTION_ID, function.id());
         putPorts(call.data(), "DynamicInputs", inputs(function));
         putPorts(call.data(), "DynamicOutputs", outputs(function));
+        putLabels(call.data(), CALL_INPUT_LABELS, inputLabels(function));
+        putLabels(call.data(), CALL_OUTPUT_LABELS, outputLabels(function));
         call.data().putString("FunctionName", function.name());
     }
 
@@ -431,10 +446,45 @@ public final class AdvancedGraphFunctions {
         return visible;
     }
 
+    // Get the labels from one side of a function interface
+    private static Map<String, String> interfaceLabels(AdvancedGraphDocument.FunctionGraph function,
+                                                        String type, boolean output) {
+        Map<String, String> labels = new LinkedHashMap<>();
+        if (function == null) {
+            return labels;
+        }
+        for (AdvancedGraphDocument.Node node : function.nodes()) {
+            if (!type.equals(node.type())) {
+                continue;
+            }
+            CompoundTag stored = node.data().getCompound(PORT_LABELS);
+            Map<String, String> ports = output ? AdvancedGraphCatalog.outputs(node)
+                    : AdvancedGraphCatalog.inputs(node);
+            visiblePorts(ports).keySet().forEach(port -> {
+                String label = stored.getString(port);
+                if (!label.isBlank()) {
+                    labels.putIfAbsent(port, label);
+                }
+            });
+        }
+        return labels;
+    }
+
     // Put the ports
     private static void putPorts(CompoundTag data, String key, Map<String, String> ports) {
         CompoundTag tag = new CompoundTag();
         ports.forEach(tag::putString);
+        if (tag.isEmpty()) {
+            data.remove(key);
+        } else {
+            data.put(key, tag);
+        }
+    }
+
+    // Put non-default function port labels on a call node
+    private static void putLabels(CompoundTag data, String key, Map<String, String> labels) {
+        CompoundTag tag = new CompoundTag();
+        labels.forEach(tag::putString);
         if (tag.isEmpty()) {
             data.remove(key);
         } else {

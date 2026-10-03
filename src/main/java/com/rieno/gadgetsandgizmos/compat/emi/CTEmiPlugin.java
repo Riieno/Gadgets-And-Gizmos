@@ -12,6 +12,7 @@ import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.content.IonThrusterStacks;
 import com.rieno.gadgetsandgizmos.content.SupporterHeads;
 import com.rieno.gadgetsandgizmos.content.WorkerEnergyBatteryItem;
+import com.rieno.gadgetsandgizmos.compat.recipe.ThrusterProcessingDisplays;
 import com.rieno.gadgetsandgizmos.neoforge.client.AnalogueContraptionControllerConfigScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.AdvancedContraptionControllerScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.AnalogueJoystickConfigScreen;
@@ -27,6 +28,7 @@ import dev.emi.emi.api.EmiDragDropHandler;
 import dev.emi.emi.api.EmiPlugin;
 import dev.emi.emi.api.EmiRegistry;
 import dev.emi.emi.api.recipe.EmiRecipe;
+import dev.emi.emi.api.recipe.EmiRecipeCategory;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.Comparison;
 import dev.emi.emi.api.stack.EmiStack;
@@ -102,6 +104,7 @@ public class CTEmiPlugin implements EmiPlugin {
                 }
             });
             registerIonThruster(registry);
+            registerThrusterProcessing(registry);
             registry.removeEmiStacks(CTEmiPlugin::isDisabledModStack);
             registry.removeRecipes(CTEmiPlugin::hasDisabledOutput);
         } catch (Throwable throwable) {
@@ -120,6 +123,23 @@ public class CTEmiPlugin implements EmiPlugin {
         ItemStack ionThruster = IonThrusterStacks.create();
         if (!ionThruster.isEmpty()) {
             registry.addEmiStack(EmiStack.of(ionThruster));
+        }
+    }
+
+    // Register processing tabs, workstations and current datapack recipes for each upgrade
+    private static void registerThrusterProcessing(EmiRegistry registry){
+        if(!CTFeatureToggles.isItemEnabled("thruster")) return;
+        var level = Minecraft.getInstance().level;
+        for(ThrusterProcessingDisplays.Mode mode : ThrusterProcessingDisplays.Mode.values()){
+            EmiRecipeCategory category = new EmiRecipeCategory(mode.id(), EmiStack.of(mode.icon()));
+            registry.addCategory(category);
+            for(ItemStack catalyst : mode.catalysts()){
+                registry.addWorkstation(category, EmiStack.of(catalyst));
+            }
+            if(level == null) continue;
+            for(var view : mode.recipes(level)){
+                registry.addRecipe(new ThrusterEmiRecipe(category, mode, view));
+            }
         }
     }
 

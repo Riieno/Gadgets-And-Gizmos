@@ -62,6 +62,8 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
     private static final String TAG_MANIFEST_GLOWING = "ManifestGlowing";
     private static final String TAG_RESOURCE_USES = "ResourceUses";
     private static final String TAG_RESOURCE_USES_CONFIGURED = "ResourceUsesConfigured";
+    private static final String TAG_CONTAINER_LOCKED = "ContainerLocked";
+    private static final String TAG_CONTAINER_LOCK_FILTERS = "ContainerLockFilters";
     private static final String TAG_PREVIEW = "Preview";
     private static final String TAG_STACK = "Stack";
     private static final String TAG_AMOUNT = "Amount";
@@ -72,6 +74,7 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
     public static final int USE_FUEL = 1 << 2;
     public static final int USE_ENERGY = 1 << 3;
     private static final int ALL_RESOURCE_USES = USE_ITEMS | USE_FLUIDS | USE_FUEL | USE_ENERGY;
+    private static final int MAXIMUM_CONTAINER_LOCK_FILTERS = 9;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -109,6 +112,10 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
     private int resourceUses;
     // Tracks whether resource uses were selected by the player
     private boolean resourceUsesConfigured;
+    // Tracks whether the attached container accepts only the configured item filters
+    private boolean containerLocked;
+    // Item filters accepted by the attached locked container
+    private List<ItemStack> containerLockFilters = List.of();
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -381,6 +388,120 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
         return found ? uses & ALL_RESOURCE_USES : -1;
     }
 
+    // Check whether a manifested container may receive this exact item stack
+    public static boolean allowsAttachedContainerItem(Level level, BlockPos targetPos, ItemStack stack) {
+        if (level == null || targetPos == null || stack == null || stack.isEmpty()) return false;
+        for (Direction direction : Direction.values()) {
+            BlockPos manifestPos = targetPos.relative(direction);
+            if (!(level.getBlockEntity(manifestPos) instanceof ShippingManifestBlockEntity manifest)
+                    || !(manifest.getBlockState().getBlock() instanceof ShippingManifestBlock)) continue;
+            if (!ShippingManifestBlock.attachedTargetPos(manifestPos,
+                    manifest.getBlockState()).equals(targetPos)) continue;
+            if (!manifest.acceptsContainerItem(stack)) return false;
+        }
+        return true;
+    }
+
+    // Check whether this manifest permits an item to enter its attached container
+    private boolean acceptsContainerItem(ItemStack stack) {
+        if (!containerLocked) return true;
+        return containerLockFilters.stream().anyMatch(filter -> com.simibubi.create.content.logistics.filter.FilterItemStack.of(filter).test(level, stack));
+    }
+
+    // Check whether this manifest locks its attached container
+    public boolean isContainerLocked() {
+        return containerLocked;
+    }
+
+    // Get copies of the item filters accepted by this locked container
+    public List<ItemStack> containerLockFilters() {
+        return containerLockFilters.stream().map(ItemStack::copy).toList();
+    }
+
+    // Update the container lock and its accepted item filters
+    public boolean setContainerLock(boolean locked, List<ItemStack> filters) {
+        List<ItemStack> normalized = normalizeContainerLockFilters(filters);
+        if (containerLocked == locked && filtersMatch(containerLockFilters, normalized)) return false;
+        containerLocked = locked;
+        containerLockFilters = normalized;
+        setChanged();
+        sendData();
+        return true;
+    }
+
+    // Expose the attached item storage through this Manifest with its lock enforced
+    public IItemHandler getContainerItemHandler(Direction side) {
+        if (level == null) return null;
+        BlockState state = getBlockState();
+        IItemHandler handler = ShippingManifestBlock.findItemHandler(level,
+                ShippingManifestBlock.attachedTargetPos(worldPosition, state),
+                ShippingManifestBlock.attachedTargetSide(state));
+        return handler == null ? null : new ContainerLockItemHandler(handler);
+    }
+
+    // Keep only distinct non-empty ghost stacks suitable for the container lock
+    private static List<ItemStack> normalizeContainerLockFilters(List<ItemStack> filters) {
+        if (filters == null || filters.isEmpty()) return List.of();
+        List<ItemStack> normalized = new ArrayList<>();
+        for (ItemStack filter : filters) {
+            if (filter == null || filter.isEmpty()) continue;
+            ItemStack copy = filter.copyWithCount(1);
+            if (normalized.stream().anyMatch(existing -> ItemStack.isSameItemSameComponents(existing, copy))) continue;
+            normalized.add(copy);
+            if (normalized.size() >= MAXIMUM_CONTAINER_LOCK_FILTERS) break;
+        }
+        return List.copyOf(normalized);
+    }
+
+    // Check whether two lock filter lists contain the same exact ghost stacks
+    private static boolean filtersMatch(List<ItemStack> first, List<ItemStack> second) {
+        if (first.size() != second.size()) return false;
+        for (int index = 0; index < first.size(); index++) {
+            if (!ItemStack.isSameItemSameComponents(first.get(index), second.get(index))) return false;
+        }
+        return true;
+    }
+
+    // Apply this Manifest's item lock to every capability insertion made through it
+    private final class ContainerLockItemHandler implements IItemHandler {
+        private final IItemHandler delegate;
+
+        // Initialize the locking item-handler view
+        private ContainerLockItemHandler(IItemHandler delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public int getSlots() {
+            return delegate.getSlots();
+        }
+
+        @Override
+        public ItemStack getStackInSlot(int slot) {
+            return delegate.getStackInSlot(slot);
+        }
+
+        @Override
+        public ItemStack insertItem(int slot, ItemStack stack, boolean simulate) {
+            return acceptsContainerItem(stack) ? delegate.insertItem(slot, stack, simulate) : stack;
+        }
+
+        @Override
+        public ItemStack extractItem(int slot, int amount, boolean simulate) {
+            return delegate.extractItem(slot, amount, simulate);
+        }
+
+        @Override
+        public int getSlotLimit(int slot) {
+            return delegate.getSlotLimit(slot);
+        }
+
+        @Override
+        public boolean isItemValid(int slot, ItemStack stack) {
+            return acceptsContainerItem(stack) && delegate.isItemValid(slot, stack);
+        }
+    }
+
     // Detect the default resource uses from the attached storage capabilities
     private static int detectedResourceUses(
             IItemHandler items,
@@ -515,6 +636,8 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
         tag.putBoolean(TAG_MANIFEST_GLOWING, manifestGlowing);
         tag.putInt(TAG_RESOURCE_USES, resourceUses());
         tag.putBoolean(TAG_RESOURCE_USES_CONFIGURED, resourceUsesConfigured);
+        tag.putBoolean(TAG_CONTAINER_LOCKED, containerLocked);
+        writeContainerLockFilters(tag, provider);
         tag.putString(TAG_MANUAL_GRAPH_TEXT, manualGraphText);
     }
 
@@ -527,6 +650,8 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
         tag.putBoolean(TAG_MANIFEST_GLOWING, manifestGlowing);
         tag.putInt(TAG_RESOURCE_USES, resourceUses());
         tag.putBoolean(TAG_RESOURCE_USES_CONFIGURED, resourceUsesConfigured);
+        tag.putBoolean(TAG_CONTAINER_LOCKED, containerLocked);
+        writeContainerLockFilters(tag, provider);
         if (!manualGraphText.isBlank()) {
             tag.putString(TAG_MANUAL_GRAPH_TEXT, manualGraphText);
         }
@@ -560,6 +685,8 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
         manifestGlowing = tag.getBoolean(TAG_MANIFEST_GLOWING);
         resourceUses = tag.getInt(TAG_RESOURCE_USES) & ALL_RESOURCE_USES;
         resourceUsesConfigured = tag.getBoolean(TAG_RESOURCE_USES_CONFIGURED);
+        containerLocked = tag.getBoolean(TAG_CONTAINER_LOCKED);
+        containerLockFilters = readContainerLockFilters(tag, provider);
         manualGraphText = tag.getString(TAG_MANUAL_GRAPH_TEXT);
         if (!clientPacket) {
             return;
@@ -581,6 +708,23 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
         }
         displayEntries = List.copyOf(loadedEntries);
         clientScrollOffset = normalizeScrollOffset(clientScrollOffset);
+    }
+
+    // Write the configured container lock filters
+    private void writeContainerLockFilters(CompoundTag tag, HolderLookup.Provider provider) {
+        ListTag filters = new ListTag();
+        for (ItemStack filter : containerLockFilters) filters.add(filter.saveOptional(provider));
+        tag.put(TAG_CONTAINER_LOCK_FILTERS, filters);
+    }
+
+    // Read and normalize the configured container lock filters
+    private static List<ItemStack> readContainerLockFilters(CompoundTag tag, HolderLookup.Provider provider) {
+        ListTag filters = tag.getList(TAG_CONTAINER_LOCK_FILTERS, Tag.TAG_COMPOUND);
+        List<ItemStack> loaded = new ArrayList<>(filters.size());
+        for (int index = 0; index < filters.size(); index++) {
+            loaded.add(ItemStack.parseOptional(provider, filters.getCompound(index)));
+        }
+        return normalizeContainerLockFilters(loaded);
     }
 
     // Add the goggle tooltip

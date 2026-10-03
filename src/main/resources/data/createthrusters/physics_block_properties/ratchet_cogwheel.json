@@ -1,6 +1,6 @@
 {
   "selector": "createthrusters:ratchet_cogwheel",
   "properties": {
-    "sable:mass": 0.0
+    "sable:mass": 0.001
   }
 }

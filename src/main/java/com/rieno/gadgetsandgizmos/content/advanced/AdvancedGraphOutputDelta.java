@@ -81,7 +81,12 @@ final class AdvancedGraphOutputDelta {
                 }
             }
             AdvancedGraphDocument.Value lastApplied = outputState.lastAppliedValues.get(port);
-            if (!sameValue(current, desired)
+            boolean matchesCurrent = GraphSignalRange.REDSTONE_SIGNAL_PORT.equals(port)
+                    && current != null && desired != null
+                    ? current.asNumber() == GraphSignalRange.outputStrength(desired.asNumber())
+                    : sameValue(current, desired);
+            if (GraphSignalRange.REDSTONE_SIGNAL_PORT.equals(port) && lastApplied == null
+                    || !matchesCurrent
                     || lastApplied != null && !sameValue(lastApplied, desired)) {
                 changed.add(port);
             }
@@ -106,7 +111,8 @@ final class AdvancedGraphOutputDelta {
             AdvancedGraphDocument.Value val = desiredValues.get(port);
             if (val != null) {
                 outputState.lastAppliedValues.put(port, val);
-                outputState.currentValues.put(port, val);
+                outputState.currentValues.put(port, GraphSignalRange.REDSTONE_SIGNAL_PORT.equals(port)
+                        ? AdvancedGraphDocument.Value.number(GraphSignalRange.outputStrength(val.asNumber())) : val);
             }
         }
     }
@@ -138,13 +144,15 @@ final class AdvancedGraphOutputDelta {
     ) {
         NodeOutputState outputState = controllerState.nodes.computeIfAbsent(
                 node.id(), ignored -> new NodeOutputState(node));
-        if (outputState.node != node) {
+        int targetSignature = writeTargetSignature(node);
+        // Graph target data is edited in place when a linker target is moved
+        // between the world and a Sable sub-level.  Comparing only the node
+        // instance left the previous target's sampled state attached to the
+        // same node, which could suppress the first write to its new target.
+        if (outputState.node != node || outputState.targetSignature != targetSignature) {
             outputState.node = node;
-            int targetSignature = writeTargetSignature(node);
-            if (outputState.targetSignature != targetSignature) {
-                outputState.targetSignature = targetSignature;
-                outputState.lastAppliedValues.clear();
-            }
+            outputState.targetSignature = targetSignature;
+            outputState.lastAppliedValues.clear();
             outputState.sampledGameTime = Long.MIN_VALUE;
             outputState.currentValues.clear();
         }

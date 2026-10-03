@@ -26,6 +26,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import org.jetbrains.annotations.Nullable;
 import net.minecraft.world.item.TooltipFlag;
 import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.Level;
@@ -33,11 +34,20 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.List;
-import java.util.Locale;
 import java.util.UUID;
 
 // Select, inspect and link controller targets across blocks and contraption diagrams
 public class ContraptionNetworkLinkerItem extends Item {
+    /*--------------------------------------------------------##---------------------------------------------------------
+
+    =======================================================================================================================
+                                                           Constants
+    =======================================================================================================================
+
+    ------------------------------------------------------------##-----------------------------------------------------*/
+
+    private static final ThreadLocal<Boolean> RENDER_FOIL_OVERRIDE = new ThreadLocal<>();
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -76,8 +86,28 @@ public class ContraptionNetworkLinkerItem extends Item {
     // Check if this is foil
     @Override
     public boolean isFoil(ItemStack stack) {
+        Boolean renderFoil = RENDER_FOIL_OVERRIDE.get();
+        if (renderFoil != null) {
+            return renderFoil;
+        }
         return !ContraptionNetworkLinkerData.readClientTargets(stack).isEmpty()
+                || !ContraptionNetworkLinkerData.readClientAreas(stack).isEmpty()
                 || ContraptionNetworkLinkerData.clientHasBindings(stack);
+    }
+
+    // Render the linker without a foil effect
+    public static void renderWithoutFoil(Runnable render) {
+        Boolean previous = RENDER_FOIL_OVERRIDE.get();
+        RENDER_FOIL_OVERRIDE.set(false);
+        try {
+            render.run();
+        } finally {
+            if (previous == null) {
+                RENDER_FOIL_OVERRIDE.remove();
+            } else {
+                RENDER_FOIL_OVERRIDE.set(previous);
+            }
+        }
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -92,6 +122,19 @@ public class ContraptionNetworkLinkerItem extends Item {
     @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
         ItemStack stack = player.getItemInHand(hand);
+        var targetMode = ContraptionNetworkLinkerData.getTargetMode(stack);
+        if(ContraptionNetworkLinkerData.getEditMode(stack) == ContraptionNetworkLinkerData.LinkMode.SCM
+                && (targetMode == ContraptionNetworkLinkerData.TargetMode.AREA
+                || targetMode == ContraptionNetworkLinkerData.TargetMode.NO_ENTRY)
+                && !CTInteractionGestures.shouldOpenConfigMenu(player)){
+            if(!level.isClientSide && level instanceof ServerLevel serverLevel
+                    && ContraptionNetworkLinkerTracker.get(serverLevel.getServer())
+                    .canMutateLinker(serverLevel, stack)){
+                BlockPos corner = BlockPos.containing(player.getEyePosition().add(player.getLookAngle().scale(5.0D)));
+                selectAreaCorner(level, player, hand, stack, corner, null, targetMode);
+            }
+            return InteractionResultHolder.sidedSuccess(stack, level.isClientSide);
+        }
         if (CTInteractionGestures.shouldOpenConfigMenu(player)) {
             if (level.isClientSide) {
                 openClientScreen(hand, stack);
@@ -111,8 +154,19 @@ public class ContraptionNetworkLinkerItem extends Item {
 
         Level level = ctx.getLevel();
         ItemStack stack = ctx.getItemInHand();
+        BlockPos clickedPos = ctx.getClickedPos();
+        BlockEntity clickedEntity = SimulatedHelper.findBlockEntityIncludingSubLevels(level, clickedPos);
+        BlockEntityLookupApi.ResolvedBlockPosition resolvedClick = resolveClickedBlock(level, clickedPos, clickedEntity);
+        BlockPos targetPos = resolvedClick.blockPos();
+        UUID subLevelId = resolvedClick.subLevelId();
         // -----------------------------------------------------CONFIG MENU-----------------------------------------------------
-        if (CTInteractionGestures.shouldOpenConfigMenu(player)) {
+        boolean areaGesture = CTInteractionGestures.shouldOpenConfigMenu(player)
+                && (level.isClientSide ? ContraptionNetworkLinkerData.readClientAreas(stack)
+                : ContraptionNetworkLinkerData.readAreas(stack)).stream().anyMatch(area ->
+                area.kind() == ContraptionNetworkLinkerData.AreaKind.MACHINE
+                        && java.util.Objects.equals(area.subLevelId(), subLevelId)
+                        && area.bounds().contains(targetPos));
+        if (CTInteractionGestures.shouldOpenConfigMenu(player) && !areaGesture) {
 
             if (level.isClientSide) {
                 openClientScreen(ctx.getHand(), stack);
@@ -130,23 +184,61 @@ public class ContraptionNetworkLinkerItem extends Item {
         }
 
         // ------------------------------------TARGET RESOLUTION------------------------------------
-        BlockPos clickedPos = ctx.getClickedPos();
-        BlockEntity clickedEntity = SimulatedHelper.findBlockEntityIncludingSubLevels(level, clickedPos);
-        BlockEntityLookupApi.ResolvedBlockPosition resolvedClick = resolveClickedBlock(level, clickedPos, clickedEntity);
-        BlockPos targetPos = resolvedClick.blockPos();
-        UUID subLevelId = resolvedClick.subLevelId();
-
         BlockState clickedState = clickedEntity != null ? clickedEntity.getBlockState() : level.getBlockState(targetPos);
         Direction clickedFace = ctx.getClickedFace();
-        ContraptionNetworkLinkerData.TargetMode targetMode = ContraptionNetworkLinkerData.getTargetMode(stack);
         ContraptionNetworkLinkerData.LinkMode editMode = ContraptionNetworkLinkerData.getEditMode(stack);
+        var targetMode = ContraptionNetworkLinkerData.getTargetMode(stack);
+        var machineArea = ContraptionNetworkLinkerData.machineAreaAt(stack, targetPos, subLevelId);
+        if(machineArea != null && CTInteractionGestures.shouldOpenConfigMenu(player)){
+            var next = targetMode == ContraptionNetworkLinkerData.TargetMode.MACHINE_OUTPUT
+                    ? ContraptionNetworkLinkerData.TargetMode.MACHINE_INPUT
+                    : ContraptionNetworkLinkerData.TargetMode.MACHINE_OUTPUT;
+            ContraptionNetworkLinkerData.setTargetMode(stack, next);
+            player.displayClientMessage(Component.literal(next == ContraptionNetworkLinkerData.TargetMode.MACHINE_INPUT
+                    ? "Machine input: right-click faces inside the area" : "Machine output: right-click output faces")
+                    .withStyle(ChatFormatting.YELLOW), true);
+            observeLinker(level, stack);
+            return InteractionResult.SUCCESS;
+        }
+        if(editMode == ContraptionNetworkLinkerData.LinkMode.SCM
+                && (targetMode == ContraptionNetworkLinkerData.TargetMode.AREA
+                || targetMode == ContraptionNetworkLinkerData.TargetMode.NO_ENTRY)){
+            return selectAreaCorner(level, player, ctx.getHand(), stack, targetPos, subLevelId, targetMode);
+        }
+        if(machineArea != null && (editMode == ContraptionNetworkLinkerData.LinkMode.SCM
+                || editMode == ContraptionNetworkLinkerData.LinkMode.INPUT
+                || editMode == ContraptionNetworkLinkerData.LinkMode.OUTPUT)){
+            var role = targetMode == ContraptionNetworkLinkerData.TargetMode.MACHINE_OUTPUT
+                    || editMode == ContraptionNetworkLinkerData.LinkMode.OUTPUT
+                    ? ContraptionNetworkLinkerData.MachinePortRole.OUTPUT
+                    : ContraptionNetworkLinkerData.MachinePortRole.INPUT;
+            var assigned = ContraptionNetworkLinkerData.cycleMachinePortState(stack, machineArea.id(), targetPos,
+                    clickedFace, role);
+            if(assigned == ContraptionNetworkLinkerData.MachinePortCycleState.INVALID) return InteractionResult.FAIL;
+            observeLinker(level, stack);
+            player.displayClientMessage(Component.literal(switch(assigned){
+                case INPUT -> "Machine input face";
+                case OUTPUT -> "Machine output face";
+                case CLEARED -> "Machine face cleared";
+                case INVALID -> "Invalid machine face";
+            }).withStyle(assigned == ContraptionNetworkLinkerData.MachinePortCycleState.CLEARED
+                    ? ChatFormatting.GRAY : ChatFormatting.YELLOW), true);
+            return InteractionResult.SUCCESS;
+        }
+        if(editMode == ContraptionNetworkLinkerData.LinkMode.SCM
+                && (targetMode == ContraptionNetworkLinkerData.TargetMode.MACHINE_INPUT
+                || targetMode == ContraptionNetworkLinkerData.TargetMode.MACHINE_OUTPUT)){
+            player.displayClientMessage(Component.literal("Select a face inside a defined machine area")
+                    .withStyle(ChatFormatting.RED), true);
+            return InteractionResult.FAIL;
+        }
         // -----------------------------------------------------TARGET MODE-----------------------------------------------------
         ContraptionNetworkLinkerData.TargetScope targetScope = ContraptionNetworkLinkerData.resolveTargetScope(
             level,
             targetPos,
             clickedState,
             clickedFace,
-            targetMode);
+            ContraptionNetworkLinkerData.TargetMode.FACE);
         String faceSignalKey = targetScope.usesFaces()
             ? ContraptionNetworkLinkerData.resolveFaceSignalKeyForBinding(clickedState, clickedFace)
             : null;
@@ -161,6 +253,8 @@ public class ContraptionNetworkLinkerItem extends Item {
                 blockLabel,
                 faceSignalKey);
         }
+
+        ContraptionNetworkLinkerData.setTargetMode(stack, ContraptionNetworkLinkerData.TargetMode.FACE);
 
         if (targetScope.usesFaces()) {
             return useFacePlane(ctx, targetPos, subLevelId, clickedState, clickedFace, stack);
@@ -186,22 +280,22 @@ public class ContraptionNetworkLinkerItem extends Item {
                 "item.createthrusters.contraption_network_linker.face_added",
                 blockLabel,
                 faceOrBlockLabel,
-                ContraptionNetworkLinkerData.LinkMode.OUTPUT.id().toUpperCase(Locale.ROOT)).withStyle(ChatFormatting.GREEN), true);
+                modeLabel(ContraptionNetworkLinkerData.LinkMode.OUTPUT)).withStyle(ChatFormatting.GREEN), true);
             case ADDED_INPUT, MOVED_TO_INPUT -> player.displayClientMessage(Component.translatable(
                 "item.createthrusters.contraption_network_linker.face_added",
                 blockLabel,
                 faceOrBlockLabel,
-                ContraptionNetworkLinkerData.LinkMode.INPUT.id().toUpperCase(Locale.ROOT)).withStyle(ChatFormatting.AQUA), true);
+                modeLabel(ContraptionNetworkLinkerData.LinkMode.INPUT)).withStyle(ChatFormatting.AQUA), true);
             case ADDED_SCM -> player.displayClientMessage(Component.translatable(
                 "item.createthrusters.contraption_network_linker.face_added",
                 blockLabel,
                 faceOrBlockLabel,
-                ContraptionNetworkLinkerData.LinkMode.SCM.id().toUpperCase(Locale.ROOT)).withStyle(ChatFormatting.GREEN), true);
+                modeLabel(ContraptionNetworkLinkerData.LinkMode.SCM)).withStyle(ChatFormatting.GREEN), true);
             case MOVED_TO_OUTPUT -> player.displayClientMessage(Component.translatable(
                 "item.createthrusters.contraption_network_linker.face_added",
                 blockLabel,
                 faceOrBlockLabel,
-                ContraptionNetworkLinkerData.LinkMode.OUTPUT.id().toUpperCase(Locale.ROOT)).withStyle(ChatFormatting.GREEN), true);
+                modeLabel(ContraptionNetworkLinkerData.LinkMode.OUTPUT)).withStyle(ChatFormatting.GREEN), true);
             case REMOVED -> player.displayClientMessage(Component.translatable(
                 "item.createthrusters.contraption_network_linker.face_removed",
                 blockLabel,
@@ -255,7 +349,7 @@ public class ContraptionNetworkLinkerItem extends Item {
                     "item.createthrusters.contraption_network_linker.face_added",
                     label,
                     "Contraption",
-                    ContraptionNetworkLinkerData.LinkMode.INPUT.id().toUpperCase(Locale.ROOT))
+                    modeLabel(ContraptionNetworkLinkerData.LinkMode.INPUT))
                     .withStyle(ChatFormatting.AQUA), true);
         }
         return InteractionResult.SUCCESS;
@@ -269,6 +363,42 @@ public class ContraptionNetworkLinkerItem extends Item {
                     clickedEntity.getBlockPos(), SimulatedHelper.getContainingSubLevelId(clickedEntity));
         }
         return SimulatedHelper.resolveBlockPositionIncludingSubLevels(level, clickedPos);
+    }
+
+    // Finish a machine or no-entry box from block or air corners
+    private static InteractionResult selectAreaCorner(Level level, Player player, InteractionHand hand,
+                                                       ItemStack stack, BlockPos corner, @Nullable UUID subLevelId,
+                                                       ContraptionNetworkLinkerData.TargetMode mode){
+        var start = ContraptionNetworkLinkerData.areaStart(stack);
+        if(start == null || !java.util.Objects.equals(start.subLevelId(), subLevelId)){
+            ContraptionNetworkLinkerData.startArea(stack, corner, subLevelId);
+            player.displayClientMessage(Component.literal("First area corner selected; select the opposite corner")
+                    .withStyle(ChatFormatting.GREEN), true);
+            return InteractionResult.SUCCESS;
+        }
+        var kind = mode == ContraptionNetworkLinkerData.TargetMode.NO_ENTRY
+                ? ContraptionNetworkLinkerData.AreaKind.NO_ENTRY : ContraptionNetworkLinkerData.AreaKind.MACHINE;
+        var area = ContraptionNetworkLinkerData.addArea(stack, start.pos(), corner, subLevelId, kind);
+        if(area == null){
+            player.displayClientMessage(Component.translatable(
+                    "item.createthrusters.contraption_network_linker.area_too_large").withStyle(ChatFormatting.RED), true);
+            return InteractionResult.FAIL;
+        }
+        if(kind == ContraptionNetworkLinkerData.AreaKind.MACHINE)
+            ContraptionNetworkLinkerData.setTargetMode(stack, ContraptionNetworkLinkerData.TargetMode.MACHINE_INPUT);
+        observeLinker(level, stack);
+        if(kind == ContraptionNetworkLinkerData.AreaKind.MACHINE
+                && player instanceof net.minecraft.server.level.ServerPlayer serverPlayer){
+            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(serverPlayer,
+                    new com.rieno.gadgetsandgizmos.neoforge.network.ContraptionNetworkLinkerAreaConfigPayload(
+                            hand, area.id(), area.label(), area.recipeId(), true));
+        }
+        player.displayClientMessage(Component.literal(kind == ContraptionNetworkLinkerData.AreaKind.MACHINE
+                ? "Machine area saved. Mark input faces; sneak + right-click to mark outputs."
+                : "No-entry area saved; workers will route around it.")
+                .withStyle(kind == ContraptionNetworkLinkerData.AreaKind.MACHINE
+                        ? ChatFormatting.YELLOW : ChatFormatting.RED), true);
+        return InteractionResult.SUCCESS;
     }
 
     // Handle the face plane
@@ -307,6 +437,19 @@ public class ContraptionNetworkLinkerItem extends Item {
         String planeBlockId = CTBlocks.CONTRAPTION_NETWORK_LINKER_PLANE.getId().toString();
         String blockLabel = clickedState.getBlock().getName().getString();
         String planeLabel = blockLabel + " " + faceLabel(clickedFace) + " Linker Plane";
+        // A legacy block assignment is upgraded only when its block is used.
+        // All untouched assignments remain available to existing controllers.
+        if (ContraptionNetworkLinkerData.migrateBlockTargetsToFace(stack, clickedPos, subLevelId,
+                planePos, planeBlockId, planeLabel, clickedFace, null)) {
+            ContraptionNetworkLinkerData.readTargets(stack).stream()
+                    .filter(target -> target.scope().usesFaces()
+                            && target.blockPos().equals(planePos)
+                            && java.util.Objects.equals(target.subLevelId(), subLevelId)
+                            && target.faces().stream().anyMatch(face -> face.face() == clickedFace))
+                    .findFirst().ifPresent(target -> plane.setPlane(clickedFace, target.mode()));
+            observeLinker(level, stack);
+            return InteractionResult.SUCCESS;
+        }
         ContraptionNetworkLinkerData.FaceCycleState state = ContraptionNetworkLinkerData.cycleTarget(
                 stack,
                 planePos,
@@ -332,17 +475,17 @@ public class ContraptionNetworkLinkerItem extends Item {
                     "item.createthrusters.contraption_network_linker.face_added",
                     blockLabel,
                     faceLabel,
-                    ContraptionNetworkLinkerData.LinkMode.OUTPUT.id().toUpperCase(Locale.ROOT)).withStyle(ChatFormatting.GREEN), true);
+                    modeLabel(ContraptionNetworkLinkerData.LinkMode.OUTPUT)).withStyle(ChatFormatting.GREEN), true);
             case ADDED_INPUT, MOVED_TO_INPUT -> player.displayClientMessage(Component.translatable(
                     "item.createthrusters.contraption_network_linker.face_added",
                     blockLabel,
                     faceLabel,
-                    ContraptionNetworkLinkerData.LinkMode.INPUT.id().toUpperCase(Locale.ROOT)).withStyle(ChatFormatting.AQUA), true);
+                    modeLabel(ContraptionNetworkLinkerData.LinkMode.INPUT)).withStyle(ChatFormatting.AQUA), true);
             case ADDED_SCM -> player.displayClientMessage(Component.translatable(
                     "item.createthrusters.contraption_network_linker.face_added",
                     blockLabel,
                     faceLabel,
-                    ContraptionNetworkLinkerData.LinkMode.SCM.id().toUpperCase(Locale.ROOT)).withStyle(ChatFormatting.GREEN), true);
+                    modeLabel(ContraptionNetworkLinkerData.LinkMode.SCM)).withStyle(ChatFormatting.GREEN), true);
             case REMOVED -> player.displayClientMessage(Component.translatable(
                     "item.createthrusters.contraption_network_linker.face_removed",
                     blockLabel,
@@ -379,21 +522,31 @@ public class ContraptionNetworkLinkerItem extends Item {
         }
         tooltip.add(Component.translatable("item.createthrusters.contraption_network_linker.tooltip.count",
                 targets.size(), faceCount).withStyle(ChatFormatting.AQUA));
-        tooltip.add(Component.translatable("item.createthrusters.contraption_network_linker.tooltip.target_mode",
-            ContraptionNetworkLinkerData.getClientTargetMode(stack).id().toUpperCase(Locale.ROOT))
-            .withStyle(ChatFormatting.GRAY));
+        int areaCount = ContraptionNetworkLinkerData.readClientAreas(stack).size();
+        if(areaCount > 0){
+            tooltip.add(Component.translatable("item.createthrusters.contraption_network_linker.tooltip.areas",
+                    areaCount).withStyle(ChatFormatting.GREEN));
+        }
         tooltip.add(Component.translatable("item.createthrusters.contraption_network_linker.tooltip.open")
                 .withStyle(ChatFormatting.GRAY));
         tooltip.add(Component.translatable("item.createthrusters.contraption_network_linker.tooltip.use")
                 .withStyle(ChatFormatting.GRAY));
-        tooltip.add(Component.translatable("item.createthrusters.contraption_network_linker.tooltip.cycle_mode")
-            .withStyle(ChatFormatting.DARK_GRAY));
+        if(ContraptionNetworkLinkerData.getClientEditMode(stack) == ContraptionNetworkLinkerData.LinkMode.SCM
+                && ContraptionNetworkLinkerData.getClientTargetMode(stack) == ContraptionNetworkLinkerData.TargetMode.AREA){
+            tooltip.add(Component.translatable("item.createthrusters.contraption_network_linker.tooltip.area_use")
+                    .withStyle(ChatFormatting.GRAY));
+        }
     }
 
     // Get the face label
     private static String faceLabel(Direction dir) {
         String serialized = dir.getSerializedName();
         return Character.toUpperCase(serialized.charAt(0)) + serialized.substring(1);
+    }
+
+    // Get the player-facing linker mode label
+    private static Component modeLabel(ContraptionNetworkLinkerData.LinkMode mode) {
+        return Component.translatable(mode.translationKey());
     }
 
     // Open the client screen

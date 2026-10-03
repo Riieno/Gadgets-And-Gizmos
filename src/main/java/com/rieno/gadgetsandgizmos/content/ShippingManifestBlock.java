@@ -171,7 +171,9 @@ public class ShippingManifestBlock extends FaceAttachedHorizontalDirectionalBloc
         if (player instanceof ServerPlayer serverPlayer) {
             PacketDistributor.sendToPlayer(serverPlayer,
                     new ShippingManifestOpenPayload(pos, manifest == null ? 0 : manifest.resourceUses(),
-                            manifest == null ? 0 : manifest.availableResourceUses(), createClipboardContent(
+                            manifest == null ? 0 : manifest.availableResourceUses(),
+                            manifest != null && manifest.isContainerLocked(),
+                            manifest == null ? java.util.List.of() : manifest.containerLockFilters(), createClipboardContent(
                             itemHandler, fluidHandler, energyHandler, longEnergyHandler)));
         }
         return InteractionResult.CONSUME;

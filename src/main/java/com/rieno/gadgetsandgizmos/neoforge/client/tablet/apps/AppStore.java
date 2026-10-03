@@ -166,7 +166,7 @@ public final class AppStore implements TabletAppClientRenderer{
     private static void drawParentInfo(TabletAppClientContext ctx, TabletLayout.Rect area){
         int inset = Math.max(2, area.height() / 8);
         int iconSize = Math.max(1, area.height() - inset * 2);
-        ctx.graphics().blit(ctx.app().icon(), area.left() + inset, area.top() + inset, iconSize, iconSize, 0.0f, 0.0f, 64, 64, 64, 64);
+        com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppIcons.render(ctx.app(), ctx.graphics(), area.left() + inset, area.top() + inset, iconSize);
         String title = trim(ctx, ctx.app().title().getString().toUpperCase(Locale.ROOT), area.width() - iconSize - inset * 3);
         ctx.graphics().drawCenteredString(ctx.font(), title, area.left() + iconSize + inset * 2 + (area.width() - iconSize - inset * 3) / 2, area.top() + (area.height() - ctx.font().lineHeight) / 2, 0xFF101114);
     }
@@ -184,7 +184,7 @@ public final class AppStore implements TabletAppClientRenderer{
             ctx.graphics().fill(area.left() + inset, y + inset, area.left() + area.width() - inset, y + rowHeight - inset, selected ? 0xFF303033 : 0xFFE0E0E0);
             int iconSize = Math.max(1, rowHeight - inset * 4);
             ResourceLocation iconLoc = icon(ctx, app);
-            if(iconLoc != null) ctx.graphics().blit(iconLoc, area.left() + inset * 3, y + inset * 2, iconSize, iconSize, 0.0f, 0.0f, 64, 64, 64, 64);
+            drawIcon(ctx, app, area.left() + inset * 3, y + inset * 2, iconSize);
             int textLeft = area.left() + iconSize + inset * 5;
             String name = trim(ctx, app.getString("Name").toUpperCase(Locale.ROOT), area.left() + area.width() - inset * 2 - textLeft);
             ctx.graphics().drawCenteredString(ctx.font(), name, textLeft + (area.left() + area.width() - inset * 2 - textLeft) / 2, y + (rowHeight - ctx.font().lineHeight) / 2, selected ? 0xFFF5F5F5 : 0xFF151518);
@@ -205,8 +205,7 @@ public final class AppStore implements TabletAppClientRenderer{
         TabletLayout.Rect action = CANVAS.project(bounds, ACTION);
         ResourceLocation iconLoc = icon(ctx, app);
 
-        if(iconLoc != null) ctx.graphics().blit(iconLoc, icon.left(), icon.top(), icon.width(), icon.height(), 0.0f, 0.0f, 64, 64, 64, 64);
-        else ctx.graphics().drawCenteredString(ctx.font(), "APP", icon.left() + icon.width() / 2, icon.top() + icon.height() / 2 - 4, 0xDD363639);
+        drawIcon(ctx, app, icon.left(), icon.top(), Math.min(icon.width(), icon.height()));
         ctx.graphics().drawCenteredString(ctx.font(), trim(ctx, app.getString("Name").toUpperCase(Locale.ROOT), title.width() - 2), title.left() + title.width() / 2, title.top() + (title.height() - ctx.font().lineHeight) / 2, 0xFFF8F8F8);
         ctx.graphics().drawCenteredString(ctx.font(), trim(ctx, priceLabel(app), price.width() - 2), price.left() + price.width() / 2, price.top() + (price.height() - ctx.font().lineHeight) / 2, 0xFFF8F8F8);
         drawActionBackground(ctx, action, app.getBoolean("Installed") ? 0xFF8A8A8A : 0xFF72C56C);
@@ -218,6 +217,12 @@ public final class AppStore implements TabletAppClientRenderer{
         ResourceLocation id = ResourceLocation.tryParse(app.getString("Id"));
         TabletAppDefinition definition = id == null ? null : TabletAppRegistry.definition(id);
         return definition == null ? ctx.app().icon() : definition.icon();
+    }
+
+    private static void drawIcon(TabletAppClientContext ctx, CompoundTag app, int x, int y, int size){
+        ResourceLocation id = ResourceLocation.tryParse(app.getString("Id"));
+        TabletAppDefinition definition = id == null ? null : TabletAppRegistry.definition(id);
+        if(definition != null) com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppIcons.render(definition, ctx.graphics(), x, y, size);
     }
 
     private static String actionLabel(CompoundTag app){

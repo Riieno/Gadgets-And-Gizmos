@@ -16,6 +16,7 @@ import com.rieno.gadgetsandgizmos.lib.control.ControllerDirectTargetReference;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryKind;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmTarget;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerArea;
 import com.simibubi.create.Create;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.BlockPos;
@@ -69,6 +70,9 @@ public final class ContraptionNetworkLinkerData {
     private static final String TAG_MODE = "EditMode";
     private static final String TAG_TARGET_MODE = "TargetMode";
     private static final String TAG_TARGETS = "Targets";
+    private static final String TAG_AREAS = "Areas";
+    private static final String TAG_AREA_START = "AreaStart";
+    private static final String TAG_AREA_SUBLEVEL = "AreaSubLevel";
 
     private static final String TAG_BLOCK_POS = "BlockPos";
     private static final String TAG_SUBLEVEL_ID = "SubLevelId";
@@ -193,6 +197,15 @@ public final class ContraptionNetworkLinkerData {
             return id;
         }
 
+        // Get the player-facing mode translation key
+        public String translationKey() {
+            return switch (this) {
+                case INPUT -> "item.createthrusters.contraption_network_linker.mode.input";
+                case OUTPUT -> "item.createthrusters.contraption_network_linker.mode.output";
+                case SCM -> "item.createthrusters.contraption_network_linker.mode.worker";
+            };
+        }
+
         // Get the discovery kind
         public ControllerDiscoveryKind discoveryKind() {
             return switch (this) {
@@ -246,6 +259,42 @@ public final class ContraptionNetworkLinkerData {
         }
     }
 
+    public enum AreaKind{ MACHINE, NO_ENTRY }
+    public enum MachinePortRole{ INPUT, OUTPUT }
+    public enum MachinePortCycleState{ INPUT, OUTPUT, CLEARED, INVALID }
+    record MachinePortCycle(List<MachinePort> ports, MachinePortCycleState state){}
+
+    // Bind a transfer face to one machine area without creating a controller target
+    public record MachinePort(BlockPos pos, Direction face, MachinePortRole role){
+        public MachinePort{
+            if(pos == null || face == null || role == null) throw new IllegalArgumentException("Invalid machine port");
+            pos = pos.immutable();
+        }
+    }
+
+    // Store one SCM worker area and its declared machine route
+    public record LinkedArea(UUID id, @Nullable UUID subLevelId, WorkerArea bounds, String label,
+                             String recipeId, AreaKind kind, List<MachinePort> ports, List<String> recipeIds){
+        public LinkedArea{
+            if(id == null || bounds == null) throw new IllegalArgumentException("A linked area needs an id and bounds");
+            label = normalize(label);
+            recipeId = recipeId == null ? "" : recipeId.trim();
+            kind = kind == null ? AreaKind.MACHINE : kind;
+            ports = ports == null ? List.of() : ports.stream().filter(port -> bounds.contains(port.pos())).toList();
+            recipeIds = recipeIds == null ? List.of() : recipeIds.stream().filter(idValue ->
+                    ResourceLocation.tryParse(idValue) != null).distinct().limit(128).toList();
+            if(recipeIds.isEmpty() && !recipeId.isBlank()) recipeIds = List.of(recipeId);
+        }
+        public LinkedArea(UUID id, @Nullable UUID subLevelId, WorkerArea bounds, String label){
+            this(id, subLevelId, bounds, label, "");
+        }
+        public LinkedArea(UUID id, @Nullable UUID subLevelId, WorkerArea bounds, String label, String recipeId){
+            this(id, subLevelId, bounds, label, recipeId, AreaKind.MACHINE, List.of(), List.of());
+        }
+    }
+
+    public record AreaStart(BlockPos pos, @Nullable UUID subLevelId){}
+
     // Store target read results
     public record TargetReadResult(boolean authoritative, @Nullable UUID linkerId,
                                    LinkMode editMode, TargetMode targetMode,
@@ -293,8 +342,13 @@ public final class ContraptionNetworkLinkerData {
     // Define the target mode values
     public enum TargetMode {
         AUTO("auto"),
+        @Deprecated
         BLOCK("block"),
-        FACE("face");
+        FACE("face"),
+        AREA("area"),
+        MACHINE_INPUT("machine_input"),
+        MACHINE_OUTPUT("machine_output"),
+        NO_ENTRY("no_entry");
 
         // Target mode id
         private final String id;
@@ -318,17 +372,17 @@ public final class ContraptionNetworkLinkerData {
             return switch (normalized) {
                 case "block" -> BLOCK;
                 case "face" -> FACE;
+                case "area" -> AREA;
+                case "machine_input" -> MACHINE_INPUT;
+                case "machine_output" -> MACHINE_OUTPUT;
+                case "no_entry" -> NO_ENTRY;
                 default -> AUTO;
             };
         }
 
         // Get the next
         public TargetMode next() {
-            return switch (this) {
-                case AUTO -> BLOCK;
-                case BLOCK -> FACE;
-                case FACE -> AUTO;
-            };
+            return this == AREA ? FACE : AREA;
         }
     }
 
@@ -382,23 +436,9 @@ public final class ContraptionNetworkLinkerData {
                                                  @Nullable BlockState blockState,
                                                  @Nullable Direction clickedFace,
                                                  @Nullable TargetMode targetMode) {
-        TargetMode mode = targetMode == null ? TargetMode.AUTO : targetMode;
-        if (mode == TargetMode.BLOCK) {
-            return TargetScope.BLOCK;
-        }
-        if (mode == TargetMode.FACE) {
-            return TargetScope.FACE;
-        }
-        if (blockState == null) {
-            return TargetScope.FACE;
-        }
-
-        if (isForcedBlockScopeBlock(blockState)) {
-            return TargetScope.BLOCK;
-        }
-        return hasDirectionalRedstoneCapability(level, blockPos, blockState, clickedFace)
-                ? TargetScope.FACE
-                : TargetScope.BLOCK;
+        // New linker bindings always use the interacted face. Legacy BLOCK
+        // targets remain readable until their matching block is interacted with.
+        return TargetScope.FACE;
     }
 
     // Resolve the target scope
@@ -496,6 +536,16 @@ public final class ContraptionNetworkLinkerData {
         return parsed;
     }
 
+    // Read worker areas from the latest client snapshot
+    public static List<LinkedArea> readClientAreas(ItemStack stack){
+        return readAreas(clientRootTag(stack));
+    }
+
+    // Read the pending first corner while the linker is held
+    public static @Nullable AreaStart readClientAreaStart(ItemStack stack){
+        return readAreaStart(clientRootTag(stack));
+    }
+
     // Read the client channel bindings
     public static Map<String, ChannelBind> readClientChannelBindings(ItemStack stack) {
         CompoundTag root = clientRootTag(stack);
@@ -535,7 +585,13 @@ public final class ContraptionNetworkLinkerData {
     // Write the client edit root
     public static CompoundTag writeClientEditRoot(ItemStack stack, List<LinkedTarget> targets,
                                                   LinkMode editMode, TargetMode targetMode) {
+        return writeClientEditRoot(stack, targets, readClientAreas(stack), editMode, targetMode);
+    }
+
+    public static CompoundTag writeClientEditRoot(ItemStack stack, List<LinkedTarget> targets,
+                                                  List<LinkedArea> areas, LinkMode editMode, TargetMode targetMode) {
         CompoundTag root = writeRoot(targets, editMode, targetMode);
+        root.put(TAG_AREAS, areaTags(areas == null ? List.of() : areas));
         if (stack == null || stack.isEmpty()) {
             return root;
         }
@@ -818,7 +874,11 @@ public final class ContraptionNetworkLinkerData {
     // Set the target mode
     public static void setTargetMode(ItemStack stack, TargetMode mode) {
         CompoundTag root = rootTag(stack, true);
-        root.putString(TAG_TARGET_MODE, mode == null ? TargetMode.AUTO.id() : mode.id());
+        root.putString(TAG_TARGET_MODE, mode == null ? TargetMode.FACE.id() : mode.id());
+        if(mode != TargetMode.AREA && mode != TargetMode.NO_ENTRY){
+            root.remove(TAG_AREA_START);
+            root.remove(TAG_AREA_SUBLEVEL);
+        }
         writeRootToStack(stack, root);
     }
 
@@ -967,11 +1027,231 @@ public final class ContraptionNetworkLinkerData {
         return sortTargets(targets);
     }
 
+    // Read saved worker areas, rejecting malformed or oversized bounds
+    public static List<LinkedArea> readAreas(ItemStack stack){
+        return readAreas(rootTag(stack, false));
+    }
+
+    public static List<LinkedArea> readAreas(@Nullable CompoundTag root){
+        if(root == null) return List.of();
+        List<LinkedArea> areas = new ArrayList<>();
+        ListTag entries = root.getList(TAG_AREAS, Tag.TAG_COMPOUND);
+        for(int idx = 0; idx < entries.size(); idx++){
+            CompoundTag entry = entries.getCompound(idx);
+            if(!entry.hasUUID("Id") || !entry.contains("Min", Tag.TAG_LONG)
+                    || !entry.contains("Max", Tag.TAG_LONG)) continue;
+            try{
+                List<MachinePort> ports = new ArrayList<>();
+                ListTag savedPorts = entry.getList("MachinePorts", Tag.TAG_COMPOUND);
+                for(int portIdx = 0; portIdx < savedPorts.size(); portIdx++){
+                    CompoundTag saved = savedPorts.getCompound(portIdx);
+                    Direction face = Direction.byName(saved.getString("Face"));
+                    if(!saved.contains("Pos", Tag.TAG_LONG) || face == null) continue;
+                    ports.add(new MachinePort(BlockPos.of(saved.getLong("Pos")), face,
+                            saved.getString("Role").equals("output") ? MachinePortRole.OUTPUT : MachinePortRole.INPUT));
+                }
+                List<String> recipeIds = new ArrayList<>();
+                ListTag savedRecipes = entry.getList("RecipeIds", Tag.TAG_STRING);
+                for(int recipeIdx = 0; recipeIdx < savedRecipes.size(); recipeIdx++)
+                    recipeIds.add(savedRecipes.getString(recipeIdx));
+                areas.add(new LinkedArea(entry.getUUID("Id"),
+                        entry.hasUUID(TAG_SUBLEVEL_ID) ? entry.getUUID(TAG_SUBLEVEL_ID) : null,
+                        new WorkerArea(BlockPos.of(entry.getLong("Min")), BlockPos.of(entry.getLong("Max"))),
+                        entry.getString(TAG_LABEL), entry.getString("RecipeId"),
+                        entry.getString("Kind").equals("no_entry") ? AreaKind.NO_ENTRY : AreaKind.MACHINE,
+                        ports, recipeIds));
+            }catch(IllegalArgumentException ignored){}
+        }
+        return List.copyOf(areas);
+    }
+
+    private static ListTag areaTags(List<LinkedArea> areas){
+        ListTag entries = new ListTag();
+        for(LinkedArea area : areas){
+            CompoundTag entry = new CompoundTag();
+            entry.putUUID("Id", area.id());
+            if(area.subLevelId() != null) entry.putUUID(TAG_SUBLEVEL_ID, area.subLevelId());
+            entry.putLong("Min", area.bounds().min().asLong());
+            entry.putLong("Max", area.bounds().max().asLong());
+            entry.putString(TAG_LABEL, area.label());
+            if(!area.recipeId().isBlank()) entry.putString("RecipeId", area.recipeId());
+            if(area.kind() == AreaKind.NO_ENTRY) entry.putString("Kind", "no_entry");
+            ListTag savedPorts = new ListTag();
+            for(MachinePort port : area.ports()){
+                CompoundTag saved = new CompoundTag();
+                saved.putLong("Pos", port.pos().asLong());
+                saved.putString("Face", port.face().getName());
+                saved.putString("Role", port.role() == MachinePortRole.OUTPUT ? "output" : "input");
+                savedPorts.add(saved);
+            }
+            entry.put("MachinePorts", savedPorts);
+            ListTag savedRecipes = new ListTag();
+            for(String recipeId : area.recipeIds()) savedRecipes.add(net.minecraft.nbt.StringTag.valueOf(recipeId));
+            entry.put("RecipeIds", savedRecipes);
+            entries.add(entry);
+        }
+        return entries;
+    }
+
+    private static @Nullable AreaStart readAreaStart(@Nullable CompoundTag root){
+        return root != null && root.contains(TAG_AREA_START, Tag.TAG_LONG)
+                ? new AreaStart(BlockPos.of(root.getLong(TAG_AREA_START)),
+                root.hasUUID(TAG_AREA_SUBLEVEL) ? root.getUUID(TAG_AREA_SUBLEVEL) : null) : null;
+    }
+
+    // Save the first corner without creating a worker target yet
+    public static void startArea(ItemStack stack, BlockPos pos, @Nullable UUID subLevelId){
+        CompoundTag root = rootTag(stack, true).copy();
+        root.putLong(TAG_AREA_START, pos.asLong());
+        if(subLevelId == null) root.remove(TAG_AREA_SUBLEVEL);
+        else root.putUUID(TAG_AREA_SUBLEVEL, subLevelId);
+        writeRootToStack(stack, root);
+    }
+
+    public static @Nullable AreaStart areaStart(ItemStack stack){
+        return readAreaStart(rootTag(stack, false));
+    }
+
+    // Add a completed area and clear the pending corner
+    public static @Nullable LinkedArea addArea(ItemStack stack, BlockPos first, BlockPos second,
+                                               @Nullable UUID subLevelId){
+        return addArea(stack, first, second, subLevelId, AreaKind.MACHINE);
+    }
+
+    public static @Nullable LinkedArea addArea(ItemStack stack, BlockPos first, BlockPos second,
+                                               @Nullable UUID subLevelId, AreaKind kind){
+        WorkerArea bounds;
+        try{
+            bounds = new WorkerArea(first, second);
+        }catch(IllegalArgumentException ignored){
+            return null;
+        }
+        CompoundTag root = rootTag(stack, true).copy();
+        List<LinkedArea> areas = new ArrayList<>(readAreas(root));
+        LinkedArea area = new LinkedArea(UUID.randomUUID(), subLevelId, bounds,
+                (kind == AreaKind.NO_ENTRY ? "No Entry " : "Machine Area ") + (areas.size() + 1),
+                "", kind, List.of(), List.of());
+        areas.add(area);
+        root.put(TAG_AREAS, areaTags(areas));
+        root.remove(TAG_AREA_START);
+        root.remove(TAG_AREA_SUBLEVEL);
+        writeRootToStack(stack, root);
+        return area;
+    }
+
+    // Resize one stored worker area without changing its identity or attachment
+    public static boolean moveAreaFace(ItemStack stack, UUID areaId, Direction face, int blocks){
+        if(stack == null || areaId == null || face == null || blocks == 0) return false;
+        CompoundTag root = rootTag(stack, true).copy();
+        List<LinkedArea> areas = new ArrayList<>(readAreas(root));
+        for(int idx = 0; idx < areas.size(); idx++){
+            LinkedArea area = areas.get(idx);
+            if(!area.id().equals(areaId)) continue;
+            WorkerArea moved = area.bounds().moveFace(face, blocks);
+            if(moved == null || moved.equals(area.bounds())) return false;
+            areas.set(idx, new LinkedArea(area.id(), area.subLevelId(), moved, area.label(), area.recipeId(),
+                    area.kind(), area.ports(), area.recipeIds()));
+            root.put(TAG_AREAS, areaTags(areas));
+            writeRootToStack(stack, root);
+            return true;
+        }
+        return false;
+    }
+
+    // Update a completed area's name and optional sequenced recipe assignment
+    public static boolean configureArea(ItemStack stack, UUID areaId, String label, String recipeId){
+        if(stack == null || areaId == null) return false;
+        String selectedRecipe = sanitizeAreaRecipeId(recipeId);
+        if(recipeId != null && !recipeId.isBlank() && selectedRecipe.isBlank()) return false;
+        CompoundTag root = rootTag(stack, true).copy();
+        List<LinkedArea> areas = new ArrayList<>(readAreas(root));
+        for(int idx = 0; idx < areas.size(); idx++){
+            LinkedArea area = areas.get(idx);
+            if(!area.id().equals(areaId)) continue;
+            areas.set(idx, new LinkedArea(area.id(), area.subLevelId(), area.bounds(),
+                    sanitizeClientLabel(label), selectedRecipe, area.kind(), area.ports(),
+                    selectedRecipe.isBlank() ? area.recipeIds() : List.of(selectedRecipe)));
+            root.put(TAG_AREAS, areaTags(areas));
+            writeRootToStack(stack, root);
+            return true;
+        }
+        return false;
+    }
+
+    // Change only a port inside its owning machine area
+    public static @Nullable MachinePortRole cycleMachinePort(ItemStack stack, UUID areaId, BlockPos pos,
+                                                              Direction face, MachinePortRole selected){
+        return switch(cycleMachinePortState(stack, areaId, pos, face, selected)){
+            case INPUT -> MachinePortRole.INPUT;
+            case OUTPUT -> MachinePortRole.OUTPUT;
+            case CLEARED, INVALID -> null;
+        };
+    }
+
+    // Cycle a marked machine face from input to output to unbound
+    public static MachinePortCycleState cycleMachinePortState(ItemStack stack, UUID areaId, BlockPos pos,
+                                                              Direction face, MachinePortRole selected){
+        if(stack == null || areaId == null || pos == null || face == null || selected == null)
+            return MachinePortCycleState.INVALID;
+        CompoundTag root = rootTag(stack, true).copy();
+        List<LinkedArea> areas = new ArrayList<>(readAreas(root));
+        for(int idx = 0; idx < areas.size(); idx++){
+            LinkedArea area = areas.get(idx);
+            if(!area.id().equals(areaId) || area.kind() != AreaKind.MACHINE || !area.bounds().contains(pos)) continue;
+            MachinePortCycle cycle = nextMachinePort(area.ports(), pos, face, selected);
+            areas.set(idx, new LinkedArea(area.id(), area.subLevelId(), area.bounds(), area.label(),
+                    area.recipeId(), area.kind(), cycle.ports(), area.recipeIds()));
+            root.put(TAG_AREAS, areaTags(areas));
+            writeRootToStack(stack, root);
+            return cycle.state();
+        }
+        return MachinePortCycleState.INVALID;
+    }
+
+    static MachinePortCycle nextMachinePort(List<MachinePort> existingPorts, BlockPos pos,
+                                            Direction face, MachinePortRole selected){
+        List<MachinePort> ports = new ArrayList<>(existingPorts);
+        MachinePortRole role = selected;
+        for(int portIdx = 0; portIdx < ports.size(); portIdx++){
+            MachinePort existing = ports.get(portIdx);
+            if(!existing.pos().equals(pos) || existing.face() != face) continue;
+            role = existing.role() == MachinePortRole.INPUT ? MachinePortRole.OUTPUT : null;
+            ports.remove(portIdx);
+            break;
+        }
+        if(role != null) ports.add(new MachinePort(pos, face, role));
+        return new MachinePortCycle(List.copyOf(ports), role == null ? MachinePortCycleState.CLEARED
+                : role == MachinePortRole.INPUT ? MachinePortCycleState.INPUT : MachinePortCycleState.OUTPUT);
+    }
+
+    public static @Nullable LinkedArea machineAreaAt(ItemStack stack, BlockPos pos, @Nullable UUID subLevelId){
+        return readAreas(stack).stream().filter(area -> area.kind() == AreaKind.MACHINE
+                && Objects.equals(area.subLevelId(), subLevelId) && area.bounds().contains(pos))
+                .findFirst().orElse(null);
+    }
+
+    public static boolean setAreaRecipes(ItemStack stack, UUID areaId, List<String> recipeIds){
+        if(stack == null || areaId == null || recipeIds == null || recipeIds.size() > 128
+                || recipeIds.stream().anyMatch(id -> ResourceLocation.tryParse(id) == null)) return false;
+        CompoundTag root = rootTag(stack, true).copy();
+        List<LinkedArea> areas = new ArrayList<>(readAreas(root));
+        for(int idx = 0; idx < areas.size(); idx++){
+            LinkedArea area = areas.get(idx);
+            if(!area.id().equals(areaId) || area.kind() != AreaKind.MACHINE) continue;
+            areas.set(idx, new LinkedArea(area.id(), area.subLevelId(), area.bounds(), area.label(),
+                    recipeIds.isEmpty() ? "" : recipeIds.getFirst(), area.kind(), area.ports(), recipeIds));
+            root.put(TAG_AREAS, areaTags(areas));
+            writeRootToStack(stack, root);
+            return true;
+        }
+        return false;
+    }
+
     // Write the root
     public static CompoundTag writeRoot(List<LinkedTarget> targets, LinkMode editMode, TargetMode targetMode) {
         CompoundTag root = new CompoundTag();
         root.putString(TAG_MODE, (editMode == null ? LinkMode.OUTPUT : editMode).id());
-        root.putString(TAG_TARGET_MODE, (targetMode == null ? TargetMode.AUTO : targetMode).id());
+        root.putString(TAG_TARGET_MODE, targetMode == null ? TargetMode.FACE.id() : targetMode.id());
         ListTag listTag = new ListTag();
         for (LinkedTarget target : sortTargets(targets)) {
             CompoundTag targetTag = new CompoundTag();
@@ -1406,6 +1686,53 @@ public final class ContraptionNetworkLinkerData {
         addBlockTarget(targets, blockPos, subLevelId, blockId, blockLabel, LinkMode.INPUT, scope);
         writeTargets(stack, targets, getEditMode(stack));
         return FaceCycleState.ADDED_INPUT;
+    }
+
+    // Migrate only the legacy block targets touched by this linker interaction
+    public static boolean migrateBlockTargetsToFace(ItemStack stack,
+                                                    BlockPos legacyBlockPos,
+                                                    @Nullable UUID subLevelId,
+                                                    BlockPos faceTargetPos,
+                                                    String faceTargetBlockId,
+                                                    String faceTargetLabel,
+                                                    Direction face,
+                                                    @Nullable String faceSignalKey) {
+        if (stack == null || stack.isEmpty() || legacyBlockPos == null || faceTargetPos == null || face == null) return false;
+        List<LinkedTarget> targets = new ArrayList<>(readTargets(stack));
+        Map<String, ControllerDiscoveryNode> replacements = new LinkedHashMap<>();
+        boolean changed = false;
+        for (int index = 0; index < targets.size(); index++) {
+            LinkedTarget target = targets.get(index);
+            if (target.scope() != TargetScope.BLOCK || isContraptionDiagramTarget(target.blockId())
+                    || !Objects.equals(target.blockPos(), legacyBlockPos)
+                    || !Objects.equals(target.subLevelId(), subLevelId)) {
+                continue;
+            }
+            String oldNodeId = nodeIdForTarget(target);
+            int faceTargetIndex = findTargetIndex(targets, faceTargetPos, subLevelId, target.mode(), TargetScope.FACE);
+            LinkedTarget migrated;
+            if (faceTargetIndex >= 0) {
+                addFaceToTarget(targets, faceTargetPos, subLevelId, faceTargetBlockId, faceTargetLabel, face,
+                        target.mode(), TargetScope.FACE, faceSignalKey);
+                migrated = targets.get(faceTargetIndex);
+                targets.remove(index);
+                index--;
+            } else {
+                migrated = new LinkedTarget(faceTargetPos, target.subLevelId(), faceTargetBlockId,
+                        faceTargetLabel, target.mode(), TargetScope.FACE,
+                        List.of(new LinkedFace(face, defaultFaceLabel(face), normalize(faceSignalKey))));
+                targets.set(index, migrated);
+            }
+            toDiscoveryNodes(List.of(migrated)).stream().findFirst()
+                    .ifPresent(replacement -> replacements.put(oldNodeId, replacement));
+            changed = true;
+        }
+        if (changed) {
+            rewriteTrackedTargets(stack, targets, getEditMode(stack), TargetMode.FACE,
+                    replacements, Set.of(), Map.of());
+            rewriteStoredGraphTargets(stack, replacements, Set.of());
+        }
+        return changed;
     }
 
     // Toggle the contraption diagram target
@@ -1888,6 +2215,15 @@ public final class ContraptionNetworkLinkerData {
                 && !mergedRoot.contains(TAG_SELECTED_GRAPH_ID, Tag.TAG_STRING)) {
             mergedRoot.putString(TAG_SELECTED_GRAPH_ID, existingRoot.getString(TAG_SELECTED_GRAPH_ID));
         }
+        if(existingRoot.contains(TAG_AREAS, Tag.TAG_LIST) && !mergedRoot.contains(TAG_AREAS, Tag.TAG_LIST)){
+            mergedRoot.put(TAG_AREAS, existingRoot.getList(TAG_AREAS, Tag.TAG_COMPOUND).copy());
+        }
+        if(existingRoot.contains(TAG_AREA_START, Tag.TAG_LONG)){
+            mergedRoot.putLong(TAG_AREA_START, existingRoot.getLong(TAG_AREA_START));
+            if(existingRoot.hasUUID(TAG_AREA_SUBLEVEL)){
+                mergedRoot.putUUID(TAG_AREA_SUBLEVEL, existingRoot.getUUID(TAG_AREA_SUBLEVEL));
+            }
+        }
 
         Set<String> currentNodeIds = currentNodeIds(mergedRoot);
         mergeChannelBindings(mergedRoot, existingRoot, currentNodeIds);
@@ -1904,6 +2240,9 @@ public final class ContraptionNetworkLinkerData {
         if (edit == null) {
             return null;
         }
+        List<LinkedArea> areas = sanitizeClientAreas(readAreas(incoming),
+                existingRoot == null ? List.of() : readAreas(existingRoot));
+        if(areas == null) return null;
         CompoundTag editableRoot = writeRoot(
                 edit.targets(),
                 LinkMode.byId(incoming.getString(TAG_MODE)),
@@ -1913,12 +2252,44 @@ public final class ContraptionNetworkLinkerData {
         mergedRoot.putString(TAG_MODE, editableRoot.getString(TAG_MODE));
         mergedRoot.putString(TAG_TARGET_MODE, editableRoot.getString(TAG_TARGET_MODE));
         mergedRoot.put(TAG_TARGETS, editableRoot.getList(TAG_TARGETS, Tag.TAG_COMPOUND).copy());
+        mergedRoot.put(TAG_AREAS, areaTags(areas));
+        if(TargetMode.byId(mergedRoot.getString(TAG_TARGET_MODE)) != TargetMode.AREA
+                && TargetMode.byId(mergedRoot.getString(TAG_TARGET_MODE)) != TargetMode.NO_ENTRY){
+            mergedRoot.remove(TAG_AREA_START);
+            mergedRoot.remove(TAG_AREA_SUBLEVEL);
+        }
         removeClientEditSource(mergedRoot);
 
         Set<String> currentNodeIds = currentNodeIds(mergedRoot);
         mergeChannelBindings(mergedRoot, serverRoot, currentNodeIds);
         mergeCustomEntryBindings(mergedRoot, serverRoot, currentNodeIds);
         return mergedRoot;
+    }
+
+    // Accept only edits and removals of areas already created through world interaction
+    private static @Nullable List<LinkedArea> sanitizeClientAreas(List<LinkedArea> incoming,
+                                                                  List<LinkedArea> existing){
+        List<LinkedArea> available = new ArrayList<>(existing);
+        List<LinkedArea> edited = new ArrayList<>();
+        for(LinkedArea area : incoming){
+            int idx = -1;
+            for(int candidate = 0; candidate < available.size(); candidate++){
+                LinkedArea saved = available.get(candidate);
+                if(saved.id().equals(area.id()) && Objects.equals(saved.subLevelId(), area.subLevelId())
+                        && saved.bounds().equals(area.bounds())){
+                    idx = candidate;
+                    break;
+                }
+            }
+            if(idx < 0) return null;
+            LinkedArea saved = available.remove(idx);
+            if(area.recipeIds().size() > 128 || area.recipeIds().stream().anyMatch(id ->
+                    ResourceLocation.tryParse(id) == null)) return null;
+            edited.add(new LinkedArea(saved.id(), saved.subLevelId(), saved.bounds(),
+                    sanitizeClientLabel(area.label()), area.recipeIds().isEmpty() ? "" : area.recipeIds().getFirst(),
+                    saved.kind(), saved.ports(), area.recipeIds()));
+        }
+        return List.copyOf(edited);
     }
 
     // Sanitize the client targets
@@ -2028,6 +2399,12 @@ public final class ContraptionNetworkLinkerData {
     private static String sanitizeClientLabel(String label) {
         String normalized = normalize(label);
         return normalized.length() <= 64 ? normalized : normalized.substring(0, 64);
+    }
+
+    private static String sanitizeAreaRecipeId(String recipeId){
+        if(recipeId == null || recipeId.isBlank()) return "";
+        String normalized = recipeId.trim();
+        return normalized.length() <= 128 && ResourceLocation.tryParse(normalized) != null ? normalized : "";
     }
 
     // Store the sanitized client targets
@@ -3339,6 +3716,11 @@ public final class ContraptionNetworkLinkerData {
         snapshot.putString(TAG_MODE, LinkMode.byId(src.getString(TAG_MODE)).id());
         snapshot.putString(TAG_TARGET_MODE, TargetMode.byId(src.getString(TAG_TARGET_MODE)).id());
         snapshot.put(TAG_TARGETS, src.getList(TAG_TARGETS, Tag.TAG_COMPOUND).copy());
+        snapshot.put(TAG_AREAS, src.getList(TAG_AREAS, Tag.TAG_COMPOUND).copy());
+        if(src.contains(TAG_AREA_START, Tag.TAG_LONG)){
+            snapshot.putLong(TAG_AREA_START, src.getLong(TAG_AREA_START));
+            if(src.hasUUID(TAG_AREA_SUBLEVEL)) snapshot.putUUID(TAG_AREA_SUBLEVEL, src.getUUID(TAG_AREA_SUBLEVEL));
+        }
         if (src.contains(TAG_SELECTED_GRAPH_ID, Tag.TAG_STRING)) {
             snapshot.putString(TAG_SELECTED_GRAPH_ID, src.getString(TAG_SELECTED_GRAPH_ID));
         }

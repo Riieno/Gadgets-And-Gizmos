@@ -33,6 +33,7 @@ import com.rieno.gadgetsandgizmos.content.RopeWinchUnstickWindow;
 import com.rieno.gadgetsandgizmos.content.ThrusterBlock;
 import com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ShippingSchedulePilot;
+import com.rieno.gadgetsandgizmos.content.ShipPermissions;
 import com.rieno.gadgetsandgizmos.content.SupporterHeads;
 import com.rieno.gadgetsandgizmos.content.SupporterMannequinPlacement;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
@@ -40,6 +41,7 @@ import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryKind;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryService;
 import com.rieno.gadgetsandgizmos.lib.discovery.INamedBlockEntity;
 import com.rieno.gadgetsandgizmos.lib.item.MiningSpeedSafety;
+import com.rieno.gadgetsandgizmos.lib.scm.ShipPermission;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletInteractionMode;
 import com.rieno.gadgetsandgizmos.neoforge.network.ArmorStandPoseOpenPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ContraptionNetworkLinkerSnapshotPayload;
@@ -205,6 +207,15 @@ public final class CTPlayerEvents {
     // Handle the right click block event
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
+        // Gate direct wrench handlers before they can change a claimed ship
+        if(event.getEntity() instanceof ServerPlayer player
+                && CREATE_WRENCH.equals(BuiltInRegistries.ITEM.getKey(event.getItemStack().getItem()))
+                && !ShipPermissions.allows(player, event.getLevel(), event.getPos(),
+                player.isShiftKeyDown() ? ShipPermission.DESTROY : ShipPermission.INTERACT)){
+            event.setCancellationResult(InteractionResult.FAIL);
+            event.setCanceled(true);
+            return;
+        }
         if (tryHandlePlacedTabletInteraction(event)) {
             return;
         }

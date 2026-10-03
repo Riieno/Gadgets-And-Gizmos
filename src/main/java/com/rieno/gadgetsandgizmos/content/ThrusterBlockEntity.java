@@ -21,6 +21,11 @@ import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
 import com.rieno.gadgetsandgizmos.lib.physics.SablePointImpulseApi;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerAirProcessingSource;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerContainerAccess;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipePlan;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerResourceType;
 import com.rieno.gadgetsandgizmos.particle.ColoredCloudParticleOptions;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
@@ -55,6 +60,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -80,6 +86,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.energy.EnergyStorage;
 import net.neoforged.neoforge.energy.IEnergyStorage;
 import net.neoforged.neoforge.capabilities.Capabilities;
@@ -103,11 +110,11 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import net.minecraft.world.phys.Vec3;
 
 // Handle thrust, fuel, fan processing and throttle control
 public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntitySubLevelPropellerActor,
         BlockEntityPropeller, IHaveGoggleInformation, IAirCurrentSource, MenuProvider,
+        WorkerAirProcessingSource,
         com.rieno.gadgetsandgizmos.lib.discovery.INamedBlockEntity,
         com.rieno.gadgetsandgizmos.lib.control.IDirectControlReceiver, AdvancedGraphDataProvider {
 
@@ -230,7 +237,8 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
     private static final float THRUSTER_SMOKING_FIRE_SECONDS = 2.0F;
     private static final float THRUSTER_SMELTING_FIRE_SECONDS = 10.0F;
     private static final double THRUSTER_ENTITY_QUERY_RADIUS = 1.25D;
-    private static final double THRUSTER_HANDLER_QUERY_RADIUS = 1.0D;
+    // Reach the diagonal depots in a 3x3 plume tunnel without reaching the next ring
+    private static final double THRUSTER_HANDLER_QUERY_RADIUS = 1.5D;
     private static final int EXHAUST_OCCLUSION_CACHE_TICKS = 10;
     private static final int SIGNAL_POLL_INTERVAL_TICKS = 5;
     private static final int CLIENT_SYNC_INTERVAL_TICKS = 5;
@@ -412,6 +420,8 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
     private final AirCurrent airCurrent = new ThrusterAirCurrent(this);
     // Current exhaust occlusion cache time
     private long exhaustOcclusionCacheTime = Long.MIN_VALUE;
+    // Last client plume sample time
+    private long lastPlumeSampleTick = Long.MIN_VALUE;
     // Current exhaust occlusion requested distance
     private double exhaustOcclusionRequestedDistance = -1.0D;
     // Current exhaust occlusion distance
@@ -420,6 +430,11 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
     private Vec3 exhaustOcclusionStart = Vec3.ZERO;
     // Current exhaust occlusion direction
     private Vec3 exhaustOcclusionDirection = Vec3.ZERO;
+    // Reuse loaded collision shapes across server damage checks in one tick
+    private final SubLevelParticleOcclusion.ProbeCache damageOcclusionCache =
+            new SubLevelParticleOcclusion.ProbeCache();
+    // Current server damage probe tick
+    private long damageOcclusionCacheTime = Long.MIN_VALUE;
 
     // Current ovr dir
     private Vec3 ovrDir = null;
@@ -515,6 +530,17 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
             setChanged();
         }
         clientSyncPending |= syncClient;
+    }
+
+    // Publish control changes in the issuing tick. Fuel accounting can use the
+    // staggered background sync, but applying that delay to controls makes a
+    // group commanded together appear to switch in an arbitrary order.
+    private void syncControlState() {
+        markTickStateChanged(false);
+        if (level != null && !level.isClientSide) {
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+            clientSyncPending = false;
+        }
     }
 
     // Update the client
@@ -669,17 +695,38 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
             }
         }
 
-        double plumeRange = Math.max(0.1D, exhaustCloudRange);
-        int plumeSamples = Math.max(2, Mth.ceil((8.0f + throttle * 20.0f)
-                * (float) intensity * (float) visibleRangeRatio));
+        boolean plumeV2 = CTConfigs.CLIENT.useThrusterPlumeV2Renderer.get();
+        double plumeOriginOffset = plumeV2 ? Math.min(0.125D, exhaustCloudRange * 0.25D) : 0.0D;
+        double plumeRange = Math.max(0.1D, exhaustCloudRange - plumeOriginOffset);
+        Vec3 plumeStart = localStart.add(localDirection.scale(plumeOriginOffset));
+        int plumeSamples = plumeV2
+                ? Math.min(3, Math.max(2, Mth.ceil((1.5f + throttle * 1.5f)
+                        * (float) intensity * (float) visibleRangeRatio)))
+                : Math.max(2, Mth.ceil((8.0f + throttle * 20.0f)
+                        * (float) intensity * (float) visibleRangeRatio));
+        if (plumeV2) {
+            double trailLength = plumeRange + 8.4D + (1.35D + throttle * 3.15D) * 4.0D;
+            double coverage = WorldSpaceParticleEmitter.projectedWidth(this, plumeStart,
+                    plumeStart.add(localDirection.scale(trailLength)), 1.7D);
+            int interval = coverage >= 1.0D ? 6 : coverage >= 0.7D ? 4 : coverage >= 0.5D ? 2 : 1;
+            if (coverage >= 0.4D) plumeSamples = 1;
+            long gameTime = level.getGameTime();
+            if (lastPlumeSampleTick != Long.MIN_VALUE && gameTime >= lastPlumeSampleTick
+                    && gameTime - lastPlumeSampleTick < interval) return;
+            lastPlumeSampleTick = gameTime;
+        }
         for (int i = 0; i < plumeSamples; i++) {
-            double normalizedDistance = (i + level.random.nextDouble()) / plumeSamples;
+            double sampleOffset = level.random.nextDouble();
+            if (plumeV2) {
+                sampleOffset = i == 0 ? sampleOffset * 0.12D : 0.35D + sampleOffset * 0.3D;
+            }
+            double normalizedDistance = (i + sampleOffset) / plumeSamples;
             double progress = plumeRange * normalizedDistance;
-            Vec3 localSample = localStart.add(localDirection.scale(progress));
+            Vec3 localSample = plumeStart.add(localDirection.scale(progress));
             double normalizedExhaustDistance = progress / naturalExhaustRange;
             double density = Math.pow(Math.max(0.0D, 1.0D - normalizedExhaustDistance), 2.85D);
             spawnFuelTrailParticles(level, localSample, localDirection, density, throttle, progress, plumeRange,
-                    particleRangeBlocked);
+                    particleRangeBlocked, plumeV2);
         }
     }
 
@@ -762,7 +809,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
 
     // Spawn the fuel trail particles
     private void spawnFuelTrailParticles(Level level, Vec3 sample, Vec3 dir, double density,
-            float throttle, double progress, double exhaustCloudRange, boolean particleRangeBlocked) {
+            float throttle, double progress, double exhaustCloudRange, boolean particleRangeBlocked, boolean plumeV2) {
         if (progress > exhaustCloudRange || density <= 0.0005D) {
             return;
         }
@@ -771,9 +818,9 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         double progressRatio = Mth.clamp(progress / range, 0.0D, 1.0D);
         ExhaustParticleStyle particleStyle = getExhaustStyle();
 
-        float baseRed = 1.0f;
-        float baseGreen = 0.95f;
-        float baseBlue = 0.82f;
+        float baseRed = plumeV2 ? 0.12f : 1.0f;
+        float baseGreen = plumeV2 ? 0.55f : 0.95f;
+        float baseBlue = plumeV2 ? 1.0f : 0.82f;
         if (particleStyle == ExhaustParticleStyle.EXPERIENCE) {
             baseRed = 0.65f;
             baseGreen = 1.0f;
@@ -803,17 +850,17 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
             forwardDriftScale = Mth.clamp((exhaustCloudRange - progress) / 0.75D, 0.05D, 1.0D);
         }
         Vec3 drift = dir.scale((1.35D + throttle * 3.15D) * forwardDriftScale);
-        int plumeBursts = Math.max(1, Mth.ceil((float) (density * (1.0D + throttle * 5.0D))));
+        int plumeBursts = plumeV2 ? 1 : Math.max(1, Mth.ceil((float) (density * (1.0D + throttle * 5.0D))));
         for (int burst = 0; burst < plumeBursts; burst++) {
-            Vec3 jitter = randomExhaustSpread(level, dir,
-                    (0.012D + progressRatio * 0.065D) * Math.max(0.25D, density));
+            double spread = (0.012D + progressRatio * 0.065D) * Math.max(0.25D, density);
+            Vec3 jitter = randomExhaustSpread(level, dir, plumeV2 ? spread * 2.0D : spread);
             Vec3 vel = drift.scale(0.82D + density * 0.28D + level.random.nextDouble() * 0.1D)
                     .add(jitter.scale(1.2D + throttle * 0.6D));
             float brightness = 0.9f + level.random.nextFloat() * 0.16f;
             float red = Mth.clamp(baseRed * brightness, 0.0f, 1.0f);
             float green = Mth.clamp(baseGreen * brightness, 0.0f, 1.0f);
             float blue = Mth.clamp(baseBlue * brightness, 0.0f, 1.0f);
-            WorldSpaceParticleEmitter.addParticle(this,
+            WorldSpaceParticleEmitter.addParticleWithinViewDistance(this,
                     new ColoredCloudParticleOptions(red, green, blue),
                     sample.add(jitter), vel);
         }
@@ -940,7 +987,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         signalStrength = updatedSignalStrength;
         redstoneThrottle = signalStrength / 15.0f;
         refreshThrottle();
-        markTickStateChanged(true);
+        syncControlState();
     }
 
     // Get the fuel tank
@@ -1032,7 +1079,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         computerThrottle = clamped;
         controlMode = ControlMode.COMPUTER;
         refreshThrottle();
-        markTickStateChanged(true);
+        syncControlState();
     }
 
     // Get the graph readable data
@@ -1194,7 +1241,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         computerThrottle = getDirectThrottle();
         controlMode = ControlMode.COMPUTER;
         refreshThrottle();
-        markTickStateChanged(true);
+        syncControlState();
     }
 
     // Apply one live ship throttle command with its maximum throttle modifier
@@ -1212,7 +1259,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
             return;
         }
         shipControlThrottle = requested;
-        markTickStateChanged(true);
+        syncControlState();
     }
 
     // Clear the live ship throttle command
@@ -1220,7 +1267,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         String normalizedChannel = channelId == null || channelId.isBlank() ? "ship_control" : channelId;
         if (shipControlThrottle != null && shipControlThrottle.channelId().equals(normalizedChannel)) {
             shipControlThrottle = null;
-            markTickStateChanged(true);
+            syncControlState();
         }
     }
 
@@ -2609,6 +2656,66 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         return airCurrent.maxDistance;
     }
 
+    // Match a worker recipe to the live upgraded exhaust over its input block
+    @Override
+    public boolean supportsWorkerRecipe(Level targetLevel, BlockPos target, WorkerRecipePlan plan){
+        if(targetLevel == null || target == null || plan == null || level == null
+                || targetLevel != level || !isActive() || getBulkProcessingSpeedMultiplier() <= 0.0D
+                || plan.operation() != WorkerRecipePlan.Operation.PROCESSING
+                || plan.inputs().size() != 1 || plan.inputs().getFirst().resource().type() != WorkerResourceType.ITEM
+                || plan.result().type() != WorkerResourceType.ITEM) return false;
+        String type = plan.processorType().toString();
+        boolean supported = switch(processingUpgradeType){
+            case SMELTING -> type.equals("minecraft:smelting") || type.equals("minecraft:blasting");
+            case SMOKING -> type.equals("minecraft:smoking");
+            case HAUNTING -> type.equals("create:haunting");
+            default -> false;
+        };
+        if(!supported || BlockEntityBehaviour.get(targetLevel, target,
+                TransportedItemStackHandlerBehaviour.TYPE) == null) return false;
+        var recipe = WorkerRecipeCatalog.recipe(level, plan);
+        if(recipe == null || recipe.getIngredients().isEmpty()) return false;
+        ItemStack input = new ItemStack(BuiltInRegistries.ITEM.get(plan.inputs().getFirst().resource().id()));
+        ItemStack output = recipe.getResultItem(level.registryAccess());
+        if(input.isEmpty() || output.isEmpty() || !recipe.getIngredients().getFirst().test(input)
+                || !BuiltInRegistries.ITEM.getKey(output.getItem()).equals(plan.result().id())) return false;
+        Object subLevel = SimulatedHelper.getContainingSubLevel(this);
+        Vec3 center = Vec3.atCenterOf(target);
+        if(subLevel != null) center = SimulatedHelper.toContainingWorldPosition(subLevel, center);
+        if(center == null) return false;
+        Level projectionLevel = getWorldSpaceQueryLevel();
+        center = SimulatedHelper.projectOutOfSubLevels(projectionLevel == null ? targetLevel : projectionLevel, center);
+        WorldExhaustGeometry geometry = getWorldExhaustGeometry(0.0D);
+        WorldExhaustHit hit = getWorldExhaustHit(center, THRUSTER_HANDLER_QUERY_RADIUS + 0.125D,
+                0.0D, geometry);
+        return hit != null && airCurrent.getTypeAt((float)hit.axialDistance()) == getForcedProcessingType();
+    }
+
+    // Discover the loaded depots and belts that the upgraded plume can process
+    @Override
+    public List<BlockPos> workerProcessingTargets(Level targetLevel){
+        if(targetLevel == null || targetLevel != level || !isActive()
+                || getBulkProcessingSpeedMultiplier() <= 0.0D) return List.of();
+        WorldExhaustGeometry geometry = getWorldExhaustGeometry(0.0D);
+        Object subLevel = SimulatedHelper.getContainingSubLevel(this);
+        Vec3 start = geometry.origin();
+        Vec3 end = start.add(geometry.direction().scale(geometry.maxDistance()));
+        if(subLevel != null){
+            start = SimulatedHelper.toContainingLocalPosition(subLevel, start);
+            end = SimulatedHelper.toContainingLocalPosition(subLevel, end);
+        }
+        if(start == null || end == null) return List.of();
+        AABB search = new AABB(start, end).inflate(THRUSTER_HANDLER_QUERY_RADIUS + 2.0D);
+        List<BlockPos> targets = new ArrayList<>();
+        for(BlockPos pos : BlockPos.betweenClosed(BlockPos.containing(search.minX, search.minY, search.minZ),
+                BlockPos.containing(search.maxX, search.maxY, search.maxZ))){
+            if(!WorkerContainerAccess.isLoaded(targetLevel, pos)) continue;
+            if(BlockEntityBehaviour.get(targetLevel, pos, TransportedItemStackHandlerBehaviour.TYPE) == null) continue;
+            targets.add(pos.immutable());
+        }
+        return List.copyOf(targets);
+    }
+
     // Get the forced processing type
     private FanProcessingType getForcedProcessingType() {
         if (!CTConfigs.SERVER.enableThrusterBulkProcessing.get()) {
@@ -2796,16 +2903,17 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         if (!(entity instanceof LivingEntity livingEntity) || !CTConfigs.COMMON.enableThrusterEntityDamage.get()) {
             return;
         }
+        if(entity instanceof PlayerMannequinEntity worker && worker.assignedWorkerPod().isPresent()) return;
         if (ShippingSchedulePilot.isPilot(livingEntity)) {
-            return;
-        }
-        if (!hasClearDamagePath(entity)) {
             return;
         }
         if (isProtectedFromMappedShipThruster(entity)) {
             return;
         }
         if (isDamageFiltered()) {
+            return;
+        }
+        if (!hasClearDamagePath(entity)) {
             return;
         }
 
@@ -2830,11 +2938,17 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         if (distance <= 1.0E-5D) {
             return true;
         }
+        Level queryLevel = getWorldSpaceQueryLevel();
+        long gameTime = queryLevel.getGameTime();
+        if (damageOcclusionCacheTime != gameTime) {
+            damageOcclusionCache.clear();
+            damageOcclusionCacheTime = gameTime;
+        }
         Object containingSubLevel = SimulatedHelper.getContainingSubLevel(this);
         double blockingDistance = SubLevelParticleOcclusion.findBlockingDistance(
-                getWorldSpaceQueryLevel(), containingSubLevel,
+                queryLevel, containingSubLevel,
                 origin, offset.scale(1.0D / distance), distance,
-                true, Set.of(), true);
+                true, Set.of(), true, damageOcclusionCache);
         return blockingDistance + 0.125D >= distance;
     }
 
@@ -2894,6 +3008,9 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
 
     // Apply the haunting damage
     private void applyHauntingDamage(LivingEntity livingEntity, Level world) {
+        if (world.isClientSide) {
+            return;
+        }
         if (!CTConfigs.COMMON.enableThrusterMobHaunting.get()) {
             clearHauntingConversion(livingEntity);
             return;
@@ -3682,7 +3799,9 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
             while (iterator.hasNext()) {
                 Entity entity = iterator.next();
                 WorldExhaustHit hit = thruster.getWorldExhaustHit(entity, geometry);
-                if (!entity.isAlive() || hit == null || ThrusterBlockEntity.isPlayerCreativeFlying(entity)) {
+                if (!entity.isAlive() || hit == null || ThrusterBlockEntity.isPlayerCreativeFlying(entity)
+                        || entity instanceof PlayerMannequinEntity worker
+                        && worker.assignedWorkerPod().isPresent()) {
                     if (entity instanceof ItemEntity itemEntity) {
                         thruster.clearProcessingProgress(itemEntity);
                     }
@@ -3790,7 +3909,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
 
             double sampleStep = 0.5D;
             int sampleCount = Math.max(1, Mth.ceil(geometry.maxDistance() / sampleStep));
-            int blockSearchRadius = Mth.ceil(THRUSTER_HANDLER_QUERY_RADIUS + 1.0D);
+            int blockSearchRadius = Mth.ceil(THRUSTER_HANDLER_QUERY_RADIUS);
 
             for (int sample = 1; sample <= sampleCount; sample++) {
                 double distance = Math.min(geometry.maxDistance(), sample * sampleStep);

@@ -10,6 +10,8 @@ package com.rieno.gadgetsandgizmos;
 
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
 import com.rieno.gadgetsandgizmos.compat.scm.OptionalScmCompatibility;
+import com.rieno.gadgetsandgizmos.compat.recipe.PortableToolRecipeAdapter;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog;
 import com.rieno.gadgetsandgizmos.content.EntityLauncherItem;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletRedstoneLinkRuntime;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletDatabase;
@@ -34,6 +36,7 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.common.NeoForge;
+import net.minecraft.resources.ResourceLocation;
 
 // Load the addon on NeoForge and attach its event listeners
 @Mod(CreateThrusters.MOD_ID)
@@ -52,6 +55,12 @@ public final class CreateThrustersNeoForge {
         CTFeatureToggles.prepareDedicatedServerRegistration();
         CTMountedSeats.register();
         OptionalScmCompatibility.register();
+        WorkerRecipeCatalog.register(ResourceLocation.parse("createdieselgenerators:hammering"),
+                new PortableToolRecipeAdapter(ResourceLocation.parse("createdieselgenerators:hammer"), 1));
+        WorkerRecipeCatalog.registerPortableCraftingTool(
+                ResourceLocation.parse("crafting_on_a_stick:crafting_table"));
+        WorkerRecipeCatalog.registerPortableCraftingTool(
+                ResourceLocation.parse("ae2:wireless_crafting_terminal"));
 
         NeoForge.EVENT_BUS.addListener(CTCommonEvents::addReloadListeners);
         NeoForge.EVENT_BUS.addListener(CTSableTrackingCommands::registerCommands);
@@ -77,6 +86,7 @@ public final class CreateThrustersNeoForge {
         NeoForge.EVENT_BUS.addListener(ShippingRouteOverlayService::onServerStopped);
         NeoForge.EVENT_BUS.addListener(ControllerGraphWebServer::onServerStarted);
         NeoForge.EVENT_BUS.addListener(ControllerGraphWebServer::onServerStopped);
+        NeoForge.EVENT_BUS.addListener(CTCommonEvents::warmWorkerRecipes);
         NeoForge.EVENT_BUS.addListener(PlayerMannequinCrafting::onAnvilUpdate);
         NeoForge.EVENT_BUS.addListener(SupporterHeadWanderingTraderTrades::addTrades);
         NeoForge.EVENT_BUS.addListener(CTMobHeadDrops::onLivingDrops);

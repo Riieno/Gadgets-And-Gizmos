@@ -11,6 +11,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerData;
+import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerItem;
 import com.simibubi.create.foundation.item.render.CustomRenderedItemModel;
 import com.simibubi.create.foundation.item.render.CustomRenderedItemModelRenderer;
 import com.simibubi.create.foundation.item.render.PartialItemModelRenderer;
@@ -18,11 +19,14 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import org.joml.Matrix4f;
 
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 
 // Draw the Contraption Network Linker item
@@ -36,12 +40,25 @@ public class ContraptionNetworkLinkerItemRenderer extends CustomRenderedItemMode
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     private static final int COUNT_TEXT_COLOR = 0xFFFFFFFF;
+    private static final int INPUT_MODE_TEXT_COLOR = 0xFF3373F2;
+    private static final int OUTPUT_MODE_TEXT_COLOR = 0xFFF23D47;
+    private static final int WORKER_MODE_TEXT_COLOR = 0xFF33E652;
+    private static final int TABLE_COLUMN_COUNT = 3;
+    private static final int TABLE_BLOCK_ROWS = 5;
+    private static final int TABLE_LINE_COUNT = TABLE_BLOCK_ROWS + 3;
+    private static final float MODE_TABLE_GAP_LINES = 1.0f;
 
-    private static final float SCREEN_LEFT = 4.7f / 16.0f - 0.5f;
-    private static final float SCREEN_RIGHT = 10.7f / 16.0f - 0.5f;
-    private static final float SCREEN_TOP = 13.0f / 16.0f - 0.5f;
-    private static final float SCREEN_BOTTOM = 10.5f / 16.0f - 0.5f;
-    private static final float SCREEN_TEXT_Z = 6.9f / 16.0f - 0.5f;
+    private static final ContraptionNetworkLinkerData.LinkMode[] TABLE_MODES = {
+            ContraptionNetworkLinkerData.LinkMode.OUTPUT,
+            ContraptionNetworkLinkerData.LinkMode.INPUT,
+            ContraptionNetworkLinkerData.LinkMode.SCM
+    };
+
+    private static final float SCREEN_LEFT = 5.6f / 16.0f - 0.5f;
+    private static final float SCREEN_RIGHT = 10.4f / 16.0f - 0.5f;
+    private static final float SCREEN_TOP = 3.6f / 16.0f - 0.5f;
+    private static final float SCREEN_BOTTOM = 7.4f / 16.0f - 0.5f;
+    private static final float SCREEN_TEXT_Y = 7.08f / 16.0f - 0.5f;
     private static final float SCREEN_TEXT_WIDTH_PAD = 0.9f;
     private static final float SCREEN_TEXT_HEIGHT_PAD = 0.86f;
 
@@ -58,35 +75,19 @@ public class ContraptionNetworkLinkerItemRenderer extends CustomRenderedItemMode
     protected void render(ItemStack stack, CustomRenderedItemModel model, PartialItemModelRenderer renderer,
                           ItemDisplayContext ctx, PoseStack poseStack, MultiBufferSource buffer,
                           int light, int overlay) {
-        int linkedBlocks = linkedBlockCount(stack);
-        boolean linked = linkedBlocks > 0;
+        List<ContraptionNetworkLinkerData.LinkedTarget> targets = ContraptionNetworkLinkerData.readClientTargets(stack);
+        int linkedBlocks = linkedBlockCount(targets);
 
         if (ctx == ItemDisplayContext.GUI) {
-            renderer.render(linked
-                    ? CTPartialModels.CONTRAPTION_NETWORK_LINKER_LINKED_GUI.get()
-                    : CTPartialModels.CONTRAPTION_NETWORK_LINKER_UNLINKED_GUI.get(), light);
-            return;
+            renderer.render(model.getOriginalModel(), light);
+        } else {
+            ContraptionNetworkLinkerItem.renderWithoutFoil(() -> renderer.render(model.getOriginalModel(), light));
         }
 
-        if (ctx == ItemDisplayContext.GROUND) {
-            renderer.render(CTPartialModels.CONTRAPTION_NETWORK_LINKER_ITEM.get(), light);
-            return;
-        }
-
-        if (isInHand(ctx)) {
-            poseStack.pushPose();
-            poseStack.mulPose(Axis.YP.rotationDegrees(180.0f));
-            renderer.render(CTPartialModels.CONTRAPTION_NETWORK_LINKER_NO_SCREEN.get(), light);
-            renderer.render(CTPartialModels.CONTRAPTION_NETWORK_LINKER_SCREEN.get(),
-                    linked ? LightTexture.FULL_BRIGHT : light);
-            if (linked) {
-                renderLinkedBlockCount(String.valueOf(linkedBlocks), poseStack, buffer);
-            }
-            poseStack.popPose();
-            return;
-        }
-
-        renderer.render(model.getOriginalModel(), light);
+        poseStack.pushPose();
+        renderScannerDisplay(targets, linkedBlocks, ContraptionNetworkLinkerData.getClientEditMode(stack),
+                poseStack, buffer);
+        poseStack.popPose();
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -103,39 +104,141 @@ public class ContraptionNetworkLinkerItemRenderer extends CustomRenderedItemMode
             return 0;
         }
 
+        return linkedBlockCount(ContraptionNetworkLinkerData.readClientTargets(stack));
+    }
+
+    // Draw the scanner target table
+    private static void renderScannerDisplay(List<ContraptionNetworkLinkerData.LinkedTarget> targets, int linkedBlocks,
+                                             ContraptionNetworkLinkerData.LinkMode activeMode, PoseStack poseStack,
+                                             MultiBufferSource buffer) {
+        Font font = Minecraft.getInstance().font;
+        List<List<String>> targetColumns = targetColumns(targets);
+        List<String> headers = tableHeaders();
+        String activeModeText = Component.translatable("item.createthrusters.contraption_network_linker.mode",
+                Component.translatable(activeMode.translationKey())).getString();
+        float maxWidth = (SCREEN_RIGHT - SCREEN_LEFT) * SCREEN_TEXT_WIDTH_PAD;
+        float maxHeight = (SCREEN_BOTTOM - SCREEN_TOP) * SCREEN_TEXT_HEIGHT_PAD;
+        float columnWidth = maxWidth / TABLE_COLUMN_COUNT;
+        float scale = Math.min(columnWidth / widestHeaderWidth(font, headers),
+                Math.min(maxWidth / Math.max(1, font.width(activeModeText)),
+                        maxHeight / (font.lineHeight * (TABLE_LINE_COUNT + MODE_TABLE_GAP_LINES))));
+        int maximumColumnWidth = Math.max(1, (int) (columnWidth / scale));
+        float topLine = -font.lineHeight * (TABLE_LINE_COUNT + MODE_TABLE_GAP_LINES) * 0.5f;
+        float tableTopLine = topLine + font.lineHeight * (MODE_TABLE_GAP_LINES + 1.0f);
+
+        poseStack.pushPose();
+        poseStack.translate((SCREEN_LEFT + SCREEN_RIGHT) * 0.5f,
+                SCREEN_TEXT_Y,
+                (SCREEN_TOP + SCREEN_BOTTOM) * 0.5f);
+        poseStack.mulPose(Axis.XP.rotationDegrees(90.0f));
+        poseStack.scale(scale, scale, scale);
+
+        Matrix4f pose = poseStack.last().pose();
+        drawCenteredScreenText(font, activeModeText, 0.0f, topLine, modeTextColor(activeMode), pose, buffer);
+        for (int columnIndex = 0; columnIndex < TABLE_COLUMN_COUNT; columnIndex++) {
+            float x = (-maxWidth * 0.5f + columnWidth * (columnIndex + 0.5f)) / scale;
+            ContraptionNetworkLinkerData.LinkMode mode = TABLE_MODES[columnIndex];
+            drawCenteredScreenText(font, headers.get(columnIndex), x, tableTopLine,
+                    modeTextColor(mode), pose, buffer);
+            List<String> labels = targetColumns.get(columnIndex);
+            for (int rowIndex = 0; rowIndex < Math.min(TABLE_BLOCK_ROWS, labels.size()); rowIndex++) {
+                String label = truncateScreenText(font, labels.get(rowIndex), maximumColumnWidth);
+                drawCenteredScreenText(font, label, x, tableTopLine + font.lineHeight * (rowIndex + 1),
+                        COUNT_TEXT_COLOR, pose, buffer);
+            }
+        }
+        drawCenteredScreenText(font, linkedBlocks + " BLOCKS", 0.0f,
+                tableTopLine + font.lineHeight * (TABLE_BLOCK_ROWS + 1), COUNT_TEXT_COLOR, pose, buffer);
+        poseStack.popPose();
+    }
+
+    // Get the target labels for each table column
+    private static List<List<String>> targetColumns(List<ContraptionNetworkLinkerData.LinkedTarget> targets) {
+        List<List<String>> columns = new ArrayList<>();
+        for (ContraptionNetworkLinkerData.LinkMode mode : TABLE_MODES) {
+            Set<String> seenBlocks = new LinkedHashSet<>();
+            List<String> labels = new ArrayList<>();
+            for (ContraptionNetworkLinkerData.LinkedTarget target : targets) {
+                if (target.mode() != mode || !seenBlocks.add(linkedBlockKey(target))) {
+                    continue;
+                }
+                labels.add(targetLabel(target));
+            }
+            labels.sort(String.CASE_INSENSITIVE_ORDER);
+            columns.add(labels);
+        }
+        return columns;
+    }
+
+    // Get the table headers
+    private static List<String> tableHeaders() {
+        List<String> headers = new ArrayList<>();
+        for (ContraptionNetworkLinkerData.LinkMode mode : TABLE_MODES) {
+            headers.add(Component.translatable(mode.translationKey()).getString());
+        }
+        return headers;
+    }
+
+    // Get the widest table header
+    private static int widestHeaderWidth(Font font, List<String> headers) {
+        int width = 1;
+        for (String header : headers) {
+            width = Math.max(width, font.width(header));
+        }
+        return width;
+    }
+
+    // Get the display label for a target
+    private static String targetLabel(ContraptionNetworkLinkerData.LinkedTarget target) {
+        if (target.label() != null && !target.label().isBlank()) {
+            return target.label();
+        }
+        String blockId = target.blockId();
+        int separator = blockId.indexOf(':');
+        return separator >= 0 ? blockId.substring(separator + 1) : blockId;
+    }
+
+    // Get the block key for a target
+    private static String linkedBlockKey(ContraptionNetworkLinkerData.LinkedTarget target) {
+        String subLevel = target.subLevelId() == null ? "world" : target.subLevelId().toString();
+        return subLevel + ":" + target.blockPos().asLong();
+    }
+
+    // Get the full linked block count
+    private static int linkedBlockCount(List<ContraptionNetworkLinkerData.LinkedTarget> targets) {
         Set<String> linkedBlocks = new LinkedHashSet<>();
-        for (ContraptionNetworkLinkerData.LinkedTarget target : ContraptionNetworkLinkerData.readClientTargets(stack)) {
-            String subLevel = target.subLevelId() == null ? "world" : target.subLevelId().toString();
-            linkedBlocks.add(subLevel + ":" + target.blockPos().asLong());
+        for (ContraptionNetworkLinkerData.LinkedTarget target : targets) {
+            linkedBlocks.add(linkedBlockKey(target));
         }
         return linkedBlocks.size();
     }
 
-    // Check if this is in the hand
-    private static boolean isInHand(ItemDisplayContext ctx) {
-        return ctx.firstPerson()
-                || ctx == ItemDisplayContext.THIRD_PERSON_LEFT_HAND
-                || ctx == ItemDisplayContext.THIRD_PERSON_RIGHT_HAND;
+    // Get the screen color for the current link mode
+    private static int modeTextColor(ContraptionNetworkLinkerData.LinkMode mode) {
+        return switch (mode) {
+            case INPUT -> INPUT_MODE_TEXT_COLOR;
+            case OUTPUT -> OUTPUT_MODE_TEXT_COLOR;
+            case SCM -> WORKER_MODE_TEXT_COLOR;
+        };
     }
 
-    // Draw the linked block count
-    private static void renderLinkedBlockCount(String text, PoseStack poseStack, MultiBufferSource buffer) {
-        Font font = Minecraft.getInstance().font;
-        int textWidth = Math.max(1, font.width(text));
-        float maxWidth = (SCREEN_RIGHT - SCREEN_LEFT) * SCREEN_TEXT_WIDTH_PAD;
-        float maxHeight = (SCREEN_TOP - SCREEN_BOTTOM) * SCREEN_TEXT_HEIGHT_PAD;
-        float scale = Math.min(maxWidth / textWidth, maxHeight / font.lineHeight);
+    // Draw centered text above the scanner screen without depth conflicts
+    private static void drawCenteredScreenText(Font font, String text, float x, float y, int color, Matrix4f pose,
+                                               MultiBufferSource buffer) {
+        float left = x - font.width(text) / 2.0f;
+        font.drawInBatch(text, left, y, color, false, pose, buffer,
+                Font.DisplayMode.SEE_THROUGH, 0x80000000, LightTexture.FULL_BRIGHT);
+        font.drawInBatch(text, left, y, color, false, pose, buffer,
+                Font.DisplayMode.NORMAL, 0, LightTexture.FULL_BRIGHT);
+    }
 
-        poseStack.pushPose();
-        poseStack.translate((SCREEN_LEFT + SCREEN_RIGHT) * 0.5f,
-                (SCREEN_TOP + SCREEN_BOTTOM) * 0.5f,
-                SCREEN_TEXT_Z);
-        poseStack.mulPose(Axis.YP.rotationDegrees(180.0f));
-        poseStack.scale(scale, -scale, scale);
-
-        Matrix4f pose = poseStack.last().pose();
-        font.drawInBatch(text, -textWidth / 2.0f, -font.lineHeight / 2.0f, COUNT_TEXT_COLOR, false, pose, buffer,
-                Font.DisplayMode.POLYGON_OFFSET, 0, LightTexture.FULL_BRIGHT);
-        poseStack.popPose();
+    // Truncate text to fit a table column
+    private static String truncateScreenText(Font font, String text, int width) {
+        if (font.width(text) <= width) {
+            return text;
+        }
+        String ellipsis = "…";
+        String prefix = font.plainSubstrByWidth(text, Math.max(0, width - font.width(ellipsis)));
+        return prefix.isEmpty() ? ellipsis : prefix + ellipsis;
     }
 }

@@ -15,6 +15,10 @@ import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerMenu;
 import com.rieno.gadgetsandgizmos.content.ControllerManifestStore;
 import com.rieno.gadgetsandgizmos.content.NotationDraftStore;
 import com.rieno.gadgetsandgizmos.content.ScmConfigurationProfile;
+import com.rieno.gadgetsandgizmos.content.ShipPermissions;
+import com.rieno.gadgetsandgizmos.lib.scm.ShipPermission;
+import com.rieno.gadgetsandgizmos.lib.access.WorldAccessPolicy;
+import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmOrientation;
 import com.rieno.gadgetsandgizmos.content.PortableAdvancedContraptionControllerMenu;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
@@ -91,9 +95,23 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                         "Controller is No Longer Available", -1, isSaveAction(payload.action()), false, List.of());
                 return;
             }
+            if(context.player() instanceof ServerPlayer player
+                    && (!ShipPermissions.allows(player, controller, ShipPermission.ACC_GRAPH)
+                    || !WorldAccessPolicy.canAccessLocal(player, player.serverLevel(),
+                    SableLevelApi.containingId(controller), controller.getBlockPos()))){
+                sendGraphActionResult(context, payload.target(), payload.requestId(), false,
+                        "Ship graph permission denied", -1, false, false, List.of());
+                return;
+            }
             boolean persistPortable = false;
             // ------------------------------------DRAFTS / VALIDATION------------------------------------
             switch (payload.action()) {
+                case "controller_alias" -> {
+                    boolean renamed = controller.renameGraphAlias(payload.argument());
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), renamed,
+                            renamed ? "Controller alias updated" : "Could not update controller alias",
+                            controller.getDraftGraph().revision(), false, false, List.of());
+                }
                 case "save" -> {
                     boolean saved = saveControllerDraft(controller, payload, payload.expectedRevision());
                     persistPortable = saved;
@@ -267,6 +285,9 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                 case "template" -> {
                     controller.selectTemplate(payload.argument());
                     persistPortable = true;
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), true,
+                            "Template Loaded", controller.getDraftGraph().revision(),
+                            true, true, List.of());
                 }
                 case "reset_outputs" -> {
                     controller.resetAllChannels();
@@ -275,6 +296,18 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                 case "trigger" -> controller.triggerGraphEvent(payload.argument(),
                         context.player() instanceof ServerPlayer player ? player.getUUID() : null);
                 // ------------------------------------SCM CONFIGURATION------------------------------------
+                case "scm_permissions_open" -> sendScmConfiguration(context, payload.target(), controller, false);
+                case "scm_permissions_set" -> {
+                    boolean changed = context.player() instanceof ServerPlayer player
+                            && payload.graph().hasUUID("Player")
+                            && ShipPermissions.set(player, controller, payload.graph().getUUID("Player"),
+                            ShipPermission.fromId(payload.graph().getString("Permission")),
+                            payload.graph().getBoolean("Enabled"));
+                    sendScmConfiguration(context, payload.target(), controller, false);
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), changed,
+                            changed ? "Ship permission updated" : "Ship permission could not be updated",
+                            controller.getDraftGraph().revision(), false, false, List.of());
+                }
                 case "scm_configuration_open" -> {
                     // The modal renders the loaded Sable bodies directly. Opening it must
                     // not crawl, probe, or otherwise initialize the craft merely to make
@@ -517,6 +550,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
             candidates.put("PreviewBlocks", previewBlocks);
         }
         candidates.put("Telemetry", scmTelemetrySnapshot(controller));
+        candidates.put("ShipPermissions", ShipPermissions.snapshot(player, controller));
         PacketDistributor.sendToPlayer(player, new ScmConfigurationSnapshotPayload(
                 target.pos(), target.subLevelId(), controller.getScmConfigurationRootSubLevelId(),
                 controller.isScmConfigurationScanning(),

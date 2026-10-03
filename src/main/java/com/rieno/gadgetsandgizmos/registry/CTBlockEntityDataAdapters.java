@@ -5,6 +5,7 @@ import com.rieno.gadgetsandgizmos.content.advanced.GenericBlockEntityDataAdapter
 import com.rieno.gadgetsandgizmos.content.advanced.IndustrialMotorDataAdapter;
 import com.rieno.gadgetsandgizmos.content.advanced.PhysicsAssemblerDataAdapter;
 import com.rieno.gadgetsandgizmos.content.advanced.VanillaSignDataAdapter;
+import com.rieno.gadgetsandgizmos.compat.scm.SynaxisDataAdapter;
 import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataAdapterRegistry;
 
 // Register the addon block entity graph data adapters
@@ -23,6 +24,7 @@ public final class CTBlockEntityDataAdapters {
         BlockEntityDataAdapterRegistry.register(100, new CreateFlapDisplayDataAdapter());
         BlockEntityDataAdapterRegistry.register(100, new IndustrialMotorDataAdapter());
         BlockEntityDataAdapterRegistry.register(100, new PhysicsAssemblerDataAdapter());
+        BlockEntityDataAdapterRegistry.register(100, new SynaxisDataAdapter());
         BlockEntityDataAdapterRegistry.register(-1000, new GenericBlockEntityDataAdapter());
     }
 }

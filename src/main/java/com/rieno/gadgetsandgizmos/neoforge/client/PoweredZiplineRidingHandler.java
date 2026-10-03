@@ -97,12 +97,11 @@ public final class PoweredZiplineRidingHandler {
         }
 
         Vec3 tangent = PoweredZiplinePlacementHandler.sampleZiplineWorldTangent(zipline);
-        boolean pathForwardMatchesCamera = tangent == null || tangent.dot(minecraft.player.getLookAngle()) >= 0.0D;
         if (minecraft.options.keyUp.isDown() && !minecraft.options.keyDown.isDown()) {
-            PacketDistributor.sendToServer(new ServerboundZiplineInputPacket(ridingZiplinePos, !pathForwardMatchesCamera));
+            PacketDistributor.sendToServer(new ServerboundZiplineInputPacket(ridingZiplinePos, false));
         }
         if (minecraft.options.keyDown.isDown() && !minecraft.options.keyUp.isDown()) {
-            PacketDistributor.sendToServer(new ServerboundZiplineInputPacket(ridingZiplinePos, pathForwardMatchesCamera));
+            PacketDistributor.sendToServer(new ServerboundZiplineInputPacket(ridingZiplinePos, true));
         }
 
         Vec3 target = getRiderGripTarget(zipline, tangent);

@@ -13,19 +13,23 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.logging.LogUtils;
-import com.rieno.gadgetsandgizmos.CreateThrusters;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.util.Unit;
 import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.world.entity.EntityType;
+import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforge.resource.ContextAwareReloadListener;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.Reader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -41,8 +45,8 @@ public final class MobHauntingConversions {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    public static final ResourceLocation RESOURCE_ID = ResourceLocation.fromNamespaceAndPath(
-            CreateThrusters.MOD_ID, "mob_haunting_convertions.json");
+    private static final String SERVER_CONFIG_FILE = "gadgetsandgizmos_mob_haunting.json";
+    private static final String DEFAULT_CONFIG_RESOURCE = "/createthrusters/default-mob-haunting.json";
     public static final ContextAwareReloadListener RELOAD_LISTENER = new ContextAwareReloadListener() {
         // Reload the mob haunting conversions
         @Override
@@ -51,7 +55,7 @@ public final class MobHauntingConversions {
                 Executor gameExecutor) {
             return CompletableFuture.supplyAsync(() -> Unit.INSTANCE, backgroundExecutor)
                     .thenCompose(barrier::wait)
-                    .thenAcceptAsync(ignored -> MobHauntingConversions.reload(resourceManager), gameExecutor);
+                    .thenAcceptAsync(ignored -> MobHauntingConversions.reload(), gameExecutor);
         }
     };
 
@@ -97,34 +101,92 @@ public final class MobHauntingConversions {
         return targetId == null ? null : BuiltInRegistries.ENTITY_TYPE.getOptional(targetId).orElse(null);
     }
 
-    // Reload the mob haunting conversions
-    private static void reload(ResourceManager resourceManager) {
-        Map<ResourceLocation, ResourceLocation> loaded = new LinkedHashMap<>(DEFAULT_CONVERSIONS);
-        int loadedResources = 0;
+    // Reload the server-authoritative mob haunting conversions.
+    private static void reload() {
+        JsonObject root = loadServerConfigRoot();
+        if (root == null) {
+            conversions = DEFAULT_CONVERSIONS;
+            return;
+        }
 
-        for (Resource resource : resourceManager.getResourceStack(RESOURCE_ID)) {
-            loadedResources++;
-            try (Reader reader = resource.openAsReader()) {
-                JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
-                if (root.has("replace") && root.get("replace").getAsBoolean()) {
-                    loaded.clear();
-                }
+        Map<ResourceLocation, ResourceLocation> loaded = new LinkedHashMap<>();
+        try {
+            applyConversionDefinitions(root, loaded);
+            conversions = Map.copyOf(loaded);
+            LOGGER.info("Loaded {} mob haunting conversions from server config {}",
+                    conversions.size(), serverConfigPath());
+        } catch (Exception err) {
+            conversions = DEFAULT_CONVERSIONS;
+            LOGGER.warn("Could not apply mob haunting conversions from {}; bundled defaults will be used",
+                    serverConfigPath(), err);
+        }
+    }
 
-                if (root.has("conversions") && root.get("conversions").isJsonObject()) {
-                    readConversionObject(root.getAsJsonObject("conversions"), loaded);
-                } else if (root.has("values") && root.get("values").isJsonArray()) {
-                    readConversionValues(root.getAsJsonArray("values"), loaded);
-                } else {
-                    readConversionObject(root, loaded);
+    // Load the server config, creating it from the bundled defaults on first run.
+    private static @Nullable JsonObject loadServerConfigRoot() {
+        Path path = serverConfigPath();
+        if (Files.notExists(path)) {
+            try (InputStream defaults = MobHauntingConversions.class.getResourceAsStream(DEFAULT_CONFIG_RESOURCE)) {
+                if (defaults == null) {
+                    LOGGER.error("Bundled mob haunting defaults are missing from {}", DEFAULT_CONFIG_RESOURCE);
+                    return null;
                 }
-            } catch (Exception err) {
-                LOGGER.warn("Failed to load mob haunting conversions from {}", RESOURCE_ID, err);
+                Files.createDirectories(path.getParent());
+                Files.copy(defaults, path);
+                LOGGER.info("Created server mob haunting config at {}", path);
+            } catch (IOException err) {
+                LOGGER.warn("Could not create server mob haunting config at {}; bundled defaults will be used",
+                        path, err);
+                return loadBundledDefaultRoot();
             }
         }
 
-        conversions = Map.copyOf(loaded);
-        LOGGER.info("Loaded {} mob haunting conversions from {} resource layer(s)",
-                conversions.size(), loadedResources);
+        try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+            JsonElement parsed = JsonParser.parseReader(reader);
+            if (!parsed.isJsonObject()) {
+                throw new IOException("The root value must be a JSON object");
+            }
+            return parsed.getAsJsonObject();
+        } catch (Exception err) {
+            LOGGER.warn("Could not read server mob haunting config at {}; bundled defaults will be used",
+                    path, err);
+            return loadBundledDefaultRoot();
+        }
+    }
+
+    // Load bundled defaults when the server config cannot be created or read.
+    private static @Nullable JsonObject loadBundledDefaultRoot() {
+        try (InputStream input = MobHauntingConversions.class.getResourceAsStream(DEFAULT_CONFIG_RESOURCE)) {
+            if (input == null) {
+                LOGGER.error("Bundled mob haunting defaults are missing from {}", DEFAULT_CONFIG_RESOURCE);
+                return null;
+            }
+            try (Reader reader = new java.io.InputStreamReader(input, StandardCharsets.UTF_8)) {
+                return JsonParser.parseReader(reader).getAsJsonObject();
+            }
+        } catch (Exception err) {
+            LOGGER.error("Could not read bundled mob haunting defaults from {}", DEFAULT_CONFIG_RESOURCE, err);
+            return null;
+        }
+    }
+
+    // Get the server config path.
+    static Path serverConfigPath() {
+        return FMLPaths.CONFIGDIR.get().resolve(SERVER_CONFIG_FILE);
+    }
+
+    // Apply one complete conversion table.
+    private static void applyConversionDefinitions(JsonObject root, Map<ResourceLocation, ResourceLocation> loaded) {
+        if (root.has("replace") && root.get("replace").getAsBoolean()) {
+            loaded.clear();
+        }
+        if (root.has("conversions") && root.get("conversions").isJsonObject()) {
+            readConversionObject(root.getAsJsonObject("conversions"), loaded);
+        } else if (root.has("values") && root.get("values").isJsonArray()) {
+            readConversionValues(root.getAsJsonArray("values"), loaded);
+        } else {
+            readConversionObject(root, loaded);
+        }
     }
 
     // Read the conversion object
@@ -247,11 +309,13 @@ public final class MobHauntingConversions {
         defaults.put(id("minecraft:bogged"), id("minecraft:wither_skeleton"));
         defaults.put(id("minecraft:slime"), id("minecraft:magma_cube"));
         defaults.put(id("minecraft:zombie"), id("minecraft:zombified_piglin"));
-        defaults.put(id("minecraft:husk"), id("minecraft:zombified_piglin"));
+        defaults.put(id("minecraft:husk"), id("minecraft:piglin_brute"));
         defaults.put(id("minecraft:drowned"), id("minecraft:zombified_piglin"));
         defaults.put(id("minecraft:pig"), id("minecraft:hoglin"));
         defaults.put(id("minecraft:silverfish"), id("minecraft:endermite"));
         defaults.put(id("minecraft:horse"), id("minecraft:skeleton_horse"));
+        defaults.put(id("minecraft:villager"), id("minecraft:piglin"));
+        defaults.put(id("minecraft:piglin"), id("minecraft:enderman"));
         return Map.copyOf(defaults);
     }
 

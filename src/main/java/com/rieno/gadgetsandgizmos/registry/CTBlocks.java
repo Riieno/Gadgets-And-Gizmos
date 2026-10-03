@@ -35,7 +35,6 @@ import com.rieno.gadgetsandgizmos.content.SmartBatteryBlock;
 import com.rieno.gadgetsandgizmos.content.SmartTankBlock;
 import com.rieno.gadgetsandgizmos.content.SmartVaultBlock;
 import com.rieno.gadgetsandgizmos.content.WorkerPodBlock;
-import com.rieno.gadgetsandgizmos.content.GyroRedstoneBridgeBlock;
 import com.rieno.gadgetsandgizmos.content.LauncherEndpointBlock;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryCarriageBlock;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryBeltWheelBlock;
@@ -57,7 +56,6 @@ import com.rieno.gadgetsandgizmos.content.ThrusterBlock;
 import com.rieno.gadgetsandgizmos.content.VariableTransmissionBlock;
 import com.rieno.gadgetsandgizmos.content.VectorBearingBlock;
 import com.rieno.gadgetsandgizmos.content.VectorBearingLinkBlock;
-import com.rieno.gadgetsandgizmos.content.VirtualOrientationSourceBlock;
 import com.rieno.gadgetsandgizmos.content.UniversalDisplayAdapterBlock;
 import com.simibubi.create.content.decoration.encasing.CasingBlock;
 import net.minecraft.world.level.block.Blocks;
@@ -156,14 +154,6 @@ public final class CTBlocks {
     @Nullable
     public static final DeferredBlock<CopycatDoubleButtonBlock> COPYCAT_DOUBLE_BUTTON = register("copycat_double_button",
             () -> new CopycatDoubleButtonBlock(BlockBehaviour.Properties.of().mapColor(MapColor.NONE).strength(2.0f).noOcclusion()));
-
-    @Nullable
-    public static final DeferredBlock<VirtualOrientationSourceBlock> VIRTUAL_ORIENTATION_SOURCE = register("virtual_orientation_source",
-            () -> new VirtualOrientationSourceBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(2.0f).requiresCorrectToolForDrops()));
-
-    @Nullable
-    public static final DeferredBlock<GyroRedstoneBridgeBlock> GYRO_REDSTONE_BRIDGE = register("gyro_redstone_bridge",
-            () -> new GyroRedstoneBridgeBlock(BlockBehaviour.Properties.of().mapColor(MapColor.COLOR_RED).strength(2.0f).requiresCorrectToolForDrops()));
 
     @Nullable
     public static final DeferredBlock<BiDirectionalGearboxBlock> BIDIRECTIONAL_GEARBOX = register("bidirectional_gearbox",

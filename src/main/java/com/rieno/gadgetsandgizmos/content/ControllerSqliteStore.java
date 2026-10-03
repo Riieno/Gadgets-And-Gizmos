@@ -52,6 +52,7 @@ import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -77,6 +78,9 @@ final class ControllerSqliteStore {
     private static final String TAG_LINKER_ID = "LinkerId";
     private static final String TAG_EDIT_MODE = "EditMode";
     private static final String TAG_TARGET_MODE = "TargetMode";
+    private static final String TAG_AREAS = "Areas";
+    private static final String TAG_AREA_START = "AreaStart";
+    private static final String TAG_AREA_SUBLEVEL = "AreaSubLevel";
     private static final String TAG_CHANNEL_BINDS = "ChannelBinds";
     private static final String TAG_CUSTOM_ENTRY_BINDS = "CustomEntryBinds";
     private static final String TAG_STORED_CONTROLLER_MANIFESTS = "StoredControllerManifests";
@@ -142,6 +146,10 @@ final class ControllerSqliteStore {
 
     // Identify one durable SCM state snapshot and its controller manifest.
     record ScmPersistenceBinding(UUID scmId, String manifestId) {
+    }
+
+    // One graph belongs to an alias; each controller keeps its own identity and local bindings.
+    record ControllerAliasGraph(String alias, int revision, CompoundTag draft, CompoundTag active) {
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -245,6 +253,128 @@ final class ControllerSqliteStore {
             }
         } catch (SQLException err) {
             Create.LOGGER.warn("Failed to load controller {} from SQLite", manifestId, err);
+            return null;
+        }
+    }
+
+    static synchronized @Nullable ControllerAliasGraph controllerAliasGraph(@Nullable Level level, String controllerId) {
+        Connection connection = connection(level);
+        if (connection == null || controllerId == null || controllerId.isBlank()) return null;
+        try {
+            return loadControllerAliasGraph(connection, controllerId);
+        } catch (SQLException err) {
+            Create.LOGGER.warn("Failed to load graph alias for controller {}", controllerId, err);
+            return null;
+        }
+    }
+
+    private static @Nullable ControllerAliasGraph loadControllerAliasGraph(Connection connection, String controllerId)
+            throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT a.alias, a.revision
+                FROM controller_alias_map m JOIN controller_aliases a ON a.alias = m.alias
+                WHERE m.controller_id = ?
+                """)) {
+            statement.setString(1, controllerId);
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) return null;
+                String alias = result.getString("alias");
+                return new ControllerAliasGraph(alias, result.getInt("revision"),
+                        loadGraph(connection, "alias", alias, "draft"),
+                        loadGraph(connection, "alias", alias, "active"));
+            }
+        }
+    }
+
+    static synchronized @Nullable ControllerAliasGraph bindControllerAlias(@Nullable Level level,
+            String controllerId, String requestedAlias, CompoundTag draft, CompoundTag active) {
+        Connection connection = connection(level);
+        if (connection == null || controllerId == null || controllerId.isBlank() || requestedAlias == null) return null;
+        String alias = requestedAlias.strip().toLowerCase(Locale.ROOT);
+        if (alias.length() > 64) return null;
+        try {
+            boolean previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try {
+                if (alias.isEmpty()) {
+                    try (PreparedStatement statement = connection.prepareStatement(
+                            "DELETE FROM controller_alias_map WHERE controller_id = ?")) {
+                        statement.setString(1, controllerId);
+                        statement.executeUpdate();
+                    }
+                    connection.commit();
+                    return new ControllerAliasGraph("", 0, draft.copy(), active.copy());
+                }
+                boolean created;
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "INSERT OR IGNORE INTO controller_aliases(alias, revision) VALUES (?, 1)")) {
+                    statement.setString(1, alias);
+                    created = statement.executeUpdate() != 0;
+                }
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        INSERT INTO controller_alias_map(controller_id, alias) VALUES (?, ?)
+                        ON CONFLICT(controller_id) DO UPDATE SET alias = excluded.alias
+                        """)) {
+                    statement.setString(1, controllerId);
+                    statement.setString(2, alias);
+                    statement.executeUpdate();
+                }
+                if (created) {
+                    String now = Instant.now().toString();
+                    upsertGraph(connection, "alias", alias, "draft", alias, draft, 1, now);
+                    upsertGraph(connection, "alias", alias, "active", alias, active, 1, now);
+                }
+                ControllerAliasGraph graph = loadControllerAliasGraph(connection, controllerId);
+                connection.commit();
+                return graph;
+            } catch (SQLException | RuntimeException err) {
+                connection.rollback();
+                throw err;
+            } finally {
+                connection.setAutoCommit(previousAutoCommit);
+            }
+        } catch (SQLException err) {
+            Create.LOGGER.warn("Failed to bind controller {} to alias {}", controllerId, alias, err);
+            return null;
+        }
+    }
+
+    static synchronized @Nullable ControllerAliasGraph publishControllerAliasGraph(@Nullable Level level,
+            String controllerId, int expectedRevision, CompoundTag draft, CompoundTag active) {
+        Connection connection = connection(level);
+        if (connection == null || controllerId == null || controllerId.isBlank()) return null;
+        try {
+            boolean previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try {
+                ControllerAliasGraph current = loadControllerAliasGraph(connection, controllerId);
+                if (current == null || current.revision() != expectedRevision) {
+                    connection.rollback();
+                    return null;
+                }
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "UPDATE controller_aliases SET revision = revision + 1 WHERE alias = ? AND revision = ?")) {
+                    statement.setString(1, current.alias());
+                    statement.setInt(2, expectedRevision);
+                    if (statement.executeUpdate() != 1) {
+                        connection.rollback();
+                        return null;
+                    }
+                }
+                int revision = expectedRevision + 1;
+                String now = Instant.now().toString();
+                upsertGraph(connection, "alias", current.alias(), "draft", current.alias(), draft, revision, now);
+                upsertGraph(connection, "alias", current.alias(), "active", current.alias(), active, revision, now);
+                connection.commit();
+                return new ControllerAliasGraph(current.alias(), revision, draft.copy(), active.copy());
+            } catch (SQLException | RuntimeException err) {
+                connection.rollback();
+                throw err;
+            } finally {
+                connection.setAutoCommit(previousAutoCommit);
+            }
+        } catch (SQLException err) {
+            Create.LOGGER.warn("Failed to publish graph alias for controller {}", controllerId, err);
             return null;
         }
     }
@@ -354,6 +484,7 @@ final class ControllerSqliteStore {
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT revision, content_hash, linker_uuid, edit_mode, target_mode,
                        channel_binds_nbt, custom_entry_binds_nbt, stored_controller_manifests_nbt,
+                       worker_areas_nbt,
                        selected_graph_id
                 FROM linkers
                 WHERE id = ?
@@ -372,6 +503,7 @@ final class ControllerSqliteStore {
                         res.getBytes("channel_binds_nbt"),
                         res.getBytes("custom_entry_binds_nbt"),
                         res.getBytes("stored_controller_manifests_nbt"),
+                        res.getBytes("worker_areas_nbt"),
                         res.getString("selected_graph_id"));
                 return new ControllerManifestStore.ManifestSnapshot(
                         manifestId,
@@ -619,6 +751,7 @@ final class ControllerSqliteStore {
         byte[] channelBinds = sectionBytes(linkerCopy, TAG_CHANNEL_BINDS);
         byte[] customEntryBinds = sectionBytes(linkerCopy, TAG_CUSTOM_ENTRY_BINDS);
         byte[] storedControllerManifests = sectionBytes(linkerCopy, TAG_STORED_CONTROLLER_MANIFESTS);
+        byte[] workerAreas = workerAreaBytes(linkerCopy);
         LinkerTargets nextTargets = linkerTargetsFromData(linkerCopy);
 
         // ------------------------------------TRANSACTION SETUP------------------------------------
@@ -638,8 +771,8 @@ final class ControllerSqliteStore {
                             updated_at_game_time, updated_at, manifest_json,
                             linker_uuid, edit_mode, target_mode,
                             channel_binds_nbt, custom_entry_binds_nbt, stored_controller_manifests_nbt,
-                            selected_graph_id
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            worker_areas_nbt, selected_graph_id
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(id) DO UPDATE SET
                             controller_id = COALESCE(linkers.controller_id, excluded.controller_id),
                             revision = excluded.revision,
@@ -653,6 +786,7 @@ final class ControllerSqliteStore {
                             channel_binds_nbt = excluded.channel_binds_nbt,
                             custom_entry_binds_nbt = excluded.custom_entry_binds_nbt,
                             stored_controller_manifests_nbt = excluded.stored_controller_manifests_nbt,
+                            worker_areas_nbt = excluded.worker_areas_nbt,
                             selected_graph_id = excluded.selected_graph_id
                         """)) {
                     statement.setString(1, id);
@@ -668,7 +802,8 @@ final class ControllerSqliteStore {
                     setNullableBytes(statement, 11, channelBinds);
                     setNullableBytes(statement, 12, customEntryBinds);
                     setNullableBytes(statement, 13, storedControllerManifests);
-                    statement.setString(14, selectedGraphId);
+                    setNullableBytes(statement, 14, workerAreas);
+                    statement.setString(15, selectedGraphId);
                     statement.executeUpdate();
                 }
                 // ------------------------------------LINKED TARGETS------------------------------------
@@ -1119,6 +1254,24 @@ final class ControllerSqliteStore {
                     )
                     """);
             statement.execute("""
+                    CREATE TABLE IF NOT EXISTS controller_aliases (
+                        alias TEXT PRIMARY KEY COLLATE NOCASE,
+                        revision INTEGER NOT NULL DEFAULT 1
+                    )
+                    """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS controller_alias_map (
+                        controller_id TEXT PRIMARY KEY,
+                        alias TEXT NOT NULL,
+                        FOREIGN KEY(controller_id) REFERENCES controllers(id) ON DELETE CASCADE,
+                        FOREIGN KEY(alias) REFERENCES controller_aliases(alias)
+                    )
+                    """);
+            statement.execute("""
+                    CREATE INDEX IF NOT EXISTS controller_alias_map_alias
+                    ON controller_alias_map(alias)
+                    """);
+            statement.execute("""
                     CREATE TABLE IF NOT EXISTS scm_persistence (
                         scm_uuid TEXT PRIMARY KEY,
                         sublevel_id TEXT NOT NULL,
@@ -1145,6 +1298,7 @@ final class ControllerSqliteStore {
                         channel_binds_nbt BLOB,
                         custom_entry_binds_nbt BLOB,
                         stored_controller_manifests_nbt BLOB,
+                        worker_areas_nbt BLOB,
                         selected_graph_id TEXT NOT NULL DEFAULT '',
                         FOREIGN KEY(controller_id) REFERENCES controllers(id) ON DELETE SET NULL
                     )
@@ -1244,6 +1398,7 @@ final class ControllerSqliteStore {
         ensureColumn(connection, "linkers", "channel_binds_nbt", "BLOB");
         ensureColumn(connection, "linkers", "custom_entry_binds_nbt", "BLOB");
         ensureColumn(connection, "linkers", "stored_controller_manifests_nbt", "BLOB");
+        ensureColumn(connection, "linkers", "worker_areas_nbt", "BLOB");
         ensureColumn(connection, "linkers", "selected_graph_id", "TEXT NOT NULL DEFAULT ''");
         ensureColumn(connection, "graphs", "graph_name", "TEXT NOT NULL DEFAULT ''");
         ensureColumn(connection, "graphs", "graph_nbt", "BLOB");
@@ -1468,6 +1623,7 @@ final class ControllerSqliteStore {
                         channel_binds_nbt = ?,
                         custom_entry_binds_nbt = ?,
                         stored_controller_manifests_nbt = ?,
+                        worker_areas_nbt = ?,
                         selected_graph_id = ?,
                         manifest_json = ''
                     WHERE id = ?
@@ -1478,8 +1634,9 @@ final class ControllerSqliteStore {
                 setNullableBytes(statement, 4, sectionBytes(linkerData, TAG_CHANNEL_BINDS));
                 setNullableBytes(statement, 5, sectionBytes(linkerData, TAG_CUSTOM_ENTRY_BINDS));
                 setNullableBytes(statement, 6, sectionBytes(linkerData, TAG_STORED_CONTROLLER_MANIFESTS));
-                statement.setString(7, linkerData.getString(TAG_SELECTED_GRAPH_ID));
-                statement.setString(8, row.id);
+                setNullableBytes(statement, 7, workerAreaBytes(linkerData));
+                statement.setString(8, linkerData.getString(TAG_SELECTED_GRAPH_ID));
+                statement.setString(9, row.id);
                 statement.executeUpdate();
             }
             replaceLinkerLinkedBlocks(connection, row.id, "", linkerData);
@@ -1498,6 +1655,7 @@ final class ControllerSqliteStore {
                                              byte @Nullable [] channelBinds,
                                              byte @Nullable [] customEntryBinds,
                                              byte @Nullable [] storedControllerManifests,
+                                             byte @Nullable [] workerAreas,
                                              String selectedGraphId) throws SQLException {
         UUID uuid = parseUuid(linkerUuid);
         ContraptionNetworkLinkerData.LinkMode resolvedEditMode = ContraptionNetworkLinkerData.LinkMode.byId(editMode);
@@ -1521,6 +1679,16 @@ final class ControllerSqliteStore {
         putSection(root, TAG_CHANNEL_BINDS, channelBinds);
         putSection(root, TAG_CUSTOM_ENTRY_BINDS, customEntryBinds);
         putSection(root, TAG_STORED_CONTROLLER_MANIFESTS, storedControllerManifests);
+        CompoundTag areaData = compoundFromBytes(workerAreas);
+        if(areaData.contains(TAG_AREAS, Tag.TAG_LIST)){
+            root.put(TAG_AREAS, areaData.getList(TAG_AREAS, Tag.TAG_COMPOUND).copy());
+        }
+        if(areaData.contains(TAG_AREA_START, Tag.TAG_LONG)){
+            root.putLong(TAG_AREA_START, areaData.getLong(TAG_AREA_START));
+            if(areaData.hasUUID(TAG_AREA_SUBLEVEL)){
+                root.putUUID(TAG_AREA_SUBLEVEL, areaData.getUUID(TAG_AREA_SUBLEVEL));
+            }
+        }
         if (selectedGraphId != null && !selectedGraphId.isBlank()) {
             root.putString(TAG_SELECTED_GRAPH_ID, selectedGraphId);
         }
@@ -2171,6 +2339,20 @@ final class ControllerSqliteStore {
         CompoundTag wrapper = new CompoundTag();
         wrapper.put("value", section.copy());
         return nbtBytes(wrapper);
+    }
+
+    // Store worker areas and the pending first corner together
+    private static @Nullable byte[] workerAreaBytes(@Nullable CompoundTag root){
+        if(root == null) return null;
+        CompoundTag areaData = new CompoundTag();
+        if(root.contains(TAG_AREAS, Tag.TAG_LIST)){
+            areaData.put(TAG_AREAS, root.getList(TAG_AREAS, Tag.TAG_COMPOUND).copy());
+        }
+        if(root.contains(TAG_AREA_START, Tag.TAG_LONG)){
+            areaData.putLong(TAG_AREA_START, root.getLong(TAG_AREA_START));
+            if(root.hasUUID(TAG_AREA_SUBLEVEL)) areaData.putUUID(TAG_AREA_SUBLEVEL, root.getUUID(TAG_AREA_SUBLEVEL));
+        }
+        return nbtBytes(areaData);
     }
 
     // Put the section

@@ -41,6 +41,12 @@ public class AnalogueJoystickMouseHandlerMixin {
             return;
         }
 
+        if(com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps.DigisablePlacementClient.onMouseMove(
+                yaw, pitch * (double) invertY)){
+            ci.cancel();
+            return;
+        }
+
         if (AnalogueContraptionControllerClientHandler.onMouseMove(
                 yaw, pitch * (double) invertY)) {
             ci.cancel();

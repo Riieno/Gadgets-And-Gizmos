@@ -49,6 +49,18 @@ public final class AdvancedGraphCatalog {
     public static final String INLINE_MAP_OUTPUTS_TAG = "InlineMapOutputs";
     /** Maps generated MAP ports to the retained block-data leaf port schemas. */
     public static final String DATA_PORT_GROUPS_TAG = "DataPortGroups";
+    /** Stores every selected target for a multi-target Get / Set Data node. */
+    public static final String DATA_TARGETS_TAG = "DataTargets";
+    /** Stores the selected assembled-block face for each data target preview. */
+    public static final String DATA_TARGET_FACES_TAG = "DataTargetFaces";
+    /** Maps generated data ports to their target-local source ports. */
+    public static final String DATA_TARGET_BINDINGS_TAG = "DataTargetBindings";
+    /** Stores labelled, collapsible node-port sections. */
+    public static final String PORT_SECTIONS_TAG = "PortSections";
+    /** Stores collapsed labelled node-port sections. */
+    public static final String COLLAPSED_PORT_SECTIONS_TAG = "CollapsedPortSections";
+    /** Stores the player-selected data-target port merge state. */
+    public static final String MERGE_LIKE_PORTS_TAG = "MergeLikePorts";
     public static final String INLINE_MAP_SOURCE_TAG = "Source";
     public static final String INLINE_MAP_KEY_TAG = "Key";
     public static final String SHIP_SPEED_PERCENT_TAG = "ShipSpeedPercent";
@@ -283,12 +295,15 @@ public final class AdvancedGraphCatalog {
                 Map.of("Result", "list"), false);
         register("split_list", "data", Map.of("value", "any"), Map.of(), false);
         register("break_out", "data", Map.of("value", "any"), Map.of(), false);
-        register("get_block_data", "data", Map.of("target", "target"), Map.of("data", "map"), false);
-        register("set_block_data", "data", Map.of("exec", "exec", "target", "target"), Map.of("exec", "exec", "success", "boolean"), false);
+        register("get_block_data", "data", Map.of("target", "target", "merge_like_ports", "boolean"),
+                Map.of("data", "map"), false);
+        register("set_block_data", "data", Map.of("exec", "exec", "target", "target",
+                "merge_like_ports", "boolean", GraphSignalRange.REDSTONE_SIGNAL_PORT, "number"),
+                Map.of("exec", "exec", "success", "boolean"), false);
         register("hud_element", "hud", Map.of("label", "string", "visible", "boolean"), Map.of(), true);
         register("advanced_hud_element", "hud", Map.of("label", "string", "visible", "boolean"), Map.of(), true);
         register("acc_display_widget", "hud", Map.ofEntries(
-                Map.entry("label", "string"), Map.entry("value", "any"),
+                Map.entry("target", "target"), Map.entry("label", "string"), Map.entry("value", "any"),
                 Map.entry("visible", "boolean"), Map.entry("x", "number"),
                 Map.entry("y", "number"), Map.entry("width", "number"),
                 Map.entry("height", "number"), Map.entry("rotation", "number"),
@@ -310,29 +325,29 @@ public final class AdvancedGraphCatalog {
                 Map.entry("border_radius", "number"), Map.entry("minimum", "number"),
                 Map.entry("maximum", "number")), Map.of(), true);
         register("acc_display_graph", "hud", Map.of(
-                "visible", "boolean", "x", "number", "y", "number",
+                "target", "target", "visible", "boolean", "x", "number", "y", "number",
                 "width", "number", "height", "number", "scale", "number",
                 "rotation", "number"), Map.of(), true);
         register("acc_display_plotter", "hud", Map.of(
-                "value", "number", "visible", "boolean", "x", "number", "y", "number",
+                "target", "target", "value", "number", "visible", "boolean", "x", "number", "y", "number",
                 "width", "number", "height", "number", "scale", "number",
                 "rotation", "number"), Map.of(), true);
         register("acc_display_external", "hud", Map.of(
-                "visible", "boolean", "x", "number", "y", "number",
+                "target", "target", "visible", "boolean", "x", "number", "y", "number",
                 "width", "number", "height", "number", "scale", "number",
                 "rotation", "number"), Map.of(), true);
         register("acc_display_crn", "hud", Map.of(
-                "visible", "boolean", "text", "string", "x", "number", "y", "number",
+                "target", "target", "visible", "boolean", "text", "string", "x", "number", "y", "number",
                 "width", "number", "height", "number", "scale", "number",
                 "rotation", "number"), Map.of(), true);
         // Kept separate from the legacy CRN node so new graphs say exactly what
         // they present while saved graphs retain their existing node id.
         register("acc_display_shipping_information", "hud", Map.of(
-                "visible", "boolean", "text", "string", "x", "number", "y", "number",
+                "target", "target", "visible", "boolean", "text", "string", "x", "number", "y", "number",
                 "width", "number", "height", "number", "scale", "number",
                 "rotation", "number"), Map.of(), true);
         register("acc_display_scm_information", "hud", Map.ofEntries(
-                Map.entry("visible", "boolean"),
+                Map.entry("target", "target"), Map.entry("visible", "boolean"),
                 Map.entry("show_status", "boolean"),
                 Map.entry("show_ready", "boolean"),
                 Map.entry("show_initialization", "boolean"),
@@ -647,12 +662,12 @@ public final class AdvancedGraphCatalog {
                 Map.of("destination", "container_selector"), false);
         register("worker_item_filter", "worker_filters", Map.ofEntries(
                 Map.entry("tags", "tag_filter"), Map.entry("enabled", "boolean"),
-                Map.entry("mode", "string"), Map.entry("items", "string"),
+                Map.entry("mode", "string"), Map.entry("filter_type", "string"), Map.entry("items", "string"),
                 Map.entry("match_components", "boolean"), Map.entry("ignore_damage", "boolean"),
                 Map.entry("match_mod", "string")), Map.of("filter", "item_filter"), false);
         register("worker_fluid_filter", "worker_filters", Map.ofEntries(
                 Map.entry("tags", "tag_filter"), Map.entry("enabled", "boolean"),
-                Map.entry("mode", "string"), Map.entry("fluids", "string"),
+                Map.entry("mode", "string"), Map.entry("filter_type", "string"), Map.entry("fluids", "string"),
                 Map.entry("match_components", "boolean")), Map.of("filter", "fluid_filter"), false);
         register("worker_tag_filter", "worker_filters", Map.ofEntries(
                 Map.entry("mode", "string"), Map.entry("match", "string"), Map.entry("tags", "string")),
@@ -692,16 +707,19 @@ public final class AdvancedGraphCatalog {
                         Map.entry("failure_reason", "failure_reason")), true);
         register("worker_process", "worker_actions", Map.ofEntries(
                 Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("processor", "target"),
-                Map.entry("items", "item_payload"), Map.entry("fluid", "fluid_payload"),
+                Map.entry("source", "container_selector"), Map.entry("items", "item_payload"), Map.entry("fluid", "fluid_payload"),
                 Map.entry("fe", "fe_payload"), Map.entry("result_item_filter", "item_filter"),
                 Map.entry("result_fluid_filter", "fluid_filter"), Map.entry("operation", "string"),
+                Map.entry("count", "number"),
                 Map.entry("collect_result", "boolean"), Map.entry("timeout", "number")),
                 Map.ofEntries(Map.entry("complete", "exec"), Map.entry("failed", "exec"),
                         Map.entry("items", "item_payload"), Map.entry("fluid", "fluid_payload"),
                         Map.entry("fe", "fe_payload"), Map.entry("failure_reason", "failure_reason")), true);
         register("worker_craft", "worker_actions", Map.ofEntries(
                 Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("target", "target"),
-                Map.entry("items", "item_payload"), Map.entry("recipe", "string"),
+                Map.entry("source", "container_selector"),
+                Map.entry("items", "item_payload"),
+                Map.entry("result_item_filter", "item_filter"),
                 Map.entry("count", "number"), Map.entry("use_worker_inventory", "boolean")),
                 Map.ofEntries(Map.entry("complete", "exec"), Map.entry("failed", "exec"),
                         Map.entry("items", "item_payload"), Map.entry("failure_reason", "failure_reason")), true);
@@ -718,6 +736,10 @@ public final class AdvancedGraphCatalog {
                 Map.entry("stopping_distance", "number"), Map.entry("follow_moving_target", "boolean"),
                 Map.entry("timeout", "number")), Map.ofEntries(Map.entry("arrived", "exec"),
                 Map.entry("failed", "exec"), Map.entry("failure_reason", "failure_reason")), true);
+        register("worker_return_to_pod", "worker_actions", Map.ofEntries(
+                Map.entry("exec", "exec"), Map.entry("worker", "worker"), Map.entry("pod", "target")),
+                Map.ofEntries(Map.entry("complete", "exec"), Map.entry("failed", "exec"),
+                        Map.entry("failure_reason", "failure_reason")), true);
         register("request_worker_task", "worker_bridge", Map.ofEntries(
                 Map.entry("exec", "exec"), Map.entry("worker", "worker"),
                 Map.entry("worker_group", "worker_group"), Map.entry("workers", "string"),
@@ -1241,6 +1263,7 @@ public final class AdvancedGraphCatalog {
     private static int portGroup(String port) {
         return switch (port) {
             case "exec", "start", "pause", "stop", "reset" -> -100;
+            case "merge_like_ports" -> -91;
             case "target" -> -90;
             case "label" -> -89;
             case "visible" -> -88;
@@ -1287,8 +1310,7 @@ public final class AdvancedGraphCatalog {
                 int rightEnd = rightIndex;
                 while (leftEnd < left.length() && Character.isDigit(left.charAt(leftEnd))) leftEnd++;
                 while (rightEnd < right.length() && Character.isDigit(right.charAt(rightEnd))) rightEnd++;
-                int num = Integer.compare(Integer.parseInt(left.substring(leftIndex, leftEnd)),
-                        Integer.parseInt(right.substring(rightIndex, rightEnd)));
+                int num = compareNaturalNumber(left, leftIndex, leftEnd, right, rightIndex, rightEnd);
                 if (num != 0) return num;
                 leftIndex = leftEnd;
                 rightIndex = rightEnd;
@@ -1300,6 +1322,20 @@ public final class AdvancedGraphCatalog {
             rightIndex++;
         }
         return Integer.compare(left.length(), right.length());
+    }
+
+    // Compare numeric fragments without narrowing packed block positions to ints
+    private static int compareNaturalNumber(String left, int leftStart, int leftEnd,
+                                            String right, int rightStart, int rightEnd) {
+        while (leftStart < leftEnd - 1 && left.charAt(leftStart) == '0') leftStart++;
+        while (rightStart < rightEnd - 1 && right.charAt(rightStart) == '0') rightStart++;
+        int length = Integer.compare(leftEnd - leftStart, rightEnd - rightStart);
+        if (length != 0) return length;
+        for (int index = 0; index < leftEnd - leftStart; index++) {
+            int character = Character.compare(left.charAt(leftStart + index), right.charAt(rightStart + index));
+            if (character != 0) return character;
+        }
+        return 0;
     }
 
     // Check if the values are compatible
@@ -1522,6 +1558,7 @@ public final class AdvancedGraphCatalog {
             case "worker_craft" -> "Craft";
             case "worker_give_items" -> "Give Items";
             case "worker_move_to" -> "Move To";
+            case "worker_return_to_pod" -> "Return to Pod";
             case "request_worker_task" -> "Worker Request";
             case "cancel_worker_task" -> "Cancel Worker Task";
             case "adrc_nth_order" -> "ADRC Nth Order";

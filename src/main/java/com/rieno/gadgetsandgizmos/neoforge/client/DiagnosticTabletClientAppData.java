@@ -9,6 +9,8 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -61,9 +63,31 @@ public final class DiagnosticTabletClientAppData {
                                           @Nullable BlockPos sourceBlockPos,
                                           CompoundTag data) {
         if (appId != null) {
-            SNAPSHOTS.put(new SnapshotKey(appId, placedSource, sourceTabletId,
-                    sourceSubLevelId, sourceBlockPos),
-                    data == null ? new CompoundTag() : data.copy());
+            SnapshotKey key = new SnapshotKey(appId, placedSource, sourceTabletId, sourceSubLevelId, sourceBlockPos);
+            if(data != null && data.contains("Error") && com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.ownsId(appId)){
+                CompoundTag res = SNAPSHOTS.getOrDefault(key, new CompoundTag()).copy();
+                res.putString("Error", data.getString("Error"));
+                if(appId.equals(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.BLOCKMATES.id())){
+                    ListTag missing = new ListTag();
+                    missing.add(StringTag.valueOf(data.getString("Error")));
+                    res.putUUID("RequestResponseId", UUID.randomUUID());
+                    res.putBoolean("RequestFailed", true);
+                    res.put("Missing", missing);
+                }
+                SNAPSHOTS.put(key, res);
+                return;
+            }
+            CompoundTag next = data == null ? new CompoundTag() : data.copy();
+            if(appId.equals(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.BLOCKMATES.id())
+                    && !next.hasUUID("RequestResponseId")){
+                CompoundTag previous = SNAPSHOTS.get(key);
+                if(previous != null && previous.hasUUID("RequestResponseId")){
+                    next.putUUID("RequestResponseId", previous.getUUID("RequestResponseId"));
+                    next.putBoolean("RequestFailed", previous.getBoolean("RequestFailed"));
+                    next.put("Missing", previous.getList("Missing", net.minecraft.nbt.Tag.TAG_STRING).copy());
+                }
+            }
+            SNAPSHOTS.put(key, next);
         }
     }
 

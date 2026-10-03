@@ -13,6 +13,9 @@
         "createthrusters:journey": {"item": "minecraft:emerald", "count": 0},
         "createthrusters:redstone_link": {"item": "minecraft:emerald", "count": 0},
         "createthrusters:gg_auto": {"item": "minecraft:emerald", "count": 0},
-        "createthrusters:nfc": {"item": "minecraft:emerald", "count": 0}
+        "createthrusters:nfc": {"item": "minecraft:emerald", "count": 0},
+        "createthrusters:digisable": {"item": "minecraft:emerald", "count": 10},
+        "createthrusters:manifest": {"item": "minecraft:emerald", "count": 8},
+        "createthrusters:blockmates": {"item": "minecraft:emerald", "count": 7}
     }
 }

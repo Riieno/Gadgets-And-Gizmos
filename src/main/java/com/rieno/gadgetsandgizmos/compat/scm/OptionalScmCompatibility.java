@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.compat.scm;
 
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlProbe;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlProbeRegistry;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmRotaryAngles;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmSubLevelRelationRegistry;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmTarget;
 import net.minecraft.core.Direction;
@@ -217,9 +218,13 @@ public final class OptionalScmCompatibility {
         private final Vec3 direction;
         private final boolean linear;
         private final boolean originalPositionMode;
+        private final boolean originalLock;
+        private final boolean originalAutoLock;
         private final double originalTarget;
+        private final double neutralTarget;
         private final double min;
         private final double max;
+        private double continuousAngle;
 
         // Initialize the Synaxis joint probe
         private SynaxisJointProbe(
@@ -231,7 +236,12 @@ public final class OptionalScmCompatibility {
             originalPositionMode = booleanValue(invoke(joint,
                     linear ? "positionMode" : "angleMode"), true);
             originalTarget = number(invoke(joint, "target"), 0.0D);
-            double[] limits = limits(joint, linear, originalTarget);
+            continuousAngle = number(invoke(joint, "currentAngle"), 0.0D);
+            neutralTarget = originalPositionMode ? originalTarget
+                    : number(invoke(joint, linear ? "currentDistance" : "currentAngle"), 0.0D);
+            originalLock = booleanValue(invoke(joint, "lockRequested"), false);
+            originalAutoLock = booleanValue(invoke(joint, "autoLockEnabled"), false);
+            double[] limits = limits(joint, linear, neutralTarget);
             min = limits[0];
             max = limits[1];
             direction = effectDirection(joint, suggestedDirection);
@@ -264,19 +274,25 @@ public final class OptionalScmCompatibility {
         // Get the minimum position target
         @Override
         public double minControl() {
-            return min;
+            return linear ? min : angularLimits().min();
         }
 
         // Get the maximum position target
         @Override
         public double maxControl() {
-            return max;
+            return linear ? max : angularLimits().max();
+        }
+
+        // Preserve equivalent rotary targets before applying native motor limits
+        @Override
+        public double clampControl(double control) {
+            return linear ? Mth.clamp(control, min, max) : angularLimits().clamp(control);
         }
 
         // Return to the original joint target while the SCM is idle
         @Override
         public double neutralControl() {
-            return Mth.clamp(originalTarget, min, max);
+            return linear ? Mth.clamp(neutralTarget, min, max) : angularLimits().clamp(neutralTarget);
         }
 
         // Apply the target through Synaxis's own PID/PID controller
@@ -284,16 +300,49 @@ public final class OptionalScmCompatibility {
         public void apply(double control) {
             if (!isAvailable()) return;
             invoke(joint, linear ? "setPositionMode" : "setAngleMode", boolean.class, true);
-            invoke(joint, "setTarget", double.class, Mth.clamp(control, min, max));
+            invoke(joint, "setLockRequested", boolean.class, false);
+            invoke(joint, "setAutoLockEnabled", boolean.class, false);
+            double target = linear ? clampControl(control)
+                    : ScmRotaryAngles.wrap(clampControl(control));
+            invoke(joint, "setTarget", double.class, target);
         }
 
         // Read the current joint state
         @Override
         public Reading read() {
-            double position = number(invoke(joint,
-                    linear ? "currentDistance" : "currentAngle"), originalTarget);
+            double position = linear ? number(invoke(joint, "currentDistance"), originalTarget)
+                    : measuredAngle();
             double speed = number(invoke(joint, "currentSpeed"), 0.0D);
-            return new Reading(speed, position - originalTarget, isAvailable());
+            return new Reading(speed, position - neutralControl(), isAvailable());
+        }
+
+        // Unwrap native feedback before using it in bounded joint-space IK
+        private double measuredAngle(){
+            continuousAngle = ScmRotaryAngles.unwrapNear(
+                    number(invoke(joint, "currentAngle"), continuousAngle), continuousAngle);
+            return continuousAngle;
+        }
+
+        // Keep authored wrap-crossing limits on the same branch as the live motor
+        private ScmRotaryAngles.Interval angularLimits(){
+            double angle = measuredAngle();
+            if(!booleanValue(invoke(joint, "jointLimitEnabled"), false)){
+                return new ScmRotaryAngles.Interval(angle - Math.PI, angle + Math.PI);
+            }
+            double low = number(invoke(joint, "jointLimitMin"), -Math.PI);
+            double high = number(invoke(joint, "jointLimitMax"), Math.PI);
+            boolean across = booleanValue(invoke(joint, "jointLimitAcrossWrap"), false);
+            if(!across && high - low >= Math.PI * 2.0D - 1.0E-6D
+                    || across && Math.abs(ScmRotaryAngles.wrap(high - low)) < 1.0E-6D){
+                return new ScmRotaryAngles.Interval(angle - Math.PI, angle + Math.PI);
+            }
+            low = ScmRotaryAngles.wrap(low);
+            high = ScmRotaryAngles.wrap(high);
+            if(across){
+                double width = (low - high + Math.PI * 2.0D) % (Math.PI * 2.0D);
+                return ScmRotaryAngles.interval(high, width, angle);
+            }
+            return ScmRotaryAngles.interval(Math.min(low, high), Math.abs(high - low), angle);
         }
 
         // Get the local direction the joint affects
@@ -305,6 +354,15 @@ public final class OptionalScmCompatibility {
         // Get the local joint position
         @Override
         public Vec3 localEffectPosition() {
+            if(!linear){
+                Object facing = invoke(joint, "getDirection");
+                if(facing instanceof Direction dir){
+                    return joint.getBlockPos().relative(dir).getCenter().add(
+                            number(invoke(joint, "selfOffsetX"), 0.0D),
+                            number(invoke(joint, "selfOffsetY"), 0.0D),
+                            number(invoke(joint, "selfOffsetZ"), 0.0D));
+                }
+            }
             return Vec3.atCenterOf(joint.getBlockPos());
         }
 
@@ -321,6 +379,8 @@ public final class OptionalScmCompatibility {
             invoke(joint, "setTarget", double.class, originalTarget);
             invoke(joint, linear ? "setPositionMode" : "setAngleMode",
                     boolean.class, originalPositionMode);
+            invoke(joint, "setLockRequested", boolean.class, originalLock);
+            invoke(joint, "setAutoLockEnabled", boolean.class, originalAutoLock);
         }
 
         // Get the Synaxis position limits or a bounded local working window

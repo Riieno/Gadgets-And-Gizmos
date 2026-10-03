@@ -29,12 +29,6 @@ public final class CTPartialModels {
     public static final PartialModel PHYSICS_STAFF_SIGMA = item("physics_staff/sigma");
     public static final PartialModel PHYSICS_STAFF_INNER_CUBE = item("physics_staff/inner_cube");
     public static final PartialModel PHYSICS_STAFF_OUTER_CUBE = item("physics_staff/outer_cube");
-    public static final PartialModel CONTRAPTION_NETWORK_LINKER_ITEM = block("linker/item");
-    public static final PartialModel CONTRAPTION_NETWORK_LINKER_NO_SCREEN = block("linker/no_screen");
-    public static final PartialModel CONTRAPTION_NETWORK_LINKER_SCREEN = block("linker/screen");
-    public static final PartialModel CONTRAPTION_NETWORK_LINKER_LINKED_GUI = item("contraption_network_linker_linked");
-    public static final PartialModel CONTRAPTION_NETWORK_LINKER_UNLINKED_GUI = item("contraption_network_linker_unlinked");
-
     public static final PartialModel THRUSTER_FLAME = block("thruster/flame");
     public static final PartialModel THRUSTER_FLAME_SUPERHEATED = block("thruster/flame_superheated");
     public static final PartialModel[] THRUSTER_FLAME_FRAMES = frames("thruster/flame_", 4);

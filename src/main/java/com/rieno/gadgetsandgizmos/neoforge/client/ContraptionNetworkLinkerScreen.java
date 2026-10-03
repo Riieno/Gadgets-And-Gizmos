@@ -21,7 +21,6 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 // Edit Contraption Network Linker settings
 public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
@@ -34,7 +33,7 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     private static final int BG_W = 296;
-    private static final int BG_H = 214;
+    private static final int BG_H = 236;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -58,18 +57,21 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
 
     // Tracked targets
     private final List<ContraptionNetworkLinkerData.LinkedTarget> targets = new ArrayList<>();
+    private final List<ContraptionNetworkLinkerData.LinkedArea> areas = new ArrayList<>();
     // Current edit mode
     private ContraptionNetworkLinkerData.LinkMode editMode = ContraptionNetworkLinkerData.LinkMode.OUTPUT;
-    // Target mode
-    private ContraptionNetworkLinkerData.TargetMode targetMode = ContraptionNetworkLinkerData.TargetMode.AUTO;
+    private ContraptionNetworkLinkerData.TargetMode targetMode = ContraptionNetworkLinkerData.TargetMode.FACE;
+    private CTScaledButton faceModeButton;
+    private CTScaledButton areaModeButton;
+    private CTScaledButton machineInputButton;
+    private CTScaledButton machineOutputButton;
+    private CTScaledButton noEntryButton;
+    private CTScaledButton assignRecipesButton;
 
     // Current block label field
     private EditBox blockLabelField;
     // Current face label field
     private EditBox faceLabelField;
-    // Target mode button
-    private CTScaledButton targetModeButton;
-
     // Current left pos
     private int leftPos;
     // Current top pos
@@ -80,6 +82,7 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
     private int selectedTarget = -1;
     // Selected face
     private int selectedFace = -1;
+    private int selectedArea = -1;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -96,6 +99,7 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
         this.stackSnapshot = stack.copy();
         this.clientDataAvailable = ContraptionNetworkLinkerData.hasClientData(stack);
         this.targets.addAll(ContraptionNetworkLinkerData.readClientTargets(stack));
+        this.areas.addAll(ContraptionNetworkLinkerData.readClientAreas(stack));
         this.editMode = ContraptionNetworkLinkerData.getClientEditMode(stack);
         this.targetMode = ContraptionNetworkLinkerData.getClientTargetMode(stack);
         setWindowSize(BG_W, BG_H);
@@ -115,6 +119,9 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
                 Component.translatable("item.createthrusters.contraption_network_linker.face_label"));
         addRenderableWidget(blockLabelField);
         addRenderableWidget(faceLabelField);
+        assignRecipesButton = addRenderableWidget(new CTScaledButton(scalableGui,
+                leftPos + 146, topPos + 168, 124, 14, Component.literal("Assign recipes"),
+                btn -> openRecipePicker()));
 
         addRenderableWidget(new CTScaledButton(scalableGui, leftPos + BG_W - 48, topPos + BG_H - 20, 40, 14,
                 Component.translatable("gui.done"), btn -> {
@@ -125,8 +132,10 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
         addRenderableWidget(new CTScaledButton(scalableGui, leftPos + 8, topPos + BG_H - 20, 44, 14,
                 Component.translatable("item.createthrusters.contraption_network_linker.clear"), btn -> {
             targets.removeIf(target -> target.mode() == editMode);
+            if(editMode == ContraptionNetworkLinkerData.LinkMode.SCM) areas.clear();
             selectedTarget = -1;
             selectedFace = -1;
+            selectedArea = -1;
             refreshFields();
         }));
 
@@ -135,14 +144,35 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
             removeSelectedEntry();
         }));
 
-        addTargetTab(ContraptionNetworkLinkerData.LinkMode.INPUT, 78, "INPUT");
-        addTargetTab(ContraptionNetworkLinkerData.LinkMode.OUTPUT, 132, "OUTPUT");
-        addTargetTab(ContraptionNetworkLinkerData.LinkMode.SCM, 192, "SCM");
-
-        targetModeButton = addRenderableWidget(new CTScaledButton(scalableGui, leftPos + 196, topPos + BG_H - 20, 48, 14,
-                targetModeLabel(), btn -> {
-            targetMode = targetMode.next();
-            btn.setMessage(targetModeLabel());
+        addTargetTab(ContraptionNetworkLinkerData.LinkMode.INPUT, 78);
+        addTargetTab(ContraptionNetworkLinkerData.LinkMode.OUTPUT, 132);
+        addTargetTab(ContraptionNetworkLinkerData.LinkMode.SCM, 192);
+        faceModeButton = addRenderableWidget(new CTScaledButton(scalableGui,
+                leftPos + 112, topPos + BG_H - 20, 42, 14,
+                Component.translatable("item.createthrusters.contraption_network_linker.target.face"), btn -> {
+            targetMode = ContraptionNetworkLinkerData.TargetMode.FACE;
+            refreshModeButtons();
+        }));
+        areaModeButton = addRenderableWidget(new CTScaledButton(scalableGui,
+                leftPos + 158, topPos + BG_H - 20, 42, 14,
+                Component.literal("Machine Area"), btn -> {
+            targetMode = ContraptionNetworkLinkerData.TargetMode.AREA;
+            refreshModeButtons();
+        }));
+        machineInputButton = addRenderableWidget(new CTScaledButton(scalableGui,
+                leftPos + 8, topPos + BG_H - 42, 73, 16, Component.literal("Input"), btn -> {
+            targetMode = ContraptionNetworkLinkerData.TargetMode.MACHINE_INPUT;
+            refreshModeButtons();
+        }));
+        machineOutputButton = addRenderableWidget(new CTScaledButton(scalableGui,
+                leftPos + 85, topPos + BG_H - 42, 73, 16, Component.literal("Output"), btn -> {
+            targetMode = ContraptionNetworkLinkerData.TargetMode.MACHINE_OUTPUT;
+            refreshModeButtons();
+        }));
+        noEntryButton = addRenderableWidget(new CTScaledButton(scalableGui,
+                leftPos + 162, topPos + BG_H - 42, 73, 16, Component.literal("No Entry"), btn -> {
+            targetMode = ContraptionNetworkLinkerData.TargetMode.NO_ENTRY;
+            refreshModeButtons();
         }));
 
         addRenderableWidget(new CTScaledButton(scalableGui, leftPos + BG_W - 22, topPos + 20, 14, 12,
@@ -156,6 +186,7 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
         }));
 
         refreshFields();
+        refreshModeButtons();
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -191,7 +222,7 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
         if (clientDataAvailable) {
             PacketDistributor.sendToServer(new ContraptionNetworkLinkerSyncPayload(hand,
                     ContraptionNetworkLinkerData.writeClientEditRoot(
-                            stackSnapshot, targets, editMode, targetMode)));
+                            stackSnapshot, targets, areas, editMode, targetMode)));
         }
         super.onClose();
     }
@@ -255,10 +286,10 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
         for (int idx = scroll; idx < end; idx++) {
             RowEntry row = rows.get(idx);
             int y = startY + (idx - scroll) * 12;
-            if (row.isSelected(selectedTarget, selectedFace)) {
+            if (row.isSelected(selectedTarget, selectedFace, selectedArea)) {
                 graphics.fill(leftPos + 12, y - 1, leftPos + BG_W - 28, y + 10, 0x334A7A5A);
             }
-            int col = row.isSelected(selectedTarget, selectedFace)
+            int col = row.isSelected(selectedTarget, selectedFace, selectedArea)
                     ? 0xE9F3EA
                     : (row.faceIndex >= 0 ? CTCreateScreenHelper.LABEL_COLOR : CTCreateScreenHelper.BANNER_TITLE_COLOR);
             graphics.drawString(font, row.text, leftPos + 14, y, col, false);
@@ -274,13 +305,23 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
         RowEntry row = rows.get(absoluteRow);
         selectedTarget = row.targetIndex;
         selectedFace = row.faceIndex;
+        selectedArea = row.areaIndex;
         if (selectedTarget >= 0 && selectedTarget < targets.size()) {
             editMode = targets.get(selectedTarget).mode();
         }
+        if(selectedArea >= 0) editMode = ContraptionNetworkLinkerData.LinkMode.SCM;
+        refreshModeButtons();
     }
 
     // Remove the selected entry
     private void removeSelectedEntry() {
+        if(selectedArea >= 0 && selectedArea < areas.size()){
+            areas.remove(selectedArea);
+            selectedArea = -1;
+            scroll = Math.min(scroll, maxScroll());
+            refreshFields();
+            return;
+        }
         if (selectedTarget < 0 || selectedTarget >= targets.size()) {
             return;
         }
@@ -314,6 +355,13 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
 
     // Apply the field edits
     private void applyFieldEdits() {
+        if(selectedArea >= 0 && selectedArea < areas.size()){
+            var area = areas.get(selectedArea);
+            areas.set(selectedArea, new ContraptionNetworkLinkerData.LinkedArea(area.id(), area.subLevelId(),
+                    area.bounds(), blockLabelField.getValue(), area.recipeId(), area.kind(),
+                    area.ports(), area.recipeIds()));
+            return;
+        }
         if (selectedTarget < 0 || selectedTarget >= targets.size()) {
             return;
         }
@@ -333,6 +381,16 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
 
     // Refresh the fields
     private void refreshFields() {
+        if(selectedArea >= 0 && selectedArea < areas.size()){
+            blockLabelField.setValue(areas.get(selectedArea).label());
+            faceLabelField.setValue("");
+            faceLabelField.visible = false;
+            assignRecipesButton.visible = areas.get(selectedArea).kind()
+                    == ContraptionNetworkLinkerData.AreaKind.MACHINE;
+            return;
+        }
+        faceLabelField.visible = true;
+        assignRecipesButton.visible = false;
         if (selectedTarget < 0 || selectedTarget >= targets.size()) {
             blockLabelField.setValue("");
             faceLabelField.setValue("");
@@ -362,33 +420,55 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
     // Get the mode label
     private Component modeLabel() {
         return Component.translatable("item.createthrusters.contraption_network_linker.mode_button",
-                editMode.id().toUpperCase(Locale.ROOT));
+                Component.translatable(editMode.translationKey()));
     }
 
     // Add the target tab
-    private void addTargetTab(ContraptionNetworkLinkerData.LinkMode mode,
-                              int xOffset, String label) {
+    private void addTargetTab(ContraptionNetworkLinkerData.LinkMode mode, int xOffset) {
         addRenderableWidget(new CTScaledButton(scalableGui,
                 leftPos + xOffset, topPos + 17, mode == ContraptionNetworkLinkerData.LinkMode.OUTPUT ? 56 : 50, 14,
-                Component.literal(label), btn -> selectTab(mode)));
+                Component.translatable(mode.translationKey()), btn -> selectTab(mode)));
     }
 
     // Select the tab
     private void selectTab(ContraptionNetworkLinkerData.LinkMode mode) {
         applyFieldEdits();
         editMode = mode;
-        if (targetModeButton != null) {
-            targetModeButton.setMessage(targetModeLabel());
-        }
         selectedTarget = -1;
         selectedFace = -1;
+        selectedArea = -1;
         scroll = 0;
         refreshFields();
+        refreshModeButtons();
     }
 
-    // Get the target mode label
-    private Component targetModeLabel() {
-        return Component.literal(targetMode.id().toUpperCase(Locale.ROOT));
+    // Show the SCM face and area choices on the linker toolbar
+    private void refreshModeButtons(){
+        if(faceModeButton == null || areaModeButton == null) return;
+        boolean scm = editMode == ContraptionNetworkLinkerData.LinkMode.SCM;
+        faceModeButton.visible = scm;
+        areaModeButton.visible = scm;
+        machineInputButton.visible = scm;
+        machineOutputButton.visible = scm;
+        noEntryButton.visible = scm;
+        faceModeButton.active = scm && targetMode != ContraptionNetworkLinkerData.TargetMode.FACE;
+        areaModeButton.active = scm && targetMode != ContraptionNetworkLinkerData.TargetMode.AREA;
+        machineInputButton.active = scm && targetMode != ContraptionNetworkLinkerData.TargetMode.MACHINE_INPUT;
+        machineOutputButton.active = scm && targetMode != ContraptionNetworkLinkerData.TargetMode.MACHINE_OUTPUT;
+        noEntryButton.active = scm && targetMode != ContraptionNetworkLinkerData.TargetMode.NO_ENTRY;
+    }
+
+    private void openRecipePicker(){
+        if(selectedArea < 0 || selectedArea >= areas.size()
+                || areas.get(selectedArea).kind() != ContraptionNetworkLinkerData.AreaKind.MACHINE) return;
+        applyFieldEdits();
+        int areaIndex = selectedArea;
+        minecraft.setScreen(new ContraptionNetworkLinkerRecipeScreen(this, areas.get(areaIndex).recipeIds(), ids -> {
+            var area = areas.get(areaIndex);
+            areas.set(areaIndex, new ContraptionNetworkLinkerData.LinkedArea(area.id(), area.subLevelId(),
+                    area.bounds(), area.label(), ids.isEmpty() ? "" : ids.getFirst(),
+                    area.kind(), area.ports(), ids));
+        }));
     }
 
     // Build the rows
@@ -400,7 +480,7 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
                 continue;
             }
             String title = (target.label().isBlank() ? target.blockId() : target.label())
-                    + " [" + target.mode().id().toUpperCase(Locale.ROOT) + "]";
+                    + " [" + Component.translatable(target.mode().translationKey()).getString() + "]";
             rows.add(new RowEntry(targetIndex, -1, title));
             for (int faceIndex = 0; faceIndex < target.faces().size(); faceIndex++) {
                 ContraptionNetworkLinkerData.LinkedFace face = target.faces().get(faceIndex);
@@ -410,14 +490,27 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
                 rows.add(new RowEntry(targetIndex, faceIndex, "  - " + faceLabel));
             }
         }
+        if(editMode == ContraptionNetworkLinkerData.LinkMode.SCM){
+            for(int areaIdx = 0; areaIdx < areas.size(); areaIdx++){
+                var area = areas.get(areaIdx);
+                String label = area.label().isBlank() ? "Machine Area" : area.label();
+                rows.add(new RowEntry(-1, -1, areaIdx, label
+                        + (area.kind() == ContraptionNetworkLinkerData.AreaKind.NO_ENTRY ? " [No Entry] " : " [Machine Area] ")
+                        + area.bounds().min().toShortString() + " .. " + area.bounds().max().toShortString()));
+            }
+        }
         return rows;
     }
 
     // Store the row entry
-    private record RowEntry(int targetIndex, int faceIndex, String text) {
+    private record RowEntry(int targetIndex, int faceIndex, int areaIndex, String text) {
+        private RowEntry(int targetIndex, int faceIndex, String text){
+            this(targetIndex, faceIndex, -1, text);
+        }
         // Check if this is selected
-        private boolean isSelected(int selectedTarget, int selectedFace) {
-            return targetIndex == selectedTarget && faceIndex == selectedFace;
+        private boolean isSelected(int selectedTarget, int selectedFace, int selectedArea) {
+            return areaIndex >= 0 ? areaIndex == selectedArea
+                    : targetIndex == selectedTarget && faceIndex == selectedFace && selectedArea < 0;
         }
     }
 }

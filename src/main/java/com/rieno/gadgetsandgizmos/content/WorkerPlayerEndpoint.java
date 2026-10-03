@@ -1,5 +1,6 @@
 package com.rieno.gadgetsandgizmos.content;
 
+import com.rieno.gadgetsandgizmos.lib.inventory.ItemInventoryCapacity;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerEndpoint;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerResourceKey;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerResourcePacket;
@@ -32,6 +33,17 @@ public final class WorkerPlayerEndpoint implements WorkerEndpoint {
     // Initialize one live player delivery endpoint
     public WorkerPlayerEndpoint(ServerPlayer player) {
         this.player = player;
+    }
+
+    // Get the live recipient used by the library delivery travel API
+    public ServerPlayer player(){
+        return player;
+    }
+
+    // Recheck the recipient after disconnects or dimension changes
+    @Override
+    public boolean isAvailable(){
+        return !player.hasDisconnected() && !player.isRemoved();
     }
 
     @Override
@@ -86,7 +98,7 @@ public final class WorkerPlayerEndpoint implements WorkerEndpoint {
         long itemSpace = simulatedInsert(carried, carried.getCount());
         if (itemSpace < carried.getCount()) return 0L;
         return switch (resource.type()) {
-            case ITEM -> simulatedInsert(carried, carried.getMaxStackSize());
+            case ITEM -> simulatedInsert(carried, Long.MAX_VALUE);
             case FLUID, FUEL -> 1000L;
             case ENERGY -> WorkerEnergyBatteryItem.MAX_ENERGY;
         };
@@ -105,6 +117,7 @@ public final class WorkerPlayerEndpoint implements WorkerEndpoint {
         long itemAmount = packet.resource().type() == WorkerResourceType.ITEM ? packet.amount() : template.getCount();
         if (simulate) {
             long accepted = simulatedInsert(template, itemAmount);
+            if(packet.resource().type() == WorkerResourceType.ITEM) return accepted;
             return accepted >= itemAmount ? packet.amount() : 0L;
         }
         long remaining = itemAmount;
@@ -128,13 +141,7 @@ public final class WorkerPlayerEndpoint implements WorkerEndpoint {
         for (int slot = 0; slot < inventory.getSlots(); slot++) {
             inventory.setStackInSlot(slot, player.getInventory().items.get(slot).copy());
         }
-        long remaining = amount;
-        for (int slot = 0; slot < inventory.getSlots() && remaining > 0L; slot++) {
-            ItemStack offered = template.copyWithCount((int) Math.min(template.getMaxStackSize(), remaining));
-            ItemStack remainder = inventory.insertItem(slot, offered, false);
-            remaining -= offered.getCount() - remainder.getCount();
-        }
-        return amount - remaining;
+        return ItemInventoryCapacity.insertable(inventory, template, amount);
     }
 
     // Convert one carried packet into the real item representation delivered to a player.

@@ -421,6 +421,10 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         }
 
         BlockEntity restoredBlockEntity = level.getBlockEntity(worldPosition);
+        if(restoredBlockEntity instanceof ShipControlModuleBlockEntity module
+                && this instanceof AdvancedContraptionControllerBlockEntity advanced){
+            module.setPlacerId(advanced.shipPermissionModulePlacerId());
+        }
         if (restoredBlockEntityData != null && restoredBlockEntity != null) {
             EmbeddedCopycatBlockSnapshot.reload(restoredBlockEntity, restoredBlockEntityData);
         } else if (restoredMaterial != null && restoredBlockEntity != null) {
@@ -602,7 +606,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
 
     // Check if this can move with Create contraption
     public boolean canMoveWithCreateContraption() {
-        return isControllerRuntimeIdle() && storedTargets.isEmpty();
+        return true;
     }
 
     // Check if the controller runtime is idle without bindings
@@ -956,7 +960,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
             return 0;
         }
         return net.minecraft.util.Mth.clamp(
-                net.minecraft.util.Mth.ceil(channel.getUnsignedValue() * 15.0D),
+                (int) Math.round(channel.getUnsignedValue() * 15.0D),
                 0,
                 15);
     }
@@ -993,7 +997,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     // Get the custom output
     private int customOutput(String id) {
         return net.minecraft.util.Mth.clamp(
-                net.minecraft.util.Mth.ceil(resolveCustomEntryOutputValue(id) * 15.0f),
+                Math.round(resolveCustomEntryOutputValue(id) * 15.0f),
                 0,
                 15);
     }
@@ -5102,7 +5106,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         for (CustomKeyEntry entry : customKeyEntries) {
             if (entry.localOutputSide == null) continue;
             int strength = net.minecraft.util.Mth.clamp(
-                    net.minecraft.util.Mth.ceil(getCustomEntryValue(entry.id()) * 15.0f),
+                    Math.round(getCustomEntryValue(entry.id()) * 15.0f),
                     0,
                     15);
             int current = nextOutputs.get(entry.localOutputSide);
@@ -5693,7 +5697,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
                     continue;
                 }
                 int strength = net.minecraft.util.Mth.clamp(
-                        net.minecraft.util.Mth.ceil(getCustomEntryValue(entry.id()) * 15.0f),
+                        Math.round(getCustomEntryValue(entry.id()) * 15.0f),
                         0,
                         15);
                 int current = nextOutputs.get(entry.localOutputSide);

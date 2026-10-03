@@ -22,7 +22,6 @@ import com.rieno.gadgetsandgizmos.content.ThrusterBearingBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity;
 import com.rieno.gadgetsandgizmos.content.UniversalDisplayAdapterBlockEntity;
 import com.rieno.gadgetsandgizmos.content.VectorBearingBlockEntity;
-import com.rieno.gadgetsandgizmos.content.VirtualOrientationSourceBlockEntity;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import dan200.computercraft.api.peripheral.PeripheralCapability;
 import net.minecraft.core.Direction;
@@ -106,10 +105,6 @@ public final class ComputerCraftCompatRegistrar {
                     (GyroscopeLinkBlockEntity be, Direction side) -> new GyroscopeLinkPeripheral(be));
         }
 
-        if (CTBlockEntities.VIRTUAL_ORIENTATION_SOURCE != null) {
-            evt.registerBlockEntity(PeripheralCapability.get(), CTBlockEntities.VIRTUAL_ORIENTATION_SOURCE.get(),
-                    (VirtualOrientationSourceBlockEntity be, Direction side) -> new VirtualOrientationSourcePeripheral(be));
-        }
         if (CTBlockEntities.BIDIRECTIONAL_GEARBOX != null) {
             evt.registerBlockEntity(PeripheralCapability.get(), CTBlockEntities.BIDIRECTIONAL_GEARBOX.get(),
                     (BiDirectionalGearboxBlockEntity be, Direction side) -> new BiDirectionalGearboxPeripheral(be));

@@ -64,10 +64,8 @@ public class WorkerInventoryScreen extends AbstractContainerScreen<WorkerInvento
         for (int slot = 0; slot < WorkerInventoryMenu.ARMOR_SLOT_COUNT; slot++) {
             drawSideSlot(graphics, x + 186, y + 17 + slot * 18);
         }
-        if (menu.curiosAvailable()) {
-            for (int slot = 0; slot < WorkerInventoryMenu.CURIO_SLOT_COUNT; slot++) {
-                drawSideSlot(graphics, x + 223 + slot % 3 * 18, y + 17 + slot / 3 * 18);
-            }
+        for (int slot = 0; slot < WorkerInventoryMenu.TOOL_SLOT_COUNT; slot++) {
+            drawSideSlot(graphics, x + 223 + slot % 3 * 18, y + 17 + slot / 3 * 18);
         }
     }
 
@@ -75,7 +73,7 @@ public class WorkerInventoryScreen extends AbstractContainerScreen<WorkerInvento
     protected void renderLabels(GuiGraphics graphics, int mouseX, int mouseY) {
         graphics.drawString(font, title, 8, 6, 0xFF404040, false);
         graphics.drawString(font, Component.literal("Armor"), 184, 6, 0xFF404040, false);
-        if (menu.curiosAvailable()) graphics.drawString(font, Component.literal("Curios"), 220, 6, 0xFF404040, false);
+        graphics.drawString(font, Component.literal("Tools"), 220, 6, 0xFF404040, false);
         graphics.drawString(font, playerInventoryTitle, 8, inventoryLabelY, 0xFF404040, false);
     }
 
@@ -87,7 +85,7 @@ public class WorkerInventoryScreen extends AbstractContainerScreen<WorkerInvento
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Draw one worker equipment or Curios slot beside the vanilla shulker body.
+    // Draw one worker equipment or tool slot beside the vanilla shulker body.
     private static void drawSideSlot(GuiGraphics graphics, int x, int y) {
         graphics.fill(x, y, x + 18, y + 18, 0xFFB69DC1);
         graphics.fill(x + 1, y + 1, x + 17, y + 17, 0xFF5B4567);

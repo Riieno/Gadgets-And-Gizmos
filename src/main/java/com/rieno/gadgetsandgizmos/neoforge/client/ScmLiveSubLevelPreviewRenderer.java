@@ -242,17 +242,7 @@ final class ScmLiveSubLevelPreviewRenderer {
     }
 
     Direction automaticControlFace(PickTarget target) {
-        if (target == null || target.subLevelId() == null || target.face() == null) return null;
-        SubLevelPreviewRenderer.PreviewBlock block = preview.block(target.subLevelId(), target.position()).orElse(null);
-        ClientLevel level = Minecraft.getInstance().level;
-        ClientSubLevel source = resolve(level, target.subLevelId());
-        // A fallback snapshot has no local Sable level to interrogate. Preserve
-        // the clicked face in that case: the server remains authoritative when
-        // it validates the saved binding.
-        if (block == null) return null;
-        if (source == null || source.isRemoved()) return target.face();
-        return ContraptionNetworkLinkerData.resolveTargetScope(source.getLevel(), block.position(), block.state(),
-                target.face(), ContraptionNetworkLinkerData.TargetMode.AUTO).usesFaces() ? target.face() : null;
+        return target == null ? null : target.face();
     }
 
     private boolean matchesVisibleFilter(SubLevelPreviewRenderer.PreviewBlock block) {

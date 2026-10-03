@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client.particle;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.particle.ColoredCloudParticleOptions;
+import com.rieno.gadgetsandgizmos.config.CTConfigs;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleProvider;
@@ -200,6 +201,10 @@ public class ColoredCloudParticle extends TextureSheetParticle {
         public Particle createParticle(ColoredCloudParticleOptions opts, ClientLevel level,
                                        double x, double y, double z,
                                        double xd, double yd, double zd) {
+            if (CTConfigs.CLIENT.useThrusterPlumeV2Renderer.get()) {
+                if (SoftThrusterPlumeParticle.isHiddenFromCamera(level, x, y, z)) return null;
+                return new SoftThrusterPlumeParticle(level, x, y, z, xd, yd, zd, opts, sprites);
+            }
             return new ColoredCloudParticle(level, x, y, z, xd, yd, zd, opts, sprites);
         }
     }

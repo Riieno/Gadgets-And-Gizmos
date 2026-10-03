@@ -203,23 +203,11 @@
   "block.createthrusters.gyroscope_link": "Erweiterte Datenverbindung",
   "block.createthrusters.gyroscope_link.tooltip.summary": "Leitet die Daten eines Gimbalsensors oder einer anderen Orientierungsquelle an benachbarte Empfänger weiter.",
   "block.createthrusters.gyroscope_link.tooltip.condition1": "Mit dem Gegenstand auf eine Orientierungsquelle rechtsklicken",
-  "block.createthrusters.gyroscope_link.tooltip.behaviour1": "Unterstützt Gimbalsensoren, Servolager, Regler, Navigationstische und Virtuelle Orientierungsquellen.",
+  "block.createthrusters.gyroscope_link.tooltip.behaviour1": "Unterstützt Gimbalsensoren, Servolager, Regler und Navigationstische.",
   "block.createthrusters.gyroscope_link.tooltip.condition2": "Neben einem kompatiblen Empfänger platzieren",
   "block.createthrusters.gyroscope_link.tooltip.behaviour2": "Versorgt alle kompatiblen Nachbarblöcke fortlaufend mit Orientierungsdaten.",
   "block.createthrusters.gyroscope_link.tooltip.condition3": "Mit Schleichen + Rechtsklick konfigurieren",
   "block.createthrusters.gyroscope_link.tooltip.behaviour3": "Live übernimmt neue Messwerte sofort. Statisch hält den zuletzt empfangenen Wert fest.",
-
-  "block.createthrusters.virtual_orientation_source": "Virtuelle Orientierungsquelle",
-  "block.createthrusters.virtual_orientation_source.tooltip.summary": "Speist Orientierungswerte aus ComputerCraft in ein Netzwerk aus Erweiterten Datenverbindungen ein.",
-  "block.createthrusters.virtual_orientation_source.tooltip.condition1": "Mit ComputerCraft steuern",
-  "block.createthrusters.virtual_orientation_source.tooltip.behaviour1": "Über das Peripheriegerät virtual_orientation_source setAngles() oder setDirection() aufrufen.",
-  "block.createthrusters.virtual_orientation_source.tooltip.condition2": "Regelmäßig Updates senden",
-  "block.createthrusters.virtual_orientation_source.tooltip.behaviour2": "Bleiben Updates zu lange aus, wird die Quelle bis zum nächsten Wert inaktiv.",
-
-  "block.createthrusters.gyro_redstone_bridge": "Gyroskop-Redstone-Brücke",
-  "block.createthrusters.gyro_redstone_bridge.tooltip.summary": "Wandelt Orientierungsdaten einer Erweiterten Datenverbindung in sechs Redstone-Ausgänge um.",
-  "block.createthrusters.gyro_redstone_bridge.tooltip.condition1": "Direkt neben einer Erweiterten Datenverbindung platzieren",
-  "block.createthrusters.gyro_redstone_bridge.tooltip.behaviour1": "Nord/Süd und Ost/West geben die beiden Neigungsachsen aus. Oben liegt die Gesamtneigung an, unten der Aktivstatus.",
 
   "block.createthrusters.bidirectional_gearbox": "Smartes Getriebe",
   "block.createthrusters.bidirectional_gearbox.tooltip.summary": "Führt zwei getrennte Rotationsachsen. Im Servo-Modus richtet es angeschlossene Servolager nach Orientierungsdaten aus.",
@@ -992,7 +980,6 @@
   "createthrusters.configuration.server": "Servereinstellungen",
   "createthrusters.configuration.ship_control": "Schiffssteuerung",
   "createthrusters.configuration.shippingScheduleWorkSpreadTicks": "Arbeitsverteilung für Shipping Schedules",
-  "createthrusters.configuration.enableScmInitializationV2": "SCM-Initialisierung V2",
   "item.createthrusters.music_disc_kinetic_currency": "Musikdisc",
   "item.createthrusters.music_disc_twisted_alive": "Musikdisc",
   "item.createthrusters.music_disc_unplug_the_earth": "Musikdisc",
@@ -1344,5 +1331,12 @@
   "createthrusters.ship_coupler.redstone.unpowered_attaches": "Redstone-Modus: Ohne Signal ankuppeln",
   "createthrusters.advanced_controller.node.ship_flight_behavior.summary": "Legt fest, wie die SCM-Navigation dreht und sich bewegt, solange ein Shipping-Schedule-Pilot sitzt.",
   "createthrusters.scm.flight_behavior.direct_vector": "Direkter Vektor",
-  "createthrusters.scm.flight_behavior.prefer_ship_direction": "Schiffsrichtung bevorzugen"
+  "createthrusters.scm.flight_behavior.prefer_ship_direction": "Schiffsrichtung bevorzugen",
+  "createthrusters.recipe.thruster_smelting": "Triebwerksschmelzen",
+  "createthrusters.recipe.thruster_smoking": "Triebwerksräuchern",
+  "createthrusters.recipe.thruster_haunting": "Triebwerksspuk",
+  "emi.category.createthrusters.thruster_smelting": "Triebwerksschmelzen",
+  "emi.category.createthrusters.thruster_smoking": "Triebwerksräuchern",
+  "emi.category.createthrusters.thruster_haunting": "Triebwerksspuk",
+  "createthrusters.recipe.output_chance": "Ausgabechance: %s%%"
 }

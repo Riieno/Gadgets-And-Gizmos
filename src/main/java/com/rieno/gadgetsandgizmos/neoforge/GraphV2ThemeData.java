@@ -96,6 +96,11 @@ public final class GraphV2ThemeData {
         return current;
     }
 
+    // Update the client copy after the authoritative palette is synchronized.
+    public static void setCurrent(Palette palette) {
+        current = palette == null ? DEFAULT : palette;
+    }
+
     // Reload the graph V2 theme data
     private static void reload(ResourceManager resourceManager) {
         Palette palette = DEFAULT;

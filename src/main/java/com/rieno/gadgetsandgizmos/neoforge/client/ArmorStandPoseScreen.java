@@ -13,10 +13,13 @@ import com.rieno.gadgetsandgizmos.content.pose.ArmorStandPoseData;
 import com.rieno.gadgetsandgizmos.content.pose.ArmorStandPosePart;
 import com.rieno.gadgetsandgizmos.content.pose.ArmorStandPosePreset;
 import com.rieno.gadgetsandgizmos.neoforge.network.ArmorStandPoseSyncPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.MannequinSkinChangePayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.MannequinSkinChangeResultPayload;
 import com.rieno.gadgetsandgizmos.registry.CTEntityTypes;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.toasts.SystemToast;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.nbt.CompoundTag;
@@ -67,6 +70,7 @@ public class ArmorStandPoseScreen extends Screen {
     private static final Quaternionf PREVIEW_ROTATION =
             new Quaternionf().rotateZ((float) Math.PI);
     private static final Quaternionf PREVIEW_CAMERA_ROTATION = new Quaternionf();
+    private static final SystemToast.SystemToastId MANNEQUIN_SKIN_TOAST = new SystemToast.SystemToastId();
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -101,12 +105,18 @@ public class ArmorStandPoseScreen extends Screen {
     private EditBox rotationField;
     // Current preset name field
     private EditBox presetNameField;
+    // Current custom skin field
+    private EditBox customSkinField;
+    // Current custom skin apply button
+    private CTStyledButton customSkinApplyButton;
     // Current preview entity
     private ArmorStand previewEntity;
     // Current status message
     private Component statusMessage = Component.empty();
     // Current preset name
     private String presetName = "";
+    // Current requested custom skin name
+    private String customSkinName = "";
     // Status tick count
     private int statusTicks;
     // Current left pos
@@ -164,6 +174,22 @@ public class ArmorStandPoseScreen extends Screen {
         Entity entity = minecraft.level.getEntity(entityId);
         if (entity instanceof ArmorStand armorStand) {
             minecraft.setScreen(new ArmorStandPoseScreen(armorStand));
+        }
+    }
+
+    // Apply one server-validated mannequin skin result and show it to the player
+    public static void applyMannequinSkinResult(int entityId, MannequinSkinChangeResultPayload.Result result) {
+        Minecraft minecraft = Minecraft.getInstance();
+        Component message = switch (result) {
+            case APPLIED -> Component.translatable("createthrusters.pose_screen.status.skin_applied");
+            case PLAYER_DOES_NOT_EXIST -> Component.translatable("createthrusters.pose_screen.status.player_does_not_exist");
+            case UNABLE_TO_SET_SKIN, UNAVAILABLE ->
+                    Component.translatable("createthrusters.pose_screen.status.unable_to_set_skin");
+        };
+        SystemToast.addOrUpdate(minecraft.getToasts(), MANNEQUIN_SKIN_TOAST,
+                Component.translatable("createthrusters.pose_screen.custom_skin"), message);
+        if (minecraft.screen instanceof ArmorStandPoseScreen screen && screen.armorStand.getId() == entityId) {
+            screen.receiveMannequinSkinResult(message);
         }
     }
 
@@ -276,6 +302,8 @@ public class ArmorStandPoseScreen extends Screen {
         toggleControls.clear();
         rotationField = null;
         presetNameField = null;
+        customSkinField = null;
+        customSkinApplyButton = null;
         updateLayout();
         if (viewMode == ViewMode.EDITOR) {
             initEditorWidgets();
@@ -334,29 +362,25 @@ public class ArmorStandPoseScreen extends Screen {
                 () -> data.small, val -> data.small = val, optionsX, optionsY + 42);
         addToggle("createthrusters.pose_screen.option.name",
                 () -> data.nameVisible, val -> data.nameVisible = val, optionsX + toggleW + toggleGap, optionsY + 42);
-        addToggle("createthrusters.pose_screen.option.locked",
-                () -> data.locked, val -> data.locked = val, optionsX, optionsY + 63);
-        rotationField = addNumberField(optionsX + 138, editorPanelY + 143, 58,
-                format(data.rotation), "createthrusters.pose_screen.rotation");
-
-        presetNameField = new CTScaledEditBox(scalableGui, font, optionsX, editorPanelY + 194, 202, FIELD_H,
-                Component.translatable("createthrusters.pose_screen.preset_name"));
-        presetNameField.setMaxLength(48);
-        presetNameField.setBordered(false);
-        presetNameField.setValue(presetName);
-        presetNameField.setResponder(val -> presetName = val == null ? "" : val);
-        addRenderableWidget(presetNameField);
-
-        int leftButtonX = editorLeftPanelX + 14;
-        int leftButtonW = EDITOR_LEFT_W - 28;
-        addStyledButton(leftButtonX, editorPanelY + 228, leftButtonW, BUTTON_H,
-                Component.translatable("createthrusters.pose_screen.presets"), btn -> openPresets());
-        addStyledButton(leftButtonX, editorPanelY + 252, leftButtonW, BUTTON_H,
-                Component.translatable("createthrusters.pose_screen.save_pose"), btn -> saveCurrentPreset());
-        addStyledButton(leftButtonX, editorPanelY + 276, leftButtonW, BUTTON_H,
-                Component.translatable("createthrusters.pose_screen.reload_disk"), btn -> reloadCustomPresets(true));
-        addStyledButton(leftButtonX, editorPanelY + 300, leftButtonW, BUTTON_H,
-                Component.translatable("createthrusters.pose_screen.hide_poser"), btn -> hidePoser());
+        if (!isPlayerMannequin()) {
+            addToggle("createthrusters.pose_screen.option.locked",
+                    () -> data.locked, val -> data.locked = val, optionsX, optionsY + 63);
+            addStandardEditorFields(optionsX, editorPanelY + 143, editorPanelY + 194,
+                    editorPanelY + 228);
+        } else {
+            customSkinField = new CTScaledEditBox(scalableGui, font, optionsX, editorPanelY + 129, 202, FIELD_H,
+                    Component.translatable("createthrusters.pose_screen.custom_skin"));
+            customSkinField.setMaxLength(16);
+            customSkinField.setBordered(false);
+            customSkinField.setFilter(value -> value.isEmpty() || value.matches("[A-Za-z0-9_]{0,16}"));
+            customSkinField.setValue(customSkinName);
+            customSkinField.setResponder(value -> customSkinName = value == null ? "" : value);
+            addRenderableWidget(customSkinField);
+            customSkinApplyButton = addStyledButton(optionsX, editorPanelY + 149, 202, BUTTON_H,
+                    Component.translatable("createthrusters.pose_screen.apply_custom_skin"), btn -> applyCustomSkin());
+            addStandardEditorFields(optionsX, editorPanelY + 169, editorPanelY + 216,
+                    editorPanelY + 240);
+        }
 
         fieldX = editorRightPanelX + 18;
         fieldY = editorPanelY + 52;
@@ -385,6 +409,31 @@ public class ArmorStandPoseScreen extends Screen {
             sendPose();
             minecraft.setScreen(null);
         });
+    }
+
+    // Add the pose and preset controls at their layout-specific positions
+    private void addStandardEditorFields(int optionsX, int rotationY, int presetY, int buttonsY) {
+        rotationField = addNumberField(optionsX + 138, rotationY, 58,
+                format(data.rotation), "createthrusters.pose_screen.rotation");
+
+        presetNameField = new CTScaledEditBox(scalableGui, font, optionsX, presetY, 202, FIELD_H,
+                Component.translatable("createthrusters.pose_screen.preset_name"));
+        presetNameField.setMaxLength(48);
+        presetNameField.setBordered(false);
+        presetNameField.setValue(presetName);
+        presetNameField.setResponder(val -> presetName = val == null ? "" : val);
+        addRenderableWidget(presetNameField);
+
+        int leftButtonX = editorLeftPanelX + 14;
+        int leftButtonW = EDITOR_LEFT_W - 28;
+        addStyledButton(leftButtonX, buttonsY, leftButtonW, BUTTON_H,
+                Component.translatable("createthrusters.pose_screen.presets"), btn -> openPresets());
+        addStyledButton(leftButtonX, buttonsY + 22, leftButtonW, BUTTON_H,
+                Component.translatable("createthrusters.pose_screen.save_pose"), btn -> saveCurrentPreset());
+        addStyledButton(leftButtonX, buttonsY + 44, leftButtonW, BUTTON_H,
+                Component.translatable("createthrusters.pose_screen.reload_disk"), btn -> reloadCustomPresets(true));
+        addStyledButton(leftButtonX, buttonsY + 66, leftButtonW, BUTTON_H,
+                Component.translatable("createthrusters.pose_screen.hide_poser"), btn -> hidePoser());
     }
 
     // Initialize the preset widgets
@@ -432,10 +481,19 @@ public class ArmorStandPoseScreen extends Screen {
 
         guiGraphics.drawString(font, Component.translatable("createthrusters.pose_screen.options"),
                 editorLeftPanelX + 14, editorPanelY + 40, CTCreateScreenHelper.LABEL_COLOR, false);
-        guiGraphics.drawString(font, Component.translatable("createthrusters.pose_screen.rotation"),
-                editorLeftPanelX + 14, editorPanelY + 147, CTCreateScreenHelper.LABEL_COLOR, false);
-        guiGraphics.drawString(font, Component.translatable("createthrusters.pose_screen.preset_name"),
-                editorLeftPanelX + 14, editorPanelY + 182, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
+        if (isPlayerMannequin()) {
+            guiGraphics.drawString(font, Component.translatable("createthrusters.pose_screen.custom_skin"),
+                    editorLeftPanelX + 14, editorPanelY + 114, CTCreateScreenHelper.LABEL_COLOR, false);
+            guiGraphics.drawString(font, Component.translatable("createthrusters.pose_screen.rotation"),
+                    editorLeftPanelX + 14, editorPanelY + 173, CTCreateScreenHelper.LABEL_COLOR, false);
+            guiGraphics.drawString(font, Component.translatable("createthrusters.pose_screen.preset_name"),
+                    editorLeftPanelX + 14, editorPanelY + 204, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
+        } else {
+            guiGraphics.drawString(font, Component.translatable("createthrusters.pose_screen.rotation"),
+                    editorLeftPanelX + 14, editorPanelY + 147, CTCreateScreenHelper.LABEL_COLOR, false);
+            guiGraphics.drawString(font, Component.translatable("createthrusters.pose_screen.preset_name"),
+                    editorLeftPanelX + 14, editorPanelY + 182, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
+        }
         guiGraphics.drawString(font, Component.translatable("createthrusters.pose_screen.rotations"),
                 editorRightPanelX + 18, editorPanelY + 40, CTCreateScreenHelper.LABEL_COLOR, false);
         guiGraphics.drawString(font, Component.translatable("createthrusters.pose_screen.actions"),
@@ -504,7 +562,17 @@ public class ArmorStandPoseScreen extends Screen {
                     box.getWidth() + 2, box.getHeight() + 2,
                     inside(mouseX, mouseY, box.getX(), box.getY(), box.getWidth(), box.getHeight()), box.isFocused());
         }
+        renderCustomSkinBackdrop(guiGraphics, mouseX, mouseY);
         renderPresetNameBackdrop(guiGraphics, mouseX, mouseY);
+    }
+
+    // Draw the custom skin input backdrop when this is a Player Mannequin
+    private void renderCustomSkinBackdrop(GuiGraphics guiGraphics, int mouseX, int mouseY) {
+        if (customSkinField == null) return;
+        CTCreateScreenHelper.renderInset(guiGraphics, customSkinField.getX() - 1, customSkinField.getY() - 1,
+                customSkinField.getWidth() + 2, customSkinField.getHeight() + 2,
+                inside(mouseX, mouseY, customSkinField.getX(), customSkinField.getY(),
+                        customSkinField.getWidth(), customSkinField.getHeight()), customSkinField.isFocused());
     }
 
     // Draw the preset name backdrop
@@ -574,7 +642,15 @@ public class ArmorStandPoseScreen extends Screen {
     private void syncPreviewVariant(ArmorStand preview) {
         if (armorStand instanceof PlayerMannequinEntity src && preview instanceof PlayerMannequinEntity target) {
             target.setVariant(src.getVariant());
+            target.setRemoteSkinUrl(src.remoteSkinUrl());
+            target.setSteveSkin(src.usesSteveSkin());
+            target.setSlimSkin(src.usesSlimSkin());
         }
+    }
+
+    // Check whether this poser is editing a Player Mannequin
+    private boolean isPlayerMannequin() {
+        return armorStand instanceof PlayerMannequinEntity;
     }
 
     // Reset the preview facing
@@ -701,6 +777,21 @@ public class ArmorStandPoseScreen extends Screen {
         closeRestoreTag = tag.copy();
         PacketDistributor.sendToServer(new ArmorStandPoseSyncPayload(armorStand.getId(), tag));
         setStatus(Component.translatable("createthrusters.pose_screen.status.applied"));
+    }
+
+    // Request a server-validated custom skin for this Player Mannequin
+    private void applyCustomSkin() {
+        if (!isPlayerMannequin() || customSkinField == null) return;
+        customSkinName = customSkinField.getValue();
+        if (customSkinApplyButton != null) customSkinApplyButton.active = false;
+        PacketDistributor.sendToServer(new MannequinSkinChangePayload(armorStand.getId(), customSkinName));
+        setStatus(Component.translatable("createthrusters.pose_screen.status.looking_up_skin"));
+    }
+
+    // Re-enable custom skin controls once the server has answered
+    private void receiveMannequinSkinResult(Component message) {
+        if (customSkinApplyButton != null) customSkinApplyButton.active = true;
+        setStatus(message);
     }
 
     // Open the presets

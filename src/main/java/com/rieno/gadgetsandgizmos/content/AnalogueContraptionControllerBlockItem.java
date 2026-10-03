@@ -141,6 +141,8 @@ public class AnalogueContraptionControllerBlockItem extends CTTooltipBlockItem {
         BlockPos pos = ctx.getClickedPos();
         BlockState supportState = level.getBlockState(pos);
         BlockEntity supportBlockEntity = level.getBlockEntity(pos);
+        UUID modulePlacerId = supportBlockEntity instanceof ShipControlModuleBlockEntity module
+                ? module.placerId() : null;
         EmbeddedCopycatBlockSnapshot.Snapshot backingSnapshot = supportBlockEntity == null
                 ? null
                 : EmbeddedCopycatBlockSnapshot.capture(level, supportBlockEntity);
@@ -175,6 +177,10 @@ public class AnalogueContraptionControllerBlockItem extends CTTooltipBlockItem {
                         supportState,
                         backingSnapshot == null ? null : backingSnapshot.material(),
                         backingSnapshot == null ? null : backingSnapshot.blockEntityData());
+                if(controller instanceof AdvancedContraptionControllerBlockEntity advanced
+                        && supportState.getBlock() instanceof ShipControlModuleBlock){
+                    advanced.setShipPermissionModulePlacerId(modulePlacerId);
+                }
             }
         } else if (backingSnapshot != null) {
             BlockEntity remaining = level.getBlockEntity(pos);

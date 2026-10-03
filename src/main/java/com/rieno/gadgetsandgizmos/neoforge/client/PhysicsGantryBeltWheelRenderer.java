@@ -118,63 +118,41 @@ public class PhysicsGantryBeltWheelRenderer extends KineticBlockEntityRenderer<P
             }
         }
 
-        if (!be.shouldRenderLinkFromThisEndpoint()) {
-            return;
-        }
+        for (PhysicsGantryBeltWheelBlockEntity linkedWheel : be.getRenderableLinkedWheels()) {
+            Vec3 startWorld = be.getWorldAnchorPosition();
+            Vec3 endWorld = linkedWheel.getWorldAnchorPosition();
+            if (startWorld.distanceTo(endWorld) < 0.01D) continue;
 
-        PhysicsGantryBeltWheelBlockEntity linkedWheel = be.resolveLinkedWheel();
-        if (linkedWheel == null) {
-            return;
-        }
+            Vec3 origin = Vec3.atLowerCornerOf(be.getBlockPos());
+            Vec3 start = be.getAnchorPositionInRenderFrameOf(be).subtract(origin);
+            Vec3 end = linkedWheel.getAnchorPositionInRenderFrameOf(be).subtract(origin);
+            if (!isRenderableLocalEndpoint(start) || !isRenderableLocalEndpoint(end)
+                    || start.distanceToSqr(end) > 96.0D * 96.0D) continue;
 
-        Vec3 startWorld = be.getWorldAnchorPosition();
-        Vec3 endWorld = linkedWheel.getWorldAnchorPosition();
-        double distance = startWorld.distanceTo(endWorld);
-        if (distance < 0.01D) {
-            return;
+            PhysicsGantryBeltWheelShearsClient.record(be, linkedWheel, startWorld, endWorld);
+            renderLoopBelt(be, ms, buffer, start, end,
+                    state.getValue(BlockStateProperties.AXIS),
+                    linkedWheel.getBlockState().getValue(BlockStateProperties.AXIS),
+                    startWorld, endWorld, overlay);
         }
-
-        Vec3 origin = Vec3.atLowerCornerOf(be.getBlockPos());
-        Vec3 startFrame = be.getAnchorPositionInRenderFrameOf(be);
-        Vec3 endFrame = linkedWheel.getAnchorPositionInRenderFrameOf(be);
-        Vec3 start = startFrame.subtract(origin);
-        Vec3 end = endFrame.subtract(origin);
-        if (!isRenderableLocalEndpoint(start) || !isRenderableLocalEndpoint(end)
-                || start.distanceToSqr(end) > 96.0D * 96.0D) {
-            return;
-        }
-
-        renderLoopBelt(
-                be,
-                ms,
-                buffer,
-                start,
-                end,
-                state.getValue(BlockStateProperties.AXIS),
-                linkedWheel.getBlockState().getValue(BlockStateProperties.AXIS),
-                startWorld,
-                endWorld,
-                overlay);
     }
 
     // Get the render bounding box
     @Override
     public @NotNull AABB getRenderBoundingBox(@NotNull PhysicsGantryBeltWheelBlockEntity be) {
-        if (!be.shouldRenderLinkFromThisEndpoint()) {
-            return super.getRenderBoundingBox(be);
+        AABB bounds = super.getRenderBoundingBox(be);
+        for (PhysicsGantryBeltWheelBlockEntity linkedWheel : be.getRenderableLinkedWheels()) {
+            Vec3 start = be.getWorldAnchorPosition();
+            Vec3 end = linkedWheel.getWorldAnchorPosition();
+            bounds = bounds.minmax(new AABB(
+                    Math.min(start.x, end.x) - 1.0D,
+                    Math.min(start.y, end.y) - 1.0D,
+                    Math.min(start.z, end.z) - 1.0D,
+                    Math.max(start.x, end.x) + 1.0D,
+                    Math.max(start.y, end.y) + 1.0D,
+                    Math.max(start.z, end.z) + 1.0D));
         }
-        Vec3 start = be.getWorldAnchorPosition();
-        Vec3 end = be.getLinkedWorldAnchorPosition();
-        if (start == null || end == null) {
-            return super.getRenderBoundingBox(be);
-        }
-        return new AABB(
-                Math.min(start.x, end.x) - 1.0D,
-                Math.min(start.y, end.y) - 1.0D,
-                Math.min(start.z, end.z) - 1.0D,
-                Math.max(start.x, end.x) + 1.0D,
-                Math.max(start.y, end.y) + 1.0D,
-                Math.max(start.z, end.z) + 1.0D);
+        return bounds;
     }
 
     // Check if this should render off screen

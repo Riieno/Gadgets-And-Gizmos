@@ -115,12 +115,6 @@ public final class CTItems {
     public static final DeferredItem<BlockItem> COPYCAT_DOUBLE_BUTTON = register("copycat_double_button",
             () -> new CTTooltipBlockItem(CTBlocks.COPYCAT_DOUBLE_BUTTON.get(), new Item.Properties()));
     @Nullable
-    public static final DeferredItem<BlockItem> VIRTUAL_ORIENTATION_SOURCE = register("virtual_orientation_source",
-            () -> new CTTooltipBlockItem(CTBlocks.VIRTUAL_ORIENTATION_SOURCE.get(), new Item.Properties().stacksTo(1)));
-    @Nullable
-    public static final DeferredItem<BlockItem> GYRO_REDSTONE_BRIDGE = register("gyro_redstone_bridge",
-            () -> new CTTooltipBlockItem(CTBlocks.GYRO_REDSTONE_BRIDGE.get(), new Item.Properties()));
-    @Nullable
     public static final DeferredItem<BlockItem> BIDIRECTIONAL_GEARBOX = register("bidirectional_gearbox",
         () -> new CTTooltipBlockItem(CTBlocks.BIDIRECTIONAL_GEARBOX.get(), new Item.Properties()));
     @Nullable

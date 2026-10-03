@@ -132,7 +132,10 @@ public final class PoweredZiplinePlacementHandler {
                 : minecraft.hitResult.getLocation().distanceToSqr(from);
 
         Target ropeTarget = findRopeTarget(minecraft.level, from, to, bestDistance);
-        selectedTarget = ropeTarget;
+        Target chainTarget = ziplineMode ? findChainTarget(minecraft.level, from, to, bestDistance) : null;
+        selectedTarget = chainTarget != null && (ropeTarget == null
+                || chainTarget.targetPosition().distanceToSqr(from) < ropeTarget.targetPosition().distanceToSqr(from))
+                ? chainTarget : ropeTarget;
         selectedMode = selectedTarget == null ? TargetMode.NONE : ziplineMode ? TargetMode.ZIPLINE : TargetMode.ROPE_KNOT;
     }
 
@@ -188,6 +191,8 @@ public final class PoweredZiplinePlacementHandler {
 
     // Sample the zipline world position
     public static @Nullable Vec3 sampleZiplineWorldPosition(PoweredZiplineBlockEntity zipline, float partialTick) {
+        Vec3 handoff = zipline.getHandoffWorldPosition(partialTick);
+        if (handoff != null) return handoff;
         if (zipline.getAttachedChainPos() != null) {
             return sampleChainPosition(zipline, partialTick);
         }
@@ -199,6 +204,8 @@ public final class PoweredZiplinePlacementHandler {
 
     // Sample the zipline world tangent
     public static @Nullable Vec3 sampleZiplineWorldTangent(PoweredZiplineBlockEntity zipline) {
+        Vec3 handoff = zipline.getHandoffWorldTangent();
+        if (handoff != null) return handoff;
         float pos = zipline.getPathPosition(1.0f);
         float length = Math.max(0.01f, zipline.getPathLength());
         float step = zipline.getAttachedChainPos() != null && zipline.getAttachedChainConnection() == null ? 1.0f : 0.15f;
@@ -296,7 +303,11 @@ public final class PoweredZiplinePlacementHandler {
         Vec3 from = player.getEyePosition();
         Vec3 to = from.add(player.getLookAngle().scale(range));
         double maxDistanceSq = range * range;
-        return findRopeTarget(minecraft.level, from, to, maxDistanceSq);
+        Target ropeTarget = findRopeTarget(minecraft.level, from, to, maxDistanceSq);
+        Target chainTarget = ziplineMode ? findChainTarget(minecraft.level, from, to, maxDistanceSq) : null;
+        return chainTarget != null && (ropeTarget == null
+                || chainTarget.targetPosition().distanceToSqr(from) < ropeTarget.targetPosition().distanceToSqr(from))
+                ? chainTarget : ropeTarget;
     }
 
     // Check if the player is holding the powered zipline

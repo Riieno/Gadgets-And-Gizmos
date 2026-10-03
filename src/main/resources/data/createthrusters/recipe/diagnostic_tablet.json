@@ -4,7 +4,7 @@
   "pattern": ["BBB", "GCG", " I "],
   "key": {
     "B": {"item": "createthrusters:acc_display_panel"},
-    "G": {"tag": "c:glass"},
+    "G": {"tag": "c:glass_blocks"},
     "C": {"item": "createthrusters:computation_mechanism"},
     "I": {"item": "createthrusters:blackstone_sheet"}
   },

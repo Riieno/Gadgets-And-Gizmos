@@ -26,7 +26,6 @@ public final class ComputerCraftPeripheralManifest {
             "ThrusterPeripheral",
             "UniversalDisplayAdapterPeripheral",
             "VectorBearingPeripheral",
-            "VirtualOrientationSourcePeripheral",
             "WheelMountPeripheral"
     ).stream().map(name ->
             "com.rieno.gadgetsandgizmos.compat.computercraft." + name), Stream.of(

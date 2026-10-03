@@ -28,7 +28,6 @@ import com.simibubi.create.foundation.advancement.AllAdvancements;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
 import dev.ryanhcode.sable.api.block.BlockEntitySubLevelActor;
-import dev.ryanhcode.sable.api.physics.constraint.ConstraintJointAxis;
 import dev.ryanhcode.sable.api.physics.constraint.PhysicsConstraintHandle;
 import dev.ryanhcode.sable.api.physics.handle.RigidBodyHandle;
 import dev.ryanhcode.sable.api.physics.object.rope.RopeHandle;
@@ -50,7 +49,6 @@ import dev.simulated_team.simulated.util.SimMathUtils;
 import dev.simulated_team.simulated.util.assembly.SimAssemblyContraption;
 import net.createmod.catnip.math.AngleHelper;
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -99,8 +97,6 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
     private static final boolean ENABLE_GANTRY_DEBUG_VISUALS = false;
     private static final int MAX_SHAFT_SCAN_BLOCKS = 2048;
     private static final int MAX_TRACKED_CARRIAGE_CHUNK_RADIUS = 8;
-    private static final Set<ConstraintJointAxis> LOCKED_CONSTRAINT_AXES =
-            EnumSet.allOf(ConstraintJointAxis.class);
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -558,13 +554,15 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
                     || shaftConstraintChild != constrainedChild;
             boolean railPositionChanged = !Double.isFinite(shaftConstraintProgress)
                     || Math.abs(shaftConstraintProgress - attachedShaftProgress) > 1.0E-9D;
-            if (needsConstraint) {
+            if (needsConstraint || railPositionChanged) {
                 clearShaftConstraint();
-                Object genericConstraint = SableConstraintApi.genericConfiguration(
-                        parentAnchor, childAnchor, relativeOrientation, new Quaterniond(),
-                        LOCKED_CONSTRAINT_AXES);
+                // A generic joint with all axes locked is still solved as six independent
+                // constraints. Use Sable's dedicated fixed joint so the carriage has one
+                // rigid transform to the shaft and cannot lag from mass, inertia, or hits.
+                Object fixedConstraint = SableConstraintApi.fixedConfiguration(
+                        parentAnchor, childAnchor, relativeOrientation);
                 shaftConstraintHandle = (PhysicsConstraintHandle) SableConstraintApi.addConstraint(
-                        pipeline, parent, constrainedChild, genericConstraint);
+                        pipeline, parent, constrainedChild, fixedConstraint);
                 shaftConstraintParent = parent;
                 shaftConstraintChild = constrainedChild;
                 shaftConstraintProgress = attachedShaftProgress;
@@ -572,17 +570,6 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
                     clearShaftConstraint();
                     return;
                 }
-                shaftConstraintHandle.setContactsEnabled(false);
-                SableConstraintApi.wakeUp(pipeline, parent);
-                SableConstraintApi.wakeUp(pipeline, constrainedChild);
-            } else if (railPositionChanged) {
-                // Preserve this joint's solver state. Recreating a fixed joint for every
-                // kinetic increment discards its warm start and causes lateral correction
-                // when either nested sublevel changes. The movement target is only this
-                // parent-local frame; all six relative degrees of freedom remain locked.
-                SableConstraintApi.setFrame(shaftConstraintHandle, 1, parentAnchor, relativeOrientation);
-                SableConstraintApi.setFrame(shaftConstraintHandle, 2, childAnchor, new Quaterniond());
-                shaftConstraintProgress = attachedShaftProgress;
                 shaftConstraintHandle.setContactsEnabled(false);
                 SableConstraintApi.wakeUp(pipeline, parent);
                 SableConstraintApi.wakeUp(pipeline, constrainedChild);

@@ -14,6 +14,9 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudInteractions;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAction;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionContext;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionHandler;
+import com.rieno.gadgetsandgizmos.lib.scm.ShipPermission;
+import com.rieno.gadgetsandgizmos.lib.access.WorldAccessPolicy;
+import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.rieno.gadgetsandgizmos.neoforge.network.DiagnosticTabletAppSnapshotPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.DiagnosticTabletRemoteOpenPayload;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
@@ -91,6 +94,14 @@ final class DiagnosticTabletRdpApp {
         if (controller == null) {
             sendSnapshot(ctx, snapshot(ctx));
             return failure("Select a loaded Advanced Controller first");
+        }
+        ShipPermission permission = "open_graph".equals(action.actionId())
+                || "open_plotter".equals(action.actionId())
+                ? ShipPermission.ACC_GRAPH : ShipPermission.INTERACT;
+        if(!ShipPermissions.allows(ctx.player(), controller, permission)
+                || !WorldAccessPolicy.canAccessLocal(ctx.player(), ctx.player().serverLevel(),
+                SableLevelApi.containingId(controller), controller.getBlockPos())){
+            return failure("Ship permission denied");
         }
         if ("remote_control".equals(action.actionId())) {
             DiagnosticTabletRemoteSessions.authorize(ctx.player(), controller);

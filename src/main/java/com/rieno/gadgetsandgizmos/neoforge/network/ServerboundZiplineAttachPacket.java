@@ -13,6 +13,7 @@ import com.rieno.gadgetsandgizmos.content.PoweredZiplineBlock;
 import com.rieno.gadgetsandgizmos.content.PoweredZiplineBlockEntity;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
+import com.simibubi.create.content.kinetics.chainConveyor.ChainConveyorBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.RegistryFriendlyByteBuf;
@@ -91,6 +92,14 @@ public record ServerboundZiplineAttachPacket(TargetType targetType, Vec3 targetP
             if (payload.targetPosition().distanceToSqr(player.getEyePosition()) > maxDistance * maxDistance) {
                 return;
             }
+            if (payload.targetType() == TargetType.CHAIN) {
+                if (!(level.getBlockEntity(payload.chainPos()) instanceof ChainConveyorBlockEntity chain)) return;
+                chain.prepareStats();
+                if (payload.chainConnection() != null
+                        && !chain.connectionStats.containsKey(payload.chainConnection())) return;
+                Vec3 chainPoint = chain.getPackagePosition(payload.pathPosition(), payload.chainConnection());
+                if (chainPoint.distanceToSqr(payload.targetPosition()) > 1.0D) return;
+            }
 
             BlockPos placementPos = findPlacementPos(level, payload.targetPosition());
             if (placementPos == null) {
@@ -108,9 +117,13 @@ public record ServerboundZiplineAttachPacket(TargetType targetType, Vec3 targetP
                 return;
             }
 
-            boolean attached = payload.targetType() == TargetType.ROPE
-                    && payload.ropeUuid() != null
-                    && zipline.attachToRope(payload.ropeUuid(), payload.pathPosition());
+            boolean attached;
+            if (payload.targetType() == TargetType.CHAIN) {
+                attached = zipline.attachToChain(payload.chainPos(), payload.chainConnection(), payload.pathPosition());
+            } else {
+                attached = payload.ropeUuid() != null
+                        && zipline.attachToRope(payload.ropeUuid(), payload.pathPosition());
+            }
             if (!attached) {
                 level.removeBlock(placementPos, false);
                 return;

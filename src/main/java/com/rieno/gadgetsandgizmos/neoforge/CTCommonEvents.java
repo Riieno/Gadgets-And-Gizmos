@@ -53,9 +53,13 @@ import com.rieno.gadgetsandgizmos.neoforge.network.AnalogueJoystickGhostSlotsPay
 import com.rieno.gadgetsandgizmos.neoforge.network.ArmorStandPoseOpenPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ArmorStandPosePreferencePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ArmorStandPoseSyncPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.MannequinSkinChangePayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.MannequinSkinChangeResultPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ClawGhostSlotsPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ContraptionNetworkLinkerSnapshotPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ContraptionNetworkLinkerSyncPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.ContraptionNetworkLinkerAreaConfigPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.ContraptionNetworkLinkerAreaAdjustPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ControllerRuntimeSyncPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.BiDirectionalGearshiftConfigPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.DoubleButtonAppearancePayload;
@@ -77,8 +81,10 @@ import com.rieno.gadgetsandgizmos.neoforge.network.LecternPortableContraptionCon
 import com.rieno.gadgetsandgizmos.neoforge.network.NavigationTableActionPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.FunctionPlotterDataPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.PhysicsGogglesDataPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.TeleportFrameResetPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.PhysicsGogglesDataRequestPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.PhysicsGantryBeltWheelSelectionPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.PhysicsGantryBeltWheelShearPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.PortableContraptionControllerKeyPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.PortableContraptionControllerModePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.PortableContraptionControllerOpenPayload;
@@ -92,6 +98,7 @@ import com.rieno.gadgetsandgizmos.neoforge.network.ServerboundZiplineFollowChain
 import com.rieno.gadgetsandgizmos.neoforge.network.ServerboundZiplineInputPacket;
 import com.rieno.gadgetsandgizmos.neoforge.network.ServerboundZiplineMountPacket;
 import com.rieno.gadgetsandgizmos.neoforge.network.ShippingManifestOpenPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.ShippingManifestLockPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ShippingManifestRefreshPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ShippingManifestUsesPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ShippingAutoRefuelPayload;
@@ -106,11 +113,14 @@ import com.rieno.gadgetsandgizmos.neoforge.network.ThrusterSlotPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ThrusterBearingRangePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.VectorBearingConfigPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.WorkerPodConfigPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.WorkerSkinChangePayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.WorkerSkinChangeResultPayload;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.registry.CTEntityTypes;
 import com.rieno.gadgetsandgizmos.util.MobHauntingConversions;
 import com.rieno.gadgetsandgizmos.util.ThrusterFuelData;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletAppStoreConfig;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog;
 import net.minecraft.core.Direction;
 import net.minecraft.server.packs.resources.PreparableReloadListener;
 import net.minecraft.server.MinecraftServer;
@@ -120,6 +130,7 @@ import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent;
 import net.neoforged.neoforge.event.AddReloadListenerEvent;
 import net.neoforged.neoforge.event.entity.EntityAttributeCreationEvent;
+import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
@@ -165,6 +176,15 @@ public final class CTCommonEvents {
         evt.addListener((PreparableReloadListener) MobHauntingConversions.RELOAD_LISTENER);
         evt.addListener((PreparableReloadListener) GraphV2ThemeData.RELOAD_LISTENER);
         evt.addListener((PreparableReloadListener) DiagnosticTabletAppStoreConfig.RELOAD_LISTENER);
+        evt.addListener((PreparableReloadListener) (barrier, resources, preparations, reload, background, game) ->
+                java.util.concurrent.CompletableFuture.completedFuture(Boolean.TRUE).thenCompose(barrier::wait)
+                        .thenRunAsync(WorkerRecipeCatalog::invalidate, game));
+    }
+
+    // Build the resolved worker recipe graph before the first controller request
+    public static void warmWorkerRecipes(ServerStartedEvent evt){
+        WorkerRecipeCatalog.invalidate();
+        WorkerRecipeCatalog.index(evt.getServer().overworld());
     }
 
     // Register the entity attributes
@@ -278,14 +298,29 @@ public final class CTCommonEvents {
                                 ShipDockConfigPayload::handle);
                 registrar.playToServer(WorkerPodConfigPayload.TYPE, WorkerPodConfigPayload.STREAM_CODEC,
                                 WorkerPodConfigPayload::handle);
+                registrar.playToServer(WorkerSkinChangePayload.TYPE, WorkerSkinChangePayload.STREAM_CODEC,
+                                WorkerSkinChangePayload::handle);
+                registrar.playToServer(ShippingManifestLockPayload.TYPE, ShippingManifestLockPayload.STREAM_CODEC,
+                                ShippingManifestLockPayload::handle);
                 registrar.playToServer(DiagnosticTabletActionPayload.TYPE, DiagnosticTabletActionPayload.STREAM_CODEC,
                                 DiagnosticTabletActionPayload::handle);
                 registrar.playToServer(ContraptionNetworkLinkerSyncPayload.TYPE, ContraptionNetworkLinkerSyncPayload.STREAM_CODEC,
                                 ContraptionNetworkLinkerSyncPayload::handle);
+                registrar.playBidirectional(ContraptionNetworkLinkerAreaConfigPayload.TYPE,
+                                ContraptionNetworkLinkerAreaConfigPayload.STREAM_CODEC,
+                                ContraptionNetworkLinkerAreaConfigPayload::handle);
+                registrar.playToServer(ContraptionNetworkLinkerAreaAdjustPayload.TYPE,
+                                ContraptionNetworkLinkerAreaAdjustPayload.STREAM_CODEC,
+                                ContraptionNetworkLinkerAreaAdjustPayload::handle);
                 registrar.playToServer(ArmorStandPoseSyncPayload.TYPE, ArmorStandPoseSyncPayload.STREAM_CODEC,
                                 ArmorStandPoseSyncPayload::handle);
+                registrar.playToServer(MannequinSkinChangePayload.TYPE, MannequinSkinChangePayload.STREAM_CODEC,
+                                MannequinSkinChangePayload::handle);
                 registrar.playToServer(ArmorStandPosePreferencePayload.TYPE, ArmorStandPosePreferencePayload.STREAM_CODEC,
                                 ArmorStandPosePreferencePayload::handle);
+                registrar.playToServer(PhysicsGantryBeltWheelShearPayload.TYPE,
+                                PhysicsGantryBeltWheelShearPayload.STREAM_CODEC,
+                                PhysicsGantryBeltWheelShearPayload::handle);
                 // ------------------------------------ROPES / LAUNCHERS------------------------------------
                 registrar.playToServer(ServerboundZiplineMountPacket.TYPE, ServerboundZiplineMountPacket.STREAM_CODEC,
                                 ServerboundZiplineMountPacket::handle);
@@ -310,12 +345,17 @@ public final class CTCommonEvents {
                                 AnalogueContraptionControllerDiscoveryResultsPayload::handle);
                 registrar.playToClient(PhysicsGogglesDataPayload.TYPE, PhysicsGogglesDataPayload.STREAM_CODEC,
                                 PhysicsGogglesDataPayload::handle);
+                registrar.playToClient(TeleportFrameResetPayload.TYPE, TeleportFrameResetPayload.STREAM_CODEC,
+                                TeleportFrameResetPayload::handle);
                 registrar.playToClient(ShippingManifestOpenPayload.TYPE, ShippingManifestOpenPayload.STREAM_CODEC,
                                 ShippingManifestOpenPayload::handle);
                 registrar.playToClient(ShipDockOpenPayload.TYPE, ShipDockOpenPayload.STREAM_CODEC,
                                 ShipDockOpenPayload::handle);
                 registrar.playToClient(ArmorStandPoseOpenPayload.TYPE, ArmorStandPoseOpenPayload.STREAM_CODEC,
                                 ArmorStandPoseOpenPayload::handle);
+                registrar.playToClient(MannequinSkinChangeResultPayload.TYPE,
+                                MannequinSkinChangeResultPayload.STREAM_CODEC,
+                                MannequinSkinChangeResultPayload::handle);
                 registrar.playToClient(AdvancedControllerSharedGraphsPayload.TYPE, AdvancedControllerSharedGraphsPayload.STREAM_CODEC,
                                 AdvancedControllerSharedGraphsPayload::handle);
                 registrar.playToClient(AdvancedControllerPublicSharePayload.TYPE,
@@ -328,6 +368,9 @@ public final class CTCommonEvents {
                 registrar.playToClient(AdvancedControllerGraphSnapshotPayload.TYPE,
                                 AdvancedControllerGraphSnapshotPayload.STREAM_CODEC,
                                 AdvancedControllerGraphSnapshotPayload::handle);
+                registrar.playToClient(WorkerSkinChangeResultPayload.TYPE,
+                                WorkerSkinChangeResultPayload.STREAM_CODEC,
+                                WorkerSkinChangeResultPayload::handle);
                 registrar.playToClient(ScmConfigurationSnapshotPayload.TYPE,
                                 ScmConfigurationSnapshotPayload.STREAM_CODEC,
                                 ScmConfigurationSnapshotPayload::handle);
@@ -424,6 +467,11 @@ public final class CTCommonEvents {
     // Register the capabilities
     public static void registerCapabilities(RegisterCapabilitiesEvent evt) {
         // ------------------------------------STORAGE CAPABILITIES------------------------------------
+        if (CTBlockEntities.SHIPPING_MANIFEST != null) {
+            evt.registerBlockEntity(Capabilities.ItemHandler.BLOCK, CTBlockEntities.SHIPPING_MANIFEST.get(),
+                    (com.rieno.gadgetsandgizmos.content.ShippingManifestBlockEntity be, Direction side) ->
+                            be.getContainerItemHandler(side));
+        }
         if (CTBlockEntities.SHIP_DOCK != null) {
             evt.registerBlockEntity(Capabilities.ItemHandler.BLOCK, CTBlockEntities.SHIP_DOCK.get(),
                     (com.rieno.gadgetsandgizmos.content.ShipDockBlockEntity be, Direction side) -> be.getItemBuffer());

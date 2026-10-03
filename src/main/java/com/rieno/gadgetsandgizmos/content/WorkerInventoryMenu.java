@@ -23,7 +23,6 @@ import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.fml.ModList;
 import net.neoforged.neoforge.items.ItemStackHandler;
 import net.neoforged.neoforge.items.SlotItemHandler;
 import org.jetbrains.annotations.Nullable;
@@ -40,7 +39,7 @@ public class WorkerInventoryMenu extends AbstractContainerMenu {
 
     public static final int STORAGE_SLOT_COUNT = 27;
     public static final int ARMOR_SLOT_COUNT = 4;
-    public static final int CURIO_SLOT_COUNT = 6;
+    public static final int TOOL_SLOT_COUNT = 6;
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -55,10 +54,8 @@ public class WorkerInventoryMenu extends AbstractContainerMenu {
     private final ItemStackHandler storage;
     // Worker armor equipment bridge
     private final Container armor;
-    // Worker Curios storage
-    private final ItemStackHandler curios;
-    // Whether Curios slots are present in this menu
-    private final boolean curiosAvailable;
+    // Persistent worker tools, including items saved in the former Curios slots.
+    private final ItemStackHandler tools;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -85,8 +82,7 @@ public class WorkerInventoryMenu extends AbstractContainerMenu {
         this.worker = worker;
         storage = worker == null ? new ItemStackHandler(STORAGE_SLOT_COUNT) : worker.workerInventory();
         armor = worker == null ? new SimpleContainer(ARMOR_SLOT_COUNT) : new WorkerArmorContainer(worker);
-        curios = worker == null ? new ItemStackHandler(CURIO_SLOT_COUNT) : worker.workerCurios();
-        curiosAvailable = ModList.get().isLoaded("curios");
+        tools = worker == null ? new ItemStackHandler(TOOL_SLOT_COUNT) : worker.workerTools();
         addWorkerSlots();
         addPlayerSlots(playerInventory);
     }
@@ -112,24 +108,19 @@ public class WorkerInventoryMenu extends AbstractContainerMenu {
         return worker;
     }
 
-    // Check whether Curios slots are available.
-    public boolean curiosAvailable() {
-        return curiosAvailable;
-    }
-
     // Get the first menu slot assigned to the worker's armor.
     public int armorSlotFirst() {
         return STORAGE_SLOT_COUNT;
     }
 
-    // Get the first menu slot assigned to the worker's Curios tab.
-    public int curioSlotFirst() {
+    // Get the first menu slot assigned to the worker's tools.
+    public int toolSlotFirst() {
         return STORAGE_SLOT_COUNT + ARMOR_SLOT_COUNT;
     }
 
     // Get the first menu slot assigned to the interacting player.
     public int playerSlotFirst() {
-        return curioSlotFirst() + (curiosAvailable ? CURIO_SLOT_COUNT : 0);
+        return toolSlotFirst() + TOOL_SLOT_COUNT;
     }
 
     @Override
@@ -170,7 +161,7 @@ public class WorkerInventoryMenu extends AbstractContainerMenu {
         return entity instanceof PlayerMannequinEntity mannequin ? mannequin : null;
     }
 
-    // Add storage, armor and optional Curios slots.
+    // Add storage, armor and tools regardless of optional mods.
     private void addWorkerSlots() {
         for (int row = 0; row < 3; row++) {
             for (int column = 0; column < 9; column++) {
@@ -180,9 +171,8 @@ public class WorkerInventoryMenu extends AbstractContainerMenu {
         for (int slot = 0; slot < ARMOR_SLOT_COUNT; slot++) {
             addSlot(new Slot(armor, slot, 188, 18 + slot * 18));
         }
-        if (!curiosAvailable) return;
-        for (int slot = 0; slot < CURIO_SLOT_COUNT; slot++) {
-            addSlot(new SlotItemHandler(curios, slot, 224 + slot % 3 * 18, 18 + slot / 3 * 18));
+        for (int slot = 0; slot < TOOL_SLOT_COUNT; slot++) {
+            addSlot(new SlotItemHandler(tools, slot, 224 + slot % 3 * 18, 18 + slot / 3 * 18));
         }
     }
 

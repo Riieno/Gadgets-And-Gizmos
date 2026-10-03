@@ -66,6 +66,9 @@ public final class AdvancedGraphNodeFactory {
     public static CompoundTag createDefaultData(String type, Context context) {
         Context safeContext = context == null ? Context.EMPTY : context;
         CompoundTag data = new CompoundTag();
+        if ("get_block_data".equals(type) || "set_block_data".equals(type)) {
+            data.putBoolean(AdvancedGraphCatalog.MERGE_LIKE_PORTS_TAG, false);
+        }
         if ("sticky_note".equals(type)) {
             data.putString("Text", "# Note");
             data.putInt("Width", STICKY_NOTE_DEFAULT_WIDTH);
@@ -474,19 +477,23 @@ public final class AdvancedGraphNodeFactory {
             }
             case "worker_item_filter" -> {
                 defaults.put("mode", graphDefault("string", "allow_list"));
+                defaults.put("filter_type", graphDefault("string", "item"));
                 defaults.put("items", graphDefault("string", ""));
                 defaults.put("match_components", graphDefault("boolean", false));
                 defaults.put("ignore_damage", graphDefault("boolean", false));
                 defaults.put("match_mod", graphDefault("string", ""));
                 defaults.put("enabled", graphDefault("boolean", true));
                 putOptions(options, "mode", List.of("allow_list", "deny_list"));
+                putOptions(options, "filter_type", List.of("item", "tag"));
             }
             case "worker_fluid_filter" -> {
                 defaults.put("mode", graphDefault("string", "allow_list"));
+                defaults.put("filter_type", graphDefault("string", "fluid"));
                 defaults.put("fluids", graphDefault("string", ""));
                 defaults.put("match_components", graphDefault("boolean", false));
                 defaults.put("enabled", graphDefault("boolean", true));
                 putOptions(options, "mode", List.of("allow_list", "deny_list"));
+                putOptions(options, "filter_type", List.of("fluid", "tag"));
             }
             case "worker_tag_filter" -> {
                 defaults.put("mode", graphDefault("string", "allow_list"));
@@ -495,8 +502,15 @@ public final class AdvancedGraphNodeFactory {
                 putOptions(options, "mode", List.of("allow_list", "deny_list"));
                 putOptions(options, "match", List.of("any", "all"));
             }
-            case "worker_move_items", "worker_move_fluid" -> {
-                defaults.put("amount", graphDefault("number", 64.0D));
+            case "worker_move_items" -> {
+                defaults.put("amount", graphDefault("number", 1728.0D));
+                defaults.put("amount_mode", graphDefault("string", "up_to"));
+                defaults.put("retry", graphDefault("boolean", true));
+                defaults.put("timeout", graphDefault("number", 0.0D));
+                putOptions(options, "amount_mode", List.of("exact", "up_to"));
+            }
+            case "worker_move_fluid" -> {
+                defaults.put("amount", graphDefault("number", 27000.0D));
                 defaults.put("amount_mode", graphDefault("string", "up_to"));
                 defaults.put("retry", graphDefault("boolean", true));
                 defaults.put("timeout", graphDefault("number", 0.0D));
@@ -517,11 +531,11 @@ public final class AdvancedGraphNodeFactory {
             }
             case "worker_process" -> {
                 defaults.put("operation", graphDefault("string", ""));
+                defaults.put("count", graphDefault("number", 1.0D));
                 defaults.put("collect_result", graphDefault("boolean", true));
                 defaults.put("timeout", graphDefault("number", 0.0D));
             }
             case "worker_craft" -> {
-                defaults.put("recipe", graphDefault("string", ""));
                 defaults.put("count", graphDefault("number", 1.0D));
                 defaults.put("use_worker_inventory", graphDefault("boolean", true));
             }

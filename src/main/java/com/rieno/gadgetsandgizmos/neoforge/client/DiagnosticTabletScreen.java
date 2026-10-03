@@ -17,11 +17,14 @@ import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppDefinition;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppRegistry;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletTabDefinition;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletInteractionMode;
+import com.rieno.gadgetsandgizmos.lib.scm.ShipPermission;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientContext;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientRegistry;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientRenderer;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientSession;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientSurface;
+import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientUi;
+import com.rieno.gadgetsandgizmos.lib.client.ui.ItemPickerScreen;
 import com.rieno.gadgetsandgizmos.neoforge.network.DiagnosticTabletActionPayload;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
@@ -127,6 +130,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     private int redstonePage;
     // Tablet app client session
     private final TabletAppClientSession appClientSession = new TabletAppClientSession();
+    private boolean appDialogOpen;
     // Current redstone editing id
     private String redstoneEditingId = "";
     // Redstone first index
@@ -153,6 +157,8 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     private String journeyPicker = "";
     // Current journey picker scroll
     private int journeyPickerScroll;
+    private UUID scmPermissionsSelected;
+    private int scmPermissionsScroll;
     // Current settings app page
     private int settingsAppPage;
     // Current nfc property scroll
@@ -253,8 +259,12 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     // Initialize the diagnostic tablet
     @Override
     protected void init() {
+        appDialogOpen = false;
         super.init();
         DiagnosticTabletApps.register();
+        if(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.MANIFEST.id().equals(state.app())){
+            state = state.withMode(TabletInteractionMode.STANDARD, "");
+        }
         left = leftPos;
         top = topPos;
         if (!isHome() && selectedApp() == null) {
@@ -362,7 +372,10 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         int promptLeft = statusLeft + font.width(worldStatus) + 14;
         int promptRight = left + PANEL_WIDTH - modeWidth - (notifications > 0 ? 74 : 61);
         if (promptRight > promptLeft + 30) {
-            graphics.drawString(font, font.plainSubstrByWidth("Press Alt + Use to switch modes.",
+            String prompt = com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.DIGISABLE.id().equals(state.app())
+                    ? "Browse nearby sublevels" : com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.MANIFEST.id().equals(state.app())
+                    ? "Use on a container to inspect it" : "Press Alt + Use to switch modes.";
+            graphics.drawString(font, font.plainSubstrByWidth(prompt,
                     promptRight - promptLeft), promptLeft, top + 13, 0xFFB7C7DA, false);
         }
     }
@@ -1102,6 +1115,10 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
                     targets, selected);
             return;
         }
+        if("permissions".equals(tab)){
+            renderScmPermissions(graphics, mouseX, mouseY, data, selected, contentLeft, contentWidth);
+            return;
+        }
         // ------------------------------------SELECTED TARGET------------------------------------
         graphics.drawString(font, "Selected ship or dock", contentLeft, top + 70,
                 0xFFAEBBCA, false);
@@ -1177,6 +1194,93 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
                     22, 22, 11, colors[idx]);
             graphics.drawString(font, controls[idx], x + 41, y + 15, 0xFFF6F7F9, false);
         }
+    }
+
+    // Draw the SCM permission manager for the selected ship
+    private void renderScmPermissions(GuiGraphics graphics, int mouseX, int mouseY,
+                                      CompoundTag data, CompoundTag selected, int contentLeft, int contentWidth){
+        if(selected == null || !"ship".equals(selected.getString("Kind"))){
+            graphics.drawString(font, "Select a ship controller first.", contentLeft, top + 90,
+                    0xFFF1B18D, false);
+            return;
+        }
+        CompoundTag permissions = data.getCompound("ShipPermissions");
+        ListTag players = permissions.getList("Players", Tag.TAG_COMPOUND);
+        graphics.drawString(font, "Ship Permissions", contentLeft, top + 73, 0xFFF4F7FB, false);
+        if(!permissions.getBoolean("Claimed")){
+            graphics.drawString(font, "This ship has no owner yet.", contentLeft, top + 101,
+                    0xFFF1B18D, false);
+            return;
+        }
+        for(int row = 0; row < 6 && row + scmPermissionsScroll < players.size(); row++){
+            CompoundTag player = players.getCompound(row + scmPermissionsScroll);
+            int y = top + 95 + row * 25;
+            boolean active = player.hasUUID("Id") && player.getUUID("Id").equals(scmPermissionsSelected);
+            drawNativeCard(graphics, contentLeft, y, 178, 22,
+                    active ? 0xFF52A5D8 : 0xFF60798C,
+                    inside(mouseX, mouseY, contentLeft, y, 178, 22));
+            graphics.drawString(font, font.plainSubstrByWidth(player.getString("Name"), 156),
+                    contentLeft + 9, y + 7, 0xFFF4F7FB, false);
+        }
+        CompoundTag player = selectedScmPermissionPlayer(players);
+        if(player == null){
+            graphics.drawString(font, "Select a player", contentLeft + 195, top + 101,
+                    0xFFB7C7D6, false);
+            return;
+        }
+        ShipPermission[] options = {ShipPermission.INTERACT, ShipPermission.ACC_GRAPH,
+                ShipPermission.PLACE, ShipPermission.DESTROY, ShipPermission.PHYSICS_STAFF, ShipPermission.STORE};
+        String[] labels = {"Interract", "ACC Graph", "Place", "Destroy", "Physics Staff", "Store"};
+        int visible = permissions.getBoolean("StoreEnabled") ? options.length : options.length - 1;
+        for(int idx = 0; idx < visible; idx++){
+            int y = top + 95 + idx * 25;
+            boolean enabled = (player.getInt("Mask") & (1 << options[idx].ordinal())) != 0;
+            drawNativeCard(graphics, contentLeft + 195, y, contentWidth - 195, 22,
+                    enabled ? 0xFF5FB98A : 0xFF60798C,
+                    inside(mouseX, mouseY, contentLeft + 195, y, contentWidth - 195, 22));
+            graphics.drawString(font, (enabled ? "[x] " : "[ ] ") + labels[idx],
+                    contentLeft + 204, y + 7, 0xFFF4F7FB, false);
+        }
+        if(!permissions.getBoolean("CanEdit")){
+            graphics.drawString(font, "Owner only", contentLeft + 195, top + 248,
+                    0xFFF1B18D, false);
+        }
+    }
+
+    private CompoundTag selectedScmPermissionPlayer(ListTag players){
+        if(scmPermissionsSelected == null) return null;
+        for(int idx = 0; idx < players.size(); idx++){
+            CompoundTag player = players.getCompound(idx);
+            if(player.hasUUID("Id") && player.getUUID("Id").equals(scmPermissionsSelected)) return player;
+        }
+        return null;
+    }
+
+    private boolean clickScmPermissions(double mouseX, double mouseY, CompoundTag data,
+                                        CompoundTag selected, int contentLeft, int contentWidth){
+        if(selected == null || !"ship".equals(selected.getString("Kind"))) return false;
+        CompoundTag permissions = data.getCompound("ShipPermissions");
+        ListTag players = permissions.getList("Players", Tag.TAG_COMPOUND);
+        for(int row = 0; row < 6 && row + scmPermissionsScroll < players.size(); row++){
+            int y = top + 95 + row * 25;
+            if(!inside(mouseX, mouseY, contentLeft, y, 178, 22)) continue;
+            CompoundTag player = players.getCompound(row + scmPermissionsScroll);
+            scmPermissionsSelected = player.hasUUID("Id") ? player.getUUID("Id") : null;
+            return true;
+        }
+        CompoundTag player = selectedScmPermissionPlayer(players);
+        if(player == null || !permissions.getBoolean("CanEdit")) return false;
+        ShipPermission[] options = {ShipPermission.INTERACT, ShipPermission.ACC_GRAPH,
+                ShipPermission.PLACE, ShipPermission.DESTROY, ShipPermission.PHYSICS_STAFF, ShipPermission.STORE};
+        int visible = permissions.getBoolean("StoreEnabled") ? options.length : options.length - 1;
+        for(int idx = 0; idx < visible; idx++){
+            int y = top + 95 + idx * 25;
+            if(!inside(mouseX, mouseY, contentLeft + 195, y, contentWidth - 195, 22)) continue;
+            boolean enabled = (player.getInt("Mask") & (1 << options[idx].ordinal())) == 0;
+            send("permissions_set", player.getUUID("Id") + "|" + options[idx].id() + "|" + enabled);
+            return true;
+        }
+        return false;
     }
 
     // Draw the landing zone app
@@ -1799,6 +1903,15 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
                 return true;
             }
         }
+        if(btn == 1 && surfaceProjection()){
+            TabletAppDefinition app = selectedApp();
+            TabletAppClientRenderer renderer = app == null ? null : TabletAppClientRegistry.renderer(app.id());
+            if(renderer != null){
+                boolean handled = renderer.mouseClicked(clientAppContext(app, null, (int) mouseX, (int) mouseY),
+                        appClientSession.stateFor(app.id(), renderer), mouseX, mouseY, btn);
+                if(handled){ appClientSession.saveDrafts(); return true; }
+            }
+        }
         if (btn != 0) return super.mouseClicked(mouseX, mouseY, btn);
         if (!editingAction.isBlank() && !"redstone_editor".equals(editingAction)) {
             int contentLeft = contentLeft();
@@ -1915,8 +2028,10 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
             return clickNfcApp(mouseX, mouseY, app, contentLeft, contentWidth);
         }
         if (renderer != null) {
-            return renderer.mouseClicked(clientAppContext(app, null, (int) mouseX, (int) mouseY),
+            boolean handled = renderer.mouseClicked(clientAppContext(app, null, (int) mouseX, (int) mouseY),
                     appClientSession.stateFor(app.id(), renderer), mouseX, mouseY, 0);
+            if(handled) appClientSession.saveDrafts();
+            return handled;
         }
 
         int actionIndex = 0;
@@ -2282,6 +2397,9 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         CompoundTag data = appData(app.id());
         ListTag targets = data.getList("Targets", Tag.TAG_COMPOUND);
         CompoundTag selected = selectedRow(targets);
+        if("permissions".equals(tab)){
+            return clickScmPermissions(mouseX, mouseY, data, selected, contentLeft, contentWidth);
+        }
         if ("ships".equals(tab)) {
             for (int idx = 0; idx < Math.min(5, targets.size()); idx++) {
                 int y = top + 86 + idx * 29;
@@ -2760,6 +2878,9 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     private void select(ResourceLocation app, String tab) {
         stopEditing();
         state = state.withApp(app, tab);
+        if(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.MANIFEST.id().equals(app)){
+            state = state.withMode(TabletInteractionMode.STANDARD, "");
+        }
         observedSelectedDefinition = TabletAppRegistry.definition(app);
         send("select", "");
         reqActiveAppSnapshot();
@@ -2768,7 +2889,11 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     // Request the active app snapshot
     private void reqActiveAppSnapshot() {
         TabletAppDefinition app = selectedApp();
-        if (app != null) send("refresh", "");
+        if(app != null){
+            var renderer = TabletAppClientRegistry.renderer(app.id());
+            if(renderer == null) send("refresh", "");
+            else renderer.refresh(clientAppContext(app, null, 0, 0), appClientSession.stateFor(app.id(), renderer));
+        }
         requestSettingsSnapshot();
     }
 
@@ -2789,11 +2914,83 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     // Get the client app context
     private TabletAppClientContext clientAppContext(TabletAppDefinition app,
                                                     GuiGraphics graphics, int mouseX, int mouseY) {
+        appClientSession.bindDrafts(Minecraft.getInstance().getConnection(), sourceTabletId);
         return new TabletAppClientContext(app, activeTab(app), appData(app.id()), graphics, font,
                 contentLeft(), top + 69, contentWidth(), PANEL_HEIGHT - 112,
                 new TabletAppClientSurface(left + 3, top + STATUS_BAR_HEIGHT,
                         PANEL_WIDTH - 6, PANEL_HEIGHT - STATUS_BAR_HEIGHT - 3),
-                mouseX, mouseY, this::send, this::reqActiveAppSnapshot);
+                mouseX, mouseY, this::sendClientAppAction, this::reqActiveAppSnapshot,
+                new TabletAppClientUi(){
+                    @Override public boolean projected(){ return surfaceProjection(); }
+
+                    @Override public void editText(String prompt, String initial, int maximumLength, java.util.function.Consumer<String> accept){
+                        appDialogOpen = !surfaceProjection();
+                        Minecraft.getInstance().setScreen(new ControllerTextInputScreen(surfaceProjection() ? null : DiagnosticTabletScreen.this,
+                                Component.literal("Smart Tablet"), Component.literal(prompt), initial, val -> {
+                                    accept.accept(val);
+                                    appClientSession.saveDrafts();
+                                }, maximumLength));
+                    }
+
+                    @Override public void pickItem(ResourceLocation selected, java.util.function.Consumer<ResourceLocation> accept){
+                        appDialogOpen = !surfaceProjection();
+                        Minecraft.getInstance().setScreen(new ItemPickerScreen(
+                                surfaceProjection() ? null : DiagnosticTabletScreen.this, selected, val -> {
+                                    accept.accept(val);
+                                    appClientSession.saveDrafts();
+                                }));
+                    }
+
+                    @Override public void pickFluidContainer(ResourceLocation selected, ResourceLocation fluid,
+                                                               int millibuckets,
+                                                               java.util.function.Consumer<ResourceLocation> accept){
+                        appDialogOpen = !surfaceProjection();
+                        Minecraft.getInstance().setScreen(new ItemPickerScreen(
+                                surfaceProjection() ? null : DiagnosticTabletScreen.this, selected, val -> {
+                                    accept.accept(val);
+                                    appClientSession.saveDrafts();
+                                }, stack -> {
+                                    var access = com.rieno.gadgetsandgizmos.lib.worker.WorkerContainerAccess
+                                            .fluidHandler(stack.copyWithCount(1));
+                                    var selectedFluid = BuiltInRegistries.FLUID.get(fluid);
+                                    return access instanceof net.neoforged.neoforge.fluids.capability.IFluidHandlerItem
+                                            && selectedFluid != null && access.fill(
+                                            new net.neoforged.neoforge.fluids.FluidStack(selectedFluid, millibuckets),
+                                            net.neoforged.neoforge.fluids.capability.IFluidHandler.FluidAction.SIMULATE)
+                                            == millibuckets;
+                                },
+                                "Select Fluid Container"));
+                    }
+                });
+    }
+
+    // Apply mode changes requested by an app surface through the host tablet
+    private void sendClientAppAction(String action, String val){
+        if("prepare_extract".equals(action)){
+            if(placed){
+                if(minecraft != null && minecraft.player != null) minecraft.player.displayClientMessage(
+                        Component.literal("Hold a tablet to extract a stored sublevel"), true);
+                return;
+            }
+            try{
+                com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps.DigisablePlacementClient.begin(
+                        hand, state.tabletId(), java.util.UUID.fromString(val));
+                send(action, val);
+                onClose();
+            }catch(IllegalArgumentException err){
+                if(minecraft != null && minecraft.player != null) minecraft.player.displayClientMessage(
+                        Component.literal("Select a stored sublevel first"), true);
+            }
+            return;
+        }
+        if("begin_reader".equals(action)){
+            if(placed){
+                if(minecraft != null && minecraft.player != null) minecraft.player.displayClientMessage(
+                        Component.literal("Hold a tablet to store a sublevel in Reader mode"), true);
+            }else beginReaderMode(val);
+            return;
+        }
+        send(action, val);
     }
 
     // Check if the app owns the area below the status bar
@@ -2843,8 +3040,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     // Draw the app icon
     private void drawAppIcon(GuiGraphics graphics, TabletAppDefinition app,
                              int x, int y, int size) {
-        graphics.blit(app.icon(), x, y, size, size, 0.0F, 0.0F,
-                64, 64, 64, 64);
+        com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppIcons.render(app, graphics, x, y, size);
     }
 
     // Get the minimum ecraft time
@@ -3048,11 +3244,14 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     // Check if this uses reader mode
     private static boolean usesReaderMode(TabletAppDefinition app) {
         return isBuiltInApp(app, "rdp") || isBuiltInApp(app, "scm")
-                || isBuiltInApp(app, "redstone_link") || isBuiltInApp(app, "nfc");
+                || isBuiltInApp(app, "redstone_link") || isBuiltInApp(app, "nfc")
+                || app != null && com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.readerEnabled(app.id());
     }
 
     // Get the reader action
     private static String readerActionFor(TabletAppDefinition app) {
+        if(app != null && com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.DIGISABLE.id().equals(app.id())) return "store";
+        if(app != null && com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.BLOCKMATES.id().equals(app.id())) return "pair";
         if (isBuiltInApp(app, "nfc")) return "nfc_scan";
         if (isBuiltInApp(app, "redstone_link")) return "bind_channel";
         return "";
@@ -3217,6 +3416,16 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         TabletAppDefinition app = selectedApp();
+        if(isBuiltInApp(app, "scm") && "permissions".equals(activeTab(app).id())
+                && inside(mouseX, mouseY, contentLeft(), top + 95, 178, 150)){
+            int maximum = Math.max(0, appData(app.id()).getCompound("ShipPermissions")
+                    .getList("Players", Tag.TAG_COMPOUND).size() - 6);
+            scmPermissionsScroll = Mth.clamp(scmPermissionsScroll - (int)Math.signum(scrollY), 0, maximum);
+            return true;
+        }
+        TabletAppClientRenderer renderer = app == null ? null : TabletAppClientRegistry.renderer(app.id());
+        if(renderer != null && inside(mouseX, mouseY, contentLeft(), top + 69, contentWidth(), PANEL_HEIGHT - 112)
+                && renderer.mouseScrolled(clientAppContext(app, null, (int) mouseX, (int) mouseY), appClientSession.stateFor(app.id(), renderer), mouseX, mouseY, scrollX, scrollY)) return true;
         if (isBuiltInApp(app, "settings") && "apps".equals(activeTab(app).id())
                 && inside(mouseX, mouseY, contentLeft(), top + 68, contentWidth(), 167)) {
             ListTag apps = settingsData().getList("Apps", Tag.TAG_COMPOUND);
@@ -3261,6 +3470,12 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     // Handle key pressed
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        TabletAppDefinition app = selectedApp();
+        TabletAppClientRenderer renderer = app == null ? null : TabletAppClientRegistry.renderer(app.id());
+        if(renderer != null && renderer.keyPressed(clientAppContext(app, null, 0, 0), appClientSession.stateFor(app.id(), renderer), keyCode, scanCode, modifiers)){
+            appClientSession.saveDrafts();
+            return true;
+        }
         if (!editingAction.isBlank() && (keyCode == 257 || keyCode == 335)) {
             send(editingAction, editingValuePrefix + actionInput.getValue().trim());
             stopEditing();
@@ -3271,6 +3486,41 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    // Check if this is a pause screen
+    @Override
+    public boolean charTyped(char ch, int modifiers){
+        TabletAppDefinition app = selectedApp();
+        TabletAppClientRenderer renderer = app == null ? null : TabletAppClientRegistry.renderer(app.id());
+        if(renderer != null && renderer.chatTyped(clientAppContext(app, null, 0, 0), appClientSession.stateFor(app.id(), renderer), ch, modifiers)){
+            appClientSession.saveDrafts();
+            return true;
+        }
+        return super.charTyped(ch, modifiers);
+    }
+
+    @Override
+    public boolean mouseDragged(double x, double y, int button, double dx, double dy){
+        TabletAppDefinition app = selectedApp();
+        TabletAppClientRenderer renderer = app == null ? null : TabletAppClientRegistry.renderer(app.id());
+        if(renderer != null && renderer.mouseDragged(clientAppContext(app, null, (int) x, (int) y), appClientSession.stateFor(app.id(), renderer), x, y, button, dx, dy)) return true;
+        return super.mouseDragged(x, y, button, dx, dy);
+    }
+
+    @Override
+    public boolean mouseReleased(double x, double y, int button){
+        TabletAppDefinition app = selectedApp();
+        TabletAppClientRenderer renderer = app == null ? null : TabletAppClientRegistry.renderer(app.id());
+        if(renderer != null && renderer.mouseReleased(clientAppContext(app, null, (int) x, (int) y), appClientSession.stateFor(app.id(), renderer), x, y, button)) return true;
+        return super.mouseReleased(x, y, button);
+    }
+
+    @Override
+    public void removed(){
+        appClientSession.saveDrafts();
+        if(!appDialogOpen) appClientSession.clear();
+        super.removed();
     }
 
     // Check if this is a pause screen

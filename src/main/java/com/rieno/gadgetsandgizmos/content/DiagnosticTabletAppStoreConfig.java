@@ -82,7 +82,15 @@ public final class DiagnosticTabletAppStoreConfig{
     public static TabletAppPrice price(TabletAppDefinition app){
         if(app == null || app.builtIn()) return TabletAppPrice.FREE;
         Snapshot snapshot = current;
-        return snapshot.apps().getOrDefault(app.id(), snapshot.fallback());
+        int paidDefault = switch(app.id().toString()){
+            case "createthrusters:digisable" -> 10;
+            case "createthrusters:manifest" -> 8;
+            case "createthrusters:blockmates" -> 7;
+            default -> -1;
+        };
+        TabletAppPrice fallback = paidDefault < 0 ? snapshot.fallback()
+                : new TabletAppPrice(ResourceLocation.withDefaultNamespace("emerald"), paidDefault);
+        return snapshot.apps().getOrDefault(app.id(), fallback);
     }
 
     // Get Config Path

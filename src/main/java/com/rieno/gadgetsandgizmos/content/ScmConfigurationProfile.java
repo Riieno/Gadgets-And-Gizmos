@@ -290,6 +290,11 @@ public final class ScmConfigurationProfile {
         return !autoUnits().isEmpty();
     }
 
+    // Manual limb roles remain authoritative even when their live controls are unavailable
+    public boolean usesAutomaticIkBindings(){
+        return hasAutoUnits() && actionGroups.keySet().stream().noneMatch(ScmConfigurationProfile::isIkAction);
+    }
+
     /**
      * Return the blocks which gain or maintain the navigation speed setpoint.
      * Travel direction is selected by the directional action groups instead.

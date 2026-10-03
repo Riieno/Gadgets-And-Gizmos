@@ -53,6 +53,11 @@ public final class DiagnosticTabletClientInteraction {
 
     // Handle the interaction key mapping triggered event
     public static void onInteractionKeyMappingTriggered(InputEvent.InteractionKeyMappingTriggered evt) {
+        if(evt.isUseItem() && com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps.DigisablePlacementClient.onUse()){
+            evt.setSwingHand(false);
+            evt.setCanceled(true);
+            return;
+        }
         if (evt.isCanceled() || !evt.isUseItem()
                 || !CTFeatureToggles.isItemEnabled("diagnostic_tablet")) return;
         Minecraft minecraft = Minecraft.getInstance();
@@ -104,6 +109,7 @@ public final class DiagnosticTabletClientInteraction {
             return false;
         }
         DiagnosticTabletData.State current = DiagnosticTabletData.read(stack);
+        if(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.MANIFEST.id().equals(current.app())) return false;
         TabletInteractionMode next = current.mode() == TabletInteractionMode.READER
                 ? TabletInteractionMode.STANDARD : TabletInteractionMode.READER;
         DiagnosticTabletData.State updated = current.withMode(next, "");

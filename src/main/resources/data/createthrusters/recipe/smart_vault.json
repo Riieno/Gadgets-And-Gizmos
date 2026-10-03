@@ -1,9 +1,9 @@
 {
   "type": "minecraft:crafting_shaped",
   "category": "misc",
-  "pattern": [" B ", "BVB", " B "],
+  "pattern": ["CCC", "CVC", "CCC"],
   "key": {
-    "B": { "item": "create:brass_ingot" },
+    "C": { "item": "createthrusters:blackstone_alloy" },
     "V": { "item": "create:item_vault" }
   },
   "result": { "id": "createthrusters:smart_vault", "count": 1 }

@@ -9,6 +9,9 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.registry.CTItems;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerArea;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerNoEntryBoundary;
+import com.rieno.gadgetsandgizmos.lib.zipline.ZiplineRider;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Rotations;
 import net.minecraft.core.component.DataComponents;
@@ -26,6 +29,8 @@ import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.MoverType;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.attributes.AttributeSupplier;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.player.Player;
@@ -35,14 +40,18 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.gameevent.GameEvent;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.common.NeoForgeMod;
 import net.neoforged.neoforge.items.ItemStackHandler;
 
+import java.net.URI;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 // Keep a mannequin's player skin, pose and equipment state synchronized
-public class PlayerMannequinEntity extends ArmorStand {
+public class PlayerMannequinEntity extends ArmorStand implements ZiplineRider {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -51,12 +60,24 @@ public class PlayerMannequinEntity extends ArmorStand {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+    public static final float SCALE = 1.0F;
+    public static final float POD_SCALE = 0.75F;
+    public static final float WIDTH = 0.6F;
+    public static final float HEIGHT = 1.8F;
+    public static final float EYE_HEIGHT = 1.62F;
     private static final String VARIANT_TAG = "PlayerMannequinVariant";
+    private static final String ORIGINAL_VARIANT_TAG = "OriginalSupporterVariant";
+    private static final String REMOTE_SKIN_URL_TAG = "RemoteSkinUrl";
+    private static final String STEVE_SKIN_TAG = "SteveSkin";
+    private static final String SLIM_SKIN_TAG = "SlimSkin";
     private static final String KINETIC_CURRENCY_REWARD_POSE_TAG = "KineticCurrencyRewardPose";
     private static final String WORKER_POD_TAG = "WorkerPod";
+    private static final String WORKER_HOUSED_TAG = "WorkerHoused";
     private static final String WORKER_INVENTORY_TAG = "WorkerInventory";
     private static final String WORKER_CURIOS_TAG = "WorkerCurios";
     private static final String WORKER_CARRY_PROP_TAG = "WorkerCarryProp";
+    private static final String ZIPLINE_RIDING_TAG = "ZiplineRiding";
+    private static final String ZIPLINE_PREVIOUS_GRAVITY_TAG = "ZiplinePreviousNoGravity";
     private static final EquipmentSlot[] DROPPED_EQUIPMENT_SLOTS = {
             EquipmentSlot.MAINHAND,
             EquipmentSlot.OFFHAND,
@@ -73,12 +94,22 @@ public class PlayerMannequinEntity extends ArmorStand {
     private static final Rotations DEFAULT_RIGHT_LEG_POSE = new Rotations(1.0F, 0.0F, 1.0F);
     private static final EntityDataAccessor<String> DATA_VARIANT =
             SynchedEntityData.defineId(PlayerMannequinEntity.class, EntityDataSerializers.STRING);
+    private static final EntityDataAccessor<String> DATA_REMOTE_SKIN_URL =
+            SynchedEntityData.defineId(PlayerMannequinEntity.class, EntityDataSerializers.STRING);
+    private static final EntityDataAccessor<Boolean> DATA_STEVE_SKIN =
+            SynchedEntityData.defineId(PlayerMannequinEntity.class, EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<Boolean> DATA_SLIM_SKIN =
+            SynchedEntityData.defineId(PlayerMannequinEntity.class, EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Optional<UUID>> DATA_WORKER_POD =
             SynchedEntityData.defineId(PlayerMannequinEntity.class, EntityDataSerializers.OPTIONAL_UUID);
+    private static final EntityDataAccessor<Boolean> DATA_WORKER_HOUSED =
+            SynchedEntityData.defineId(PlayerMannequinEntity.class, EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Byte> DATA_WORKER_ANIMATION =
             SynchedEntityData.defineId(PlayerMannequinEntity.class, EntityDataSerializers.BYTE);
     private static final EntityDataAccessor<Integer> DATA_WORKER_INTERACTION_TICKS =
             SynchedEntityData.defineId(PlayerMannequinEntity.class, EntityDataSerializers.INT);
+    private static final EntityDataAccessor<Boolean> DATA_ZIPLINE_RIDING =
+            SynchedEntityData.defineId(PlayerMannequinEntity.class, EntityDataSerializers.BOOLEAN);
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -91,10 +122,14 @@ public class PlayerMannequinEntity extends ArmorStand {
 
     // Tracks whether kinetic currency reward pose is set
     private boolean kineticCurrencyRewardPose;
+    // The supporter variant this mannequin was originally placed as
+    private String originalSupporterVariantId = PlayerMannequinVariants.DEFAULT_ID;
     // Persistent shulker-sized worker inventory
     private final ItemStackHandler workerInventory = new ItemStackHandler(27);
-    // Persistent slots exposed when Curios is installed
+    // Persistent worker Tools slots (legacy NBT key retained for existing worlds)
     private final ItemStackHandler workerCurios = new ItemStackHandler(6);
+    private Vec3 lastWorkerPositionOutsideNoEntry;
+    private boolean ziplinePreviousNoGravity;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -120,7 +155,7 @@ public class PlayerMannequinEntity extends ArmorStand {
 
     // Create the attributes
     public static AttributeSupplier.Builder createAttributes() {
-        return ArmorStand.createAttributes().add(NeoForgeMod.CREATIVE_FLIGHT);
+        return ArmorStand.createAttributes().add(NeoForgeMod.CREATIVE_FLIGHT).add(Attributes.SCALE);
     }
 
     // Check whether equipped modifiers grant this worker NeoForge-standard creative flight.
@@ -134,9 +169,14 @@ public class PlayerMannequinEntity extends ArmorStand {
     protected void defineSynchedData(SynchedEntityData.Builder builder) {
         super.defineSynchedData(builder);
         builder.define(DATA_VARIANT, PlayerMannequinVariants.DEFAULT_ID);
+        builder.define(DATA_REMOTE_SKIN_URL, "");
+        builder.define(DATA_STEVE_SKIN, false);
+        builder.define(DATA_SLIM_SKIN, false);
         builder.define(DATA_WORKER_POD, Optional.empty());
+        builder.define(DATA_WORKER_HOUSED, false);
         builder.define(DATA_WORKER_ANIMATION, (byte) WorkerAnimation.IDLE.ordinal());
         builder.define(DATA_WORKER_INTERACTION_TICKS, 0);
+        builder.define(DATA_ZIPLINE_RIDING, false);
     }
 
     // Add the additional save data
@@ -144,10 +184,19 @@ public class PlayerMannequinEntity extends ArmorStand {
     public void addAdditionalSaveData(CompoundTag tag) {
         super.addAdditionalSaveData(tag);
         tag.putString(VARIANT_TAG, getVariant().id());
+        tag.putString(ORIGINAL_VARIANT_TAG, getOriginalSupporterVariant().id());
+        if (!remoteSkinUrl().isBlank()) tag.putString(REMOTE_SKIN_URL_TAG, remoteSkinUrl());
+        if (usesSteveSkin()) tag.putBoolean(STEVE_SKIN_TAG, true);
+        if (usesSlimSkin()) tag.putBoolean(SLIM_SKIN_TAG, true);
         if (kineticCurrencyRewardPose) {
             tag.putBoolean(KINETIC_CURRENCY_REWARD_POSE_TAG, true);
         }
         assignedWorkerPod().ifPresent(id -> tag.putUUID(WORKER_POD_TAG, id));
+        if (isHousedInWorkerPod()) tag.putBoolean(WORKER_HOUSED_TAG, true);
+        if (isZiplineRiding()) {
+            tag.putBoolean(ZIPLINE_RIDING_TAG, true);
+            tag.putBoolean(ZIPLINE_PREVIOUS_GRAVITY_TAG, ziplinePreviousNoGravity);
+        }
         tag.put(WORKER_INVENTORY_TAG, workerInventory.serializeNBT(registryAccess()));
         tag.put(WORKER_CURIOS_TAG, workerCurios.serializeNBT(registryAccess()));
     }
@@ -157,8 +206,17 @@ public class PlayerMannequinEntity extends ArmorStand {
     public void readAdditionalSaveData(CompoundTag tag) {
         super.readAdditionalSaveData(tag);
         setVariant(tag.getString(VARIANT_TAG));
+        originalSupporterVariantId = tag.contains(ORIGINAL_VARIANT_TAG, Tag.TAG_STRING)
+                ? PlayerMannequinVariants.byIdOrDefault(tag.getString(ORIGINAL_VARIANT_TAG)).id()
+                : getVariant().id();
+        setRemoteSkinUrl(tag.getString(REMOTE_SKIN_URL_TAG));
+        setSteveSkin(tag.getBoolean(STEVE_SKIN_TAG));
+        setSlimSkin(tag.getBoolean(SLIM_SKIN_TAG));
         kineticCurrencyRewardPose = tag.getBoolean(KINETIC_CURRENCY_REWARD_POSE_TAG);
         setAssignedWorkerPod(tag.hasUUID(WORKER_POD_TAG) ? tag.getUUID(WORKER_POD_TAG) : null);
+        setHousedInWorkerPod(tag.getBoolean(WORKER_HOUSED_TAG));
+        entityData.set(DATA_ZIPLINE_RIDING, tag.getBoolean(ZIPLINE_RIDING_TAG));
+        ziplinePreviousNoGravity = tag.getBoolean(ZIPLINE_PREVIOUS_GRAVITY_TAG);
         if (tag.contains(WORKER_INVENTORY_TAG, Tag.TAG_COMPOUND)) {
             workerInventory.deserializeNBT(registryAccess(), tag.getCompound(WORKER_INVENTORY_TAG));
         }
@@ -182,10 +240,129 @@ public class PlayerMannequinEntity extends ArmorStand {
     @Override
     public void tick() {
         super.tick();
+        enforceWorkerNoEntry();
         if (!level().isClientSide && entityData.get(DATA_WORKER_INTERACTION_TICKS) > 0) {
             entityData.set(DATA_WORKER_INTERACTION_TICKS,
                     entityData.get(DATA_WORKER_INTERACTION_TICKS) - 1);
         }
+    }
+
+    public boolean isZiplineRiding() {
+        return entityData.get(DATA_ZIPLINE_RIDING);
+    }
+
+    @Override
+    public void ziplineAttached() {
+        if (isZiplineRiding()) return;
+        ziplinePreviousNoGravity = isNoGravity();
+        entityData.set(DATA_ZIPLINE_RIDING, true);
+        setNoGravity(true);
+    }
+
+    @Override
+    public void ziplineDetached() {
+        if (!isZiplineRiding()) return;
+        entityData.set(DATA_ZIPLINE_RIDING, false);
+        setNoGravity(ziplinePreviousNoGravity);
+        setDeltaMovement(Vec3.ZERO);
+    }
+
+    @Override
+    public void ziplineMoved(Vec3 gripPosition, Vec3 travelDirection) {
+        ziplineAttached();
+        Vec3 feet = gripPosition.add(0.0D, -(HEIGHT + 0.5D * getScale()), 0.0D);
+        setPos(feet.x, feet.y, feet.z);
+        setDeltaMovement(Vec3.ZERO);
+        fallDistance = 0.0F;
+        if (travelDirection != null && travelDirection.horizontalDistanceSqr() > 1.0E-6D) {
+            float yaw = (float) Math.toDegrees(Math.atan2(-travelDirection.x, travelDirection.z));
+            setYRot(yaw);
+            setYBodyRot(yaw);
+        }
+    }
+
+    // Reject direct moves and teleports into a managed worker exclusion area
+    @Override
+    public void setPos(double x, double y, double z){
+        Vec3 requested = new Vec3(x, y, z);
+        List<WorkerArea> areas = workerNoEntryAreas();
+        if(areas.isEmpty()){
+            super.setPos(x, y, z);
+            return;
+        }
+        Vec3 allowed = outsideNoEntry(requested, areas);
+        super.setPos(allowed.x, allowed.y, allowed.z);
+        if(!allowed.equals(requested)) setDeltaMovement(Vec3.ZERO);
+        if(!WorkerNoEntryBoundary.intersects(getBoundingBox(), areas))
+            lastWorkerPositionOutsideNoEntry = position();
+    }
+
+    // Correct collision and gravity movement even when it bypasses scripted worker navigation
+    @Override
+    public void move(MoverType type, Vec3 movement){
+        Vec3 before = position();
+        AABB beforeBounds = getBoundingBox();
+        List<WorkerArea> areas = workerNoEntryAreas();
+        Vec3 permitted = movement;
+        if(!areas.isEmpty() && !WorkerNoEntryBoundary.intersects(beforeBounds, areas)){
+            double blocked = WorkerNoEntryBoundary.firstBlockedFraction(beforeBounds, movement, areas);
+            if(blocked < 1.0D){
+                double safe = Math.max(0.0D, blocked - 0.001D / Math.max(movement.length(), 0.001D));
+                permitted = movement.scale(safe);
+            }
+        }
+        super.move(type, permitted);
+        if(!areas.isEmpty() && !WorkerNoEntryBoundary.intersects(beforeBounds, areas)){
+            Vec3 actual = position().subtract(before);
+            double blocked = WorkerNoEntryBoundary.firstBlockedFraction(beforeBounds, actual, areas);
+            if(blocked < 1.0D){
+                double safe = Math.max(0.0D, blocked - 0.001D / Math.max(actual.length(), 0.001D));
+                Vec3 allowed = before.add(actual.scale(safe));
+                super.setPos(allowed.x, allowed.y, allowed.z);
+                setDeltaMovement(Vec3.ZERO);
+            }
+        }
+        enforceWorkerNoEntry();
+    }
+
+    private void enforceWorkerNoEntry(){
+        List<WorkerArea> areas = workerNoEntryAreas();
+        if(areas.isEmpty()) return;
+        if(!WorkerNoEntryBoundary.intersects(getBoundingBox(), areas)){
+            lastWorkerPositionOutsideNoEntry = position();
+            return;
+        }
+        Vec3 allowed = outsideNoEntry(position(), areas);
+        super.setPos(allowed.x, allowed.y, allowed.z);
+        setDeltaMovement(Vec3.ZERO);
+        if(!WorkerNoEntryBoundary.intersects(getBoundingBox(), areas))
+            lastWorkerPositionOutsideNoEntry = position();
+    }
+
+    private Vec3 outsideNoEntry(Vec3 requested, List<WorkerArea> areas){
+        AABB bounds = getBoundingBox().move(requested.subtract(position()));
+        if(!WorkerNoEntryBoundary.intersects(bounds, areas)) return requested;
+        Vec3 current = position();
+        if(requested.distanceToSqr(current) <= 4.0D
+                && !WorkerNoEntryBoundary.intersects(getBoundingBox(), areas)) return current;
+        Vec3 exit = WorkerNoEntryBoundary.nearestExit(requested, bounds, areas, candidate -> {
+            BlockPos pos = BlockPos.containing(candidate);
+            return level().isLoaded(pos) && level().getWorldBorder().isWithinBounds(pos)
+                    && level().noCollision(this, bounds.move(candidate.subtract(requested)));
+        });
+        if(exit != null) return exit;
+        if(lastWorkerPositionOutsideNoEntry != null
+                && !WorkerNoEntryBoundary.intersects(getBoundingBox().move(
+                lastWorkerPositionOutsideNoEntry.subtract(current)), areas))
+            return lastWorkerPositionOutsideNoEntry;
+        exit = WorkerNoEntryBoundary.nearestExit(requested, bounds, areas, candidate -> true);
+        return exit == null ? current : exit;
+    }
+
+    private List<WorkerArea> workerNoEntryAreas(){
+        if(entityData == null || !(level() instanceof ServerLevel)) return List.of();
+        return assignedWorkerPod().map(podId -> WorkerPodBlockEntity.noEntryBounds(podId, getUUID()))
+                .orElse(List.of());
     }
 
     // Apply damage to the mannequin
@@ -284,11 +461,55 @@ public class PlayerMannequinEntity extends ArmorStand {
     public void setVariant(String variantId) {
         PlayerMannequinVariant variant = PlayerMannequinVariants.byIdOrDefault(variantId);
         this.entityData.set(DATA_VARIANT, variant.id());
+        setSlimSkin(variant.slim());
     }
 
     // Set the variant
     public void setVariant(PlayerMannequinVariant variant) {
         setVariant(variant == null ? PlayerMannequinVariants.DEFAULT_ID : variant.id());
+    }
+
+    // Get the supporter variant this mannequin should return when broken
+    public PlayerMannequinVariant getOriginalSupporterVariant() {
+        return PlayerMannequinVariants.byIdOrDefault(originalSupporterVariantId);
+    }
+
+    // Set the supporter variant this mannequin should return when broken
+    public void setOriginalSupporterVariant(PlayerMannequinVariant variant) {
+        originalSupporterVariantId = (variant == null ? getVariant() : variant).id();
+    }
+
+    // Get the verified Mojang skin texture URL assigned to this mannequin
+    public String remoteSkinUrl() {
+        return entityData.get(DATA_REMOTE_SKIN_URL);
+    }
+
+    // Set the verified Mojang skin texture URL assigned to this mannequin
+    public void setRemoteSkinUrl(String skinUrl) {
+        String normalized = skinUrl == null ? "" : skinUrl.strip();
+        if (!verifiedSkinUrl(normalized)) normalized = "";
+        entityData.set(DATA_REMOTE_SKIN_URL, normalized);
+    }
+
+    // Check whether this mannequin should render the Steve fallback skin
+    public boolean usesSteveSkin() {
+        return entityData.get(DATA_STEVE_SKIN);
+    }
+
+    // Set whether this mannequin should render the Steve fallback skin
+    public void setSteveSkin(boolean steveSkin) {
+        entityData.set(DATA_STEVE_SKIN, steveSkin);
+        if (steveSkin) setSlimSkin(false);
+    }
+
+    // Check whether this mannequin uses the three-pixel slim player arm model
+    public boolean usesSlimSkin() {
+        return entityData.get(DATA_SLIM_SKIN);
+    }
+
+    // Set whether this mannequin uses the three-pixel slim player arm model
+    public void setSlimSkin(boolean slimSkin) {
+        entityData.set(DATA_SLIM_SKIN, slimSkin);
     }
 
     // Get the visual carry prop in the worker's main hand.
@@ -301,7 +522,12 @@ public class PlayerMannequinEntity extends ArmorStand {
         return workerInventory;
     }
 
-    // Get the persistent Curios-compatible worker slots.
+    // Get the persistent tool slots. Keep the original saved tag and accessor for existing workers.
+    public ItemStackHandler workerTools() {
+        return workerCurios;
+    }
+
+    // Compatibility accessor for saved workers and external callers.
     public ItemStackHandler workerCurios() {
         return workerCurios;
     }
@@ -334,6 +560,21 @@ public class PlayerMannequinEntity extends ArmorStand {
     // Assign or release this mannequin from one Worker Pod
     public void setAssignedWorkerPod(UUID podId) {
         entityData.set(DATA_WORKER_POD, Optional.ofNullable(podId));
+        if (podId == null) setHousedInWorkerPod(false);
+    }
+
+    // Check whether this worker is stored inside a Worker Pod
+    public boolean isHousedInWorkerPod() {
+        return entityData.get(DATA_WORKER_HOUSED);
+    }
+
+    // Resize this worker only while it is physically stored inside a Worker Pod
+    public void setHousedInWorkerPod(boolean housed) {
+        if (entityData.get(DATA_WORKER_HOUSED) == housed) return;
+        entityData.set(DATA_WORKER_HOUSED, housed);
+        var scale = getAttribute(Attributes.SCALE);
+        if (scale != null) scale.setBaseValue(housed ? POD_SCALE : SCALE);
+        refreshDimensions();
     }
 
     // Get the current worker animation
@@ -377,7 +618,7 @@ public class PlayerMannequinEntity extends ArmorStand {
     // Get the pick result
     @Override
     public ItemStack getPickResult() {
-        return SupporterHeads.createStack(getVariant());
+        return SupporterHeads.createStack(getOriginalSupporterVariant());
     }
 
     // Damage the mannequin
@@ -400,9 +641,10 @@ public class PlayerMannequinEntity extends ArmorStand {
 
     // Create the break stack
     private ItemStack createBreakStack() {
-        ItemStack stack = SupporterHeads.createStack(getVariant());
+        PlayerMannequinVariant originalVariant = getOriginalSupporterVariant();
+        ItemStack stack = SupporterHeads.createStack(originalVariant);
         Component customName = getCustomName();
-        if (customName != null && !customName.getString().equals(getVariant().displayName().getString())) {
+        if (customName != null && !customName.getString().equals(originalVariant.displayName().getString())) {
             stack.set(DataComponents.CUSTOM_NAME, customName);
         }
         return stack;
@@ -479,5 +721,18 @@ public class PlayerMannequinEntity extends ArmorStand {
         return CTItems.MUSIC_DISC_KINETIC_CURRENCY != null
                 && !stack.isEmpty()
                 && stack.is(CTItems.MUSIC_DISC_KINETIC_CURRENCY.get());
+    }
+
+    // Check that a remote skin URL remains on Mojang's dedicated texture host
+    private static boolean verifiedSkinUrl(String skinUrl) {
+        if (skinUrl == null || skinUrl.isBlank() || skinUrl.length() > 2048) return false;
+        try {
+            URI uri = URI.create(skinUrl);
+            return "https".equalsIgnoreCase(uri.getScheme())
+                    && "textures.minecraft.net".equalsIgnoreCase(uri.getHost())
+                    && uri.getUserInfo() == null && uri.getPort() == -1;
+        } catch (IllegalArgumentException ignored) {
+            return false;
+        }
     }
 }

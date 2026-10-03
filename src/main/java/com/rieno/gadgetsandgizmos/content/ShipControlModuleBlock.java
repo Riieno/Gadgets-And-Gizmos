@@ -10,13 +10,19 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.mojang.serialization.MapCodec;
 import com.simibubi.create.content.equipment.wrench.IWrenchable;
+import dev.ryanhcode.sable.api.block.BlockSubLevelAssemblyListener;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.Mirror;
 import net.minecraft.world.level.block.Rotation;
@@ -26,12 +32,18 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.block.state.properties.DirectionProperty;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.HashSet;
+import java.util.Set;
+
 // Mount the half-height panel used to control a nearby ship
-public class ShipControlModuleBlock extends Block implements IWrenchable {
+public class ShipControlModuleBlock extends Block implements IWrenchable, EntityBlock, BlockSubLevelAssemblyListener {
+    private static final ThreadLocal<Set<BlockPos>> MOVING = ThreadLocal.withInitial(HashSet::new);
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -91,6 +103,44 @@ public class ShipControlModuleBlock extends Block implements IWrenchable {
                 .setValue(FACING, ctx.getHorizontalDirection().getOpposite())
                 .setValue(MOUNT_FACE, ctx.getClickedFace().getOpposite());
         return placed.canSurvive(ctx.getLevel(), ctx.getClickedPos()) ? placed : null;
+    }
+
+    // Record the player who placed this module before an assembly moves it
+    @Override
+    public void setPlacedBy(Level level, BlockPos pos, BlockState state, @Nullable LivingEntity placer, ItemStack stack) {
+        super.setPlacedBy(level, pos, state, placer, stack);
+        if(!level.isClientSide && placer instanceof Player player
+                && level.getBlockEntity(pos) instanceof ShipControlModuleBlockEntity module){
+            module.setPlacerId(player.getUUID());
+        }
+    }
+
+    @Override
+    public @Nullable BlockEntity newBlockEntity(BlockPos pos, BlockState state){
+        return new ShipControlModuleBlockEntity(pos, state);
+    }
+
+    @Override
+    public void beforeMove(ServerLevel originLevel, ServerLevel resultingLevel, BlockState state,
+                           BlockPos oldPos, BlockPos newPos){
+        MOVING.get().add(oldPos);
+    }
+
+    @Override
+    public void afterMove(ServerLevel originLevel, ServerLevel resultingLevel, BlockState state,
+                          BlockPos oldPos, BlockPos newPos){
+        MOVING.get().remove(oldPos);
+    }
+
+    // Destroying a module releases its ship permission claim
+    @Override
+    protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState next, boolean isMoving){
+        if(!level.isClientSide && state.getBlock() != next.getBlock() && !isMoving
+                && !MOVING.get().contains(pos)
+                && !(next.getBlock() instanceof AdvancedContraptionControllerBlock)){
+            ShipPermissions.unclaim(level, pos);
+        }
+        super.onRemove(state, level, pos, next, isMoving);
     }
 
     // Check if this can survive

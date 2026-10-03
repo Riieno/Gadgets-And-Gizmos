@@ -11,6 +11,7 @@ package com.rieno.gadgetsandgizmos.config;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.neoforge.CTCommonEvents;
 import com.rieno.gadgetsandgizmos.registry.CTFeatureToggles;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmBuiltinControlModes;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.config.ModConfigEvent;
@@ -81,6 +82,7 @@ public final class CTConfigs {
 
     // Register the CT configs
     public static void register(ModContainer modContainer) {
+        TabletAppsServerConfig.register(modContainer);
         modContainer.registerConfig(ModConfig.Type.CLIENT, CLIENT_SPEC, CreateThrusters.MOD_ID + "-client.toml");
         modContainer.registerConfig(ModConfig.Type.COMMON, COMMON_SPEC, CreateThrusters.MOD_ID + "-common.toml");
         modContainer.registerConfig(ModConfig.Type.SERVER, SERVER_SPEC, CreateThrusters.MOD_ID + "-server.toml");
@@ -112,12 +114,6 @@ public final class CTConfigs {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Set the advanced controller V2 UI
-    public static void setAdvancedControllerV2Ui(boolean enabled) {
-        CLIENT.advancedControllerV2Ui.set(enabled);
-        CLIENT_SPEC.save();
-    }
-
     // Define the feature group
     private static Map<String, ModConfigSpec.ConfigValue<Boolean>> defineFeatureGroup(ModConfigSpec.Builder builder,
                                                                                       String group,
@@ -147,17 +143,16 @@ public final class CTConfigs {
                     snapshotFeatureValues(SERVER.itemFeatures, CTFeatureToggles.itemDefaults()));
             boolean tabletEnabled = current.blocks().getOrDefault("diagnostic_tablet", false); // Disable the Smart Tablet by default in release
             blocks.put("diagnostic_tablet", tabletEnabled);
-            items.put("diagnostic_tablet", tabletEnabled);
             featureToggleSnapshot = new FeatureToggleSnapshot(
                     Map.copyOf(blocks), Map.copyOf(items),
                     snapshotFeatureValues(SERVER.entityFeatures, CTFeatureToggles.entityDefaults()));
         } else if (config.getSpec() == COMMON_SPEC) {
+            ScmBuiltinControlModes.setIkEnabled(Boolean.TRUE.equals(COMMON.enableScmIk.get()));
             FeatureToggleSnapshot current = featureToggleSnapshot;
             Map<String, Boolean> blocks = new LinkedHashMap<>(current.blocks());
             Map<String, Boolean> items = new LinkedHashMap<>(current.items());
             boolean tabletEnabled = Boolean.TRUE.equals(COMMON.enableDiagnosticTablet.get());
             blocks.put("diagnostic_tablet", tabletEnabled);
-            items.put("diagnostic_tablet", tabletEnabled);
             featureToggleSnapshot = new FeatureToggleSnapshot(
                     Map.copyOf(blocks), Map.copyOf(items), current.entities());
         } else {
@@ -206,14 +201,14 @@ public final class CTConfigs {
         public final ModConfigSpec.BooleanValue enableMannequinPoserGui;
         // Prefer straw statues poser GUI
         public final ModConfigSpec.BooleanValue preferStrawStatuesPoserGui;
-        // Advanced controller V2 UI
-        public final ModConfigSpec.BooleanValue advancedControllerV2Ui;
-        // Show the direct Worker Pod developer setup screen instead of the Worker Graph
-        public final ModConfigSpec.BooleanValue workerGraphDeveloperMode;
         // Thruster max volume
         public final ModConfigSpec.DoubleValue thrusterMaxVolume;
         // Thruster particle scale
         public final ModConfigSpec.DoubleValue thrusterParticleScale;
+        // Use the V2 Thruster plume renderer
+        public final ModConfigSpec.BooleanValue useThrusterPlumeV2Renderer;
+        // Use animated metaballs for V2 thruster plumes
+        public final ModConfigSpec.BooleanValue usePlumeMetaballRendering;
         // Claw marker render mode
         public final ModConfigSpec.EnumValue<ClawMarkerRenderMode> clawMarkerRenderMode;
 
@@ -238,18 +233,18 @@ public final class CTConfigs {
             preferStrawStatuesPoserGui = builder
                     .comment("Use the StrawStatues/Statue Menus armor stand GUI for armor stands and player mannequins when StrawStatues is installed. StrawStatues entities always keep their own GUI.")
                     .define("preferStrawStatuesPoserGui", true);
-            advancedControllerV2Ui = builder
-                    .comment("Use the V2 node graph interface for Advanced Contraption Controllers")
-                    .define("advancedControllerV2Ui", true);
-            workerGraphDeveloperMode = builder
-                    .comment("Use the direct Worker Pod developer setup screen instead of the Worker Graph")
-                    .define("workerGraphDeveloperMode", false);
             thrusterMaxVolume = builder
                     .comment("Maximum local volume multiplier for thruster sounds (0 disables local thruster audio)")
                     .defineInRange("thrusterMaxVolume", 1.0D, 0.0D, 2.0D);
             thrusterParticleScale = builder
                     .comment("Local thruster particle multiplier (0 disables local thruster particles)")
                     .defineInRange("thrusterParticleScale", 1.0D, 0.0D, 1.0D);
+            useThrusterPlumeV2Renderer = builder
+                    .comment("Use Thruster Plume V2 Renderer with soft blue ion glow")
+                    .define("useThrusterPlumeV2Renderer", true);
+            usePlumeMetaballRendering = builder
+                    .comment("Use Plume metaball rendering for the active V2 exhaust")
+                    .define("usePlumeMetaballRendering", true);
             clawMarkerRenderMode = builder
                     .comment("Claw marker render mode is disabled; OFF is enforced")
                     .defineEnum("clawMarkerRenderMode", ClawMarkerRenderMode.OFF);
@@ -341,6 +336,8 @@ public final class CTConfigs {
         public final ModConfigSpec.DoubleValue entityLauncherGrappleSwingAcceleration;
         // Advanced controller max nodes
         public final ModConfigSpec.IntValue advancedControllerMaxNodes;
+        // Enable experimental SCM IK
+        public final ModConfigSpec.BooleanValue enableScmIk;
         // Enable diagnostic tablet
         public final ModConfigSpec.BooleanValue enableDiagnosticTablet;
         // App purchase Ownership Scope
@@ -501,6 +498,9 @@ public final class CTConfigs {
             advancedControllerMaxNodes = builder
                     .comment("Maximum number of nodes allowed across an Advanced Contraption Controller graph and its functions")
                     .defineInRange("maxNodes", 512, 32, 4096);
+            enableScmIk = builder
+                    .comment("Enable experimental inverse-kinematics locomotion in the Advanced Contraption Controller")
+                    .define("enableIk", false);
             builder.pop();
 
             builder.comment("Smart Tablet availability").push("diagnostic_tablet");
@@ -531,8 +531,6 @@ public final class CTConfigs {
         public final ModConfigSpec.BooleanValue enableGyroscopeLinking;
         // Gyroscope link range
         public final ModConfigSpec.IntValue gyroscopeLinkRange;
-        // Virtual orientation source timeout tick count
-        public final ModConfigSpec.IntValue virtualOrientationSourceTimeoutTicks;
         // Controller orientation source max tilt in degrees
         public final ModConfigSpec.DoubleValue controllerOrientationSourceMaxTiltDegrees;
         // Allow thruster manual toggle
@@ -541,8 +539,6 @@ public final class CTConfigs {
         public final ModConfigSpec.IntValue physicsGantryBeltWheelMaxDistance;
         // Shipping schedule work spread tick count
         public final ModConfigSpec.IntValue shippingScheduleWorkSpreadTicks;
-        // Enable SCM initialization V2
-        public final ModConfigSpec.BooleanValue enableScmInitializationV2;
         // Tracked block features
         public final Map<String, ModConfigSpec.ConfigValue<Boolean>> blockFeatures;
         // Tracked item features
@@ -576,9 +572,6 @@ public final class CTConfigs {
             gyroscopeLinkRange = builder
                     .comment("Maximum block distance between selected gyro sensor and placed Advanced Data Link, matching Create's Display Link flow")
                     .defineInRange("gyroscopeLinkRange", 128, 1, 1024);
-            virtualOrientationSourceTimeoutTicks = builder
-                    .comment("How many ticks a virtual orientation source remains active without an update")
-                    .defineInRange("virtualOrientationSourceTimeoutTicks", 40, 1, 1200);
             controllerOrientationSourceMaxTiltDegrees = builder
                     .comment("Maximum tilt magnitude (degrees) when deriving orientation from Analogue Contraption Controller pitch/roll axes")
                     .defineInRange("controllerOrientationSourceMaxTiltDegrees", 45.0D, 1.0D, 89.0D);
@@ -593,9 +586,6 @@ public final class CTConfigs {
             shippingScheduleWorkSpreadTicks = builder
                     .comment("Spread shipping schedule maintenance and state updates over this many ticks. Ship physics control still runs every tick.")
                     .defineInRange("shippingScheduleWorkSpreadTicks", 2, 1, 4);
-            enableScmInitializationV2 = builder
-                    .comment("Use the experimental SCM initialization V2 matrix probe, representative propulsion sampling, and interpolated 9x9 bearing maps")
-                    .define("enableScmInitializationV2", false);
             builder.pop();
             builder.pop();
         }

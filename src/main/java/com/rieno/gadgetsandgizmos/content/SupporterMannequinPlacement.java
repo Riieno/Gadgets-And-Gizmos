@@ -10,6 +10,8 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.rieno.gadgetsandgizmos.content.pose.ArmorStandPoseData;
 import com.rieno.gadgetsandgizmos.content.pose.ArmorStandPosePreset;
+import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
+import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.rieno.gadgetsandgizmos.registry.CTEntityTypes;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
 import com.simibubi.create.content.contraptions.actors.seat.SeatBlock;
@@ -87,8 +89,15 @@ public final class SupporterMannequinPlacement {
         Level level = ctx.getLevel();
         BlockPos clickedPos = ctx.getClickedPos();
         BlockState clickedState = level.getBlockState(clickedPos);
+        if (clickedState.getBlock() instanceof WorkerPodBlock
+                && level.getBlockEntity(clickedPos) instanceof WorkerPodBlockEntity pod) {
+            return placeInWorkerPod(ctx, variant, pod);
+        }
         if (clickedState.getBlock() instanceof SeatBlock) {
             return placeOnSeat(ctx, variant);
+        }
+        if (clickedState.getBlock() instanceof PoweredZiplineBlock) {
+            return placeOnZipline(ctx, variant);
         }
         if (ctx.getClickedFace() == Direction.DOWN || CTEntityTypes.PLAYER_MANNEQUIN == null) {
             return InteractionResult.FAIL;
@@ -128,6 +137,37 @@ public final class SupporterMannequinPlacement {
             consumeOne(stack, ctx.getPlayer());
         }
 
+        return InteractionResult.sidedSuccess(level.isClientSide());
+    }
+
+    // Place one mannequin directly inside a Worker Pod
+    private static InteractionResult placeInWorkerPod(UseOnContext ctx, PlayerMannequinVariant variant,
+                                                      WorkerPodBlockEntity pod) {
+        Level level = ctx.getLevel();
+        if (CTEntityTypes.PLAYER_MANNEQUIN == null) return InteractionResult.FAIL;
+        if (level instanceof ServerLevel serverLevel) {
+            ItemStack stack = ctx.getItemInHand();
+            Consumer<PlayerMannequinEntity> stackConfig = EntityType.createDefaultStackConfig(
+                    serverLevel,
+                    stack,
+                    ctx.getPlayer());
+            PlayerMannequinEntity mannequin = CTEntityTypes.PLAYER_MANNEQUIN.get().create(
+                    serverLevel,
+                    stackConfig.andThen(entity -> applyVariant(entity, variant)),
+                    pod.getBlockPos(),
+                    MobSpawnType.SPAWN_EGG,
+                    false,
+                    false);
+            if (mannequin == null || !pod.admitWorker(mannequin)) return InteractionResult.FAIL;
+
+            float yaw = (float) Mth.floor(
+                    (Mth.wrapDegrees(ctx.getRotation() - 180.0F) + 22.5F) / 45.0F) * 45.0F;
+            mannequin.moveTo(mannequin.getX(), mannequin.getY(), mannequin.getZ(), yaw, 0.0F);
+            applyFirstChristerophReward(mannequin, ctx.getPlayer());
+            serverLevel.addFreshEntityWithPassengers(mannequin);
+            playPlaceEffects(serverLevel, mannequin, ctx.getPlayer());
+            consumeOne(stack, ctx.getPlayer());
+        }
         return InteractionResult.sidedSuccess(level.isClientSide());
     }
 
@@ -182,9 +222,42 @@ public final class SupporterMannequinPlacement {
         return InteractionResult.sidedSuccess(level.isClientSide());
     }
 
+    // Hang a supporter mannequin on the moving grip rather than placing it beside the zipline.
+    private static InteractionResult placeOnZipline(UseOnContext ctx, PlayerMannequinVariant variant) {
+        Level level = ctx.getLevel();
+        PoweredZiplineBlockEntity zipline = SimulatedHelper.findBlockEntityIncludingSubLevels(
+                level, ctx.getClickedPos(), PoweredZiplineBlockEntity.class);
+        if (zipline == null || !zipline.hasPathAttachment() || zipline.hasZiplineRider()
+                || CTEntityTypes.PLAYER_MANNEQUIN == null) return InteractionResult.FAIL;
+        if (!level.isClientSide()) {
+            ServerLevel serverLevel = SableLevelApi.serverLevel(level);
+            if (serverLevel == null) return InteractionResult.FAIL;
+            ItemStack stack = ctx.getItemInHand();
+            var world = zipline.getWorldPosition(1.0D);
+            Vec3 anchor = new Vec3(world.x(), world.y(), world.z());
+            Consumer<PlayerMannequinEntity> config = EntityType.createDefaultStackConfig(
+                    serverLevel, stack, ctx.getPlayer());
+            PlayerMannequinEntity mannequin = CTEntityTypes.PLAYER_MANNEQUIN.get().create(
+                    serverLevel, config.andThen(entity -> applyVariant(entity, variant)),
+                    BlockPos.containing(anchor), MobSpawnType.SPAWN_EGG, false, false);
+            if (mannequin == null) return InteractionResult.FAIL;
+            mannequin.moveTo(anchor.x, anchor.y - 2.5D, anchor.z, ctx.getRotation(), 0.0F);
+            applyFirstChristerophReward(mannequin, ctx.getPlayer());
+            if (!serverLevel.addFreshEntity(mannequin)) return InteractionResult.FAIL;
+            if (!zipline.attachZiplineRider(mannequin)) {
+                mannequin.discard();
+                return InteractionResult.FAIL;
+            }
+            playPlaceEffects(serverLevel, mannequin, ctx.getPlayer());
+            consumeOne(stack, ctx.getPlayer());
+        }
+        return InteractionResult.sidedSuccess(level.isClientSide());
+    }
+
     // Apply the selected variant to a new mannequin
     private static void applyVariant(PlayerMannequinEntity mannequin, PlayerMannequinVariant variant) {
         mannequin.setVariant(variant);
+        mannequin.setOriginalSupporterVariant(variant);
         mannequin.setCustomName(variant.displayName());
         mannequin.setCustomNameVisible(false);
         mannequin.applyMannequinDefaults();

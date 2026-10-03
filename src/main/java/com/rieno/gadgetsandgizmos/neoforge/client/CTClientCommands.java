@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 import com.rieno.gadgetsandgizmos.config.ClawMarkerRenderMode;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
+import com.rieno.gadgetsandgizmos.neoforge.client.particle.SoftThrusterPlumeParticle;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.CommandDispatcher;
 import net.minecraft.client.Minecraft;
@@ -35,7 +36,11 @@ public final class CTClientCommands {
     // Register the client commands
     public static void registerClientCommands(RegisterClientCommandsEvent evt) {
         CommandDispatcher<CommandSourceStack> dispatcher = evt.getDispatcher();
-        dispatcher.register(Commands.literal("thrusters")
+        dispatcher.register(Commands.literal("gizmos")
+                .then(Commands.literal("plume_culling")
+                        .executes(ctx -> setPlumeCulling(ctx.getSource(), null))
+                        .then(Commands.literal("on").executes(ctx -> setPlumeCulling(ctx.getSource(), true)))
+                        .then(Commands.literal("off").executes(ctx -> setPlumeCulling(ctx.getSource(), false))))
                 .then(Commands.literal("clawmarker")
                         .executes(ctx -> {
                             ctx.getSource().sendSystemMessage(Component.literal("Claw marker is disabled"));
@@ -91,6 +96,14 @@ public final class CTClientCommands {
                 ? "Gantry anchor debug enabled"
                 : "Gantry anchor debug disabled";
         src.sendSystemMessage(Component.literal(msg + " (anchors: " + CTGantryAnchorDebugRenderer.getLastAnchorCount() + ")"));
+        return Command.SINGLE_SUCCESS;
+    }
+
+    // Toggle view occlusion for thruster plume particles
+    private static int setPlumeCulling(CommandSourceStack src, Boolean enabled) {
+        boolean state = enabled == null ? !SoftThrusterPlumeParticle.isOcclusionCullingEnabled() : enabled;
+        SoftThrusterPlumeParticle.setOcclusionCullingEnabled(state);
+        src.sendSystemMessage(Component.literal("Plume culling " + (state ? "enabled" : "disabled")));
         return Command.SINGLE_SUCCESS;
     }
 }

@@ -66,6 +66,8 @@ final class NodePortLayout {
     private final Set<String> visibleOutputs;
     // Tracked connected inputs
     private final Set<String> connectedInputs;
+    // Tracked connected outputs
+    private final Set<String> connectedOutputs;
     // Output offsets
     private final Map<String, Integer> outputOffsets;
     // Output labels
@@ -76,11 +78,18 @@ final class NodePortLayout {
     private final boolean collapsed;
     // Output data height
     private int outputDataHeight;
+    // Cached node body-control count
+    private int bodyControlCount;
+    // Cached node width
+    private int nodeWidth;
+    // Cached node height
+    private int nodeHeight;
 
     // Initialize the node port layout
     NodePortLayout(Map<String, String> inputs, Map<String, String> outputs,
                    Set<String> visibleInputs, Set<String> visibleOutputs,
-                   Set<String> connectedInputs, Map<String, Integer> outputOffsets,
+                   Set<String> connectedInputs, Set<String> connectedOutputs,
+                   Map<String, Integer> outputOffsets,
                    Map<String, List<FormattedCharSequence>> outputLabels,
                    boolean collapsible, boolean collapsed) {
         this.inputs = inputs;
@@ -88,6 +97,7 @@ final class NodePortLayout {
         this.visibleInputs = visibleInputs;
         this.visibleOutputs = visibleOutputs;
         this.connectedInputs = connectedInputs;
+        this.connectedOutputs = connectedOutputs;
         this.outputOffsets = outputOffsets;
         this.outputLabels = outputLabels;
         this.collapsible = collapsible;
@@ -119,6 +129,11 @@ final class NodePortLayout {
         return connectedInputs;
     }
 
+    // Get the connected outputs
+    Set<String> connectedOutputs() {
+        return connectedOutputs;
+    }
+
     // Get the output offsets
     Map<String, Integer> outputOffsets() {
         return outputOffsets;
@@ -147,6 +162,36 @@ final class NodePortLayout {
     // Set the output data height
     void setOutputDataHeight(int outputDataHeight) {
         this.outputDataHeight = Math.max(0, outputDataHeight);
+    }
+
+    // Get the cached body-control count
+    int bodyControlCount() {
+        return bodyControlCount;
+    }
+
+    // Set the cached body-control count
+    void setBodyControlCount(int bodyControlCount) {
+        this.bodyControlCount = Math.max(0, bodyControlCount);
+    }
+
+    // Get the cached node width
+    int nodeWidth() {
+        return nodeWidth;
+    }
+
+    // Set the cached node width
+    void setNodeWidth(int nodeWidth) {
+        this.nodeWidth = Math.max(0, nodeWidth);
+    }
+
+    // Get the cached node height
+    int nodeHeight() {
+        return nodeHeight;
+    }
+
+    // Set the cached node height
+    void setNodeHeight(int nodeHeight) {
+        this.nodeHeight = Math.max(0, nodeHeight);
     }
 }
 
@@ -185,6 +230,10 @@ record InspectorSections(int optionsHeaderTop, int optionsTop, int optionsBottom
                          int optionsDividerTop, int targetsHeaderTop, int targetsTop,
                          int targetsBottom, int targetsDividerTop, int variablesHeaderTop,
                          int variablesTop, int variablesBottom) {
+}
+
+// Store one labelled, collapsible node-port section.
+record GraphPortSection(String id, String label, List<String> ports) {
 }
 
 // Define the inspector divider values
@@ -252,7 +301,6 @@ record ScmSimulationField(String label, String port) {
 // Define the SCM control binding mode values
 enum ScmControlBindingMode {
     AUTO("Auto"),
-    BLOCK("Block"),
     FACE("Face");
 
     private final String label;

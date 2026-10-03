@@ -21,7 +21,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 // Handle Zipline Input
-public record ServerboundZiplineInputPacket(BlockPos pos, boolean backward) implements CustomPacketPayload {
+public record ServerboundZiplineInputPacket(BlockPos pos, boolean reverseLook) implements CustomPacketPayload {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -34,7 +34,7 @@ public record ServerboundZiplineInputPacket(BlockPos pos, boolean backward) impl
             ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID, "zipline_input"));
     public static final StreamCodec<ByteBuf, ServerboundZiplineInputPacket> STREAM_CODEC = StreamCodec.composite(
             BlockPos.STREAM_CODEC, ServerboundZiplineInputPacket::pos,
-            ByteBufCodecs.BOOL, ServerboundZiplineInputPacket::backward,
+            ByteBufCodecs.BOOL, ServerboundZiplineInputPacket::reverseLook,
             ServerboundZiplineInputPacket::new);
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -71,7 +71,7 @@ public record ServerboundZiplineInputPacket(BlockPos pos, boolean backward) impl
                 return;
             }
             player.fallDistance = 0.0f;
-            zipline.applyManualInput(!payload.backward());
+            zipline.applyRiderInput(player, payload.reverseLook());
         });
     }
 }

@@ -43,6 +43,7 @@ public class PoweredZiplineRenderer extends SafeBlockEntityRenderer<PoweredZipli
     @Override
     protected void renderSafe(PoweredZiplineBlockEntity be, float partialTicks, PoseStack ms,
                               MultiBufferSource buffer, int light, int overlay) {
+        PoweredZiplineHandoffRenderer.record(be);
         RopeStrandHolderBehavior holder = be.getRopeHolder();
         if (holder instanceof PoweredZiplineClientRopeAccess access) {
             for (ClientRopeStrand strand : access.createthrusters$getZiplineClientStrands()) {

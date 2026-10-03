@@ -14,6 +14,7 @@ import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlProbe;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlProbeRegistry;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmTarget;
+import com.rieno.gadgetsandgizmos.lib.scm.ShipPermission;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAction;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionContext;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionHandler;
@@ -163,6 +164,21 @@ public final class DiagnosticTabletScmActions {
             ServerPlayer player, TabletActionContext ctx,
             TabletAction action, AdvancedContraptionControllerBlockEntity controller) {
         String val = value(action);
+        if("permissions_set".equals(action.actionId())){
+            String[] parts = val.split("\\|", 3);
+            if(parts.length != 3) return failure("Select a player and permission");
+            try{
+                UUID targetId = UUID.fromString(parts[0]);
+                ShipPermission permission = ShipPermission.fromId(parts[1]);
+                return ShipPermissions.set(player, controller, targetId, permission, Boolean.parseBoolean(parts[2]))
+                        ? success("Ship permission updated") : failure("Only the ship owner can change permissions");
+            }catch(IllegalArgumentException err){
+                return failure("Invalid player or permission");
+            }
+        }
+        if(!ShipPermissions.allows(player, controller, ShipPermission.INTERACT)){
+            return failure("Ship interaction permission denied");
+        }
         return switch (action.actionId()) {
             case "initialize" -> command(player, controller, "ship_initialize", Map.of(), Map.of());
             case "hover" -> command(player, controller, "ship_hover", Map.of("strength", 1.0D), Map.of());
@@ -248,7 +264,7 @@ public final class DiagnosticTabletScmActions {
         merged.addAll(unique.values());
         ContraptionNetworkLinkerData.writeTargets(linker, merged,
                 ContraptionNetworkLinkerData.LinkMode.SCM,
-                ContraptionNetworkLinkerData.TargetMode.BLOCK);
+                ContraptionNetworkLinkerData.TargetMode.FACE);
         controller.getLinkerSlotHandler().setStackInSlot(0, linker);
         accepted.forEach(selection -> saveWorkspaceTarget(ctx, "mapped_target",
                 selection.label() + ":" + selection.blockPos().getX() + ","
@@ -564,6 +580,9 @@ public final class DiagnosticTabletScmActions {
         if (selected != null) {
             BlockEntity selectedEntity = DiagnosticTabletApps.resolveBoundTarget(
                     ctx.player().level(), selected);
+            if(selectedEntity instanceof AdvancedContraptionControllerBlockEntity controller){
+                root.put("ShipPermissions", ShipPermissions.snapshot(ctx.player(), controller));
+            }
             if (selectedEntity instanceof ShipDockBlockEntity dock) {
                 ListTag zones = new ListTag();
                 for (ShipDockBlockEntity.LandingZone zone : dock.landingZones()) {

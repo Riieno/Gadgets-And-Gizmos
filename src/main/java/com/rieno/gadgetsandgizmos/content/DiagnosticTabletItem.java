@@ -74,6 +74,11 @@ public class DiagnosticTabletItem extends BlockItem {
             return InteractionResultHolder.success(stack);
         }
         DiagnosticTabletData.State state = DiagnosticTabletData.read(stack);
+        if(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.MANIFEST.id().equals(state.app())
+                && state.mode() != TabletInteractionMode.STANDARD){
+            state = state.withMode(TabletInteractionMode.STANDARD, "");
+            DiagnosticTabletData.write(stack, state);
+        }
         if (state.mode() == TabletInteractionMode.STANDARD && level.isClientSide) {
             openClientScreen(hand, stack);
         }
@@ -114,7 +119,24 @@ public class DiagnosticTabletItem extends BlockItem {
             current = current.withoutLegacyAppData();
             DiagnosticTabletData.write(ctx.getItemInHand(), current);
         }
+        if(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.MANIFEST.id().equals(current.app())
+                && current.mode() != TabletInteractionMode.STANDARD){
+            current = current.withMode(TabletInteractionMode.STANDARD, "");
+            DiagnosticTabletData.write(ctx.getItemInHand(), current);
+        }
         if (current.mode() == TabletInteractionMode.STANDARD) {
+            if (!ctx.getLevel().isClientSide && player instanceof ServerPlayer serverPlayer
+                    && com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.MANIFEST.id().equals(current.app())) {
+                BlockEntity target = SimulatedHelper.findBlockEntityIncludingSubLevels(ctx.getLevel(), ctx.getClickedPos());
+                if (target != null) {
+                    try {
+                        com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.inspectManifest(
+                                serverPlayer, current.tabletId(), bindingFor(target, ctx));
+                    } catch (IllegalArgumentException err) {
+                        serverPlayer.displayClientMessage(Component.literal(err.getMessage()), true);
+                    }
+                }
+            }
             if (ctx.getLevel().isClientSide) {
                 openClientScreen(ctx.getHand(), ctx.getItemInHand());
             }
@@ -126,6 +148,21 @@ public class DiagnosticTabletItem extends BlockItem {
                 ctx.getLevel(), ctx.getClickedPos());
         DiagnosticTabletData.Binding selected = bindingFor(target, ctx);
         if (ctx.getLevel().isClientSide) {
+            return InteractionResult.SUCCESS;
+        }
+
+        if(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.DIGISABLE.id().equals(current.app())
+                && current.mode() == TabletInteractionMode.READER){
+            if(player instanceof ServerPlayer serverPlayer){
+                if(selected.subLevelId() == null){
+                    serverPlayer.displayClientMessage(Component.literal("Point Reader mode at a sublevel block"), true);
+                    return InteractionResult.FAIL;
+                }
+                var res = DiagnosticTabletApps.dispatch(serverPlayer, ctx.getItemInHand(), current,
+                        new TabletAction(current.app(), current.tab(), "store",
+                                Map.of("value", selected.subLevelId().toString())));
+                if(res.success()) DiagnosticTabletData.write(ctx.getItemInHand(), current.withMode(TabletInteractionMode.STANDARD, ""));
+            }
             return InteractionResult.SUCCESS;
         }
 
@@ -192,6 +229,16 @@ public class DiagnosticTabletItem extends BlockItem {
                                 Map.of("value", selectionValue(selected))));
             }
             return InteractionResult.SUCCESS;
+        }
+
+        if(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.BLOCKMATES.id().equals(current.app())){
+            if(player instanceof ServerPlayer serverPlayer){
+                DiagnosticTabletAppStorage.addSelection(serverPlayer.server, current.tabletId(), current.app(), selected);
+                DiagnosticTabletApps.dispatch(serverPlayer, ctx.getItemInHand(), current,
+                        new TabletAction(current.app(), current.tab(), "pair", Map.of()));
+                DiagnosticTabletData.write(ctx.getItemInHand(), current.withMode(TabletInteractionMode.STANDARD, ""));
+            }
+            return InteractionResult.sidedSuccess(ctx.getLevel().isClientSide);
         }
 
         if ("controller".equals(selected.type()) || "computer".equals(selected.type())

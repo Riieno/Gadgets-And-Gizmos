@@ -137,8 +137,6 @@ public final class CTCreativeTabs {
         blockCount += accept(displayItems, searchItems, CTItems.GYROSCOPE_LINK);
         blockCount += accept(displayItems, searchItems, CTItems.DOUBLE_BUTTON);
         blockCount += accept(displayItems, searchItems, CTItems.COPYCAT_DOUBLE_BUTTON);
-        blockCount += accept(displayItems, searchItems, CTItems.VIRTUAL_ORIENTATION_SOURCE);
-        blockCount += accept(displayItems, searchItems, CTItems.GYRO_REDSTONE_BRIDGE);
         blockCount += accept(displayItems, searchItems, CTItems.BIDIRECTIONAL_GEARBOX);
         blockCount += accept(displayItems, searchItems, CTItems.BI_DIRECTIONAL_GEARSHIFT);
         blockCount += accept(displayItems, searchItems, CTItems.RATCHET_COGWHEEL);

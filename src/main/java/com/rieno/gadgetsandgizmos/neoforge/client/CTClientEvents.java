@@ -73,9 +73,12 @@ public final class CTClientEvents {
         AccDisplayGuiProjection.clear();
         DiagnosticTabletGuiProjection.clear();
         DiagnosticTabletClientAppData.clear();
+        com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps.DigisablePlacementClient.clear();
         DoubleButtonClientHandler.reset();
         ArmorStandPoseClientState.reset();
         PhysicsGantryBeltWheelConnectionParticles.clear();
+        PhysicsGantryBeltWheelShearsClient.clear();
+        PoweredZiplineHandoffRenderer.clear();
         ShippingRouteSplineClient.clear();
         CTFeatureToggles.clearServerOverrides();
     }

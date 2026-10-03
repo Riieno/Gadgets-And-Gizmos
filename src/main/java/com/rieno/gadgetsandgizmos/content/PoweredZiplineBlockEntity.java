@@ -18,6 +18,8 @@ import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyTopologyInvalidation;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.rieno.gadgetsandgizmos.lib.physics.SubLevelAssemblyApi;
+import com.rieno.gadgetsandgizmos.lib.zipline.ZiplineHandoffSpline;
+import com.rieno.gadgetsandgizmos.lib.zipline.ZiplineRider;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
 import com.simibubi.create.Create;
@@ -71,6 +73,7 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
 import net.minecraft.world.MenuProvider;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
@@ -158,6 +161,16 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
     private float prevRopePosition;
     // Current rope length
     private float ropeLength = 1.0f;
+    // Keeps forward/backward controls consistent when the next rope is attached in reverse.
+    private int ropeTravelDirection = 1;
+    private transient long nextRopeHandoffScanTick = Long.MIN_VALUE;
+    @Nullable
+    private RopeHandoff ropeHandoff;
+    @Nullable
+    private ChainHandoff chainHandoff;
+    private int chainTravelDirection = 1;
+    private boolean chainSourceReversed;
+    private boolean chainTravelFrameInitialized = true;
     // Attached chain pos
     @Nullable
     private BlockPos attachedChainPos;
@@ -179,10 +192,16 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
     // Current riding player UUID
     @Nullable
     private UUID ridingPlayerUUID;
+    @Nullable
+    private UUID ridingEntityUUID;
+    private transient int missingRiderTicks;
     // Current manual forward signal
     private int manualForwardSignal;
     // Current manual backward signal
     private int manualBackwardSignal;
+    private transient boolean riderInputActive;
+    @Nullable
+    private transient BlockPos riderSelectedChainConnection;
     // Current damped attachment delta
     private float dampedAttachmentDelta;
     // Configured max speed
@@ -262,6 +281,7 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
             assemblyTransferInProgress = false;
             return;
         }
+        detachZiplineRider();
         destroyHangingRopes(null, getAttachmentPoint(worldPosition, getBlockState()), false);
         super.destroy();
     }
@@ -293,6 +313,8 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
     public void tick() {
         super.tick();
         prevRopePosition = ropePosition;
+        if (ropeHandoff != null) ropeHandoff.previous = ropeHandoff.progress;
+        if (chainHandoff != null) chainHandoff.previous = chainHandoff.progress;
         tickExtraHangingRopeHolders();
         if (level == null || level.isClientSide()) {
             return;
@@ -308,6 +330,8 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
                 holdAssembledSubLevelPose();
                 manualForwardSignal = 0;
                 manualBackwardSignal = 0;
+                riderInputActive = false;
+                riderSelectedChainConnection = null;
                 protectRidingPlayerFromFall();
                 return;
             }
@@ -316,17 +340,35 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
             return;
         }
 
+        refreshRopeHandoffSpline();
+        refreshChainHandoffSpline();
+        refreshChainTravelFrame();
         tickAssembledSubLevelPose();
-        float forward = Math.max(forwardSignalInertia.update(queryWirelessSignal(forwardBinding, forwardReceiver)), manualForwardSignal);
-        float backward = Math.max(backwardSignalInertia.update(queryWirelessSignal(backwardBinding, backwardReceiver)), manualBackwardSignal);
+        int forwardLink = queryWirelessSignal(forwardBinding, forwardReceiver);
+        int backwardLink = queryWirelessSignal(backwardBinding, backwardReceiver);
+        boolean controlled = forwardLink > 0 || backwardLink > 0 || riderInputActive;
+        float forward = forwardSignalInertia.update(forwardLink);
+        float backward = backwardSignalInertia.update(backwardLink);
+        if (riderInputActive) {
+            forward = manualForwardSignal;
+            backward = manualBackwardSignal;
+        }
         manualForwardSignal = 0;
         manualBackwardSignal = 0;
-        float delta = applyHangingRopeInertiaDamping(((forward - backward) / 15.0f) * getConfiguredMaxSpeed());
+        riderInputActive = false;
+        float delta = controlled
+                ? ((forward - backward) / 15.0f) * getConfiguredMaxSpeed()
+                : getPassiveChainDelta();
+        if (attachedChainPos != null && attachedChainConnection == null && chainHandoff == null)
+            delta *= 360.0f / (float) (Math.PI * 1.5D);
+        delta = applyHangingRopeInertiaDamping(delta);
         if (delta != 0.0f) {
             advancePath(delta);
         }
+        riderSelectedChainConnection = null;
 
         protectRidingPlayerFromFall();
+        tickZiplineRider();
     }
 
     // Protect the riding player from fall
@@ -352,7 +394,11 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
             sendData();
             return true;
         }
-        return false;
+        if (!tryAttachToNearestChain()) return false;
+        doAutoAssemble();
+        setChanged();
+        sendData();
+        return true;
     }
 
     // Attach the chain
@@ -377,7 +423,13 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
         }
         attachedChainPos = chainPos.immutable();
         attachedChainConnection = normalizedConnection == null ? null : normalizedConnection.immutable();
+        chainHandoff = null;
+        chainTravelDirection = chain.getSpeed() < 0.0f ? -1 : 1;
+        chainSourceReversed = chain.reversed;
+        chainTravelFrameInitialized = true;
+        followChain = true;
         attachedRopeUUID = null;
+        ropeHandoff = null;
         clearRopeCarrierAttachments();
         ropeLength = Math.max(0.01f, length);
         ropePosition = Mth.clamp(pos, 0.0f, ropeLength);
@@ -400,6 +452,10 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
         }
         float length = getRopeLength(strand);
         attachedRopeUUID = ropeUUID;
+        ropeHandoff = null;
+        chainHandoff = null;
+        ropeTravelDirection = 1;
+        nextRopeHandoffScanTick = Long.MIN_VALUE;
         attachedChainPos = null;
         attachedChainConnection = null;
         captureRopeCarrierAttachments(strand);
@@ -657,6 +713,12 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
         attachedRopeUUID = null;
         clearRopeCarrierAttachments();
         attachedChainConnection = best.connectionStats.isEmpty() ? null : best.connectionStats.keySet().iterator().next();
+        chainHandoff = null;
+        ropeHandoff = null;
+        chainTravelDirection = best.getSpeed() < 0.0f ? -1 : 1;
+        chainSourceReversed = best.reversed;
+        chainTravelFrameInitialized = true;
+        followChain = true;
         ropeLength = attachedChainConnection == null ? 360.0f : best.connectionStats.get(attachedChainConnection).chainLength();
         ropePosition = Mth.clamp(ropePosition, 0.0f, ropeLength);
         prevRopePosition = ropePosition;
@@ -666,21 +728,12 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
     // Get the path carrier status
     private PathCarrierStatus getPathCarrierStatus() {
         if (attachedChainPos != null) {
-            BlockEntity blockEntity = SimulatedHelper.findBlockEntityIncludingSubLevels(level, attachedChainPos);
-            if (!(blockEntity instanceof ChainConveyorBlockEntity chain)) {
-                return PathCarrierStatus.BROKEN;
+            if (chainHandoff != null) {
+                PathCarrierStatus source = getChainCarrierStatus(chainHandoff.sourcePos, chainHandoff.sourceConnection);
+                if (source != PathCarrierStatus.VALID) return source;
+                return getChainCarrierStatus(chainHandoff.targetPos, chainHandoff.targetConnection);
             }
-            chain.prepareStats();
-            if (attachedChainConnection != null) {
-                if (!chain.connectionStats.containsKey(attachedChainConnection)) {
-                    return PathCarrierStatus.BROKEN;
-                }
-                BlockEntity target = SimulatedHelper.findBlockEntityIncludingSubLevels(level, attachedChainPos.offset(attachedChainConnection));
-                return target instanceof ChainConveyorBlockEntity
-                        ? PathCarrierStatus.VALID
-                        : PathCarrierStatus.BROKEN;
-            }
-            return PathCarrierStatus.VALID;
+            return getChainCarrierStatus(attachedChainPos, attachedChainConnection);
         }
         if (attachedRopeUUID != null) {
             ServerLevel serverLevel = SableLevelApi.serverLevel(level);
@@ -715,6 +768,18 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
                     : PathCarrierStatus.BROKEN;
         }
         return PathCarrierStatus.VALID;
+    }
+
+    private PathCarrierStatus getChainCarrierStatus(BlockPos position, @Nullable BlockPos connection) {
+        BlockEntity blockEntity = SimulatedHelper.findBlockEntityIncludingSubLevels(level, position);
+        if (!(blockEntity instanceof ChainConveyorBlockEntity chain))
+            return level.isLoaded(position) ? PathCarrierStatus.BROKEN : PathCarrierStatus.DEFERRED;
+        chain.prepareStats();
+        if (connection == null) return PathCarrierStatus.VALID;
+        if (!chain.connectionStats.containsKey(connection)) return PathCarrierStatus.BROKEN;
+        BlockEntity target = SimulatedHelper.findBlockEntityIncludingSubLevels(level, position.offset(connection));
+        if (target == null && !level.isLoaded(position.offset(connection))) return PathCarrierStatus.DEFERRED;
+        return target instanceof ChainConveyorBlockEntity ? PathCarrierStatus.VALID : PathCarrierStatus.BROKEN;
     }
 
     // Check if this should defer missing rope carrier
@@ -780,6 +845,8 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
         attachedChainPos = null;
         attachedChainConnection = null;
         attachedRopeUUID = null;
+        chainHandoff = null;
+        ropeHandoff = null;
         clearRopeCarrierAttachments();
         ridingPlayerUUID = null;
 
@@ -1246,6 +1313,8 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
             return false;
         }
         attachedRopeUUID = bestStrand.getUUID();
+        ropeTravelDirection = 1;
+        nextRopeHandoffScanTick = Long.MIN_VALUE;
         attachedChainPos = null;
         attachedChainConnection = null;
         captureRopeCarrierAttachments(bestStrand);
@@ -1299,29 +1368,398 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
         return total;
     }
 
-    // Apply the manual input
-    public void applyManualInput(boolean forward) {
-        if (forward) {
+    // W follows the rider's look in world space; S follows the opposite direction.
+    public void applyRiderInput(ServerPlayer player, boolean reverseLook) {
+        if (!player.getUUID().equals(ridingPlayerUUID)) return;
+        riderInputActive = true;
+        manualForwardSignal = 0;
+        manualBackwardSignal = 0;
+        riderSelectedChainConnection = null;
+        Vec3 look = player.getLookAngle();
+        if (reverseLook) look = look.scale(-1.0D);
+        int direction = chainHandoff != null
+                ? chainHandoff.controlSign * (reverseLook ? -1 : 1)
+                : riderTravelDirection(look);
+        if (direction > 0) {
             manualForwardSignal = 15;
-        } else {
+            manualBackwardSignal = 0;
+        } else if (direction < 0) {
             manualBackwardSignal = 15;
+            manualForwardSignal = 0;
         }
+    }
+
+    private int riderTravelDirection(Vec3 look) {
+        if (ropeHandoff != null) {
+            Vec3 tangent = getHandoffWorldTangent();
+            return tangent != null && tangent.dot(look) < 0.0D
+                    ? -ropeHandoff.controlSign : ropeHandoff.controlSign;
+        }
+        if (attachedChainPos != null) {
+            BlockEntity blockEntity = SimulatedHelper.findBlockEntityIncludingSubLevels(level, attachedChainPos);
+            if (!(blockEntity instanceof ChainConveyorBlockEntity chain)) return 0;
+            chain.prepareStats();
+            if (attachedChainConnection == null) {
+                riderSelectedChainConnection = riderFacingChainConnection(chain, look);
+                if (riderSelectedChainConnection == null) return 0;
+                ChainConveyorBlockEntity.ConnectionStats stats = chain.connectionStats.get(riderSelectedChainConnection);
+                float clockwise = positiveAngleDistance(ropePosition, stats.tangentAngle());
+                float counterclockwise = positiveAngleDistance(stats.tangentAngle(), ropePosition);
+                return clockwise <= counterclockwise ? 1 : -1;
+            }
+            ChainConveyorBlockEntity.ConnectionStats stats = chain.connectionStats.get(attachedChainConnection);
+            if (stats == null) return 0;
+            float before = Mth.clamp(ropePosition - 0.1f, 0.0f, stats.chainLength());
+            float after = Mth.clamp(ropePosition + 0.1f, 0.0f, stats.chainLength());
+            Vec3 tangent = chainWorldPosition(chain, attachedChainConnection, after)
+                    .subtract(chainWorldPosition(chain, attachedChainConnection, before));
+            return (tangent.dot(look) >= 0.0D ? 1 : -1) * chainTravelDirection;
+        }
+        float before = Mth.clamp(ropePosition - 0.1f, 0.0f, ropeLength);
+        float after = Mth.clamp(ropePosition + 0.1f, 0.0f, ropeLength);
+        Vec3 tangent = getSplineWorldPosition(after).subtract(getSplineWorldPosition(before));
+        return (tangent.dot(look) >= 0.0D ? 1 : -1) * ropeTravelDirection;
+    }
+
+    private @Nullable BlockPos riderFacingChainConnection(ChainConveyorBlockEntity chain, Vec3 look) {
+        BlockPos best = null;
+        double bestAlignment = 0.1D;
+        for (BlockPos connection : chain.connections) {
+            ChainConveyorBlockEntity.ConnectionStats stats = chain.connectionStats.get(connection);
+            if (stats == null || stats.chainLength() <= 0.01f) continue;
+            Vec3 outgoing = chainWorldPosition(chain, connection, Math.min(1.0f, stats.chainLength()))
+                    .subtract(chainWorldPosition(chain, connection, 0.0f));
+            if (outgoing.lengthSqr() < 1.0E-6D) continue;
+            double alignment = outgoing.normalize().dot(look);
+            if (alignment > bestAlignment || alignment == bestAlignment && best != null
+                    && connection.asLong() < best.asLong()) {
+                best = connection;
+                bestAlignment = alignment;
+            }
+        }
+        return best;
     }
 
     // Set the riding player
     public void setRidingPlayer(@Nullable UUID playerUUID) {
         ridingPlayerUUID = playerUUID;
+        if (playerUUID == null) {
+            riderInputActive = false;
+            riderSelectedChainConnection = null;
+        }
         setChanged();
         sendData();
     }
 
+    public boolean hasZiplineRider() {
+        return ridingEntityUUID != null;
+    }
+
+    public boolean attachZiplineRider(Entity entity) {
+        if (level == null || level.isClientSide || !hasPathAttachment()
+                || ridingEntityUUID != null || !(entity instanceof ZiplineRider rider)) return false;
+        ridingEntityUUID = entity.getUUID();
+        missingRiderTicks = 0;
+        rider.ziplineAttached();
+        tickZiplineRider();
+        setChanged();
+        sendData();
+        return true;
+    }
+
+    private void detachZiplineRider() {
+        ServerLevel serverLevel = SableLevelApi.serverLevel(level);
+        if (ridingEntityUUID != null && serverLevel != null
+                && serverLevel.getEntity(ridingEntityUUID) instanceof ZiplineRider rider) rider.ziplineDetached();
+        ridingEntityUUID = null;
+        missingRiderTicks = 0;
+        setChanged();
+        sendData();
+    }
+
+    private void tickZiplineRider() {
+        ServerLevel serverLevel = SableLevelApi.serverLevel(level);
+        if (ridingEntityUUID == null || serverLevel == null) return;
+        Entity entity = serverLevel.getEntity(ridingEntityUUID);
+        if (entity == null) {
+            Vector3d position = getWorldPosition(1.0D);
+            if (serverLevel.hasChunkAt(BlockPos.containing(position.x, position.y, position.z))
+                    && ++missingRiderTicks > 40) {
+                ridingEntityUUID = null;
+                missingRiderTicks = 0;
+                setChanged();
+                sendData();
+            }
+            return;
+        }
+        missingRiderTicks = 0;
+        if (entity.isRemoved() || !(entity instanceof ZiplineRider rider)) {
+            ridingEntityUUID = null;
+            setChanged();
+            sendData();
+            return;
+        }
+        Vec3 grip = getHandoffWorldPosition(1.0D);
+        if (grip == null) {
+            Vector3d position = getWorldPosition(1.0D);
+            grip = new Vec3(position.x, position.y, position.z);
+        }
+        Vec3 tangent = getHandoffWorldTangent();
+        if (tangent == null) {
+            float next = Mth.clamp(ropePosition + 0.1f, 0.0f, ropeLength);
+            float before = Mth.clamp(ropePosition - 0.1f, 0.0f, ropeLength);
+            tangent = getSplineWorldPosition(next).subtract(getSplineWorldPosition(before));
+        }
+        rider.ziplineMoved(grip.add(0.0D, -0.35D, 0.0D), tangent);
+    }
+
     // Advance the path
     private void advancePath(float delta) {
+        if (chainHandoff != null) {
+            advanceChainHandoff(delta);
+            return;
+        }
+        if (ropeHandoff != null) {
+            advanceRopeHandoff(delta);
+            return;
+        }
         if (attachedChainPos != null) {
             advanceChain(delta);
             return;
         }
+        if (attachedRopeUUID != null) {
+            float travel = delta * ropeTravelDirection;
+            float next = ropePosition + travel;
+            if ((next > ropeLength || next < 0.0f) && tryCrossAdjacentRope(travel, delta)) {
+                return;
+            }
+            setPathPositionClamped(next);
+            return;
+        }
         setPathPositionClamped(ropePosition + delta);
+    }
+
+    // Change ropes only at two physically adjacent, loaded rope connectors.
+    private boolean tryCrossAdjacentRope(float travel, float controlDelta) {
+        ServerLevel serverLevel = SableLevelApi.serverLevel(level);
+        if (serverLevel == null || attachedRopeUUID == null) return false;
+        long gameTime = serverLevel.getGameTime();
+        if (gameTime < nextRopeHandoffScanTick) return false;
+        nextRopeHandoffScanTick = gameTime + 10L;
+        ServerLevelRopeManager manager = ServerLevelRopeManager.getOrCreate(serverLevel);
+        ServerRopeStrand current = manager == null ? null : manager.getStrand(attachedRopeUUID);
+        if (current == null) return false;
+
+        RopeAttachmentPoint exit = travel > 0.0f ? RopeAttachmentPoint.END : RopeAttachmentPoint.START;
+        RopeAttachment source = current.getAttachment(exit);
+        if (source == null || !(resolveAttachmentBlockEntity(serverLevel, source) instanceof RopeConnectorBlockEntity sourceConnector)) {
+            return false;
+        }
+        Vec3 sourcePosition = connectorWorldPosition(sourceConnector);
+        Vec3 exitDirection = ropeEndpointDirection(current, exit, true);
+
+        ServerRopeStrand best = null;
+        RopeAttachmentPoint entry = null;
+        float bestLength = 0.0f;
+        double bestScore = -Double.MAX_VALUE;
+        for (ServerRopeStrand candidate : manager.getAllStrands()) {
+            if (candidate.getUUID().equals(attachedRopeUUID)
+                    || !areAllRopeAttachmentsLoaded(serverLevel, candidate)) continue;
+            float candidateLength = getRopeLength(candidate);
+            if (candidateLength <= 0.01f) continue;
+            for (RopeAttachmentPoint point : RopeAttachmentPoint.values()) {
+                RopeAttachment attachment = candidate.getAttachment(point);
+                if (attachment == null || !(resolveAttachmentBlockEntity(serverLevel, attachment)
+                        instanceof RopeConnectorBlockEntity nextConnector)) continue;
+                Vec3 nextPosition = connectorWorldPosition(nextConnector);
+                if (!adjacentRopeConnectors(source, attachment, sourcePosition, nextPosition)) continue;
+                Vec3 entryDirection = ropeEndpointDirection(candidate, point, false);
+                double alignment = exitDirection == null || entryDirection == null
+                        ? 0.0D : exitDirection.dot(entryDirection);
+                double score = alignment * 2.0D - sourcePosition.distanceToSqr(nextPosition);
+                if (score > bestScore || score == bestScore && best != null
+                        && candidate.getUUID().compareTo(best.getUUID()) < 0) {
+                    best = candidate;
+                    entry = point;
+                    bestLength = candidateLength;
+                    bestScore = score;
+                }
+            }
+        }
+        if (best == null) return false;
+
+        float overshoot = travel > 0.0f ? ropePosition + travel - ropeLength : -ropePosition - travel;
+        Vec3 start = getRopeWorldPosition(current, exit == RopeAttachmentPoint.END ? ropeLength : 0.0f);
+        Vec3 end = getRopeWorldPosition(best, entry == RopeAttachmentPoint.START ? 0.0f : bestLength);
+        Vec3 outgoing = exitDirection == null ? end.subtract(start) : exitDirection;
+        Vec3 incoming = ropeEndpointDirection(best, entry, false);
+        ZiplineHandoffSpline spline = new ZiplineHandoffSpline(start, outgoing, end,
+                incoming == null ? end.subtract(start) : incoming);
+        ropePosition = exit == RopeAttachmentPoint.END ? ropeLength : 0.0f;
+        ropeHandoff = new RopeHandoff(best.getUUID(), entry == RopeAttachmentPoint.START,
+                exit == RopeAttachmentPoint.END, controlDelta > 0.0f ? 1 : -1,
+                spline, Math.min(Math.max(0.0f, overshoot), 0.2f));
+        ropeHandoff.progress = Math.min(ropeHandoff.progress, ropeHandoff.length * 0.5f);
+        nextRopeHandoffScanTick = gameTime + 10L;
+        setChanged();
+        sendData();
+        return true;
+    }
+
+    // Travel the short connector spline before changing rope carriers. Never skip it in one tick.
+    private void advanceRopeHandoff(float delta) {
+        RopeHandoff handoff = ropeHandoff;
+        if (handoff == null) return;
+        ServerLevel serverLevel = SableLevelApi.serverLevel(level);
+        ServerLevelRopeManager manager = serverLevel == null ? null : ServerLevelRopeManager.getOrCreate(serverLevel);
+        ServerRopeStrand destination = manager == null ? null : manager.getStrand(handoff.target);
+        if (destination == null || !areAllRopeAttachmentsLoaded(serverLevel, destination)) return;
+        float step = Math.min(Math.abs(delta), 0.2f) * (delta * handoff.controlSign >= 0 ? 1 : -1);
+        handoff.progress += step;
+        if (handoff.progress <= 0.0f) {
+            ropeHandoff = null;
+            ropePosition = handoff.exitAtEnd
+                    ? Math.max(0.0f, ropeLength + handoff.progress)
+                    : Math.min(ropeLength, -handoff.progress);
+            prevRopePosition = ropePosition;
+        } else if (handoff.progress >= handoff.length) {
+            float overshoot = handoff.progress - handoff.length;
+            attachedRopeUUID = handoff.target;
+            captureRopeCarrierAttachments(destination);
+            ropeLength = Math.max(0.01f, getRopeLength(destination));
+            ropePosition = handoff.entryAtStart ? Math.min(overshoot, ropeLength)
+                    : Math.max(0.0f, ropeLength - overshoot);
+            prevRopePosition = ropePosition;
+            ropeTravelDirection = handoff.controlSign * (handoff.entryAtStart ? 1 : -1);
+            ropeHandoff = null;
+        }
+        setChanged();
+        sendData();
+    }
+
+    // Follow moving connector endpoints during the handoff, including after a world reload.
+    private void refreshRopeHandoffSpline() {
+        RopeHandoff handoff = ropeHandoff;
+        if (handoff == null || attachedRopeUUID == null) return;
+        ServerLevel serverLevel = SableLevelApi.serverLevel(level);
+        ServerLevelRopeManager manager = serverLevel == null ? null : ServerLevelRopeManager.getOrCreate(serverLevel);
+        ServerRopeStrand source = manager == null ? null : manager.getStrand(attachedRopeUUID);
+        ServerRopeStrand destination = manager == null ? null : manager.getStrand(handoff.target);
+        if (source == null || destination == null
+                || !areAllRopeAttachmentsLoaded(serverLevel, destination)) return;
+        RopeAttachmentPoint exit = handoff.exitAtEnd ? RopeAttachmentPoint.END : RopeAttachmentPoint.START;
+        RopeAttachmentPoint entry = handoff.entryAtStart ? RopeAttachmentPoint.START : RopeAttachmentPoint.END;
+        Vec3 start = getRopeWorldPosition(source, handoff.exitAtEnd ? getRopeLength(source) : 0.0f);
+        Vec3 end = getRopeWorldPosition(destination, handoff.entryAtStart ? 0.0f : getRopeLength(destination));
+        if (start.distanceToSqr(handoff.spline.start()) < 1.0E-4D
+                && end.distanceToSqr(handoff.spline.end()) < 1.0E-4D) return;
+        Vec3 out = ropeEndpointDirection(source, exit, true);
+        Vec3 in = ropeEndpointDirection(destination, entry, false);
+        ZiplineHandoffSpline updated = new ZiplineHandoffSpline(start,
+                out == null ? end.subtract(start) : out,
+                end, in == null ? end.subtract(start) : in);
+        float oldLength = handoff.length;
+        handoff.spline = updated;
+        handoff.length = updated.length();
+        handoff.progress = Mth.clamp(handoff.progress / oldLength * handoff.length, 0.0f, handoff.length);
+        handoff.previous = Mth.clamp(handoff.previous / oldLength * handoff.length, 0.0f, handoff.length);
+        setChanged();
+        sendData();
+    }
+
+    private static final class RopeHandoff {
+        private final UUID target;
+        private final boolean entryAtStart;
+        private final boolean exitAtEnd;
+        private final int controlSign;
+        private ZiplineHandoffSpline spline;
+        private float length;
+        private float progress;
+        private float previous;
+
+        private RopeHandoff(UUID target, boolean entryAtStart, boolean exitAtEnd, int controlSign,
+                            ZiplineHandoffSpline spline, float progress) {
+            this.target = target;
+            this.entryAtStart = entryAtStart;
+            this.exitAtEnd = exitAtEnd;
+            this.controlSign = controlSign;
+            this.spline = spline;
+            this.length = spline.length();
+            this.progress = Mth.clamp(progress, 0.0f, this.length);
+            this.previous = 0.0f;
+        }
+    }
+
+    private static final class ChainHandoff {
+        private final BlockPos sourcePos;
+        @Nullable
+        private final BlockPos sourceConnection;
+        private final float sourcePosition;
+        private final BlockPos targetPos;
+        @Nullable
+        private final BlockPos targetConnection;
+        private final float targetPosition;
+        private final int sourceDirection;
+        private final int targetDirection;
+        private final int controlSign;
+        private ZiplineHandoffSpline spline;
+        private float length;
+        private float progress;
+        private float previous;
+
+        private ChainHandoff(BlockPos sourcePos, @Nullable BlockPos sourceConnection, float sourcePosition,
+                             BlockPos targetPos, @Nullable BlockPos targetConnection, float targetPosition,
+                             int sourceDirection, int targetDirection, int controlSign,
+                             ZiplineHandoffSpline spline, float progress) {
+            this.sourcePos = sourcePos;
+            this.sourceConnection = sourceConnection;
+            this.sourcePosition = sourcePosition;
+            this.targetPos = targetPos;
+            this.targetConnection = targetConnection;
+            this.targetPosition = targetPosition;
+            this.sourceDirection = sourceDirection;
+            this.targetDirection = targetDirection;
+            this.controlSign = controlSign;
+            this.spline = spline;
+            this.length = spline.length();
+            this.progress = Mth.clamp(progress, 0.0f, this.length);
+            this.previous = 0.0f;
+        }
+    }
+
+    private static void writeHandoffPoint(CompoundTag tag, String name, Vec3 point) {
+        tag.putDouble(name + "X", point.x);
+        tag.putDouble(name + "Y", point.y);
+        tag.putDouble(name + "Z", point.z);
+    }
+
+    private static Vec3 readHandoffPoint(CompoundTag tag, String name) {
+        return new Vec3(tag.getDouble(name + "X"), tag.getDouble(name + "Y"), tag.getDouble(name + "Z"));
+    }
+
+    private static boolean adjacentRopeConnectors(RopeAttachment source, RopeAttachment target,
+                                                   Vec3 sourceWorld, Vec3 targetWorld) {
+        if (source.blockAttachment().equals(target.blockAttachment())
+                && java.util.Objects.equals(source.subLevelID(), target.subLevelID())) return false;
+        if (java.util.Objects.equals(source.subLevelID(), target.subLevelID())) {
+            BlockPos a = source.blockAttachment();
+            BlockPos b = target.blockAttachment();
+            return Math.abs(a.getX() - b.getX()) + Math.abs(a.getY() - b.getY())
+                    + Math.abs(a.getZ() - b.getZ()) == 1;
+        }
+        double distanceSq = sourceWorld.distanceToSqr(targetWorld);
+        return distanceSq > 0.01D && distanceSq <= 1.75D * 1.75D;
+    }
+
+    private static @Nullable Vec3 ropeEndpointDirection(ServerRopeStrand strand,
+                                                         RopeAttachmentPoint point, boolean exiting) {
+        var points = strand.getPoints();
+        if (points.size() < 2) return null;
+        Vector3dc endpoint = point == RopeAttachmentPoint.START ? points.getFirst() : points.getLast();
+        Vector3dc neighbor = point == RopeAttachmentPoint.START ? points.get(1) : points.get(points.size() - 2);
+        Vec3 direction = new Vec3(neighbor.x() - endpoint.x(), neighbor.y() - endpoint.y(), neighbor.z() - endpoint.z());
+        if (direction.lengthSqr() < 1.0E-8D) return null;
+        return exiting ? direction.normalize().scale(-1.0D) : direction.normalize();
     }
 
     // Apply the hanging rope inertia damping
@@ -1368,10 +1806,7 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
     // Advance the chain
     private void advanceChain(float delta) {
         BlockEntity blockEntity = SimulatedHelper.findBlockEntityIncludingSubLevels(level, attachedChainPos);
-        if (!(blockEntity instanceof ChainConveyorBlockEntity chain)) {
-            setPathPositionClamped(ropePosition + delta);
-            return;
-        }
+        if (!(blockEntity instanceof ChainConveyorBlockEntity chain)) return;
         chain.prepareStats();
         if (attachedChainConnection != null) {
             ChainConveyorBlockEntity.ConnectionStats stats = chain.connectionStats.get(attachedChainConnection);
@@ -1381,29 +1816,25 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
                 setPathPositionClamped(chain.wrapAngle(ropePosition));
                 return;
             }
-            float next = ropePosition + delta;
+            float next = ropePosition + delta * chainTravelDirection;
             if (next > stats.chainLength()) {
                 BlockPos nextChainPos = attachedChainPos.offset(attachedChainConnection);
                 BlockEntity nextBlockEntity = SimulatedHelper.findBlockEntityIncludingSubLevels(level, nextChainPos);
                 if (nextBlockEntity instanceof ChainConveyorBlockEntity nextChain) {
                     nextChain.prepareStats();
-                    attachedChainPos = nextChain.getBlockPos().immutable();
-                    attachedChainConnection = null;
-                    ropeLength = 360.0f;
-                    ropePosition = nextChain.wrapAngle(stats.tangentAngle() + 180.0f + (float) (70 * (chain.reversed ? -1 : 1)));
-                    prevRopePosition = ropePosition;
-                    setChanged();
-                    sendData();
+                    float entryAngle = nextChain.wrapAngle(stats.tangentAngle() + 180.0f
+                            + (float) (70 * (chain.reversed ? -1 : 1)));
+                    beginChainHandoff(chain, attachedChainConnection, stats.chainLength(), 1,
+                            nextChain, null, entryAngle, delta > 0.0f ? 1 : -1, delta > 0.0f ? 1 : -1,
+                            Math.max(0.0f, next - stats.chainLength()));
                     return;
                 }
             }
             if (next < 0.0f) {
-                attachedChainConnection = null;
-                ropeLength = 360.0f;
-                ropePosition = chain.wrapAngle(stats.tangentAngle());
-                prevRopePosition = ropePosition;
-                setChanged();
-                sendData();
+                beginChainHandoff(chain, attachedChainConnection, 0.0f, -1,
+                        chain, null, chain.wrapAngle(stats.tangentAngle()), delta > 0.0f ? 1 : -1,
+                        delta > 0.0f ? 1 : -1,
+                        Math.max(0.0f, -next));
                 return;
             }
             setPathPositionClamped(next);
@@ -1413,16 +1844,17 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
         float prev = ropePosition;
         float next = chain.wrapAngle(prev + delta);
         if (followChain) {
-            BlockPos connection = findCrossedConnection(chain, prev, next, delta > 0.0f);
+            BlockPos connection = findCrossedConnection(chain, prev, next, delta > 0.0f,
+                    riderSelectedChainConnection);
             if (connection != null) {
                 ChainConveyorBlockEntity.ConnectionStats stats = chain.connectionStats.get(connection);
                 if (stats != null) {
-                    attachedChainConnection = connection.immutable();
-                    ropeLength = Math.max(0.01f, stats.chainLength());
-                    ropePosition = delta > 0.0f ? 0.0f : ropeLength;
-                    prevRopePosition = ropePosition;
-                    setChanged();
-                    sendData();
+                    float overshootDegrees = delta > 0.0f
+                            ? positiveAngleDistance(stats.tangentAngle(), next)
+                            : positiveAngleDistance(next, stats.tangentAngle());
+                    beginChainHandoff(chain, null, stats.tangentAngle(), delta > 0.0f ? 1 : -1,
+                            chain, connection, 0.0f, 1, delta > 0.0f ? 1 : -1,
+                            overshootDegrees * (float) (Math.PI * 1.5D / 360.0D));
                     return;
                 }
             }
@@ -1433,18 +1865,118 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
         sendData();
     }
 
+    private void beginChainHandoff(ChainConveyorBlockEntity source, @Nullable BlockPos sourceConnection,
+                                   float sourcePosition, int sourceDirection,
+                                   ChainConveyorBlockEntity target, @Nullable BlockPos targetConnection,
+                                   float targetPosition, int targetDirection, int controlSign, float overshoot) {
+        Vec3 start = chainWorldPosition(source, sourceConnection, sourcePosition);
+        Vec3 end = chainWorldPosition(target, targetConnection, targetPosition);
+        Vec3 out = chainTangent(source, sourceConnection, sourcePosition, sourceDirection);
+        Vec3 in = chainTangent(target, targetConnection, targetPosition, targetDirection);
+        ZiplineHandoffSpline spline = new ZiplineHandoffSpline(start, out, end, in);
+        chainHandoff = new ChainHandoff(source.getBlockPos().immutable(), sourceConnection, sourcePosition,
+                target.getBlockPos().immutable(), targetConnection, targetPosition,
+                sourceDirection, targetDirection, controlSign, spline,
+                Math.min(overshoot, spline.length() * 0.5f));
+        ropePosition = sourcePosition;
+        prevRopePosition = sourcePosition;
+        setChanged();
+        sendData();
+    }
+
+    private Vec3 chainTangent(ChainConveyorBlockEntity chain, @Nullable BlockPos connection,
+                              float position, int direction) {
+        float step = connection == null ? 1.0f : 0.05f;
+        float before = connection == null ? chain.wrapAngle(position - step * direction)
+                : Mth.clamp(position - step * direction, 0.0f, chain.connectionStats.get(connection).chainLength());
+        float after = connection == null ? chain.wrapAngle(position + step * direction)
+                : Mth.clamp(position + step * direction, 0.0f, chain.connectionStats.get(connection).chainLength());
+        return chainWorldPosition(chain, connection, after).subtract(chainWorldPosition(chain, connection, before));
+    }
+
+    private void advanceChainHandoff(float delta) {
+        ChainHandoff handoff = chainHandoff;
+        if (handoff == null) return;
+        BlockEntity destination = SimulatedHelper.findBlockEntityIncludingSubLevels(level, handoff.targetPos);
+        if (!(destination instanceof ChainConveyorBlockEntity chain)) return;
+        chain.prepareStats();
+        if (handoff.targetConnection != null && !chain.connectionStats.containsKey(handoff.targetConnection)) return;
+        float step = Math.min(Math.abs(delta), 0.2f) * (delta * handoff.controlSign >= 0 ? 1 : -1);
+        handoff.progress += step;
+        if (handoff.progress <= 0.0f) {
+            chainHandoff = null;
+            ropePosition = handoff.sourcePosition;
+            prevRopePosition = ropePosition;
+        } else if (handoff.progress >= handoff.length) {
+            float overshoot = handoff.progress - handoff.length;
+            attachedChainPos = handoff.targetPos;
+            attachedChainConnection = handoff.targetConnection;
+            chainSourceReversed = chain.reversed;
+            chainTravelDirection = handoff.controlSign * handoff.targetDirection;
+            ropeLength = handoff.targetConnection == null ? 360.0f
+                    : Math.max(0.01f, chain.connectionStats.get(handoff.targetConnection).chainLength());
+            ropePosition = handoff.targetConnection == null
+                    ? chain.wrapAngle(handoff.targetPosition + handoff.targetDirection * overshoot
+                            * 360.0f / (float) (Math.PI * 1.5D))
+                    : Mth.clamp(handoff.targetPosition + handoff.targetDirection * overshoot, 0.0f, ropeLength);
+            prevRopePosition = ropePosition;
+            chainHandoff = null;
+        }
+        setChanged();
+        sendData();
+    }
+
+    private void refreshChainHandoffSpline() {
+        ChainHandoff handoff = chainHandoff;
+        if (handoff == null) return;
+        BlockEntity source = SimulatedHelper.findBlockEntityIncludingSubLevels(level, handoff.sourcePos);
+        BlockEntity destination = SimulatedHelper.findBlockEntityIncludingSubLevels(level, handoff.targetPos);
+        if (!(source instanceof ChainConveyorBlockEntity from)
+                || !(destination instanceof ChainConveyorBlockEntity to)) return;
+        from.prepareStats();
+        to.prepareStats();
+        if (handoff.sourceConnection != null && !from.connectionStats.containsKey(handoff.sourceConnection)) return;
+        if (handoff.targetConnection != null && !to.connectionStats.containsKey(handoff.targetConnection)) return;
+        Vec3 start = chainWorldPosition(from, handoff.sourceConnection, handoff.sourcePosition);
+        Vec3 end = chainWorldPosition(to, handoff.targetConnection, handoff.targetPosition);
+        if (start.distanceToSqr(handoff.spline.start()) < 1.0E-4D
+                && end.distanceToSqr(handoff.spline.end()) < 1.0E-4D) return;
+        ZiplineHandoffSpline updated = new ZiplineHandoffSpline(start,
+                chainTangent(from, handoff.sourceConnection, handoff.sourcePosition, handoff.sourceDirection),
+                end, chainTangent(to, handoff.targetConnection, handoff.targetPosition, handoff.targetDirection));
+        float oldLength = handoff.length;
+        handoff.spline = updated;
+        handoff.length = updated.length();
+        handoff.progress = Mth.clamp(handoff.progress / oldLength * handoff.length, 0.0f, handoff.length);
+        handoff.previous = Mth.clamp(handoff.previous / oldLength * handoff.length, 0.0f, handoff.length);
+        setChanged();
+        sendData();
+    }
+
     // Find the crossed connection
-    private @Nullable BlockPos findCrossedConnection(ChainConveyorBlockEntity chain, float prev, float next, boolean forward) {
+    private @Nullable BlockPos findCrossedConnection(ChainConveyorBlockEntity chain, float prev, float next,
+                                                     boolean forward, @Nullable BlockPos riderChoice) {
+        BlockPos nearest = null;
+        float nearestDistance = Float.POSITIVE_INFINITY;
         for (BlockPos connection : chain.connections) {
             ChainConveyorBlockEntity.ConnectionStats stats = chain.connectionStats.get(connection);
-            if (stats == null) {
+            if (stats == null || riderChoice != null && !riderChoice.equals(connection)
+                    || !crossedAngle(prev, next, stats.tangentAngle(), forward)
+                    && !(riderChoice != null && riderChoice.equals(connection)
+                    && Math.min(positiveAngleDistance(prev, stats.tangentAngle()),
+                            positiveAngleDistance(stats.tangentAngle(), prev)) < 0.001f)) {
                 continue;
             }
-            if (crossedAngle(prev, next, stats.tangentAngle(), forward)) {
-                return connection;
+            float distance = forward
+                    ? positiveAngleDistance(prev, stats.tangentAngle())
+                    : positiveAngleDistance(stats.tangentAngle(), prev);
+            if (distance < nearestDistance || distance == nearestDistance
+                    && nearest != null && connection.asLong() < nearest.asLong()) {
+                nearest = connection;
+                nearestDistance = distance;
             }
         }
-        return null;
+        return nearest;
     }
 
     // Check if the movement crossed the target angle
@@ -1465,9 +1997,39 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
 
     // Get the world position
     public Vector3d getWorldPosition(double partialTick) {
+        if (ropeHandoff != null || chainHandoff != null) {
+            Vec3 point = getHandoffWorldPosition(partialTick);
+            return new Vector3d(point.x, point.y, point.z);
+        }
         double t = Mth.lerp(partialTick, prevRopePosition, ropePosition);
         Vec3 sample = getSplineWorldPosition((float) t);
         return new Vector3d(sample.x, sample.y, sample.z);
+    }
+
+    public @Nullable Vec3 getHandoffWorldPosition(double partialTick) {
+        ChainHandoff chain = chainHandoff;
+        if (chain != null)
+            return chain.spline.sample(Mth.lerp(partialTick, chain.previous, chain.progress) / chain.length);
+        RopeHandoff handoff = ropeHandoff;
+        if (handoff == null) return null;
+        return handoff.spline.sample(Mth.lerp(partialTick, handoff.previous, handoff.progress) / handoff.length);
+    }
+
+    public @Nullable Vec3 getHandoffWorldTangent() {
+        ChainHandoff chain = chainHandoff;
+        if (chain != null) return chain.spline.tangent(chain.progress / chain.length);
+        RopeHandoff handoff = ropeHandoff;
+        return handoff == null ? null : handoff.spline.tangent(handoff.progress / handoff.length);
+    }
+
+    public List<Vec3> getHandoffSplinePoints() {
+        ChainHandoff chain = chainHandoff;
+        RopeHandoff handoff = ropeHandoff;
+        if (chain == null && handoff == null) return List.of();
+        ZiplineHandoffSpline spline = chain != null ? chain.spline : handoff.spline;
+        List<Vec3> points = new ArrayList<>(17);
+        for (int index = 0; index <= 16; index++) points.add(spline.sample(index / 16.0D));
+        return points;
     }
 
     // Get the desired zipline center
@@ -1493,15 +2055,59 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
         if (!(blockEntity instanceof ChainConveyorBlockEntity chain)) {
             return worldPosition.getCenter();
         }
+        return chainWorldPosition(chain, attachedChainConnection, pos);
+    }
+
+    private Vec3 chainWorldPosition(ChainConveyorBlockEntity chain, @Nullable BlockPos connection, float pos) {
         chain.prepareStats();
-        if (attachedChainConnection != null) {
-            ChainConveyorBlockEntity.ConnectionStats stats = chain.connectionStats.get(attachedChainConnection);
-            if (stats != null) {
-                Vec3 diff = stats.end().subtract(stats.start()).normalize();
-                return stats.start().add(diff.scale(Math.min(stats.chainLength(), pos)));
-            }
+        Vec3 local = chain.getPackagePosition(pos, connection);
+        Vec3 world = SimulatedHelper.toContainingWorldPosition(chain, local);
+        return world == null ? local : world;
+    }
+
+    private float getPassiveChainDelta() {
+        if (attachedChainPos == null) return 0.0f;
+        BlockEntity blockEntity = SimulatedHelper.findBlockEntityIncludingSubLevels(level, attachedChainPos);
+        if (!(blockEntity instanceof ChainConveyorBlockEntity chain)) return 0.0f;
+        chain.prepareStats();
+        float speed = chain.getSpeed() / 360.0f;
+        return attachedChainConnection == null ? speed : Math.abs(speed) * chainTravelDirection;
+    }
+
+    private void refreshChainTravelFrame() {
+        if (attachedChainPos == null || chainHandoff != null) return;
+        BlockEntity blockEntity = SimulatedHelper.findBlockEntityIncludingSubLevels(level, attachedChainPos);
+        if (!(blockEntity instanceof ChainConveyorBlockEntity chain)) return;
+        chain.prepareStats();
+        if (!chainTravelFrameInitialized) {
+            chainTravelDirection = chain.getSpeed() < 0.0f ? -1 : 1;
+            chainSourceReversed = chain.reversed;
+            chainTravelFrameInitialized = true;
+            return;
         }
-        return Vec3.atBottomCenterOf(attachedChainPos).add(VecHelper.rotate(new Vec3(0.0, 0.25, 1.0), pos, Direction.Axis.Y));
+        if (attachedChainConnection != null && chain.reversed != chainSourceReversed)
+            rebaseReversedChainSpan(chain);
+        else chainSourceReversed = chain.reversed;
+    }
+
+    private void rebaseReversedChainSpan(ChainConveyorBlockEntity source) {
+        BlockPos connection = attachedChainConnection;
+        if (connection == null) return;
+        BlockEntity other = SimulatedHelper.findBlockEntityIncludingSubLevels(level, attachedChainPos.offset(connection));
+        if (!(other instanceof ChainConveyorBlockEntity destination)) return;
+        BlockPos returnConnection = connection.multiply(-1);
+        destination.prepareStats();
+        ChainConveyorBlockEntity.ConnectionStats stats = destination.connectionStats.get(returnConnection);
+        if (stats == null) return;
+        attachedChainPos = destination.getBlockPos().immutable();
+        attachedChainConnection = returnConnection;
+        ropeLength = Math.max(0.01f, stats.chainLength());
+        ropePosition = Mth.clamp(ropeLength - ropePosition, 0.0f, ropeLength);
+        prevRopePosition = ropePosition;
+        chainTravelDirection *= -1;
+        chainSourceReversed = destination.reversed;
+        setChanged();
+        sendData();
     }
 
     // Get the rope world position
@@ -1528,7 +2134,7 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
             Vector3d only = new Vector3d((Vector3dc) points.getFirst());
             return new Vec3(only.x, only.y, only.z);
         }
-        float clampedPosition = Mth.clamp(pos, 0.0f, Math.max(0.01f, ropeLength));
+        float clampedPosition = Mth.clamp(pos, 0.0f, Math.max(0.01f, getRopeLength(strand)));
         float cumulative = 0.0f;
         for (int i = 0; i < points.size() - 1; i++) {
             Vector3d a = new Vector3d((Vector3dc) points.get(i));
@@ -2059,11 +2665,15 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
 
     // Get the path position
     public float getPathPosition(float partialTick) {
+        if (chainHandoff != null) return Mth.lerp(partialTick, chainHandoff.previous, chainHandoff.progress);
+        if (ropeHandoff != null) return Mth.lerp(partialTick, ropeHandoff.previous, ropeHandoff.progress);
         return Mth.lerp(partialTick, prevRopePosition, ropePosition);
     }
 
     // Get the path length
     public float getPathLength() {
+        if (chainHandoff != null) return chainHandoff.length;
+        if (ropeHandoff != null) return ropeHandoff.length;
         return ropeLength;
     }
 
@@ -2100,6 +2710,9 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
         tag.putFloat("RopePosition", ropePosition);
         tag.putFloat("PrevRopePosition", prevRopePosition);
         tag.putFloat("RopeLength", ropeLength);
+        tag.putInt("RopeTravelDirection", ropeTravelDirection);
+        tag.putInt("ChainTravelDirection", chainTravelDirection);
+        tag.putBoolean("ChainSourceReversed", chainSourceReversed);
         tag.putBoolean("FollowChain", followChain);
         tag.putFloat("ConfiguredMaxSpeed", getConfiguredMaxSpeed());
         tag.putFloat("ConfiguredDamping", getConfiguredDamping());
@@ -2114,6 +2727,41 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
         if (attachedRopeUUID != null) {
             tag.putUUID("AttachedRopeUUID", attachedRopeUUID);
         }
+        if (ropeHandoff != null) {
+            CompoundTag handoff = new CompoundTag();
+            handoff.putUUID("Target", ropeHandoff.target);
+            handoff.putBoolean("EntryAtStart", ropeHandoff.entryAtStart);
+            handoff.putBoolean("ExitAtEnd", ropeHandoff.exitAtEnd);
+            handoff.putInt("ControlSign", ropeHandoff.controlSign);
+            handoff.putFloat("Progress", ropeHandoff.progress);
+            handoff.putFloat("Previous", ropeHandoff.previous);
+            writeHandoffPoint(handoff, "Start", ropeHandoff.spline.start());
+            writeHandoffPoint(handoff, "StartTangent", ropeHandoff.spline.startTangent());
+            writeHandoffPoint(handoff, "End", ropeHandoff.spline.end());
+            writeHandoffPoint(handoff, "EndTangent", ropeHandoff.spline.endTangent());
+            tag.put("RopeHandoff", handoff);
+        }
+        if (chainHandoff != null) {
+            CompoundTag handoff = new CompoundTag();
+            handoff.put("SourcePos", NbtUtils.writeBlockPos(chainHandoff.sourcePos));
+            if (chainHandoff.sourceConnection != null)
+                handoff.put("SourceConnection", NbtUtils.writeBlockPos(chainHandoff.sourceConnection));
+            handoff.putFloat("SourcePosition", chainHandoff.sourcePosition);
+            handoff.put("TargetPos", NbtUtils.writeBlockPos(chainHandoff.targetPos));
+            if (chainHandoff.targetConnection != null)
+                handoff.put("TargetConnection", NbtUtils.writeBlockPos(chainHandoff.targetConnection));
+            handoff.putFloat("TargetPosition", chainHandoff.targetPosition);
+            handoff.putInt("SourceDirection", chainHandoff.sourceDirection);
+            handoff.putInt("TargetDirection", chainHandoff.targetDirection);
+            handoff.putInt("ControlSign", chainHandoff.controlSign);
+            handoff.putFloat("Progress", chainHandoff.progress);
+            handoff.putFloat("Previous", chainHandoff.previous);
+            writeHandoffPoint(handoff, "Start", chainHandoff.spline.start());
+            writeHandoffPoint(handoff, "StartTangent", chainHandoff.spline.startTangent());
+            writeHandoffPoint(handoff, "End", chainHandoff.spline.end());
+            writeHandoffPoint(handoff, "EndTangent", chainHandoff.spline.endTangent());
+            tag.put("ChainHandoff", handoff);
+        }
         writeRopeCarrierAttachment(tag, "AttachedRopeStart", attachedRopeStart);
         writeRopeCarrierAttachment(tag, "AttachedRopeEnd", attachedRopeEnd);
         if (attachedSubLevelId != null) {
@@ -2122,6 +2770,7 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
         if (ridingPlayerUUID != null) {
             tag.putUUID("RidingPlayerUUID", ridingPlayerUUID);
         }
+        if (ridingEntityUUID != null) tag.putUUID("RidingEntityUUID", ridingEntityUUID);
         if (!extraHangingRopeHolders.isEmpty()) {
             CompoundTag holderTags = new CompoundTag();
             int idx = 0;
@@ -2148,6 +2797,10 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
         ropePosition = tag.getFloat("RopePosition");
         prevRopePosition = tag.contains("PrevRopePosition") ? tag.getFloat("PrevRopePosition") : ropePosition;
         ropeLength = tag.contains("RopeLength") ? tag.getFloat("RopeLength") : 1.0f;
+        ropeTravelDirection = tag.getInt("RopeTravelDirection") < 0 ? -1 : 1;
+        chainTravelDirection = tag.getInt("ChainTravelDirection") < 0 ? -1 : 1;
+        chainSourceReversed = tag.getBoolean("ChainSourceReversed");
+        chainTravelFrameInitialized = tag.contains("ChainTravelDirection") && tag.contains("ChainSourceReversed");
         followChain = tag.getBoolean("FollowChain");
         configuredMaxSpeed = tag.contains("ConfiguredMaxSpeed") ? tag.getFloat("ConfiguredMaxSpeed") : DEFAULT_MAX_SPEED;
         configuredDamping = tag.contains("ConfiguredDamping") ? tag.getFloat("ConfiguredDamping") : Float.NaN;
@@ -2160,8 +2813,44 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
         attachedChainPos = tag.contains("AttachedChainPos") ? NbtUtils.readBlockPos(tag, "AttachedChainPos").orElse(null) : null;
         attachedChainConnection = tag.contains("AttachedChainConnection") ? NbtUtils.readBlockPos(tag, "AttachedChainConnection").orElse(null) : null;
         attachedRopeUUID = tag.contains("AttachedRopeUUID") ? tag.getUUID("AttachedRopeUUID") : null;
+        ropeHandoff = null;
+        if (attachedRopeUUID != null && tag.contains("RopeHandoff", Tag.TAG_COMPOUND)) {
+            CompoundTag handoff = tag.getCompound("RopeHandoff");
+            if (handoff.hasUUID("Target")) {
+                ZiplineHandoffSpline spline = new ZiplineHandoffSpline(
+                        readHandoffPoint(handoff, "Start"), readHandoffPoint(handoff, "StartTangent"),
+                        readHandoffPoint(handoff, "End"), readHandoffPoint(handoff, "EndTangent"));
+                ropeHandoff = new RopeHandoff(handoff.getUUID("Target"),
+                        handoff.getBoolean("EntryAtStart"), handoff.getBoolean("ExitAtEnd"),
+                        handoff.getInt("ControlSign") < 0 ? -1 : 1, spline, handoff.getFloat("Progress"));
+                ropeHandoff.previous = handoff.contains("Previous")
+                        ? handoff.getFloat("Previous") : ropeHandoff.progress;
+            }
+        }
+        chainHandoff = null;
+        if (attachedChainPos != null && tag.contains("ChainHandoff", Tag.TAG_COMPOUND)) {
+            CompoundTag handoff = tag.getCompound("ChainHandoff");
+            BlockPos source = NbtUtils.readBlockPos(handoff, "SourcePos").orElse(null);
+            BlockPos target = NbtUtils.readBlockPos(handoff, "TargetPos").orElse(null);
+            if (source != null && target != null) {
+                ZiplineHandoffSpline spline = new ZiplineHandoffSpline(
+                        readHandoffPoint(handoff, "Start"), readHandoffPoint(handoff, "StartTangent"),
+                        readHandoffPoint(handoff, "End"), readHandoffPoint(handoff, "EndTangent"));
+                BlockPos sourceConnection = NbtUtils.readBlockPos(handoff, "SourceConnection").orElse(null);
+                BlockPos targetConnection = NbtUtils.readBlockPos(handoff, "TargetConnection").orElse(null);
+                chainHandoff = new ChainHandoff(source, sourceConnection, handoff.getFloat("SourcePosition"),
+                        target, targetConnection, handoff.getFloat("TargetPosition"),
+                        handoff.getInt("SourceDirection") < 0 ? -1 : 1,
+                        handoff.getInt("TargetDirection") < 0 ? -1 : 1,
+                        handoff.getInt("ControlSign") < 0 ? -1 : 1,
+                        spline, handoff.getFloat("Progress"));
+                chainHandoff.previous = handoff.contains("Previous")
+                        ? handoff.getFloat("Previous") : chainHandoff.progress;
+            }
+        }
         attachedRopeStart = readRopeCarrierAttachment(tag, "AttachedRopeStart");
         attachedRopeEnd = readRopeCarrierAttachment(tag, "AttachedRopeEnd");
+        ridingEntityUUID = tag.hasUUID("RidingEntityUUID") ? tag.getUUID("RidingEntityUUID") : null;
         if (attachedRopeUUID == null) {
             clearRopeCarrierAttachments();
         }

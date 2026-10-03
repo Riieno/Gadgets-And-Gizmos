@@ -144,6 +144,9 @@ public record DiagnosticTabletActionPayload(boolean placed, InteractionHand hand
                 }
                 default -> stateOnlyAction = false;
             }
+            if(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.MANIFEST.id().equals(payload.appId())){
+                state = state.withMode(TabletInteractionMode.STANDARD, "");
+            }
             if (blockTablet == null) DiagnosticTabletData.write(stack, state);
             else blockTablet.setState(state);
 

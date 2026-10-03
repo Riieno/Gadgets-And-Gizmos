@@ -14,6 +14,7 @@ import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariant;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariants;
 import com.rieno.gadgetsandgizmos.content.SupporterHeads;
 import com.rieno.gadgetsandgizmos.content.WorkerEnergyBatteryItem;
+import com.rieno.gadgetsandgizmos.compat.recipe.ThrusterProcessingDisplays;
 import com.rieno.gadgetsandgizmos.neoforge.client.AnalogueContraptionControllerConfigScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.AdvancedContraptionControllerScreen;
 import com.rieno.gadgetsandgizmos.neoforge.client.AnalogueJoystickConfigScreen;
@@ -47,6 +48,8 @@ import mezz.jei.api.registration.ISubtypeRegistration;
 import mezz.jei.api.ingredients.subtypes.ISubtypeInterpreter;
 import mezz.jei.api.ingredients.subtypes.UidContext;
 import mezz.jei.api.registration.IRecipeRegistration;
+import mezz.jei.api.registration.IRecipeCategoryRegistration;
+import mezz.jei.api.registration.IRecipeCatalystRegistration;
 import mezz.jei.api.runtime.IJeiRuntime;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.NonNullList;
@@ -69,6 +72,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.EnumMap;
 
 // Add the addon's recipes and workstations to JEI
 @JeiPlugin
@@ -87,6 +91,8 @@ public class CTJeiPlugin implements IModPlugin {
     private static final Map<ResourceLocation, List<ItemStack>> KNOWN_ITEM_STACKS = new LinkedHashMap<>();
     private static final Map<ResourceLocation, List<ItemStack>> REMOVED_ITEM_STACKS = new LinkedHashMap<>();
     private static final Map<RecipeType<?>, List<?>> HIDDEN_RECIPES = new HashMap<>();
+    private static final Map<ThrusterProcessingDisplays.Mode, ThrusterJeiCategory> THRUSTER_CATEGORIES =
+            new EnumMap<>(ThrusterProcessingDisplays.Mode.class);
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -281,6 +287,35 @@ public class CTJeiPlugin implements IModPlugin {
             registration.addRecipes(RecipeTypes.ANVIL, mannequinAnvilRecipes(registration));
         } catch (Throwable throwable) {
             CT_LOGGER.warn("[CT][JEI] Failed to register player mannequin recipe displays", throwable);
+        }
+        if(Minecraft.getInstance().level != null){
+            for(var entry : THRUSTER_CATEGORIES.entrySet()){
+                registration.addRecipes(entry.getValue().getRecipeType(),
+                        entry.getKey().recipes(Minecraft.getInstance().level));
+            }
+        }
+    }
+
+    // Register a separate recipe tab for each thruster processing upgrade
+    @Override
+    public void registerCategories(IRecipeCategoryRegistration registration){
+        THRUSTER_CATEGORIES.clear();
+        if(!CTFeatureToggles.isItemEnabled("thruster")) return;
+        for(ThrusterProcessingDisplays.Mode mode : ThrusterProcessingDisplays.Mode.values()){
+            ThrusterJeiCategory category = new ThrusterJeiCategory(mode,
+                    registration.getJeiHelpers().getGuiHelper());
+            registration.addRecipeCategories(category);
+            THRUSTER_CATEGORIES.put(mode, category);
+        }
+    }
+
+    // Link the thruster and every upgrade tier to its processing tab
+    @Override
+    public void registerRecipeCatalysts(IRecipeCatalystRegistration registration){
+        for(var entry : THRUSTER_CATEGORIES.entrySet()){
+            for(ItemStack stack : entry.getKey().catalysts()){
+                registration.addRecipeCatalyst(stack, entry.getValue().getRecipeType());
+            }
         }
     }
 

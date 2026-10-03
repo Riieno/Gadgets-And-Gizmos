@@ -104,8 +104,6 @@ public final class CTFeatureToggles {
         define(blocks, "gyroscope_link", true);
         define(blocks, "double_button", true);
         define(blocks, "copycat_double_button", true);
-        define(blocks, "virtual_orientation_source", false);
-        define(blocks, "gyro_redstone_bridge", false);
         define(blocks, "bidirectional_gearbox", true);
         define(blocks, "bi_directional_gearshift", true);
         define(blocks, "ratchet_cogwheel", true);
@@ -138,53 +136,16 @@ public final class CTFeatureToggles {
         BLOCK_DEFAULTS = immutableCopy(blocks);
 
         LinkedHashMap<String, Boolean> items = new LinkedHashMap<>();
-        define(items, "thruster", true);
-        define(items, "rcs_thruster", true);
         define(items, "blackstone_alloy", true);
         define(items, "blackstone_sheet", true);
         define(items, "computation_mechanism", true);
         define(items, "incomplete_computation_mechanism", true);
-        define(items, "blackstone_alloy_block", true);
-        define(items, "blackstone_casing", true);
         define(items, "small_thruster", true);
-        define(items, "fuel_oxidizer", true);
-        define(items, "thruster_bearing", true);
-        define(items, "aileron_bearing", true);
-        define(items, "vector_bearing", true);
-        define(items, "scissor_piston", true);
         define(items, "scissor_arms", true);
-        define(items, "gyroscope_link", true);
-        define(items, "double_button", true);
-        define(items, "copycat_double_button", true);
-        define(items, "virtual_orientation_source", false);
-        define(items, "gyro_redstone_bridge", false);
-        define(items, "bidirectional_gearbox", true);
-        define(items, "bi_directional_gearshift", true);
-        define(items, "ratchet_cogwheel", true);
-        define(items, "large_ratchet_cogwheel", true);
         define(items, "vertical_bidirectional_gearbox", true);
-        define(items, "analogue_joystick", true);
-        define(items, "analogue_contraption_controller", true);
-        define(items, "advanced_contraption_controller", true);
-        define(items, "ship_control_module", true);
-        define(items, "ship_coupler", true);
-        define(items, "universal_display_adapter", true);
-        define(items, "ship_dock", true);
-        define(items, "advanced_navigation_table", true);
-        define(items, "diagnostic_tablet", false);
         define(items, "portable_contraption_controller", true);
         define(items, "advanced_portable_contraption_controller", true);
-        define(items, "alternator", true);
-        define(items, "claw", true);
-        define(items, "powered_zipline", true);
-        define(items, "rope_knot", true);
-        define(items, "andesite_cable", true);
-        define(items, "industrial_motor", true);
-        define(items, "variable_transmission", true);
         define(items, "vertical_variable_transmission", true);
-        define(items, "physics_gantry_carriage", true);
-        define(items, "physics_gantry_shaft", true);
-        define(items, "physics_gantry_belt_wheel", true);
         define(items, "thruster_lense", true);
         define(items, "processing_upgrade_smoking_t1", true);
         define(items, "processing_upgrade_smoking_t2", true);
@@ -205,7 +166,6 @@ public final class CTFeatureToggles {
         define(items, "physics_staff", true);
         define(items, "contraption_network_linker", true);
         define(items, "configuration_clipboard", true);
-        define(items, "shipping_manifest", true);
         define(items, "shipping_schedule", true);
         define(items, "entity_launcher", true);
         define(items, "player_mannequin", true);
@@ -232,53 +192,15 @@ public final class CTFeatureToggles {
         BLOCK_DEPENDENCIES = immutableCopy(blockDependencies);
 
         LinkedHashMap<String, String> itemBlockDependencies = new LinkedHashMap<>();
-        itemBlockDependencies.put("thruster", "thruster");
-        itemBlockDependencies.put("rcs_thruster", "rcs_thruster");
-        itemBlockDependencies.put("blackstone_alloy_block", "blackstone_alloy_block");
-        itemBlockDependencies.put("blackstone_casing", "blackstone_casing");
         itemBlockDependencies.put("small_thruster", "thruster");
-        itemBlockDependencies.put("fuel_oxidizer", "fuel_oxidizer");
-        itemBlockDependencies.put("thruster_bearing", "thruster_bearing");
-        itemBlockDependencies.put("aileron_bearing", "aileron_bearing");
-        itemBlockDependencies.put("vector_bearing", "vector_bearing");
-        itemBlockDependencies.put("scissor_piston", "scissor_piston");
         itemBlockDependencies.put("scissor_arms", "scissor_piston");
-        itemBlockDependencies.put("gyroscope_link", "gyroscope_link");
-        itemBlockDependencies.put("double_button", "double_button");
-        itemBlockDependencies.put("copycat_double_button", "copycat_double_button");
-        itemBlockDependencies.put("virtual_orientation_source", "virtual_orientation_source");
-        itemBlockDependencies.put("gyro_redstone_bridge", "gyro_redstone_bridge");
-        itemBlockDependencies.put("bidirectional_gearbox", "bidirectional_gearbox");
-        itemBlockDependencies.put("bi_directional_gearshift", "bi_directional_gearshift");
-        itemBlockDependencies.put("ratchet_cogwheel", "ratchet_cogwheel");
-        itemBlockDependencies.put("large_ratchet_cogwheel", "large_ratchet_cogwheel");
         itemBlockDependencies.put("vertical_bidirectional_gearbox", "bidirectional_gearbox");
-        itemBlockDependencies.put("analogue_joystick", "analogue_joystick");
-        itemBlockDependencies.put("analogue_contraption_controller", "analogue_contraption_controller");
-        itemBlockDependencies.put("advanced_contraption_controller", "advanced_contraption_controller");
-        itemBlockDependencies.put("ship_control_module", "ship_control_module");
-        itemBlockDependencies.put("ship_coupler", "ship_coupler");
-        itemBlockDependencies.put("advanced_navigation_table", "advanced_navigation_table");
         itemBlockDependencies.put("acc_display", ACC_DISPLAY_FEATURE);
         itemBlockDependencies.put("acc_display_block", ACC_DISPLAY_FEATURE);
         itemBlockDependencies.put("acc_display_panel", ACC_DISPLAY_FEATURE);
         itemBlockDependencies.put("acc_display_half_panel", ACC_DISPLAY_FEATURE);
         itemBlockDependencies.put("acc_display_slab", ACC_DISPLAY_FEATURE);
-        itemBlockDependencies.put("universal_display_adapter", "universal_display_adapter");
-        itemBlockDependencies.put("ship_dock", "ship_dock");
-        itemBlockDependencies.put("diagnostic_tablet", "diagnostic_tablet");
-        itemBlockDependencies.put("alternator", "alternator");
-        itemBlockDependencies.put("claw", "claw");
-        itemBlockDependencies.put("powered_zipline", "powered_zipline");
-        itemBlockDependencies.put("rope_knot", "rope_knot");
-        itemBlockDependencies.put("andesite_cable", "andesite_cable");
-        itemBlockDependencies.put("industrial_motor", "industrial_motor");
-        itemBlockDependencies.put("variable_transmission", "variable_transmission");
         itemBlockDependencies.put("vertical_variable_transmission", "variable_transmission");
-        itemBlockDependencies.put("physics_gantry_carriage", "physics_gantry_carriage");
-        itemBlockDependencies.put("physics_gantry_shaft", "physics_gantry_shaft");
-        itemBlockDependencies.put("physics_gantry_belt_wheel", "physics_gantry_belt_wheel");
-        itemBlockDependencies.put("shipping_manifest", "shipping_manifest");
         itemBlockDependencies.put("oxidized_creative_blaze_cake", "fuel_oxidizer");
         ITEM_BLOCK_DEPENDENCIES = immutableCopy(itemBlockDependencies);
     }
@@ -349,6 +271,9 @@ public final class CTFeatureToggles {
     // Check if the item is enabled
     public static boolean isItemEnabled(String id) {
         String key = normalize(id);
+        if (BLOCK_DEFAULTS.containsKey(key)) {
+            return isBlockEnabled(key);
+        }
         if (!currentItemValues().getOrDefault(key, true)) {
             return false;
         }
@@ -491,7 +416,7 @@ public final class CTFeatureToggles {
 
         readFeatureConfig(configDirectory.resolve(COMMON_CONFIG_FILE), blocks, items, entities);
         readFeatureConfig(configDirectory.resolve(SERVER_CONFIG_FILE), blocks, items, entities);
-        readDiagnosticTabletConfig(configDirectory.resolve(COMMON_CONFIG_FILE), blocks, items);
+        readDiagnosticTabletConfig(configDirectory.resolve(COMMON_CONFIG_FILE), blocks);
         return new StartupFeatureValues(blocks, items, entities);
     }
 
@@ -534,8 +459,7 @@ public final class CTFeatureToggles {
 
     // Read the diagnostic tablet config
     private static void readDiagnosticTabletConfig(Path path,
-                                                   Map<String, Boolean> blocks,
-                                                   Map<String, Boolean> items) {
+                                                   Map<String, Boolean> blocks) {
         if (!Files.exists(path)) {
             return;
         }
@@ -555,7 +479,6 @@ public final class CTFeatureToggles {
                         && "enabled".equalsIgnoreCase(entryMatcher.group(1))) {
                     boolean val = Boolean.parseBoolean(entryMatcher.group(2));
                     blocks.put("diagnostic_tablet", val);
-                    items.put("diagnostic_tablet", val);
                 }
             }
         } catch (IOException ignored) {
