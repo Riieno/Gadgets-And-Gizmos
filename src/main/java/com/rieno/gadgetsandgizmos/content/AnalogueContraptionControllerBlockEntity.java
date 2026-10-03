@@ -3195,6 +3195,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
                 schematicCopy ? 0 : controllerManifestRevision);
         if (snapshot != null && !schematicCopy) {
             applyControllerManifestSnapshot(snapshot);
+            onControllerManifestSaved(snapshot);
         }
         return snapshot;
     }
@@ -3242,6 +3243,9 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
 
     // Handle the controller manifest reloaded event
     protected void onControllerManifestReloaded() {
+    }
+
+    protected void onControllerManifestSaved(ControllerManifestStore.ManifestSnapshot snapshot) {
     }
 
     // Check if the assembly transfer is pending

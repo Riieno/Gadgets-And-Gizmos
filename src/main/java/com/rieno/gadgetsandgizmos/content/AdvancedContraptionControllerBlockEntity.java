@@ -182,6 +182,11 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private AdvancedGraphDocument draftGraph = new AdvancedGraphDocument();
     // Active graph
     private AdvancedGraphDocument activeGraph = new AdvancedGraphDocument();
+    private int graphAliasRevision = -1;
+    private boolean graphAliasSaveConflict;
+    private boolean suppressGraphAliasPublish;
+    private CompoundTag graphAliasDraft = new CompoundTag();
+    private CompoundTag graphAliasActive = new CompoundTag();
     // Graph runtime
     private final GraphRuntime graphRuntime = new GraphRuntime(this);
     // Ship stock network cache
@@ -520,6 +525,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         super.tick();
         Level currentLevel = getLevel();
+        if (currentLevel != null && !currentLevel.isClientSide
+                && Math.floorMod(currentLevel.getGameTime() + getBlockPos().asLong(), 20L) == 0L) {
+            syncGraphAlias();
+        }
         if (currentLevel != null && !currentLevel.isClientSide
                 && Math.floorMod(currentLevel.getGameTime() + getBlockPos().asLong(),
                 GRAPH_DATA_SCHEMA_REFRESH_INTERVAL) == 0L) {
@@ -1437,11 +1446,24 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return graphVersions.entries();
     }
 
+    private static boolean draftFitsStorage(AdvancedGraphDocument graph) {
+        if (graph.totalEdgeCount() > AdvancedGraphDocument.MAX_EDGES) return false;
+        try {
+            java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+            net.minecraft.nbt.NbtIo.write(graph.toTag(), new java.io.DataOutputStream(bytes));
+            return bytes.size() <= AdvancedGraphDocument.MAX_SERIALIZED_BYTES;
+        } catch (java.io.IOException err) {
+            return false;
+        }
+    }
+
     // Save the draft
     public boolean saveDraft(AdvancedGraphDocument graph, int expectedRevision) {
+        syncGraphAlias();
         if (graph == null || expectedRevision != draftGraph.revision()) {
             return false;
         }
+        if (!draftFitsStorage(graph)) return false;
         resetDeletedGraphOutputs(draftGraph, graph);
         resetDeletedGraphTargetWrites(draftGraph, graph);
         AdvancedGraphPortState.mergePersistentValues(draftGraph, graph);
@@ -1453,7 +1475,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         lastGraphObserverSample = Long.MIN_VALUE;
         draftGraph.setRevision(expectedRevision + 1);
         graphRuntime.compile(draftGraph);
+        graphAliasSaveConflict = false;
         saveControllerManifestNow();
+        if (graphAliasSaveConflict) return false;
         storeGraphOnInsertedLinker(defaultStoredGraphName());
         setChanged();
         sendData();
@@ -1470,6 +1494,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Apply the draft
     public boolean applyDraft() {
+        syncGraphAlias();
         AdvancedGraphValidator.Result res = validateDraft();
         if (!res.valid()) {
             return false;
@@ -1486,7 +1511,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         applyGraphBindings(activeGraph);
         graphRuntime.compile(activeGraph);
         restoreGraphInputValues(retainedInputValues);
+        graphAliasSaveConflict = false;
         saveControllerManifestNow();
+        if (graphAliasSaveConflict) return false;
         setChanged();
         sendData();
         graphRuntime.enqueue("applied");
@@ -1701,6 +1728,128 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     @Override
     protected void onControllerManifestReloaded() {
         refreshGraphRuntime(true);
+        graphAliasRevision = -1;
+        syncGraphAlias();
+    }
+
+    // Bind this controller identity to one shared graph name. An existing alias supplies its graph.
+    public boolean renameGraphAlias(String requestedAlias) {
+        Level level = getLevel();
+        if (level == null || level.isClientSide || requestedAlias == null
+                || requestedAlias.strip().length() > 64) return false;
+        syncGraphAlias();
+        suppressGraphAliasPublish = true;
+        try {
+            saveControllerManifestNow();
+        } finally {
+            suppressGraphAliasPublish = false;
+        }
+        String controllerId = controllerManifestId();
+        if (controllerId.isBlank()) return false;
+        ControllerSqliteStore.ControllerAliasGraph bound = ControllerSqliteStore.bindControllerAlias(
+                level, controllerId, requestedAlias, draftGraph.toTag(), activeGraph.toTag());
+        if (bound == null) return false;
+        setCustomName(requestedAlias);
+        if (bound.alias().isEmpty()) {
+            graphAliasRevision = -1;
+            graphAliasDraft = new CompoundTag();
+            graphAliasActive = new CompoundTag();
+        } else {
+            adoptGraphAlias(bound);
+        }
+        suppressGraphAliasPublish = true;
+        try {
+            saveControllerManifestNow();
+        } finally {
+            suppressGraphAliasPublish = false;
+        }
+        sendGraphAliasSnapshot();
+        return true;
+    }
+
+    // Pick up edits made by another controller, including after a chunk reload.
+    private void syncGraphAlias() {
+        Level level = getLevel();
+        if (level == null || level.isClientSide || controllerManifestId().isBlank()) return;
+        ControllerSqliteStore.ControllerAliasGraph shared =
+                ControllerSqliteStore.controllerAliasGraph(level, controllerManifestId());
+        if (shared == null) {
+            graphAliasRevision = -1;
+            return;
+        }
+        if (shared.revision() != graphAliasRevision || !shared.alias().equalsIgnoreCase(
+                getCustomName() == null ? "" : getCustomName())) {
+            setCustomName(shared.alias());
+            adoptGraphAlias(shared);
+            suppressGraphAliasPublish = true;
+            try {
+                saveControllerManifestNow();
+            } finally {
+                suppressGraphAliasPublish = false;
+            }
+            sendGraphAliasSnapshot();
+        }
+    }
+
+    private void adoptGraphAlias(ControllerSqliteStore.ControllerAliasGraph shared) {
+        graphAliasRevision = shared.revision();
+        graphAliasDraft = shared.draft().copy();
+        graphAliasActive = shared.active().copy();
+        boolean draftChanged = !draftGraph.toTag().equals(graphAliasDraft);
+        boolean activeChanged = !activeGraph.toTag().equals(graphAliasActive);
+        if (!draftChanged && !activeChanged) return;
+        if (draftChanged) {
+            draftGraph = AdvancedGraphDocument.fromTag(graphAliasDraft);
+            refreshDataPorts(draftGraph);
+        }
+        if (activeChanged) {
+            Map<String, Double> retainedInputValues = graphInputValues(activeGraph);
+            clearGraphTargetWrites(activeGraph);
+            clearGraphOutputs(activeGraph);
+            clearGraphRoutedState(activeGraph);
+            graphRuntime.clear();
+            activeGraph = AdvancedGraphDocument.fromTag(graphAliasActive);
+            refreshDataPorts(activeGraph);
+            applyGraphBindings(activeGraph);
+            graphRuntime.compile(activeGraph);
+            restoreGraphInputValues(retainedInputValues);
+        }
+        lastGraphObserverSample = Long.MIN_VALUE;
+        setChanged();
+        sendData();
+    }
+
+    private void sendGraphAliasSnapshot() {
+        Level level = getLevel();
+        if (level == null || level.getServer() == null) return;
+        for (ServerPlayer player : level.getServer().getPlayerList().getPlayers()) {
+            if (player.containerMenu instanceof AdvancedContraptionControllerMenu menu
+                    && menu.getMenuConfigTargetBlockEntity() == this) {
+                AdvancedControllerGraphSnapshotPayload.send(player, getBlockPos(),
+                        SimulatedHelper.getContainingSubLevelId(this), draftGraph, activeGraph);
+            }
+        }
+    }
+
+
+    @Override
+    protected void onControllerManifestSaved(ControllerManifestStore.ManifestSnapshot snapshot) {
+        if (snapshot == null || graphAliasRevision < 0 || suppressGraphAliasPublish) return;
+        CompoundTag draft = draftGraph.toTag();
+        CompoundTag active = activeGraph.toTag();
+        if (draft.equals(graphAliasDraft) && active.equals(graphAliasActive)) return;
+        ControllerSqliteStore.ControllerAliasGraph published =
+                ControllerSqliteStore.publishControllerAliasGraph(getLevel(), snapshot.id(),
+                        graphAliasRevision, draft, active);
+        if (published != null) {
+            graphAliasRevision = published.revision();
+            graphAliasDraft = draft;
+            graphAliasActive = active;
+        } else {
+            graphAliasSaveConflict = true;
+            graphAliasRevision = -1;
+            syncGraphAlias();
+        }
     }
 
     // Queue the graph binding sync

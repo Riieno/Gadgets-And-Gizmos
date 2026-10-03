@@ -85,13 +85,16 @@ public final class AdvancedGraphValidator {
             diagnostics.add(error("node_limit", "Graph exceeds the " + maxNodes + " node limit", ""));
         }
         if (graph.totalEdgeCount() > AdvancedGraphDocument.MAX_EDGES) {
-            diagnostics.add(error("edge_limit", "Graph exceeds the 512 edge limit", ""));
+            diagnostics.add(error("edge_limit", "Graph exceeds the "
+                    + AdvancedGraphDocument.MAX_EDGES + " edge limit", ""));
         }
         try {
             ByteArrayOutputStream bytes = new ByteArrayOutputStream();
             NbtIo.write(graph.toTag(), new DataOutputStream(bytes));
             if (bytes.size() > AdvancedGraphDocument.MAX_SERIALIZED_BYTES) {
-                diagnostics.add(error("size_limit", "Graph exceeds the 512 KiB serialized limit", ""));
+                diagnostics.add(error("size_limit", "Graph exceeds the "
+                        + (AdvancedGraphDocument.MAX_SERIALIZED_BYTES / 1024 / 1024)
+                        + " MiB serialized limit", ""));
             }
         } catch (Exception err) {
             diagnostics.add(error("serialization", "Graph cannot be serialized: " + err.getMessage(), ""));

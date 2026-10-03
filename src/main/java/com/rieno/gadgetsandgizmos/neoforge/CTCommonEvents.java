@@ -77,8 +77,10 @@ import com.rieno.gadgetsandgizmos.neoforge.network.LecternPortableContraptionCon
 import com.rieno.gadgetsandgizmos.neoforge.network.NavigationTableActionPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.FunctionPlotterDataPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.PhysicsGogglesDataPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.TeleportFrameResetPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.PhysicsGogglesDataRequestPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.PhysicsGantryBeltWheelSelectionPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.PhysicsGantryBeltWheelShearPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.PortableContraptionControllerKeyPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.PortableContraptionControllerModePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.PortableContraptionControllerOpenPayload;
@@ -273,6 +275,9 @@ public final class CTCommonEvents {
                                 MannequinSkinChangePayload::handle);
                 registrar.playToServer(ArmorStandPosePreferencePayload.TYPE, ArmorStandPosePreferencePayload.STREAM_CODEC,
                                 ArmorStandPosePreferencePayload::handle);
+                registrar.playToServer(PhysicsGantryBeltWheelShearPayload.TYPE,
+                                PhysicsGantryBeltWheelShearPayload.STREAM_CODEC,
+                                PhysicsGantryBeltWheelShearPayload::handle);
                 // ------------------------------------ROPES / LAUNCHERS------------------------------------
                 registrar.playToServer(ServerboundZiplineMountPacket.TYPE, ServerboundZiplineMountPacket.STREAM_CODEC,
                                 ServerboundZiplineMountPacket::handle);
@@ -297,6 +302,8 @@ public final class CTCommonEvents {
                                 AnalogueContraptionControllerDiscoveryResultsPayload::handle);
                 registrar.playToClient(PhysicsGogglesDataPayload.TYPE, PhysicsGogglesDataPayload.STREAM_CODEC,
                                 PhysicsGogglesDataPayload::handle);
+                registrar.playToClient(TeleportFrameResetPayload.TYPE, TeleportFrameResetPayload.STREAM_CODEC,
+                                TeleportFrameResetPayload::handle);
                 registrar.playToClient(ShippingManifestOpenPayload.TYPE, ShippingManifestOpenPayload.STREAM_CODEC,
                                 ShippingManifestOpenPayload::handle);
                 registrar.playToClient(ShipDockOpenPayload.TYPE, ShipDockOpenPayload.STREAM_CODEC,

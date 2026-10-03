@@ -19,14 +19,25 @@ import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.Objects;
 import java.util.List;
 import java.util.Map;
@@ -45,6 +56,7 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     private static final long LINK_RESOLVE_RETRY_TICKS = 20L;
+    public static final int MAX_BELTS = 8;
     private static final long ASSEMBLY_TRANSFER_TIMEOUT_TICKS = 40L;
     private static final Map<BeltWheelMoveKey, BeltWheelMoveTarget> ASSEMBLY_TRANSFER_TARGETS =
             new ConcurrentHashMap<>();
@@ -67,6 +79,9 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
     // Current linked sub-level id
     @Nullable
     private UUID linkedSubLevelId;
+    // Whether breaking this link should return the belt connector consumed to create it
+    private boolean returnsBeltOnBreak;
+    private final List<BeltLink> additionalLinks = new ArrayList<>();
     // Tracks whether receives from linked wheel is set
     private boolean receivesFromLinkedWheel;
     // Cached linked wheel
@@ -80,6 +95,7 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
     // Endpoint sub-level before the current Sable transfer rewrites normal link data
     @Nullable
     private transient UUID assemblyTransferLinkedSubLevelId;
+    private transient List<BeltLink> assemblyTransferAdditionalLinks = List.of();
     // Last tick at which the transfer endpoint may be used
     private transient long assemblyTransferExpiresAtTick;
 
@@ -114,6 +130,14 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
 
         retargetLinkedWheelAfterAssemblyTransfer();
         boolean nextReceiveFromLink = linkedPos != null && linkedPos.equals(source);
+        if (!nextReceiveFromLink) {
+            for (BeltLink link : additionalLinks) {
+                if (link.pos().equals(source)) {
+                    nextReceiveFromLink = true;
+                    break;
+                }
+            }
+        }
         if (receivesFromLinkedWheel != nextReceiveFromLink) {
             receivesFromLinkedWheel = nextReceiveFromLink;
             sendData();
@@ -137,21 +161,74 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
         return other != null && other.references(worldPosition, subLevelId) ? other : null;
     }
 
+    @Override
+    protected Collection<? extends LinkedKineticBlockEntity> resolveKineticLinks() {
+        UUID ownSubLevel = SimulatedHelper.getContainingSubLevelId(this);
+        List<LinkedKineticBlockEntity> wheels = new ArrayList<>();
+        for (BeltLink link : allLinks()) {
+            PhysicsGantryBeltWheelBlockEntity other = resolveLinkedWheel(link);
+            if (other != null && other.references(worldPosition, ownSubLevel)) wheels.add(other);
+        }
+        return wheels;
+    }
+
     // Check if this has linked target
     public boolean hasLinkedTarget() {
-        return linkedPos != null;
+        return linkCount() > 0;
+    }
+
+    public int linkCount() {
+        return (linkedPos == null ? 0 : 1) + additionalLinks.size();
+    }
+
+    public boolean canAddLink(BlockPos pos, @Nullable UUID subLevelId) {
+        return linkCount() < MAX_BELTS && !references(pos, subLevelId);
+    }
+
+    public boolean addLinkedTarget(BlockPos pos, @Nullable UUID subLevelId, boolean refundable) {
+        if (!canAddLink(pos, subLevelId)) return false;
+        if (linkedPos == null) {
+            linkedPos = pos.immutable();
+            linkedSubLevelId = subLevelId;
+            returnsBeltOnBreak = refundable;
+        } else {
+            additionalLinks.add(new BeltLink(pos.immutable(), subLevelId, refundable));
+        }
+        invalidateLinkedWheelCache();
+        refreshKineticLink();
+        setChanged();
+        sendData();
+        return true;
+    }
+
+    public List<PhysicsGantryBeltWheelBlockEntity> getRenderableLinkedWheels() {
+        List<PhysicsGantryBeltWheelBlockEntity> wheels = new ArrayList<>();
+        UUID ownSubLevel = SimulatedHelper.getContainingSubLevelId(this);
+        String ownKey = endpointKey(this);
+        for (BeltLink link : allLinks()) {
+            PhysicsGantryBeltWheelBlockEntity other = resolveLinkedWheel(link);
+            if (other != null && other.references(worldPosition, ownSubLevel)
+                    && ownKey.compareTo(endpointKey(other)) < 0) wheels.add(other);
+        }
+        return wheels;
     }
 
     // Check if this should render link from this endpoint
     public boolean shouldRenderLinkFromThisEndpoint() {
-        PhysicsGantryBeltWheelBlockEntity other = resolveLinkedWheel();
-        return other != null && endpointKey(this).compareTo(endpointKey(other)) < 0;
+        return !getRenderableLinkedWheels().isEmpty();
     }
 
     // Set the linked target
     public void setLinkedTarget(BlockPos targetPos, @Nullable UUID targetSubLevelId) {
+        setLinkedTarget(targetPos, targetSubLevelId, true);
+    }
+
+    // Set the linked target and whether its consumed connector can be returned when broken
+    public void setLinkedTarget(BlockPos targetPos, @Nullable UUID targetSubLevelId, boolean returnsBeltOnBreak) {
         linkedPos = targetPos.immutable();
         linkedSubLevelId = targetSubLevelId;
+        this.returnsBeltOnBreak = returnsBeltOnBreak;
+        additionalLinks.clear();
         invalidateLinkedWheelCache();
         receivesFromLinkedWheel = false;
         refreshKineticLink();
@@ -161,34 +238,88 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
 
     // Check if the belt wheel references the target
     public boolean references(BlockPos pos, @Nullable UUID subLevelId) {
-        return linkedPos != null && linkedPos.equals(pos) && Objects.equals(linkedSubLevelId, subLevelId);
+        if (linkedPos != null && linkedPos.equals(pos) && Objects.equals(linkedSubLevelId, subLevelId)) return true;
+        for (BeltLink link : additionalLinks) {
+            if (link.pos().equals(pos) && Objects.equals(link.subLevelId(), subLevelId)) return true;
+        }
+        return false;
     }
+
+    private List<BeltLink> allLinks() {
+        List<BeltLink> links = new ArrayList<>(MAX_BELTS);
+        if (linkedPos != null) links.add(new BeltLink(linkedPos, linkedSubLevelId, returnsBeltOnBreak));
+        links.addAll(additionalLinks);
+        return links;
+    }
+
+    private record BeltLink(BlockPos pos, @Nullable UUID subLevelId, boolean refundable) {}
 
     // Handle the break link
     public void breakLink(boolean notifyOther) {
-        if (!hasLinkedTarget()) {
-            return;
-        }
+        breakLink(notifyOther, false);
+    }
 
-        BlockPos previousPos = linkedPos;
-        UUID previousSubLevelId = linkedSubLevelId;
-        linkedPos = null;
-        linkedSubLevelId = null;
+    // Handle the break link and optionally return its connector item
+    public void breakLink(boolean notifyOther, boolean returnBelt) {
+        for (BeltLink link : allLinks()) breakLinkTo(link.pos(), link.subLevelId(), notifyOther, returnBelt);
+    }
+
+    // Shears remove exactly the selected reciprocal connection and return its connector once.
+    public boolean shearLink(BlockPos targetPos, @Nullable UUID targetSubLevelId) {
+        if (!references(targetPos, targetSubLevelId)) return false;
+        breakLinkTo(targetPos, targetSubLevelId, true, true);
+        return true;
+    }
+
+    private void breakLinkTo(BlockPos targetPos, @Nullable UUID targetSubLevelId,
+                             boolean notifyOther, boolean returnBelt) {
+        BeltLink removed = null;
+        if (linkedPos != null && linkedPos.equals(targetPos) && Objects.equals(linkedSubLevelId, targetSubLevelId)) {
+            removed = new BeltLink(linkedPos, linkedSubLevelId, returnsBeltOnBreak);
+            linkedPos = null;
+            linkedSubLevelId = null;
+            returnsBeltOnBreak = false;
+            if (!additionalLinks.isEmpty()) {
+                BeltLink promoted = additionalLinks.removeFirst();
+                linkedPos = promoted.pos();
+                linkedSubLevelId = promoted.subLevelId();
+                returnsBeltOnBreak = promoted.refundable();
+            }
+        } else {
+            for (BeltLink link : additionalLinks) {
+                if (link.pos().equals(targetPos) && Objects.equals(link.subLevelId(), targetSubLevelId)) {
+                    removed = link;
+                    break;
+                }
+            }
+            additionalLinks.remove(removed);
+        }
+        if (removed == null) return;
+
         invalidateLinkedWheelCache();
         receivesFromLinkedWheel = false;
         refreshKineticLink();
         setChanged();
         sendData();
+        if (returnBelt && removed.refundable()) dropBelt();
 
-        if (!notifyOther || level == null || previousPos == null) {
+        if (!notifyOther || level == null) return;
+        PhysicsGantryBeltWheelBlockEntity other = SimulatedHelper.findBlockEntity(level,
+                removed.subLevelId(), removed.pos(), PhysicsGantryBeltWheelBlockEntity.class);
+        if (other != null && !other.isRemoved()) {
+            other.breakLinkTo(worldPosition, SimulatedHelper.getContainingSubLevelId(this), false, false);
+        }
+    }
+
+    // Return the belt connector at the endpoint that broke the link
+    void dropBelt() {
+        if (level == null || level.isClientSide) {
             return;
         }
-
-        PhysicsGantryBeltWheelBlockEntity other = SimulatedHelper.findBlockEntity(level, previousSubLevelId, previousPos,
-                PhysicsGantryBeltWheelBlockEntity.class);
-        if (other != null && !other.isRemoved()
-                && other.references(worldPosition, SimulatedHelper.getContainingSubLevelId(this))) {
-            other.breakLink(false);
+        Item beltConnector = BuiltInRegistries.ITEM.get(
+                ResourceLocation.fromNamespaceAndPath("create", "belt_connector"));
+        if (beltConnector != Items.AIR) {
+            Block.popResource(level, worldPosition, new ItemStack(beltConnector));
         }
     }
 
@@ -201,6 +332,7 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
         UUID sourceSubLevelId = SimulatedHelper.getContainingSubLevelId(this);
         assemblyTransferLinkedPos = linkedPos.immutable();
         assemblyTransferLinkedSubLevelId = linkedSubLevelId;
+        assemblyTransferAdditionalLinks = List.copyOf(additionalLinks);
         BeltWheelMoveKey sourceKey = new BeltWheelMoveKey(
                 originLevel.dimension().location().toString(), oldPos.immutable(), sourceSubLevelId);
         long expiresAtTick = originLevel.getGameTime() + ASSEMBLY_TRANSFER_TIMEOUT_TICKS;
@@ -229,9 +361,11 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
         // arrives, repair both sides immediately instead of waiting for an
         // eventual block-entity tick in the newly created sub-level.
         retargetLinkedWheelAfterAssemblyTransfer();
-        PhysicsGantryBeltWheelBlockEntity linkedWheel = resolveLinkedWheel();
-        if (linkedWheel != null && wasMovedByAssemblyTransfer(linkedWheel)) {
-            linkedWheel.retargetLinkedWheelAfterAssemblyTransfer();
+        for (BeltLink link : allLinks()) {
+            PhysicsGantryBeltWheelBlockEntity linkedWheel = resolveLinkedWheel(link);
+            if (linkedWheel != null && wasMovedByAssemblyTransfer(linkedWheel)) {
+                linkedWheel.retargetLinkedWheelAfterAssemblyTransfer();
+            }
         }
     }
 
@@ -279,6 +413,16 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
         return null;
     }
 
+    @Nullable
+    private PhysicsGantryBeltWheelBlockEntity resolveLinkedWheel(BeltLink link) {
+        if (level == null) return null;
+        if (linkedPos != null && linkedPos.equals(link.pos())
+                && Objects.equals(linkedSubLevelId, link.subLevelId())) return resolveLinkedWheel();
+        BlockEntity target = SimulatedHelper.findLoadedBlockEntityExact(level, link.subLevelId(), link.pos());
+        return target instanceof PhysicsGantryBeltWheelBlockEntity wheel && wheel != this && !wheel.isRemoved()
+                ? wheel : null;
+    }
+
     // Get the world anchor position
     public Vec3 getWorldAnchorPosition() {
         Vec3 local = Vec3.atCenterOf(worldPosition);
@@ -320,6 +464,11 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
                     .withStyle(ChatFormatting.GRAY);
         }
 
+        if (linkCount() > 1) {
+            return Component.translatable("createthrusters.physics_gantry_belt_wheel.status_multi", linkCount(), MAX_BELTS)
+                    .withStyle(ChatFormatting.AQUA);
+        }
+
         PhysicsGantryBeltWheelBlockEntity linkedWheel = resolveLinkedWheel();
         if (linkedWheel == null || linkedWheel.isRemoved()) {
             return Component.translatable("createthrusters.physics_gantry_belt_wheel.status_missing")
@@ -355,34 +504,38 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
 
     // Update an endpoint that was moved in the same Sable assembly operation.
     private void retargetLinkedWheelAfterAssemblyTransfer() {
-        if (level == null || linkedPos == null) {
-            return;
-        }
-
+        if (level == null || !hasLinkedTarget()) return;
         long gameTime = level.getGameTime();
         pruneExpiredAssemblyTransfers(gameTime);
-        boolean hasTransferReference = assemblyTransferLinkedPos != null
+        boolean transferReferenceValid = assemblyTransferLinkedPos != null
                 && assemblyTransferExpiresAtTick >= gameTime;
-        BlockPos lookupPos = hasTransferReference ? assemblyTransferLinkedPos : linkedPos;
-        UUID lookupSubLevelId = hasTransferReference ? assemblyTransferLinkedSubLevelId : linkedSubLevelId;
-        if (assemblyTransferLinkedPos != null && !hasTransferReference) {
-            clearAssemblyTransferReference();
+        boolean changed = false;
+        List<BeltLink> currentLinks = allLinks();
+        for (int index = 0; index < currentLinks.size(); index++) {
+            BeltLink current = currentLinks.get(index);
+            BeltLink lookup = current;
+            if (transferReferenceValid) {
+                if (index == 0) lookup = new BeltLink(assemblyTransferLinkedPos,
+                        assemblyTransferLinkedSubLevelId, current.refundable());
+                else if (index - 1 < assemblyTransferAdditionalLinks.size()) {
+                    lookup = assemblyTransferAdditionalLinks.get(index - 1);
+                }
+            }
+            BeltWheelMoveKey key = new BeltWheelMoveKey(level.dimension().location().toString(),
+                    lookup.pos(), lookup.subLevelId());
+            BeltWheelMoveTarget moved = ASSEMBLY_TRANSFER_TARGETS.get(key);
+            if (moved == null || !moved.complete() || current.pos().equals(moved.position())
+                    && Objects.equals(current.subLevelId(), moved.subLevelId())) continue;
+            if (index == 0) {
+                linkedPos = moved.position();
+                linkedSubLevelId = moved.subLevelId();
+            } else {
+                additionalLinks.set(index - 1, new BeltLink(moved.position(), moved.subLevelId(), current.refundable()));
+            }
+            changed = true;
         }
-        BeltWheelMoveKey linkedKey = new BeltWheelMoveKey(
-                level.dimension().location().toString(), lookupPos, lookupSubLevelId);
-        BeltWheelMoveTarget movedTarget = ASSEMBLY_TRANSFER_TARGETS.get(linkedKey);
-        if (movedTarget == null || !movedTarget.complete()) {
-            return;
-        }
-
-        if (linkedPos.equals(movedTarget.position())
-                && Objects.equals(linkedSubLevelId, movedTarget.subLevelId())) {
-            return;
-        }
-
-        linkedPos = movedTarget.position();
-        linkedSubLevelId = movedTarget.subLevelId();
-        clearAssemblyTransferReference();
+        if (!transferReferenceValid && assemblyTransferLinkedPos != null) clearAssemblyTransferReference();
+        if (!changed) return;
         invalidateLinkedWheelCache();
         refreshKineticLink();
         setChanged();
@@ -400,6 +553,7 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
     private void clearAssemblyTransferReference() {
         assemblyTransferLinkedPos = null;
         assemblyTransferLinkedSubLevelId = null;
+        assemblyTransferAdditionalLinks = List.of();
         assemblyTransferExpiresAtTick = 0L;
     }
 
@@ -461,15 +615,28 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
         }
         if (savedLinkedPos != null) {
             tag.putLong("LinkedPos", savedLinkedPos.asLong());
+            tag.putBoolean("ReturnsBeltOnBreak", returnsBeltOnBreak);
         }
         if (savedLinkedSubLevelId != null) {
             tag.putUUID("LinkedSubLevelId", savedLinkedSubLevelId);
         }
+        ListTag savedLinks = new ListTag();
+        for (BeltLink link : additionalLinks) {
+            CompoundTag linkTag = serializeBeltLink(link, ctx);
+            if (linkTag != null) savedLinks.add(linkTag);
+        }
+        tag.put("AdditionalLinks", savedLinks);
         if (!clientPacket && assemblyTransferLinkedPos != null) {
             tag.putLong("AssemblyTransferLinkedPos", assemblyTransferLinkedPos.asLong());
             if (assemblyTransferLinkedSubLevelId != null) {
                 tag.putUUID("AssemblyTransferLinkedSubLevelId", assemblyTransferLinkedSubLevelId);
             }
+            ListTag transferLinks = new ListTag();
+            for (BeltLink link : assemblyTransferAdditionalLinks) {
+                CompoundTag linkTag = serializeBeltLink(link, null);
+                if (linkTag != null) transferLinks.add(linkTag);
+            }
+            tag.put("AssemblyTransferAdditionalLinks", transferLinks);
         }
         tag.putBoolean("ReceivesFromLinkedWheel", receivesFromLinkedWheel);
     }
@@ -482,6 +649,9 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
         UUID previousLinkedSubLevelId = linkedSubLevelId;
         linkedPos = tag.contains("LinkedPos") ? BlockPos.of(tag.getLong("LinkedPos")) : null;
         linkedSubLevelId = tag.contains("LinkedSubLevelId") ? tag.getUUID("LinkedSubLevelId") : null;
+        // Saved links from before this field existed consumed a connector in survival, so keep them refundable.
+        returnsBeltOnBreak = linkedPos != null && (!tag.contains("ReturnsBeltOnBreak")
+                || tag.getBoolean("ReturnsBeltOnBreak"));
         SubLevelSchematicSerializationContext ctx =
                 SubLevelSchematicSerializationContext.getCurrentContext();
         if (ctx != null && ctx.getType() == SubLevelSchematicSerializationContext.Type.PLACE
@@ -499,6 +669,18 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
                 linkedPos = ctx.getPlaceTransform().apply(linkedPos);
             }
         }
+        additionalLinks.clear();
+        ListTag savedLinks = tag.getList("AdditionalLinks", Tag.TAG_COMPOUND);
+        for (int index = 0; index < savedLinks.size() && linkCount() < MAX_BELTS; index++) {
+            BeltLink link = deserializeBeltLink(savedLinks.getCompound(index), ctx);
+            if (link != null && !references(link.pos(), link.subLevelId())) additionalLinks.add(link);
+        }
+        if (linkedPos == null && !additionalLinks.isEmpty()) {
+            BeltLink promoted = additionalLinks.removeFirst();
+            linkedPos = promoted.pos();
+            linkedSubLevelId = promoted.subLevelId();
+            returnsBeltOnBreak = promoted.refundable();
+        }
         if (!Objects.equals(previousLinkedPos, linkedPos)
                 || !Objects.equals(previousLinkedSubLevelId, linkedSubLevelId)) {
             invalidateLinkedWheelCache();
@@ -507,6 +689,13 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
                 ? BlockPos.of(tag.getLong("AssemblyTransferLinkedPos")) : null;
         assemblyTransferLinkedSubLevelId = tag.contains("AssemblyTransferLinkedSubLevelId")
                 ? tag.getUUID("AssemblyTransferLinkedSubLevelId") : null;
+        ListTag transferLinks = tag.getList("AssemblyTransferAdditionalLinks", Tag.TAG_COMPOUND);
+        List<BeltLink> originalLinks = new ArrayList<>();
+        for (int index = 0; index < transferLinks.size() && index < MAX_BELTS - 1; index++) {
+            BeltLink link = deserializeBeltLink(transferLinks.getCompound(index), null);
+            if (link != null) originalLinks.add(link);
+        }
+        assemblyTransferAdditionalLinks = List.copyOf(originalLinks);
         assemblyTransferExpiresAtTick = 0L;
         receivesFromLinkedWheel = tag.getBoolean("ReceivesFromLinkedWheel");
         if (!clientPacket && tag.contains("GeneratedLinkSpeed")) {
@@ -517,11 +706,60 @@ public class PhysicsGantryBeltWheelBlockEntity extends LinkedKineticBlockEntity
     // Get the loading dependencies
     @Override
     public Iterable<SubLevel> sable$getLoadingDependencies() {
-        if (level == null || linkedSubLevelId == null) return List.of();
+        if (level == null || !hasLinkedTarget()) return List.of();
         SubLevelContainer container = SubLevelContainer.getContainer(level);
         if (container == null) return List.of();
-        SubLevel subLevel = container.getSubLevel(linkedSubLevelId);
-        return subLevel == null || subLevel.isRemoved() ? List.of() : List.of(subLevel);
+        LinkedHashSet<SubLevel> dependencies = new LinkedHashSet<>();
+        for (BeltLink link : allLinks()) {
+            if (link.subLevelId() == null) continue;
+            SubLevel subLevel = container.getSubLevel(link.subLevelId());
+            if (subLevel != null && !subLevel.isRemoved()) dependencies.add(subLevel);
+        }
+        return dependencies;
+    }
+
+    @Nullable
+    private static CompoundTag serializeBeltLink(BeltLink link,
+                                                   @Nullable SubLevelSchematicSerializationContext ctx) {
+        BlockPos pos = link.pos();
+        UUID subLevelId = link.subLevelId();
+        if (ctx != null) {
+            if (subLevelId != null) {
+                SubLevelSchematicSerializationContext.SchematicMapping mapping = ctx.getMapping(subLevelId);
+                if (mapping == null) return null;
+                pos = mapping.transform().apply(pos);
+                subLevelId = mapping.newUUID();
+            } else if (ctx.getType() == SubLevelSchematicSerializationContext.Type.SAVE) {
+                if (!ctx.getBoundingBox().contains(pos.getX(), pos.getY(), pos.getZ())) return null;
+                pos = ctx.getPlaceTransform().apply(pos);
+            } else {
+                pos = ctx.getSetupTransform().apply(pos);
+            }
+        }
+        CompoundTag tag = new CompoundTag();
+        tag.putLong("Pos", pos.asLong());
+        if (subLevelId != null) tag.putUUID("SubLevelId", subLevelId);
+        tag.putBoolean("Refundable", link.refundable());
+        return tag;
+    }
+
+    @Nullable
+    private static BeltLink deserializeBeltLink(CompoundTag tag,
+                                                  @Nullable SubLevelSchematicSerializationContext ctx) {
+        if (!tag.contains("Pos")) return null;
+        BlockPos pos = BlockPos.of(tag.getLong("Pos"));
+        UUID subLevelId = tag.contains("SubLevelId") ? tag.getUUID("SubLevelId") : null;
+        if (ctx != null && ctx.getType() == SubLevelSchematicSerializationContext.Type.PLACE) {
+            if (subLevelId != null) {
+                SubLevelSchematicSerializationContext.SchematicMapping mapping = ctx.getMapping(subLevelId);
+                if (mapping == null) return null;
+                pos = mapping.transform().apply(pos);
+                subLevelId = mapping.newUUID();
+            } else {
+                pos = ctx.getPlaceTransform().apply(pos);
+            }
+        }
+        return new BeltLink(pos, subLevelId, !tag.contains("Refundable") || tag.getBoolean("Refundable"));
     }
 
 }

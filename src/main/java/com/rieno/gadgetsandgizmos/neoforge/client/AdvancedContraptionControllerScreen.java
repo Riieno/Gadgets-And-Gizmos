@@ -47,6 +47,7 @@ import com.rieno.gadgetsandgizmos.lib.display.DisplayWidgetProjection;
 import com.rieno.gadgetsandgizmos.lib.display.ShipInformationDisplayModes;
 import com.rieno.gadgetsandgizmos.neoforge.ControllerGraphWebServer;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedContraptionControllerGraphPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphSnapshotPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerProfilerPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedHudImageUploadPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AnalogueContraptionControllerDiscoveryRequestPayload;
@@ -398,6 +399,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private EditBox miniBrowserSearch;
     // Current function name editor
     private EditBox functionNameEditor;
+    private EditBox controllerAliasEditor;
+    private String controllerAlias = "";
+    private String pendingControllerAlias;
+    private long pendingControllerAliasRequestId;
     // Current option dropdown search
     private EditBox optionDropdownSearch;
     // Current inspector value
@@ -725,6 +730,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Initialize the advanced contraption controller
     public AdvancedContraptionControllerScreen(AdvancedContraptionControllerMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
+        AdvancedContraptionControllerBlockEntity namedController = menu.getMenuConfigTargetBlockEntity();
+        if (namedController != null && namedController.getCustomName() != null) {
+            controllerAlias = namedController.getCustomName();
+        }
         v2Ui = advCtrlV2Enabled();
         AdvancedControllerUiPreferences.State preferences = AdvancedControllerUiPreferences.load();
         leftSidebarCollapsed = preferences.leftSidebarCollapsed();
@@ -988,6 +997,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         addRenderableWidget(blockSearch);
 
         // -----------------------------------------------------EDITOR FIELDS-----------------------------------------------------
+        controllerAliasEditor = new EditBox(font, 0, 6, 160, 18, Component.literal("Controller alias"));
+        controllerAliasEditor.setMaxLength(64);
+        controllerAliasEditor.setVisible(false);
+        addRenderableWidget(controllerAliasEditor);
+
         miniBrowserSearch = new EditBox(font, 0, 0, MINI_BROWSER_WIDTH - 12, 18,
                 Component.literal("Search nodes"));
         miniBrowserSearch.setHint(Component.literal("Search nodes..."));
@@ -1990,13 +2004,60 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         renderTitleBar(graphics, layoutLeft(), 0, layoutRight() - layoutLeft(), TOOLBAR_HEIGHT);
         graphics.fill(layoutLeft(), TOOLBAR_HEIGHT - 1, layoutRight(), TOOLBAR_HEIGHT,
                 v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF314657);
-        String title = "Advanced Contraption Controller";
+        String title = controllerTitleText();
         int titleLeft = layoutLeft() + 276;
         int titleRight = layoutRight() - 434;
-        if (titleRight - titleLeft >= font.width(title) + 8) {
-            graphics.drawCenteredString(font, title, (titleLeft + titleRight) / 2, 10,
-                    v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFFE7F4FF);
+        if (titleRight - titleLeft >= font.width(title) + 28) {
+            if (controllerAliasEditor == null || !controllerAliasEditor.visible) {
+                graphics.drawCenteredString(font, title, (titleLeft + titleRight) / 2, 10,
+                        v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFFE7F4FF);
+            }
+            UiRect pen = controllerAliasPenBounds();
+            graphics.drawString(font, "✎", pen.x() + 3, pen.y() + 3,
+                    v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFFE7F4FF, false);
         }
+    }
+
+    private String controllerTitleText() {
+        String title = controllerAlias.isBlank() ? "Advanced Contraption Controller" : controllerAlias;
+        int available = Math.max(0, layoutRight() - 434 - (layoutLeft() + 276) - 28);
+        if (font.width(title) <= available) return title;
+        return font.plainSubstrByWidth(title, Math.max(0, available - font.width("…"))) + "…";
+    }
+
+    private UiRect controllerAliasPenBounds() {
+        int center = (layoutLeft() + 276 + layoutRight() - 434) / 2;
+        return new UiRect(center + font.width(controllerTitleText()) / 2 + 6, 5, 16, 18);
+    }
+
+    private void beginControllerAliasRename() {
+        if (controllerAliasEditor == null) return;
+        int center = (layoutLeft() + 276 + layoutRight() - 434) / 2;
+        controllerAliasEditor.setX(center - 80);
+        controllerAliasEditor.setY(6);
+        controllerAliasEditor.setValue(controllerAlias);
+        controllerAliasEditor.setVisible(true);
+        controllerAliasEditor.setFocused(true);
+        setFocused(controllerAliasEditor);
+    }
+
+    private void finishControllerAliasRename(boolean cancel) {
+        if (controllerAliasEditor == null) return;
+        String requested = controllerAliasEditor.getValue().strip();
+        controllerAliasEditor.setVisible(false);
+        controllerAliasEditor.setFocused(false);
+        if (getFocused() == controllerAliasEditor) setFocused(null);
+        if (cancel || requested.equalsIgnoreCase(controllerAlias)) return;
+        if (draftDirty) {
+            showGraphToast("Save the graph before changing its alias", GraphActionToastSeverity.WARNING);
+            return;
+        }
+        pendingControllerAlias = requested;
+        pendingControllerAliasRequestId = beginGraphActionToast("Updating controller alias...");
+        PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+                MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId()),
+                "controller_alias", savedDraft.revision(), new CompoundTag(), requested,
+                pendingControllerAliasRequestId));
     }
 
     // Draw the graph tabs
@@ -2236,6 +2297,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             saveOnCloseReqId = 0L;
         }
         if (saveAttempted && serverRevision >= 0) {
+            if (draft != null) {
+                draft.setRevision(serverRevision);
+            }
             if (graphSaved && submittedGraph != null) {
                 submittedGraph.setRevision(serverRevision);
                 savedDraft = submittedGraph.copy();
@@ -2243,9 +2307,6 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                         && !Objects.equals(draft.toTag(), savedDraft.toTag());
             } else if (savedDraft != null) {
                 savedDraft.setRevision(serverRevision);
-            }
-            if (draft != null) {
-                draft.setRevision(serverRevision);
             }
         }
         if (requestId != activeGraphActionReqId) {
@@ -5506,6 +5567,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle mouse clicked
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (controllerAliasEditor != null && controllerAliasEditor.visible) {
+            if (controllerAliasEditor.mouseClicked(mouseX, mouseY, button)) return true;
+            finishControllerAliasRename(false);
+        }
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT
+                && controllerAliasPenBounds().contains(mouseX, mouseY)) {
+            beginControllerAliasRename();
+            return true;
+        }
         if (mouseY >= 5 && mouseY < 23 && super.mouseClicked(mouseX, mouseY, button)) return true;
 
         // ------------------------------------OVERLAY INPUT------------------------------------
@@ -6249,6 +6319,16 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle key pressed
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (controllerAliasEditor != null && controllerAliasEditor.visible) {
+            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                finishControllerAliasRename(false);
+            } else if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                finishControllerAliasRename(true);
+            } else {
+                controllerAliasEditor.keyPressed(keyCode, scanCode, modifiers);
+            }
+            return true;
+        }
         // -----------------------------------------------------EDITOR MODALS-----------------------------------------------------
         if (functionNameEditor != null && functionNameEditor.visible) {
             if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
@@ -6398,6 +6478,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle typed characters
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
+        if (controllerAliasEditor != null && controllerAliasEditor.visible) {
+            return controllerAliasEditor.charTyped(codePoint, modifiers);
+        }
         if (hudOpen) {
             if (getFocused() instanceof EditBox editBox) {
                 return editBox.charTyped(codePoint, modifiers);
@@ -7868,9 +7951,17 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         AdvancedGraphDocument.Node from = findNode(fromNode);
         AdvancedGraphDocument.Node to = findNode(toNode);
         if (from == null || to == null) return;
+        boolean replacing = activeEdges().stream().anyMatch(edge -> edge.toNode().equals(toNode)
+                && edge.toPort().equals(toPort));
+        if (!replacing && draft.totalEdgeCount() >= AdvancedGraphDocument.MAX_EDGES) {
+            showGraphToast("Graph wire limit reached (" + AdvancedGraphDocument.MAX_EDGES + ")",
+                    GraphActionToastSeverity.ERROR);
+            return;
+        }
         checkpoint();
-        AdvancedGraphPortNormalizer.connect(activeNodes(), activeEdges(),
+        AdvancedGraphPortNormalizer.ConnectResult result = AdvancedGraphPortNormalizer.connect(activeNodes(), activeEdges(),
                 UUID.randomUUID().toString(), fromNode, fromPort, toNode, toPort);
+        if (!result.connected()) showGraphToast(result.message(), GraphActionToastSeverity.ERROR);
         synchronizeComparePorts();
     }
 
@@ -11062,8 +11153,42 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                                           int serverRevision, boolean saveAttempted,
                                           boolean graphSaved,
                                           List<AdvancedGraphValidator.Diagnostic> diagnostics) {
+        if (requestId == pendingControllerAliasRequestId) {
+            if (success && pendingControllerAlias != null) controllerAlias = pendingControllerAlias;
+            pendingControllerAlias = null;
+            pendingControllerAliasRequestId = 0L;
+        }
         queueGraphActionResult(requestId, success, message,
                 serverRevision, saveAttempted, graphSaved, diagnostics);
+    }
+
+    public static void applyControllerGraphSnapshot(BlockPos controllerPos, UUID controllerSubLevelId,
+                                                     AdvancedControllerGraphSnapshotPayload.GraphSnapshot snapshot) {
+        Screen current = Minecraft.getInstance().screen;
+        if (current instanceof AdvancedContraptionControllerScreen screen
+                && screen.matchesController(controllerPos, controllerSubLevelId)) {
+            screen.adoptControllerGraphSnapshot(snapshot);
+        }
+    }
+
+    private void adoptControllerGraphSnapshot(AdvancedControllerGraphSnapshotPayload.GraphSnapshot snapshot) {
+        if (snapshot == null || snapshot.draft().isEmpty() || savedDraft == null) return;
+        AdvancedGraphDocument incoming = AdvancedGraphDocument.fromTag(snapshot.draft());
+        if (incoming.toTag().equals(savedDraft.toTag())) return;
+        if (pendingControllerAlias == null && (draftDirty || incoming.revision() < savedDraft.revision())) {
+            showGraphToast("Shared graph changed; save or reopen to refresh",
+                    GraphActionToastSeverity.WARNING);
+            return;
+        }
+        draft = incoming;
+        savedDraft = incoming.copy();
+        draftDirty = false;
+        undo.clear();
+        redo.clear();
+        clearSelection();
+        restoreViewport();
+        synchronizeComparePorts();
+        clearGraphRenderCache();
     }
 
     // Merge the graph targets
@@ -14881,6 +15006,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Save and apply the draft
     private void saveAndApplyDraft(String action, long requestId) {
         storeViewport();
+        syncHudPorts(draft);
         pendingGraphSaves.put(requestId, draft.copy());
         send(action, "", requestId);
     }

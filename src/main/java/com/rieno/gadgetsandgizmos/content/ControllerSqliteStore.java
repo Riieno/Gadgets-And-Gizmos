@@ -52,6 +52,7 @@ import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -125,6 +126,9 @@ final class ControllerSqliteStore {
     interface LinkerTargetLoader {
         // Load the linker target loader
         LinkerTargets load() throws SQLException;
+    }
+
+    record ControllerAliasGraph(String alias, int revision, CompoundTag draft, CompoundTag active) {
     }
 
     // Handle the linker target cache
@@ -351,6 +355,129 @@ final class ControllerSqliteStore {
             return null;
         }
     }
+
+    static synchronized @Nullable ControllerAliasGraph controllerAliasGraph(@Nullable Level level, String controllerId) {
+        Connection connection = connection(level);
+        if (connection == null || controllerId == null || controllerId.isBlank()) return null;
+        try {
+            return loadControllerAliasGraph(connection, controllerId);
+        } catch (SQLException err) {
+            Create.LOGGER.warn("Failed to load graph alias for controller {}", controllerId, err);
+            return null;
+        }
+    }
+
+    private static @Nullable ControllerAliasGraph loadControllerAliasGraph(Connection connection, String controllerId)
+            throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT a.alias, a.revision
+                FROM controller_alias_map m JOIN controller_aliases a ON a.alias = m.alias
+                WHERE m.controller_id = ?
+                """)) {
+            statement.setString(1, controllerId);
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) return null;
+                String alias = result.getString("alias");
+                return new ControllerAliasGraph(alias, result.getInt("revision"),
+                        loadGraph(connection, "alias", alias, "draft"),
+                        loadGraph(connection, "alias", alias, "active"));
+            }
+        }
+    }
+
+    static synchronized @Nullable ControllerAliasGraph bindControllerAlias(@Nullable Level level,
+            String controllerId, String requestedAlias, CompoundTag draft, CompoundTag active) {
+        Connection connection = connection(level);
+        if (connection == null || controllerId == null || controllerId.isBlank() || requestedAlias == null) return null;
+        String alias = requestedAlias.strip().toLowerCase(Locale.ROOT);
+        if (alias.length() > 64) return null;
+        try {
+            boolean previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try {
+                if (alias.isEmpty()) {
+                    try (PreparedStatement statement = connection.prepareStatement(
+                            "DELETE FROM controller_alias_map WHERE controller_id = ?")) {
+                        statement.setString(1, controllerId);
+                        statement.executeUpdate();
+                    }
+                    connection.commit();
+                    return new ControllerAliasGraph("", 0, draft.copy(), active.copy());
+                }
+                boolean created;
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "INSERT OR IGNORE INTO controller_aliases(alias, revision) VALUES (?, 1)")) {
+                    statement.setString(1, alias);
+                    created = statement.executeUpdate() != 0;
+                }
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        INSERT INTO controller_alias_map(controller_id, alias) VALUES (?, ?)
+                        ON CONFLICT(controller_id) DO UPDATE SET alias = excluded.alias
+                        """)) {
+                    statement.setString(1, controllerId);
+                    statement.setString(2, alias);
+                    statement.executeUpdate();
+                }
+                if (created) {
+                    String now = Instant.now().toString();
+                    upsertGraph(connection, "alias", alias, "draft", alias, draft, 1, now);
+                    upsertGraph(connection, "alias", alias, "active", alias, active, 1, now);
+                }
+                ControllerAliasGraph graph = loadControllerAliasGraph(connection, controllerId);
+                connection.commit();
+                return graph;
+            } catch (SQLException | RuntimeException err) {
+                connection.rollback();
+                throw err;
+            } finally {
+                connection.setAutoCommit(previousAutoCommit);
+            }
+        } catch (SQLException err) {
+            Create.LOGGER.warn("Failed to bind controller {} to alias {}", controllerId, alias, err);
+            return null;
+        }
+    }
+
+    static synchronized @Nullable ControllerAliasGraph publishControllerAliasGraph(@Nullable Level level,
+            String controllerId, int expectedRevision, CompoundTag draft, CompoundTag active) {
+        Connection connection = connection(level);
+        if (connection == null || controllerId == null || controllerId.isBlank()) return null;
+        try {
+            boolean previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try {
+                ControllerAliasGraph current = loadControllerAliasGraph(connection, controllerId);
+                if (current == null || current.revision() != expectedRevision) {
+                    connection.rollback();
+                    return null;
+                }
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "UPDATE controller_aliases SET revision = revision + 1 WHERE alias = ? AND revision = ?")) {
+                    statement.setString(1, current.alias());
+                    statement.setInt(2, expectedRevision);
+                    if (statement.executeUpdate() != 1) {
+                        connection.rollback();
+                        return null;
+                    }
+                }
+                int revision = expectedRevision + 1;
+                String now = Instant.now().toString();
+                upsertGraph(connection, "alias", current.alias(), "draft", current.alias(), draft, revision, now);
+                upsertGraph(connection, "alias", current.alias(), "active", current.alias(), active, revision, now);
+                connection.commit();
+                return new ControllerAliasGraph(current.alias(), revision, draft.copy(), active.copy());
+            } catch (SQLException | RuntimeException err) {
+                connection.rollback();
+                throw err;
+            } finally {
+                connection.setAutoCommit(previousAutoCommit);
+            }
+        } catch (SQLException err) {
+            Create.LOGGER.warn("Failed to publish graph alias for controller {}", controllerId, err);
+            return null;
+        }
+    }
+
 
     // Load the linker
     static synchronized @Nullable ControllerManifestStore.ManifestSnapshot loadLinker(String manifestId) {
@@ -1127,6 +1254,23 @@ final class ControllerSqliteStore {
                         manifest_json TEXT NOT NULL DEFAULT '',
                         controller_data_nbt BLOB
                     )
+                    """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS controller_aliases (
+                        alias TEXT PRIMARY KEY COLLATE NOCASE,
+                        revision INTEGER NOT NULL DEFAULT 1
+                    )
+                    """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS controller_alias_map (
+                        controller_id TEXT PRIMARY KEY,
+                        alias TEXT NOT NULL,
+                        FOREIGN KEY(controller_id) REFERENCES controllers(id) ON DELETE CASCADE,
+                        FOREIGN KEY(alias) REFERENCES controller_aliases(alias)
+                    )
+                    """);
+            statement.execute("""
+                    CREATE INDEX IF NOT EXISTS controller_alias_map_alias ON controller_alias_map(alias)
                     """);
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS linkers (

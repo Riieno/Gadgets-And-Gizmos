@@ -90,6 +90,12 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
             boolean persistPortable = false;
             // ------------------------------------DRAFTS / VALIDATION------------------------------------
             switch (payload.action()) {
+                case "controller_alias" -> {
+                    boolean renamed = controller.renameGraphAlias(payload.argument());
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), renamed,
+                            renamed ? "Controller alias updated" : "Could not update controller alias",
+                            controller.getDraftGraph().revision(), false, false, List.of());
+                }
                 case "save" -> {
                     boolean saved = controller.saveDraft(
                             AdvancedGraphDocument.fromTag(payload.graph()), payload.expectedRevision());

@@ -94,7 +94,11 @@ public class PhysicsGantryBeltWheelBlock extends RotatedPillarKineticBlock
 
         if (!level.isClientSide && isShears(stack)) {
             if (local.hasLinkedTarget()) {
-                local.breakLink(true);
+                if (local.linkCount() > 1) {
+                    notify(player, "createthrusters.physics_gantry_belt_wheel.shear_belt", ChatFormatting.YELLOW);
+                    return ItemInteractionResult.SUCCESS;
+                }
+                local.breakLink(true, true);
                 if (player instanceof ServerPlayer serverPlayer) {
                     stack.hurtAndBreak(1, serverPlayer, hand == InteractionHand.MAIN_HAND
                             ? net.minecraft.world.entity.EquipmentSlot.MAINHAND
@@ -179,10 +183,19 @@ public class PhysicsGantryBeltWheelBlock extends RotatedPillarKineticBlock
         }
 
         UUID firstSubLevel = SimulatedHelper.getContainingSubLevelId(firstWheel);
-        firstWheel.breakLink(true);
-        clickedWheel.breakLink(true);
-        firstWheel.setLinkedTarget(clickedWheel.getBlockPos(), clickedSubLevel);
-        clickedWheel.setLinkedTarget(firstWheel.getBlockPos(), firstSubLevel);
+        if (firstWheel.references(clickedWheel.getBlockPos(), clickedSubLevel)
+                || clickedWheel.references(firstWheel.getBlockPos(), firstSubLevel)) {
+            notify(player, "createthrusters.physics_gantry_belt_wheel.link_duplicate", ChatFormatting.RED);
+            return ItemInteractionResult.FAIL;
+        }
+        if (!firstWheel.canAddLink(clickedWheel.getBlockPos(), clickedSubLevel)
+                || !clickedWheel.canAddLink(firstWheel.getBlockPos(), firstSubLevel)) {
+            notify(player, "createthrusters.physics_gantry_belt_wheel.link_full", ChatFormatting.RED);
+            return ItemInteractionResult.FAIL;
+        }
+        boolean returnsBeltOnBreak = !player.getAbilities().instabuild;
+        firstWheel.addLinkedTarget(clickedWheel.getBlockPos(), clickedSubLevel, returnsBeltOnBreak);
+        clickedWheel.addLinkedTarget(firstWheel.getBlockPos(), firstSubLevel, returnsBeltOnBreak);
 
         if (!player.getAbilities().instabuild) {
             stack.shrink(1);
@@ -283,7 +296,7 @@ public class PhysicsGantryBeltWheelBlock extends RotatedPillarKineticBlock
     @Override
     public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean isMoving) {
         if (!isMoving && !state.is(newState.getBlock())) {
-            withBlockEntityDo(level, pos, be -> be.breakLink(true));
+            withBlockEntityDo(level, pos, be -> be.breakLink(true, true));
         }
         super.onRemove(state, level, pos, newState, isMoving);
     }

@@ -76,6 +76,8 @@ public final class CTClientEvents {
         DoubleButtonClientHandler.reset();
         ArmorStandPoseClientState.reset();
         PhysicsGantryBeltWheelConnectionParticles.clear();
+        PhysicsGantryBeltWheelShearsClient.clear();
+        PoweredZiplineHandoffRenderer.clear();
         CTFeatureToggles.clearServerOverrides();
     }
 }

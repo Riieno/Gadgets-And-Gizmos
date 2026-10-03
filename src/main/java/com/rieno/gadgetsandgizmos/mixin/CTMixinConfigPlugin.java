@@ -82,6 +82,9 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
         // ---------------------------------------------------DIRECT MOD GATES---------------------------------------------------
+        if ("com.rieno.gadgetsandgizmos.mixin.WaystonesTeleportMomentumMixin".equals(mixinClassName)) {
+            return isModLoadedDuringMixinSelection("waystones");
+        }
         if ("com.rieno.gadgetsandgizmos.mixin.ComputerCraftRemoteDesktopMenuMixin"
                 .equals(mixinClassName)) {
             String version = getLoadedModVersion("computercraft");

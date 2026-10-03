@@ -52,8 +52,8 @@ public final class AdvancedGraphDocument
             return DEFAULT_MAX_NODES;
         }
     }
-    public static final int MAX_EDGES = 512;
-    public static final int MAX_SERIALIZED_BYTES = 512 * 1024;
+    public static final int MAX_EDGES = 8192;
+    public static final int MAX_SERIALIZED_BYTES = 8 * 1024 * 1024;
     public static final String EDITOR_COLLAPSED_KEY = "EditorCollapsed";
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -366,7 +366,8 @@ public final class AdvancedGraphDocument
                     : node);
         }
         ListTag edges = tag.getList("Edges", Tag.TAG_COMPOUND);
-        for (int i = 0; i < edges.size() && graph.edges.size() < MAX_EDGES; i++) {
+        // Preserve one excess edge so validation can reject it without silently truncating the draft.
+        for (int i = 0; i < edges.size() && graph.edges.size() <= MAX_EDGES; i++) {
             Edge edge = Edge.fromTag(edges.getCompound(i));
             if (migratedKeyNodeIds.contains(edge.fromNode())
                     && "pressed".equals(edge.fromPort())) {

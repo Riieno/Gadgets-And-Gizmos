@@ -43,6 +43,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.WeakHashMap;
 
 // Own the local controller session and send input only while its target remains valid
 public final class AnalogueContraptionControllerClientHandler {
@@ -98,6 +99,8 @@ public final class AnalogueContraptionControllerClientHandler {
     private static double lastSentMouseY = Double.NaN;
     // Last hardware controller values
     private static Map<String, Double> lastHardwareControllerValues = Map.of();
+    private static final Map<AdvancedContraptionControllerBlockEntity,
+            AdvancedControllerGraphSnapshotPayload.GraphSnapshot> appliedGraphSnapshots = new WeakHashMap<>();
     // Last hardware controller send tick
     private static long lastHardwareControllerSendTick = Long.MIN_VALUE;
 
@@ -210,15 +213,16 @@ public final class AnalogueContraptionControllerClientHandler {
             AdvancedContraptionControllerBlockEntity controller,
             AdvancedControllerGraphSnapshotPayload.GraphSnapshot snapshot
     ) {
-        if (controller.hasClientGraphSnapshot(
-                snapshot.draftRevision(), snapshot.activeRevision())) {
-            return;
-        }
+        if (controller.hasClientGraphSnapshot(snapshot.draftRevision(), snapshot.activeRevision())
+                && appliedGraphSnapshots.get(controller) == snapshot) return;
         controller.applyClientGraphSnapshot(
                 snapshot.draftRevision(),
                 snapshot.activeRevision(),
                 AdvancedGraphDocument.fromTag(snapshot.draft()),
                 AdvancedGraphDocument.fromTag(snapshot.active()));
+        appliedGraphSnapshots.put(controller, snapshot);
+        AdvancedContraptionControllerScreen.applyControllerGraphSnapshot(
+                controller.getBlockPos(), SimulatedHelper.getContainingSubLevelId(controller), snapshot);
     }
 
     // Toggle controller interaction mode

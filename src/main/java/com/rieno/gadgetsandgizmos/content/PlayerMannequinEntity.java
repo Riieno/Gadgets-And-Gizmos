@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.registry.CTItems;
+import com.rieno.gadgetsandgizmos.lib.zipline.ZiplineRider;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Rotations;
 import net.minecraft.core.component.DataComponents;
@@ -34,11 +35,12 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.gameevent.GameEvent;
+import net.minecraft.world.phys.Vec3;
 
 import java.net.URI;
 
 // Keep a mannequin's player skin, pose and equipment state synchronized
-public class PlayerMannequinEntity extends ArmorStand {
+public class PlayerMannequinEntity extends ArmorStand implements ZiplineRider {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -53,6 +55,8 @@ public class PlayerMannequinEntity extends ArmorStand {
     private static final String STEVE_SKIN_TAG = "SteveSkin";
     private static final String SLIM_SKIN_TAG = "SlimSkin";
     private static final String KINETIC_CURRENCY_REWARD_POSE_TAG = "KineticCurrencyRewardPose";
+    private static final String ZIPLINE_RIDING_TAG = "ZiplineRiding";
+    private static final String ZIPLINE_PREVIOUS_GRAVITY_TAG = "ZiplinePreviousNoGravity";
     private static final EquipmentSlot[] DROPPED_EQUIPMENT_SLOTS = {
             EquipmentSlot.MAINHAND,
             EquipmentSlot.OFFHAND,
@@ -75,6 +79,8 @@ public class PlayerMannequinEntity extends ArmorStand {
             SynchedEntityData.defineId(PlayerMannequinEntity.class, EntityDataSerializers.BOOLEAN);
     private static final EntityDataAccessor<Boolean> DATA_SLIM_SKIN =
             SynchedEntityData.defineId(PlayerMannequinEntity.class, EntityDataSerializers.BOOLEAN);
+    private static final EntityDataAccessor<Boolean> DATA_ZIPLINE_RIDING =
+            SynchedEntityData.defineId(PlayerMannequinEntity.class, EntityDataSerializers.BOOLEAN);
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -89,6 +95,7 @@ public class PlayerMannequinEntity extends ArmorStand {
     private boolean kineticCurrencyRewardPose;
     // The supporter variant this mannequin was originally placed as
     private String originalSupporterVariantId = PlayerMannequinVariants.DEFAULT_ID;
+    private boolean ziplinePreviousNoGravity;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -125,6 +132,7 @@ public class PlayerMannequinEntity extends ArmorStand {
         builder.define(DATA_REMOTE_SKIN_URL, "");
         builder.define(DATA_STEVE_SKIN, false);
         builder.define(DATA_SLIM_SKIN, false);
+        builder.define(DATA_ZIPLINE_RIDING, false);
     }
 
     // Add the additional save data
@@ -138,6 +146,10 @@ public class PlayerMannequinEntity extends ArmorStand {
         if (usesSlimSkin()) tag.putBoolean(SLIM_SKIN_TAG, true);
         if (kineticCurrencyRewardPose) {
             tag.putBoolean(KINETIC_CURRENCY_REWARD_POSE_TAG, true);
+        }
+        if (isZiplineRiding()) {
+            tag.putBoolean(ZIPLINE_RIDING_TAG, true);
+            tag.putBoolean(ZIPLINE_PREVIOUS_GRAVITY_TAG, ziplinePreviousNoGravity);
         }
     }
 
@@ -153,6 +165,42 @@ public class PlayerMannequinEntity extends ArmorStand {
         setSteveSkin(tag.getBoolean(STEVE_SKIN_TAG));
         setSlimSkin(tag.getBoolean(SLIM_SKIN_TAG));
         kineticCurrencyRewardPose = tag.getBoolean(KINETIC_CURRENCY_REWARD_POSE_TAG);
+        entityData.set(DATA_ZIPLINE_RIDING, tag.getBoolean(ZIPLINE_RIDING_TAG));
+        ziplinePreviousNoGravity = tag.getBoolean(ZIPLINE_PREVIOUS_GRAVITY_TAG);
+    }
+
+    public boolean isZiplineRiding() {
+        return entityData.get(DATA_ZIPLINE_RIDING);
+    }
+
+    @Override
+    public void ziplineAttached() {
+        if (isZiplineRiding()) return;
+        ziplinePreviousNoGravity = isNoGravity();
+        entityData.set(DATA_ZIPLINE_RIDING, true);
+        setNoGravity(true);
+    }
+
+    @Override
+    public void ziplineDetached() {
+        if (!isZiplineRiding()) return;
+        entityData.set(DATA_ZIPLINE_RIDING, false);
+        setNoGravity(ziplinePreviousNoGravity);
+        setDeltaMovement(Vec3.ZERO);
+    }
+
+    @Override
+    public void ziplineMoved(Vec3 gripPosition, Vec3 travelDirection) {
+        ziplineAttached();
+        Vec3 feet = gripPosition.add(0.0D, -(1.8D + 0.5D * getScale()), 0.0D);
+        setPos(feet.x, feet.y, feet.z);
+        setDeltaMovement(Vec3.ZERO);
+        fallDistance = 0.0F;
+        if (travelDirection != null && travelDirection.horizontalDistanceSqr() > 1.0E-6D) {
+            float yaw = (float) Math.toDegrees(Math.atan2(-travelDirection.x, travelDirection.z));
+            setYRot(yaw);
+            setYBodyRot(yaw);
+        }
     }
 
     // Set the item slot

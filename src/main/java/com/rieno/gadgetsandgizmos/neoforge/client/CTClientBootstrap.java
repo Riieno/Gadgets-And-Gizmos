@@ -171,8 +171,10 @@ public final class CTClientBootstrap {
         NeoForge.EVENT_BUS.addListener(CTGantryAnchorDebugRenderer::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(ShippingManifestRenderer::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(PoweredZiplinePlacementHandler::onRenderWorld);
+        NeoForge.EVENT_BUS.addListener(PoweredZiplineHandoffRenderer::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(ContraptionNetworkLinkerFaceRenderer::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(PoweredZiplinePlacementHandler::onInteractionKeyMappingTriggered);
+        NeoForge.EVENT_BUS.addListener(PhysicsGantryBeltWheelShearsClient::onInteractionKeyMappingTriggered);
         NeoForge.EVENT_BUS.addListener(ContraptionNetworkLinkerClient::onInteractionKeyMappingTriggered);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletClientInteraction::onInteractionKeyMappingTriggered);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletClientInteraction::onKeyInput);
