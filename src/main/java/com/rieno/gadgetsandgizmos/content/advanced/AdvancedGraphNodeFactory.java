@@ -66,6 +66,20 @@ public final class AdvancedGraphNodeFactory {
     public static CompoundTag createDefaultData(String type, Context context) {
         Context safeContext = context == null ? Context.EMPTY : context;
         CompoundTag data = new CompoundTag();
+        if ("constant_color".equals(type)) data.putInt("Value", 0xFFFFFFFF);
+        if ("desmos_plot_point".equals(type)) {
+            CompoundTag defaults = new CompoundTag();
+            defaults.put("x_functionality", graphDefault("string", "ignore"));
+            defaults.put("color", graphDefault("number", 0xFF25C6D8));
+            data.put("Defaults", defaults);
+            CompoundTag options = new CompoundTag();
+            ListTag modes = new ListTag();
+            for (String mode : com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline.XMode.optionIds()) {
+                modes.add(StringTag.valueOf(mode));
+            }
+            options.put("x_functionality", modes);
+            data.put("InputOptions", options);
+        }
         if ("sticky_note".equals(type)) {
             data.putString("Text", "# Note");
             data.putInt("Width", STICKY_NOTE_DEFAULT_WIDTH);

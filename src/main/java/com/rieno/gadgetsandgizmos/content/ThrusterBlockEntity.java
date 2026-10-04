@@ -21,6 +21,7 @@ import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
 import com.rieno.gadgetsandgizmos.lib.physics.SablePointImpulseApi;
+import com.rieno.gadgetsandgizmos.lib.physics.PropulsionLight;
 import com.rieno.gadgetsandgizmos.particle.ColoredCloudParticleOptions;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
@@ -317,6 +318,8 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
     private float redstoneThrottle;
     // Current computer throttle
     private float computerThrottle;
+    private final java.util.concurrent.atomic.AtomicInteger pendingComputerThrottleBits =
+            new java.util.concurrent.atomic.AtomicInteger(-1);
 
     // Tracked direct signals
     private final Map<String, Float> directSignals = new LinkedHashMap<>();
@@ -402,6 +405,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
     private boolean persistentTickStateDirty;
     // Tracks whether client sync is pending
     private boolean clientSyncPending;
+    private boolean lastClientLightEnabled = true;
     // Server-calculated fuel consumption synchronized for client tooltips
     private double syncedFuelConsumptionMbPerTick;
     // Tracks whether update air flow is set
@@ -474,9 +478,13 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
             return;
         }
         if (level.isClientSide) {
+            lastClientLightEnabled = PropulsionLight.refreshClient(level, worldPosition,
+                    lastClientLightEnabled, CTConfigs.CLIENT.thrustersEmitLight.get());
             tickClient();
             return;
         }
+        int pendingComputerThrottle = pendingComputerThrottleBits.getAndSet(-1);
+        if (pendingComputerThrottle >= 0) setThrottle(Float.intBitsToFloat(pendingComputerThrottle));
         if (signalPollCooldown-- <= 0) {
             signalPollCooldown = SIGNAL_POLL_INTERVAL_TICKS - 1;
             updateSignal();
@@ -501,11 +509,17 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
             markTickStateChanged(clientStateChanged);
         }
         tickServer();
+        updatePropulsionLight(level);
         if (clientSyncPending
                 && Math.floorMod(level.getGameTime(), CLIENT_SYNC_INTERVAL_TICKS) == clientSyncPhase) {
             level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
             clientSyncPending = false;
         }
+    }
+
+    private void updatePropulsionLight(Level level) {
+        PropulsionLight.update(level, worldPosition,
+                PropulsionLight.level(getThrust(), DEFAULT_MAX_THRUST));
     }
 
     // Mark the tick state changed
@@ -1046,6 +1060,11 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         syncControlState();
     }
 
+    // Make a ComputerCraft throttle command visible to physics before the next game tick
+    public void setComputerThrottleFast(float throttle) {
+        pendingComputerThrottleBits.set(Float.floatToRawIntBits(Mth.clamp(throttle, 0.0F, 1.0F)));
+    }
+
     // Get the graph readable data
     @Override
     public Map<String, String> graphReadableData() {
@@ -1319,6 +1338,9 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
 
     // Get the throttle
     public float getThrottle() {
+        int pending = pendingComputerThrottleBits == null
+                ? -1 : pendingComputerThrottleBits.get();
+        if (pending >= 0 && (level == null || !level.isClientSide)) return Float.intBitsToFloat(pending);
         return level != null && level.isClientSide && shipControlEnvelope != null
                 ? shipControlEnvelope.throttle()
                 : throttle;
@@ -3635,6 +3657,11 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
                     shipControlEnvelope.throttle() + stabilizerThrottleOffset, 0.0f, 1.0f);
             return applyThrottleRange(requested,
                     shipControlEnvelope.minimum(), shipControlEnvelope.maximum());
+        }
+        int pending = pendingComputerThrottleBits == null
+                ? -1 : pendingComputerThrottleBits.get();
+        if (pending >= 0 && (level == null || !level.isClientSide)) {
+            return applyThrottleRange(Float.intBitsToFloat(pending) + stabilizerThrottleOffset);
         }
         return applyThrottleRange(throttle + stabilizerThrottleOffset);
     }

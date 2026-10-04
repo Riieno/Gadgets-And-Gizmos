@@ -90,6 +90,16 @@ final class AdvancedGraphOutputDelta {
                 changed.add(port);
             }
         });
+        AdvancedGraphDocument.Value raw = desiredValues.get(
+                AdvancedContraptionControllerBlockEntity.GRAPH_RAW_DIRECT_SIGNAL_PORT);
+        if (("direct_target_output".equals(node.type()) || "linker_face_output".equals(node.type()))
+                && raw != null
+                && desiredValues.containsKey("direct_signal")
+                && (outputState.lastAppliedRaw == null
+                ? Math.abs(raw.asNumber()) > NUMBER_EPSILON
+                : !sameValue(outputState.lastAppliedRaw, raw))) {
+            changed.add("direct_signal");
+        }
         return changed;
     }
 
@@ -106,6 +116,10 @@ final class AdvancedGraphOutputDelta {
             state.currentValues.clear();
         }
         NodeOutputState outputState = outputState(controllerState, node);
+        if (ports.contains("direct_signal")) {
+            outputState.lastAppliedRaw = desiredValues.get(
+                    AdvancedContraptionControllerBlockEntity.GRAPH_RAW_DIRECT_SIGNAL_PORT);
+        }
         for (String port : ports) {
             AdvancedGraphDocument.Value val = desiredValues.get(port);
             if (val != null) {
@@ -152,6 +166,7 @@ final class AdvancedGraphOutputDelta {
             outputState.node = node;
             outputState.targetSignature = targetSignature;
             outputState.lastAppliedValues.clear();
+            outputState.lastAppliedRaw = null;
             outputState.sampledGameTime = Long.MIN_VALUE;
             outputState.currentValues.clear();
         }
@@ -182,6 +197,7 @@ final class AdvancedGraphOutputDelta {
         private final Map<String, AdvancedGraphDocument.Value> currentValues = new HashMap<>();
         // Last applied values
         private final Map<String, AdvancedGraphDocument.Value> lastAppliedValues = new HashMap<>();
+        private AdvancedGraphDocument.Value lastAppliedRaw;
 
         // Initialize the node output state
         private NodeOutputState(AdvancedGraphDocument.Node node) {

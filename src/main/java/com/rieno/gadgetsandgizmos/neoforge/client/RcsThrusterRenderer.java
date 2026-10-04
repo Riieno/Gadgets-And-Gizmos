@@ -67,6 +67,9 @@ public class RcsThrusterRenderer extends KineticBlockEntityRenderer<RcsThrusterB
         if (VisualizationManager.supportsVisualization(blockEntity.getLevel())) {
             return;
         }
+        if (blockEntity.isSelfPowered()) {
+            return;
+        }
 
         BlockState state = getRenderedBlockState(blockEntity);
         Direction facing = state.getValue(BlockStateProperties.FACING);

@@ -24,6 +24,8 @@ import com.rieno.gadgetsandgizmos.content.NotationDraftStore;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphValidator;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphVersionHistory;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode;
+import com.rieno.gadgetsandgizmos.lib.display.DisplayFrameSchedule;
+import com.rieno.gadgetsandgizmos.lib.display.DisplayRasterSize;
 import com.rieno.gadgetsandgizmos.lib.display.DisplaySurfaceProjection;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget;
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayComputerInputPayload;
@@ -70,6 +72,8 @@ public final class AccDisplayGuiProjection {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     private static final long FRAME_INTERVAL_MILLIS = 50L;
+    private static final int MAX_TEXTURE_WIDTH = 768;
+    private static final int MAX_TEXTURE_HEIGHT = 512;
     private static final long SESSION_TIMEOUT_MILLIS = 30_000L;
     private static final float PROJECTED_CONTENT_Z = -0.20F;
     private static final AtomicInteger TEXTURE_IDS = new AtomicInteger();
@@ -136,9 +140,20 @@ public final class AccDisplayGuiProjection {
         }
         long now = Util.getMillis();
         session.lastUse = now;
-        if (session.target == null || now - session.lastFrame >= FRAME_INTERVAL_MILLIS) {
+        boolean plotterMode = "plotter".equals(mode);
+        boolean live = !plotterMode || activeInteraction == session
+                || plotterMode && session.plotter != null && session.plotter.projectionNeedsLiveFrames();
+        boolean dirty = session.lastFrame == 0L || plotterMode && session.plotter != null
+                && session.plotter.projectionFrameSignature() != session.lastPlotterSignature;
+        if (DisplayFrameSchedule.shouldRender(session.target != null,
+                !mode.equals(session.lastRenderedMode), dirty, live,
+                now, session.lastFrame, FRAME_INTERVAL_MILLIS)) {
             session.renderFrame(mode, partialTick, bufferSource);
             session.lastFrame = now;
+            session.lastRenderedMode = mode;
+            if (plotterMode && session.plotter != null) {
+                session.lastPlotterSignature = session.plotter.projectionFrameSignature();
+            }
         }
         if (session.target == null || session.texture == null) {
             return false;
@@ -433,6 +448,7 @@ public final class AccDisplayGuiProjection {
                     && session.controllerTarget.pos().equals(pos)
                     && Objects.equals(session.controllerTarget.subLevelId(), subLevelId)) {
                 session.plotter.applyServerData(action, success, msg, drafts, draft, scmModel);
+                session.lastFrame = 0L;
             }
         }
     }
@@ -610,6 +626,7 @@ public final class AccDisplayGuiProjection {
         private final AccDisplayBlockEntity display;
         // Current graph
         private AdvancedContraptionControllerScreen graph;
+        private com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument lastGraphSource;
         // Current plotter
         private FunctionPlotterScreen plotter;
         // Current controller target
@@ -624,6 +641,8 @@ public final class AccDisplayGuiProjection {
         private int guiHeight;
         // Last frame
         private long lastFrame;
+        private String lastRenderedMode = "";
+        private int lastPlotterSignature;
         // Last use
         private long lastUse;
 
@@ -651,18 +670,21 @@ public final class AccDisplayGuiProjection {
                     return false;
                 }
                 closeScreens();
+                lastGraphSource = null;
                 controllerTarget = nextTarget;
                 AdvancedContraptionControllerMenu menu = new AdvancedContraptionControllerMenu(
                         -TEXTURE_IDS.incrementAndGet(), minecraft.player.getInventory(), controller);
                 graph = new AdvancedContraptionControllerScreen(menu,
                         minecraft.player.getInventory(), Component.literal("Advanced Contraption Controller"));
                 graph.configureForProjection();
-                guiWidth = safeGuiDimension(minecraft.getWindow().getGuiScaledWidth(), 320);
-                guiHeight = safeGuiDimension(minecraft.getWindow().getGuiScaledHeight(), 240);
+                DisplayRasterSize guiSize = guiSize(minecraft, 320, 240);
+                guiWidth = guiSize.width();
+                guiHeight = guiSize.height();
                 graph.init(minecraft, guiWidth, guiHeight);
             }
-            int nextWidth = safeGuiDimension(minecraft.getWindow().getGuiScaledWidth(), guiWidth);
-            int nextHeight = safeGuiDimension(minecraft.getWindow().getGuiScaledHeight(), guiHeight);
+            DisplayRasterSize nextSize = guiSize(minecraft, guiWidth, guiHeight);
+            int nextWidth = nextSize.width();
+            int nextHeight = nextSize.height();
             if (nextWidth != guiWidth || nextHeight != guiHeight) {
                 guiWidth = nextWidth;
                 guiHeight = nextHeight;
@@ -670,8 +692,14 @@ public final class AccDisplayGuiProjection {
                 if (plotter != null) {
                     plotter.resize(minecraft, guiWidth, guiHeight);
                 }
+                lastFrame = 0L;
             }
-            graph.updateProjectionGraph(requestedDisplay.graph());
+            var displayGraph = requestedDisplay.graph();
+            if (displayGraph != lastGraphSource) {
+                graph.updateProjectionGraph(displayGraph);
+                lastGraphSource = displayGraph;
+                lastFrame = 0L;
+            }
             if ("plotter".equals(mode) && plotter == null) {
                 plotter = new FunctionPlotterScreen(graph, controllerTarget);
                 plotter.init(minecraft, guiWidth, guiHeight);
@@ -679,10 +707,13 @@ public final class AccDisplayGuiProjection {
             return true;
         }
 
-        // Keep synthetic screen dimensions inside the range accepted by GUI integration mods
-        private static int safeGuiDimension(int value, int fallback) {
-            int resolved = value > 1 ? value : Math.max(2, fallback);
-            return Math.min(9_999_999, resolved);
+        // Match the GUI work to the display texture resolution.
+        private static DisplayRasterSize guiSize(Minecraft minecraft, int fallbackWidth, int fallbackHeight) {
+            int width = minecraft.getWindow().getGuiScaledWidth();
+            int height = minecraft.getWindow().getGuiScaledHeight();
+            return DisplayRasterSize.fit(width > 1 ? width : Math.max(2, fallbackWidth),
+                    height > 1 ? height : Math.max(2, fallbackHeight),
+                    MAX_TEXTURE_WIDTH, MAX_TEXTURE_HEIGHT);
         }
 
         // Draw the frame
@@ -690,11 +721,15 @@ public final class AccDisplayGuiProjection {
                                  MultiBufferSource.BufferSource bufferSource) {
             Minecraft minecraft = Minecraft.getInstance();
             RenderTarget main = minecraft.getMainRenderTarget();
-            int targetWidth = minecraft.getWindow().getWidth();
-            int targetHeight = minecraft.getWindow().getHeight();
-            if (targetWidth <= 0 || targetHeight <= 0) {
+            int windowWidth = minecraft.getWindow().getWidth();
+            int windowHeight = minecraft.getWindow().getHeight();
+            if (windowWidth <= 0 || windowHeight <= 0) {
                 return;
             }
+            DisplayRasterSize raster = DisplayRasterSize.fit(
+                    windowWidth, windowHeight, MAX_TEXTURE_WIDTH, MAX_TEXTURE_HEIGHT);
+            int targetWidth = raster.width();
+            int targetHeight = raster.height();
             if (target == null) {
                 target = new TextureTarget(targetWidth, targetHeight, true, Minecraft.ON_OSX);
                 texture = ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID,
@@ -722,7 +757,8 @@ public final class AccDisplayGuiProjection {
                 int mouseX = activeInteraction == this ? (int) Math.round(activeMouseX) : -10000;
                 int mouseY = activeInteraction == this ? (int) Math.round(activeMouseY) : -10000;
                 if ("plotter".equals(mode) && plotter != null) {
-                    plotter.renderProjection(graphics, mouseX, mouseY, partialTick);
+                    plotter.renderProjection(graphics, mouseX, mouseY, partialTick,
+                            targetWidth, targetHeight);
                 } else {
                     graph.renderProjection(graphics, mouseX, mouseY, partialTick);
                 }
@@ -742,10 +778,12 @@ public final class AccDisplayGuiProjection {
         // Handle mouse clicked
         private boolean mouseClicked(String mode, double mouseX, double mouseY,
                                      int mouseButton) {
-            return "plotter".equals(mode) && plotter != null
+            boolean handled = "plotter".equals(mode) && plotter != null
                     ? plotter.mouseClicked(mouseX, mouseY, mouseButton)
                     : graph != null && graph.projectionMouseClicked(
                             mouseX, mouseY, mouseButton);
+            if (handled) lastFrame = 0L;
+            return handled;
         }
 
         // Check if this is open focused text input

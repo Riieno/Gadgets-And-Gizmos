@@ -212,6 +212,8 @@ public final class CTConfigs {
         public final ModConfigSpec.DoubleValue thrusterMaxVolume;
         // Thruster particle scale
         public final ModConfigSpec.DoubleValue thrusterParticleScale;
+        // Light the surroundings of active thrusters
+        public final ModConfigSpec.BooleanValue thrustersEmitLight;
         // Claw marker render mode
         public final ModConfigSpec.EnumValue<ClawMarkerRenderMode> clawMarkerRenderMode;
 
@@ -245,6 +247,10 @@ public final class CTConfigs {
             thrusterParticleScale = builder
                     .comment("Local thruster particle multiplier (0 disables local thruster particles)")
                     .defineInRange("thrusterParticleScale", 1.0D, 0.0D, 1.0D);
+            thrustersEmitLight = builder
+                    .comment("Thrusters emit light")
+                    .translation("createthrusters.configuration.thrustersEmitLight")
+                    .define("thrustersEmitLight", true);
             clawMarkerRenderMode = builder
                     .comment("Claw marker render mode is disabled; OFF is enforced")
                     .defineEnum("clawMarkerRenderMode", ClawMarkerRenderMode.OFF);

@@ -1687,6 +1687,7 @@ final class ControllerSqliteStore {
         copy.remove("AdvancedDraftGraph");
         copy.remove("AdvancedActiveGraph");
         copy.remove("AdvancedGraphVersions");
+        copy.remove("PlotPoints");
         copy.remove(ControllerManifestStore.TAG_CONTROLLER_MANIFEST_ID);
         copy.remove(ControllerManifestStore.TAG_CONTROLLER_MANIFEST_REVISION);
         copy.remove(ControllerManifestStore.TAG_CONTROLLER_MANIFEST_HASH);

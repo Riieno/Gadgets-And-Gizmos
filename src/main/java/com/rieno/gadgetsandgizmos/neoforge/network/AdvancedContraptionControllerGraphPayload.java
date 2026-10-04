@@ -82,6 +82,17 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                     : MenuBackedBlockEntityResolver.resolve(
                     context, payload.target(), AdvancedContraptionControllerMenu.class,
                     AnalogueContraptionControllerBlockEntity.class);
+            if (resolved == null && context.player() instanceof ServerPlayer player
+                    && payload.target() != null && payload.target().subLevelId() != null
+                    && ("notation_open".equals(payload.action())
+                    || "notation_refresh".equals(payload.action()))) {
+                var loaded = com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper
+                        .findLoadedBlockEntityExact(player.serverLevel(),
+                                payload.target().subLevelId(), payload.target().pos());
+                if (loaded instanceof AdvancedContraptionControllerBlockEntity controller) {
+                    resolved = controller;
+                }
+            }
             if (!(resolved instanceof AdvancedContraptionControllerBlockEntity controller)) {
                 sendGraphActionResult(context, payload.target(), payload.requestId(), false,
                         "Controller is No Longer Available", -1, isSaveAction(payload.action()), false, List.of());
@@ -246,7 +257,9 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                 }
                 // ------------------------------------FUNCTION NOTATION------------------------------------
                 case "notation_open" -> sendNotationData(context, payload.target(), controller,
-                        "open", true, "", new CompoundTag(), true);
+                        "open", true, "", new CompoundTag(), true, payload.graph());
+                case "notation_refresh" -> sendNotationData(context, payload.target(), controller,
+                        "refresh", true, "", new CompoundTag(), false, payload.graph());
                 case "notation_save" -> {
                     NotationDraftStore.SaveResult res = NotationDraftStore.save(
                             controller.getLevel(), controller.notationDraftOwnerId(),
@@ -303,14 +316,29 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                                          AdvancedContraptionControllerBlockEntity controller,
                                          String action, boolean success, String msg,
                                          CompoundTag draft, boolean includeScmModel) {
+        sendNotationData(ctx, target, controller, action, success, msg,
+                draft, includeScmModel, null);
+    }
+
+    private static void sendNotationData(IPayloadContext ctx, MenuConfigTarget target,
+                                         AdvancedContraptionControllerBlockEntity controller,
+                                         String action, boolean success, String msg,
+                                         CompoundTag draft, boolean includeScmModel,
+                                         CompoundTag plotRequest) {
         if (!(ctx.player() instanceof ServerPlayer player) || target == null || controller == null) {
             return;
         }
+        CompoundTag plotterModel = includeScmModel
+                ? controller.getNotationScmModel().toTag() : new CompoundTag();
+        plotterModel.put("PlotPoints", plotRequest != null && plotRequest.hasUUID("KnownTimelineId")
+                ? controller.plotPointData(plotRequest.getUUID("KnownTimelineId"),
+                plotRequest.getLong("KnownRevision"))
+                : controller.plotPointData(null, -1L));
         PacketDistributor.sendToPlayer(player, new FunctionPlotterDataPayload(
                 target.pos(), target.subLevelId(), action, success, msg,
-                NotationDraftStore.list(controller.getLevel(), controller.notationDraftOwnerId()),
-                draft, includeScmModel
-                ? controller.getNotationScmModel().toTag() : new CompoundTag()));
+                "refresh".equals(action) ? List.of()
+                        : NotationDraftStore.list(controller.getLevel(), controller.notationDraftOwnerId()),
+                draft, plotterModel));
     }
 
     // Send the public share

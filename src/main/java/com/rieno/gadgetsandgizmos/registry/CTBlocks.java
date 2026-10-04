@@ -40,6 +40,7 @@ import com.rieno.gadgetsandgizmos.content.PhysicsStaffAnchorBlock;
 import com.rieno.gadgetsandgizmos.content.PoweredZiplineBlock;
 import com.rieno.gadgetsandgizmos.content.RopeKnotBlock;
 import com.rieno.gadgetsandgizmos.content.RcsThrusterBlock;
+import com.rieno.gadgetsandgizmos.content.CreativeRcsThrusterBlock;
 import com.rieno.gadgetsandgizmos.content.ScissorPistonArmBlock;
 import com.rieno.gadgetsandgizmos.content.ScissorPistonBlock;
 import com.rieno.gadgetsandgizmos.content.ScissorPistonLinkBlock;
@@ -83,6 +84,12 @@ public final class CTBlocks {
     @Nullable
     public static final DeferredBlock<RcsThrusterBlock> RCS_THRUSTER = register("rcs_thruster",
             () -> new RcsThrusterBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
+                    .strength(3.0f).sound(SoundType.NETHERITE_BLOCK)
+                    .requiresCorrectToolForDrops().noOcclusion()));
+
+    @Nullable
+    public static final DeferredBlock<CreativeRcsThrusterBlock> CREATIVE_RCS_THRUSTER = register("creative_rcs_thruster",
+            () -> new CreativeRcsThrusterBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
                     .strength(3.0f).sound(SoundType.NETHERITE_BLOCK)
                     .requiresCorrectToolForDrops().noOcclusion()));
 

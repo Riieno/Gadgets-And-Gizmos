@@ -89,6 +89,7 @@ public final class CTFeatureToggles {
         LinkedHashMap<String, Boolean> blocks = new LinkedHashMap<>();
         define(blocks, "thruster", true);
         define(blocks, "rcs_thruster", true);
+        define(blocks, "creative_rcs_thruster", true);
         define(blocks, "blackstone_alloy_block", true);
         define(blocks, "fuel_oxidizer", true);
         define(blocks, "thruster_bearing", true);
@@ -137,6 +138,7 @@ public final class CTFeatureToggles {
         LinkedHashMap<String, Boolean> items = new LinkedHashMap<>();
         define(items, "thruster", true);
         define(items, "rcs_thruster", true);
+        define(items, "creative_rcs_thruster", true);
         define(items, "blackstone_alloy", true);
         define(items, "blackstone_sheet", true);
         define(items, "computation_mechanism", true);
@@ -228,6 +230,7 @@ public final class CTFeatureToggles {
         LinkedHashMap<String, String> itemBlockDependencies = new LinkedHashMap<>();
         itemBlockDependencies.put("thruster", "thruster");
         itemBlockDependencies.put("rcs_thruster", "rcs_thruster");
+        itemBlockDependencies.put("creative_rcs_thruster", "creative_rcs_thruster");
         itemBlockDependencies.put("blackstone_alloy_block", "blackstone_alloy_block");
         itemBlockDependencies.put("small_thruster", "thruster");
         itemBlockDependencies.put("fuel_oxidizer", "fuel_oxidizer");

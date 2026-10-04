@@ -37,6 +37,7 @@ import com.rieno.gadgetsandgizmos.lib.kinetics.KineticGraphHelper;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlProbe;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlProbeRegistry;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlAuthorityApi;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmControlTelemetry;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmBuiltinControlModes;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlMode;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlModeRegistry;
@@ -259,6 +260,7 @@ public final class ShipControlModuleRuntime {
     private @Nullable UUID calDirMapId;
     // Tracked applied control values
     private final Map<Integer, Double> appliedControlValues = new LinkedHashMap<>();
+    private ScmControlTelemetry goggleControlTelemetry = ScmControlTelemetry.IDLE;
     // Tracked control bearings
     private final Map<Integer, BearingActuator> controlBearings = new LinkedHashMap<>();
     // Selected bearing poses
@@ -847,12 +849,18 @@ public final class ShipControlModuleRuntime {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+    // Get the current control requested by the SCM
+    public ScmControlTelemetry goggleControlTelemetry() {
+        return goggleControlTelemetry;
+    }
+
     // Update the ship control module
     public void tick() {
         Level level = controller.getLevel();
         if (shutdownPrepared || level == null || level.isClientSide) {
             return;
         }
+        goggleControlTelemetry = ScmControlTelemetry.IDLE;
         if (!isModuleAttached()) {
             if (isInitializing()) {
                 fail("Control module detached during initialization", null);
@@ -5498,11 +5506,18 @@ public final class ShipControlModuleRuntime {
         ShipControlMap effectiveMap = liveGeometryMap(
                 currentRoot, assemblyMap, liveCenterOfMass);
         ControlDemand demand = demandFor(telemetry, effectiveMap, dynamics, topology);
+        goggleControlTelemetry = ScmControlTelemetry.fromVectors(
+                demand.controlForce(), demand.controlTorque(),
+                demand.force(), demand.torque(), controllerForwardRoot(),
+                controllerUpRoot(), demand.driveDirection(), 0.0D, 0.0D, 0.0D);
         List<ShipControlAllocator.CarriageDemand> carriageDemands =
                 carriageDemands(topology, dynamics, demand.torque());
         applyBearingPlan(effectiveMap, demand, liveCenterOfMass, telemetry,
                 topology, carriageDemands);
-        boolean prioritizeTranslation = demand.force().lengthSqr() > 1.0E-12D;
+        boolean directRotation = activeCommands.values().stream().anyMatch(command ->
+                com.rieno.gadgetsandgizmos.lib.scm.ScmControlPriority.isDirectRotation(command.type())
+                        && Math.abs(command.amount()) > 1.0E-5D);
+        boolean prioritizeTranslation = demand.force().lengthSqr() > 1.0E-12D && !directRotation;
         ShipControlAllocator.Allocation allocation = ShipControlAllocator.allocateArticulated(
                 effectiveMap, carriageDemands, demand.force(),
                 demand.preferredDirection(), prioritizeTranslation, allocationWorkspace);
@@ -6082,9 +6097,12 @@ public final class ShipControlModuleRuntime {
             torque = torque.add(uprightTorque(
                     telemetry, uprightStabilizationStrength));
         }
+        Vec3 controlForce = force;
+        Vec3 controlTorque = torque;
         torque = articulatedInertiaCompensatedTorque(torque, dynamics, topology);
         return new ControlDemand(
-                clampComponents(force), clampComponents(torque), preferredDirection,
+                clampComponents(force), clampComponents(torque),
+                clampComponents(controlForce), clampComponents(controlTorque), preferredDirection,
                 Mth.clamp(finite(driveDirection), -1.0D, 1.0D));
     }
 
@@ -6341,7 +6359,11 @@ public final class ShipControlModuleRuntime {
     // Get the upright torque
     private Vec3 uprightTorque(Telemetry telemetry, double strength) {
         Vec3 localAngularVelocity = worldDirectionToRoot(telemetry.angularVelocity());
-        Vec3 torque = localAngularVelocity.scale(-0.4D * strength);
+        Vec3 yawAxis = normalize(worldDirectionToRoot(new Vec3(0.0D, 1.0D, 0.0D)),
+                new Vec3(0.0D, 1.0D, 0.0D));
+        Vec3 tiltRate = localAngularVelocity.subtract(
+                yawAxis.scale(localAngularVelocity.dot(yawAxis)));
+        Vec3 torque = tiltRate.scale(-0.4D * strength);
         Vec3 worldUp = rootDirectionToWorld(controllerUpRoot());
         Vec3 levelingAxisWorld = worldUp.cross(new Vec3(0.0D, 1.0D, 0.0D));
         return torque.add(worldDirectionToRoot(levelingAxisWorld).scale(0.7D * strength));
@@ -13263,6 +13285,8 @@ public final class ShipControlModuleRuntime {
     private record ControlDemand(
             Vec3 force,
             Vec3 torque,
+            Vec3 controlForce,
+            Vec3 controlTorque,
             Vec3 preferredDirection,
             double driveDirection
     ) {

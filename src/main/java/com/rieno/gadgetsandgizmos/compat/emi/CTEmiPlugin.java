@@ -21,21 +21,25 @@ import com.rieno.gadgetsandgizmos.registry.CTFeatureToggles;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
 import com.mojang.logging.LogUtils;
 import com.simibubi.create.foundation.gui.menu.GhostItemMenu;
+import com.simibubi.create.content.kinetics.crafter.MechanicalCraftingRecipe;
 import com.simibubi.create.foundation.gui.menu.GhostItemSubmitPacket;
 import dev.emi.emi.api.EmiDragDropHandler;
 import dev.emi.emi.api.EmiPlugin;
 import dev.emi.emi.api.EmiRegistry;
 import dev.emi.emi.api.recipe.EmiRecipe;
+import dev.emi.emi.api.recipe.EmiRecipeCategory;
 import dev.emi.emi.api.stack.EmiIngredient;
 import dev.emi.emi.api.stack.Comparison;
 import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.api.widget.Bounds;
 import net.createmod.catnip.platform.CatnipServices;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.RecipeHolder;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.items.SlotItemHandler;
 import org.slf4j.Logger;
@@ -101,6 +105,7 @@ public class CTEmiPlugin implements EmiPlugin {
                 }
             });
             registerIonThruster(registry);
+            registerMechanicalCrafting(registry);
             registry.removeEmiStacks(CTEmiPlugin::isDisabledModStack);
             registry.removeRecipes(CTEmiPlugin::hasDisabledOutput);
         } catch (Throwable throwable) {
@@ -119,6 +124,28 @@ public class CTEmiPlugin implements EmiPlugin {
         ItemStack ionThruster = IonThrusterStacks.create();
         if (!ionThruster.isEmpty()) {
             registry.addEmiStack(EmiStack.of(ionThruster));
+        }
+    }
+
+    // Add the addon's Create mechanical crafting recipes to EMI
+    private static void registerMechanicalCrafting(EmiRegistry registry) {
+        var connection = Minecraft.getInstance().getConnection();
+        HolderLookup.Provider registries = Minecraft.getInstance().level != null
+                ? Minecraft.getInstance().level.registryAccess()
+                : connection == null ? null : connection.registryAccess();
+        EmiRecipeCategory category = new EmiRecipeCategory(
+                ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID, "mechanical_crafting"),
+                EmiStack.of(new ItemStack(BuiltInRegistries.ITEM.get(
+                        ResourceLocation.parse("create:mechanical_crafter")))));
+        registry.addCategory(category);
+        registry.addWorkstation(category, EmiStack.of(new ItemStack(BuiltInRegistries.ITEM.get(
+                ResourceLocation.parse("create:mechanical_crafter")))));
+        if (registries == null) return;
+        for (RecipeHolder<?> holder : registry.getRecipeManager().getRecipes()) {
+            if (!(holder.value() instanceof MechanicalCraftingRecipe recipe)
+                    || !CreateThrusters.MOD_ID.equals(holder.id().getNamespace())) continue;
+            registry.addRecipe(new MechanicalCraftingEmiRecipe(category,
+                    new RecipeHolder<>(holder.id(), recipe), registries));
         }
     }
 

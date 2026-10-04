@@ -62,10 +62,14 @@ public class RcsThrusterVisual extends KineticBlockEntityVisual<RcsThrusterBlock
             float partialTick
     ) {
         super(ctx, blockEntity, partialTick);
-        shaft = instancerProvider()
-                .instancer(AllInstanceTypes.ROTATING, Models.partial(CTPartialModels.RCS_AXIS))
-                .createInstance();
-        configShaftGeometry();
+        if (blockEntity.isSelfPowered()) {
+            shaft = null;
+        } else {
+            shaft = instancerProvider()
+                    .instancer(AllInstanceTypes.ROTATING, Models.partial(CTPartialModels.RCS_AXIS))
+                    .createInstance();
+            configShaftGeometry();
+        }
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -78,6 +82,7 @@ public class RcsThrusterVisual extends KineticBlockEntityVisual<RcsThrusterBlock
 
     // Configure the shaft geometry
     private void configShaftGeometry() {
+        if (shaft == null) return;
         Direction facing = blockEntity.getBlockState().getValue(BlockStateProperties.FACING);
         Direction shaftFacing = facing.getOpposite();
         shaft.setup(blockEntity, shaftFacing.getAxis())
@@ -93,6 +98,7 @@ public class RcsThrusterVisual extends KineticBlockEntityVisual<RcsThrusterBlock
     // Update the RCS thruster visual
     @Override
     public void update(float partialTick) {
+        if (shaft == null) return;
         Direction.Axis axis = blockEntity.getBlockState()
                 .getValue(BlockStateProperties.FACING)
                 .getOpposite()
@@ -104,18 +110,19 @@ public class RcsThrusterVisual extends KineticBlockEntityVisual<RcsThrusterBlock
     // Update the light
     @Override
     public void updateLight(float partialTick) {
+        if (shaft == null) return;
         relight(new FlatLit[]{shaft});
     }
 
     // Delete the RCS thruster visual
     @Override
     protected void _delete() {
-        shaft.delete();
+        if (shaft != null) shaft.delete();
     }
 
     // Collect the crumbling instances
     @Override
     public void collectCrumblingInstances(Consumer<Instance> consumer) {
-        consumer.accept(shaft);
+        if (shaft != null) consumer.accept(shaft);
     }
 }

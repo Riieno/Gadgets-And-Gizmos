@@ -53,10 +53,12 @@ import com.rieno.gadgetsandgizmos.lib.control.CustomKeyEntry;
 import com.rieno.gadgetsandgizmos.lib.control.ControllerBindingOwner;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryKind;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmFlightBehavior;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmControlTelemetry;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlMode;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlModeRegistry;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimePayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.ControllerRuntimeSyncPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ContraptionNetworkLinkerSnapshotPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphSnapshotPayload;
 import com.simibubi.create.AllDataComponents;
@@ -189,12 +191,45 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private CompoundTag graphAliasActive = new CompoundTag();
     // Graph runtime
     private final GraphRuntime graphRuntime = new GraphRuntime(this);
+    private final com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline plotPoints =
+            new com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline();
+    private boolean legacyPlotCleanupPending;
+
+    public void recordPlotPoint(String name, double y, String color) {
+        recordPlotPoint(name, 0.0D, y,
+                com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline.parseColor(color),
+                com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline.XMode.IGNORE);
+    }
+
+    public void recordPlotPoint(String name, double x, double y, int color,
+                                com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline.XMode mode) {
+        if (level == null || level.isClientSide) {
+            return;
+        }
+        plotPoints.add(name, x, y, color, level.getGameTime(), mode);
+    }
+
+    public void resetPlotPoints(String name) {
+        if (level == null || level.isClientSide) return;
+        plotPoints.reset(name);
+    }
+
+    public CompoundTag plotPointData() {
+        return plotPoints.toTag();
+    }
+
+    public CompoundTag plotPointData(UUID knownTimelineId, long knownRevision) {
+        return plotPoints.toUpdateTag(knownTimelineId, knownRevision);
+    }
     // Ship stock network cache
     private final ShipStockNetworkCache shipStockNetworkCache = new ShipStockNetworkCache(this);
     // Tracked ship logistics runs
     private final List<ShipLogisticsRun> shipLogisticsRuns = new ArrayList<>();
     // Ship control runtime
     private final ShipControlModuleRuntime shipControlRuntime = new ShipControlModuleRuntime(this);
+    private ScmControlTelemetry clientScmControlTelemetry = ScmControlTelemetry.IDLE;
+    private long clientScmControlTelemetryTime;
+    private boolean lastScmControlSyncActive;
     // Shipping schedule runtime
     private final ShippingScheduleRuntime shippingScheduleRuntime = new ShippingScheduleRuntime(this);
     // Current ship name
@@ -525,6 +560,11 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         super.tick();
         Level currentLevel = getLevel();
+        if (legacyPlotCleanupPending && currentLevel != null && !currentLevel.isClientSide) {
+            legacyPlotCleanupPending = false;
+            saveControllerManifestNow();
+            setChanged();
+        }
         if (currentLevel != null && !currentLevel.isClientSide
                 && Math.floorMod(currentLevel.getGameTime() + getBlockPos().asLong(), 20L) == 0L) {
             syncGraphAlias();
@@ -535,6 +575,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             refreshChangedGraphDataSchemas();
         }
         shipControlRuntime.tick();
+        syncScmGoggleControl();
         syncShipInit();
         shippingScheduleRuntime.tick();
         if (getLevel() != null && !getLevel().isClientSide
@@ -586,6 +627,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             return;
         }
         serverShutdownPrepared = true;
+        plotPoints.clear();
         CompoundTag snapshot = new CompoundTag();
         snapshot.put("ShipControl", shipControlRuntime.createShutdownSnapshot());
         snapshot.put("GraphRuntime", graphRuntime.createShutdownSnapshot());
@@ -813,6 +855,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     @Override
     public boolean addToGoggleTooltip(List<Component> tooltip, boolean isPlayerSneaking) {
         boolean res = super.addToGoggleTooltip(tooltip, isPlayerSneaking);
+        if (CTTooltipHelper.showGoggleDetails(isPlayerSneaking)) {
+            res |= addScmGoggleControl(tooltip);
+        }
         if (!shippingScheduleRuntime.hasSchedule()) {
             return res;
         }
@@ -823,6 +868,77 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 CTTooltipHelper.value(Math.round(fuel.ratio() * 100.0D) + "%", fuel.ratio() > 0.1D
                         ? ChatFormatting.GREEN : ChatFormatting.RED)));
         return true;
+    }
+
+    @Override
+    protected boolean showGoggleAxes(boolean showDetails) {
+        return !showDetails || !scmGoggleControl().active();
+    }
+
+    private boolean addScmGoggleControl(List<Component> tooltip) {
+        ScmControlTelemetry telemetry = scmGoggleControl();
+        if (!telemetry.active()) return false;
+        tooltip.add(CTTooltipHelper.line("SCM Autopilot",
+                CTTooltipHelper.value("Correction -> Demand", ChatFormatting.GOLD)));
+        for (String axis : List.of("pitch", "yaw", "roll", "throttle", "strafe", "lift")) {
+            String label = axis.substring(0, 1).toUpperCase(Locale.ROOT) + axis.substring(1);
+            tooltip.add(CTTooltipHelper.line(label,
+                    CTTooltipHelper.value(
+                            CTTooltipHelper.signedDecimal(telemetry.correction().value(axis))
+                                    + " -> "
+                                    + CTTooltipHelper.signedDecimal(telemetry.demand().value(axis)),
+                            ChatFormatting.AQUA)));
+        }
+        if (Math.abs(telemetry.driveDirection()) > 0.005D) {
+            tooltip.add(CTTooltipHelper.line("Drive Direction",
+                    CTTooltipHelper.value(CTTooltipHelper.signedDecimal(
+                            telemetry.driveDirection()), ChatFormatting.YELLOW)));
+        }
+        if (telemetry.acceleration() > 0.005D) {
+            tooltip.add(CTTooltipHelper.line("Acceleration",
+                    CTTooltipHelper.value(CTTooltipHelper.signedDecimal(
+                            telemetry.acceleration()), ChatFormatting.YELLOW)));
+        }
+        if (telemetry.deceleration() > 0.005D) {
+            tooltip.add(CTTooltipHelper.line("Deceleration",
+                    CTTooltipHelper.value(CTTooltipHelper.signedDecimal(
+                            telemetry.deceleration()), ChatFormatting.YELLOW)));
+        }
+        if (telemetry.brake() > 0.005D) {
+            tooltip.add(CTTooltipHelper.line("Brake",
+                    CTTooltipHelper.value(CTTooltipHelper.signedDecimal(
+                            telemetry.brake()), ChatFormatting.YELLOW)));
+        }
+        return true;
+    }
+
+    private ScmControlTelemetry scmGoggleControl() {
+        if (getLevel() != null && !getLevel().isClientSide) {
+            return shipControlRuntime.goggleControlTelemetry();
+        }
+        return net.minecraft.Util.getMillis() - clientScmControlTelemetryTime <= 1_000L
+                ? clientScmControlTelemetry : ScmControlTelemetry.IDLE;
+    }
+
+    public void applyClientScmControlTelemetry(ScmControlTelemetry telemetry) {
+        if (getLevel() == null || !getLevel().isClientSide) return;
+        clientScmControlTelemetry = telemetry == null ? ScmControlTelemetry.IDLE : telemetry;
+        clientScmControlTelemetryTime = net.minecraft.Util.getMillis();
+    }
+
+    @Override
+    protected ControllerRuntimeSyncPayload runtimeSyncPayload(UUID subLevelId) {
+        return new ControllerRuntimeSyncPayload(getBlockPos(), subLevelId,
+                getOmeterOutputSignal(), shipControlRuntime.goggleControlTelemetry());
+    }
+
+    private void syncScmGoggleControl() {
+        if (getLevel() == null || getLevel().isClientSide) return;
+        boolean active = shipControlRuntime.goggleControlTelemetry().active();
+        if (!active && !lastScmControlSyncActive) return;
+        if (active && Math.floorMod(getLevel().getGameTime(), 4L) != 0L) return;
+        lastScmControlSyncActive = active;
+        sendRuntimeData();
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -2589,10 +2705,16 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         Vec3 facing = wearer.getLookAngle();
         AdvancedGraphDocument.Value lookingAt = emptyTrackingVector();
         if (wearer instanceof Player player) {
-            HitResult hit = player.pick(Math.max(player.blockInteractionRange(), 8.0D), 0.0F, false);
-            if (hit.getType() == HitResult.Type.BLOCK && hit instanceof BlockHitResult blockHit) {
-                BlockPos pos = blockHit.getBlockPos();
-                lookingAt = trackingVector(pos.getX(), pos.getY(), pos.getZ());
+            double range = Math.max(player.blockInteractionRange(), 8.0D);
+            if (subLevel != null) {
+                Vec3 pos = SableLevelApi.traceTrackedBlock(player, range);
+                if (pos != null) lookingAt = trackingVector(pos.x, pos.y, pos.z);
+            } else {
+                HitResult hit = player.pick(range, 0.0F, false);
+                if (hit.getType() == HitResult.Type.BLOCK && hit instanceof BlockHitResult blockHit) {
+                    BlockPos pos = blockHit.getBlockPos();
+                    lookingAt = trackingVector(pos.getX(), pos.getY(), pos.getZ());
+                }
             }
         }
         return new GogglesTrackingSnapshot(true, new Vec3(feet.x, feet.y, feet.z),
@@ -3976,7 +4098,15 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         if (activePorts.contains("direct_signal") && !nixieDirectSignalHandled
                 && !CreateRotationSpeedControllerGraphCompat.hasActiveWritePort(blockEntity, activePorts)) {
-            float clampedSignal = (float) net.minecraft.util.Mth.clamp(values.apply("direct_signal").asNumber(), 0, 1);
+            AdvancedGraphDocument.Value rawDirectSignal = values.apply(GRAPH_RAW_DIRECT_SIGNAL_PORT);
+            double requestedSignal = blockEntity instanceof ThrusterBearingBlockEntity bearing
+                    && bearing.getAngleMode() == ThrusterBearingBlockEntity.AngleMode.SWIVEL
+                    && rawDirectSignal != null ? rawDirectSignal.asNumber()
+                    : values.apply("direct_signal").asNumber();
+            float clampedSignal = (float) net.minecraft.util.Mth.clamp(requestedSignal,
+                    blockEntity instanceof ThrusterBearingBlockEntity bearing
+                            && bearing.getAngleMode() == ThrusterBearingBlockEntity.AngleMode.SWIVEL
+                            ? -1.0D : 0.0D, 1.0D);
             boolean directSignalHandled = false;
             if (blockEntity instanceof IDirectControlReceiver receiver) {
                 receiver.applyDirectControllerSignal(directSignalChannel(node), clampedSignal);
@@ -4397,6 +4527,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                     || "break_out".equals(node.type())) {
                 CompoundTag outputs = GraphRuntime.splitListOutputsFor(
                         graphRuntime.previewInput(graph, node, "value"));
+                outputs = com.rieno.gadgetsandgizmos.lib.graph.GraphDynamicPortSchema.retainConnectedOutputs(
+                        outputs, node.data().getCompound("DynamicOutputs"), graphEdgesForNode(graph, node).stream()
+                                .filter(edge -> edge.fromNode().equals(node.id()))
+                                .map(AdvancedGraphDocument.Edge::fromPort).toList());
                 if (outputs.isEmpty()) {
                     node.data().remove("DynamicOutputs");
                 } else {
@@ -4406,7 +4540,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             if ("list_get".equals(node.type())) {
                 AdvancedGraphDocument.Value val = graphRuntime.previewOutput(graph, node, "value");
                 CompoundTag outputs = node.data().getCompound("DynamicOutputs");
-                outputs.putString("value", val.type());
+                boolean wired = graphEdgesForNode(graph, node).stream().anyMatch(edge ->
+                        edge.fromNode().equals(node.id()) && "value".equals(edge.fromPort()));
+                if (!wired || !outputs.contains("value")) outputs.putString("value", val.type());
                 node.data().put("DynamicOutputs", outputs);
             }
         }
@@ -4528,6 +4664,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             Map<String, String> externalPorts = ExternalBlockEntityDirectControlCompat.writableData(blockEntity);
             externalPorts.forEach(ports::putString);
             hasSpecificControlSchema |= !externalPorts.isEmpty();
+            if (blockEntity instanceof ThrusterBearingBlockEntity) {
+                ports.putString("direct_signal", "number");
+            }
             if (blockEntity instanceof DisplayLinkBlockEntity) {
                 ports.putString("display_text", "string");
                 ports.putString("target_line", "number");
@@ -4717,7 +4856,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (node == null || port == null || port.isBlank()) {
             return new CompoundTag();
         }
-        return node.data().getCompound(AdvancedGraphCatalog.DATA_PORT_GROUPS_TAG)
+        return AdvancedGraphCatalog.dataPortGroups(node)
                 .getCompound(port).copy();
     }
 
@@ -4726,7 +4865,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (node == null || port == null || port.isBlank()) {
             return "";
         }
-        CompoundTag groups = node.data().getCompound(AdvancedGraphCatalog.DATA_PORT_GROUPS_TAG);
+        CompoundTag groups = AdvancedGraphCatalog.dataPortGroups(node);
         for (String group : groups.getAllKeys()) {
             if (groups.getCompound(group).contains(port)) {
                 return group;
@@ -6347,6 +6486,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     protected void writeAdditionalControllerManifestData(CompoundTag tag, HolderLookup.Provider provider) {
         tag.put("AdvancedDraftGraph", draftGraph.toTag());
         tag.put("AdvancedActiveGraph", activeGraph.toTag());
+        tag.remove("PlotPoints");
         tag.put(GRAPH_VERSIONS_TAG, graphVersions.toTag());
         ListTag trackerPairs = new ListTag();
         gogglesTrackerPairs.forEach((id, label) -> {
@@ -6477,6 +6617,11 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     @Override
     protected void readAdditionalControllerManifestData(CompoundTag tag, HolderLookup.Provider provider,
                                                         String manifestKind) {
+        plotPoints.clear();
+        if (tag.contains("PlotPoints")) {
+            tag.remove("PlotPoints");
+            legacyPlotCleanupPending = true;
+        }
         if (tag.contains("AdvancedDraftGraph", Tag.TAG_COMPOUND)) {
             draftGraph = AdvancedGraphDocument.fromTag(tag.getCompound("AdvancedDraftGraph"));
         } else if ("base_controller".equals(manifestKind)) {

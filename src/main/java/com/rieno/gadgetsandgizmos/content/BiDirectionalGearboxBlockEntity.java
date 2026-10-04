@@ -128,6 +128,11 @@ public class BiDirectionalGearboxBlockEntity extends SplitShaftBlockEntity imple
     private boolean invertEast;
     // Controls whether to invert west
     private boolean invertWest;
+    // Optional caps for each driven face; NaN preserves the incoming RPM.
+    private double targetSpeedNorth = Double.NaN;
+    private double targetSpeedSouth = Double.NaN;
+    private double targetSpeedEast = Double.NaN;
+    private double targetSpeedWest = Double.NaN;
     // Current angle north
     private double angleNorth;
     // Current angle south
@@ -1004,6 +1009,38 @@ public class BiDirectionalGearboxBlockEntity extends SplitShaftBlockEntity imple
         sendData();
     }
 
+    public double getFaceTargetSpeed(Direction dir) {
+        return switch (dir) {
+            case NORTH -> targetSpeedNorth;
+            case SOUTH -> targetSpeedSouth;
+            case EAST -> targetSpeedEast;
+            case WEST -> targetSpeedWest;
+            default -> Double.NaN;
+        };
+    }
+
+    public void setFaceTargetSpeed(Direction dir, double targetRpm) {
+        double target = Double.isNaN(targetRpm) ? Double.NaN
+                : Double.isFinite(targetRpm) ? Math.max(0.0D, targetRpm) : 0.0D;
+        if (Double.compare(getFaceTargetSpeed(dir), target) == 0) {
+            return;
+        }
+        switch (dir) {
+            case NORTH -> targetSpeedNorth = target;
+            case SOUTH -> targetSpeedSouth = target;
+            case EAST -> targetSpeedEast = target;
+            case WEST -> targetSpeedWest = target;
+            default -> {
+                return;
+            }
+        }
+        if (level != null && !level.isClientSide && !angleControlActive) {
+            rebuildLaneKinetics();
+        }
+        setChanged();
+        sendData();
+    }
+
     // Queue the face neighbour kinetics refresh
     private void queueFaceNeighbourKineticsRefresh(Direction dir) {
         if (level == null || level.isClientSide) {
@@ -1123,6 +1160,8 @@ public class BiDirectionalGearboxBlockEntity extends SplitShaftBlockEntity imple
             fields.put(face + "_max_angle", "number");
             fields.put(face + "_output_signal", "number");
             fields.put(face + "_output_inverted", "boolean");
+            fields.put(face + "_direction", "number");
+            fields.put(face + "_target_speed", "number");
         }
         return fields;
     }
@@ -1137,6 +1176,8 @@ public class BiDirectionalGearboxBlockEntity extends SplitShaftBlockEntity imple
             fields.put(face + "_angle", "number");
             fields.put(face + "_max_angle", "number");
             fields.put(face + "_output_inverted", "boolean");
+            fields.put(face + "_direction", "number");
+            fields.put(face + "_target_speed", "number");
         }
         return fields;
     }
@@ -1159,6 +1200,10 @@ public class BiDirectionalGearboxBlockEntity extends SplitShaftBlockEntity imple
         if (field.endsWith("_max_angle")) return com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument.Value.number(getFaceMaxAngle(dir));
         if (field.endsWith("_output_signal")) return com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument.Value.number(getOutputSignal(dir));
         if (field.endsWith("_output_inverted")) return com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument.Value.bool(isFaceOutputInverted(dir));
+        if (field.endsWith("_direction")) return com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument.Value.number(isFaceOutputInverted(dir) ? -1 : 1);
+        if (field.endsWith("_target_speed")) return com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument.Value.number(
+                Double.isNaN(getFaceTargetSpeed(dir)) ? Math.abs(dir.getAxis() == getSecondaryLaneAxis()
+                        ? getEastWestSpeed() : getNorthSouthSpeed()) : getFaceTargetSpeed(dir));
         return com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument.Value.number(getFaceAngle(dir));
     }
 
@@ -1173,6 +1218,8 @@ public class BiDirectionalGearboxBlockEntity extends SplitShaftBlockEntity imple
         if (dir == null) return false;
         if (field.endsWith("_max_angle")) setFaceMaxAngle(dir, val.asNumber());
         else if (field.endsWith("_output_inverted")) setFaceOutputInverted(dir, val.asBoolean());
+        else if (field.endsWith("_direction")) setFaceOutputInverted(dir, val.asNumber() < 0.0D);
+        else if (field.endsWith("_target_speed")) setFaceTargetSpeed(dir, val.asNumber());
         else if (field.endsWith("_angle")) setManualFaceAngle(dir, val.asNumber());
         else return false;
         return true;
@@ -1200,7 +1247,14 @@ public class BiDirectionalGearboxBlockEntity extends SplitShaftBlockEntity imple
 
     // Get the face output multiplier
     private float getFaceOutputMultiplier(Direction dir) {
-        return isFaceOutputInverted(dir) ? -1.0f : 1.0f;
+        float direction = isFaceOutputInverted(dir) ? -1.0f : 1.0f;
+        if (angleControlActive) {
+            return direction;
+        }
+        float inputRpm = dir.getAxis() == getSecondaryLaneAxis()
+                ? getEastWestSpeed() : getNorthSouthSpeed();
+        return direction * com.rieno.gadgetsandgizmos.lib.kinetics.KineticTargetSpeed
+                .outputRatio(inputRpm, getFaceTargetSpeed(dir));
     }
 
     // Get the north south speed
@@ -1452,6 +1506,10 @@ public class BiDirectionalGearboxBlockEntity extends SplitShaftBlockEntity imple
         tag.putBoolean("InvertS", invertSouth);
         tag.putBoolean("InvertE", invertEast);
         tag.putBoolean("InvertW", invertWest);
+        tag.putDouble("TargetSpeedN", targetSpeedNorth);
+        tag.putDouble("TargetSpeedS", targetSpeedSouth);
+        tag.putDouble("TargetSpeedE", targetSpeedEast);
+        tag.putDouble("TargetSpeedW", targetSpeedWest);
         tag.putDouble("ManualAngleN", manualAngleNorth);
         tag.putDouble("ManualAngleS", manualAngleSouth);
         tag.putDouble("ManualAngleE", manualAngleEast);
@@ -1471,6 +1529,10 @@ public class BiDirectionalGearboxBlockEntity extends SplitShaftBlockEntity imple
         tag.putBoolean("InvertS", invertSouth);
         tag.putBoolean("InvertE", invertEast);
         tag.putBoolean("InvertW", invertWest);
+        tag.putDouble("TargetSpeedN", targetSpeedNorth);
+        tag.putDouble("TargetSpeedS", targetSpeedSouth);
+        tag.putDouble("TargetSpeedE", targetSpeedEast);
+        tag.putDouble("TargetSpeedW", targetSpeedWest);
         tag.putBoolean("ServoModeActive", angleControlActive);
         tag.putBoolean("AngleControlActive", angleControlActive);
         tag.putBoolean("GyroSourcePresent", gyroSourcePresent);
@@ -1519,6 +1581,10 @@ public class BiDirectionalGearboxBlockEntity extends SplitShaftBlockEntity imple
         invertSouth = tag.getBoolean("InvertS");
         invertEast = tag.getBoolean("InvertE");
         invertWest = tag.getBoolean("InvertW");
+        targetSpeedNorth = tag.contains("TargetSpeedN") ? tag.getDouble("TargetSpeedN") : Double.NaN;
+        targetSpeedSouth = tag.contains("TargetSpeedS") ? tag.getDouble("TargetSpeedS") : Double.NaN;
+        targetSpeedEast = tag.contains("TargetSpeedE") ? tag.getDouble("TargetSpeedE") : Double.NaN;
+        targetSpeedWest = tag.contains("TargetSpeedW") ? tag.getDouble("TargetSpeedW") : Double.NaN;
         angleControlActive = tag.contains("ServoModeActive") ? tag.getBoolean("ServoModeActive") : tag.getBoolean("AngleControlActive");
         gyroSourcePresent = tag.getBoolean("GyroSourcePresent");
         reverseMode = tag.getBoolean("ReverseMode");

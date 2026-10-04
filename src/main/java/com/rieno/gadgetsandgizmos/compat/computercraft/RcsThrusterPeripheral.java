@@ -58,7 +58,7 @@ public class RcsThrusterPeripheral extends GadgetsPeripheral<RcsThrusterBlockEnt
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Set the throttle
-    @LuaFunction(mainThread = true)
+    @LuaFunction
     @PeripheralDoc(name = "setThrottle", signature = "setThrottle(nozzle: 'north'|'east'|'south'|'west', throttle: number 0..1)",
             description = "Sets the throttle.")
     public final void setThrottle(String nozzle, double throttle) throws LuaException {
@@ -66,11 +66,11 @@ public class RcsThrusterPeripheral extends GadgetsPeripheral<RcsThrusterBlockEnt
         if (!Double.isFinite(throttle) || throttle < 0.0D || throttle > 1.0D) {
             throw new LuaException("throttle must be between 0.0 and 1.0");
         }
-        blockEntity.setComputerThrottle(dir, (float) throttle);
+        blockEntity.setComputerThrottleFast(dir, (float) throttle);
     }
 
     // Get the throttle
-    @LuaFunction(mainThread = true)
+    @LuaFunction
     @PeripheralDoc(name = "getThrottle", signature = "getThrottle(nozzle): number",
             description = "Returns the throttle.")
     public final double getThrottle(String nozzle) throws LuaException {
@@ -78,20 +78,20 @@ public class RcsThrusterPeripheral extends GadgetsPeripheral<RcsThrusterBlockEnt
     }
 
     // Clear the throttle
-    @LuaFunction(mainThread = true)
+    @LuaFunction
     @PeripheralDoc(name = "clearThrottle", signature = "clearThrottle(nozzle)",
             description = "Clears the throttle.")
     public final void clearThrottle(String nozzle) throws LuaException {
-        blockEntity.clearComputerThrottle(parseNozzle(nozzle));
+        blockEntity.clearComputerThrottleFast(parseNozzle(nozzle));
     }
 
     // Clear every thruster throttle
-    @LuaFunction(mainThread = true)
+    @LuaFunction
     @PeripheralDoc(name = "clearAllThrottles", signature = "clearAllThrottles()",
             description = "Clears every thruster throttle.")
     public final void clearAllThrottles() {
         for (Direction nozzle : Direction.Plane.HORIZONTAL) {
-            blockEntity.clearComputerThrottle(nozzle);
+            blockEntity.clearComputerThrottleFast(nozzle);
         }
     }
 

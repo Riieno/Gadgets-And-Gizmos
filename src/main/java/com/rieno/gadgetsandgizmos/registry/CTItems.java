@@ -61,6 +61,9 @@ public final class CTItems {
     public static final DeferredItem<BlockItem> RCS_THRUSTER = register("rcs_thruster",
             () -> new CTTooltipBlockItem(CTBlocks.RCS_THRUSTER.get(), new Item.Properties()));
     @Nullable
+    public static final DeferredItem<BlockItem> CREATIVE_RCS_THRUSTER = register("creative_rcs_thruster",
+            () -> new CTTooltipBlockItem(CTBlocks.CREATIVE_RCS_THRUSTER.get(), new Item.Properties()));
+    @Nullable
     public static final DeferredItem<Item> BLACKSTONE_ALLOY = register("blackstone_alloy",
             () -> new Item(new Item.Properties()));
     @Nullable
