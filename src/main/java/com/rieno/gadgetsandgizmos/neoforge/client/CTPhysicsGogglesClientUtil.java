@@ -152,6 +152,9 @@ public final class CTPhysicsGogglesClientUtil {
                 Method findFirstCurio = inventory.getClass().getMethod("findFirstCurio", Item.class);
                 Optional<?> match = CTItems.PHYSICS_GOGGLES == null ? Optional.empty()
                         : (Optional<?>) findFirstCurio.invoke(inventory, CTItems.PHYSICS_GOGGLES.get());
+                if (match.isEmpty() && CTItems.PILOT_CAP != null) {
+                    match = (Optional<?>) findFirstCurio.invoke(inventory, CTItems.PILOT_CAP.get());
+                }
                 if (match.isEmpty()) {
                     return ItemStack.EMPTY;
                 }
@@ -205,6 +208,9 @@ public final class CTPhysicsGogglesClientUtil {
                 Method firstEquippedMethod = capabilityClass.getMethod("getFirstEquipped", Item.class);
                 Object slotEntryReference = CTItems.PHYSICS_GOGGLES == null ? null
                         : firstEquippedMethod.invoke(capability, CTItems.PHYSICS_GOGGLES.get());
+                if (slotEntryReference == null && CTItems.PILOT_CAP != null) {
+                    slotEntryReference = firstEquippedMethod.invoke(capability, CTItems.PILOT_CAP.get());
+                }
                 if (slotEntryReference == null) {
                     return ItemStack.EMPTY;
                 }

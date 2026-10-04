@@ -117,6 +117,7 @@ public final class CTCreativeTabs {
         blockCount += acceptStack(displayItems, searchItems, IonThrusterStacks.create());
         blockCount += accept(displayItems, searchItems, CTItems.SMALL_THRUSTER);
         blockCount += accept(displayItems, searchItems, CTItems.RCS_THRUSTER);
+        blockCount += accept(displayItems, searchItems, CTItems.CREATIVE_RCS_THRUSTER);
         blockCount += accept(displayItems, searchItems, CTItems.BLACKSTONE_ALLOY_BLOCK);
         blockCount += accept(displayItems, searchItems, CTItems.BLACKSTONE_CASING);
         blockCount += accept(displayItems, searchItems, CTItems.FUEL_OXIDIZER);
@@ -195,6 +196,7 @@ public final class CTCreativeTabs {
         itemCount += accept(displayItems, searchItems, CTItems.PROPULSION_UPGRADE_T3);
         itemCount += accept(displayItems, searchItems, CTItems.PROPULSION_UPGRADE_T4);
         itemCount += accept(displayItems, searchItems, CTItems.PHYSICS_GOGGLES);
+        itemCount += accept(displayItems, searchItems, CTItems.PILOT_CAP);
         itemCount += accept(displayItems, searchItems, CTItems.PHYSICS_STAFF);
         row = padSection(displayItems, row, itemCount);
 

@@ -567,8 +567,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         }
         UUID subLevelId = SimulatedHelper.getContainingSubLevelId(this);
         Vec3 worldPosition = SimulatedHelper.toGlobalWorldPosition(this, Vec3.atCenterOf(getBlockPos()));
-        ControllerRuntimeSyncPayload payload = new ControllerRuntimeSyncPayload(
-                getBlockPos(), subLevelId, ometerOutputSignal);
+        ControllerRuntimeSyncPayload payload = runtimeSyncPayload(subLevelId);
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (!player.level().dimension().equals(level.dimension())) {
                 continue;
@@ -578,6 +577,11 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
                 PacketDistributor.sendToPlayer(player, payload);
             }
         }
+    }
+
+    // Build the small runtime packet used by nearby controller viewers.
+    protected ControllerRuntimeSyncPayload runtimeSyncPayload(UUID subLevelId) {
+        return new ControllerRuntimeSyncPayload(getBlockPos(), subLevelId, ometerOutputSignal);
     }
 
     // Apply the client runtime signal
@@ -3111,6 +3115,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         return true;
     }
 
+
     // Get the controller manifest kind
     protected String controllerManifestKind() {
         return "base_controller";
@@ -4088,7 +4093,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         boolean showDetails = CTTooltipHelper.showGoggleDetails(isPlayerSneaking);
         tooltip.add(CTTooltipHelper.title(Component.translatable("block.createthrusters.analogue_contraption_controller")));
         int activeAxes = 0;
-        for (String axisId : axes.keySet()) {
+        for (String axisId : showGoggleAxes(showDetails) ? axes.keySet() : List.<String>of()) {
             AnalogueAxis axis = axes.get(axisId);
             if (axis == null) {
                 continue;
@@ -4120,6 +4125,11 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
                         CTTooltipHelper.value(Integer.toString(getLocalOutputSignal(dir)), ChatFormatting.YELLOW)));
             }
         }
+        return true;
+    }
+
+    // Let advanced controllers display their live control source.
+    protected boolean showGoggleAxes(boolean showDetails) {
         return true;
     }
 

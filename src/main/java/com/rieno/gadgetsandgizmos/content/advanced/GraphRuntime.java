@@ -1383,6 +1383,28 @@ public final class GraphRuntime {
             // ------------------------------------NODE LOGIC------------------------------------
             switch (node.type()) {
             case "reroute" -> followExec(frame, node, "value", operations);
+            case "desmos_plot_point" -> {
+                String name = frame.value(node, "name", operations).asString();
+                double x = frame.value(node, "x", operations).asNumber();
+                double y = frame.value(node, "y", operations).asNumber();
+                AdvancedGraphDocument.Value colorValue = frame.value(node, "color", operations);
+                int color = "number".equals(colorValue.type())
+                        ? (int) colorValue.asNumber()
+                        : com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline.parseColor(colorValue.asString());
+                String xFunctionality = frame.value(node, "x_functionality", operations).asString();
+                com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline.XMode mode =
+                        com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline.XMode.fromId(xFunctionality);
+                if (!simulationOnly && controller != null) {
+                    controller.recordPlotPoint(name, x, y, color, mode);
+                }
+                followExec(frame, node, "exec", operations);
+            }
+            case "desmos_reset_plotter" -> {
+                if (!simulationOnly && controller != null) {
+                    controller.resetPlotPoints(frame.value(node, "name", operations).asString());
+                }
+                followExec(frame, node, "exec", operations);
+            }
             case "send_named_controller_event" -> {
                 AdvancedGraphDocument.Value data = frame.value(node, "data", operations);
                 int distance = (int) Math.round(frame.value(node, "distance", operations).asNumber());
@@ -1846,6 +1868,7 @@ public final class GraphRuntime {
             case "constant_number" -> AdvancedGraphDocument.Value.number(node.data().getDouble("Value"));
             case "constant_boolean" -> AdvancedGraphDocument.Value.bool(node.data().getBoolean("Value"));
             case "constant_string" -> AdvancedGraphDocument.Value.string(node.data().getString("Value"));
+            case "constant_color" -> AdvancedGraphDocument.Value.number(node.data().getInt("Value"));
             case "variable_get", "variable_set" -> variableValue(frame.program(), node.variable());
             case "controller_channel_input", "gamepad_input" -> graphBindingValue(node.bindingId(), port, false);
             case "discovered_target_input" -> {
@@ -2498,6 +2521,7 @@ public final class GraphRuntime {
         return switch (type == null ? "" : type) {
             case "boolean" -> AdvancedGraphDocument.Value.bool(false);
             case "string" -> AdvancedGraphDocument.Value.string("");
+            case "color" -> AdvancedGraphDocument.Value.number(0xFF25C6D8);
             case "direction" -> AdvancedGraphDocument.Value.direction("");
             case "frequency" -> AdvancedGraphDocument.Value.frequency(new CompoundTag());
             case "target" -> AdvancedGraphDocument.Value.target(new CompoundTag());
@@ -3295,6 +3319,9 @@ public final class GraphRuntime {
         return switch (targetType) {
             case "string" -> AdvancedGraphDocument.Value.string(valueText(val));
             case "number" -> AdvancedGraphDocument.Value.number(numberValue(val));
+            case "color" -> AdvancedGraphDocument.Value.number("string".equals(val.type())
+                    ? com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline.parseColor(val.asString())
+                    : numberValue(val));
             case "boolean" -> AdvancedGraphDocument.Value.bool(booleanValue(val));
             case "direction" -> AdvancedGraphDocument.Value.direction(directionValue(val));
             case "frequency" -> AdvancedGraphDocument.Value.frequency(new CompoundTag());
@@ -3451,7 +3478,7 @@ public final class GraphRuntime {
                 }
             }
             if (!node.hasInput(port)
-                    && (node.defaultValue(port) == null
+                    && ("ship_navigate".equals(node.type()) || node.defaultValue(port) == null
                     || node.data().getCompound("PrefilledInputs").contains(port))) {
                 String group = AdvancedContraptionControllerBlockEntity.dataPortGroupFor(
                         node.source(), port);

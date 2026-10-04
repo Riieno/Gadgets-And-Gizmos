@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    { "item": "minecraft:leather_helmet" },
+    { "item": "createthrusters:physics_goggles" }
+  ],
+  "result": {
+    "count": 1,
+    "id": "createthrusters:pilot_cap"
+  }
+}

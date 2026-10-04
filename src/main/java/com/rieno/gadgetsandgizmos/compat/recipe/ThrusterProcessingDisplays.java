@@ -4,7 +4,9 @@ import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerProcessingRecipeViews;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.RecipeManager;
 import net.minecraft.world.level.Level;
 
 import java.util.List;
@@ -34,6 +36,11 @@ public final class ThrusterProcessingDisplays{
         // Get recipes that the matching exhaust upgrade can process
         public List<WorkerProcessingRecipeViews.View> recipes(Level level){
             return WorkerProcessingRecipeViews.recipes(level, recipeTypes);
+        }
+
+        public List<WorkerProcessingRecipeViews.View> recipes(RecipeManager manager,
+                                                               HolderLookup.Provider registries){
+            return WorkerProcessingRecipeViews.recipes(manager, registries, recipeTypes);
         }
 
         // Get the machine and every compatible upgrade tier

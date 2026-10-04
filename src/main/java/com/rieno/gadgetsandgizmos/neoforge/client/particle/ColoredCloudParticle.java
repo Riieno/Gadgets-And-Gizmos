@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client.particle;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.particle.ColoredCloudParticleOptions;
+import com.rieno.gadgetsandgizmos.content.PlumeRainbow;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.Particle;
@@ -57,6 +58,9 @@ public class ColoredCloudParticle extends TextureSheetParticle {
     private final double spreadStrength;
     // Smoke lift
     private final double smokeLift;
+    private final PlumeRainbow.Mode rainbowMode;
+    private final PlumeRainbow.Palette rainbowPalette;
+    private final float plumeProgress;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -83,6 +87,9 @@ public class ColoredCloudParticle extends TextureSheetParticle {
         this.rCol = opts.red();
         this.gCol = opts.green();
         this.bCol = opts.blue();
+        this.rainbowMode = opts.rainbowMode();
+        this.rainbowPalette = opts.rainbowPalette();
+        this.plumeProgress = opts.plumeProgress();
         this.baseAlpha = 0.88F + this.random.nextFloat() * 0.08F;
         this.alpha = 0.0F;
         this.lifetime = 18 + this.random.nextInt(8);
@@ -136,6 +143,7 @@ public class ColoredCloudParticle extends TextureSheetParticle {
         }
 
         if (this.age < this.smokeTransitionAge) {
+            updateRainbowColor();
             float plume = this.age / (float) this.smokeTransitionAge;
             this.alpha = this.baseAlpha * Mth.clamp(plume * 3.5F, 0.0F, 1.0F);
             this.quadSize = this.baseSize * (0.45F + plume * 1.15F);
@@ -158,6 +166,16 @@ public class ColoredCloudParticle extends TextureSheetParticle {
         this.yd *= this.friction;
         this.zd *= this.friction;
         pickSprite();
+    }
+
+    // Follow the selected color cycle while the particle is luminous exhaust
+    private void updateRainbowColor() {
+        if (this.rainbowMode == PlumeRainbow.Mode.OFF) return;
+        int color = PlumeRainbow.color(this.rainbowMode, this.rainbowPalette,
+                this.level.getGameTime(), this.plumeProgress, this.age);
+        this.rCol = (color >> 16 & 0xFF) / 255.0F;
+        this.gCol = (color >> 8 & 0xFF) / 255.0F;
+        this.bCol = (color & 0xFF) / 255.0F;
     }
 
     // Get the light color

@@ -23,6 +23,7 @@ import com.rieno.gadgetsandgizmos.registry.CTFeatureToggles;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
 import com.mojang.logging.LogUtils;
 import com.simibubi.create.foundation.gui.menu.GhostItemMenu;
+import com.simibubi.create.content.kinetics.crafter.MechanicalCraftingRecipe;
 import com.simibubi.create.foundation.gui.menu.GhostItemSubmitPacket;
 import dev.emi.emi.api.EmiDragDropHandler;
 import dev.emi.emi.api.EmiPlugin;
@@ -35,10 +36,12 @@ import dev.emi.emi.api.stack.EmiStack;
 import dev.emi.emi.api.widget.Bounds;
 import net.createmod.catnip.platform.CatnipServices;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.RecipeHolder;
 import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.neoforge.items.SlotItemHandler;
 import org.slf4j.Logger;
@@ -104,6 +107,7 @@ public class CTEmiPlugin implements EmiPlugin {
                 }
             });
             registerIonThruster(registry);
+            registerMechanicalCrafting(registry);
             registerThrusterProcessing(registry);
             registry.removeEmiStacks(CTEmiPlugin::isDisabledModStack);
             registry.removeRecipes(CTEmiPlugin::hasDisabledOutput);
@@ -126,18 +130,44 @@ public class CTEmiPlugin implements EmiPlugin {
         }
     }
 
+    // Add the addon's Create mechanical crafting recipes to EMI
+    private static void registerMechanicalCrafting(EmiRegistry registry) {
+        HolderLookup.Provider registries = recipeRegistries();
+        EmiRecipeCategory category = new EmiRecipeCategory(
+                ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID, "mechanical_crafting"),
+                EmiStack.of(new ItemStack(BuiltInRegistries.ITEM.get(
+                        ResourceLocation.parse("create:mechanical_crafter")))));
+        registry.addCategory(category);
+        registry.addWorkstation(category, EmiStack.of(new ItemStack(BuiltInRegistries.ITEM.get(
+                ResourceLocation.parse("create:mechanical_crafter")))));
+        if (registries == null) return;
+        for (RecipeHolder<?> holder : registry.getRecipeManager().getRecipes()) {
+            if (!(holder.value() instanceof MechanicalCraftingRecipe recipe)
+                    || !CreateThrusters.MOD_ID.equals(holder.id().getNamespace())) continue;
+            registry.addRecipe(new MechanicalCraftingEmiRecipe(category,
+                    new RecipeHolder<>(holder.id(), recipe), registries));
+        }
+    }
+
+    private static HolderLookup.Provider recipeRegistries() {
+        var minecraft = Minecraft.getInstance();
+        if (minecraft.level != null) return minecraft.level.registryAccess();
+        var connection = minecraft.getConnection();
+        return connection == null ? null : connection.registryAccess();
+    }
+
     // Register processing tabs, workstations and current datapack recipes for each upgrade
     private static void registerThrusterProcessing(EmiRegistry registry){
         if(!CTFeatureToggles.isItemEnabled("thruster")) return;
-        var level = Minecraft.getInstance().level;
+        HolderLookup.Provider registries = recipeRegistries();
         for(ThrusterProcessingDisplays.Mode mode : ThrusterProcessingDisplays.Mode.values()){
             EmiRecipeCategory category = new EmiRecipeCategory(mode.id(), EmiStack.of(mode.icon()));
             registry.addCategory(category);
             for(ItemStack catalyst : mode.catalysts()){
                 registry.addWorkstation(category, EmiStack.of(catalyst));
             }
-            if(level == null) continue;
-            for(var view : mode.recipes(level)){
+            if(registries == null) continue;
+            for(var view : mode.recipes(registry.getRecipeManager(), registries)){
                 registry.addRecipe(new ThrusterEmiRecipe(category, mode, view));
             }
         }

@@ -1,0 +1,8 @@
+{
+  "sources": [
+    {
+      "type": "single",
+      "resource": "createthrusters:models/armor/pilot_cap"
+    }
+  ]
+}

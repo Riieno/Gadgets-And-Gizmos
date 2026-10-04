@@ -506,6 +506,14 @@ public final class ShippingSchedulePilot {
         return controller != null && controller.hasShipControlModule();
     }
 
+    // Check whether this seated entity has access to the ACC Schedule workspace
+    public static boolean isScheduleWorkspacePilot(LivingEntity pilot, SeatEntity seat) {
+        if (pilot == null || seat == null || !pilot.isAlive()) return false;
+        AdvancedContraptionControllerBlockEntity controller = findController(pilot, seat);
+        return controller != null && controller.isMountedOnShipControlModule()
+                && controller.hasShipControlModule() && isSeatedAtController(pilot, controller);
+    }
+
     // Check if the seated is at the controller
     public static boolean isSeatedAtController(
             LivingEntity pilot,

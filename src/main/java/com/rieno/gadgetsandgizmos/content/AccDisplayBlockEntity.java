@@ -20,7 +20,9 @@ import com.rieno.gadgetsandgizmos.lib.display.DisplayWidgetProjection;
 import com.rieno.gadgetsandgizmos.lib.display.AccDisplaySource;
 import com.rieno.gadgetsandgizmos.lib.display.AccDisplaySourceRegistry;
 import com.rieno.gadgetsandgizmos.lib.display.ShipInformationDisplayModes;
+import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget;
+import com.rieno.gadgetsandgizmos.lib.multiblock.MultiblockOutlineTargets;
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayTextInputOpenPayload;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
@@ -54,7 +56,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 // Own one connected ACC display surface and the presentation data shared across its panels
-public class AccDisplayBlockEntity extends SmartBlockEntity {
+public class AccDisplayBlockEntity extends SmartBlockEntity implements MultiblockOutlineTargets.Source {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -571,6 +573,21 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
         }
         refreshNetworkGeometry();
         return cachedNetworkHeight;
+    }
+
+    // Get every panel in this display surface
+    @Override
+    public List<BlockPos> outlineBlocks() {
+        AccDisplayBlockEntity root = networkRoot();
+        if (root == null) return List.of(worldPosition);
+        if (root.level != null && root.level.isClientSide) root.networkGeometryDirty = true;
+        List<BlockPos> blocks = new ArrayList<>();
+        for (int y = 0; y < root.networkHeight(); y++) {
+            for (int x = 0; x < root.networkWidth(); x++) {
+                blocks.add(root.worldPosition.below(y).relative(root.screenRight(), x));
+            }
+        }
+        return blocks;
     }
 
     // Refresh the network geometry
@@ -1479,7 +1496,9 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
         if (contentNode != null && "acc_display_external".equals(contentNode.type())) {
             frame.putString("State", "external");
             putContentLayout(frame, contentNode, inputs, outputs);
-            frame.put("External", externalFrame(contentNode,
+            CompoundTag source = externalSourceData(contentNode, inputs);
+            frame.put("ExternalSourceData", source);
+            frame.put("External", externalFrame(source,
                     Math.max(1, (int) Math.round(frame.getDouble("ContentWidth"))),
                     Math.max(1, (int) Math.round(frame.getDouble("ContentHeight")))));
             return frame;
@@ -1825,15 +1844,16 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
         if (node == null) {
             return;
         }
-        frame.put("External", externalFrame(node,
+        CompoundTag selectedSource = frame.contains("ExternalSourceData")
+                ? frame.getCompound("ExternalSourceData") : node.data().getCompound("SourceData");
+        frame.put("External", externalFrame(selectedSource,
                 Math.max(1, (int) Math.round(frame.getDouble("ContentWidth"))),
                 Math.max(1, (int) Math.round(frame.getDouble("ContentHeight")))));
         src.put("Frame", frame);
     }
 
     // Get the external frame
-    private CompoundTag externalFrame(AdvancedGraphDocument.Node node, int width, int height) {
-        CompoundTag src = node.data().getCompound("SourceData");
+    private CompoundTag externalFrame(CompoundTag src, int width, int height) {
         if (level == null) {
             return unavailableExternalFrame("Display source is unavailable");
         }
@@ -1843,10 +1863,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
                     ? unavailableExternalFrame("Select an adapter or place a display beside a source")
                     : adjacent;
         }
-        java.util.UUID subLevelId = src.hasUUID("SubLevelId")
-                ? src.getUUID("SubLevelId") : null;
-        BlockEntity blockEntity = SimulatedHelper.findBlockEntity(
-                level, subLevelId, BlockPos.of(src.getLong("BlockPos")));
+        BlockEntity blockEntity = linkedExternalSource(src);
         if (blockEntity instanceof UniversalDisplayAdapterBlockEntity adapter) {
             adapter.configureDisplaySize(width, height);
             CompoundTag external = adapter.externalFrame();
@@ -1875,15 +1892,10 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
     // Get the external adapter
     private @Nullable UniversalDisplayAdapterBlockEntity externalAdapter(
             AdvancedGraphDocument.Node node) {
-        CompoundTag src = node.data().getCompound("SourceData");
+        CompoundTag src = selectedExternalSourceData(node);
         if (level != null && src.contains("BlockPos")) {
-            java.util.UUID subLevelId = src.hasUUID("SubLevelId")
-                    ? src.getUUID("SubLevelId") : null;
-            BlockEntity blockEntity = SimulatedHelper.findBlockEntity(
-                    level, subLevelId, BlockPos.of(src.getLong("BlockPos")));
-            if (blockEntity instanceof UniversalDisplayAdapterBlockEntity adapter) {
-                return adapter;
-            }
+            BlockEntity blockEntity = linkedExternalSource(src);
+            return blockEntity instanceof UniversalDisplayAdapterBlockEntity adapter ? adapter : null;
         }
         BlockEntity adjacent = adjacentExternalSource();
         return adjacent instanceof UniversalDisplayAdapterBlockEntity adapter ? adapter : null;
@@ -1891,14 +1903,51 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
 
     // Get the external source
     private @Nullable BlockEntity externalSource(AdvancedGraphDocument.Node node) {
-        CompoundTag src = node.data().getCompound("SourceData");
+        CompoundTag src = selectedExternalSourceData(node);
         if (level != null && src.contains("BlockPos")) {
-            java.util.UUID subLevelId = src.hasUUID("SubLevelId")
-                    ? src.getUUID("SubLevelId") : null;
-            return SimulatedHelper.findBlockEntity(level, subLevelId,
-                    BlockPos.of(src.getLong("BlockPos")));
+            return linkedExternalSource(src);
         }
         return adjacentExternalSource();
+    }
+
+    // Resolve the support behind a saved linker plane
+    private @Nullable BlockEntity linkedExternalSource(CompoundTag src) {
+        if (level == null || !src.contains("BlockPos")) return null;
+        java.util.UUID subLevelId = src.hasUUID("SubLevelId") ? src.getUUID("SubLevelId") : null;
+        BlockPos pos = BlockPos.of(src.getLong("BlockPos"));
+        BlockEntity direct = SimulatedHelper.findBlockEntity(level, subLevelId, pos);
+        if (direct instanceof UniversalDisplayAdapterBlockEntity
+                || AccDisplaySourceRegistry.source(direct) != null) return direct;
+        if (!"createthrusters:contraption_network_linker_plane".equals(src.getString("BlockId"))) return direct;
+        ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(src);
+        if (target == null) return direct;
+        for (var face : ContraptionNetworkLinkerData.faceOptionsForNode(target)) {
+            if (face.face() == null) continue;
+            BlockEntity support = SimulatedHelper.findBlockEntity(level, subLevelId,
+                    pos.relative(face.face().getOpposite()));
+            if (support instanceof UniversalDisplayAdapterBlockEntity
+                    || AccDisplaySourceRegistry.source(support) != null) return support;
+        }
+        return direct;
+    }
+
+    // Use the wired source, then the node's saved source
+    static CompoundTag externalSourceData(AdvancedGraphDocument.Node node,
+            Map<String, AdvancedGraphDocument.Value> inputs) {
+        AdvancedGraphDocument.Value source = inputs.get(node.id() + ":source");
+        if (source != null && "target".equals(source.type()) && source.payload().contains("BlockPos")) {
+            return source.payload().copy();
+        }
+        return node.data().getCompound("SourceData").copy();
+    }
+
+    // Read the source used by the current presentation
+    private CompoundTag selectedExternalSourceData(AdvancedGraphDocument.Node node) {
+        if (node.id().equals(displayFrame.getString("ContentNode"))) {
+            CompoundTag selected = displayFrame.getCompound("ExternalSourceData");
+            if (selected.contains("BlockPos")) return selected;
+        }
+        return node.data().getCompound("SourceData");
     }
 
     // Get the adjacent external frame
@@ -2004,11 +2053,16 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
             return false;
         }
         BlockPos targetPos = BlockPos.of(target.getLong("BlockPos"));
+        ControllerDiscoveryNode linked = "createthrusters:contraption_network_linker_plane"
+                .equals(target.getString("BlockId")) ? ControllerDiscoveryNode.fromTag(target) : null;
+        List<BlockPos> linkedSupports = linked == null ? List.of()
+                : ContraptionNetworkLinkerData.faceOptionsForNode(linked).stream()
+                .filter(face -> face.face() != null)
+                .map(face -> targetPos.relative(face.face().getOpposite())).toList();
         for (int y = 0; y < networkHeight(); y++) {
             for (int x = 0; x < networkWidth(); x++) {
-                if (worldPosition.below(y).relative(screenRight(), x).equals(targetPos)) {
-                    return true;
-                }
+                BlockPos displayPos = worldPosition.below(y).relative(screenRight(), x);
+                if (displayPos.equals(targetPos) || linkedSupports.contains(displayPos)) return true;
             }
         }
         return false;

@@ -205,10 +205,20 @@ public final class CTConfigs {
         public final ModConfigSpec.DoubleValue thrusterMaxVolume;
         // Thruster particle scale
         public final ModConfigSpec.DoubleValue thrusterParticleScale;
+        // Light the surroundings of active thrusters
+        public final ModConfigSpec.BooleanValue thrustersEmitLight;
         // Use the V2 Thruster plume renderer
         public final ModConfigSpec.BooleanValue useThrusterPlumeV2Renderer;
         // Use animated metaballs for V2 thruster plumes
         public final ModConfigSpec.BooleanValue usePlumeMetaballRendering;
+        // Light the world along active thruster plumes
+        public final ModConfigSpec.BooleanValue plumesEmitLight;
+        // Select the active seasonal visual effect
+        public final ModConfigSpec.EnumValue<SeasonalPlumeEffects.Force> forceSeasonalEffects;
+        // Select the Pride Month plume cycle
+        public final ModConfigSpec.EnumValue<SeasonalPlumeEffects.PrideEffect> pridePlumeEffect;
+        // Select the Pride Month plume colors
+        public final ModConfigSpec.EnumValue<SeasonalPlumeEffects.PridePalette> prideColorPalette;
         // Claw marker render mode
         public final ModConfigSpec.EnumValue<ClawMarkerRenderMode> clawMarkerRenderMode;
 
@@ -239,15 +249,39 @@ public final class CTConfigs {
             thrusterParticleScale = builder
                     .comment("Local thruster particle multiplier (0 disables local thruster particles)")
                     .defineInRange("thrusterParticleScale", 1.0D, 0.0D, 1.0D);
+            thrustersEmitLight = builder
+                    .comment("Thrusters emit light")
+                    .translation("createthrusters.configuration.thrustersEmitLight")
+                    .define("thrustersEmitLight", true);
             useThrusterPlumeV2Renderer = builder
                     .comment("Use Thruster Plume V2 Renderer with soft blue ion glow")
                     .define("useThrusterPlumeV2Renderer", true);
             usePlumeMetaballRendering = builder
                     .comment("Use Plume metaball rendering for the active V2 exhaust")
                     .define("usePlumeMetaballRendering", true);
+            plumesEmitLight = builder
+                    .comment("Plumes emit light into the surrounding world")
+                    .define("plumesEmitLight", false);
             clawMarkerRenderMode = builder
                     .comment("Claw marker render mode is disabled; OFF is enforced")
                     .defineEnum("clawMarkerRenderMode", ClawMarkerRenderMode.OFF);
+            builder.comment("Seasonal visual effects").push("seasonal");
+            forceSeasonalEffects = builder
+                    .comment("Default uses the current season; Off disables seasonal effects; the other values force a season")
+                    .defineEnum("forceSeasonalEffects", SeasonalPlumeEffects.Force.DEFAULT);
+            builder.comment("Pride Month effects").push("pride_month");
+            pridePlumeEffect = builder
+                    .comment("Solid cycles one color across the plume; Rainbow moves a gradient along it")
+                    .defineEnum("thrusterPlumeEffect", SeasonalPlumeEffects.PrideEffect.SOLID);
+            prideColorPalette = builder
+                    .comment("Color palette for Pride Month thruster exhaust")
+                    .defineEnum("colorPalette", SeasonalPlumeEffects.PridePalette.DEFAULT);
+            builder.pop();
+            builder.comment("Hallows Eve effects").push("hallows_eve");
+            builder.pop();
+            builder.comment("Christmas effects").push("christmas");
+            builder.pop();
+            builder.pop();
             builder.pop();
         }
     }

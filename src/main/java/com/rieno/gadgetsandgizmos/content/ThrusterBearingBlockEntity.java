@@ -1099,7 +1099,8 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
             }
         }
 
-        if (controlMode != ControlMode.COMPUTER && controlMode != ControlMode.REDSTONE) {
+        if ((angleMode == AngleMode.SWIVEL && !directControllerSignals.isEmpty())
+                || (controlMode != ControlMode.COMPUTER && controlMode != ControlMode.REDSTONE)) {
             directIncrement = getDirectIncrementDeg();
             if (Math.abs(directIncrement) > 1.0E-4D) {
                 requestedTarget = clampTargetAngle(lastRequestedTargetAngleDeg + directIncrement);
@@ -1142,6 +1143,9 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
         if (directIncrementActive) {
 
             nextTarget = clampTargetAngle(previousTarget + directIncrement);
+            if (controlMode == ControlMode.COMPUTER && computerOverrideActive) {
+                computerTargetAngleDeg = nextTarget;
+            }
         } else if (redstoneSwivelIncrementActive) {
             nextTarget = clampTargetAngle(previousTarget + redstoneSwivelIncrement);
         } else if (computerDirectDriveActive) {

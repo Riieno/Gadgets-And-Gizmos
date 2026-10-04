@@ -482,7 +482,7 @@ public final class CTCommonEvents {
         }
         if (CTBlockEntities.THRUSTER != null) {
             evt.registerBlockEntity(Capabilities.FluidHandler.BLOCK, CTBlockEntities.THRUSTER.get(),
-                    (ThrusterBlockEntity be, Direction side) -> be.canAcceptFuel() ? be.getFuelTank() : null);
+                    (ThrusterBlockEntity be, Direction side) -> be.getFuelTank());
             evt.registerBlockEntity(Capabilities.ItemHandler.BLOCK, CTBlockEntities.THRUSTER.get(),
                     (ThrusterBlockEntity be, Direction side) -> be.getItemInventory());
             evt.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, CTBlockEntities.THRUSTER.get(),

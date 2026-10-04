@@ -11,7 +11,12 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 import com.rieno.gadgetsandgizmos.content.NotationDraftStore;
 import com.rieno.gadgetsandgizmos.content.NotationScmModel;
 import com.rieno.gadgetsandgizmos.content.advanced.NotationExpression;
+import com.rieno.gadgetsandgizmos.lib.client.render.GuiLineRenderer;
+import com.rieno.gadgetsandgizmos.lib.client.render.GuiFramebufferScissor;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget;
+import com.rieno.gadgetsandgizmos.lib.plot.PlotPointExport;
+import com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline;
+import com.rieno.gadgetsandgizmos.lib.plot.PlotPointViewport;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedContraptionControllerGraphPayload;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -26,12 +31,22 @@ import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.Mth;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.lwjgl.glfw.GLFW;
+import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
@@ -78,6 +93,27 @@ public final class FunctionPlotterScreen extends Screen {
     private final List<String> expressionValues = new ArrayList<>();
     // Tracked stored drafts
     private final List<NotationDraftStore.Summary> storedDrafts = new ArrayList<>();
+    private final PlotPointTimeline sampledPoints = new PlotPointTimeline();
+    private PlotPointExport.Format pendingExportFormat;
+    private boolean exportReady;
+    private boolean exportMenuOpen;
+    private boolean appliedAccGuiScale;
+    private int projectionFramebufferWidth;
+    private int projectionFramebufferHeight;
+    private final Set<String> hiddenSampleNames = new HashSet<>();
+    private int sampleFilterScroll;
+    private int sampleRefreshTicks;
+    private boolean forceFullPlotSnapshot;
+    private SampleViewKey cachedSampleView;
+    private PlotPointViewport.Frame cachedSampleFrame;
+    private UUID cachedSampleNamesTimelineId;
+    private long cachedSampleNamesRevision = -1;
+    private List<String> cachedSampleNames = List.of();
+
+    private record SampleViewKey(UUID timelineId, long revision, double centerX, double centerY,
+                                 double unitsPerPixelX, double unitsPerPixelY,
+                                 int left, int width, int height, Set<String> hiddenNames) {
+    }
 
     // Current inline editor
     private EditBox inlineEditor;
@@ -168,7 +204,7 @@ public final class FunctionPlotterScreen extends Screen {
 
         if (!requestedServerData) {
             requestedServerData = true;
-            request("notation_open", new CompoundTag(), "");
+            request("notation_open", plotUpdateRequest(), "");
             setStatus("Loading saved drafts and SCM calibration...", false);
         }
     }
@@ -178,8 +214,21 @@ public final class FunctionPlotterScreen extends Screen {
     // itself would re-enter layout before the initial build has finished.
     @Override
     public void tick() {
-        applyAccGuiScale();
+        if (minecraft != null && minecraft.screen == this) {
+            applyAccGuiScale();
+            appliedAccGuiScale = true;
+        }
         super.tick();
+        if (requestedServerData && ++sampleRefreshTicks >= 20) {
+            sampleRefreshTicks = 0;
+            request("notation_refresh", plotUpdateRequest(), "");
+        }
+        if (exportReady && pendingExportFormat != null) {
+            PlotPointExport.Format format = pendingExportFormat;
+            pendingExportFormat = null;
+            exportReady = false;
+            exportPlotPoints(format);
+        }
     }
 
     private void applyAccGuiScale() {
@@ -222,6 +271,7 @@ public final class FunctionPlotterScreen extends Screen {
         drawToolbar(graphics, mouseX, mouseY);
         super.render(graphics, mouseX, mouseY, partialTick);
         if (loadOpen) drawLoadBrowser(graphics, mouseX, mouseY);
+        if (exportMenuOpen) drawExportMenu(graphics, mouseX, mouseY);
     }
 
     // Draw the toolbar
@@ -264,7 +314,7 @@ public final class FunctionPlotterScreen extends Screen {
         Rect listBounds = expressionListBounds();
         int visibleRows = expressionVisibleRows();
         expressionScroll = Mth.clamp(expressionScroll, 0, maxExpressionScroll());
-        graphics.enableScissor(listBounds.x, listBounds.y, listBounds.right(), listBounds.bottom());
+        enablePlotScissor(graphics, listBounds.x, listBounds.y, listBounds.right(), listBounds.bottom());
         NotationExpression.LineResult hoveredError = null;
         int lastVisible = Math.min(expressionValues.size(), expressionScroll + visibleRows);
         for (int idx = expressionScroll; idx < lastVisible; idx++) {
@@ -317,7 +367,7 @@ public final class FunctionPlotterScreen extends Screen {
             parent.renderAdvancedButton(graphics, font, remove.x, remove.y, remove.width, remove.height,
                     Component.literal("-"), remove.contains(mouseX, mouseY), expressionValues.size() > MIN_EXPRESSIONS);
         }
-        graphics.disableScissor();
+        disablePlotScissor(graphics);
 
         // -----------------------------------------------------SYNTAX HELP-----------------------------------------------------
         int helpTop = expressionBounds(expressionValues.size() - 1).bottom() + 10;
@@ -374,11 +424,13 @@ public final class FunctionPlotterScreen extends Screen {
     private void drawPlot(GuiGraphics graphics, int mouseX, int mouseY) {
         int left = sidebarWidth();
         if (left >= width || TOOLBAR_HEIGHT >= height) return;
-        graphics.enableScissor(left, TOOLBAR_HEIGHT, width, height);
+        enablePlotScissor(graphics, left, TOOLBAR_HEIGHT, width, height);
         graphics.fill(left, TOOLBAR_HEIGHT, width, height, canvasColor());
         drawGrid(graphics, left);
         drawSeries(graphics, left);
-        graphics.disableScissor();
+        drawSampledPoints(graphics, left);
+        disablePlotScissor(graphics);
+        drawSampleFilters(graphics);
 
         if (mouseX >= left && mouseY >= TOOLBAR_HEIGHT) {
             String coordinates = "x=" + compact(cursorWorldX) + "  y=" + compact(cursorWorldY);
@@ -446,6 +498,83 @@ public final class FunctionPlotterScreen extends Screen {
         }
     }
 
+    private void drawSampledPoints(GuiGraphics graphics, int left) {
+        SampleViewKey view = new SampleViewKey(sampledPoints.timelineId(), sampledPoints.revision(),
+                centerX, centerY, unitsPerPixelX, unitsPerPixelY,
+                left, width, height, Set.copyOf(hiddenSampleNames));
+        if (!view.equals(cachedSampleView)) {
+            int canvasWidth = width - left;
+            int canvasHeight = height - TOOLBAR_HEIGHT;
+            cachedSampleFrame = PlotPointViewport.build(sampledPoints.samples(),
+                    centerX - canvasWidth * 0.5D * unitsPerPixelX,
+                    centerX + canvasWidth * 0.5D * unitsPerPixelX,
+                    centerY - canvasHeight * 0.5D * unitsPerPixelY,
+                    centerY + canvasHeight * 0.5D * unitsPerPixelY,
+                    canvasWidth, canvasHeight, hiddenSampleNames);
+            cachedSampleView = view;
+        }
+        for (PlotPointViewport.Stroke stroke : cachedSampleFrame.strokes()) {
+            PlotPointViewport.Point previous = null;
+            for (PlotPointViewport.Point point : stroke.points()) {
+                int x = left + (int) Math.round(point.x());
+                int y = TOOLBAR_HEIGHT + (int) Math.round(point.y());
+                if (previous != null) {
+                    drawLine(graphics, left + (int) Math.round(previous.x()),
+                            TOOLBAR_HEIGHT + (int) Math.round(previous.y()),
+                            x, y, stroke.color());
+                }
+                previous = point;
+            }
+        }
+        for (PlotPointViewport.Marker marker : cachedSampleFrame.markers()) {
+            int x = left + (int) Math.round(marker.point().x());
+            int y = TOOLBAR_HEIGHT + (int) Math.round(marker.point().y());
+            graphics.fill(x - 2, y - 2, x + 3, y + 3, marker.color());
+        }
+    }
+
+    private List<String> sampleNames() {
+        if (!Objects.equals(cachedSampleNamesTimelineId, sampledPoints.timelineId())
+                || cachedSampleNamesRevision != sampledPoints.revision()) {
+            cachedSampleNames = List.copyOf(sampledPoints.seriesColors().keySet());
+            cachedSampleNamesTimelineId = sampledPoints.timelineId();
+            cachedSampleNamesRevision = sampledPoints.revision();
+        }
+        return cachedSampleNames;
+    }
+
+    private Rect sampleFilterBounds(int row) {
+        return new Rect(Math.max(sidebarWidth() + 8, width - 154),
+                TOOLBAR_HEIGHT + 32 + row * 16, 146, 15);
+    }
+
+    private int sampleFilterRows() {
+        return Math.max(1, Math.min(10, (height - TOOLBAR_HEIGHT - 60) / 16));
+    }
+
+    private void drawSampleFilters(GuiGraphics graphics) {
+        List<String> names = sampleNames();
+        if (names.isEmpty()) {
+            return;
+        }
+        int rows = sampleFilterRows();
+        sampleFilterScroll = Mth.clamp(sampleFilterScroll, 0, Math.max(0, names.size() - rows));
+        int panelX = sampleFilterBounds(0).x;
+        graphics.fill(panelX - 4, TOOLBAR_HEIGHT + 22, width - 4,
+                TOOLBAR_HEIGHT + 36 + Math.min(rows, names.size()) * 16, 0xDD101820);
+        graphics.drawString(font, "PLOTS", panelX, TOOLBAR_HEIGHT + 25, secondaryTextColor(), false);
+        Map<String, Integer> colors = sampledPoints.seriesColors();
+        for (int row = 0; row < rows && row + sampleFilterScroll < names.size(); row++) {
+            String name = names.get(row + sampleFilterScroll);
+            Rect bounds = sampleFilterBounds(row);
+            boolean visible = !hiddenSampleNames.contains(name);
+            graphics.fill(bounds.x, bounds.y + 3, bounds.x + 8, bounds.y + 11,
+                    visible ? colors.get(name) : mutedTextColor());
+            graphics.drawString(font, trim(name, 21), bounds.x + 13, bounds.y + 3,
+                    visible ? primaryTextColor() : mutedTextColor(), false);
+        }
+    }
+
     // Draw the cartesian series
     private void drawCartesianSeries(GuiGraphics graphics, NotationExpression.Series series,
                                      int col, int left) {
@@ -469,12 +598,11 @@ public final class FunctionPlotterScreen extends Screen {
             }
             int plottedX = screenX(point.x());
             int plottedY = screenY(point.y());
-            boolean visible = visibleSeriesPoint(plottedX, plottedY, left);
-            if (previousValid && visible
-                    && Math.abs(plottedY - previousY) < Math.max(64, height / 2)) {
-                drawLine(graphics, previousX, previousY, plottedX, plottedY, col);
+            if (previousValid && !crossesVerticalPole(previousY, plottedY)) {
+                GuiLineRenderer.drawClipped(graphics, previousX, previousY, plottedX, plottedY,
+                        left, TOOLBAR_HEIGHT, width, height, col);
             }
-            previousValid = visible;
+            previousValid = true;
             previousX = plottedX;
             previousY = plottedY;
         }
@@ -509,14 +637,11 @@ public final class FunctionPlotterScreen extends Screen {
             }
             int plottedX = screenX(point.x());
             int plottedY = screenY(point.y());
-            boolean visible = visibleSeriesPoint(plottedX, plottedY, left);
-            int jumpLimit = Math.max(96, Math.max(width - left, height) / 2);
-            if (previousValid && visible
-                    && Math.abs(plottedX - previousX) < jumpLimit
-                    && Math.abs(plottedY - previousY) < jumpLimit) {
-                drawLine(graphics, previousX, previousY, plottedX, plottedY, col);
+            if (previousValid && !crossesVerticalPole(previousY, plottedY)) {
+                GuiLineRenderer.drawClipped(graphics, previousX, previousY, plottedX, plottedY,
+                        left, TOOLBAR_HEIGHT, width, height, col);
             }
-            previousValid = visible;
+            previousValid = true;
             previousX = plottedX;
             previousY = plottedY;
         }
@@ -594,11 +719,10 @@ public final class FunctionPlotterScreen extends Screen {
         return count;
     }
 
-    // Check if this is visible series point
-    private boolean visibleSeriesPoint(int plottedX, int plottedY, int left) {
-        int plotWidth = Math.max(1, width - left);
-        return plottedX > left - plotWidth * 2 && plottedX < width + plotWidth * 2
-                && plottedY > TOOLBAR_HEIGHT - height * 2 && plottedY < height * 3;
+    private boolean crossesVerticalPole(int firstY, int secondY) {
+        int above = TOOLBAR_HEIGHT - height;
+        int below = height * 2;
+        return firstY < above && secondY > below || secondY < above && firstY > below;
     }
 
     // Draw the load browser
@@ -631,10 +755,33 @@ public final class FunctionPlotterScreen extends Screen {
         }
     }
 
+    private void drawExportMenu(GuiGraphics graphics, int mouseX, int mouseY) {
+        Rect json = exportOptionBounds(PlotPointExport.Format.JSON);
+        parent.renderAdvancedPanel(graphics, json.x - 2, json.y - 2, json.width + 4, 46);
+        for (PlotPointExport.Format format : PlotPointExport.Format.values()) {
+            Rect option = exportOptionBounds(format);
+            parent.renderAdvancedButton(graphics, font, option.x, option.y,
+                    option.width, option.height, Component.literal(format.name()),
+                    option.contains(mouseX, mouseY), true);
+        }
+    }
+
     // Handle mouse clicked
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int btn) {
         if (loadOpen) return clickLoadBrowser(mouseX, mouseY, btn);
+        if (exportMenuOpen) {
+            if (btn == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                for (PlotPointExport.Format format : PlotPointExport.Format.values()) {
+                    if (exportOptionBounds(format).contains(mouseX, mouseY)) {
+                        requestExport(format);
+                        return true;
+                    }
+                }
+            }
+            exportMenuOpen = false;
+            if (exportButtonBounds().contains(mouseX, mouseY)) return true;
+        }
 
         if (editingField != EDIT_NONE && inlineEditor != null
                 && inlineEditor.isMouseOver(mouseX, mouseY)) {
@@ -643,6 +790,16 @@ public final class FunctionPlotterScreen extends Screen {
         if (editingField != EDIT_NONE) finishInlineEdit(false);
 
         if (btn == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            List<String> names = sampleNames();
+            for (int row = 0; row < Math.min(sampleFilterRows(), names.size() - sampleFilterScroll); row++) {
+                if (sampleFilterBounds(row).contains(mouseX, mouseY)) {
+                    String name = names.get(row + sampleFilterScroll);
+                    if (!hiddenSampleNames.add(name)) {
+                        hiddenSampleNames.remove(name);
+                    }
+                    return true;
+                }
+            }
             for (ActionButton action : toolbarButtons()) {
                 if (action.bounds.contains(mouseX, mouseY)) {
                     handleAction(action);
@@ -735,6 +892,13 @@ public final class FunctionPlotterScreen extends Screen {
     // Handle mouse scrolled
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if (!sampleNames().isEmpty() && sampleFilterBounds(0).x <= mouseX
+                && mouseY >= TOOLBAR_HEIGHT + 22
+                && mouseY < TOOLBAR_HEIGHT + 36 + sampleFilterRows() * 16) {
+            sampleFilterScroll = Mth.clamp(sampleFilterScroll - (int) Math.signum(scrollY),
+                    0, Math.max(0, sampleNames().size() - sampleFilterRows()));
+            return true;
+        }
         if (loadOpen) {
             loadScroll = Mth.clamp(loadScroll - (int) Math.signum(scrollY),
                     0, Math.max(0, storedDrafts.size() - loadVisibleRows()));
@@ -757,6 +921,10 @@ public final class FunctionPlotterScreen extends Screen {
     // Handle key pressed
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE && exportMenuOpen) {
+            exportMenuOpen = false;
+            return true;
+        }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE && loadOpen) {
             loadOpen = false;
             return true;
@@ -794,7 +962,7 @@ public final class FunctionPlotterScreen extends Screen {
 
     @Override
     public void removed() {
-        restoreAccGuiScale();
+        if (appliedAccGuiScale) restoreAccGuiScale();
         super.removed();
     }
 
@@ -822,9 +990,25 @@ public final class FunctionPlotterScreen extends Screen {
     void applyServerData(String action, boolean success, String msg,
                          List<NotationDraftStore.Summary> drafts,
                          CompoundTag draft, CompoundTag scmModel) {
-        storedDrafts.clear();
-        if (drafts != null) storedDrafts.addAll(drafts);
-        if (scmModel != null && !scmModel.isEmpty()) {
+        if (scmModel != null && scmModel.contains("PlotPoints", Tag.TAG_COMPOUND)) {
+            CompoundTag plotUpdate = scmModel.getCompound("PlotPoints");
+            if (!sampledPoints.applyUpdateTag(plotUpdate)) {
+                forceFullPlotSnapshot = true;
+                sampleRefreshTicks = 20;
+            } else {
+                forceFullPlotSnapshot = false;
+                if (plotUpdate.getBoolean("HasMore")) {
+                    sampleRefreshTicks = 20;
+                } else if (pendingExportFormat != null && "refresh".equals(action)) {
+                    exportReady = true;
+                }
+            }
+        }
+        if (!"refresh".equals(action)) {
+            storedDrafts.clear();
+            if (drafts != null) storedDrafts.addAll(drafts);
+        }
+        if (scmModel != null && scmModel.contains("Available", Tag.TAG_BYTE)) {
             this.scmModel = NotationScmModel.fromTag(scmModel);
             if (!this.scmModel.available()) useScm = false;
         }
@@ -840,8 +1024,62 @@ public final class FunctionPlotterScreen extends Screen {
     }
 
     // Draw the projection
-    void renderProjection(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        render(graphics, mouseX, mouseY, partialTick);
+    void renderProjection(GuiGraphics graphics, int mouseX, int mouseY, float partialTick,
+                          int framebufferWidth, int framebufferHeight) {
+        projectionFramebufferWidth = framebufferWidth;
+        projectionFramebufferHeight = framebufferHeight;
+        try {
+            render(graphics, mouseX, mouseY, partialTick);
+        } finally {
+            projectionFramebufferWidth = 0;
+            projectionFramebufferHeight = 0;
+        }
+    }
+
+    private void enablePlotScissor(GuiGraphics graphics, int left, int top, int right, int bottom) {
+        if (projectionFramebufferWidth > 0 && projectionFramebufferHeight > 0) {
+            GuiFramebufferScissor.enable(graphics, left, top, right, bottom,
+                    width, height, projectionFramebufferWidth, projectionFramebufferHeight);
+        } else {
+            graphics.enableScissor(left, top, right, bottom);
+        }
+    }
+
+    private void disablePlotScissor(GuiGraphics graphics) {
+        if (projectionFramebufferWidth > 0 && projectionFramebufferHeight > 0) {
+            GuiFramebufferScissor.disable(graphics);
+        } else {
+            graphics.disableScissor();
+        }
+    }
+
+    int projectionFrameSignature() {
+        int hash = sampledPoints.timelineId().hashCode();
+        hash = 31 * hash + Long.hashCode(sampledPoints.revision());
+        hash = 31 * hash + Double.hashCode(centerX);
+        hash = 31 * hash + Double.hashCode(centerY);
+        hash = 31 * hash + Double.hashCode(unitsPerPixelX);
+        hash = 31 * hash + Double.hashCode(unitsPerPixelY);
+        hash = 31 * hash + System.identityHashCode(program);
+        hash = 31 * hash + System.identityHashCode(scmModel);
+        hash = 31 * hash + hiddenSampleNames.hashCode();
+        hash = 31 * hash + storedDrafts.hashCode();
+        hash = 31 * hash + draftName.hashCode();
+        hash = 31 * hash + status.hashCode();
+        hash = 31 * hash + outputMode.ordinal();
+        hash = 31 * hash + expressionScroll;
+        hash = 31 * hash + loadScroll;
+        hash = 31 * hash + sampleFilterScroll;
+        hash = 31 * hash + editingField;
+        hash = 31 * hash + (loadOpen ? 1 : 0);
+        hash = 31 * hash + (exportMenuOpen ? 1 : 0);
+        hash = 31 * hash + (useScm ? 1 : 0);
+        hash = 31 * hash + (dirty ? 1 : 0);
+        return 31 * hash + (inlineEditor == null ? 0 : inlineEditor.getValue().hashCode());
+    }
+
+    boolean projectionNeedsLiveFrames() {
+        return editingField != EDIT_NONE || panning;
     }
 
     // Get the projection target
@@ -857,7 +1095,12 @@ public final class FunctionPlotterScreen extends Screen {
             case SAVE -> saveDraft();
             case LOAD -> {
                 loadOpen = !loadOpen;
+                exportMenuOpen = false;
                 loadScroll = 0;
+            }
+            case EXPORT -> {
+                exportMenuOpen = !exportMenuOpen;
+                loadOpen = false;
             }
             case CONVERT -> convert();
             case SCM -> {
@@ -885,6 +1128,46 @@ public final class FunctionPlotterScreen extends Screen {
         captureInlineEditor();
         request("notation_save", serializeDraft(), draftId);
         setStatus("Saving function draft...", false);
+    }
+
+    private void requestExport(PlotPointExport.Format format) {
+        exportMenuOpen = false;
+        pendingExportFormat = format;
+        exportReady = false;
+        request("notation_refresh", plotUpdateRequest(), "");
+        setStatus("Loading all plotted points for export...", false);
+    }
+
+    private void exportPlotPoints(PlotPointExport.Format format) {
+        List<PlotPointTimeline.Sample> samples = sampledPoints.samples();
+        if (samples.isEmpty()) {
+            setStatus("No plotted points to export", true);
+            return;
+        }
+        if (minecraft == null || minecraft.gameDirectory == null) return;
+        try {
+            Path directory = minecraft.gameDirectory.toPath().resolve("exports").resolve("createthrusters");
+            Files.createDirectories(directory);
+            String defaultName = "plot_points_" + System.currentTimeMillis() + "." + format.extension();
+            String selected = TinyFileDialogs.tinyfd_saveFileDialog(
+                    "Export plot points as " + format.name(), directory.resolve(defaultName).toString(),
+                    null, null);
+            if (selected == null || selected.isBlank()) {
+                setStatus("Export canceled", false);
+                return;
+            }
+            Path file = Path.of(selected);
+            if (!file.getFileName().toString().toLowerCase(Locale.ROOT)
+                    .endsWith("." + format.extension())) {
+                file = file.resolveSibling(file.getFileName() + "." + format.extension());
+            }
+            try (var writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
+                PlotPointExport.write(samples, format, writer);
+            }
+            setStatus("Exported " + samples.size() + " points to " + file.toAbsolutePath(), false);
+        } catch (IOException | InvalidPathException err) {
+            setStatus("Export failed: " + err.getMessage(), true);
+        }
     }
 
     // Convert the function plotter
@@ -918,6 +1201,16 @@ public final class FunctionPlotterScreen extends Screen {
             return;
         }
         if (minecraft != null) minecraft.setScreen(parent);
+    }
+
+    // Request the function plotter
+    private CompoundTag plotUpdateRequest() {
+        CompoundTag request = new CompoundTag();
+        if (!forceFullPlotSnapshot) {
+            request.putUUID("KnownTimelineId", sampledPoints.timelineId());
+            request.putLong("KnownRevision", sampledPoints.revision());
+        }
+        return request;
     }
 
     // Request the function plotter
@@ -1164,12 +1457,24 @@ public final class FunctionPlotterScreen extends Screen {
     private List<ActionButton> plotButtons() {
         int right = width - 5;
         return List.of(
+                new ActionButton(Action.EXPORT, exportButtonBounds(),
+                        Component.literal("Export"), true),
                 new ActionButton(Action.HOME, new Rect(right - 126, height - 26, 56, 20),
                         Component.literal("Home"), true),
                 new ActionButton(Action.ZOOM_IN, new Rect(right - 66, height - 26, 28, 20),
                         Component.literal("+"), true),
                 new ActionButton(Action.ZOOM_OUT, new Rect(right - 34, height - 26, 28, 20),
                         Component.literal("-"), true));
+    }
+
+    private Rect exportButtonBounds() {
+        return new Rect(width - 215, height - 26, 76, 20);
+    }
+
+    private Rect exportOptionBounds(PlotPointExport.Format format) {
+        Rect button = exportButtonBounds();
+        return new Rect(button.x, button.y - (format == PlotPointExport.Format.JSON ? 44 : 22),
+                button.width, 20);
     }
 
     // Get the short output label
@@ -1315,13 +1620,15 @@ public final class FunctionPlotterScreen extends Screen {
     // Get the screen x
     private int screenX(double worldX) {
         double center = (sidebarWidth() + width) * 0.5D;
-        return (int) Math.round(center + (worldX - centerX) / unitsPerPixelX);
+        double pixel = center + (worldX - centerX) / unitsPerPixelX;
+        return (int) Math.round(Math.max(-1_000_000.0D, Math.min(1_000_000.0D, pixel)));
     }
 
     // Get the screen y
     private int screenY(double worldY) {
         double center = (TOOLBAR_HEIGHT + height) * 0.5D;
-        return (int) Math.round(center - (worldY - centerY) / unitsPerPixelY);
+        double pixel = center - (worldY - centerY) / unitsPerPixelY;
+        return (int) Math.round(Math.max(-1_000_000.0D, Math.min(1_000_000.0D, pixel)));
     }
 
     // Get the status line
@@ -1377,26 +1684,7 @@ public final class FunctionPlotterScreen extends Screen {
 
     // Draw the line
     private static void drawLine(GuiGraphics graphics, int x1, int y1, int x2, int y2, int col) {
-        int dx = Math.abs(x2 - x1);
-        int dy = Math.abs(y2 - y1);
-        int stepX = x1 < x2 ? 1 : -1;
-        int stepY = y1 < y2 ? 1 : -1;
-        int error = dx - dy;
-        while (true) {
-            graphics.fill(x1, y1, x1 + 1, y1 + 1, col);
-            if (x1 == x2 && y1 == y2) {
-                return;
-            }
-            int doubledError = error * 2;
-            if (doubledError > -dy) {
-                error -= dy;
-                x1 += stepX;
-            }
-            if (doubledError < dx) {
-                error += dx;
-                y1 += stepY;
-            }
-        }
+        GuiLineRenderer.draw(graphics, x1, y1, x2, y2, col);
     }
 
     // Define the action values
@@ -1407,6 +1695,7 @@ public final class FunctionPlotterScreen extends Screen {
         CONVERT,
         SCM,
         OUTPUT,
+        EXPORT,
         HOME,
         ZOOM_IN,
         ZOOM_OUT

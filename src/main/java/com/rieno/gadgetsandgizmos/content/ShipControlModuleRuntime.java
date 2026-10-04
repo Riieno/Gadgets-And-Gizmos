@@ -76,6 +76,7 @@ import com.rieno.gadgetsandgizmos.lib.scm.ScmTarget;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmOrientation;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlAxes;
 import com.rieno.gadgetsandgizmos.lib.scm.AutopilotDebugSnapshot;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmControlTelemetry;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmSpeedControl;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlInfluenceGraph;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmSpeedGroupAllocator;
@@ -576,6 +577,7 @@ public final class ShipControlModuleRuntime {
             new LinkedHashMap<>();
     // Final merged SCM demand retained for the operator brain snapshot.
     private @Nullable TimedAutopilotControlDemand autopilotControlDemand;
+    private ScmControlTelemetry goggleControlTelemetry = ScmControlTelemetry.IDLE;
     // A connected/live-preview SCM brain node keeps debug capture active without enabling the world overlay.
     private long autopilotGraphDebugRequestedUntil = Long.MIN_VALUE;
     // Reuse one formatted snapshot across every output of the same graph node sample.
@@ -2794,12 +2796,18 @@ public final class ShipControlModuleRuntime {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+    // Get the current control requested by the SCM
+    public ScmControlTelemetry goggleControlTelemetry() {
+        return goggleControlTelemetry;
+    }
+
     // Update the ship control module
     public void tick() {
         Level level = controller.getLevel();
         if (shutdownPrepared || level == null || level.isClientSide) {
             return;
         }
+        goggleControlTelemetry = ScmControlTelemetry.IDLE;
         refreshOrientation();
         if (map == null && !isInitializing()) refreshVehicleType();
         if (!isModuleAttached()) {
@@ -3225,12 +3233,11 @@ public final class ShipControlModuleRuntime {
                     scmConfiguration.actionGroups(), scmConfiguration.excludedUnits());
             controller.setScmConfigurationProfile(scmConfiguration);
         }
-        // A complete player-authored profile is a live control declaration.
-        // Its stable block identities, adapter selections and Sable poses are
-        // sufficient to build allocator geometry without freezing the craft
-        // or pulsing every actuator.
+        // Auto groups need the physical scan so all propulsion nozzles and
+        // bearing surfaces contribute to the stabilization map.
         profileDrivenInitialization = hasConfiguredBindings
-                && !initializationFilters.forceFullInitialization();
+                && !initializationFilters.forceFullInitialization()
+                && !scmConfiguration.hasAutoUnits();
         ShipControlMap reusableLocalMap = initializationV2
                 || initializationFilters.forceFullInitialization()
                 ? null : reusableInitMap(
@@ -5244,6 +5251,9 @@ public final class ShipControlModuleRuntime {
             ownedSubLevels.add(root);
         }
         ownedSubLevels.sort(Comparator.comparing(subLevel -> subLevel.getUniqueId().toString()));
+        Set<UUID> ownedSubLevelIds = ownedSubLevels.stream()
+                .map(SubLevel::getUniqueId).collect(java.util.stream.Collectors.toSet());
+        Set<PropulsionUnitKey> knownUnits = new LinkedHashSet<>();
         ownedSubLevels.forEach(subLevel -> calibrationSubLevels.put(subLevel.getUniqueId(), subLevel));
         if (initializationFilters.mapsDockingConnectors()) {
             collectCalibrationDockingConnectors(root, ownedSubLevels);
@@ -5252,7 +5262,7 @@ public final class ShipControlModuleRuntime {
         calibrationSeats.addAll(discoverMountedSeats(ownedSubLevels));
 
         for (ScmConfigurationProfile.UnitReference reference : configured) {
-            if (!reference.isValid()) {
+            if (!reference.isValid() || !ownedSubLevelIds.contains(reference.subLevelId())) {
                 continue;
             }
             SubLevel subLevel = SableLevelApi.subLevel(lookupLevel, reference.subLevelId());
@@ -5281,13 +5291,15 @@ public final class ShipControlModuleRuntime {
             List<Actuator> configuredActuators = configuredActuatorsFor(
                     reference, subLevel, blockEntity, root);
             for (Actuator actuator : configuredActuators) {
+                PropulsionUnitKey key = new PropulsionUnitKey(
+                        subLevel.getUniqueId(), reference.blockPosition(),
+                        blockId.toString(), actuator.kind());
+                if (!knownUnits.add(key)) continue;
                 calibrationUnits.add(new CalibrationUnit(
                         subLevel.getUniqueId(), reference.blockPosition(), blockId.toString(),
                         rootPosition(root, subLevel, actuator.localForcePosition()),
                         rootDirection(root, subLevel, actuator.localForceDirection()), actuator,
-                        reusableUnits.get(new PropulsionUnitKey(
-                                subLevel.getUniqueId(), reference.blockPosition(),
-                                blockId.toString(), actuator.kind())), false, true));
+                        reusableUnits.get(key), false, true));
                 resolved.add(reference);
             }
         }
@@ -8563,10 +8575,20 @@ public final class ShipControlModuleRuntime {
         effectiveMap = actionRoutedGeometryMap(
                 effectiveMap, activeControlActionTypes(demand, effectiveMap));
         demand = routedGravitySupport(demand, effectiveMap);
+        goggleControlTelemetry = ScmControlTelemetry.fromVectors(
+                demand.controlForce(), demand.controlTorque(),
+                demand.force(), demand.torque(), controllerForwardRoot(),
+                controllerUpRoot(), demand.driveDirection(),
+                demand.accelerationStrength(), demand.decelerationStrength(),
+                demand.brakeStrength());
         ArticulatedAllocationPlan articulatedPlan = articulatedAllocationPlan(
                 effectiveMap, topology, dynamics, demand.torque());
         applyBearingPlan(effectiveMap, demand, liveCenterOfMass, telemetry, articulatedPlan);
+        boolean directRotation = activeCommands.values().stream().anyMatch(command ->
+                com.rieno.gadgetsandgizmos.lib.scm.ScmControlPriority.isDirectRotation(command.type())
+                        && Math.abs(command.amount()) > 1.0E-5D);
         boolean prioritizeTranslation = demand.force().lengthSqr() > 1.0E-12D
+                && !directRotation
                 && (!articulatedPlan.available() || !articulatedPlan.yawDemanded());
         ShipControlAllocator.Allocation allocation = articulatedPlan.available()
                 ? ShipControlAllocator.allocateArticulated(

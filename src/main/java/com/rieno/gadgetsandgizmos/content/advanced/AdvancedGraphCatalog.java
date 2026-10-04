@@ -112,6 +112,7 @@ public final class AdvancedGraphCatalog {
         register("constant_number", "core", Map.of(), Map.of("value", "number"), false);
         register("constant_boolean", "core", Map.of(), Map.of("value", "boolean"), false);
         register("constant_string", "core", Map.of(), Map.of("value", "string"), false);
+        register("constant_color", "core", Map.of(), Map.of("value", "color"), false);
         register("variable_get", "variables", Map.of(), Map.of("value", "any"), false);
         register("variable_set", "variables", Map.of("exec", "exec", "type", "string", "default", "any", "value", "any"), Map.of("exec", "exec", "value", "any"), true);
         register("branch", "logic", Map.of("exec", "exec", "condition", "boolean"), Map.of("true", "exec", "false", "exec"), false);
@@ -308,9 +309,9 @@ public final class AdvancedGraphCatalog {
                 Map.entry("y", "number"), Map.entry("width", "number"),
                 Map.entry("height", "number"), Map.entry("rotation", "number"),
                 Map.entry("scale", "number"), Map.entry("font_size", "number"),
-                Map.entry("color", "any"), Map.entry("background_color", "any"),
-                Map.entry("accent_color", "any"), Map.entry("track_color", "any"),
-                Map.entry("border_color", "any"), Map.entry("border_width", "number"),
+                Map.entry("color", "color"), Map.entry("background_color", "color"),
+                Map.entry("accent_color", "color"), Map.entry("track_color", "color"),
+                Map.entry("border_color", "color"), Map.entry("border_width", "number"),
                 Map.entry("border_radius", "number"), Map.entry("minimum", "number"),
                 Map.entry("maximum", "number")), Map.of(), true);
         register("acc_hologram_widget", "hud", Map.ofEntries(
@@ -319,9 +320,9 @@ public final class AdvancedGraphCatalog {
                 Map.entry("y", "number"), Map.entry("width", "number"),
                 Map.entry("height", "number"), Map.entry("rotation", "number"),
                 Map.entry("scale", "number"), Map.entry("font_size", "number"),
-                Map.entry("color", "any"), Map.entry("background_color", "any"),
-                Map.entry("accent_color", "any"), Map.entry("track_color", "any"),
-                Map.entry("border_color", "any"), Map.entry("border_width", "number"),
+                Map.entry("color", "color"), Map.entry("background_color", "color"),
+                Map.entry("accent_color", "color"), Map.entry("track_color", "color"),
+                Map.entry("border_color", "color"), Map.entry("border_width", "number"),
                 Map.entry("border_radius", "number"), Map.entry("minimum", "number"),
                 Map.entry("maximum", "number")), Map.of(), true);
         register("acc_display_graph", "hud", Map.of(
@@ -333,7 +334,7 @@ public final class AdvancedGraphCatalog {
                 "width", "number", "height", "number", "scale", "number",
                 "rotation", "number"), Map.of(), true);
         register("acc_display_external", "hud", Map.of(
-                "target", "target", "visible", "boolean", "x", "number", "y", "number",
+                "target", "target", "source", "target", "visible", "boolean", "x", "number", "y", "number",
                 "width", "number", "height", "number", "scale", "number",
                 "rotation", "number"), Map.of(), true);
         register("acc_display_crn", "hud", Map.of(
@@ -389,6 +390,12 @@ public final class AdvancedGraphCatalog {
         register("wireless_frequency_output", "controller", Map.of("exec", "exec", "frequency", "frequency", "value", "number"), Map.of("exec", "exec"), false);
         register("discovered_target_input", "controller", Map.of("target", "target"), Map.of("exec", "exec", "value", "number", "active", "boolean"), false);
         register("direct_target_output", "controller", Map.of("exec", "exec", "target", "target", "value", "number"), Map.of("exec", "exec"), false);
+        register("desmos_plot_point", "controller",
+                Map.of("exec", "exec", "name", "string", "x", "number", "y", "number", "color", "color",
+                        "x_functionality", "string"),
+                Map.of("exec", "exec"), false);
+        register("desmos_reset_plotter", "controller", Map.of("exec", "exec", "name", "string"),
+                Map.of("exec", "exec"), false);
         register("linker_face_input", "controller", Map.of("target", "target", "face", "direction"), Map.of("exec", "exec", "value", "number", "active", "boolean"), false);
         register("linker_face_output", "controller", Map.of("exec", "exec", "target", "target", "face", "direction", "value", "number"), Map.of("exec", "exec"), false);
         register("controller_tracker", "controller", Map.of(), trackingOutputs(), false);
@@ -511,6 +518,7 @@ public final class AdvancedGraphCatalog {
                 targetCommandOutputs(), true);
         register("ship_navigate", "ship_control", Map.ofEntries(
                         Map.entry("exec", "exec"),
+                        Map.entry("offset", "map"),
                         Map.entry("x", "number"),
                         Map.entry("y", "number"),
                         Map.entry("z", "number"),
@@ -1043,6 +1051,22 @@ public final class AdvancedGraphCatalog {
         return ticks >= Long.MAX_VALUE ? Long.MAX_VALUE : Math.max(1L, (long) ticks);
     }
 
+    // Group optional navigation alignment inputs while retaining saved leaf ports
+    public static CompoundTag dataPortGroups(AdvancedGraphDocument.Node node) {
+        CompoundTag groups = node == null ? new CompoundTag()
+                : node.data().getCompound(DATA_PORT_GROUPS_TAG).copy();
+        if (node != null && "ship_navigate".equals(node.type())) {
+            CompoundTag offset = new CompoundTag();
+            offset.putString("target_point", "string");
+            for (String port : List.of("target_direction_x", "target_direction_y",
+                    "target_direction_z", "target_up_x", "target_up_y", "target_up_z")) {
+                offset.putString(port, "number");
+            }
+            groups.put("offset", offset);
+        }
+        return groups;
+    }
+
     // Check if this is a ship control completion type
     public static boolean isShipControlCompletionType(String type) {
         return "ship_initialize".equals(type)
@@ -1343,6 +1367,7 @@ public final class AdvancedGraphCatalog {
         if (from == null || to == null) return false;
         if ("exec".equals(from) || "exec".equals(to)) return from.equals(to);
         if (from.equals(to) || "any".equals(from) || "any".equals(to)) return true;
+        if ("color".equals(to)) return "number".equals(from) || "string".equals(from);
         return "string".equals(to) && !"exec".equals(from);
     }
 
@@ -1382,6 +1407,7 @@ public final class AdvancedGraphCatalog {
             case "constant_number" -> "Number";
             case "constant_boolean" -> "Boolean";
             case "constant_string" -> "Text";
+            case "constant_color" -> "Color";
             case "variable_get" -> "Get Variable";
             case "variable_set" -> "Set Variable";
             case "data_branch" -> "Select Data";
@@ -1489,6 +1515,8 @@ public final class AdvancedGraphCatalog {
             case "wireless_frequency_output" -> "Redstone Link Output";
             case "discovered_target_input" -> "Discovered Target Input";
             case "direct_target_output" -> "Direct Target Output";
+            case "desmos_plot_point" -> "Desmos: Plot Point";
+            case "desmos_reset_plotter" -> "Desmos: Reset Plotter";
             case "linker_face_input" -> "Linker Face Input";
             case "linker_face_output" -> "Linker Face Output";
             case "controller_tracker" -> "Controller Tracker";

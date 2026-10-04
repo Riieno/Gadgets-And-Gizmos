@@ -241,10 +241,6 @@ final class ScmLiveSubLevelPreviewRenderer {
         return preview.relativePosition(subLevelId, position, partialTick);
     }
 
-    Direction automaticControlFace(PickTarget target) {
-        return target == null ? null : target.face();
-    }
-
     private boolean matchesVisibleFilter(SubLevelPreviewRenderer.PreviewBlock block) {
         if (visibleFilters.contains(Filter.ALL)) return true;
         return matchesAny(block, visibleFilters);

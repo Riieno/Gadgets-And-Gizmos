@@ -87,7 +87,8 @@ public final class CTBlockEntities {
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<RcsThrusterBlockEntity>> RCS_THRUSTER =
             register("rcs_thruster",
                     () -> BlockEntityType.Builder.of(
-                            RcsThrusterBlockEntity::new, CTBlocks.RCS_THRUSTER.get()).build(null));
+                            RcsThrusterBlockEntity::new, CTBlocks.RCS_THRUSTER.get(),
+                            CTBlocks.CREATIVE_RCS_THRUSTER.get()).build(null));
 
     @Nullable
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<FuelOxidizerBlockEntity>> FUEL_OXIDIZER = register("fuel_oxidizer",

@@ -48,6 +48,12 @@ public class ThrusterPeripheral extends GadgetsPeripheral<ThrusterBlockEntity> {
         super(blockEntity, "thruster");
     }
 
+    // Expose the block entity so ComputerCraft can resolve its fluid capability
+    @Override
+    public ThrusterBlockEntity getTarget() {
+        return blockEntity;
+    }
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -57,14 +63,14 @@ public class ThrusterPeripheral extends GadgetsPeripheral<ThrusterBlockEntity> {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Set the throttle
-    @LuaFunction(mainThread = true)
+    @LuaFunction
     @PeripheralDoc(name = "setThrottle", signature = "setThrottle(throttle: number 0..1)",
             description = "Switches to COMPUTER control mode.")
     public final void setThrottle(double throttle) throws LuaException {
         if (Double.isNaN(throttle) || throttle < 0.0 || throttle > 1.0) {
             throw new LuaException("throttle must be between 0.0 and 1.0");
         }
-        blockEntity.setThrottle((float) throttle);
+        blockEntity.setComputerThrottleFast((float) throttle);
     }
 
     // Get the throttle

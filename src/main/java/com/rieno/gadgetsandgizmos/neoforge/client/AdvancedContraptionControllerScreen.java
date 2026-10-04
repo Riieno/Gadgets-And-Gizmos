@@ -12,6 +12,7 @@ import com.rieno.gadgetsandgizmos.compat.aeroworks.AeroworksControllerCompat;
 import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerMenu;
 import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEntity;
 import com.rieno.gadgetsandgizmos.content.AccDisplayBlockEntity;
+import com.rieno.gadgetsandgizmos.content.UniversalDisplayAdapterBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerData;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerItem;
 import com.rieno.gadgetsandgizmos.content.ControllerManifestStore;
@@ -25,6 +26,8 @@ import com.rieno.gadgetsandgizmos.compat.simulated.ContraptionDiagramControllerC
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryKind;
+import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.display.AccDisplaySourceRegistry;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphCatalog;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphCurve;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
@@ -38,13 +41,14 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphSelection;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphTemplates;
 import com.rieno.gadgetsandgizmos.lib.graph.render.GraphWireGeometry;
 import com.rieno.gadgetsandgizmos.lib.graph.render.GraphViewport;
+import com.rieno.gadgetsandgizmos.lib.client.ui.ColorPickerModal;
+import com.rieno.gadgetsandgizmos.lib.client.render.GuiLineRenderer;
 import com.rieno.gadgetsandgizmos.lib.graph.render.GraphTextLayout;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphNodeLayout;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphTargetPortLayout;
 import com.rieno.gadgetsandgizmos.lib.graph.edit.GraphNodeAlias;
 import com.rieno.gadgetsandgizmos.lib.client.scratch.ScratchBlockSurface;
 import com.rieno.gadgetsandgizmos.lib.client.schedule.CreateScheduleInputScreen;
-import com.rieno.gadgetsandgizmos.lib.client.ui.ColorPickerModal;
 import com.rieno.gadgetsandgizmos.lib.client.ui.ItemSearchQuery;
 import com.rieno.gadgetsandgizmos.lib.scratch.ScratchBlockDefinition;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmBuiltinControlModes;
@@ -216,7 +220,6 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private static final long WIRE_DOUBLE_CLICK_MILLIS = 300L;
     private static final long CANVAS_DOUBLE_CLICK_MILLIS = 300L;
     private static final long GRAPH_ACTION_TOAST_MILLIS = 3000L;
-    private static final int GRAPH_PREVIEW_REFRESH_INTERVAL = 20;
     private static final int PORT_TOOLTIP_MAX_CHARACTERS = 64;
     private static final AtomicLong GRAPH_ACTION_REQ_IDS = new AtomicLong();
     private static final double WIRE_HIT_RADIUS = 6.0D;
@@ -477,6 +480,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private boolean draftDirty;
     // Draft simulation runtime
     private GraphRuntime draftSimulationRuntime;
+    private ColorPickerModal graphColorPicker;
+    private final Map<String, Long> previewInputPulses = new LinkedHashMap<>();
     // Draft simulation controller
     private AdvancedContraptionControllerBlockEntity draftSimulationController;
     // Current simulated draft
@@ -484,9 +489,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Current simulated draft fingerprint
     private int simulatedDraftFingerprint;
     // Tracks whether simulated draft needs tick is set
-    private boolean simulatedDraftNeedsTick;
     // Draft preview refresh tick count
-    private int draftPreviewRefreshTicks;
     // Undo
     private final ArrayDeque<AdvancedGraphDocument> undo = new ArrayDeque<>();
     // Redo
@@ -799,8 +802,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private final Set<ScmConfigurationProfile.UnitReference> scmConfigurationSelection = new LinkedHashSet<>();
     // Current action to receive the selected unit group.
     private int scmConfigurationActionIndex;
-    // New SCM assignments bind one physical face so they can carry redstone strength.
-    private ScmControlBindingMode scmConfigurationControlBindingMode = ScmControlBindingMode.FACE;
+    // Current SCM control binding mode
+    private ScmControlBindingMode scmConfigurationControlBindingMode = ScmControlBindingMode.BLOCK;
     private Direction scmConfigurationInputFace;
     private boolean scmConfigurationControlModeDropdownOpen;
     private boolean scmConfigurationFaceDropdownOpen;
@@ -1285,32 +1288,45 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             draftSimulationController = controller;
             simulatedDraft = null;
             simulatedDraftFingerprint = 0;
-            simulatedDraftNeedsTick = false;
-            draftPreviewRefreshTicks = 0;
         }
         int draftFingerprint = simulatedDraft == draft
                 ? simulatedDraftFingerprint : draft.simulationFingerprint();
-        boolean refreshPreview = false;
         if (simulatedDraft != draft || simulatedDraftFingerprint != draftFingerprint) {
             draftSimulationRuntime.clear();
             simulatedDraft = draft;
             simulatedDraftFingerprint = draftFingerprint;
-            simulatedDraftNeedsTick = draftSimulationRuntime.needsSimulationTick(draft);
-            refreshPreview = true;
         }
-        boolean advancedSimulation = hasUnsavedDraft()
-                && (simulatedDraftNeedsTick || draftSimulationRuntime.hasPendingWork());
-        if (advancedSimulation) {
-            draftSimulationRuntime.tick(draft);
-        }
-        if (refreshPreview || ++draftPreviewRefreshTicks >= GRAPH_PREVIEW_REFRESH_INTERVAL) {
-            draftSimulationRuntime.beginPreviewSample(draft);
-            draftPreviewRefreshTicks = 0;
+        draftSimulationRuntime.beginPreviewSample(draft);
+        samplePreviewInputPulses();
+    }
+
+    // Mark source execution wires visually without executing the draft graph
+    private void samplePreviewInputPulses() {
+        previewInputPulses.clear();
+        if (minecraft == null || minecraft.level == null || !hasUnsavedDraft()) return;
+        long tick = minecraft.level.getGameTime();
+        Map<String, AdvancedGraphDocument.Node> nodesById = new LinkedHashMap<>();
+        for (AdvancedGraphDocument.Node node : draft.nodes()) nodesById.put(node.id(), node);
+        for (AdvancedGraphDocument.Edge edge : draft.edges()) {
+            if (!"exec".equals(edge.fromPort())) continue;
+            AdvancedGraphDocument.Node source = nodesById.get(edge.fromNode());
+            if (source == null) continue;
+            boolean active = "event_tick".equals(source.type());
+            if (!active && switch (source.type()) {
+                case "controller_channel_input", "gamepad_input", "mouse_input",
+                     "local_redstone_input", "wireless_frequency_input",
+                     "discovered_target_input", "linker_face_input" -> true;
+                default -> false;
+            }) {
+                active = draftSimulationRuntime.previewOutput(draft, source, "active").asBoolean();
+            }
+            if (active) previewInputPulses.put(GraphRuntime.executionEdgeKey(edge), tick);
         }
     }
 
     // Clear the draft simulation
     private void clearDraftSimulation() {
+        previewInputPulses.clear();
         if (draftSimulationRuntime != null) {
             draftSimulationRuntime.clear();
         }
@@ -1318,8 +1334,6 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         draftSimulationController = null;
         simulatedDraft = null;
         simulatedDraftFingerprint = 0;
-        simulatedDraftNeedsTick = false;
-        draftPreviewRefreshTicks = 0;
     }
 
     // Publish the open graph snapshot
@@ -2100,7 +2114,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         scmLivePreviewRenderer.setWireframeExcludedFilters(scmConfigurationWireframeExcludedFilters);
         scmConfigurationCollapsedGroups.clear();
         scmConfigurationGroupStateInitialized = false;
-        scmConfigurationControlBindingMode = ScmControlBindingMode.FACE;
+        scmConfigurationControlBindingMode = ScmControlBindingMode.BLOCK;
         scmConfigurationInputFace = null;
         scmConfigurationControlModeDropdownOpen = false;
         scmConfigurationFaceDropdownOpen = false;
@@ -4179,7 +4193,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (target == null || target.subLevelId() == null) return;
         ScmControlBindingMode controlMode = scmConfigurationControlBindingMode;
         Direction selectedFace = switch (controlMode) {
-            case AUTO -> scmLivePreviewRenderer.automaticControlFace(target);
+            case BLOCK -> null;
             case FACE -> target.face();
         };
         if (selectedFace != null) {
@@ -4195,9 +4209,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             for (int selected = from; selected <= to; selected++) {
                 ScmConfigurationProfile.UnitReference candidate = scmConfigurationCandidates.get(selected);
                 scmConfigurationSelection.add(switch (controlMode) {
-                    case AUTO -> candidate.withFace(scmLivePreviewRenderer.automaticControlFace(
-                            new ScmLiveSubLevelPreviewRenderer.PickTarget("", candidate.subLevelId(),
-                                    candidate.blockPosition(), selectedFace == null ? target.face() : selectedFace)));
+                    case BLOCK -> blockControlReference(candidate);
                     case FACE -> candidate.withFace(selectedFace == null
                             ? scmConfigurationInputFace : selectedFace);
                 });
@@ -4212,6 +4224,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         scmConfigurationLastSelectionIndex = index;
         scmLivePreviewRenderer.invalidate();
+    }
+
+    // Keep a direct adapter when switching a selected block out of face control
+    private static ScmConfigurationProfile.UnitReference blockControlReference(
+            ScmConfigurationProfile.UnitReference reference) {
+        String adapter = reference.adapter().startsWith("scm:") ? "" : reference.adapter();
+        return new ScmConfigurationProfile.UnitReference(
+                reference.subLevelId(), reference.blockPosition(), adapter, null);
     }
 
     private int ensureScmConfigurationCandidate(ScmConfigurationProfile.UnitReference target) {
@@ -4240,7 +4260,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         scmConfigurationSelection.clear();
         scmConfigurationSelection.addAll(detected);
         if (assignScmConfigurationSelection(ScmConfigurationProfile.AUTO_ACTION,
-                ScmControlBindingMode.AUTO)) {
+                ScmControlBindingMode.BLOCK)) {
             scmConfigurationStatus = "Auto-detected and assigned " + detected.size() + " "
                     + scmAutoDetectCategoryLabel(category).toLowerCase(Locale.ROOT)
                     + " to Auto";
@@ -4314,12 +4334,12 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         boolean missingFace = faceMode && scmConfigurationSelection.stream()
                 .anyMatch(unit -> unit.face() == null && scmConfigurationInputFace == null);
         if (missingFace) {
-            scmConfigurationStatus = "Face mode: click a block face or choose a direction first";
+            scmConfigurationStatus = "Redstone Control: click a block face or choose a direction first";
             return false;
         }
         Set<ScmConfigurationProfile.UnitReference> bindings = scmConfigurationSelection.stream()
                 .map(unit -> switch (bindingMode) {
-                    case AUTO -> unit;
+                    case BLOCK -> blockControlReference(unit);
                     case FACE -> unit.withFace(unit.face() == null
                             ? scmConfigurationInputFace : unit.face());
                 })
@@ -4330,8 +4350,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (existing != null) {
             members.addAll(existing.units());
         }
-        // Assignment is additive. A selected actuator can therefore belong to
-        // Forward and Yaw Right (or Auto) without removing either binding.
+        // Replace the control scope for this block within the selected group.
+        // Other action groups can still bind the same actuator independently.
+        members.removeIf(member -> bindings.stream().anyMatch(binding ->
+                binding.sameBlock(member) && (binding.face() == null
+                        || member.face() == null || binding.face() == member.face())));
         members.addAll(bindings);
         groups.put(groupId, new ScmConfigurationProfile.Group(groupId,
                 scmConfigurationActionLabel(action), members));
@@ -4613,7 +4636,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private Map<String, String> groupedEditorPorts(AdvancedGraphDocument.Node node,
                                                    Map<String, String> ports, boolean output) {
         CompoundTag groups = node == null ? new CompoundTag()
-                : node.data().getCompound(AdvancedGraphCatalog.DATA_PORT_GROUPS_TAG);
+                : AdvancedGraphCatalog.dataPortGroups(node);
         if (groups.isEmpty()) {
             return ports;
         }
@@ -4646,6 +4669,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (connected) {
             return true;
         }
+        if (!output && "ship_navigate".equals(node.type())) return false;
         return !output && node.data().getCompound("Defaults").contains(port)
                 && !node.data().getCompound("PrefilledInputs").contains(port);
     }
@@ -7000,6 +7024,24 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         return roots;
     }
 
+    private boolean nudgeScheduleSelected(int keyCode) {
+        double dx = keyCode == GLFW.GLFW_KEY_LEFT ? -1.0D
+                : keyCode == GLFW.GLFW_KEY_RIGHT ? 1.0D : 0.0D;
+        double dy = keyCode == GLFW.GLFW_KEY_UP ? -1.0D
+                : keyCode == GLFW.GLFW_KEY_DOWN ? 1.0D : 0.0D;
+        if ((dx == 0.0D && dy == 0.0D) || selectedScheduleBlocks.isEmpty()) return false;
+        double step = (hasControlDown() ? V2_GRID_SPACING : 1.0D) / scheduleZoom;
+        for (String id : scheduleDragRoots()) {
+            AdvancedGraphDocument.Node block = scheduleNode(id);
+            if (block != null) {
+                ShippingScheduleGraph.moveBlock(scheduleDraft, id,
+                        block.x() + dx * step, block.y() + dy * step);
+            }
+        }
+        saveShippingScheduleDraft();
+        return true;
+    }
+
     // Delete selected schedule blocks through their authoritative graph helpers.
     private void deleteSelectedScheduleBlocks() {
         if (scheduleDraft == null || minecraft == null || minecraft.level == null) return;
@@ -7560,6 +7602,12 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     graphics.renderTooltip(font, Component.literal(tooltip), mouseX, mouseY);
                 }
             }
+        }
+        if (graphColorPicker != null && graphColorPicker.isOpen()) {
+            graphics.pose().pushPose();
+            graphics.pose().translate(0.0F, 0.0F, 500.0F);
+            graphColorPicker.render(graphics, font, width, height, themePickerChrome(), mouseX, mouseY);
+            graphics.pose().popPose();
         }
     }
 
@@ -8812,7 +8860,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 if (face != null) graphTargetPickerSelectionFaces.put(target.nodeId(), face);
             }
         } else {
-            ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
+            String dataKey = "source".equals(graphTargetPickerPort) ? "SourceData" : "TargetData";
+            ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(node.data().getCompound(dataKey));
             if (target != null) graphTargetPickerSelections.put(target.nodeId(), target);
         }
         graphTargetPickerPreviewTarget = graphTargetPickerSelections.keySet().stream().findFirst().orElse("");
@@ -8845,7 +8894,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         UiRect bounds = graphTargetPickerBounds();
         graphics.fill(0, 0, width, height, 0xA8000000);
         renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
-        graphics.drawString(font, "Select Target", bounds.x() + 12, bounds.y() + 10,
+        graphics.drawString(font, "source".equals(graphTargetPickerPort) ? "Select Source" : "Select Target",
+                bounds.x() + 12, bounds.y() + 10,
                 interfaceAccentTextColor(), false);
         graphics.drawString(font, "x", bounds.right() - 17, bounds.y() + 10, interfaceMutedColor(), false);
         UiRect linkerTab = graphTargetPickerLinkerTabBounds(bounds);
@@ -9016,8 +9066,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private List<ControllerDiscoveryNode> graphTargetPickerChoices() {
         AdvancedGraphDocument.Node node = findNode(graphTargetPickerNode);
         if (node == null) return List.of();
-        List<ControllerDiscoveryNode> choices = new ArrayList<>(graphTargetOptions(node));
-        choices.addAll(graphScmTargetOptions(node));
+        List<ControllerDiscoveryNode> choices = new ArrayList<>("source".equals(graphTargetPickerPort)
+                ? graphDisplaySourceOptions() : graphTargetOptions(node));
+        if (!"source".equals(graphTargetPickerPort)) choices.addAll(graphScmTargetOptions(node));
         boolean faceOnly = "linker_face_input".equals(node.type()) || "linker_face_output".equals(node.type());
         return choices.stream().filter(target -> !faceOnly
                         || target.kind() == ControllerDiscoveryKind.LINKER_FACE_INPUT
@@ -9165,7 +9216,20 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         List<ControllerDiscoveryNode> targets = List.copyOf(graphTargetPickerSelections.values());
         checkpoint();
-        if ("get_block_data".equals(node.type()) || "set_block_data".equals(node.type())) {
+        if ("source".equals(graphTargetPickerPort) && "acc_display_external".equals(node.type())) {
+            ControllerDiscoveryNode source = targets.isEmpty() ? null : targets.getFirst();
+            if (source == null) {
+                node.data().remove("Source");
+                node.data().remove("SourceLabel");
+                node.data().remove("SourceData");
+                putInputDefault(node, "source", "target", new CompoundTag());
+            } else {
+                node.data().putString("Source", source.nodeId());
+                node.data().putString("SourceLabel", source.label().isBlank() ? source.nodeId() : source.label());
+                node.data().put("SourceData", source.toTag());
+                putInputDefault(node, "source", "target", source.toTag());
+            }
+        } else if ("get_block_data".equals(node.type()) || "set_block_data".equals(node.type())) {
             node.data().putBoolean(AdvancedGraphCatalog.MERGE_LIKE_PORTS_TAG, graphTargetPickerMergeLikePorts);
             ListTag saved = new ListTag();
             for (ControllerDiscoveryNode target : targets) {
@@ -10190,13 +10254,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Draw the line
     private void drawLine(GuiGraphics graphics, int x1, int y1, int x2, int y2, int col) {
-        int steps = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1));
-        for (int i = 0; i <= steps; i++) {
-            double t = steps == 0 ? 0 : i / (double) steps;
-            int x = (int) Mth.lerp(t, x1, x2);
-            int y = (int) Mth.lerp(t, y1, y2);
-            graphics.fill(x, y, x + 2, y + 2, col);
-        }
+        GuiLineRenderer.draw(graphics, x1, y1, x2, y2, col);
     }
 
     // Draw the nodes
@@ -10341,10 +10399,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     ? "Add data case input"
                     : "Add exec output"
                     : "InputCount".equals(property) ? "Add Exec Input +"
-                    : "PulseBehavior".equals(property) ? "Pulse Behavior" : property;
+                    : "PulseBehavior".equals(property) ? "Pulse Behavior"
+                    : "constant_color".equals(node.type()) ? "Pick Color" : property;
             drawBodyControl(graphics, x, bodyY, width, propertyLabel, propertyValueLabel(node, property),
                     AdvancedGraphCatalog.categoryColor(AdvancedGraphCatalog.get(node.type()).category()),
                     "constant_boolean".equals(node.type()) && node.data().getBoolean(property));
+            if ("constant_color".equals(node.type())) {
+                drawGraphColorSwatch(graphics, x + width - Math.max(21, (int) (21 * zoom)), bodyY,
+                        node.data().getInt("Value"));
+            }
             bodyY += (int) (15 * zoom);
         }
         for (var port : nodeInputs(node).entrySet()) {
@@ -10425,6 +10488,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         drawClippedNodeInputLabel(graphics, label, labelLeft, controlLeft, y, rowHeight);
         renderControllerOption(graphics, controlLeft, y, right - controlLeft + 1, rowHeight,
                 portColor(type), port.equals(selectedInputPort), false);
+        if ("color".equals(type)) {
+            drawGraphColorSwatch(graphics, right - Math.max(18, (int) (18 * zoom)), y,
+                    graphInputColor(node, port));
+            return;
+        }
         if ("boolean".equals(type)) {
             boolean enabled = inputBoolean(node, port);
             int switchWidth = Math.max(12, (int) Math.round(20 * zoom));
@@ -11464,6 +11532,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             case "boolean" -> 0xFFE45B67;
             case "number" -> 0xFF69D19A;
             case "string" -> 0xFFE79DD2;
+            case "color" -> 0xFFFFB76B;
             case "direction" -> 0xFFF0B85C;
             case "frequency", "target" -> 0xFF9B8DF1;
             case "list", "map" -> 0xFF65C8D0;
@@ -14306,6 +14375,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     : isShipControlModeInput(node, optionDropdown.port())
                     ? AdvancedGraphCatalog.shipControlModeLabel(option)
                     : variableType || isShipTargetPointInput(node, optionDropdown.port())
+                    || "desmos_plot_point".equals(node.type()) && "x_functionality".equals(optionDropdown.port())
                     ? humanPort(option) : option;
             graphics.drawString(font, font.plainSubstrByWidth(shown, Math.max(8, textWidth)),
                     optionDropdown.x() + 8, y + 5,
@@ -14800,6 +14870,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle mouse clicked
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (graphColorPicker != null && graphColorPicker.isOpen())
+            return graphColorPicker.mouseClicked(mouseX, mouseY, button);
         if(shipPermissionsOpen) return clickShipPermissions(mouseX, mouseY, button);
         if (themeEditorOpen) return clickThemeEditor(mouseX, mouseY, button);
         if (controllerAliasEditor != null && controllerAliasEditor.visible) {
@@ -15210,6 +15282,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle mouse dragged
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (graphColorPicker != null && graphColorPicker.isOpen())
+            return graphColorPicker.mouseDragged(mouseX, mouseY, button);
         wireMouseX = mouseX;
         wireMouseY = mouseY;
         if (themeEditorOpen) {
@@ -15409,6 +15483,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle mouse released
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (graphColorPicker != null && graphColorPicker.isOpen())
+            return graphColorPicker.mouseReleased(mouseX, mouseY, button);
         if (themeEditorOpen) {
             if (themeColorPicker != null && themeColorPicker.isOpen()) {
                 return themeColorPicker.mouseReleased(mouseX, mouseY, button);
@@ -15920,6 +15996,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle key pressed
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (graphColorPicker != null && graphColorPicker.isOpen())
+            return graphColorPicker.keyPressed(keyCode, scanCode, modifiers);
         if (controllerAliasEditor != null && controllerAliasEditor.visible) {
             if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
                 finishControllerAliasRename(false);
@@ -16108,6 +16186,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 }
                 return true;
             }
+            if (nudgeScheduleSelected(keyCode)) return true;
             if (hasControlDown() && keyCode == GLFW.GLFW_KEY_A) {
                 selectedScheduleBlocks.clear();
                 for (AdvancedGraphDocument.Node node : ShippingScheduleGraph.orderedBlocks(scheduleDraft)) {
@@ -16184,6 +16263,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return true;
         }
         // ------------------------------------SELECTION SHORTCUTS------------------------------------
+        if (!selectedNodes.isEmpty() && nudgeSelected(keyCode)) return true;
         if ((keyCode == GLFW.GLFW_KEY_DELETE || keyCode == GLFW.GLFW_KEY_BACKSPACE) && selectedGroup != null) {
             deleteSelectedGroup();
             return true;
@@ -16216,6 +16296,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle typed characters
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
+        if (graphColorPicker != null && graphColorPicker.isOpen())
+            return graphColorPicker.charTyped(codePoint, modifiers);
         if (controllerAliasEditor != null && controllerAliasEditor.visible) {
             return controllerAliasEditor.charTyped(codePoint, modifiers);
         }
@@ -16413,6 +16495,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     syncInspector();
                     return true;
                 }
+                if ("constant_color".equals(node.type())) {
+                    selectedInputPort = "Value";
+                    openGraphColorPicker(node, null);
+                    return true;
+                }
                 if (isAccDisplayWidgetType(node.type())) {
                     selectedInputPort = "WidgetType";
                     openPropertyDropdown(node, "WidgetType", x + 5, mouseY + 8,
@@ -16459,6 +16546,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             if (isInputConnected(node, port.getKey())) return false;
             selectOnly(node.id());
             selectedInputPort = port.getKey();
+            if ("color".equals(port.getValue())) {
+                openGraphColorPicker(node, port.getKey());
+                return true;
+            }
             int portRow = (int) ((mouseY - bodyTop) / rowHeight);
             if ("number".equals(port.getValue()) && bodySliderTrack(node, port.getKey()).containsX(mouseX, 6)) {
                 startSliderDrag(node, port.getKey(), false, mouseX);
@@ -16972,6 +17063,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     node.data().putString("SourceLabel",
                             src.label().isBlank() ? src.nodeId() : src.label());
                     node.data().put("SourceData", src.toTag());
+                    putInputDefault(node, "source", "target", src.toTag());
                     syncInspector();
                     return true;
                 }
@@ -18020,6 +18112,20 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 replaceMovedNode(idx, node, dx, dy);
             }
         }
+    }
+
+    // Move selected nodes by a visible pixel or one visible grid cell
+    private boolean nudgeSelected(int keyCode) {
+        double dx = keyCode == GLFW.GLFW_KEY_LEFT ? -1.0D
+                : keyCode == GLFW.GLFW_KEY_RIGHT ? 1.0D : 0.0D;
+        double dy = keyCode == GLFW.GLFW_KEY_UP ? -1.0D
+                : keyCode == GLFW.GLFW_KEY_DOWN ? 1.0D : 0.0D;
+        if (dx == 0.0D && dy == 0.0D) return false;
+        checkpoint();
+        double pixels = hasControlDown() ? V2_GRID_SPACING : 1.0D;
+        moveSelected(graphViewport().graphDistance(dx * pixels),
+                graphViewport().graphDistance(dy * pixels));
+        return true;
     }
 
     // Replace the moved node
@@ -19382,6 +19488,44 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         return node.label().isBlank() || node.label().equals(node.type()) ? AdvancedGraphCatalog.displayName(node.type()) : node.label();
     }
 
+    // Read a color from either a legacy hex default or a numeric graph default
+    private int graphInputColor(AdvancedGraphDocument.Node node, String port) {
+        return AdvancedHudElementStyle.parseColor(inputString(node, port, ""))
+                .orElse((int) inputNumber(node, port));
+    }
+
+    private static void drawGraphColorSwatch(GuiGraphics graphics, int x, int y, int color) {
+        graphics.fill(x, y + 1, x + 14, y + 13, 0xFF1D242B);
+        graphics.fill(x + 2, y + 3, x + 12, y + 11, color);
+    }
+
+    private void openGraphColorPicker(AdvancedGraphDocument.Node node, String port) {
+        if (node == null || (port != null && isInputConnected(node, port))) return;
+        int initial = port == null ? node.data().getInt("Value") : graphInputColor(node, port);
+        CompoundTag previousData = node.data().copy();
+        boolean wasDirty = draftDirty;
+        ArrayDeque<AdvancedGraphDocument> previousRedo = new ArrayDeque<>(redo);
+        checkpoint();
+        graphColorPicker = new ColorPickerModal(initial, color -> {
+            if (port == null) node.data().putInt("Value", color);
+            else putInputDefault(node, port, "number", (double) color);
+            simulatedDraft = null;
+        }, () -> {
+            graphColorPicker = null;
+            syncInspector();
+        }, () -> {
+            graphColorPicker = null;
+            for (String key : new ArrayList<>(node.data().getAllKeys())) node.data().remove(key);
+            node.data().merge(previousData);
+            undo.pollFirst();
+            redo.clear();
+            redo.addAll(previousRedo);
+            draftDirty = wasDirty;
+            clearGraphRenderCache();
+            syncInspector();
+        });
+    }
+
     // Get the editable property
     private String editableProperty(AdvancedGraphDocument.Node node) {
         if (node == null) return null;
@@ -19391,7 +19535,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             case "controller_channel_input", "gamepad_input", "local_redstone_input", "wireless_frequency_input" ->
                     "PulseBehavior";
             case "variable_get", "variable_set", "event_variable_change" -> "Variable";
-            case "constant_number", "constant_boolean", "constant_string" -> "Value";
+            case "constant_number", "constant_boolean", "constant_string", "constant_color" -> "Value";
             case "delay", "debounce" -> "Ticks";
             case "event_periodic" -> "Period";
             case "parallel_execution", "sequenced_execution", "switch" -> "OutputCount";
@@ -19477,6 +19621,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the property value label
     private String propertyValueLabel(AdvancedGraphDocument.Node node, String property) {
+        if ("constant_color".equals(node.type())) {
+            return String.format("#%08X", node.data().getInt("Value"));
+        }
         if ("constant_boolean".equals(node.type())) return node.data().getBoolean(property) ? "[x]" : "[ ]";
         if ("pid".equals(node.type())) return node.data().getBoolean(property) ? "[x]" : "[ ]";
         if ("constant_number".equals(node.type())) return compactNumber(node.data().getDouble(property));
@@ -19908,12 +20055,19 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the input value label
     private String inputValueLabel(AdvancedGraphDocument.Node node, String port, String type) {
+        if ("color".equals(type)) return String.format("#%08X", graphInputColor(node, port));
+        if ("desmos_plot_point".equals(node.type()) && "x_functionality".equals(port)) {
+            return humanPort(inputString(node, port, "ignore"));
+        }
         if ("frequency".equals(type)) {
             String first = node.data().getString("FrequencyFirst");
             String second = node.data().getString("FrequencySecond");
             return trim(valueOrUnset(first) + " + " + valueOrUnset(second), 18);
         }
         if ("target".equals(type)) {
+            if ("acc_display_external".equals(node.type()) && "source".equals(port)) {
+                return valueOrUnset(node.data().getString("SourceLabel"));
+            }
             if (isWorkerGraphNode(node) || isWorkerRequestNode(node)) {
                 ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(
                         node.data().getCompound("WorkerTargets").getCompound(port));
@@ -19996,6 +20150,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Get the graph execution pulse
     private long graphExecutionPulse(AdvancedContraptionControllerBlockEntity controller, String edgeKey) {
         long pulse = controller == null ? Long.MIN_VALUE : controller.getGraphExecutionPulse(edgeKey);
+        pulse = Math.max(pulse, previewInputPulses.getOrDefault(edgeKey, Long.MIN_VALUE));
         if (draftSimulationRuntime != null) {
             pulse = Math.max(pulse, draftSimulationRuntime.executionPulse(edgeKey));
         }
@@ -20700,41 +20855,17 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             removeEdgesForMissingPorts(node, true);
             return;
         }
-        net.minecraft.world.level.block.entity.BlockEntity blockEntity =
-                SimulatedHelper.findBlockEntity(minecraft.level, target.subLevelId(), target.blockPos());
-        net.minecraft.world.level.Level targetLevel = blockEntity != null && blockEntity.getLevel() != null
-                ? blockEntity.getLevel() : minecraft.level;
-        net.minecraft.core.BlockPos targetPos = blockEntity == null ? target.blockPos() : blockEntity.getBlockPos();
-        if ((getData || setData) && targetLevel.getBlockState(targetPos).getBlock()
-                instanceof com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerPlaneBlock) {
-            List<ContraptionNetworkLinkerData.FaceOption> faces =
-                    ContraptionNetworkLinkerData.faceOptionsForNode(target);
-            List<net.minecraft.core.Direction> availableFaces = faces.stream()
-                    .map(ContraptionNetworkLinkerData.FaceOption::face)
-                    .filter(Objects::nonNull)
-                    .distinct()
-                    .toList();
-            net.minecraft.core.Direction side = net.minecraft.core.Direction.byName(
-                    inputString(node, "face", ""));
-            if (side == null && availableFaces.size() == 1) {
-                side = availableFaces.getFirst();
-            }
-            if (side == null || !availableFaces.contains(side)) {
-                return;
-            }
-            net.minecraft.core.BlockPos attachedPos = targetPos.relative(side.getOpposite());
-            if (!targetLevel.isLoaded(attachedPos)
-                    || targetLevel.getBlockState(attachedPos).isAir()) {
-                return;
-            }
-            targetPos = attachedPos;
-        }
+        AdvancedContraptionControllerBlockEntity.GraphDataTarget resolved =
+                AdvancedContraptionControllerBlockEntity.resolveGraphDataTarget(minecraft.level, node, target);
+        if (resolved == null) return;
+        net.minecraft.world.level.Level targetLevel = resolved.level();
+        net.minecraft.core.BlockPos targetPos = resolved.pos();
         boolean schemaResolved = targetLevel.isLoaded(targetPos)
                 && !targetLevel.getBlockState(targetPos).isAir();
         if (!schemaResolved) {
             return;
         }
-        blockEntity = targetLevel.getBlockEntity(targetPos);
+        net.minecraft.world.level.block.entity.BlockEntity blockEntity = targetLevel.getBlockEntity(targetPos);
         if ((getData || setData) && !com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataAdapterRegistry
                 .isDataSchemaReady(blockEntity)) {
             return;
@@ -20820,12 +20951,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private void configureMultiDataTargetPorts(AdvancedGraphDocument.Node node) {
         boolean writable = "set_block_data".equals(node.type());
         List<GraphTargetPortLayout.Target> schemas = new ArrayList<>();
-        for (ControllerDiscoveryNode target : dataTargets(node)) {
+        List<ControllerDiscoveryNode> targets = dataTargets(node);
+        for (ControllerDiscoveryNode target : targets) {
             GraphTargetPortLayout.Target schema = dataTargetSchema(node, target, writable);
             if (schema != null) schemas.add(schema);
         }
+        if (schemas.size() != targets.size()) return;
         AdvancedContraptionControllerBlockEntity.applyDataTargetPortLayout(node, schemas, writable);
-        List<ControllerDiscoveryNode> targets = dataTargets(node);
         AdvancedContraptionControllerBlockEntity.configureDataTargetFaceOptions(node,
                 targets.isEmpty() ? null : targets.getFirst());
         removeEdgesForMissingPorts(node, true);
@@ -20899,6 +21031,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 ? sortedGraphTargets(currentGraphTargetSeeds())
                 : List.copyOf(liveGraphTargets);
         if (node == null) return opts;
+        if (node.type().startsWith("acc_display_") || isAccDisplayWidgetType(node.type())) {
+            opts = opts.stream().map(this::resolveDisplayLinkerTarget).toList();
+        }
         if (isShippingInformationNodeType(node.type())) {
             opts = opts.stream().filter(target ->
                     isAccDisplayTarget(target) || isDisplayAdapterTarget(target)).toList();
@@ -20927,7 +21062,40 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         List<ControllerDiscoveryNode> opts = liveGraphTargets.isEmpty()
                 ? sortedGraphTargets(currentGraphTargetSeeds())
                 : List.copyOf(liveGraphTargets);
-        return opts.stream().filter(AdvancedGraphScreenSupport::isDisplayAdapterTarget).toList();
+        return opts.stream().map(this::resolveDisplayLinkerTarget)
+                .filter(target -> {
+                    if (isDisplayAdapterTarget(target)) return true;
+                    var level = minecraft == null || minecraft.level == null ? null
+                            : SubLevelBlockEntityCollector.resolveTargetLevel(minecraft.level, target.subLevelId());
+                    return level != null && target.blockPos() != null && level.isLoaded(target.blockPos())
+                            && AccDisplaySourceRegistry.source(level.getBlockEntity(target.blockPos())) != null;
+                }).toList();
+    }
+
+    // Resolve a linker plane to the block carrying its display or source
+    private ControllerDiscoveryNode resolveDisplayLinkerTarget(ControllerDiscoveryNode target) {
+        if (target == null || target.blockPos() == null
+                || !"createthrusters:contraption_network_linker_plane".equals(target.blockId())
+                || minecraft == null || minecraft.level == null) return target;
+        ItemStack linker = menu.getCurrentLinkerStack();
+        if (linker == null || linker.isEmpty()) return target;
+        var level = SubLevelBlockEntityCollector.resolveTargetLevel(minecraft.level, target.subLevelId());
+        if (level == null) return target;
+        for (var linked : ContraptionNetworkLinkerData.readTargets(linker)) {
+            if (!target.nodeId().equals(ContraptionNetworkLinkerData.nodeIdForTarget(linked))) continue;
+            for (var face : linked.faces()) {
+                BlockPos support = linked.blockPos().relative(face.face().getOpposite());
+                if (!level.isLoaded(support)) continue;
+                var blockEntity = level.getBlockEntity(support);
+                if (!(blockEntity instanceof AccDisplayBlockEntity)
+                        && !(blockEntity instanceof UniversalDisplayAdapterBlockEntity)
+                        && AccDisplaySourceRegistry.source(blockEntity) == null) continue;
+                var state = level.getBlockState(support);
+                return target.withBlockTarget(BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString(),
+                        state.getBlock().getName().getString(), support);
+            }
+        }
+        return target;
     }
 
     // Get the graph SCM target options
@@ -21471,6 +21639,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the input options
     private List<String> inputOptions(AdvancedGraphDocument.Node node, String port) {
+        if (node != null && "desmos_plot_point".equals(node.type()) && "x_functionality".equals(port)) {
+            return com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline.XMode.optionIds();
+        }
         if (node != null && "request_worker_task".equals(node.type()) && "task".equals(port)) {
             return workerTaskEventNames();
         }
@@ -21947,6 +22118,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (!inlineMapLabel.isBlank()) return inlineMapLabel;
         String generatedLabel = node.data().getCompound(AdvancedGraphCatalog.INPUT_LABELS_TAG).getString(port);
         if (!generatedLabel.isBlank()) return generatedLabel;
+        if ("set_block_data".equals(node.type()) && "direct_signal".equals(port)) return "Value";
         if (isFunctionOutputNode(node)) {
             return functionInterfacePortLabel(node, port);
         }
@@ -22569,6 +22741,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         for (AdvancedGraphDocument.Node node : activeNodes()) {
             if (isBreakOutNode(node)) {
                 CompoundTag outputs = structuredInputTypes(controller, node, "value");
+                outputs = com.rieno.gadgetsandgizmos.lib.graph.GraphDynamicPortSchema.retainConnectedOutputs(
+                        outputs, node.data().getCompound("DynamicOutputs"), activeEdges().stream()
+                                .filter(edge -> edge.fromNode().equals(node.id()))
+                                .map(AdvancedGraphDocument.Edge::fromPort).toList());
                 if (outputs.isEmpty() && shouldHoldStructuredOutputs(controller, node, "value")) {
                     continue;
                 }
@@ -22627,6 +22803,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Sync the structure key options
     private void syncStructureKeyOptions(AdvancedGraphDocument.Node node, CompoundTag entryTypes) {
+        boolean wired = activeEdges().stream().anyMatch(edge ->
+                edge.fromNode().equals(node.id()) && "value".equals(edge.fromPort()));
+        if (entryTypes.isEmpty() && wired) return;
         CompoundTag inputOptions = node.data().getCompound("InputOptions");
         ListTag keys = new ListTag();
         entryTypes.getAllKeys().stream().sorted(String.CASE_INSENSITIVE_ORDER)
@@ -22641,8 +22820,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             if (inputString(node, "key", "").isBlank()) putInputDefault(node, "key", "string", selectedKey);
             CompoundTag dynamicOutputs = node.data().getCompound("DynamicOutputs");
             String selectedType = entryTypes.getString(selectedKey);
-            if (selectedType.isBlank()) dynamicOutputs.remove("value");
-            else dynamicOutputs.putString("value", selectedType);
+            if (selectedType.isBlank()) {
+                if (!wired) dynamicOutputs.remove("value");
+            } else {
+                dynamicOutputs.putString("value", selectedType);
+            }
             if (dynamicOutputs.isEmpty()) node.data().remove("DynamicOutputs");
             else node.data().put("DynamicOutputs", dynamicOutputs);
         }

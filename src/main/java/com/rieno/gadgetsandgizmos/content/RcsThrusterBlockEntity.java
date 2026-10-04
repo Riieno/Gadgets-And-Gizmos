@@ -11,11 +11,16 @@ package com.rieno.gadgetsandgizmos.content;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.particle.worldspace.WorldSpaceParticleEmitter;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
+import com.rieno.gadgetsandgizmos.config.SeasonalPlumeEffects;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDataProvider;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.lib.control.IDirectControlReceiver;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuOpenHeader;
 import com.rieno.gadgetsandgizmos.lib.physics.SablePointImpulseApi;
+import com.rieno.gadgetsandgizmos.lib.physics.PropulsionLight;
+import com.rieno.gadgetsandgizmos.lib.physics.ColoredLightBridge;
+import com.rieno.gadgetsandgizmos.lib.physics.RcsNozzlePower;
+import com.rieno.gadgetsandgizmos.lib.physics.NozzleParticleDirection;
 import com.rieno.gadgetsandgizmos.particle.RcsSteamParticleOptions;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.simibubi.create.Create;
@@ -123,9 +128,15 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
     private final EnumMap<Direction, Float> clientThrottles = new EnumMap<>(Direction.class);
     // Tracked particle emission debt
     private final EnumMap<Direction, Float> particleEmissionDebt = new EnumMap<>(Direction.class);
+    // Colored light at each active nozzle
+    private final EnumMap<Direction, ColoredLightBridge.Light> nozzleLights = new EnumMap<>(Direction.class);
     // Effective throttle bits
     private final AtomicIntegerArray effectiveThrottleBits =
             new AtomicIntegerArray(Direction.values().length);
+    private final AtomicIntegerArray redstoneThrottleBits =
+            new AtomicIntegerArray(Direction.values().length);
+    private final java.util.concurrent.atomic.AtomicBoolean pendingComputerSync =
+            new java.util.concurrent.atomic.AtomicBoolean();
     // Force positions
     private final Vector3d[] forcePositions = new Vector3d[Direction.values().length];
     // Force directions
@@ -204,17 +215,21 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
         }
         if (level.isClientSide) {
             tickNozzleParticles();
+            updateNozzleLights();
         } else {
+            if (pendingComputerSync.getAndSet(false)) throttleChanged();
             tickBacktankPressure();
             if (level.getGameTime() % LINK_RECEIVER_REFRESH_TICKS == 0L) {
                 refreshReceiverStrengths();
             }
+            PropulsionLight.update(level, worldPosition, 0);
         }
     }
 
     // Remove the RCS thruster
     @Override
     public void remove() {
+        clearNozzleLights();
         unregisterReceivers();
         super.remove();
     }
@@ -222,6 +237,7 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
     // Invalidate the RCS thruster
     @Override
     public void invalidate() {
+        clearNozzleLights();
         unregisterReceivers();
         super.invalidate();
     }
@@ -290,9 +306,24 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
         setControllerThrottle(nozzle, COMPUTER_SOURCE, throttle);
     }
 
+    // Publish a CC command to the physics thread before the next game tick
+    public void setComputerThrottleFast(Direction nozzle, float throttle) {
+        if (!isNozzle(nozzle)) return;
+        exactThrottleSources.get(nozzle).put(COMPUTER_SOURCE, Mth.clamp(throttle, 0.0F, 1.0F));
+        recomputeEffectiveThrottle(nozzle);
+        pendingComputerSync.set(true);
+    }
+
     // Clear the computer throttle
     public void clearComputerThrottle(Direction nozzle) {
         clearControllerThrottle(nozzle, COMPUTER_SOURCE);
+    }
+
+    public void clearComputerThrottleFast(Direction nozzle) {
+        if (!isNozzle(nozzle)) return;
+        if (exactThrottleSources.get(nozzle).remove(COMPUTER_SOURCE) == null) return;
+        recomputeEffectiveThrottle(nozzle);
+        pendingComputerSync.set(true);
     }
 
     // Get the assembly ComputerCraft id
@@ -408,20 +439,23 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
 
     // Get the max nozzle thrust
     public double getMaxNozzleThrust() {
-        BacktankBlockEntity backtank = connectedBacktank();
-        if (backtank != null) {
-            return backtank.getAirLevel() > 0 ? MAX_NOZZLE_THRUST_PN : 0.0D;
+        if (isSelfPowered()) {
+            return RcsNozzlePower.available(true, false, false, getSpeed(),
+                    MAX_NOZZLE_THRUST_PN, FULL_POWER_RPM);
         }
-        return speedToMaxThrust(getSpeed());
+        BacktankBlockEntity backtank = connectedBacktank();
+        return RcsNozzlePower.available(false, backtank != null,
+                backtank != null && backtank.getAirLevel() > 0, getSpeed(),
+                MAX_NOZZLE_THRUST_PN, FULL_POWER_RPM);
+    }
+
+    public boolean isSelfPowered() {
+        return getBlockState().getBlock() instanceof RcsThrusterBlock block && block.isSelfPowered();
     }
 
     // Get the speed to max thrust
     public static double speedToMaxThrust(double rpm) {
-        if (!Double.isFinite(rpm)) {
-            return 0.0D;
-        }
-        return MAX_NOZZLE_THRUST_PN
-                * Mth.clamp(Math.abs(rpm) / FULL_POWER_RPM, 0.0D, 1.0D);
+        return RcsNozzlePower.fromShaft(rpm, MAX_NOZZLE_THRUST_PN, FULL_POWER_RPM);
     }
 
     // Get the nozzle thrust
@@ -515,6 +549,38 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
         }
     }
 
+    // Keep colored light at every active RCS exhaust outlet
+    private void updateNozzleLights() {
+        if (level == null || !CTConfigs.CLIENT.thrustersEmitLight.get()
+                || getMaxNozzleThrust() <= 1.0E-6D) {
+            clearNozzleLights();
+            return;
+        }
+        SeasonalPlumeEffects.Selection colors = SeasonalPlumeEffects.current(
+                PlumeRainbow.Mode.OFF, PlumeRainbow.Palette.NORMAL);
+        int color = colors.mode() == PlumeRainbow.Mode.OFF ? 0xE8F5FF
+                : PlumeRainbow.color(colors.mode(), colors.palette(), level.getGameTime(), 0.0F, 0);
+        for (Direction nozzle : NOZZLES) {
+            float throttle = getThrottle(nozzle);
+            if (throttle <= 1.0E-4F) {
+                ColoredLightBridge.Light light = nozzleLights.remove(nozzle);
+                if (light != null) light.close();
+                continue;
+            }
+            Vec3 position = SimulatedHelper.toGlobalWorldPosition(this, getLocalParticleEmitterPosition(nozzle));
+            if (position == null) continue;
+            ColoredLightBridge.Light light = nozzleLights.computeIfAbsent(nozzle,
+                    ignored -> ColoredLightBridge.create());
+            light.update(position, color, 3.5F, 0.6F + throttle * 0.6F);
+        }
+    }
+
+    // Release all nozzle lights when the emitter goes away
+    private void clearNozzleLights() {
+        for (ColoredLightBridge.Light light : nozzleLights.values()) light.close();
+        nozzleLights.clear();
+    }
+
     // Spawn the nozzle particle
     private void spawnNozzleParticle(Direction nozzle, float throttle, float particleScale) {
         if (level == null) {
@@ -525,16 +591,22 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
             return;
         }
         localDirection = localDirection.normalize();
+        Direction bottom = getBlockState().getValue(RcsThrusterBlock.FACING);
+        Vec3 particleDirection = NozzleParticleDirection.tiltToward(localDirection,
+                Vec3.atLowerCornerOf(bottom.getOpposite().getNormal()), 22.5D);
 
         Vec3 localEmitter = getLocalParticleEmitterPosition(nozzle)
                 .add(randomPerpendicular(localDirection, 0.025D));
         double speed = 0.035D + throttle * 0.055D;
-        Vec3 localMotion = localDirection.scale(speed)
-                .add(randomPerpendicular(localDirection, 0.009D));
+        Vec3 localMotion = particleDirection.scale(speed)
+                .add(randomPerpendicular(particleDirection, 0.009D));
         float shade = 0.72F + level.random.nextFloat() * 0.23F;
         float scale = particleScale * (0.55F + level.random.nextFloat() * 0.30F + throttle * 0.20F);
+        SeasonalPlumeEffects.Selection colors = SeasonalPlumeEffects.current(
+                PlumeRainbow.Mode.OFF, PlumeRainbow.Palette.NORMAL);
         WorldSpaceParticleEmitter.addParticle(this,
-                new RcsSteamParticleOptions(shade, shade, Math.min(1.0F, shade + 0.025F), scale),
+                new RcsSteamParticleOptions(shade, shade, Math.min(1.0F, shade + 0.025F), scale,
+                        colors.mode(), colors.palette()),
                 localEmitter, localMotion);
     }
 
@@ -597,6 +669,10 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
 
     // Update the backtank pressure
     private void tickBacktankPressure() {
+        if (isSelfPowered()) {
+            backtankDrainRemainder = 0.0D;
+            return;
+        }
         BacktankBlockEntity backtank = connectedBacktank();
         if (backtank == null) {
             backtankDrainRemainder = 0.0D;
@@ -686,10 +762,18 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
     // Add the goggle tooltip
     @Override
     public boolean addToGoggleTooltip(List<Component> tooltip, boolean isPlayerSneaking) {
-        tooltip.add(CTTooltipHelper.title(Component.translatable("block.createthrusters.rcs_thruster")));
-        tooltip.add(CTTooltipHelper.line(
-                Component.translatable("createthrusters.goggle.rcs_thruster.rpm"),
-                CTTooltipHelper.value(String.format(Locale.ROOT, "%.1f", Math.abs(getSpeed())), ChatFormatting.AQUA)));
+        tooltip.add(CTTooltipHelper.title(Component.translatable(isSelfPowered()
+                ? "block.createthrusters.creative_rcs_thruster" : "block.createthrusters.rcs_thruster")));
+        if (isSelfPowered()) {
+            tooltip.add(CTTooltipHelper.line(
+                    Component.translatable("createthrusters.goggle.rcs_thruster.power"),
+                    CTTooltipHelper.value(Component.translatable("createthrusters.goggle.rcs_thruster.internal").getString(),
+                            ChatFormatting.AQUA)));
+        } else {
+            tooltip.add(CTTooltipHelper.line(
+                    Component.translatable("createthrusters.goggle.rcs_thruster.rpm"),
+                    CTTooltipHelper.value(String.format(Locale.ROOT, "%.1f", Math.abs(getSpeed())), ChatFormatting.AQUA)));
+        }
         tooltip.add(CTTooltipHelper.line(
                 Component.translatable("createthrusters.goggle.rcs_thruster.max_thrust"),
                 CTTooltipHelper.value(String.format(Locale.ROOT, "%.2f pN", getMaxNozzleThrust()),
@@ -897,6 +981,7 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
             return;
         }
         redstoneThrottles.put(nozzle, clamped);
+        redstoneThrottleBits.set(nozzle.ordinal(), Float.floatToRawIntBits(clamped));
         recomputeEffectiveThrottle(nozzle);
         throttleChanged();
     }
@@ -904,7 +989,8 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
     // Recompute the effective throttle
     private void recomputeEffectiveThrottle(Direction nozzle) {
         float throttle = resolveEffectiveThrottle(
-                redstoneThrottles.getOrDefault(nozzle, 0.0F), exactThrottleSources.get(nozzle));
+                Float.intBitsToFloat(redstoneThrottleBits.get(nozzle.ordinal())),
+                exactThrottleSources.get(nozzle));
         effectiveThrottleBits.set(nozzle.ordinal(), Float.floatToRawIntBits(throttle));
     }
 

@@ -260,7 +260,8 @@ final class ControllerRuntimeObserver {
             }
             ItemStack res = findCurio(inventoryValue, CTItems.PHYSICS_GOGGLES == null
                     ? null : CTItems.PHYSICS_GOGGLES.get());
-            return res;
+            return res.isEmpty() ? findCurio(inventoryValue, CTItems.PILOT_CAP == null
+                    ? null : CTItems.PILOT_CAP.get()) : res;
         } catch (ReflectiveOperationException ignored) {
             return ItemStack.EMPTY;
         }
@@ -279,7 +280,8 @@ final class ControllerRuntimeObserver {
             }
             ItemStack res = findAccessory(capability, CTItems.PHYSICS_GOGGLES == null
                     ? null : CTItems.PHYSICS_GOGGLES.get());
-            return res;
+            return res.isEmpty() ? findAccessory(capability, CTItems.PILOT_CAP == null
+                    ? null : CTItems.PILOT_CAP.get()) : res;
         } catch (ReflectiveOperationException ignored) {
             return ItemStack.EMPTY;
         }

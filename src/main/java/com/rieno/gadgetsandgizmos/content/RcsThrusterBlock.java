@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
+import com.rieno.gadgetsandgizmos.lib.physics.PropulsionLight;
 import com.simibubi.create.content.equipment.wrench.IWrenchable;
 import com.simibubi.create.content.kinetics.base.DirectionalKineticBlock;
 import com.simibubi.create.content.kinetics.base.IRotate;
@@ -21,8 +22,10 @@ import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
@@ -40,8 +43,9 @@ public class RcsThrusterBlock extends DirectionalKineticBlock
 
     // Initialize the RCS thruster block
     public RcsThrusterBlock(Properties properties) {
-        super(properties);
-        registerDefaultState(defaultBlockState().setValue(FACING, Direction.DOWN));
+        super(properties.lightLevel(state -> 0));
+        registerDefaultState(defaultBlockState().setValue(FACING, Direction.DOWN)
+                .setValue(PropulsionLight.LIGHT_LEVEL, 0));
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -58,10 +62,25 @@ public class RcsThrusterBlock extends DirectionalKineticBlock
         return defaultBlockState().setValue(FACING, ctx.getClickedFace().getOpposite());
     }
 
+    @Override
+    protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
+        super.createBlockStateDefinition(builder);
+        builder.add(PropulsionLight.LIGHT_LEVEL);
+    }
+
+    @Override
+    public int getLightEmission(BlockState state, BlockGetter level, BlockPos pos) {
+        return 0;
+    }
+
     // Check if this has a shaft on the side
     @Override
     public boolean hasShaftTowards(LevelReader level, BlockPos pos, BlockState state, Direction face) {
         return face == state.getValue(FACING);
+    }
+
+    public boolean isSelfPowered() {
+        return false;
     }
 
     // Get the rotation axis

@@ -14,6 +14,7 @@ import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerData;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerItem;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.client.render.WorldAreaOverlayRenderer;
+import com.rieno.gadgetsandgizmos.lib.multiblock.MultiblockOutlineTargets;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerArea;
 import com.rieno.gadgetsandgizmos.neoforge.network.ContraptionNetworkLinkerAreaAdjustPayload;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -230,6 +231,13 @@ public final class ContraptionNetworkLinkerFaceRenderer {
                 continue;
             }
             for (ContraptionNetworkLinkerData.LinkedFace face : target.faces()) {
+                var targetLevel = SubLevelBlockEntityCollector.resolveTargetLevel(minecraft.level, target.subLevelId());
+                BlockPos support = target.blockPos().relative(face.face().getOpposite());
+                List<BlockPos> blocks = MultiblockOutlineTargets.positions(targetLevel, support);
+                if (blocks.size() > 1) {
+                    renderBlockOutline(poseStack, lines, renderTarget, MultiblockOutlineTargets.outlineCorners(blocks),
+                            col.red(), col.green(), col.blue(), 1.0f);
+                }
                 Direction plateSide = visiblePlateSide(minecraft, target, face);
                 Vec3[] corners = transformCorners(renderTarget, visiblePlateCorners(target.blockPos(),
                         plateSide, face.face()));
@@ -386,7 +394,13 @@ public final class ContraptionNetworkLinkerFaceRenderer {
     // Draw the block outline
     private static void renderBlockOutline(PoseStack poseStack, VertexConsumer consumer, RenderTarget target,
                                            BlockPos pos, float red, float green, float blue, float alpha) {
-        Vec3[] corners = transformCorners(target, blockCorners(pos));
+        renderBlockOutline(poseStack, consumer, target, blockCorners(pos), red, green, blue, alpha);
+    }
+
+    // Draw an outline around all selected multiblock members
+    private static void renderBlockOutline(PoseStack poseStack, VertexConsumer consumer, RenderTarget target,
+                                           Vec3[] localCorners, float red, float green, float blue, float alpha) {
+        Vec3[] corners = transformCorners(target, localCorners);
         int[][] edges = {
                 {0, 1}, {1, 2}, {2, 3}, {3, 0},
                 {4, 5}, {5, 6}, {6, 7}, {7, 4},

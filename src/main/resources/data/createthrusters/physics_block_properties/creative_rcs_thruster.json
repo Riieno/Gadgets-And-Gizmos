@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:creative_rcs_thruster",
+  "properties": {
+    "sable:mass": 0.5
+  }
+}

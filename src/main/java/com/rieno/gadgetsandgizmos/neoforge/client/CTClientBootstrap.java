@@ -34,6 +34,7 @@ import com.simibubi.create.content.decoration.copycat.CopycatBlock;
 import net.createmod.ponder.foundation.PonderIndex;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.ModList;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.fml.event.lifecycle.FMLLoadCompleteEvent;
 import net.neoforged.neoforge.client.extensions.common.RegisterClientExtensionsEvent;
@@ -72,8 +73,8 @@ public final class CTClientBootstrap {
 
     // Register the CT client bootstrap
     public static void register(IEventBus modEventBus, ModContainer modContainer) {
-        ParticleRenderOrdering.registerAfterClouds(SoftParticleRenderTypes.fastEmissiveMetaballBillboard());
-        ParticleRenderOrdering.registerAfterClouds(SoftParticleRenderTypes.fastEmissiveStreakBillboard());
+        ParticleRenderOrdering.registerAfterClouds(SoftParticleRenderTypes.fastAlphaEmissiveMetaballBillboard());
+        ParticleRenderOrdering.registerAfterClouds(SoftParticleRenderTypes.fastAlphaEmissiveStreakBillboard());
         WorldSpaceParticleEmitter.installViewDistanceSpawner((level, options, position, velocity) -> {
             if (level instanceof ClientLevel clientLevel) {
                 ClientParticleRange.addWithinViewDistance(clientLevel, options, position, velocity);
@@ -89,6 +90,7 @@ public final class CTClientBootstrap {
         CTPartialModels.init();
         modEventBus.addListener((FMLClientSetupEvent evt) -> {
             evt.enqueueWork(() -> {
+                if (ModList.get().isLoaded("veil")) VeilColoredLightBackend.install();
                 SoftParticleRenderTypes.setShaderPackActiveSupplier(ShaderPackClientCompat::isActive);
                 if (ShaderPackClientCompat.canBindWorldTarget()) {
                     SoftParticleRenderTypes.setShaderPackWorldTargetBinder(ShaderPackClientCompat::bindWorldTarget);

@@ -89,6 +89,7 @@ public final class CTFeatureToggles {
         LinkedHashMap<String, Boolean> blocks = new LinkedHashMap<>();
         define(blocks, "thruster", true);
         define(blocks, "rcs_thruster", true);
+        define(blocks, "creative_rcs_thruster", true);
         define(blocks, "blackstone_alloy_block", true);
         define(blocks, "blackstone_casing", true);
         define(blocks, "fuel_oxidizer", true);
@@ -170,6 +171,7 @@ public final class CTFeatureToggles {
         define(items, "entity_launcher", true);
         define(items, "player_mannequin", true);
         define(items, "physics_goggles", true);
+        define(items, "pilot_cap", true);
         define(items, "oxidized_creative_blaze_cake", true);
         define(items, MUSIC_DISCS_FEATURE, true);
         define(items, "music_disc_kinetic_currency", true);

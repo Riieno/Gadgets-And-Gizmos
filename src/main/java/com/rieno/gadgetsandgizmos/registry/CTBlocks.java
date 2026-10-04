@@ -40,9 +40,11 @@ import com.rieno.gadgetsandgizmos.content.PhysicsGantryCarriageBlock;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryBeltWheelBlock;
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryShaftBlock;
 import com.rieno.gadgetsandgizmos.content.PhysicsStaffAnchorBlock;
+import com.rieno.gadgetsandgizmos.content.PlumeLightBlock;
 import com.rieno.gadgetsandgizmos.content.PoweredZiplineBlock;
 import com.rieno.gadgetsandgizmos.content.RopeKnotBlock;
 import com.rieno.gadgetsandgizmos.content.RcsThrusterBlock;
+import com.rieno.gadgetsandgizmos.content.CreativeRcsThrusterBlock;
 import com.rieno.gadgetsandgizmos.content.RatchetCogwheelBlock;
 import com.rieno.gadgetsandgizmos.content.ScissorPistonArmBlock;
 import com.rieno.gadgetsandgizmos.content.ScissorPistonBlock;
@@ -85,9 +87,20 @@ public final class CTBlocks {
     public static final DeferredBlock<ThrusterBlock> THRUSTER = register("thruster",
             () -> new ThrusterBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(3.0f).requiresCorrectToolForDrops().noOcclusion()));
 
+    public static final DeferredBlock<PlumeLightBlock> PLUME_LIGHT = register("plume_light",
+            () -> new PlumeLightBlock(BlockBehaviour.Properties.of().mapColor(MapColor.NONE)
+                    .noCollission().noOcclusion().replaceable().noLootTable()
+                    .lightLevel(state -> 15).pushReaction(PushReaction.DESTROY)));
+
     @Nullable
     public static final DeferredBlock<RcsThrusterBlock> RCS_THRUSTER = register("rcs_thruster",
             () -> new RcsThrusterBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
+                    .strength(3.0f).sound(SoundType.NETHERITE_BLOCK)
+                    .requiresCorrectToolForDrops().noOcclusion()));
+
+    @Nullable
+    public static final DeferredBlock<CreativeRcsThrusterBlock> CREATIVE_RCS_THRUSTER = register("creative_rcs_thruster",
+            () -> new CreativeRcsThrusterBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
                     .strength(3.0f).sound(SoundType.NETHERITE_BLOCK)
                     .requiresCorrectToolForDrops().noOcclusion()));
 

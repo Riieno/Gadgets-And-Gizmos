@@ -137,6 +137,7 @@ public final class ContraptionNetworkLinkerData {
     private static final String CREATE_THRUSTERS_AILERON_BEARING = "createthrusters:aileron_bearing";
     private static final String CREATE_THRUSTERS_VECTOR_BEARING = "createthrusters:vector_bearing";
     private static final String CREATE_THRUSTERS_RCS_THRUSTER = "createthrusters:rcs_thruster";
+    private static final String CREATE_THRUSTERS_CREATIVE_RCS_THRUSTER = "createthrusters:creative_rcs_thruster";
     private static final String CREATE_THRUSTERS_DOUBLE_BUTTON = "createthrusters:double_button";
     private static final String CREATE_THRUSTERS_COPYCAT_DOUBLE_BUTTON = "createthrusters:copycat_double_button";
     private static final String AEROWORKS_JOYSTICK = "aeroworks:joystick";
@@ -342,7 +343,6 @@ public final class ContraptionNetworkLinkerData {
     // Define the target mode values
     public enum TargetMode {
         AUTO("auto"),
-        @Deprecated
         BLOCK("block"),
         FACE("face"),
         AREA("area"),
@@ -382,7 +382,7 @@ public final class ContraptionNetworkLinkerData {
 
         // Get the next
         public TargetMode next() {
-            return this == AREA ? FACE : AREA;
+            return this == BLOCK ? FACE : BLOCK;
         }
     }
 
@@ -436,9 +436,7 @@ public final class ContraptionNetworkLinkerData {
                                                  @Nullable BlockState blockState,
                                                  @Nullable Direction clickedFace,
                                                  @Nullable TargetMode targetMode) {
-        // New linker bindings always use the interacted face. Legacy BLOCK
-        // targets remain readable until their matching block is interacted with.
-        return TargetScope.FACE;
+        return targetMode == TargetMode.BLOCK ? TargetScope.BLOCK : TargetScope.FACE;
     }
 
     // Resolve the target scope
@@ -1863,6 +1861,11 @@ public final class ContraptionNetworkLinkerData {
     }
 
     // Get the face options for node
+    private static boolean isRcsThrusterBlockId(@Nullable String blockId) {
+        return blockId != null && (CREATE_THRUSTERS_RCS_THRUSTER.equalsIgnoreCase(blockId)
+                || CREATE_THRUSTERS_CREATIVE_RCS_THRUSTER.equalsIgnoreCase(blockId));
+    }
+
     public static List<FaceOption> faceOptionsForNode(ControllerDiscoveryNode node) {
         if (node == null) {
             return List.of();
@@ -1871,7 +1874,7 @@ public final class ContraptionNetworkLinkerData {
         List<Direction> faces = new ArrayList<>(faceSignalMap.keySet());
         TargetScope scope = parseScopeFromNodeId(node.nodeId());
         // ------------------------------------RCS THRUSTER FACES------------------------------------
-        if (CREATE_THRUSTERS_RCS_THRUSTER.equalsIgnoreCase(node.blockId())) {
+        if (isRcsThrusterBlockId(node.blockId())) {
             String base = node.label() == null || node.label().isBlank()
                     ? "RCS Thruster" : node.label();
             return List.of(
@@ -2023,7 +2026,7 @@ public final class ContraptionNetworkLinkerData {
             return null;
         }
         ControllerDirectTargetReference base = node.asDirectTargetReference();
-        boolean rcsThruster = CREATE_THRUSTERS_RCS_THRUSTER.equalsIgnoreCase(node.blockId());
+        boolean rcsThruster = isRcsThrusterBlockId(node.blockId());
         if (face == null || !isLinkerFaceTarget(base) && !rcsThruster) {
             return base;
         }
@@ -3409,7 +3412,7 @@ public final class ContraptionNetworkLinkerData {
                 || AEROWORKS_STEPPER_SERVO.equalsIgnoreCase(normalized)
                 || CREATE_THRUSTERS_AILERON_BEARING.equalsIgnoreCase(normalized)
                 || CREATE_THRUSTERS_VECTOR_BEARING.equalsIgnoreCase(normalized)
-                || CREATE_THRUSTERS_RCS_THRUSTER.equalsIgnoreCase(normalized);
+                || isRcsThrusterBlockId(normalized);
     }
 
     // Check if this is a double button block ID

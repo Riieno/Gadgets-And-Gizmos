@@ -137,6 +137,10 @@ public final class AnalogueContraptionControllerClientHandler {
                 AnalogueContraptionControllerBlockEntity.class);
         if (controller != null) {
             controller.applyClientRuntimeSignal(payload.outputSignal());
+            if (controller instanceof AdvancedContraptionControllerBlockEntity advanced
+                    && payload.scmTelemetry() != null) {
+                advanced.applyClientScmControlTelemetry(payload.scmTelemetry());
+            }
         }
     }
 

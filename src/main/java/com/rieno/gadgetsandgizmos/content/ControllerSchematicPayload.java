@@ -73,6 +73,7 @@ final class ControllerSchematicPayload {
         if (blockEntityTag == null || payload == null || payload.isEmpty()) {
             return false;
         }
+        discardLegacyPlotPoints(payload);
         blockEntityTag.remove(BLOCK_ENTITY_TAG);
         byte[] compressed = compress(payload);
         if (compressed.length == 0 || compressed.length > MAX_COMPRESSED_BYTES) {
@@ -104,7 +105,15 @@ final class ControllerSchematicPayload {
         }
         CompoundTag envelope = blockEntityTag.getCompound(BLOCK_ENTITY_TAG).copy();
         blockEntityTag.remove(BLOCK_ENTITY_TAG);
-        return decode(envelope);
+        CompoundTag payload = decode(envelope);
+        discardLegacyPlotPoints(payload);
+        return payload;
+    }
+
+    private static void discardLegacyPlotPoints(@Nullable CompoundTag payload) {
+        if (payload != null && payload.contains(CONTROLLER_DATA_TAG, Tag.TAG_COMPOUND)) {
+            payload.getCompound(CONTROLLER_DATA_TAG).remove("PlotPoints");
+        }
     }
 
     // Get the compress

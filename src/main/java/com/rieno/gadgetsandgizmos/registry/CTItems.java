@@ -26,6 +26,7 @@ import com.rieno.gadgetsandgizmos.content.SmallThrusterBlockItem;
 import com.rieno.gadgetsandgizmos.content.SmartTankBlockItem;
 import com.rieno.gadgetsandgizmos.content.SmartVaultBlockItem;
 import com.rieno.gadgetsandgizmos.content.PhysicsGogglesItem;
+import com.rieno.gadgetsandgizmos.content.PilotCapItem;
 import com.rieno.gadgetsandgizmos.content.PhysicsStaffItem;
 import com.rieno.gadgetsandgizmos.content.PoweredZiplineBlockItem;
 import com.rieno.gadgetsandgizmos.content.PropulsionUpgradeItem;
@@ -64,6 +65,9 @@ public final class CTItems {
     @Nullable
     public static final DeferredItem<BlockItem> RCS_THRUSTER = register("rcs_thruster",
             () -> new CTTooltipBlockItem(CTBlocks.RCS_THRUSTER.get(), new Item.Properties()));
+    @Nullable
+    public static final DeferredItem<BlockItem> CREATIVE_RCS_THRUSTER = register("creative_rcs_thruster",
+            () -> new CTTooltipBlockItem(CTBlocks.CREATIVE_RCS_THRUSTER.get(), new Item.Properties()));
     @Nullable
     public static final DeferredItem<Item> BLACKSTONE_ALLOY = register("blackstone_alloy",
             () -> new Item(new Item.Properties()));
@@ -299,6 +303,8 @@ public final class CTItems {
     @Nullable
     public static final DeferredItem<PhysicsGogglesItem> PHYSICS_GOGGLES = register("physics_goggles",
             () -> new PhysicsGogglesItem(new Item.Properties().stacksTo(1).rarity(Rarity.UNCOMMON)));
+    public static final DeferredItem<PilotCapItem> PILOT_CAP = register("pilot_cap",
+            () -> new PilotCapItem(new Item.Properties().stacksTo(1).rarity(Rarity.UNCOMMON)));
     @Nullable
     public static final DeferredItem<Item> OXIDIZED_CREATIVE_BLAZE_CAKE = register("oxidized_creative_blaze_cake",
             () -> new Item(new Item.Properties().stacksTo(1).rarity(Rarity.EPIC).fireResistant()));

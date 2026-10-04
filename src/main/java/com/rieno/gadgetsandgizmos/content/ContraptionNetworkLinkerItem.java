@@ -238,7 +238,8 @@ public class ContraptionNetworkLinkerItem extends Item {
             targetPos,
             clickedState,
             clickedFace,
-            ContraptionNetworkLinkerData.TargetMode.FACE);
+            editMode == ContraptionNetworkLinkerData.LinkMode.SCM
+                    ? targetMode : ContraptionNetworkLinkerData.TargetMode.FACE);
         String faceSignalKey = targetScope.usesFaces()
             ? ContraptionNetworkLinkerData.resolveFaceSignalKeyForBinding(clickedState, clickedFace)
             : null;
@@ -253,8 +254,6 @@ public class ContraptionNetworkLinkerItem extends Item {
                 blockLabel,
                 faceSignalKey);
         }
-
-        ContraptionNetworkLinkerData.setTargetMode(stack, ContraptionNetworkLinkerData.TargetMode.FACE);
 
         if (targetScope.usesFaces()) {
             return useFacePlane(ctx, targetPos, subLevelId, clickedState, clickedFace, stack);
@@ -437,19 +436,6 @@ public class ContraptionNetworkLinkerItem extends Item {
         String planeBlockId = CTBlocks.CONTRAPTION_NETWORK_LINKER_PLANE.getId().toString();
         String blockLabel = clickedState.getBlock().getName().getString();
         String planeLabel = blockLabel + " " + faceLabel(clickedFace) + " Linker Plane";
-        // A legacy block assignment is upgraded only when its block is used.
-        // All untouched assignments remain available to existing controllers.
-        if (ContraptionNetworkLinkerData.migrateBlockTargetsToFace(stack, clickedPos, subLevelId,
-                planePos, planeBlockId, planeLabel, clickedFace, null)) {
-            ContraptionNetworkLinkerData.readTargets(stack).stream()
-                    .filter(target -> target.scope().usesFaces()
-                            && target.blockPos().equals(planePos)
-                            && java.util.Objects.equals(target.subLevelId(), subLevelId)
-                            && target.faces().stream().anyMatch(face -> face.face() == clickedFace))
-                    .findFirst().ifPresent(target -> plane.setPlane(clickedFace, target.mode()));
-            observeLinker(level, stack);
-            return InteractionResult.SUCCESS;
-        }
         ContraptionNetworkLinkerData.FaceCycleState state = ContraptionNetworkLinkerData.cycleTarget(
                 stack,
                 planePos,

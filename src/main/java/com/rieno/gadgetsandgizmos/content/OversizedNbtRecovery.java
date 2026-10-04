@@ -42,6 +42,7 @@ public final class OversizedNbtRecovery {
             "AdvancedDraftGraph",
             "AdvancedActiveGraph",
             "AdvancedGraphVersions",
+            "PlotPoints",
             "StoredGraphs",
             "ClientSnapshot",
             "ContraptionNetworkLinker",
@@ -89,7 +90,7 @@ public final class OversizedNbtRecovery {
             }
             if (RECOVERY_LOG_COUNT.getAndIncrement() < 8) {
                 LOGGER.warn(
-                        "Recovered an oversized legacy controller/linker NBT packet by skipping embedded graph data");
+                        "Recovered an oversized legacy controller/linker NBT packet by skipping embedded graph/plot data");
             }
             return compound;
         } catch (IOException err) {

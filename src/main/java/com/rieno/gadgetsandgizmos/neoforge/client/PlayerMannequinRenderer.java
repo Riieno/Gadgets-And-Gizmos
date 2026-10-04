@@ -2,6 +2,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 import com.mojang.authlib.GameProfile;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinEntity;
+import com.rieno.gadgetsandgizmos.lib.client.render.HeadwearRenderSource;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.RemotePlayer;
@@ -12,6 +13,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.PlayerModelPart;
 import net.minecraft.world.item.ItemStack;
@@ -71,7 +73,7 @@ public class PlayerMannequinRenderer extends EntityRenderer<PlayerMannequinEntit
     }
 
     // This client-only player is a rendering proxy. It never enters the world or replaces the saved mannequin.
-    public static final class MannequinRenderPlayer extends RemotePlayer {
+    public static final class MannequinRenderPlayer extends RemotePlayer implements HeadwearRenderSource {
         private final PlayerMannequinEntity mannequin;
 
         private MannequinRenderPlayer(ClientLevel level, PlayerMannequinEntity mannequin) {
@@ -80,6 +82,11 @@ public class PlayerMannequinRenderer extends EntityRenderer<PlayerMannequinEntit
         }
 
         public PlayerMannequinEntity mannequin() {
+            return mannequin;
+        }
+
+        @Override
+        public LivingEntity headwearSource() {
             return mannequin;
         }
 

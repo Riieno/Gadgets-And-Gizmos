@@ -5,6 +5,7 @@
     { "id": "createthrusters:blackstone_alloy_block", "required": false },
     { "id": "createthrusters:blackstone_casing", "required": false },
     { "id": "createthrusters:rcs_thruster", "required": false },
+    { "id": "createthrusters:creative_rcs_thruster", "required": false },
     { "id": "createthrusters:fuel_oxidizer", "required": false },
     { "id": "createthrusters:thruster_bearing", "required": false },
     { "id": "createthrusters:thruster_bearing_link", "required": false },

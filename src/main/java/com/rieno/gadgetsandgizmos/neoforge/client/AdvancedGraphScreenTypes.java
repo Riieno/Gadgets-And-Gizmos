@@ -300,8 +300,8 @@ record ScmSimulationField(String label, String port) {
 
 // Define the SCM control binding mode values
 enum ScmControlBindingMode {
-    AUTO("Auto"),
-    FACE("Face");
+    BLOCK("Block Control"),
+    FACE("Redstone Control");
 
     private final String label;
 

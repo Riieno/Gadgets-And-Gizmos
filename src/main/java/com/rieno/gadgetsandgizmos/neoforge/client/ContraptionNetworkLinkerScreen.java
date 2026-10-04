@@ -33,7 +33,7 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     private static final int BG_W = 296;
-    private static final int BG_H = 236;
+    private static final int BG_H = 258;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -62,6 +62,7 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
     private ContraptionNetworkLinkerData.LinkMode editMode = ContraptionNetworkLinkerData.LinkMode.OUTPUT;
     private ContraptionNetworkLinkerData.TargetMode targetMode = ContraptionNetworkLinkerData.TargetMode.FACE;
     private CTScaledButton faceModeButton;
+    private CTScaledButton blockModeButton;
     private CTScaledButton areaModeButton;
     private CTScaledButton machineInputButton;
     private CTScaledButton machineOutputButton;
@@ -102,6 +103,9 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
         this.areas.addAll(ContraptionNetworkLinkerData.readClientAreas(stack));
         this.editMode = ContraptionNetworkLinkerData.getClientEditMode(stack);
         this.targetMode = ContraptionNetworkLinkerData.getClientTargetMode(stack);
+        if (this.targetMode == ContraptionNetworkLinkerData.TargetMode.AUTO) {
+            this.targetMode = ContraptionNetworkLinkerData.TargetMode.FACE;
+        }
         setWindowSize(BG_W, BG_H);
     }
 
@@ -148,13 +152,19 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
         addTargetTab(ContraptionNetworkLinkerData.LinkMode.OUTPUT, 132);
         addTargetTab(ContraptionNetworkLinkerData.LinkMode.SCM, 192);
         faceModeButton = addRenderableWidget(new CTScaledButton(scalableGui,
-                leftPos + 112, topPos + BG_H - 20, 42, 14,
+                leftPos + 8, topPos + BG_H - 64, 90, 16,
                 Component.translatable("item.createthrusters.contraption_network_linker.target.face"), btn -> {
             targetMode = ContraptionNetworkLinkerData.TargetMode.FACE;
             refreshModeButtons();
         }));
+        blockModeButton = addRenderableWidget(new CTScaledButton(scalableGui,
+                leftPos + 103, topPos + BG_H - 64, 90, 16,
+                Component.translatable("item.createthrusters.contraption_network_linker.target.block"), btn -> {
+            targetMode = ContraptionNetworkLinkerData.TargetMode.BLOCK;
+            refreshModeButtons();
+        }));
         areaModeButton = addRenderableWidget(new CTScaledButton(scalableGui,
-                leftPos + 158, topPos + BG_H - 20, 42, 14,
+                leftPos + 198, topPos + BG_H - 64, 90, 16,
                 Component.literal("Machine Area"), btn -> {
             targetMode = ContraptionNetworkLinkerData.TargetMode.AREA;
             refreshModeButtons();
@@ -442,16 +452,18 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
         refreshModeButtons();
     }
 
-    // Show the SCM face and area choices on the linker toolbar
+    // Show the SCM target choices on the linker toolbar
     private void refreshModeButtons(){
-        if(faceModeButton == null || areaModeButton == null) return;
+        if(faceModeButton == null || blockModeButton == null || areaModeButton == null) return;
         boolean scm = editMode == ContraptionNetworkLinkerData.LinkMode.SCM;
         faceModeButton.visible = scm;
+        blockModeButton.visible = scm;
         areaModeButton.visible = scm;
         machineInputButton.visible = scm;
         machineOutputButton.visible = scm;
         noEntryButton.visible = scm;
         faceModeButton.active = scm && targetMode != ContraptionNetworkLinkerData.TargetMode.FACE;
+        blockModeButton.active = scm && targetMode != ContraptionNetworkLinkerData.TargetMode.BLOCK;
         areaModeButton.active = scm && targetMode != ContraptionNetworkLinkerData.TargetMode.AREA;
         machineInputButton.active = scm && targetMode != ContraptionNetworkLinkerData.TargetMode.MACHINE_INPUT;
         machineOutputButton.active = scm && targetMode != ContraptionNetworkLinkerData.TargetMode.MACHINE_OUTPUT;

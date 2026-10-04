@@ -10,12 +10,15 @@ package com.rieno.gadgetsandgizmos.neoforge;
 
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.brigadier.exceptions.SimpleCommandExceptionType;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.ControllerManifestStore;
+import com.rieno.gadgetsandgizmos.content.PlumeRainbow;
+import com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerData;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerTracker;
 import com.rieno.gadgetsandgizmos.content.SupporterMannequinPlacement;
@@ -34,6 +37,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
@@ -47,6 +51,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -148,6 +153,66 @@ public final class CTSableTrackingCommands {
                                 .executes(ctx -> resetMusicDiskCollected(
                                         ctx.getSource(),
                                         EntityArgument.getEntities(ctx, "targets"))))));
+
+        LiteralArgumentBuilder<CommandSourceStack> rainbow = Commands.literal("plume_rainbow");
+        rainbow.then(Commands.literal("off").executes(ctx -> setPlumeRainbow(ctx.getSource(),
+                PlumeRainbow.Mode.OFF, PlumeRainbow.Palette.NORMAL)));
+        for (PlumeRainbow.Mode mode : List.of(PlumeRainbow.Mode.SOLID, PlumeRainbow.Mode.UNICORN)) {
+            LiteralArgumentBuilder<CommandSourceStack> modeNode = Commands.literal(mode.name().toLowerCase(Locale.ROOT))
+                    .executes(ctx -> setPlumeRainbow(ctx.getSource(), mode, PlumeRainbow.Palette.NORMAL));
+            for (PlumeRainbow.Palette palette : PlumeRainbow.Palette.values()) {
+                modeNode.then(Commands.literal(palette.name().toLowerCase(Locale.ROOT))
+                        .executes(ctx -> setPlumeRainbow(ctx.getSource(), mode, palette)));
+            }
+            rainbow.then(modeNode);
+        }
+        dispatcher.register(Commands.literal("gizmos").then(rainbow));
+    }
+
+    // Set the V2 color cycle on the thruster under the crosshair
+    private static int setPlumeRainbow(CommandSourceStack src, PlumeRainbow.Mode mode,
+            PlumeRainbow.Palette palette) throws CommandSyntaxException {
+        ServerPlayer player = src.getPlayerOrException();
+        ThrusterBlockEntity thruster = lookedAtThruster(player);
+        if (thruster == null) {
+            src.sendFailure(Component.literal("Look at a thruster within 8 blocks."));
+            return 0;
+        }
+        thruster.setPlumeRainbow(mode, palette);
+        src.sendSuccess(() -> Component.literal("Thruster plume rainbow: "
+                + mode.name().toLowerCase(Locale.ROOT)
+                + (mode == PlumeRainbow.Mode.OFF ? "" : " " + palette.name().toLowerCase(Locale.ROOT))), false);
+        return Command.SINGLE_SUCCESS;
+    }
+
+    // Find a looked-at thruster in the world or a loaded Sable sublevel
+    private static ThrusterBlockEntity lookedAtThruster(ServerPlayer player) {
+        HitResult hit = player.pick(8.0D, 0.0F, false);
+        if (hit instanceof BlockHitResult blockHit && hit.getType() == HitResult.Type.BLOCK
+                && player.level().getBlockEntity(blockHit.getBlockPos()) instanceof ThrusterBlockEntity thruster) {
+            return thruster;
+        }
+        Vec3 eye = player.getEyePosition();
+        Vec3 look = player.getLookAngle();
+        double limit = hit.getType() == HitResult.Type.BLOCK
+                ? Math.min(8.0D, eye.distanceTo(hit.getLocation()) + 0.9D) : 8.0D;
+        ThrusterBlockEntity closest = null;
+        double closestDistance = limit;
+        for (Object subLevel : SubLevelBlockEntityCollector.getSubLevels(player.level())) {
+            for (BlockEntity blockEntity : SubLevelBlockEntityCollector.getBlockEntities(subLevel)) {
+                if (!(blockEntity instanceof ThrusterBlockEntity thruster)) continue;
+                Vec3 center = SimulatedHelper.toContainingWorldPosition(
+                        subLevel, Vec3.atCenterOf(thruster.getBlockPos()));
+                if (center == null) continue;
+                Vec3 offset = center.subtract(eye);
+                double along = offset.dot(look);
+                if (along <= 0.0D || along >= closestDistance) continue;
+                if (offset.lengthSqr() - along * along > 0.75D) continue;
+                closest = thruster;
+                closestDistance = along;
+            }
+        }
+        return closest;
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------

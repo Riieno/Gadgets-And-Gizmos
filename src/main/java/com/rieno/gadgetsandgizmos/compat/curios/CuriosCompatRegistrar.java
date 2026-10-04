@@ -117,6 +117,9 @@ public class CuriosCompatRegistrar {
                             });
 
             evt.registerItem(curiosItemCapability, provider, CTItems.PHYSICS_GOGGLES.get());
+            if (CTItems.PILOT_CAP != null) {
+                evt.registerItem(curiosItemCapability, provider, CTItems.PILOT_CAP.get());
+            }
         } catch (ReflectiveOperationException ignored) {
             return;
         }
@@ -148,7 +151,9 @@ public class CuriosCompatRegistrar {
             Object inventory = curiosInventory.get();
             Method findFirstCurio = inventory.getClass().getMethod("findFirstCurio", Item.class);
             Optional<?> match = (Optional<?>) findFirstCurio.invoke(inventory, CTItems.PHYSICS_GOGGLES.get());
-            return match.isPresent();
+            if (match.isPresent()) return true;
+            return CTItems.PILOT_CAP != null && ((Optional<?>) findFirstCurio.invoke(
+                    inventory, CTItems.PILOT_CAP.get())).isPresent();
         } catch (ReflectiveOperationException ignored) {
             return false;
         }

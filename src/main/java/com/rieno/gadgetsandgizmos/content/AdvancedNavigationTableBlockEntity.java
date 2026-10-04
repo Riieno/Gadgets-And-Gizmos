@@ -299,9 +299,9 @@ public class AdvancedNavigationTableBlockEntity extends NavTableBlockEntity
             prepareExtractedMap(old.copy(), player);
         }
         maps.set(idx, prepared);
-        if (idx == selectedSlot) {
-            resetDisplayDistanceSample();
-        }
+        selectedSlot = idx;
+        runState = NavigationTableExtensionAccess.RunState.RUNNING;
+        resetDisplayDistanceSample();
         markNavigationChanged(true);
     }
 

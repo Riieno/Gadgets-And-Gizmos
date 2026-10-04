@@ -11,6 +11,10 @@ package com.rieno.gadgetsandgizmos.content;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.lib.discovery.INamedBlockEntity;
+import com.rieno.gadgetsandgizmos.lib.physics.PropulsionLight;
+import com.rieno.gadgetsandgizmos.config.CTConfigs;
+import net.neoforged.fml.loading.FMLEnvironment;
+import net.minecraft.world.level.BlockGetter;
 import com.simibubi.create.api.schematic.requirement.SpecialBlockItemRequirement;
 import com.simibubi.create.content.schematics.requirement.ItemRequirement;
 import com.simibubi.create.content.equipment.wrench.IWrenchable;
@@ -83,12 +87,13 @@ public class ThrusterBlock extends CTDirectionalBlock implements EntityBlock, Sp
 
     // Initialize the thruster block
     public ThrusterBlock(Properties properties) {
-        super(properties);
+        super(properties.lightLevel(state -> state.getValue(PropulsionLight.LIGHT_LEVEL)));
         registerDefaultState(defaultBlockState()
                 .setValue(FACING, getStateDefinition().any().getValue(FACING))
                 .setValue(POWERED, false)
                 .setValue(FOCUSED, false)
-                .setValue(SMALL, false));
+                .setValue(SMALL, false)
+                .setValue(PropulsionLight.LIGHT_LEVEL, 0));
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -121,7 +126,20 @@ public class ThrusterBlock extends CTDirectionalBlock implements EntityBlock, Sp
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
         super.createBlockStateDefinition(builder);
-        builder.add(POWERED, FOCUSED, SMALL);
+        builder.add(POWERED, FOCUSED, SMALL, PropulsionLight.LIGHT_LEVEL);
+    }
+
+    @Override
+    public boolean hasDynamicLightEmission(BlockState state) {
+        return true;
+    }
+
+    @Override
+    public int getLightEmission(BlockState state, BlockGetter level, BlockPos pos) {
+        boolean enabled = !FMLEnvironment.dist.isClient()
+                || (level instanceof Level world && !world.isClientSide)
+                || CTConfigs.CLIENT.thrustersEmitLight.get();
+        return PropulsionLight.emission(state.getValue(PropulsionLight.LIGHT_LEVEL), enabled);
     }
 
     // Get the clone item stack

@@ -72,6 +72,9 @@ public final class AccessoriesCompatRegistrar {
 
             Method isEquippedMethod = capabilityClass.getMethod("isEquipped", Item.class);
             Object res = isEquippedMethod.invoke(capability, CTItems.PHYSICS_GOGGLES.get());
+            if (res instanceof Boolean bool && bool) return true;
+            if (CTItems.PILOT_CAP == null) return false;
+            res = isEquippedMethod.invoke(capability, CTItems.PILOT_CAP.get());
             return res instanceof Boolean bool && bool;
         } catch (ReflectiveOperationException ignored) {
             return false;

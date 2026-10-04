@@ -35,8 +35,8 @@ public final class ScmConfigurationProfile {
     private static final int VERSION = 9;
     /**
      * Optional profile-only grouping. It is not a graph node, but its selected
-     * units are read as direct live adapters just like units in a flight-action
-     * group. It never requests discovery, probing or response-curve calibration.
+     * units participate in every flight action. Initialization scans the
+     * physical craft so the Auto group has a complete stabilization map.
      */
     public static final String AUTO_ACTION = "scm_auto";
     /**
@@ -274,8 +274,7 @@ public final class ScmConfigurationProfile {
     }
 
     /**
-     * Return the units assigned to the optional Auto group. These remain
-     * ordinary profile units and are initialized from their live adapter data.
+     * Return the units assigned to the optional Auto group.
      */
     public Set<UnitReference> autoUnits() {
         String groupId = actionGroups.get(AUTO_ACTION);
@@ -566,7 +565,16 @@ public final class ScmConfigurationProfile {
         public Group {
             id = clean(id, 64);
             label = clean(label, 96);
-            units = units == null ? Set.of() : Set.copyOf(units);
+            Set<UnitReference> selected = units == null ? Set.of() : Set.copyOf(units);
+            // A direct block command overrides redstone on the same block.
+            // Keep one control scope per block in a group, including saved groups.
+            Set<UnitReference> direct = new LinkedHashSet<>();
+            selected.stream().filter(unit -> !unit.usesFaceControl()).forEach(direct::add);
+            Set<UnitReference> resolved = new LinkedHashSet<>(direct);
+            selected.stream().filter(UnitReference::usesFaceControl)
+                    .filter(unit -> direct.stream().noneMatch(unit::sameBlock))
+                    .forEach(resolved::add);
+            units = Set.copyOf(resolved);
         }
 
         private Group normalized() {

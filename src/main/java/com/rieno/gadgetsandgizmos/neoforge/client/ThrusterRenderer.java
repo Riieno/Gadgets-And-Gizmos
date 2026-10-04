@@ -9,6 +9,8 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity;
+import com.rieno.gadgetsandgizmos.content.PlumeRainbow;
+import com.rieno.gadgetsandgizmos.config.SeasonalPlumeEffects;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.engine_room.flywheel.lib.model.baked.PartialModel;
@@ -218,10 +220,9 @@ public class ThrusterRenderer implements BlockEntityRenderer<ThrusterBlockEntity
                 }
 
                 float beamLength = Mth.clamp((float) blockEntity.getForcedProcessingDistance(), 0.75f, 12.0f);
-                int col = blockEntity.getBeamColor();
-                float red = ((col >> 16) & 0xFF) / 255.0f;
-                float green = ((col >> 8) & 0xFF) / 255.0f;
-                float blue = (col & 0xFF) / 255.0f;
+                int beamColor = blockEntity.getBeamColor();
+                SeasonalPlumeEffects.Selection colors = SeasonalPlumeEffects.current(
+                                blockEntity.getPlumeRainbowMode(), blockEntity.getPlumeRainbowPalette());
                 float throttle = Mth.clamp(blockEntity.getAppliedThrottle(), 0.0f, 1.0f);
                 float beamAlpha = Mth.clamp(blockEntity.getBeamMaxOpacity() * (0.15f + 0.85f * throttle), 0.0f, 1.0f);
                 Level level = blockEntity.getLevel();
@@ -233,28 +234,30 @@ public class ThrusterRenderer implements BlockEntityRenderer<ThrusterBlockEntity
                 ms.translate(0.5D, 0.5D, 0.5D);
                 ms.mulPose(new Quaternionf().rotateTo(0.0f, 0.0f, 1.0f,
                                 (float) dir.x, (float) dir.y, (float) dir.z));
-                renderBeaconBeam(builder, ms, beamLength, red, green, blue, beamAlpha, renderTime);
+                renderBeaconBeam(builder, ms, beamLength, beamColor, colors, beamAlpha, renderTime);
                 ms.popPose();
         }
 
         // Draw the beacon beam
         private static void renderBeaconBeam(VertexConsumer builder, PoseStack ms, float length,
-                                             float red, float green, float blue, float alpha, float renderTime) {
+                                             int beamColor, SeasonalPlumeEffects.Selection colors,
+                                             float alpha, float renderTime) {
                 float start = 0.35f;
                 float end = length + start;
                 int segments = Math.max(4, Mth.ceil(length * 2.0f));
                 float scroll = -renderTime * 0.025f;
 
                 renderBeaconBeamLayer(builder, ms, start, end, segments, 0.115f * BEAM_WIDTH_SCALE,
-                                red, green, blue, alpha, scroll, 1.0f);
+                                beamColor, colors, alpha, scroll, 1.0f, renderTime);
                 renderBeaconBeamLayer(builder, ms, start, end, segments, 0.32f * BEAM_WIDTH_SCALE,
-                                red, green, blue, alpha, scroll * 0.65f, 0.38f);
+                                beamColor, colors, alpha, scroll * 0.65f, 0.38f, renderTime);
         }
 
         // Draw the beacon beam layer
         private static void renderBeaconBeamLayer(VertexConsumer builder, PoseStack ms, float start, float end,
-                                                  int segments, float radius, float red, float green, float blue,
-                                                  float alpha, float scroll, float alphaScale) {
+                                                  int segments, float radius, int beamColor,
+                                                  SeasonalPlumeEffects.Selection colors,
+                                                  float alpha, float scroll, float alphaScale, float renderTime) {
                 for (int side = 0; side < 4; side++) {
                         float angle0 = (float) (Math.PI * 0.5D * side + Math.PI * 0.25D);
                         float angle1 = (float) (Math.PI * 0.5D * (side + 1) + Math.PI * 0.25D);
@@ -272,10 +275,20 @@ public class ThrusterRenderer implements BlockEntityRenderer<ThrusterBlockEntity
                                 float alpha1 = alpha * alphaScale * beamDistanceAlpha(t1);
                                 float v0 = scroll + z0 * 0.35f;
                                 float v1 = scroll + z1 * 0.35f;
+                                int color0 = beamColorAt(colors, beamColor, renderTime, t0);
+                                int color1 = beamColorAt(colors, beamColor, renderTime, t1);
                                 addBeamQuad(builder, ms, x0, y0, x1, y1, z0, z1,
-                                                red, green, blue, alpha0, alpha1, v0, v1);
+                                                color0, color1, alpha0, alpha1, v0, v1);
                         }
                 }
+        }
+
+        // Resolve one end of a focused beam segment
+        private static int beamColorAt(SeasonalPlumeEffects.Selection colors, int fallback,
+                                       float renderTime, float progress) {
+                return colors.mode() == PlumeRainbow.Mode.OFF ? fallback
+                                : PlumeRainbow.color(colors.mode(), colors.palette(),
+                                                (double) renderTime, progress, 0);
         }
 
         // Get the beam distance alpha
@@ -286,29 +299,33 @@ public class ThrusterRenderer implements BlockEntityRenderer<ThrusterBlockEntity
         // Add the beam quad
         private static void addBeamQuad(VertexConsumer builder, PoseStack ms,
                                         float x0, float y0, float x1, float y1, float z0, float z1,
-                                        float red, float green, float blue, float alpha0, float alpha1,
+                                        int color0, int color1, float alpha0, float alpha1,
                                         float v0, float v1) {
                 Matrix4f matrix = ms.last().pose();
                 builder.addVertex(matrix, x0, y0, z0)
-                                .setColor(red, green, blue, alpha0)
+                                .setColor((color0 >> 16 & 0xFF) / 255.0f,
+                                                (color0 >> 8 & 0xFF) / 255.0f, (color0 & 0xFF) / 255.0f, alpha0)
                                 .setUv(0.0f, v0)
                                 .setLight(0xF000F0)
                                 .setOverlay(OverlayTexture.NO_OVERLAY)
                                 .setNormal(0.0f, 1.0f, 0.0f);
                 builder.addVertex(matrix, x1, y1, z0)
-                                .setColor(red, green, blue, alpha0)
+                                .setColor((color0 >> 16 & 0xFF) / 255.0f,
+                                                (color0 >> 8 & 0xFF) / 255.0f, (color0 & 0xFF) / 255.0f, alpha0)
                                 .setUv(1.0f, v0)
                                 .setLight(0xF000F0)
                                 .setOverlay(OverlayTexture.NO_OVERLAY)
                                 .setNormal(0.0f, 1.0f, 0.0f);
                 builder.addVertex(matrix, x1, y1, z1)
-                                .setColor(red, green, blue, alpha1)
+                                .setColor((color1 >> 16 & 0xFF) / 255.0f,
+                                                (color1 >> 8 & 0xFF) / 255.0f, (color1 & 0xFF) / 255.0f, alpha1)
                                 .setUv(1.0f, v1)
                                 .setLight(0xF000F0)
                                 .setOverlay(OverlayTexture.NO_OVERLAY)
                                 .setNormal(0.0f, 1.0f, 0.0f);
                 builder.addVertex(matrix, x0, y0, z1)
-                                .setColor(red, green, blue, alpha1)
+                                .setColor((color1 >> 16 & 0xFF) / 255.0f,
+                                                (color1 >> 8 & 0xFF) / 255.0f, (color1 & 0xFF) / 255.0f, alpha1)
                                 .setUv(0.0f, v1)
                                 .setLight(0xF000F0)
                                 .setOverlay(OverlayTexture.NO_OVERLAY)

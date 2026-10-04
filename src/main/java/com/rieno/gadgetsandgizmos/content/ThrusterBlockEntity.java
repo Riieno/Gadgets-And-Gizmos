@@ -12,6 +12,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import net.createmod.catnip.math.AngleHelper;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
+import com.rieno.gadgetsandgizmos.config.SeasonalPlumeEffects;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.particle.worldspace.WorldSpaceParticleEmitter;
 import com.rieno.gadgetsandgizmos.lib.physics.SubLevelParticleOcclusion;
@@ -21,6 +22,9 @@ import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
 import com.rieno.gadgetsandgizmos.lib.physics.SablePointImpulseApi;
+import com.rieno.gadgetsandgizmos.lib.physics.PropulsionLight;
+import com.rieno.gadgetsandgizmos.lib.physics.ColoredLightBridge;
+import com.rieno.gadgetsandgizmos.lib.physics.TransientLightBeam;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerAirProcessingSource;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerContainerAccess;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog;
@@ -28,6 +32,7 @@ import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipePlan;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerResourceType;
 import com.rieno.gadgetsandgizmos.particle.ColoredCloudParticleOptions;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
+import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
 import com.rieno.gadgetsandgizmos.util.CTPropulsionTelemetry;
 import com.rieno.gadgetsandgizmos.util.MobHauntingConversions;
@@ -325,6 +330,8 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
     private float redstoneThrottle;
     // Current computer throttle
     private float computerThrottle;
+    private final java.util.concurrent.atomic.AtomicInteger pendingComputerThrottleBits =
+            new java.util.concurrent.atomic.AtomicInteger(-1);
 
     // Tracked direct signals
     private final Map<String, Float> directSignals = new LinkedHashMap<>();
@@ -380,6 +387,14 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
     private float beamMaxOpacity = 0.34f;
     // Current plume color ratio
     private float plumeColorRatio = DEFAULT_PLUME_COLOR_RATIO;
+    // Temporary world lights along the exhaust axis
+    private TransientLightBeam plumeLightBeam;
+    // Colored light at the outlet and along the temporary plume tube
+    private ColoredLightBridge.Light emitterLight;
+    private final Map<BlockPos, ColoredLightBridge.Light> plumeColorLights = new LinkedHashMap<>();
+    // Current V2 plume color cycle
+    private PlumeRainbow.Mode plumeRainbowMode = PlumeRainbow.Mode.OFF;
+    private PlumeRainbow.Palette plumeRainbowPalette = PlumeRainbow.Palette.NORMAL;
     // Tracks whether infinite solid fuel is set
     private boolean infiniteSolidFuel;
     // Current solid fuel type id
@@ -410,6 +425,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
     private boolean persistentTickStateDirty;
     // Tracks whether client sync is pending
     private boolean clientSyncPending;
+    private boolean lastClientLightEnabled = true;
     // Server-calculated fuel consumption synchronized for client tooltips
     private double syncedFuelConsumptionMbPerTick;
     // Tracks whether update air flow is set
@@ -489,9 +505,15 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
             return;
         }
         if (level.isClientSide) {
+            lastClientLightEnabled = PropulsionLight.refreshClient(level, worldPosition,
+                    lastClientLightEnabled, CTConfigs.CLIENT.thrustersEmitLight.get());
             tickClient();
+            updatePlumeLightBeam();
+            updateColoredLights();
             return;
         }
+        int pendingComputerThrottle = pendingComputerThrottleBits.getAndSet(-1);
+        if (pendingComputerThrottle >= 0) setThrottle(Float.intBitsToFloat(pendingComputerThrottle));
         if (signalPollCooldown-- <= 0) {
             signalPollCooldown = SIGNAL_POLL_INTERVAL_TICKS - 1;
             updateSignal();
@@ -516,11 +538,154 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
             markTickStateChanged(clientStateChanged);
         }
         tickServer();
+        updatePropulsionLight(level);
         if (clientSyncPending
                 && Math.floorMod(level.getGameTime(), CLIENT_SYNC_INTERVAL_TICKS) == clientSyncPhase) {
             level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
             clientSyncPending = false;
         }
+    }
+
+    private void updatePropulsionLight(Level level) {
+        PropulsionLight.update(level, worldPosition,
+                PropulsionLight.level(getThrust(), DEFAULT_MAX_THRUST));
+    }
+
+    // Match invisible world lights to the visible plume's reach
+    private void updatePlumeLightBeam() {
+        if (!CTConfigs.CLIENT.thrustersEmitLight.get() || !CTConfigs.CLIENT.plumesEmitLight.get()
+                || !isActive() || focusedMode || isParticleFiltered()
+                || !CTConfigs.SERVER.enableThrusterParticles.get()) {
+            clearPlumeLightBeam();
+            return;
+        }
+        if (plumeLightBeam != null
+                && Math.floorMod(level.getGameTime() + worldPosition.hashCode(), 2L) != 0L) return;
+        Level world = getWorldSpaceQueryLevel();
+        if (world == null || !world.isClientSide) {
+            clearPlumeLightBeam();
+            return;
+        }
+        Vec3 direction = getWorldThrustDirection();
+        if (direction == null || direction.lengthSqr() < 1.0E-6D) {
+            clearPlumeLightBeam();
+            return;
+        }
+        direction = direction.normalize();
+        float throttle = Mth.clamp(getAppliedThrottle(), 0.0F, 1.0F);
+        double cloudRange = Mth.lerp(throttle, 2.0D, 5.5D);
+        double drift = 1.35D + throttle * 3.15D;
+        double plumeLength = cloudRange + 8.4D + drift * 4.0D;
+        Vec3 origin = getWorldExhaustOrigin();
+        double clearLength = Math.max(0.0D, SubLevelParticleOcclusion.findBlockingDistance(
+                world, SimulatedHelper.getContainingSubLevel(this), origin, direction,
+                plumeLength, true) - PARTICLE_BLOCK_STOP_MARGIN);
+        if (clearLength <= 0.7D) {
+            clearPlumeLightBeam();
+            return;
+        }
+        if (plumeLightBeam == null) {
+            plumeLightBeam = new TransientLightBeam(CTBlocks.PLUME_LIGHT.get().defaultBlockState());
+        }
+        plumeLightBeam.updateClient(world, origin.add(direction.scale(0.4D)),
+                direction, clearLength - 0.4D, 8.0D);
+    }
+
+    // Clear temporary world lights when the plume stops
+    private void clearPlumeLightBeam() {
+        if (plumeLightBeam != null) plumeLightBeam.clear();
+        clearPlumeColorLights();
+    }
+
+    // Match optional colored lights to the rendered exhaust
+    private void updateColoredLights() {
+        if (level == null || !CTConfigs.CLIENT.thrustersEmitLight.get() || !isActive()) {
+            clearColoredLights();
+            return;
+        }
+        SeasonalPlumeEffects.Selection colors = SeasonalPlumeEffects.current(
+                plumeRainbowMode, plumeRainbowPalette);
+        Vec3 origin = getWorldExhaustOrigin();
+        if (emitterLight == null) emitterLight = ColoredLightBridge.create();
+        emitterLight.update(origin, plumeLightColor(colors, 0.0F, 0), 5.0F, 1.1F);
+
+        if (plumeLightBeam == null || plumeLightBeam.positions().isEmpty()) {
+            clearPlumeColorLights();
+            return;
+        }
+        Set<BlockPos> positions = plumeLightBeam.positions();
+        for (var iterator = plumeColorLights.entrySet().iterator(); iterator.hasNext();) {
+            var entry = iterator.next();
+            if (positions.contains(entry.getKey())) continue;
+            entry.getValue().close();
+            iterator.remove();
+        }
+        int endColor = plumeLightColor(colors, 1.0F, 12);
+        for (BlockPos pos : positions) {
+            ColoredLightBridge.Light light = plumeColorLights.computeIfAbsent(pos,
+                    ignored -> ColoredLightBridge.create());
+            light.update(pos.getCenter(), endColor, 8.0F, 0.7F);
+        }
+    }
+
+    // Select the color seen at the chosen point in the plume
+    private int plumeLightColor(SeasonalPlumeEffects.Selection colors, float progress, int age) {
+        if (colors.mode() != PlumeRainbow.Mode.OFF) {
+            return PlumeRainbow.color(colors.mode(), colors.palette(), level.getGameTime(), progress, age);
+        }
+        if (focusedMode) return beamColor;
+        ExhaustParticleStyle style = getExhaustStyle();
+        float red = 0.12F;
+        float green = 0.55F;
+        float blue = 1.0F;
+        if (style == ExhaustParticleStyle.EXPERIENCE) {
+            red = 0.65F;
+            green = 1.0F;
+            blue = 0.42F;
+        } else if (style == ExhaustParticleStyle.WATER_BUBBLE) {
+            red = 0.48F;
+            green = 0.82F;
+        } else if (soulThruster) {
+            red = 0.38F;
+            green = 0.22F;
+            blue = 0.95F;
+        }
+        if (beamColor != DEFAULT_BEAM_COLOR) {
+            float ratio = getPlumeColorRatio();
+            red = Mth.lerp(ratio, red, (beamColor >> 16 & 0xFF) / 255.0F);
+            green = Mth.lerp(ratio, green, (beamColor >> 8 & 0xFF) / 255.0F);
+            blue = Mth.lerp(ratio, blue, (beamColor & 0xFF) / 255.0F);
+        }
+        return Mth.clamp((int) (red * 255.0F), 0, 255) << 16
+                | Mth.clamp((int) (green * 255.0F), 0, 255) << 8
+                | Mth.clamp((int) (blue * 255.0F), 0, 255);
+    }
+
+    // Remove colored plume lights when the tube stops
+    private void clearPlumeColorLights() {
+        for (ColoredLightBridge.Light light : plumeColorLights.values()) light.close();
+        plumeColorLights.clear();
+    }
+
+    // Remove every colored light owned by this thruster
+    private void clearColoredLights() {
+        if (emitterLight != null) emitterLight.close();
+        emitterLight = null;
+        clearPlumeColorLights();
+    }
+
+    @Override
+    public void remove() {
+        clearPlumeLightBeam();
+        clearColoredLights();
+        super.remove();
+    }
+
+    @Override
+    public void invalidate() {
+        clearPlumeLightBeam();
+        clearColoredLights();
+        super.invalidate();
     }
 
     // Mark the tick state changed
@@ -851,6 +1016,8 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         }
         Vec3 drift = dir.scale((1.35D + throttle * 3.15D) * forwardDriftScale);
         int plumeBursts = plumeV2 ? 1 : Math.max(1, Mth.ceil((float) (density * (1.0D + throttle * 5.0D))));
+        SeasonalPlumeEffects.Selection colors = SeasonalPlumeEffects.current(
+                plumeRainbowMode, plumeRainbowPalette);
         for (int burst = 0; burst < plumeBursts; burst++) {
             double spread = (0.012D + progressRatio * 0.065D) * Math.max(0.25D, density);
             Vec3 jitter = randomExhaustSpread(level, dir, plumeV2 ? spread * 2.0D : spread);
@@ -861,7 +1028,8 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
             float green = Mth.clamp(baseGreen * brightness, 0.0f, 1.0f);
             float blue = Mth.clamp(baseBlue * brightness, 0.0f, 1.0f);
             WorldSpaceParticleEmitter.addParticleWithinViewDistance(this,
-                    new ColoredCloudParticleOptions(red, green, blue),
+                    new ColoredCloudParticleOptions(red, green, blue,
+                            colors.mode(), colors.palette(), (float) progressRatio),
                     sample.add(jitter), vel);
         }
     }
@@ -1080,6 +1248,11 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         controlMode = ControlMode.COMPUTER;
         refreshThrottle();
         syncControlState();
+    }
+
+    // Make a ComputerCraft throttle command visible to physics before the next game tick
+    public void setComputerThrottleFast(float throttle) {
+        pendingComputerThrottleBits.set(Float.floatToRawIntBits(Mth.clamp(throttle, 0.0F, 1.0F)));
     }
 
     // Get the graph readable data
@@ -1354,6 +1527,9 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
 
     // Get the throttle
     public float getThrottle() {
+        int pending = pendingComputerThrottleBits == null
+                ? -1 : pendingComputerThrottleBits.get();
+        if (pending >= 0 && (level == null || !level.isClientSide)) return Float.intBitsToFloat(pending);
         return level != null && level.isClientSide && shipControlThrottle != null
                 ? shipControlThrottle.throttle()
                 : throttle;
@@ -1515,6 +1691,28 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         if (level != null && !level.isClientSide) {
             level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
         }
+    }
+
+    // Set the persistent V2 plume color cycle
+    public void setPlumeRainbow(PlumeRainbow.Mode mode, PlumeRainbow.Palette palette) {
+        if (mode == null || palette == null) return;
+        if (plumeRainbowMode == mode && plumeRainbowPalette == palette) return;
+        plumeRainbowMode = mode;
+        plumeRainbowPalette = palette;
+        setChanged();
+        if (level != null && !level.isClientSide) {
+            level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+        }
+    }
+
+    // Get the current V2 plume cycle mode
+    public PlumeRainbow.Mode getPlumeRainbowMode() {
+        return plumeRainbowMode;
+    }
+
+    // Get the current V2 plume cycle palette
+    public PlumeRainbow.Palette getPlumeRainbowPalette() {
+        return plumeRainbowPalette;
     }
 
     // Set the beam color
@@ -3222,6 +3420,8 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         tag.putInt("BeamColor", beamColor);
         tag.putFloat("BeamMaxOpacity", beamMaxOpacity);
         tag.putFloat("PlumeColorRatio", plumeColorRatio);
+        tag.putString("PlumeRainbowMode", plumeRainbowMode.name());
+        tag.putString("PlumeRainbowPalette", plumeRainbowPalette.name());
         if (customName != null) {
             tag.putString("CustomName", customName);
         }
@@ -3276,6 +3476,8 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         tag.putInt("BeamColor", beamColor);
         tag.putFloat("BeamMaxOpacity", beamMaxOpacity);
         tag.putFloat("PlumeColorRatio", plumeColorRatio);
+        tag.putString("PlumeRainbowMode", plumeRainbowMode.name());
+        tag.putString("PlumeRainbowPalette", plumeRainbowPalette.name());
         if (ovrDir != null) {
             tag.putDouble("OverrideDirX", ovrDir.x);
             tag.putDouble("OverrideDirY", ovrDir.y);
@@ -3393,6 +3595,8 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         beamColor = tag.contains("BeamColor") ? tag.getInt("BeamColor") & 0xFFFFFF : DEFAULT_BEAM_COLOR;
         beamMaxOpacity = tag.contains("BeamMaxOpacity") ? Mth.clamp(tag.getFloat("BeamMaxOpacity"), 0.0f, 1.0f) : 0.34f;
         plumeColorRatio = tag.contains("PlumeColorRatio") ? Mth.clamp(tag.getFloat("PlumeColorRatio"), 0.0f, 1.0f) : DEFAULT_PLUME_COLOR_RATIO;
+        plumeRainbowMode = PlumeRainbow.mode(tag.getString("PlumeRainbowMode"));
+        plumeRainbowPalette = PlumeRainbow.palette(tag.getString("PlumeRainbowPalette"));
         ovrDir = tag.contains("OverrideDirX")
             ? new Vec3(tag.getDouble("OverrideDirX"), tag.getDouble("OverrideDirY"), tag.getDouble("OverrideDirZ")).normalize()
             : null;
@@ -3737,6 +3941,11 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
             float requested = Mth.clamp(
                     shipControlThrottle.throttle() + stabilizerThrottleOffset, 0.0f, 1.0f);
             return requested * shipControlThrottle.maximum();
+        }
+        int pending = pendingComputerThrottleBits == null
+                ? -1 : pendingComputerThrottleBits.get();
+        if (pending >= 0 && (level == null || !level.isClientSide)) {
+            return applyThrottleRange(Float.intBitsToFloat(pending) + stabilizerThrottleOffset);
         }
         return applyThrottleRange(throttle + stabilizerThrottleOffset);
     }
