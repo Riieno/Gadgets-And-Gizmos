@@ -17,9 +17,11 @@ import com.rieno.gadgetsandgizmos.registry.CTMenuTypes;
 import com.simibubi.create.foundation.gui.menu.GhostItemMenu;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.util.Mth;
 import net.minecraft.world.Container;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.MenuType;
+import net.minecraft.world.inventory.DataSlot;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -71,6 +73,8 @@ public class AileronBearingMenu extends GhostItemMenu<AileronBearingBlockEntity>
     private boolean receivedInitialConfig;
     // Initial ghost stacks
     private ItemStack[] initialGhostStacks;
+    // Server head mode available even when the client block entity is unavailable
+    private int syncedHeadMode;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -149,6 +153,7 @@ public class AileronBearingMenu extends GhostItemMenu<AileronBearingBlockEntity>
         for (int i = 0; i < initialGhostStacks.length; i++) {
             initialGhostStacks[i] = copySingle(ItemStack.OPTIONAL_STREAM_CODEC.decode(buf));
         }
+        syncedHeadMode = buf.readEnum(AileronBearingBlockEntity.HeadMode.class).ordinal();
         receivedInitialConfig = true;
     }
 
@@ -170,6 +175,19 @@ public class AileronBearingMenu extends GhostItemMenu<AileronBearingBlockEntity>
                 AileronBearingBlockEntity.ControlDirection.CW);
         addFrequencySlots(BearingHead.SECONDARY,
                 AileronBearingBlockEntity.ControlDirection.CCW);
+        addDataSlot(new DataSlot() {
+            // Publish head mode changes while the menu is open
+            @Override
+            public int get(){
+                return contentHolder == null ? syncedHeadMode : contentHolder.getHeadMode().ordinal();
+            }
+
+            // Keep the client warning in sync with the server
+            @Override
+            public void set(int val){
+                syncedHeadMode = val;
+            }
+        });
     }
 
     // Add the frequency slots
@@ -242,6 +260,12 @@ public class AileronBearingMenu extends GhostItemMenu<AileronBearingBlockEntity>
     @Override
     public AileronBearingBlockEntity getMenuConfigTargetBlockEntity() {
         return contentHolder;
+    }
+
+    // Get the server head mode used by the client warning
+    public AileronBearingBlockEntity.HeadMode getHeadMode(){
+        AileronBearingBlockEntity.HeadMode[] modes = AileronBearingBlockEntity.HeadMode.values();
+        return modes[Mth.clamp(syncedHeadMode, 0, modes.length - 1)];
     }
 
     // Get the initial min angle

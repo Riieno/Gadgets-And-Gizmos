@@ -2934,6 +2934,11 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return shipControlRuntime.mappedDockingConnectors();
     }
 
+    // Get the configured ship up direction in world space
+    public Vec3 getShipUpWorld(){
+        return shipControlRuntime.shipUpWorld();
+    }
+
     // Get the current ship envelope
     public SableAssemblyBoundsApi.Envelope getShipEnvelope() {
         return shipControlRuntime.shipEnvelope();

@@ -254,7 +254,7 @@ public final class CTConfigs {
                     .translation("createthrusters.configuration.thrustersEmitLight")
                     .define("thrustersEmitLight", true);
             useThrusterPlumeV2Renderer = builder
-                    .comment("Use Thruster Plume V2 Renderer with soft blue ion glow")
+                    .comment("Use Thruster Plume V2 Renderer with blue, orange/yellow, and burnt sienna exhaust")
                     .define("useThrusterPlumeV2Renderer", true);
             usePlumeMetaballRendering = builder
                     .comment("Use Plume metaball rendering for the active V2 exhaust")
@@ -296,6 +296,8 @@ public final class CTConfigs {
     public static final class Common {
         // Thruster base thrust
         public final ModConfigSpec.DoubleValue thrusterBaseThrust;
+        // Maximum thrust from each RCS nozzle
+        public final ModConfigSpec.DoubleValue rcsThrusterMaxThrust;
         // Thruster base airflow
         public final ModConfigSpec.DoubleValue thrusterBaseAirflow;
         // Thruster base fuel use per tick
@@ -422,6 +424,13 @@ public final class CTConfigs {
             propulsionUpgradeMaxMultiplier = builder
                     .comment("Maximum multiplier allowed from propulsion upgrades. Tiers apply 2x, 4x, 8x, and 16x before this cap.")
                     .defineInRange("propulsionUpgradeMaxMultiplier", 32.0D, 1.0D, 64.0D);
+            builder.pop();
+
+            builder.comment("RCS Thruster propulsion").push("rcs_thruster");
+            rcsThrusterMaxThrust = builder
+                    .comment("Maximum thrust in pN per RCS nozzle at full power. Shaft power scales up to this value at 256 RPM.")
+                    .translation("createthrusters.configuration.rcsThrusterMaxThrust")
+                    .defineInRange("rcsThrusterMaxThrust", 215.0D, 0.0D, 100000.0D);
             builder.pop();
 
             // ------------------------------------BEARINGS / GEARBOXES------------------------------------

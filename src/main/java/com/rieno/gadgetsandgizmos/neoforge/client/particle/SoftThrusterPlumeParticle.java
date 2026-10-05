@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client.particle;
 
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
 import com.rieno.gadgetsandgizmos.content.PlumeRainbow;
+import com.rieno.gadgetsandgizmos.lib.color.ColorGradient;
 import com.rieno.gadgetsandgizmos.lib.client.render.ClientParticleBudget;
 import com.rieno.gadgetsandgizmos.lib.client.render.SoftBillboardParticle;
 import com.rieno.gadgetsandgizmos.lib.client.render.WorldParticleCollision;
@@ -27,6 +28,11 @@ import net.minecraft.world.phys.Vec3;
 
 // Animate directed thruster exhaust and archive smoke
 public final class SoftThrusterPlumeParticle extends SoftBillboardParticle {
+    private static final int FLAME_ORANGE = 0xFF7F00;
+    private static final int FLAME_YELLOW = 0xFFD700;
+    private static final int BURNT_SIENNA = 0xE97451;
+    private static final float FLAME_PROGRESS = 0.25F;
+    private static final float SMOKE_PROGRESS = 0.75F;
     private static final ClientParticleBudget IMPACT_BUDGET = new ClientParticleBudget(12, 2);
     private static final float[][] IMPACT_COLORS = {
             {0.16F, 0.16F, 0.17F},
@@ -62,6 +68,7 @@ public final class SoftThrusterPlumeParticle extends SoftBillboardParticle {
     private final PlumeRainbow.Mode rainbowMode;
     private final PlumeRainbow.Palette rainbowPalette;
     private final float plumeProgress;
+    private final ColorGradient lifecycleColors;
 
     // Control view occlusion for plume particles on this client
     public static boolean isOcclusionCullingEnabled() {
@@ -88,7 +95,8 @@ public final class SoftThrusterPlumeParticle extends SoftBillboardParticle {
                                     SpriteSet impactSprites) {
         this(level, x, y, z, xd, yd, zd, opts.red(), opts.green(), opts.blue(), true,
                 CTConfigs.CLIENT.usePlumeMetaballRendering.get(), impactSprites,
-                opts.rainbowMode(), opts.rainbowPalette(), opts.plumeProgress());
+                opts.rainbowMode(), opts.rainbowPalette(), opts.plumeProgress(),
+                opts.plumeTintColor(), opts.plumeTintBlend());
     }
 
     // Reuse the soft plume for a neutral archive smoke burst
@@ -96,7 +104,7 @@ public final class SoftThrusterPlumeParticle extends SoftBillboardParticle {
                                      double xd, double yd, double zd, float red, float green, float blue,
                                      boolean collidesWithBlocks, boolean metaball, SpriteSet impactSprites,
                                      PlumeRainbow.Mode rainbowMode, PlumeRainbow.Palette rainbowPalette,
-                                     float plumeProgress) {
+                                     float plumeProgress, int tintColor, float tintBlend) {
         super(level, x, y, z);
         Vec3 motion = new Vec3(xd, yd, zd);
         Vec3 dir = motion.lengthSqr() < 1.0E-6D ? new Vec3(0.0D, 1.0D, 0.0D) : motion.normalize();
@@ -117,6 +125,12 @@ public final class SoftThrusterPlumeParticle extends SoftBillboardParticle {
         this.rainbowMode = rainbowMode;
         this.rainbowPalette = rainbowPalette;
         this.plumeProgress = plumeProgress;
+        int flameColor = collidesWithBlocks
+                ? ColorGradient.blend(FLAME_ORANGE, FLAME_YELLOW, this.random.nextFloat()) : 0;
+        this.lifecycleColors = collidesWithBlocks ? new ColorGradient(
+                ColorGradient.rgb(red, green, blue),
+                ColorGradient.blend(flameColor, tintColor, tintBlend),
+                ColorGradient.blend(BURNT_SIENNA, tintColor, tintBlend)) : null;
         this.baseSize = collidesWithBlocks
                 ? (metaball ? 0.72F + this.random.nextFloat() * 0.22F
                         : 1.4F + this.random.nextFloat() * 0.32F)
@@ -134,7 +148,7 @@ public final class SoftThrusterPlumeParticle extends SoftBillboardParticle {
         this.rCol = red;
         this.gCol = green;
         this.bCol = blue;
-        updateRainbowColor();
+        updatePlumeColor();
         this.roll = this.random.nextFloat() * Mth.TWO_PI;
         this.oRoll = this.roll;
     }
@@ -162,7 +176,7 @@ public final class SoftThrusterPlumeParticle extends SoftBillboardParticle {
         this.alpha = this.baseAlpha * fadeIn * fadeOut;
         this.quadSize = this.baseSize * (this.collidesWithBlocks
                 ? 1.0F + progress * 0.2F : 0.65F + progress * 2.6F);
-        updateRainbowColor();
+        updatePlumeColor();
         this.oRoll = this.roll;
         this.roll += 0.035F;
 
@@ -188,11 +202,14 @@ public final class SoftThrusterPlumeParticle extends SoftBillboardParticle {
         this.zd *= this.friction;
     }
 
-    // Advance the exhaust color while keeping the whole solid plume in phase
-    private void updateRainbowColor() {
-        if (!this.collidesWithBlocks || this.rainbowMode == PlumeRainbow.Mode.OFF) return;
-        int color = PlumeRainbow.color(this.rainbowMode, this.rainbowPalette,
-                this.level.getGameTime(), this.plumeProgress, this.age);
+    // Cool the tinted flame through its lifecycle or use the selected rainbow
+    private void updatePlumeColor(){
+        if(!this.collidesWithBlocks) return;
+        int color = this.rainbowMode == PlumeRainbow.Mode.OFF
+                ? this.lifecycleColors.sample(this.age / (float) this.lifetime,
+                        FLAME_PROGRESS, SMOKE_PROGRESS)
+                : PlumeRainbow.color(this.rainbowMode, this.rainbowPalette,
+                        this.level.getGameTime(), this.plumeProgress, this.age);
         this.rCol = (color >> 16 & 0xFF) / 255.0F;
         this.gCol = (color >> 8 & 0xFF) / 255.0F;
         this.bCol = (color & 0xFF) / 255.0F;
@@ -279,25 +296,6 @@ public final class SoftThrusterPlumeParticle extends SoftBillboardParticle {
         return this.collidesWithBlocks ? (this.metaball ? 0.28F : 0.4F) : 0.0F;
     }
 
-    // Warm the broad fringe as the exhaust cools and spreads
-    @Override
-    protected int getOuterLayerColor() {
-        if (!this.collidesWithBlocks) return super.getOuterLayerColor();
-        float progress = this.age / (float) this.lifetime;
-        float cooling = Mth.clamp((progress - 0.55F) / 0.4F, 0.0F, 1.0F);
-        float ember = Mth.clamp((progress - 0.75F) / 0.2F, 0.0F, 1.0F);
-        float warmRed = Mth.lerp(ember, 1.0F, 0.85F);
-        float warmGreen = Mth.lerp(ember, 0.54F, 0.29F);
-        float warmBlue = Mth.lerp(ember, 0.17F, 0.11F);
-        int red = Mth.clamp((int) (Mth.lerp(cooling, this.rCol, warmRed)
-                * 255.0F), 0, 255);
-        int green = Mth.clamp((int) (Mth.lerp(cooling, this.gCol, warmGreen)
-                * 255.0F), 0, 255);
-        int blue = Mth.clamp((int) (Mth.lerp(cooling, this.bCol, warmBlue)
-                * 255.0F), 0, 255);
-        return red << 16 | green << 8 | blue;
-    }
-
     // Concentrate the luminous hotspot near the start of a particle's life
     @Override
     protected float getHotspotOpacity() {
@@ -355,7 +353,7 @@ public final class SoftThrusterPlumeParticle extends SoftBillboardParticle {
                                        double xd, double yd, double zd){
             return new SoftThrusterPlumeParticle(level, x, y, z, xd, yd + 0.7D, zd,
                     0.58F, 0.66F, 0.72F, false, false, null,
-                    PlumeRainbow.Mode.OFF, PlumeRainbow.Palette.NORMAL, 0.0F);
+                    PlumeRainbow.Mode.OFF, PlumeRainbow.Palette.NORMAL, 0.0F, 0xFFFFFF, 0.0F);
         }
     }
 }

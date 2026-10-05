@@ -19,12 +19,14 @@ import com.rieno.gadgetsandgizmos.lib.physics.SubLevelParticleOcclusion;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDataProvider;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
+import com.rieno.gadgetsandgizmos.lib.color.ColorGradient;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
 import com.rieno.gadgetsandgizmos.lib.physics.SablePointImpulseApi;
 import com.rieno.gadgetsandgizmos.lib.physics.PropulsionLight;
 import com.rieno.gadgetsandgizmos.lib.physics.ColoredLightBridge;
 import com.rieno.gadgetsandgizmos.lib.physics.TransientLightBeam;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmPropulsionAvailability;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerAirProcessingSource;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerContainerAccess;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog;
@@ -1010,6 +1012,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
             baseBlue = Mth.lerp(colorRatio, baseBlue, dyedBlue);
         }
 
+        float tintBlend = beamColor != DEFAULT_BEAM_COLOR ? getPlumeColorRatio() : 0.0F;
         double forwardDriftScale = 1.0D;
         if (particleRangeBlocked) {
             forwardDriftScale = Mth.clamp((exhaustCloudRange - progress) / 0.75D, 0.05D, 1.0D);
@@ -1027,9 +1030,12 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
             float red = Mth.clamp(baseRed * brightness, 0.0f, 1.0f);
             float green = Mth.clamp(baseGreen * brightness, 0.0f, 1.0f);
             float blue = Mth.clamp(baseBlue * brightness, 0.0f, 1.0f);
+            int tintColor = ColorGradient.rgb((beamColor >> 16 & 0xFF) / 255.0F * brightness,
+                    (beamColor >> 8 & 0xFF) / 255.0F * brightness,
+                    (beamColor & 0xFF) / 255.0F * brightness);
             WorldSpaceParticleEmitter.addParticleWithinViewDistance(this,
                     new ColoredCloudParticleOptions(red, green, blue,
-                            colors.mode(), colors.palette(), (float) progressRatio),
+                            colors.mode(), colors.palette(), (float) progressRatio, tintColor, tintBlend),
                     sample.add(jitter), vel);
         }
     }
@@ -2392,12 +2398,11 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         boolean queuedFuelRejectsPressure = usingQueuedSolidFuel
                 && "createthrusters:oxidized_creative_blaze_cake".equals(
                 queuedSolidFuel.fuelId());
-        double maximum = maximumUnscaledThrust()
-                * finiteNonNegativeOrDefault(powerMultiplier, 0.0D)
-                * finiteNonNegativeOrDefault(getAirflowScaling(), 0.0D)
-                * finiteNonNegativeOrDefault(
-                queuedFuelRejectsPressure ? 1.0D : getCurrentAirPressure(), 0.0D);
-        return Double.isFinite(maximum) ? Math.max(0.0D, maximum) : 0.0D;
+        return ScmPropulsionAvailability.capacity(
+                maximumUnscaledThrust()
+                        * finiteNonNegativeOrDefault(powerMultiplier, 0.0D),
+                getCurrentAirPressure(), queuedFuelRejectsPressure,
+                getAirflowScaling());
     }
 
     // Get the maximum imum unscaled thrust

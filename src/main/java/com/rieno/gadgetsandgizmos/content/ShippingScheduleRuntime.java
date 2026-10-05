@@ -16,6 +16,7 @@ import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyBoundsApi;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.rieno.gadgetsandgizmos.lib.physics.SableTransformApi;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmBuiltinControlModes;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmDockingOrientation;
 import com.rieno.gadgetsandgizmos.lib.navigation.SablePathfinder;
 import com.rieno.gadgetsandgizmos.lib.navigation.ScheduleRouteLoop;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
@@ -193,6 +194,7 @@ public final class ShippingScheduleRuntime {
     private int currentShipConnectorIndex = -1;
     // Current connectorless hover target
     private @Nullable Vec3 connectorlessHoverTarget;
+    private @Nullable Double undockingHoldY;
     // Current parking zone id
     private @Nullable UUID currentParkingZoneId;
     // Current parking target
@@ -2609,29 +2611,16 @@ public final class ShippingScheduleRuntime {
     private @Nullable ShipControlModuleRuntime.MappedDockingConnector selectShipConnectorForEntry(
             ShipDockRegistry.Dock target
     ) {
-        return selectShipConnectorForEntry(target, schedule, currentEntry);
-    }
-
-    // Select the ship connector for an installed or graph-owned schedule entry.
-    private @Nullable ShipControlModuleRuntime.MappedDockingConnector selectShipConnectorForEntry(
-            ShipDockRegistry.Dock target, @Nullable Schedule routeSchedule, int entryIndex
-    ) {
-        if (routeSchedule == null || entryIndex < 0 || entryIndex >= routeSchedule.entries.size()) {
-            Vec3 desiredFacing = target.connectorFacing().scale(-1.0D).normalize();
-            return controller.getShipDockingConnectors().stream()
-                    .filter(connector -> connectorSupportsDock(connector, target))
-                    .max(Comparator.comparingDouble(connector -> connector.worldFacing().normalize()
-                            .dot(desiredFacing) * 100.0D - connector.worldTipPosition()
-                            .distanceTo(target.dockingTarget()) * 0.01D))
-                    .orElse(null);
-        }
         Vec3 desiredFacing = target.connectorFacing().scale(-1.0D).normalize();
+        Vec3 shipUp = controller.getShipUpWorld();
         return controller.getShipDockingConnectors().stream()
                 .filter(connector -> connectorSupportsDock(connector, target))
                 .max(Comparator.comparingDouble(connector -> {
-                    double score = connector.worldFacing().normalize().dot(desiredFacing) * 100.0D;
-                    score -= Math.min(1_000.0D,
-                            connector.worldTipPosition().distanceTo(target.dockingTarget())) * 0.01D;
+                    double score = ScmDockingOrientation.score(
+                            connector.worldFacing(), connector.worldUp(), shipUp,
+                            desiredFacing, target.connectorUp());
+                    score -= Math.min(1_000.0D, connector.worldTipPosition()
+                            .distanceTo(target.dockingTarget())) * 1.0E-4D;
                     return score - connector.index() * 1.0E-6D;
                 }))
                 .orElse(null);
@@ -2642,9 +2631,12 @@ public final class ShippingScheduleRuntime {
         if (!usesPhysicalDocking(dock)) return 0;
         ShipControlModuleRuntime.MappedDockingConnector current =
                 controller.getShipDockingConnector(currentShipConnectorIndex);
-        if (current != null && connectorSupportsDock(current, dock)) return 0;
         ShipControlModuleRuntime.MappedDockingConnector replacement =
                 selectShipConnectorForEntry(dock);
+        if (current != null && connectorSupportsDock(current, dock)
+                && (replacement == null || replacement.index() == current.index()
+                || connectorOrientationScore(replacement, dock)
+                - connectorOrientationScore(current, dock) <= 1.0D)) return 0;
         if (replacement == null) {
             currentShipConnectorIndex = -1;
             controller.activateShipDockingConnector(-1);
@@ -2654,6 +2646,16 @@ public final class ShippingScheduleRuntime {
         controller.activateShipDockingConnector(-1);
         lastTargetRefreshTick = Long.MIN_VALUE;
         return 1;
+    }
+
+    // Score the selected connector against the dock without using approach distance
+    private double connectorOrientationScore(
+            ShipControlModuleRuntime.MappedDockingConnector connector,
+            ShipDockRegistry.Dock dock){
+        return ScmDockingOrientation.score(
+                connector.worldFacing(), connector.worldUp(),
+                controller.getShipUpWorld(), dock.connectorFacing().scale(-1.0D),
+                dock.connectorUp());
     }
 
     // Check whether a player-assigned ship connector group may use this dock
@@ -3831,16 +3833,22 @@ public final class ShippingScheduleRuntime {
         Map<String, Double> values = new LinkedHashMap<>(Map.of(
                 "x", approach.x, "y", approach.y, "z", approach.z,
                 "speed", routeSpeed, "tolerance", 1.25D,
-                "avoid_collisions", 0.0D, "lock_rotation", 0.0D));
+                "avoid_collisions", 1.0D, "lock_rotation", 0.0D));
+        Vec3 facing = dock.connectorFacing().scale(-1.0D);
+        Vec3 up = dock.connectorUp();
+        values.put("target_direction_x", facing.x);
+        values.put("target_direction_y", facing.y);
+        values.put("target_direction_z", facing.z);
+        values.put("target_up_x", up.x);
+        values.put("target_up_y", up.y);
+        values.put("target_up_z", up.z);
         if (!useDockingConnector) {
             values.put("schedule_route_entry", (double) currentEntry);
         }
         return controller.executeShipControlGraphCommand(
                 NAVIGATION_COMMAND, "ship_navigate",
                 routeControlParameters(values),
-                Map.of("target_point", useDockingConnector
-                        ? "docking_connector:" + currentShipConnectorIndex
-                        : "center_of_mass"));
+                dockingCommandTextValues(dock));
     }
 
     // Issue the connectorless hover
@@ -3903,7 +3911,9 @@ public final class ShippingScheduleRuntime {
                 Map.of("strength", 1.0D));
         boolean hovering = controller.executeShipControlGraphCommand(
                 UNDOCK_HOVER_COMMAND, "ship_hover",
-                Map.of("strength", 1.0D));
+                undockingHoldY == null
+                        ? Map.of("strength", 1.0D)
+                        : Map.of("strength", 1.0D, "y", undockingHoldY));
         return braking && hovering;
     }
 
@@ -3926,14 +3936,24 @@ public final class ShippingScheduleRuntime {
                         Map.entry("z", target.z),
                         Map.entry("speed", Math.min(routeSpeed, MAX_DOCKING_SPEED)),
                         Map.entry("tolerance", 0.18D),
-                        Map.entry("avoid_collisions", 0.0D),
+                        Map.entry("avoid_collisions", 1.0D),
                         Map.entry("target_direction_x", facing.x),
                         Map.entry("target_direction_y", facing.y),
                         Map.entry("target_direction_z", facing.z),
                         Map.entry("target_up_x", up.x),
                         Map.entry("target_up_y", up.y),
                         Map.entry("target_up_z", up.z))),
-                Map.of("target_point", "docking_connector:" + currentShipConnectorIndex));
+                dockingCommandTextValues(dock));
+    }
+
+    // Identify the selected dock assembly for the SCM collision exception
+    private Map<String, String> dockingCommandTextValues(ShipDockRegistry.Dock dock){
+        Map<String, String> values = new LinkedHashMap<>();
+        values.put("target_point", "docking_connector:" + currentShipConnectorIndex);
+        UUID dockBody = dock.connectorSubLevelId() == null
+                ? dock.subLevelId() : dock.connectorSubLevelId();
+        if(dockBody != null) values.put("dock_sub_level_id", dockBody.toString());
+        return Map.copyOf(values);
     }
 
     // The schedule's Change Throttle value is the direct propulsion request
@@ -4531,6 +4551,7 @@ public final class ShippingScheduleRuntime {
 
     // Disengage the attached connectors
     private void disengageAttachedConnectors() {
+        undockingHoldY = attachedDockId == null ? null : currentPosition().y;
         if (controller.getLevel() != null && attachedDockId != null) {
             ShipDockRegistry.Dock dock = cachedDock(attachedDockId);
             if (dock != null) {
