@@ -2726,7 +2726,6 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (frequencyModalOpen) drawFrequencyModal(graphics, mouseX, mouseY);
         if (workerResourcePickerOpen) drawWorkerResourcePicker(graphics, mouseX, mouseY);
         if (workerTargetPickerOpen) drawWorkerTargetPicker(graphics, mouseX, mouseY);
-        if (graphTargetPickerOpen) drawGraphTargetPicker(graphics, mouseX, mouseY);
         if (workerSelectionOpen) drawWorkerSelection(graphics, mouseX, mouseY);
     }
 
@@ -3028,13 +3027,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 + scmLivePreviewRenderer.blockCount() + " live blocks";
         graphics.drawString(font, status, preview.x() + 7, preview.bottom() - 14,
                 v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
-        if (scmBlockPickerFiltersDropdownOpen) {
-            drawScmBlockPickerFilterDropdown(graphics, toolbar.x(), toolbar.y(), mouseX, mouseY);
-        }
-        if (scmBlockPickerWireframeFiltersDropdownOpen) {
-            drawScmWireframeFilterDropdown(graphics, toolbar.x(), toolbar.y(), mouseX, mouseY,
-                    scmBlockPickerWireframeExcludedFilters);
-        }
+        drawScmBlockPickerDropdowns(graphics, toolbar, mouseX, mouseY);
         String selectedLabel = scmBlockPickerSelected == null ? "No block selected"
                 : "Selected: " + scmLivePreviewRenderer.blockName(scmBlockPickerSelected.subLevelId(),
                 scmBlockPickerSelected.position());
@@ -3483,6 +3476,22 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             rowY += 20;
         }
         graphics.pose().popPose();
+    }
+
+    // Draw picker filters above the live preview
+    private void drawScmBlockPickerDropdowns(GuiGraphics graphics, UiRect toolbar, int mouseX, int mouseY){
+        if(scmBlockPickerFiltersDropdownOpen){
+            drawScmBlockPickerFilterDropdown(graphics, toolbar.x(), toolbar.y(), mouseX, mouseY);
+        }
+        if(scmBlockPickerWireframeFiltersDropdownOpen){
+            drawScmWireframeFilterDropdown(graphics, toolbar.x(), toolbar.y(), mouseX, mouseY,
+                    scmBlockPickerWireframeExcludedFilters);
+        }
+    }
+
+    // Check whether a picker filter menu owns preview input
+    private boolean scmBlockPickerDropdownOpen(){
+        return scmBlockPickerFiltersDropdownOpen || scmBlockPickerWireframeFiltersDropdownOpen;
     }
 
     private UiRect scmConfigurationFilterBounds(int x, int y, ScmLiveSubLevelPreviewRenderer.Filter filter) {
@@ -7452,7 +7461,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // the underlying pass an off-screen pointer so hidden buttons, nodes, and
     // slots cannot light up through a popup or modal.
     private boolean masksUnderlyingHover() {
-        return shipPermissionsOpen || scmConfigurationOpen || scmBlockPickerOpen || toolsMenuOpen || themeEditorOpen
+        return shipPermissionsOpen || scmConfigurationOpen || scmBlockPickerOpen || graphTargetPickerOpen
+                || toolsMenuOpen || themeEditorOpen
                 || themeColorPicker != null || optionDropdown != null
                 || scmWorkspaceDropdownOpen();
     }
@@ -7558,6 +7568,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             graphics.pose().pushPose();
             graphics.pose().translate(0.0F, 0.0F, 500.0F);
             drawScmBlockPicker(graphics, mouseX, mouseY);
+            graphics.pose().popPose();
+            return;
+        }
+        if(graphTargetPickerOpen){
+            graphics.pose().pushPose();
+            graphics.pose().translate(0.0F, 0.0F, 500.0F);
+            drawGraphTargetPicker(graphics, mouseX, mouseY);
             graphics.pose().popPose();
             return;
         }
@@ -8982,6 +8999,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         drawScmBlockPickerFilters(graphics, toolbar.x(), toolbar.y(), toolbar.width(), mouseX, mouseY);
         UiRect preview = graphTargetPickerPreviewBounds(bounds);
         drawGraphTargetPickerBlockPreview(graphics, preview);
+        drawScmBlockPickerDropdowns(graphics, toolbar, mouseX, mouseY);
     }
 
     // Draw the dedicated live assembled-block picker view.
@@ -9112,6 +9130,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private boolean clickGraphTargetPicker(double mouseX, double mouseY, int button) {
         if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
         UiRect bounds = graphTargetPickerBounds();
+        if(graphTargetPickerBlockTab && scmBlockPickerDropdownOpen()
+                && clickScmBlockPickerToolbar(mouseX, mouseY, graphTargetPickerBlockToolbarBounds(bounds))) return true;
         if (graphTargetPickerCancelBounds(bounds).contains(mouseX, mouseY)
                 || (mouseX >= bounds.right() - 28 && mouseY >= bounds.y() && mouseY < bounds.y() + 32)) {
             closeGraphTargetPicker();
@@ -10437,8 +10457,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
             bodyY += (int) (15 * zoom);
         }
-        if (isHudNode(node) && bodyY + 18 >= graphTop() && bodyY <= graphBottom()) {
-            drawBodyControl(graphics, x, bodyY, width, "Add Field", "[+]", AdvancedGraphCatalog.categoryColor("hud"), false);
+        if(isHudNode(node)){
+            if(bodyY + 18 >= graphTop() && bodyY <= graphBottom()){
+                drawBodyControl(graphics, x, bodyY, width, "Add Field", "[+]", AdvancedGraphCatalog.categoryColor("hud"), false);
+            }
+            bodyY += (int) (15 * zoom);
+            if(isAdvancedHudNode(node) && bodyY + 18 >= graphTop() && bodyY <= graphBottom()){
+                drawBodyControl(graphics, x, bodyY, width, "Open Editor", "",
+                        AdvancedGraphCatalog.categoryColor("hud"), false);
+            }
         } else if (isConstructorNode(node) && bodyY + 18 >= graphTop() && bodyY <= graphBottom()) {
             drawBodyControl(graphics, x, bodyY, width, "Add Input", "[+]",
                     AdvancedGraphCatalog.categoryColor("data"), false);
@@ -11319,6 +11346,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             if (isDataPortVisible(node, port.getKey(), false)) count++;
         }
         if (isHudNode(node) || isConstructorNode(node) || isFunctionInterfaceNode(node)) count++;
+        if(isAdvancedHudNode(node)) count++;
         return count;
     }
 
@@ -15302,7 +15330,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         if (graphTargetPickerOpen) {
             UiRect preview = graphTargetPickerPreviewBounds(graphTargetPickerBounds());
-            if (graphTargetPickerBlockTab && preview.contains(mouseX, mouseY)
+            if (graphTargetPickerBlockTab && !scmBlockPickerDropdownOpen() && preview.contains(mouseX, mouseY)
                     && blockPickerRootSubLevelId() != null) {
                 scmLivePreviewRenderer.mouseDragged(dragX, dragY);
             }
@@ -15504,7 +15532,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         draggingOptionDropdownThumb = false;
         if (graphTargetPickerOpen) {
             UiRect preview = graphTargetPickerPreviewBounds(graphTargetPickerBounds());
-            if (graphTargetPickerBlockTab && preview.contains(mouseX, mouseY)
+            if (graphTargetPickerBlockTab && !scmBlockPickerDropdownOpen() && preview.contains(mouseX, mouseY)
                     && blockPickerRootSubLevelId() != null) {
                 ScmLiveSubLevelPreviewRenderer.PickTarget picked = scmLivePreviewRenderer.mouseReleased(
                         mouseX, mouseY, button, preview.x(), preview.y(), preview.width(), preview.height(),
@@ -15769,7 +15797,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (graphTargetPickerOpen) {
             UiRect bounds = graphTargetPickerBounds();
             UiRect preview = graphTargetPickerPreviewBounds(bounds);
-            if (graphTargetPickerBlockTab && preview.contains(mouseX, mouseY)
+            if (graphTargetPickerBlockTab && !scmBlockPickerDropdownOpen() && preview.contains(mouseX, mouseY)
                     && blockPickerRootSubLevelId() != null) {
                 scmLivePreviewRenderer.mouseScrolled(scrollY);
             } else if (!graphTargetPickerBlockTab && graphTargetPickerListBounds(bounds).contains(mouseX, mouseY)) {
@@ -16569,6 +16597,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         if (isHudNode(node) && row-- == 0) {
             addHudField(node);
+            return true;
+        }
+        if(isAdvancedHudNode(node) && row-- == 0){
+            selectOnly(node.id());
+            selectedInputPort = null;
+            syncInspector();
+            openHud(node);
             return true;
         }
         if (isConstructorNode(node) && row-- == 0) {
