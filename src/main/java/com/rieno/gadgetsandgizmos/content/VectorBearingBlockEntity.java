@@ -20,6 +20,8 @@ import com.rieno.gadgetsandgizmos.lib.control.OrientationPayload;
 import com.rieno.gadgetsandgizmos.lib.control.OrientationTarget;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.kinetics.KineticAngleHelper;
+import com.rieno.gadgetsandgizmos.lib.kinetics.PropellerDirectionBehaviour;
+import com.rieno.gadgetsandgizmos.lib.kinetics.PropellerThrustDirection;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuOpenHeader;
 import com.rieno.gadgetsandgizmos.lib.physics.MountedAssemblyStatus;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyTopologyInvalidation;
@@ -218,6 +220,8 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
     private volatile double mountedSailPower;
     // Mounted sail radius
     private volatile double mountedSailRadius;
+    // Selected sail propulsion direction
+    private PropellerDirectionBehaviour thrustDirection;
     // Next nested assembly tick
     private long nextNestedAssemblyTick = Long.MIN_VALUE;
     // Tracks whether assembly transfer is in progress
@@ -256,6 +260,10 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
     @Override
     public void addBehaviours(List<BlockEntityBehaviour> behaviours) {
         super.addBehaviours(behaviours);
+        thrustDirection = new PropellerDirectionBehaviour(
+                Component.translatable("createthrusters.vector_bearing.thrust_direction"),
+                this, "VectorThrustDirection");
+        behaviours.add(thrustDirection);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -996,6 +1004,7 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         data.put("max_tilt", "number");
         data.put("control_mode", "string");
         data.put("active_control_mode", "string");
+        data.put("propulsion_direction", "string");
         data.put("mounted", "boolean");
         data.put("mounted_sublevel", "string");
         return data;
@@ -1009,6 +1018,7 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         data.put("tilt_z", "number");
         data.put("stabilize_axis", "string");
         data.put("keep_stable", "boolean");
+        data.put("propulsion_direction", "string");
         return data;
     }
 
@@ -1017,6 +1027,7 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
     public Map<String, List<String>> graphWritableOptions() {
         return Map.of(
                 "control_mode", List.of("auto", "computer", "redstone"),
+                "propulsion_direction", PropellerThrustDirection.controlOptions(),
                 "stabilize_axis", List.of("X Axis", "Y Axis", "Z Axis",
                         "XZ Axis", "XY Axis", "ZY Axis"));
     }
@@ -1036,6 +1047,7 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
             case "mounted_sublevel" -> AdvancedGraphDocument.Value.string(mountedSubLevelId == null ? "" : mountedSubLevelId.toString());
             case "stabilize_axis" -> AdvancedGraphDocument.Value.string(stabilizeAxis.graphValue());
             case "keep_stable" -> AdvancedGraphDocument.Value.bool(keepStable);
+            case "propulsion_direction" -> AdvancedGraphDocument.Value.string(thrustDirection.get().controlValue());
             default -> AdvancedGraphDocument.Value.number(0);
         };
     }
@@ -1044,6 +1056,9 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
     @Override
     public boolean writeGraphData(String field, AdvancedGraphDocument.Value val) {
         switch (field) {
+            case "propulsion_direction" -> {
+                return thrustDirection.setDirection(val.asString());
+            }
             case "tilt_x" -> {
                 setComputerAnglesDegrees(val.asNumber(), computerZDegrees);
                 return true;
@@ -2115,7 +2130,7 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
 
     // Get the dir independent speed
     private double getDirIndependentSpeed() {
-        return getBearingFacing().getAxisDirection().getStep() * getSpeed();
+        return thrustDirection.get().signedSpeed(getBearingFacing(), getSpeed());
     }
 
     // Get the propeller airflow scale

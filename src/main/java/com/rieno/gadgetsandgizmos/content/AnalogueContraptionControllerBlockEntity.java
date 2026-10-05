@@ -30,6 +30,7 @@ import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuOpenHeader;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
+import com.rieno.gadgetsandgizmos.lib.tooltip.TooltipComponents;
 import com.rieno.gadgetsandgizmos.neoforge.network.ContraptionNetworkLinkerSnapshotPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ControllerRuntimeSyncPayload;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
@@ -4072,7 +4073,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     @Override
     public boolean addToGoggleTooltip(List<Component> tooltip, boolean isPlayerSneaking) {
         boolean showDetails = CTTooltipHelper.showGoggleDetails(isPlayerSneaking);
-        tooltip.add(CTTooltipHelper.title(Component.translatable("block.createthrusters.analogue_contraption_controller")));
+        tooltip.add(TooltipComponents.blockTitle(getBlockState()));
         int activeAxes = 0;
         for (String axisId : showGoggleAxes(showDetails) ? axes.keySet() : List.<String>of()) {
             AnalogueAxis axis = axes.get(axisId);

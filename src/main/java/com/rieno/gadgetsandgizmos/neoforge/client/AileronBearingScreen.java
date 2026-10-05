@@ -26,6 +26,7 @@ import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
@@ -141,6 +142,10 @@ public class AileronBearingScreen extends AbstractSimiContainerScreen<AileronBea
                     CTCreateScreenHelper.BANNER_TITLE_COLOR);
             drawHeadRange(guiGraphics, x, y, mouseX, mouseY, BearingHead.SECONDARY);
             drawHeadRange(guiGraphics, x, y, mouseX, mouseY, BearingHead.PRIMARY);
+            if(menu.getHeadMode() != AileronBearingBlockEntity.HeadMode.PRECISE){
+                guiGraphics.drawCenteredString(font, Component.literal("!"), x + TITLE_CENTER_X,
+                        y + SLIDER_CENTER_Y - 4, 0xFFCC55);
+            }
         } finally {
             scalableGui.pop(guiGraphics);
         }
@@ -478,23 +483,29 @@ public class AileronBearingScreen extends AbstractSimiContainerScreen<AileronBea
     private void renderSliderTooltip(GuiGraphics graphics, int screenMouseX, int screenMouseY) {
         double mouseX = scalableGui.mouseX(screenMouseX);
         double mouseY = scalableGui.mouseY(screenMouseY);
-        Component tooltip = sliderTooltip(mouseX, mouseY);
-        if (tooltip != null) {
-            graphics.renderTooltip(font, tooltip, screenMouseX, screenMouseY);
+        List<Component> tooltip = sliderTooltip(mouseX, mouseY);
+        if(menu.getHeadMode() != AileronBearingBlockEntity.HeadMode.PRECISE
+                && inside(mouseX, mouseY, leftPos + 44, topPos + 43, 168, 85)
+                && (hoveredSlot == null || !hoveredSlot.hasItem())){
+            tooltip = new ArrayList<>(tooltip);
+            tooltip.add(Component.translatable("createthrusters.aileron_bearing.head_angle_warning"));
+        }
+        if (!tooltip.isEmpty()) {
+            graphics.renderTooltip(font, tooltip, java.util.Optional.empty(), screenMouseX, screenMouseY);
         }
     }
 
     // Get the slider tooltip
-    private Component sliderTooltip(double mouseX, double mouseY) {
-        Component tooltip = sliderTooltip(mouseX, mouseY, BearingHead.PRIMARY);
-        if (tooltip != null) {
+    private List<Component> sliderTooltip(double mouseX, double mouseY) {
+        List<Component> tooltip = sliderTooltip(mouseX, mouseY, BearingHead.PRIMARY);
+        if (!tooltip.isEmpty()) {
             return tooltip;
         }
         return sliderTooltip(mouseX, mouseY, BearingHead.SECONDARY);
     }
 
     // Get the slider tooltip
-    private Component sliderTooltip(double mouseX, double mouseY, BearingHead head) {
+    private List<Component> sliderTooltip(double mouseX, double mouseY, BearingHead head) {
         int sliderLeft = leftPos + sliderX(head);
         int sliderCenterY = topPos + SLIDER_CENTER_Y;
         int minX = valueToSliderX(minAngles.get(head), -rangeLimit(), rangeLimit(),
@@ -503,15 +514,21 @@ public class AileronBearingScreen extends AbstractSimiContainerScreen<AileronBea
                 sliderLeft, SLIDER_ACTIVE_WIDTH);
         boolean overMin = isHandleHovered(mouseX, mouseY, minX, sliderCenterY);
         boolean overMax = isHandleHovered(mouseX, mouseY, maxX, sliderCenterY);
-        if (!overMin && !overMax) {
-            return null;
+        boolean overTrack = inside(mouseX, mouseY, sliderLeft - SLIDER_HIT_PADDING_X,
+                sliderCenterY - SLIDER_HIT_HEIGHT / 2,
+                SLIDER_TRACK_WIDTH + SLIDER_HIT_PADDING_X * 2, SLIDER_HIT_HEIGHT);
+        if (!overMin && !overMax && !overTrack) {
+            return List.of();
         }
-        boolean min = overMin && (!overMax || isMinHandleClosest(mouseX, head));
-        String headName = head == BearingHead.PRIMARY ? "Primary" : "Secondary";
-        String handleName = min ? "Min" : "Max";
-        double val = min ? minAngles.get(head) : maxAngles.get(head);
-        return Component.literal(headName + " " + handleName + ": ")
-                .append(formatAngle(val));
+        List<Component> tooltip = new ArrayList<>(2);
+        if (overMin || overMax) {
+            boolean min = overMin && (!overMax || isMinHandleClosest(mouseX, head));
+            String headName = head == BearingHead.PRIMARY ? "Primary" : "Secondary";
+            String handleName = min ? "Min" : "Max";
+            double val = min ? minAngles.get(head) : maxAngles.get(head);
+            tooltip.add(Component.literal(headName + " " + handleName + ": ").append(formatAngle(val)));
+        }
+        return tooltip;
     }
 
     // Check if the handle is hovered

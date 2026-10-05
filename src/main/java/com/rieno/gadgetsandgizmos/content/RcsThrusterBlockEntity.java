@@ -76,6 +76,7 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+    // Default per-nozzle thrust retained for API compatibility
     public static final double MAX_NOZZLE_THRUST_PN = 215.0D;
     public static final double FULL_POWER_RPM = 256.0D;
     private static final double BACKTANK_AIR_PER_MAX_NOZZLE_SECOND = 2.0D;
@@ -434,12 +435,12 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
     public double getMaxNozzleThrust() {
         if (isSelfPowered()) {
             return RcsNozzlePower.available(true, false, false, getSpeed(),
-                    MAX_NOZZLE_THRUST_PN, FULL_POWER_RPM);
+                    CTConfigs.COMMON.rcsThrusterMaxThrust.get(), FULL_POWER_RPM);
         }
         BacktankBlockEntity backtank = connectedBacktank();
         return RcsNozzlePower.available(false, backtank != null,
                 backtank != null && backtank.getAirLevel() > 0, getSpeed(),
-                MAX_NOZZLE_THRUST_PN, FULL_POWER_RPM);
+                CTConfigs.COMMON.rcsThrusterMaxThrust.get(), FULL_POWER_RPM);
     }
 
     public boolean isSelfPowered() {
@@ -448,7 +449,7 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
 
     // Get the speed to max thrust
     public static double speedToMaxThrust(double rpm) {
-        return RcsNozzlePower.fromShaft(rpm, MAX_NOZZLE_THRUST_PN, FULL_POWER_RPM);
+        return RcsNozzlePower.fromShaft(rpm, CTConfigs.COMMON.rcsThrusterMaxThrust.get(), FULL_POWER_RPM);
     }
 
     // Get the nozzle thrust

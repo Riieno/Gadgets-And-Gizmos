@@ -27,6 +27,7 @@ import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuOpenHeader;
 import com.rieno.gadgetsandgizmos.lib.physics.MountedAssemblyStatus;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyTopologyInvalidation;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
+import com.rieno.gadgetsandgizmos.lib.tooltip.TooltipComponents;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.simibubi.create.Create;
 import com.simibubi.create.api.equipment.goggles.IHaveGoggleInformation;
@@ -1444,6 +1445,7 @@ public class AileronBearingBlockEntity extends KineticBlockEntity implements Men
                 ItemStack.OPTIONAL_STREAM_CODEC.encode(buffer, getFrequencySecond(head, dir));
             }
         }
+        buffer.writeEnum(getHeadMode());
     }
 
     // Write the aileron bearing safely
@@ -1647,6 +1649,14 @@ public class AileronBearingBlockEntity extends KineticBlockEntity implements Men
                 CTTooltipHelper.value(getControlMode().serializedName(), ChatFormatting.GOLD)));
         tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.goggle.aileron_bearing.active"),
                 CTTooltipHelper.value(activeControlMode.serializedName(), ChatFormatting.GREEN)));
+        tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.goggle.aileron_bearing.orange"),
+                TooltipComponents.status(isMountedAssemblyPresent(BearingHead.SECONDARY),
+                        Component.translatable("createthrusters.goggle.aileron_bearing.assembled"),
+                        Component.translatable("createthrusters.goggle.aileron_bearing.not_assembled"))));
+        tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.goggle.aileron_bearing.cyan"),
+                TooltipComponents.status(isMountedAssemblyPresent(BearingHead.PRIMARY),
+                        Component.translatable("createthrusters.goggle.aileron_bearing.assembled"),
+                        Component.translatable("createthrusters.goggle.aileron_bearing.not_assembled"))));
         tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.goggle.aileron_bearing.primary"),
                 CTTooltipHelper.value(String.format(Locale.ROOT, "%.1f deg", getHeadAngle(BearingHead.PRIMARY)),
                         ChatFormatting.DARK_AQUA)));
