@@ -37,7 +37,7 @@ class AbstractJVMGraphCompilerTest {
         this.graphClassSubName=subName;
     }
 
-    public JVMGraphRuntime runtime = new JVMGraphRuntime(new DebugProps(debugDir) {
+    private final DebugProps debugProps = new DebugProps(debugDir) {
         static AtomicInteger counter = new AtomicInteger();
 
         @Override
@@ -45,9 +45,16 @@ class AbstractJVMGraphCompilerTest {
             String classPrefix = graphClassSubName;
             if(classPrefix == null) classPrefix = "";
             else classPrefix = "$" + classPrefix;
-            return className + classPrefix + "$_" + counter.incrementAndGet()+"_";
+            return className + classPrefix + "$_" + counter.incrementAndGet() + "_";
         }
-    });
+
+        @Override
+        public boolean checkForMissingInputPorts() {
+            return true;
+        }
+    };
+
+    public JVMGraphRuntime runtime = new JVMGraphRuntime(debugProps);
 
     static {
         System.setOut(new PrintStream(new FileOutputStream(FileDescriptor.out)));

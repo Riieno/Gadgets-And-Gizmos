@@ -84,6 +84,7 @@ public class JVMGraphCompiler {
         Object2IntOpenHashMap<String> nodeToIndex = new Object2IntOpenHashMap<>();
         SnapNode[] snapNodes = new SnapNode[nodes.size()];
         int calculatorTracker = 0;
+        int nodeEdges=0;
         for(int nodeI = 0; nodeI < nodes.size(); nodeI++) {
             AdvancedGraphDocument.Node node = nodes.get(nodeI);
             JVMNodeType nodeType = instance.entries.get(node.type());
@@ -99,6 +100,7 @@ public class JVMGraphCompiler {
                 node.data(),
                 input, outputs
             );
+            nodeEdges+=snapNode.inputs.length;
 
             snapNodes[nodeI] = snapNode;
 
@@ -150,7 +152,22 @@ public class JVMGraphCompiler {
             }
             nodeA.outputEdge(snapEdge.portA, snapEdge);
             nodeB.inputs[snapEdge.portB] = snapEdge;
+            nodeEdges--;
             snapEdges[i] = snapEdge;
+        }
+        if(nodeEdges>0 && debugProps!=null && debugProps.checkForMissingInputPorts()){
+            for(SnapNode node : snapNodes) {
+                SnapEdge[] inputs = node.inputs;
+                for(int i = 0; i < inputs.length; i++) {
+                    if(inputs[i] == null) {
+                        throw new IllegalArgumentException(
+                            "Missing input port '%s' for '%s' with type '%s'"
+                                .formatted(node.portIndexerInverse[i],node.id,node.typeStr)
+                        );
+                    }
+                }
+            }
+            int i=0;
         }
 
 

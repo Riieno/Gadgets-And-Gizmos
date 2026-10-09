@@ -130,4 +130,8 @@ public class DebugProps {
         } catch(IOException e) {
         }
     }
+
+    public boolean checkForMissingInputPorts() {
+        return false;
+    }
 }
