@@ -15,6 +15,7 @@ import com.rieno.gadgetsandgizmos.lib.scm.ScmControlModeRegistry;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphNodeDefinition;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphNodeRegistry;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphApi;
+import com.rieno.gadgetsandgizmos.lib.graph.math.MathGraphNodes;
 import net.minecraft.nbt.CompoundTag;
 
 import java.util.LinkedHashMap;
@@ -65,6 +66,23 @@ public final class AdvancedGraphCatalog {
     }
 
     private static final GraphNodeRegistry REGISTRY = GraphApi.nodes();
+    private static final Map<String, MathGraphNodes.Node> MATH_NODES = mathNodes();
+
+    // Let this addon own the new node ids while retaining saved rotation ids
+    private static Map<String, MathGraphNodes.Node> mathNodes(){
+        Map<String, MathGraphNodes.Node> nodes = new LinkedHashMap<>();
+        for(MathGraphNodes.Node node : MathGraphNodes.nodes("createthrusters")) nodes.put(node.definition().id(), node);
+        for(String id : List.of("quaternion_to_euler", "quaternion_to_tait_bryan", "euler_to_quaternion",
+                "tait_bryan_to_quaternion", "euler_to_tait_bryan", "tait_bryan_to_euler")){
+            nodes.put(id, MathGraphNodes.rotationNode(id));
+        }
+        return Map.copyOf(nodes);
+    }
+
+    public static MathGraphNodes.Node mathNode(String id){
+        return MATH_NODES.get(id);
+    }
+
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -187,6 +205,10 @@ public final class AdvancedGraphCatalog {
                 Map.entry("plant_gain", "number"),
                 Map.entry("output_limit", "number")),
                 Map.of("value", "number", "disturbance", "number"), true);
+        for(MathGraphNodes.Node math : MATH_NODES.values()){
+            REGISTRY.register(math.definition());
+            GraphApi.runtimes().register(math.definition().id(), math.executor());
+        }
         register("vector_multiply", "math", Map.of("a", "map", "b", "map"), Map.of("value", "map"), false);
         register("vector_subtract", "math", Map.of("a", "map", "b", "map"), Map.of("value", "map"), false);
         register("vector_add", "math", Map.of("a", "map", "b", "map"), Map.of("value", "map"), false);
@@ -194,12 +216,6 @@ public final class AdvancedGraphCatalog {
         register("vector_magnitude", "math", Map.of("value", "map"), Map.of("value", "number"), false);
         register("vector_difference", "math", Map.of("a", "map", "b", "map"), Map.of("value", "map"), false);
         register("vector_distance", "math", Map.of("a", "map", "b", "map"), Map.of("value", "number"), false);
-        register("quaternion_to_euler", "math", Map.of("quaternion", "map"), Map.of("euler", "map"), false);
-        register("quaternion_to_tait_bryan", "math", Map.of("quaternion", "map"), Map.of("tait_bryan", "map"), false);
-        register("euler_to_quaternion", "math", Map.of("euler", "map"), Map.of("quaternion", "map"), false);
-        register("tait_bryan_to_quaternion", "math", Map.of("tait_bryan", "map"), Map.of("quaternion", "map"), false);
-        register("euler_to_tait_bryan", "math", Map.of("euler", "map"), Map.of("tait_bryan", "map"), false);
-        register("tait_bryan_to_euler", "math", Map.of("tait_bryan", "map"), Map.of("euler", "map"), false);
         register("random", "math", Map.of(), Map.of("value", "number"), false);
         register("random_int", "math", Map.of("max", "number"), Map.of("value", "number"), false);
         register("random_float_in_range", "math", Map.of("min", "number", "max", "number"), Map.of("value", "number"), false);
@@ -1092,6 +1108,8 @@ public final class AdvancedGraphCatalog {
 
     // Get the advanced graph catalog display name
     public static String displayName(String id) {
+        MathGraphNodes.Node math = mathNode(id);
+        if(math != null) return math.title();
         return switch (id) {
             // ------------------------------------EVENTS / INPUTS------------------------------------
             case "event_tick" -> "On Update";

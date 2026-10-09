@@ -487,9 +487,10 @@ public final class ShipControlModuleRuntime {
     // Current resumed initialization ship name
     private String resumedInitializationShipName = "";
     private static final int RESUME_POSE_HOLD_TICKS = 2;
-    private static final int RESUME_POSE_HOLD_TIMEOUT_TICKS = 20 * 15;
+    private static final int RESUME_POSE_HOLD_TIMEOUT_TICKS = 20 * 60 * 5;
     private static final long MAIN_CARRIAGE_MAP_SAFETY_REFRESH_TICKS = 200L;
-    private static final int MAX_RESUME_POSE_HOLD_LOAD_ATTEMPTS = 200;
+    private static final int MAX_RESUME_POSE_HOLD_LOAD_ATTEMPTS =
+            RESUME_POSE_HOLD_TIMEOUT_TICKS;
     // Tracks whether initialization V2 is set
     private boolean initializationV2;
     // Tracks whether V2 samples finalized is set
@@ -2456,6 +2457,9 @@ public final class ShipControlModuleRuntime {
 
     // Update the resume pose hold
     private boolean tickResumePoseHold() {
+        if (resumePoseHoldTimeoutTicks > 0) {
+            resumePoseHoldTimeoutTicks--;
+        }
         if (freezeHandles.isEmpty() && nestedFreezeHandles.isEmpty()) {
             ServerSubLevel root = rootSubLevel != null
                     ? rootSubLevel : containingServerSubLevel();
@@ -2471,22 +2475,23 @@ public final class ShipControlModuleRuntime {
                 return retryResumePoseHold();
             }
         }
-        if (resumePoseHoldTicks > 0) {
-            resumePoseHoldTicks--;
-            status = "Holding ship pose while world physics loads";
+        ServerSubLevel root = rootSubLevel != null
+                ? rootSubLevel : containingServerSubLevel();
+        boolean chunksLoaded = root != null && SableSubLevelResidency.areFullyLoaded(
+                initShipSubLevels(root));
+        boolean playerNearby = root != null && playerWithinSimulationDistance(root);
+        if (!chunksLoaded && !playerNearby && resumePoseHoldTimeoutTicks > 0) {
+            status = "Holding ship pose while its chunks load";
             return false;
         }
-        if (resumePoseHoldTimeoutTicks > 0) {
-            resumePoseHoldTimeoutTicks--;
-        }
-        if (resumePoseHoldTimeoutTicks <= 0 && !resumePoseHoldReleaseRequested) {
-            resumePoseHoldReleaseRequested = true;
+        if (!chunksLoaded && !playerNearby) {
             controller.forceShippingScheduleResumeAfterLoad();
             LOGGER.log(System.Logger.Level.WARNING,
-                    "Force-releasing a ship pose hold after schedule control did not resume in time");
+                    "Force-releasing a ship pose hold after its chunks did not load in time");
         }
-        if (!resumePoseHoldReleaseRequested) {
-            status = "Holding ship pose while schedule control resumes";
+        if (resumePoseHoldTicks > 0 && chunksLoaded) {
+            resumePoseHoldTicks--;
+            status = "Holding ship pose while world physics settles";
             return false;
         }
         releaseFreezeHandles();
@@ -2497,11 +2502,32 @@ public final class ShipControlModuleRuntime {
         return true;
     }
 
+    // Check whether a player is near enough for ordinary server simulation to take over.
+    private boolean playerWithinSimulationDistance(ServerSubLevel root) {
+        Level level = controller.getLevel();
+        if (level == null || level.getServer() == null) {
+            return false;
+        }
+        double range = Math.max(1, level.getServer().getPlayerList().getSimulationDistance())
+                * 16.0D;
+        Vec3 controllerWorld = worldPosition(root.logicalPose(),
+                controller.getBlockPos().getCenter());
+        double rangeSquared = range * range;
+        for (ServerPlayer player : level.getServer().getPlayerList().getPlayers()) {
+            if (player.level().dimension().equals(level.dimension())
+                    && player.distanceToSqr(controllerWorld) <= rangeSquared) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Retry resuming the pose hold
     private boolean retryResumePoseHold() {
         resumePoseHoldLoadAttempts++;
         status = "Waiting for ship physics before resuming control";
-        if (resumePoseHoldLoadAttempts >= MAX_RESUME_POSE_HOLD_LOAD_ATTEMPTS) {
+        if (resumePoseHoldLoadAttempts >= MAX_RESUME_POSE_HOLD_LOAD_ATTEMPTS
+                || resumePoseHoldTimeoutTicks <= 0) {
             releaseFreezeHandles();
             resumePoseHoldAfterLoad = false;
             resumePoseHoldTicks = 0;

@@ -11857,7 +11857,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             label = node.data().getCompound("OutputLabels").getString(port);
         }
         if (label.isBlank()) {
-            label = humanPort(port);
+            label = AdvancedGraphCatalog.mathNode(node.type()) == null ? humanPort(port) : switch(port){
+                case "alpha" -> "Alpha (Z)";
+                case "beta" -> "Beta (X)";
+                case "gamma" -> "Gamma (Z)";
+                case "roll" -> "Roll (X)";
+                case "pitch" -> "Pitch (Y)";
+                case "yaw" -> "Yaw (Z)";
+                default -> humanPort(port);
+            };
         }
         if (AdvancedGraphPortState.isPersistent(node, port, true)) {
             label += " [P]";

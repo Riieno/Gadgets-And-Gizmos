@@ -440,6 +440,14 @@ public final class AdvancedGraphNodeFactory {
             points.add(end);
             data.put("Points", points);
         }
+        var math = AdvancedGraphCatalog.mathNode(type);
+        if(math != null){
+            CompoundTag defaults = data.getCompound("Defaults");
+            math.defaults().forEach((port, val) -> {
+                if(math.definition().inputs().containsKey(port)) defaults.put(port, GraphRuntime.fromLibraryValue(val).toTag());
+            });
+            data.put("Defaults", defaults);
+        }
         return data;
     }
 

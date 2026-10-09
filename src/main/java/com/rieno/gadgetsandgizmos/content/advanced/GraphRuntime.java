@@ -19,7 +19,6 @@ import com.rieno.gadgetsandgizmos.lib.control.math.PidControllerMath;
 import com.rieno.gadgetsandgizmos.lib.control.math.AdrcControllerMath;
 import com.rieno.gadgetsandgizmos.lib.control.math.AdrcControllerNthOrderMath;
 import com.rieno.gadgetsandgizmos.lib.control.math.LqrControllerMath;
-import com.rieno.gadgetsandgizmos.lib.control.math.RotationMath;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphEventScheduler;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphApi;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphExecutionContext;
@@ -2203,18 +2202,9 @@ public final class GraphRuntime {
             case "vector_distance" -> AdvancedGraphDocument.Value.number(
                     AdvancedGraphMathValues.vector(frame.value(node, "a", operations)).distance(
                             AdvancedGraphMathValues.vector(frame.value(node, "b", operations))));
-            case "quaternion_to_euler" -> AdvancedGraphMathValues.vector(RotationMath.quaternionToEulerZxz(
-                    AdvancedGraphMathValues.quaternion(frame.value(node, "quaternion", operations))));
-            case "quaternion_to_tait_bryan" -> AdvancedGraphMathValues.vector(RotationMath.quaternionToTaitBryanXyz(
-                    AdvancedGraphMathValues.quaternion(frame.value(node, "quaternion", operations))));
-            case "euler_to_quaternion" -> AdvancedGraphMathValues.quaternion(RotationMath.eulerZxzToQuaternion(
-                    AdvancedGraphMathValues.vector(frame.value(node, "euler", operations))));
-            case "tait_bryan_to_quaternion" -> AdvancedGraphMathValues.quaternion(RotationMath.taitBryanXyzToQuaternion(
-                    AdvancedGraphMathValues.vector(frame.value(node, "tait_bryan", operations))));
-            case "euler_to_tait_bryan" -> AdvancedGraphMathValues.vector(RotationMath.eulerZxzToTaitBryanXyz(
-                    AdvancedGraphMathValues.vector(frame.value(node, "euler", operations))));
-            case "tait_bryan_to_euler" -> AdvancedGraphMathValues.vector(RotationMath.taitBryanXyzToEulerZxz(
-                    AdvancedGraphMathValues.vector(frame.value(node, "tait_bryan", operations))));
+            case "quaternion_to_euler", "quaternion_to_tait_bryan", "euler_to_quaternion",
+                    "tait_bryan_to_quaternion", "euler_to_tait_bryan", "tait_bryan_to_euler" ->
+                    executeLibraryNode(frame, node, port, operations);
             case "random", "random_int", "random_float_in_range", "random_int_in_range" -> {
                 long seed = controller.getBlockPos().asLong() ^ node.id().hashCode()
                         ^ (controller.getLevel() == null ? 0 : controller.getLevel().getGameTime());
@@ -2258,6 +2248,7 @@ public final class GraphRuntime {
         GraphExecutionContext ctx = new GraphExecutionContext() {
             // Update the graph
             @Override public long tick() { return gameTime(); }
+            @Override public boolean executionTriggered(){ return requestedPort == null; }
             // Get the state
             @Override public GraphValue state(String key) {
                 return toLibraryValue(state.get(statePrefix + key));
