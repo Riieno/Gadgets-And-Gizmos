@@ -1,6 +1,9 @@
 package com.rieno.gadgetsandgizmos.graph.compile.node_def.generic.util;
 
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Lombok;
+import lombok.RequiredArgsConstructor;
 import net.neoforged.neoforge.common.util.Lazy;
 import org.objectweb.asm.tree.AbstractInsnNode;
 
@@ -28,19 +31,26 @@ public class UsageStatistics {
     //public boolean usedInJump;
     public boolean other;
     public final AbstractInsnNode source;
-    public static final Lazy<Getter[]> myFields = Lazy.of(() -> {
+    public static final Lazy<FieldAccessors[]> myFields = Lazy.of(() -> {
         try {
             Field[] fields = UsageStatistics.class.getDeclaredFields();
             MethodHandles.Lookup lookup = MethodHandles.lookup();
-            Getter[] getters = new Getter[fields.length];
-            int amountOf=0;
+            FieldAccessors[] fieldAccessors = new FieldAccessors[fields.length];
+            int amountOf = 0;
             for(int i = 0; i < fields.length; i++) {
                 Field field = fields[i];
-                if(field.getType() != boolean.class || !Modifier.isPublic(field.getModifiers()) || Modifier.isStatic(field.getModifiers())) continue;
+                if(field.getType() != boolean.class || !Modifier.isPublic(field.getModifiers()) || Modifier.isStatic(field.getModifiers()))
+                    continue;
                 VarHandle varHandle = lookup.unreflectVarHandle(field);
-                getters[amountOf++] = (it) -> (boolean) varHandle.get(it);
+                fieldAccessors[amountOf++] = new FieldAccessors() {
+                    @Override
+                    public boolean get(UsageStatistics statistics) {return (boolean) varHandle.get(statistics);}
+
+                    @Override
+                    public void set(UsageStatistics statistics, boolean value) {varHandle.set(statistics, value);}
+                };
             }
-            return Arrays.copyOf(getters,amountOf);
+            return Arrays.copyOf(fieldAccessors, amountOf);
         } catch(IllegalAccessException e) {
             throw Lombok.sneakyThrow(e);
         }
@@ -54,12 +64,20 @@ public class UsageStatistics {
     public static final int noUsage = -1;
 
     public int asMask() {
-        Getter[] getters = myFields.get();
+        FieldAccessors[] fieldAccessors = myFields.get();
         int mask = 0;
-        for(int i = 0; i < getters.length; i++) {
-            if(getters[i].get(this)) mask |= (1 << i);
+        for(int i = 0; i < fieldAccessors.length; i++) {
+            if(fieldAccessors[i].get(this)) mask |= (1 << i);
         }
         return mask;
+    }
+
+    public void setMask(int mask) {
+        FieldAccessors[] fieldAccessors = myFields.get();
+        for(int i = 0; i < fieldAccessors.length; i++) {
+            fieldAccessors[i].set(this, ((mask >> i) & 1) == 1);
+        }
+
     }
 
     @Override
@@ -85,7 +103,8 @@ public class UsageStatistics {
         }
         return mask;
     }
-    public boolean onlyAllowed(int allowed){
+
+    public boolean onlyAllowed(int allowed) {
         return asMaskExcept(allowed) == 0;
     }
 
@@ -94,29 +113,40 @@ public class UsageStatistics {
         return mask & (~ignored);
     }
 
-    public boolean onlyAllowedAndIgnore(int allowed,int ignored){
+    public boolean onlyAllowedAndIgnore(int allowed, int ignored) {
         return (asMaskExcept(allowed) | ignored) == ignored;
     }
-    public boolean equals(int otherMask){
+
+    public boolean equals(int otherMask) {
         int mask = asMask();
         return mask == otherMask;
     }
+
     public boolean onlyFields() {
         return onlyAllowed(onlyFieldsMask);
     }
+
     public boolean onlyReturn() {
         return onlyAllowed(onlyReturnMask);
     }
+
     public boolean onlyUnwrapperAndReturn() {return onlyAllowed(onlyUnwrapperAndReturnMask);}
+
     public boolean noOne() {
         return onlyAllowed(noUsage);
     }
 
     public boolean isEmpty() {
-        return asMask()==0;
+        return asMask() == 0;
     }
 
-    public interface Getter {
+    public void setOr(UsageStatistics other) {
+        setMask(asMask() | other.asMask());
+    }
+
+    public interface FieldAccessors {
         boolean get(UsageStatistics statistics);
+
+        void set(UsageStatistics statistics, boolean value);
     }
 }

@@ -16,9 +16,9 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
-class AbstractJVMGraphCompilerTest {
+public class AbstractJVMGraphCompilerTest {
 
-    AdvancedGraphDocument doc = new AdvancedGraphDocument();
+    protected AdvancedGraphDocument doc = new AdvancedGraphDocument();
 
     public static final File debugDir = new File("build/test_out");
 
@@ -58,7 +58,7 @@ class AbstractJVMGraphCompilerTest {
 
     static {
         System.setOut(new PrintStream(new FileOutputStream(FileDescriptor.out)));
-        TestTypeRegister.register();
+        //TestTypeRegister.register();
     }
 
 
@@ -158,6 +158,21 @@ class AbstractJVMGraphCompilerTest {
 
     public String uuid() {
         return UUID.randomUUID().toString();
+    }
+
+
+
+    public void simpleTest(double a, double b, String type, double c, String subName) {
+        TestTypeRegister.register();
+        int revision = doc.revision();
+        doc = new AdvancedGraphDocument();
+        doc.setRevision(revision + 1);
+        setClassSubName(subName);
+        var one = value(DoubleTag.valueOf(a));
+        var two = value(DoubleTag.valueOf(b));
+
+        var plus = binary(type, one, "value", two, "value");
+        assertEquals(AdvancedGraphDocument.Value.number(c), output(plus, "c"));
     }
 
 }

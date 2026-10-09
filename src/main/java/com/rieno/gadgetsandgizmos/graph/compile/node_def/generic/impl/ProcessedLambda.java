@@ -30,8 +30,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static com.rieno.gadgetsandgizmos.graph.compile.node_def.generic.record.InlinedGenericRecordFunctionNode.propsInCanonicalCtor;
-
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class ProcessedLambda {
     public final AbstractInsnNode[] insnArray;
@@ -167,12 +165,13 @@ public class ProcessedLambda {
         var rawOutputValue = IOValue.make(
             null,
             returnType,
-            options.flatOutputRecord()
-        );
+            options.flatOutputPredicate().test(CompileUtil.type2class(returnType))
+        ).withUsage(new UsageStatistics(null));
+
         var outputValues = new Object2ObjectOpenCustomHashMap<AbstractInsnNode, IOValue>(IndexInsnHashStrategy.INSTANCE);
         BoxingTool.Entry boxingEntry = BoxingTool.boxingEntry(rawOutputValue.type());
-        boolean doUnwrapOutput = options.flatOutputRecord();
-        if(boxingEntry != null && options.flatOutputRecord()) {
+        boolean doUnwrapOutput = rawOutputValue.needToBeFlat();
+        if(boxingEntry != null && rawOutputValue.needToBeFlat()) {
             IntArrayList output = new IntArrayList();
             Handle boxingMethod = boxingEntry.boxingMethod();
             Int2ObjectMap<UsageStatistics> usageStatistics = usageAnalyzerResult.usageStatistics();
@@ -185,7 +184,6 @@ public class ProcessedLambda {
                 }
                 int insnIdx = entry.getIntKey();
                 if(
-                    originalInsnArray[insnIdx] instanceof MethodInsnNode method && !areEqual(method, boxingMethod) ||
                     !topStack(frames[insnIdx + 1], 1).getType().equals(boxingEntry.unboxed())
                 ) {
                     doUnwrapOutput = false;
@@ -217,16 +215,20 @@ public class ProcessedLambda {
                                 ignoreInsn.add(entry.insn());
                             }
                         }
-                        if(max >= 0)
+                        if(max >= 0) {
                             replacedNodes.put(max, replacement);
+
+                        }
                     }
                 }
             }
+            rawOutputValue.variableState(IOValueVariableState.forBox(doUnwrapOutput,rawOutputValue.needToBeFlat()));
         }
+
         rawOutputValue.couldRemoveBoxing(doUnwrapOutput);
         for(int i = 0; i < originalInsnArray.length; i++) {
             AbstractInsnNode node = originalInsnArray[i];
-            {
+            handleReplaced:{
                 List<AbstractInsnNode> nodes = replacedNodes.get(i);
                 if(nodes != null) {
                     transformedNodes.addAll(nodes);
@@ -305,7 +307,7 @@ public class ProcessedLambda {
                     }));
                     continue;
                 }
-                if(node instanceof MethodInsnNode || node instanceof FieldInsnNode) {
+                if(node instanceof MethodInsnNode && node.getOpcode()!=Opcodes.INVOKESTATIC || node instanceof FieldInsnNode && node.getOpcode()>Opcodes.PUTSTATIC) {
 
                     shortcut2:
                     {
@@ -338,7 +340,7 @@ public class ProcessedLambda {
                     if(!outputValue.variableState().keep()) continue;
                     if(outputValue.isRecord()){
                         recordDestructor(transformedNodes, outputValue);
-                    }else{
+                    }else if(outputValue.needToBeFlat() && outputValue.usage().onlyUnwrapperAndReturn()){
                         boxDestructor(transformedNodes, outputValue,outputPortRef);
                     }
 
@@ -489,6 +491,17 @@ public class ProcessedLambda {
         });
     }
 
+    @Nullable
+    public static List<String> propsInCanonicalCtor(AbstractInsnNode abstractInsnNode, RecordInfo recordInfo) {
+        if(!(abstractInsnNode instanceof MethodInsnNode methodInsnNode)) return null;
+        if(!methodInsnNode.owner.equals(recordInfo.type.getInternalName())) {
+            return null;
+        }
+        String descriptor = Type.getConstructorDescriptor(recordInfo.canonicalCtor);
+        if(!methodInsnNode.desc.equals(descriptor)) return null;
+        return new ObjectArrayList<>(recordInfo.fieldMap.keySet());
+    }
+
     public static class OutputPortRef {
         public boolean used;
         String name;
@@ -502,6 +515,7 @@ public class ProcessedLambda {
     ) {
         UsageStatistics usageStatistics = UsageInterpreter.usageStat(flowValue);
         IOValue outputValue = outputValues.computeIfAbsent(usageStatistics.source, it -> rawOutputValue.withValue(flowValue));
+        rawOutputValue.usage().setOr(outputValue.usage());
         return outputValue;
     }
 
@@ -549,7 +563,7 @@ public class ProcessedLambda {
         void compileOutputPortCalculations(GeneratorHelper mv, SnapNode snapNode, Inputs inputs, Outputs outputs, CompoundTag data, CompileCtx context);
     }
 
-    private static @NotNull ClassAndMethod findMethod(int callerDepth) {
+    private static @NotNull ProcessedLambda.FoundMethod findMethod(int callerDepth) {
         Handle handle = PtrExtractor.tryExtractMethod(1 + callerDepth);
         if(handle == null) {
             throw new IllegalArgumentException("Cannot find lambda body");
@@ -557,16 +571,16 @@ public class ProcessedLambda {
         return toClassAndMethod(handle);
     }
 
-    private static @NotNull ClassAndMethod toClassAndMethod(Handle handle) {
+    private static @NotNull ProcessedLambda.FoundMethod toClassAndMethod(Handle handle) {
         ClassNode node = toClassNode(handle.getOwner());
         int foundIdx = findMethod(node, handle);
         if(foundIdx < 0) {
             throw new IllegalArgumentException("Cannot find lambda body in bytecode");
         }
-        return new ClassAndMethod(node, node.methods.get(foundIdx), foundIdx);
+        return new FoundMethod(node, node.methods.get(foundIdx), foundIdx, handle);
     }
 
-    record ClassAndMethod(ClassNode classNode, MethodNode methodNode, int index) {}
+    record FoundMethod(ClassNode classNode, MethodNode methodNode, int index, Handle handle) {}
 
     private static int findMethod(ClassNode node, Handle handle) {
 

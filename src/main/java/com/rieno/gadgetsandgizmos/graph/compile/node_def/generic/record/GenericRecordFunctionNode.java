@@ -28,7 +28,7 @@ import java.util.List;
 
 public class GenericRecordFunctionNode extends JVMNodeType {
     private final MyBody inlinedBody;
-    private static final Cache<Integer, InlinedGenericRecordFunctionNode.MyBody<?, ?>> inlinedBodies = CacheBuilder.
+    private static final Cache<Integer, MyBody<?, ?>> inlinedBodies = CacheBuilder.
         newBuilder()
         .weakValues()
         .build();

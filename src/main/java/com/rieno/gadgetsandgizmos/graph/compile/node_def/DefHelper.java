@@ -3,6 +3,7 @@ package com.rieno.gadgetsandgizmos.graph.compile.node_def;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.JVMNodeType;
 import com.rieno.gadgetsandgizmos.graph.compile.node_def.generic.GenericLambdaNode;
 import com.rieno.gadgetsandgizmos.graph.compile.node_def.generic.impl.Options;
+import com.rieno.gadgetsandgizmos.graph.compile.node_def.generic.impl.ShouldFlatOutputPredicate;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.function.BiFunction;
@@ -53,7 +54,7 @@ public interface DefHelper {
         return Options
             .builder()
             .outputPortDefName(outputPort)
-            .flatOutputRecord(false)
+            .flatOutputPredicate(ShouldFlatOutputPredicate.BOXED)
             .build();
     }
 }

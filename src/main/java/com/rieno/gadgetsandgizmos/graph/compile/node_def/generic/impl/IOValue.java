@@ -21,6 +21,7 @@ public final class IOValue {
     private final Class<?> clazz;
     private final Type type;
     private final FlowValue flowValue;
+    @With
     private final UsageStatistics usage;
 
     @Setter

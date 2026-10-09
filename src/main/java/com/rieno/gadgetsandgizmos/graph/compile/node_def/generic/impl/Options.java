@@ -7,16 +7,18 @@ import lombok.NonNull;
 public record Options(
     @NonNull
     ShouldFlatInputPredicate flatInputPredicate,
-    boolean flatOutputRecord,
+    ShouldFlatOutputPredicate flatOutputPredicate,
     boolean isPure,
     @NonNull
-    String outputPortDefName
+    String outputPortDefName,
+    boolean useReflectionIfPrivate
 ) {
     public static final Options defaultOptions = new Options(
         ShouldFlatInputPredicate.RECORD.and((type, argumentTypes, argIndex) -> argumentTypes.length == 1).or(ShouldFlatInputPredicate.PRIMITIVE_WRAPPERS),
-        true,
+        ShouldFlatOutputPredicate.RECORD_OR_BOXED,
         false,
-        "value"
+        "value",
+        false
     );
 
     public static OptionsBuilder builder() {
