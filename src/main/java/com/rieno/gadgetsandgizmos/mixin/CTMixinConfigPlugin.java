@@ -80,6 +80,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
     // Check if this should apply mixin
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
+        if(mixinClassName.contains(".FlightControl")) return isModLoadedDuringMixinSelection("create_flight_control");
         // ---------------------------------------------------DIRECT MOD GATES---------------------------------------------------
         if ("com.rieno.gadgetsandgizmos.mixin.WaystonesTeleportMomentumMixin".equals(mixinClassName)) {
             return isModLoadedDuringMixinSelection("waystones");

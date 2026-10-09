@@ -9,6 +9,9 @@ package com.rieno.gadgetsandgizmos.registry;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.CreateThrusters;
+import com.rieno.gadgetsandgizmos.lib.create.encasing.CustomEncasedShaftBlock;
+import com.rieno.gadgetsandgizmos.lib.create.encasing.CustomEncasedCogwheelBlock;
+import com.rieno.gadgetsandgizmos.content.CameraBlock;
 import com.rieno.gadgetsandgizmos.content.AlternatorBlock;
 import com.rieno.gadgetsandgizmos.content.AdvancedNavigationTableBlock;
 import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlock;
@@ -83,6 +86,10 @@ public final class CTBlocks {
 
     public static final DeferredRegister.Blocks REGISTRAR = DeferredRegister.createBlocks(CreateThrusters.MOD_ID);
 
+    public static final DeferredBlock<CameraBlock> CAMERA = register("camera",
+            () -> new CameraBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
+                    .strength(2.0F).sound(SoundType.METAL).noOcclusion().dynamicShape()));
+
     @Nullable
     public static final DeferredBlock<ThrusterBlock> THRUSTER = register("thruster",
             () -> new ThrusterBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(3.0f).requiresCorrectToolForDrops().noOcclusion()));
@@ -115,6 +122,21 @@ public final class CTBlocks {
     public static final DeferredBlock<CasingBlock> BLACKSTONE_CASING = register("blackstone_casing",
             () -> new CasingBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.ANDESITE)
                     .mapColor(MapColor.COLOR_BLACK).sound(SoundType.WOOD)));
+
+    public static final DeferredBlock<CustomEncasedShaftBlock> BLACKSTONE_ENCASED_SHAFT = register("blackstone_encased_shaft",
+            () -> new CustomEncasedShaftBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.ANDESITE)
+                    .mapColor(MapColor.COLOR_BLACK).noOcclusion(), BLACKSTONE_CASING::get,
+                    () -> CTBlockEntities.BLACKSTONE_ENCASED_SHAFT.get()));
+
+    public static final DeferredBlock<CustomEncasedCogwheelBlock> BLACKSTONE_ENCASED_COGWHEEL = register("blackstone_encased_cogwheel",
+            () -> new CustomEncasedCogwheelBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.ANDESITE)
+                    .mapColor(MapColor.COLOR_BLACK).noOcclusion(), false, BLACKSTONE_CASING::get,
+                    () -> CTBlockEntities.BLACKSTONE_ENCASED_COGWHEEL.get()));
+
+    public static final DeferredBlock<CustomEncasedCogwheelBlock> BLACKSTONE_ENCASED_LARGE_COGWHEEL = register("blackstone_encased_large_cogwheel",
+            () -> new CustomEncasedCogwheelBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.ANDESITE)
+                    .mapColor(MapColor.COLOR_BLACK).noOcclusion(), true, BLACKSTONE_CASING::get,
+                    () -> CTBlockEntities.BLACKSTONE_ENCASED_LARGE_COGWHEEL.get()));
 
     @Nullable
     public static final DeferredBlock<FuelOxidizerBlock> FUEL_OXIDIZER = register("fuel_oxidizer",

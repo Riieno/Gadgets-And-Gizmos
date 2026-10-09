@@ -8,13 +8,16 @@ package com.rieno.gadgetsandgizmos.content.advanced;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.graph.GraphTextInputs;
 import com.rieno.gadgetsandgizmos.content.ShipTargetPoint;
+import com.rieno.gadgetsandgizmos.lib.physics.EntityTelemetryApi;
 import com.rieno.gadgetsandgizmos.lib.display.ShipInformationDisplayModes;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmFlightBehavior;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlModeRegistry;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphNodeDefinition;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphNodeRegistry;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphApi;
+import com.rieno.gadgetsandgizmos.lib.graph.math.MathGraphNodes;
 import net.minecraft.nbt.CompoundTag;
 
 import java.util.LinkedHashMap;
@@ -77,6 +80,23 @@ public final class AdvancedGraphCatalog {
     }
 
     private static final GraphNodeRegistry REGISTRY = GraphApi.nodes();
+    private static final Map<String, MathGraphNodes.Node> MATH_NODES = mathNodes();
+
+    // Let this addon own the new node ids while retaining saved rotation ids
+    private static Map<String, MathGraphNodes.Node> mathNodes(){
+        Map<String, MathGraphNodes.Node> nodes = new LinkedHashMap<>();
+        for(MathGraphNodes.Node node : MathGraphNodes.nodes("createthrusters")) nodes.put(node.definition().id(), node);
+        for(String id : List.of("quaternion_to_euler", "quaternion_to_tait_bryan", "euler_to_quaternion",
+                "tait_bryan_to_quaternion", "euler_to_tait_bryan", "tait_bryan_to_euler")){
+            nodes.put(id, MathGraphNodes.rotationNode(id));
+        }
+        return Map.copyOf(nodes);
+    }
+
+    public static MathGraphNodes.Node mathNode(String id){
+        return MATH_NODES.get(id);
+    }
+
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -89,6 +109,14 @@ public final class AdvancedGraphCatalog {
     // Initialize the shared state
     static {
         register("event_tick", "events", Map.of(), Map.of("exec", "exec"), false);
+        register("camera", "controller", Map.of(
+                "target", "target", "max_ray_length", "number", "rays_per_second", "number",
+                "filter", "any", "filter_type", "string", "mode", "string", "orientation_mode", "string"),
+                Map.of("ray_cast", "list", "hit", "boolean", "hit_x", "number", "hit_y", "number",
+                        "hit_z", "number", "hit_details", "map", "is_sub_level", "boolean"), true);
+        register("control_camera", "controller", Map.of("exec", "exec", "target", "target"), Map.of(), true);
+        register("acc_display_camera_source", "hud", Map.of(
+                "target", "target", "source", "target", "name", "string"), Map.of(), true);
         register("event_graph_ready", "events", Map.of(),
                 Map.of("exec", "exec", "ready", "boolean"), false);
         register("event_periodic", "events", Map.of("period", "number"), Map.of("exec", "exec"), true);
@@ -199,6 +227,10 @@ public final class AdvancedGraphCatalog {
                 Map.entry("plant_gain", "number"),
                 Map.entry("output_limit", "number")),
                 Map.of("value", "number", "disturbance", "number"), true);
+        for(MathGraphNodes.Node math : MATH_NODES.values()){
+            REGISTRY.register(math.definition());
+            GraphApi.runtimes().register(math.definition().id(), math.executor());
+        }
         register("vector_multiply", "math", Map.of("a", "map", "b", "map"), Map.of("value", "map"), false);
         register("vector_subtract", "math", Map.of("a", "map", "b", "map"), Map.of("value", "map"), false);
         register("vector_add", "math", Map.of("a", "map", "b", "map"), Map.of("value", "map"), false);
@@ -206,12 +238,6 @@ public final class AdvancedGraphCatalog {
         register("vector_magnitude", "math", Map.of("value", "map"), Map.of("value", "number"), false);
         register("vector_difference", "math", Map.of("a", "map", "b", "map"), Map.of("value", "map"), false);
         register("vector_distance", "math", Map.of("a", "map", "b", "map"), Map.of("value", "number"), false);
-        register("quaternion_to_euler", "math", Map.of("quaternion", "map"), Map.of("euler", "map"), false);
-        register("quaternion_to_tait_bryan", "math", Map.of("quaternion", "map"), Map.of("tait_bryan", "map"), false);
-        register("euler_to_quaternion", "math", Map.of("euler", "map"), Map.of("quaternion", "map"), false);
-        register("tait_bryan_to_quaternion", "math", Map.of("tait_bryan", "map"), Map.of("quaternion", "map"), false);
-        register("euler_to_tait_bryan", "math", Map.of("euler", "map"), Map.of("tait_bryan", "map"), false);
-        register("tait_bryan_to_euler", "math", Map.of("tait_bryan", "map"), Map.of("euler", "map"), false);
         register("random", "math", Map.of(), Map.of("value", "number"), false);
         register("random_int", "math", Map.of("max", "number"), Map.of("value", "number"), false);
         register("random_float_in_range", "math", Map.of("min", "number", "max", "number"), Map.of("value", "number"), false);
@@ -334,7 +360,7 @@ public final class AdvancedGraphCatalog {
                 "width", "number", "height", "number", "scale", "number",
                 "rotation", "number"), Map.of(), true);
         register("acc_display_external", "hud", Map.of(
-                "target", "target", "source", "target", "visible", "boolean", "x", "number", "y", "number",
+                "target", "target", "source", "target", "name", "string", "visible", "boolean", "x", "number", "y", "number",
                 "width", "number", "height", "number", "scale", "number",
                 "rotation", "number"), Map.of(), true);
         register("acc_display_crn", "hud", Map.of(
@@ -400,6 +426,10 @@ public final class AdvancedGraphCatalog {
         register("linker_face_output", "controller", Map.of("exec", "exec", "target", "target", "face", "direction", "value", "number"), Map.of("exec", "exec"), false);
         register("controller_tracker", "controller", Map.of(), trackingOutputs(), false);
         register("portable_tracker", "controller", Map.of(), gogglesTrackingOutputs(), false);
+        register("ship_tracker", "controller", Map.of("filter", "string", "tracking_distance", "number"),
+                Map.of("available", "boolean", "distance", "number", "coordinates", "map",
+                        "relative_angle", "map", "ship_name", "string", "sub_level", "string",
+                        "count", "number", "ships", "list"), false);
         register("reset_outputs", "controller", Map.of("exec", "exec"), Map.of("exec", "exec"), false);
         register("ship_scan_configuration", "ship_control", Map.of(
                         "exec", "exec",
@@ -811,6 +841,7 @@ public final class AdvancedGraphCatalog {
         Map<String, String> outputs = new LinkedHashMap<>(trackingOutputs());
         outputs.put("player_facing", "map");
         outputs.put("looking_at", "map");
+        outputs.putAll(EntityTelemetryApi.ports());
         return Map.copyOf(outputs);
     }
 
@@ -1138,6 +1169,12 @@ public final class AdvancedGraphCatalog {
         Definition definition = get(node.type());
         CompoundTag dynamicInputs = node.data().getCompound("DynamicInputs");
         Map<String, String> baseInputs = definition == null ? Map.of() : definition.inputs();
+        if("camera".equals(node.type()) && "Manual".equalsIgnoreCase(
+                node.data().getCompound("Defaults").getCompound("mode").getCompound("Payload").getString("Value"))){
+            baseInputs = new LinkedHashMap<>(baseInputs);
+            baseInputs.put("pan", "number");
+            baseInputs.put("tilt", "number");
+        }
         if ("switch".equals(node.type()) && switchDataMode(node)) {
             baseInputs = Map.of(
                     "selector", "number",
@@ -1187,13 +1224,15 @@ public final class AdvancedGraphCatalog {
             dynamicInputs = dynamicInputs.copy();
             dynamicInputs.remove("text");
         }
-        Map<String, String> ports = mergePorts(baseInputs, dynamicInputs);
+        Map<String, String> ports = "string_concat".equals(node.type())
+                ? GraphTextInputs.inputs(node.data())
+                : mergePorts(baseInputs, dynamicInputs);
         if (node.data().getBoolean(COLLAPSE_INPUTS_TO_MAP_TAG)
                 && ports.entrySet().stream().anyMatch(entry -> !"exec".equals(entry.getValue()))) {
             ports = new LinkedHashMap<>(ports);
             ports.put(COLLAPSED_INPUT_MAP_PORT, "map");
         }
-        return ports;
+        return com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.orderedInputs(node.type(), ports);
     }
 
     // Check if this is a CRN static text mode
@@ -1383,6 +1422,8 @@ public final class AdvancedGraphCatalog {
 
     // Get the advanced graph catalog display name
     public static String displayName(String id) {
+        MathGraphNodes.Node math = mathNode(id);
+        if(math != null) return math.title();
         return switch (id) {
             // ------------------------------------EVENTS / INPUTS------------------------------------
             case "event_tick" -> "On Update";
@@ -1500,6 +1541,9 @@ public final class AdvancedGraphCatalog {
             case "acc_display_graph" -> "ACC Display Node Graph";
             case "acc_display_plotter" -> "ACC Display Function Plotter";
             case "acc_display_external" -> "ACC Display External Source";
+            case "camera" -> "Camera";
+            case "control_camera" -> "Control Camera";
+            case "acc_display_camera_source" -> "ACC Display Camera Source";
             case "acc_display_crn" -> "ACC Display Ship Information";
             case "acc_display_shipping_information" -> "ACC Display Shipping Information";
             case "acc_display_scm_information" -> "ACC Display SCM Information";
@@ -1521,6 +1565,7 @@ public final class AdvancedGraphCatalog {
             case "linker_face_output" -> "Linker Face Output";
             case "controller_tracker" -> "Controller Tracker";
             case "portable_tracker" -> "Goggles Tracker";
+            case "ship_tracker" -> "Ship Tracker";
             case "reset_outputs" -> "Reset Outputs";
             // ------------------------------------SHIP / SHIPPING------------------------------------
             case "ship_initialize" -> "Initialize Control Module";
@@ -1590,7 +1635,8 @@ public final class AdvancedGraphCatalog {
             case "request_worker_task" -> "Worker Request";
             case "cancel_worker_task" -> "Cancel Worker Task";
             case "adrc_nth_order" -> "ADRC Nth Order";
-            default -> titleCase(id);
+            default -> id.startsWith("createthrusters:flight_control_")
+                    ? titleCase(id.substring("createthrusters:flight_control_".length())) : titleCase(id);
         };
     }
 
@@ -1612,6 +1658,7 @@ public final class AdvancedGraphCatalog {
             case "hud" -> "HUD";
             case "functions" -> "Functions";
             case "ship_control" -> "Ship Control";
+            case "flight_control" -> "Flight Control";
             case "shipping_schedule" -> "Shipping Schedule";
             case "worker" -> "Worker";
             case "worker_containers" -> "Containers";
@@ -1639,7 +1686,7 @@ public final class AdvancedGraphCatalog {
             case "controller" -> 0xFF4BBCE8;
             case "hud" -> 0xFFF4D35E;
             case "functions" -> 0xFF8F73D8;
-            case "ship_control" -> 0xFF4FC3C8;
+            case "ship_control", "flight_control" -> 0xFF4FC3C8;
             case "shipping_schedule" -> 0xFFDB8C4B;
             case "worker" -> 0xFFF0C75E;
             case "worker_containers" -> 0xFFBC8A55;

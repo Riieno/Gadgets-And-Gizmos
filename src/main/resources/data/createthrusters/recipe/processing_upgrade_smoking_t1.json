@@ -9,7 +9,7 @@
   "key": {
     "M": { "item": "minecraft:campfire" },
     "B": { "item": "create:brass_sheet" },
-    "T": { "item": "createthrusters:thruster" },
+    "T": { "item": "createthrusters:blackstone_alloy" },
     "A": { "item": "create:andesite_alloy" }
   },
   "result": {

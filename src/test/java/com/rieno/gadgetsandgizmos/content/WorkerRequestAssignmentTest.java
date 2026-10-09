@@ -11,6 +11,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.resources.ResourceLocation;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.util.Collection;
 import java.util.List;
@@ -18,6 +19,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
@@ -82,6 +84,28 @@ class WorkerRequestAssignmentTest{
             assertTrue(controller.requestItems(request(pausedId)).failed());
         }
         verify(pod, never()).submit(eq(pausedId), anyList());
+    }
+
+    // Accept and save a craft request before reading the recipe manager or linked inventories
+    @Test void craftRequestQueuesLookupBeforeDiscoveringRecipes(){
+        UUID workerId = UUID.randomUUID();
+        var controller = mock(AdvancedContraptionControllerBlockEntity.class, CALLS_REAL_METHODS);
+        var pod = pod(workerId);
+        doReturn(List.of(snapshot(workerId, true, null))).when(controller).managedWorkers();
+        when(pod.submit(eq(workerId), anyList())).thenReturn(true);
+        var request = new WorkerItemRequest(null, ITEM, 12, true, "", UUID.randomUUID(), workerId);
+        try(var pods = mockStatic(WorkerPodBlockEntity.class)){
+            pods.when(() -> WorkerPodBlockEntity.linkedPods(controller)).thenReturn(List.of(pod));
+            assertFalse(controller.requestItems(request).failed());
+        }
+        ArgumentCaptor<List<WorkerWorkOrder>> submitted = ArgumentCaptor.forClass(List.class);
+        verify(pod).submit(eq(workerId), submitted.capture());
+        WorkerWorkOrder order = submitted.getValue().getFirst();
+        assertTrue(order.lookingUpRecipe());
+        assertEquals(12, order.task().requestedAmount());
+        assertEquals(request.id(), order.id());
+        assertEquals(request.destinationId(), order.destinationEndpointId());
+        assertEquals(order, WorkerWorkOrder.fromTag(order.toTag()));
     }
 
     private static WorkerPodBlockEntity pod(UUID workerId){

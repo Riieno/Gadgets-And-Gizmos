@@ -253,6 +253,8 @@ public final class CTFeatureToggles {
                 && !currentBlockValues().getOrDefault(ACC_DISPLAY_FEATURE, true)) {
             return false;
         }
+        if(key.equals("blackstone_encased_shaft") || key.equals("blackstone_encased_cogwheel")
+                || key.equals("blackstone_encased_large_cogwheel")) return isBlockEnabled("blackstone_casing");
         if (!currentBlockValues().getOrDefault(key, true)) {
             return false;
         }
@@ -417,8 +419,8 @@ public final class CTFeatureToggles {
         Path configDirectory = FMLPaths.CONFIGDIR.get();
 
         readFeatureConfig(configDirectory.resolve(COMMON_CONFIG_FILE), blocks, items, entities);
-        readFeatureConfig(configDirectory.resolve(SERVER_CONFIG_FILE), blocks, items, entities);
         readDiagnosticTabletConfig(configDirectory.resolve(COMMON_CONFIG_FILE), blocks);
+        readFeatureConfig(configDirectory.resolve(SERVER_CONFIG_FILE), blocks, items, entities);
         return new StartupFeatureValues(blocks, items, entities);
     }
 

@@ -18,6 +18,8 @@ public final class TabletAppsServerConfig{
     public static final ModConfigSpec.IntValue STORE_RANGE = BUILDER.defineInRange("digisable.storeRange", 64, 1, 256);
     public static final ModConfigSpec.IntValue LOCATE_RANGE = BUILDER.defineInRange("digisable.locateRange", 2048, 1, 30000000);
     public static final ModConfigSpec.IntValue COOLDOWN = BUILDER.defineInRange("digisable.operationCooldownTicks", 100, 20, 12000);
+    public static final ModConfigSpec.BooleanValue SCHEMATICS = BUILDER.define("digisable.allowSchematics", true);
+    public static final ModConfigSpec.IntValue BUILD_TICKS = BUILDER.defineInRange("digisable.schematicBuildTicks", 100, 20, 1200);
     public static final ModConfigSpec.IntValue TRANSFER = BUILDER.defineInRange("manifest.itemsPerSecond", 64, 1, 1024);
     public static final ModConfigSpec.IntValue REQUEST = BUILDER.defineInRange("blockmates.maximumRequestItems", 4096, 1, 1000000);
     public static final ModConfigSpec SPEC = BUILDER.build();

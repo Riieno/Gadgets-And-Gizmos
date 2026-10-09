@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.client.render.GuiTextureRegion;
 import com.rieno.gadgetsandgizmos.neoforge.network.ContraptionNetworkLinkerAreaConfigPayload;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -18,8 +19,10 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 // Name a completed SCM area and optionally bind it to one recipe sequence
 public final class ContraptionNetworkLinkerAreaScreen extends Screen{
-    private static final int PANEL_W = 292;
-    private static final int PANEL_H = 112;
+    private static final int PANEL_W = 285;
+    private static final int PANEL_H = 185;
+    private static final GuiTextureRegion PANEL = new GuiTextureRegion(ResourceLocation.fromNamespaceAndPath(
+            "createthrusters", "textures/gui/worker_area_naming.png"), 190, 123, 0, 0, 190, 123);
     private final ContraptionNetworkLinkerAreaConfigPayload area;
     private final CTScalableGui scalableGui = new CTScalableGui();
     private EditBox name;
@@ -35,21 +38,23 @@ public final class ContraptionNetworkLinkerAreaScreen extends Screen{
         int x = (width - PANEL_W) / 2;
         int y = (height - PANEL_H) / 2;
         scalableGui.update(x, y, PANEL_W, PANEL_H, width, height);
-        name = new CTScaledEditBox(scalableGui, font, x + 12, y + 29, PANEL_W - 24, 16,
+        name = new CTScaledEditBox(scalableGui, font, x + 39, y + 64, 194, 12,
                 Component.literal("Machine name"));
+        name.setBordered(false);
+        name.setTextColor(0xE9F3EA);
         name.setMaxLength(64);
         name.setValue(area.label());
         addRenderableWidget(name);
-        recipe = new CTScaledEditBox(scalableGui, font, x + 12, y + 63, PANEL_W - 24, 16,
+        recipe = new CTScaledEditBox(scalableGui, font, x + 39, y + 120, 194, 12,
                 Component.literal("Recipe sequence ID"));
+        recipe.setBordered(false);
+        recipe.setTextColor(0xE9F3EA);
         recipe.setMaxLength(128);
         recipe.setValue(area.recipeId());
         recipe.setResponder(value -> invalidRecipe = false);
         addRenderableWidget(recipe);
-        addRenderableWidget(new CTScaledButton(scalableGui, x + 12, y + PANEL_H - 21, 62, 16,
-                Component.literal("Later"), btn -> onClose()));
-        addRenderableWidget(new CTScaledButton(scalableGui, x + PANEL_W - 74, y + PANEL_H - 21,
-                62, 16, Component.literal("Save"), btn -> save()));
+        addFooterButton(x + 36, y + 166, Component.literal("Later"), this::onClose);
+        addFooterButton(x + PANEL_W - 98, y + 166, Component.literal("Save"), this::save);
         setInitialFocus(name);
     }
 
@@ -59,12 +64,12 @@ public final class ContraptionNetworkLinkerAreaScreen extends Screen{
         int y = (height - PANEL_H) / 2;
         scalableGui.push(graphics);
         try{
-            CTCreateScreenHelper.renderPanel(graphics, x, y, PANEL_W, PANEL_H);
-            graphics.drawCenteredString(font, title, x + PANEL_W / 2, y + 7,
-                    CTCreateScreenHelper.BANNER_TITLE_COLOR);
-            graphics.drawString(font, "Machine name", x + 12, y + 19,
+            PANEL.draw(graphics, x, y, PANEL_W, PANEL_H);
+            graphics.drawString(font, title, x + (PANEL_W - font.width(title)) / 2, y + 6,
+                    0x3E2D15, false);
+            graphics.drawString(font, "Machine name", x + 36, y + 42,
                     CTCreateScreenHelper.LABEL_COLOR, false);
-            graphics.drawString(font, "Recipe sequence ID (optional)", x + 12, y + 52,
+            graphics.drawString(font, "Recipe sequence ID (optional)", x + 36, y + 97,
                     invalidRecipe ? 0xFF7777 : CTCreateScreenHelper.LABEL_COLOR, false);
         }finally{
             scalableGui.pop(graphics);
@@ -77,6 +82,15 @@ public final class ContraptionNetworkLinkerAreaScreen extends Screen{
     }
 
     @Override public boolean isPauseScreen(){ return false; }
+
+    // Draw the actions inside the painted footer
+    private void addFooterButton(int x, int y, Component text, Runnable onPress){
+        addRenderableWidget(new CTScaledButton(scalableGui, x, y, 62, 14, text,
+                btn -> onPress.run(), (graphics, btn, hovered, partialTick) -> {
+            CTCreateScreenHelper.renderTextButton(graphics, font, btn.getX(), btn.getY(),
+                    btn.getWidth(), btn.getHeight(), btn.getMessage(), hovered || btn.isFocused(), btn.active, false);
+        }));
+    }
 
     private void save(){
         String selected = recipe.getValue().trim();

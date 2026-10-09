@@ -1,0 +1,2553 @@
+[
+  {
+    "path": "flight_control_computer",
+    "className": "ace.flight.block.FlightControlComputerBlockEntity",
+    "fields": [
+      {
+        "name": "",
+        "port": "enabled",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "",
+        "defaultVal": true
+      },
+      {
+        "name": "",
+        "port": "work_dry_run",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "workDryRun",
+        "defaultVal": false
+      },
+      {
+        "name": "",
+        "port": "consider_gravity",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "considerGravity",
+        "defaultVal": true
+      },
+      {
+        "name": "",
+        "port": "solver_iterations",
+        "type": "number",
+        "group": "allocation",
+        "nativeName": "solverIterations",
+        "defaultVal": 120
+      },
+      {
+        "name": "",
+        "port": "allocation_priority",
+        "type": "string",
+        "group": "allocation",
+        "nativeName": "allocationPriority",
+        "defaultVal": "balanced",
+        "options": [
+          "balanced",
+          "torque_priority"
+        ]
+      },
+      {
+        "name": "",
+        "port": "airframe_mode",
+        "type": "string",
+        "group": "fixed_wing",
+        "nativeName": "airframeMode",
+        "defaultVal": "general",
+        "options": [
+          "general",
+          "fixed_wing"
+        ]
+      },
+      {
+        "name": "",
+        "port": "fixed_wing_climb_degrees",
+        "type": "number",
+        "group": "fixed_wing",
+        "nativeName": "fixedWingClimbDegrees",
+        "defaultVal": 25
+      },
+      {
+        "name": "",
+        "port": "fixed_wing_stabilization_distance",
+        "type": "number",
+        "group": "fixed_wing",
+        "nativeName": "fixedWingStabilizationDistance",
+        "defaultVal": 100
+      },
+      {
+        "name": "",
+        "port": "fixed_wing_glide_degrees",
+        "type": "number",
+        "group": "fixed_wing",
+        "nativeName": "fixedWingGlideDegrees",
+        "defaultVal": 10
+      },
+      {
+        "name": "",
+        "port": "sonic_boom_enabled",
+        "type": "boolean",
+        "group": "sonic_boom",
+        "nativeName": "sonicBoomEnabled",
+        "defaultVal": true
+      },
+      {
+        "name": "",
+        "port": "sonic_boom_speed_threshold",
+        "type": "number",
+        "group": "sonic_boom",
+        "nativeName": "sonicBoomSpeedThreshold",
+        "defaultVal": 34.3
+      },
+      {
+        "name": "",
+        "port": "sonic_boom_volume_multiplier",
+        "type": "number",
+        "group": "sonic_boom",
+        "nativeName": "sonicBoomVolumeMultiplier",
+        "defaultVal": 1
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "afn_frequency",
+        "type": "map",
+        "group": "afn",
+        "defaultVal": {}
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "afn_broadcast_enabled",
+        "type": "boolean",
+        "group": "afn",
+        "defaultVal": false
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "afn_broadcast_pose",
+        "type": "boolean",
+        "group": "afn",
+        "defaultVal": false
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "afn_infinite_range",
+        "type": "boolean",
+        "group": "afn",
+        "defaultVal": false
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "fixed_wing_takeoff_height",
+        "type": "number",
+        "group": "fixed_wing",
+        "defaultVal": 30
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "fixed_wing_approach_height",
+        "type": "number",
+        "group": "fixed_wing",
+        "defaultVal": 30
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "mode",
+        "type": "string",
+        "group": "debug",
+        "defaultVal": "work",
+        "options": [
+          "work",
+          "debug"
+        ]
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "debug_target_index",
+        "type": "number",
+        "group": "debug",
+        "defaultVal": 0
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "debug_apply_forces",
+        "type": "boolean",
+        "group": "debug",
+        "defaultVal": false
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "run_debug_tests",
+        "type": "boolean",
+        "group": "debug",
+        "defaultVal": false
+      }
+    ],
+    "config": [],
+    "actions": [
+      {
+        "id": "master_switch",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "path": "creative_flight_control_computer",
+    "className": "ace.flight.block.CreativeFlightControlComputerBlockEntity",
+    "fields": [
+      {
+        "name": "",
+        "port": "enabled",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "",
+        "defaultVal": true
+      },
+      {
+        "name": "attitudeDefaultEnabled",
+        "port": "attitude_default_enabled",
+        "type": "boolean",
+        "group": "attitude",
+        "nativeName": "attitudeDefaultEnabled",
+        "defaultVal": false
+      },
+      {
+        "name": "attitudeMode",
+        "port": "attitude_mode",
+        "type": "number",
+        "group": "attitude",
+        "nativeName": "attitudeMode",
+        "defaultVal": 0
+      },
+      {
+        "name": "bodyForwardFacing",
+        "port": "body_forward_facing",
+        "type": "number",
+        "group": "general",
+        "nativeName": "bodyForwardFacing",
+        "defaultVal": 0,
+        "options": [
+          "north",
+          "south",
+          "east",
+          "west",
+          "up",
+          "down"
+        ]
+      },
+      {
+        "name": "attitudeKp",
+        "port": "attitude_kp",
+        "type": "number",
+        "group": "attitude",
+        "nativeName": "attitudeKp",
+        "defaultVal": 5.0
+      },
+      {
+        "name": "attitudeKd",
+        "port": "attitude_kd",
+        "type": "number",
+        "group": "attitude",
+        "nativeName": "attitudeKd",
+        "defaultVal": 1.0
+      },
+      {
+        "name": "altitudeDefaultEnabled",
+        "port": "altitude_default_enabled",
+        "type": "boolean",
+        "group": "altitude",
+        "nativeName": "altitudeDefaultEnabled",
+        "defaultVal": false
+      },
+      {
+        "name": "altitudeMode",
+        "port": "altitude_mode",
+        "type": "number",
+        "group": "altitude",
+        "nativeName": "altitudeMode",
+        "defaultVal": 0
+      },
+      {
+        "name": "altitudeHasSetAltitude",
+        "port": "has_set_altitude",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "hasSetAltitude",
+        "defaultVal": false
+      },
+      {
+        "name": "altitudeKp",
+        "port": "altitude_kp",
+        "type": "number",
+        "group": "altitude",
+        "nativeName": "altitudeKp",
+        "defaultVal": 10.0
+      },
+      {
+        "name": "altitudeKd",
+        "port": "altitude_kd",
+        "type": "number",
+        "group": "altitude",
+        "nativeName": "altitudeKd",
+        "defaultVal": 5.0
+      },
+      {
+        "name": "presetAltitude",
+        "port": "preset_altitude",
+        "type": "number",
+        "group": "general",
+        "nativeName": "presetAltitude",
+        "defaultVal": 64.0
+      },
+      {
+        "name": "velocityDefaultEnabled",
+        "port": "velocity_default_enabled",
+        "type": "boolean",
+        "group": "velocity",
+        "nativeName": "velocityDefaultEnabled",
+        "defaultVal": true
+      },
+      {
+        "name": "velocityKpX",
+        "port": "velocity_kp_x",
+        "type": "number",
+        "group": "velocity",
+        "nativeName": "velocityKpX",
+        "defaultVal": 1.0
+      },
+      {
+        "name": "velocityKpY",
+        "port": "velocity_kp_y",
+        "type": "number",
+        "group": "velocity",
+        "nativeName": "velocityKpY",
+        "defaultVal": 1.0
+      },
+      {
+        "name": "velocityKpZ",
+        "port": "velocity_kp_z",
+        "type": "number",
+        "group": "velocity",
+        "nativeName": "velocityKpZ",
+        "defaultVal": 1.0
+      },
+      {
+        "name": "velocityKdX",
+        "port": "velocity_kd_x",
+        "type": "number",
+        "group": "velocity",
+        "nativeName": "velocityKdX",
+        "defaultVal": 0.0
+      },
+      {
+        "name": "velocityKdY",
+        "port": "velocity_kd_y",
+        "type": "number",
+        "group": "velocity",
+        "nativeName": "velocityKdY",
+        "defaultVal": 0.0
+      },
+      {
+        "name": "velocityKdZ",
+        "port": "velocity_kd_z",
+        "type": "number",
+        "group": "velocity",
+        "nativeName": "velocityKdZ",
+        "defaultVal": 0.0
+      },
+      {
+        "name": "maxVxPos",
+        "port": "max_vx_pos",
+        "type": "number",
+        "group": "x_axis",
+        "nativeName": "maxVxPos",
+        "defaultVal": 5.0
+      },
+      {
+        "name": "maxVxNeg",
+        "port": "max_vx_neg",
+        "type": "number",
+        "group": "x_axis",
+        "nativeName": "maxVxNeg",
+        "defaultVal": 5.0
+      },
+      {
+        "name": "maxVyPos",
+        "port": "max_vy_pos",
+        "type": "number",
+        "group": "y_axis",
+        "nativeName": "maxVyPos",
+        "defaultVal": 5.0
+      },
+      {
+        "name": "maxVyNeg",
+        "port": "max_vy_neg",
+        "type": "number",
+        "group": "y_axis",
+        "nativeName": "maxVyNeg",
+        "defaultVal": 5.0
+      },
+      {
+        "name": "maxVzPos",
+        "port": "max_vz_pos",
+        "type": "number",
+        "group": "z_axis",
+        "nativeName": "maxVzPos",
+        "defaultVal": 5.0
+      },
+      {
+        "name": "maxVzNeg",
+        "port": "max_vz_neg",
+        "type": "number",
+        "group": "z_axis",
+        "nativeName": "maxVzNeg",
+        "defaultVal": 5.0
+      },
+      {
+        "name": "angularDefaultEnabled",
+        "port": "angular_default_enabled",
+        "type": "boolean",
+        "group": "angular",
+        "nativeName": "angularDefaultEnabled",
+        "defaultVal": true
+      },
+      {
+        "name": "angularKpX",
+        "port": "angular_kp_x",
+        "type": "number",
+        "group": "angular",
+        "nativeName": "angularKpX",
+        "defaultVal": 1.0
+      },
+      {
+        "name": "angularKpY",
+        "port": "angular_kp_y",
+        "type": "number",
+        "group": "angular",
+        "nativeName": "angularKpY",
+        "defaultVal": 1.0
+      },
+      {
+        "name": "angularKpZ",
+        "port": "angular_kp_z",
+        "type": "number",
+        "group": "angular",
+        "nativeName": "angularKpZ",
+        "defaultVal": 1.0
+      },
+      {
+        "name": "angularKdX",
+        "port": "angular_kd_x",
+        "type": "number",
+        "group": "angular",
+        "nativeName": "angularKdX",
+        "defaultVal": 0.0
+      },
+      {
+        "name": "angularKdY",
+        "port": "angular_kd_y",
+        "type": "number",
+        "group": "angular",
+        "nativeName": "angularKdY",
+        "defaultVal": 0.0
+      },
+      {
+        "name": "angularKdZ",
+        "port": "angular_kd_z",
+        "type": "number",
+        "group": "angular",
+        "nativeName": "angularKdZ",
+        "defaultVal": 0.0
+      },
+      {
+        "name": "maxWxPos",
+        "port": "max_wx_pos",
+        "type": "number",
+        "group": "x_axis",
+        "nativeName": "maxWxPos",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "maxWxNeg",
+        "port": "max_wx_neg",
+        "type": "number",
+        "group": "x_axis",
+        "nativeName": "maxWxNeg",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "maxWyPos",
+        "port": "max_wy_pos",
+        "type": "number",
+        "group": "y_axis",
+        "nativeName": "maxWyPos",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "maxWyNeg",
+        "port": "max_wy_neg",
+        "type": "number",
+        "group": "y_axis",
+        "nativeName": "maxWyNeg",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "maxWzPos",
+        "port": "max_wz_pos",
+        "type": "number",
+        "group": "z_axis",
+        "nativeName": "maxWzPos",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "maxWzNeg",
+        "port": "max_wz_neg",
+        "type": "number",
+        "group": "z_axis",
+        "nativeName": "maxWzNeg",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "considerGravity",
+        "port": "consider_gravity",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "considerGravity",
+        "defaultVal": true
+      },
+      {
+        "name": "sonicBoomEnabled",
+        "port": "sonic_boom_enabled",
+        "type": "boolean",
+        "group": "sonic_boom",
+        "nativeName": "sonicBoomEnabled",
+        "defaultVal": true
+      },
+      {
+        "name": "sonicBoomSpeedThreshold",
+        "port": "sonic_boom_speed_threshold",
+        "type": "number",
+        "group": "sonic_boom",
+        "nativeName": "sonicBoomSpeedThreshold",
+        "defaultVal": 34.3
+      },
+      {
+        "name": "sonicBoomVolumeMultiplier",
+        "port": "sonic_boom_volume_multiplier",
+        "type": "number",
+        "group": "sonic_boom",
+        "nativeName": "sonicBoomVolumeMultiplier",
+        "defaultVal": 1
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "afn_frequency",
+        "type": "map",
+        "group": "afn",
+        "defaultVal": {}
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "afn_broadcast_enabled",
+        "type": "boolean",
+        "group": "afn",
+        "defaultVal": false
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "afn_broadcast_pose",
+        "type": "boolean",
+        "group": "afn",
+        "defaultVal": false
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "afn_infinite_range",
+        "type": "boolean",
+        "group": "afn",
+        "defaultVal": false
+      },
+      {
+        "name": "",
+        "port": "mouse_enabled",
+        "type": "boolean",
+        "group": "mouse",
+        "nativeName": "defaultEnabled",
+        "defaultVal": false
+      },
+      {
+        "name": "",
+        "port": "mouse_body_forward_facing",
+        "type": "string",
+        "group": "mouse",
+        "nativeName": "bodyForwardFacing",
+        "defaultVal": "north",
+        "options": [
+          "north",
+          "south",
+          "east",
+          "west",
+          "up",
+          "down"
+        ]
+      },
+      {
+        "name": "",
+        "port": "mouse_mouse_sensitivity",
+        "type": "number",
+        "group": "mouse_view",
+        "nativeName": "mouseSensitivity",
+        "defaultVal": 0.12
+      },
+      {
+        "name": "",
+        "port": "mouse_max_aim_angle_degrees",
+        "type": "number",
+        "group": "mouse_view",
+        "nativeName": "maxAimAngleDegrees",
+        "defaultVal": 82.0
+      },
+      {
+        "name": "",
+        "port": "mouse_pitch_kp",
+        "type": "number",
+        "group": "mouse_pitch",
+        "nativeName": "pitchKp",
+        "defaultVal": 4.5
+      },
+      {
+        "name": "",
+        "port": "mouse_pitch_kd",
+        "type": "number",
+        "group": "mouse_pitch",
+        "nativeName": "pitchKd",
+        "defaultVal": 2.2
+      },
+      {
+        "name": "",
+        "port": "mouse_yaw_kp",
+        "type": "number",
+        "group": "mouse_yaw",
+        "nativeName": "yawKp",
+        "defaultVal": 2.5
+      },
+      {
+        "name": "",
+        "port": "mouse_yaw_kd",
+        "type": "number",
+        "group": "mouse_yaw",
+        "nativeName": "yawKd",
+        "defaultVal": 1.8
+      },
+      {
+        "name": "",
+        "port": "mouse_roll_kp",
+        "type": "number",
+        "group": "mouse_roll",
+        "nativeName": "rollKp",
+        "defaultVal": 4.5
+      },
+      {
+        "name": "",
+        "port": "mouse_roll_kd",
+        "type": "number",
+        "group": "mouse_roll",
+        "nativeName": "rollKd",
+        "defaultVal": 2.2
+      },
+      {
+        "name": "",
+        "port": "mouse_max_pitch_acceleration",
+        "type": "number",
+        "group": "mouse",
+        "nativeName": "maxPitchAcceleration",
+        "defaultVal": 8.0
+      },
+      {
+        "name": "",
+        "port": "mouse_max_yaw_acceleration",
+        "type": "number",
+        "group": "mouse",
+        "nativeName": "maxYawAcceleration",
+        "defaultVal": 4.0
+      },
+      {
+        "name": "",
+        "port": "mouse_max_roll_acceleration",
+        "type": "number",
+        "group": "mouse",
+        "nativeName": "maxRollAcceleration",
+        "defaultVal": 8.0
+      },
+      {
+        "name": "",
+        "port": "mouse_max_bank_degrees",
+        "type": "number",
+        "group": "mouse",
+        "nativeName": "maxBankDegrees",
+        "defaultVal": 65.0
+      },
+      {
+        "name": "",
+        "port": "mouse_aggressive_turn_degrees",
+        "type": "number",
+        "group": "mouse",
+        "nativeName": "aggressiveTurnDegrees",
+        "defaultVal": 35.0
+      },
+      {
+        "name": "",
+        "port": "mouse_nose_crosshair_distance",
+        "type": "number",
+        "group": "mouse_view",
+        "nativeName": "noseCrosshairDistance",
+        "defaultVal": 64.0
+      },
+      {
+        "name": "",
+        "port": "mouse_max_pitch_velocity",
+        "type": "number",
+        "group": "mouse",
+        "nativeName": "maxPitchVelocity",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "",
+        "port": "mouse_max_yaw_velocity",
+        "type": "number",
+        "group": "mouse",
+        "nativeName": "maxYawVelocity",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "",
+        "port": "mouse_max_roll_velocity",
+        "type": "number",
+        "group": "mouse",
+        "nativeName": "maxRollVelocity",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "",
+        "port": "mouse_redstone_pitch_kp",
+        "type": "number",
+        "group": "mouse_redstone",
+        "nativeName": "redstonePitchKp",
+        "defaultVal": 4.5
+      },
+      {
+        "name": "",
+        "port": "mouse_redstone_pitch_kd",
+        "type": "number",
+        "group": "mouse_redstone",
+        "nativeName": "redstonePitchKd",
+        "defaultVal": 2.2
+      },
+      {
+        "name": "",
+        "port": "mouse_redstone_yaw_kp",
+        "type": "number",
+        "group": "mouse_redstone",
+        "nativeName": "redstoneYawKp",
+        "defaultVal": 2.5
+      },
+      {
+        "name": "",
+        "port": "mouse_redstone_yaw_kd",
+        "type": "number",
+        "group": "mouse_redstone",
+        "nativeName": "redstoneYawKd",
+        "defaultVal": 1.8
+      },
+      {
+        "name": "",
+        "port": "mouse_redstone_roll_kp",
+        "type": "number",
+        "group": "mouse_redstone",
+        "nativeName": "redstoneRollKp",
+        "defaultVal": 4.5
+      },
+      {
+        "name": "",
+        "port": "mouse_redstone_roll_kd",
+        "type": "number",
+        "group": "mouse_redstone",
+        "nativeName": "redstoneRollKd",
+        "defaultVal": 2.2
+      },
+      {
+        "name": "",
+        "port": "mouse_redstone_max_pitch_velocity",
+        "type": "number",
+        "group": "mouse_redstone",
+        "nativeName": "redstoneMaxPitchVelocity",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "",
+        "port": "mouse_redstone_max_yaw_velocity",
+        "type": "number",
+        "group": "mouse_redstone",
+        "nativeName": "redstoneMaxYawVelocity",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "",
+        "port": "mouse_redstone_max_roll_velocity",
+        "type": "number",
+        "group": "mouse_redstone",
+        "nativeName": "redstoneMaxRollVelocity",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "",
+        "port": "mouse_sable_camera_center_y_offset",
+        "type": "number",
+        "group": "mouse_view",
+        "nativeName": "sableCameraCenterYOffset",
+        "defaultVal": 0.0
+      },
+      {
+        "name": "",
+        "port": "mouse_mouse_target_y_offset",
+        "type": "number",
+        "group": "mouse",
+        "nativeName": "mouseTargetYOffset",
+        "defaultVal": 0.0
+      },
+      {
+        "name": "",
+        "port": "mouse_sync_redstone_max_angular_velocity",
+        "type": "boolean",
+        "group": "mouse",
+        "nativeName": "syncRedstoneMaxAngularVelocity",
+        "defaultVal": true
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "mouse_mouse_view_lock",
+        "type": "boolean",
+        "group": "mouse_mouse",
+        "defaultVal": true
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "fixed_wing_enabled",
+        "type": "boolean",
+        "group": "fixed_wing",
+        "defaultVal": false
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "fixed_wing_minimum_speed",
+        "type": "number",
+        "group": "fixed_wing",
+        "defaultVal": 8
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "fixed_wing_rotation_speed",
+        "type": "number",
+        "group": "fixed_wing",
+        "defaultVal": 10
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "fixed_wing_climb_degrees",
+        "type": "number",
+        "group": "fixed_wing",
+        "defaultVal": 25
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "fixed_wing_takeoff_height",
+        "type": "number",
+        "group": "fixed_wing",
+        "defaultVal": 30
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "fixed_wing_approach_height",
+        "type": "number",
+        "group": "fixed_wing",
+        "defaultVal": 30
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "fixed_wing_glide_degrees",
+        "type": "number",
+        "group": "fixed_wing",
+        "defaultVal": 3
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "fixed_wing_stabilization_distance",
+        "type": "number",
+        "group": "fixed_wing",
+        "defaultVal": 0
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "fixed_wing_simulate_lift",
+        "type": "boolean",
+        "group": "fixed_wing",
+        "defaultVal": false
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "fixed_wing_minimum_turn_radius",
+        "type": "number",
+        "group": "fixed_wing",
+        "defaultVal": 10
+      }
+    ],
+    "config": [
+      "attitudeDefaultEnabled",
+      "attitudeMode",
+      "bodyForwardFacing",
+      "attitudeKp",
+      "attitudeKd",
+      "altitudeDefaultEnabled",
+      "altitudeMode",
+      "altitudeHasSetAltitude",
+      "altitudeKp",
+      "altitudeKd",
+      "presetAltitude",
+      "velocityDefaultEnabled",
+      "velocityKpX",
+      "velocityKpY",
+      "velocityKpZ",
+      "velocityKdX",
+      "velocityKdY",
+      "velocityKdZ",
+      "maxVxPos",
+      "maxVxNeg",
+      "maxVyPos",
+      "maxVyNeg",
+      "maxVzPos",
+      "maxVzNeg",
+      "angularDefaultEnabled",
+      "angularKpX",
+      "angularKpY",
+      "angularKpZ",
+      "angularKdX",
+      "angularKdY",
+      "angularKdZ",
+      "maxWxPos",
+      "maxWxNeg",
+      "maxWyPos",
+      "maxWyNeg",
+      "maxWzPos",
+      "maxWzNeg",
+      "considerGravity",
+      "sonicBoomEnabled",
+      "sonicBoomSpeedThreshold",
+      "sonicBoomVolumeMultiplier"
+    ],
+    "actions": [
+      {
+        "id": "master_switch",
+        "type": "boolean"
+      },
+      {
+        "id": "attitude.master_switch",
+        "type": "boolean"
+      },
+      {
+        "id": "attitude.level_no_yaw_mode",
+        "type": "boolean"
+      },
+      {
+        "id": "attitude.level_mode",
+        "type": "boolean"
+      },
+      {
+        "id": "attitude.hold_current_mode",
+        "type": "boolean"
+      },
+      {
+        "id": "altitude.master_switch",
+        "type": "boolean"
+      },
+      {
+        "id": "altitude.switch_to_hold_current",
+        "type": "boolean"
+      },
+      {
+        "id": "altitude.switch_to_hold_preset",
+        "type": "boolean"
+      },
+      {
+        "id": "altitude.switch_to_minimum_altitude",
+        "type": "boolean"
+      },
+      {
+        "id": "velocity.master_switch",
+        "type": "boolean"
+      },
+      {
+        "id": "velocity.body_vx_pos",
+        "type": "number"
+      },
+      {
+        "id": "velocity.body_vx_neg",
+        "type": "number"
+      },
+      {
+        "id": "velocity.body_vy_pos",
+        "type": "number"
+      },
+      {
+        "id": "velocity.body_vy_neg",
+        "type": "number"
+      },
+      {
+        "id": "velocity.body_vz_pos",
+        "type": "number"
+      },
+      {
+        "id": "velocity.body_vz_neg",
+        "type": "number"
+      },
+      {
+        "id": "velocity.disable_vx",
+        "type": "boolean"
+      },
+      {
+        "id": "velocity.disable_vy",
+        "type": "boolean"
+      },
+      {
+        "id": "velocity.disable_vz",
+        "type": "boolean"
+      },
+      {
+        "id": "angular.master_switch",
+        "type": "boolean"
+      },
+      {
+        "id": "angular.body_wx_pos",
+        "type": "number"
+      },
+      {
+        "id": "angular.body_wx_neg",
+        "type": "number"
+      },
+      {
+        "id": "angular.body_wy_pos",
+        "type": "number"
+      },
+      {
+        "id": "angular.body_wy_neg",
+        "type": "number"
+      },
+      {
+        "id": "angular.body_wz_pos",
+        "type": "number"
+      },
+      {
+        "id": "angular.body_wz_neg",
+        "type": "number"
+      },
+      {
+        "id": "angular.disable_wx",
+        "type": "boolean"
+      },
+      {
+        "id": "angular.disable_wy",
+        "type": "boolean"
+      },
+      {
+        "id": "angular.disable_wz",
+        "type": "boolean"
+      },
+      {
+        "id": "flight_terminal.master_switch",
+        "type": "boolean"
+      },
+      {
+        "id": "flight_terminal.reset_view",
+        "type": "boolean"
+      },
+      {
+        "id": "flight_terminal.toggle_view_lock",
+        "type": "boolean"
+      },
+      {
+        "id": "flight_terminal.roll_left",
+        "type": "number"
+      },
+      {
+        "id": "flight_terminal.roll_right",
+        "type": "number"
+      },
+      {
+        "id": "flight_terminal.pitch_up",
+        "type": "number"
+      },
+      {
+        "id": "flight_terminal.pitch_down",
+        "type": "number"
+      },
+      {
+        "id": "flight_terminal.yaw_left",
+        "type": "number"
+      },
+      {
+        "id": "flight_terminal.yaw_right",
+        "type": "number"
+      },
+      {
+        "id": "flight_terminal.level_no_yaw_mode",
+        "type": "boolean"
+      },
+      {
+        "id": "flight_terminal.level_mode",
+        "type": "boolean"
+      },
+      {
+        "id": "flight_terminal.hold_current_mode",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "path": "attitude_hold",
+    "className": "ace.flight.block.AttitudeHoldBlockEntity",
+    "fields": [
+      {
+        "name": "kp",
+        "port": "kp",
+        "type": "number",
+        "group": "response",
+        "nativeName": "kp",
+        "defaultVal": 5.0
+      },
+      {
+        "name": "kd",
+        "port": "kd",
+        "type": "number",
+        "group": "response",
+        "nativeName": "kd",
+        "defaultVal": 1.0
+      },
+      {
+        "name": "mode",
+        "port": "mode",
+        "type": "string",
+        "group": "general",
+        "nativeName": "mode",
+        "defaultVal": "level_no_yaw",
+        "options": [
+          "OFF",
+          "LEVEL",
+          "LEVEL_NO_YAW",
+          "HOLD_CURRENT",
+          "CUSTOM"
+        ]
+      },
+      {
+        "name": "bodyForwardFacing",
+        "port": "body_forward_facing",
+        "type": "string",
+        "group": "general",
+        "nativeName": "bodyForwardFacing",
+        "defaultVal": "north",
+        "options": [
+          "north",
+          "south",
+          "east",
+          "west",
+          "up",
+          "down"
+        ]
+      },
+      {
+        "name": "defaultEnabled",
+        "port": "enabled",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "defaultEnabled",
+        "defaultVal": false
+      }
+    ],
+    "config": [
+      "kp",
+      "kd",
+      "mode",
+      "bodyForwardFacing",
+      "defaultEnabled"
+    ],
+    "actions": [
+      {
+        "id": "master_switch",
+        "type": "boolean"
+      },
+      {
+        "id": "level_no_yaw_mode",
+        "type": "boolean"
+      },
+      {
+        "id": "level_mode",
+        "type": "boolean"
+      },
+      {
+        "id": "hold_current_mode",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "path": "altitude_hold",
+    "className": "ace.flight.block.AltitudeHoldBlockEntity",
+    "fields": [
+      {
+        "name": "defaultEnabled",
+        "port": "enabled",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "defaultEnabled",
+        "defaultVal": false
+      },
+      {
+        "name": "kp",
+        "port": "kp",
+        "type": "number",
+        "group": "response",
+        "nativeName": "kp",
+        "defaultVal": 10.0
+      },
+      {
+        "name": "kd",
+        "port": "kd",
+        "type": "number",
+        "group": "response",
+        "nativeName": "kd",
+        "defaultVal": 5.0
+      },
+      {
+        "name": "altitudeMode",
+        "port": "altitude_mode",
+        "type": "number",
+        "group": "altitude",
+        "nativeName": "altitudeMode",
+        "defaultVal": 0
+      },
+      {
+        "name": "hasSetAltitude",
+        "port": "has_set_altitude",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "hasSetAltitude",
+        "defaultVal": false
+      },
+      {
+        "name": "presetAltitude",
+        "port": "preset_altitude",
+        "type": "number",
+        "group": "general",
+        "nativeName": "presetAltitude",
+        "defaultVal": 64.0
+      },
+      {
+        "name": "holdCurrentCaptureDelaySeconds",
+        "port": "hold_current_capture_delay_seconds",
+        "type": "number",
+        "group": "general",
+        "nativeName": "holdCurrentCaptureDelaySeconds",
+        "defaultVal": 0.5
+      },
+      {
+        "name": "presetAltitudeStep",
+        "port": "preset_altitude_step",
+        "type": "number",
+        "group": "general",
+        "nativeName": "presetAltitudeStep",
+        "defaultVal": 5
+      }
+    ],
+    "config": [
+      "defaultEnabled",
+      "kp",
+      "kd",
+      "altitudeMode",
+      "hasSetAltitude",
+      "presetAltitude",
+      "holdCurrentCaptureDelaySeconds",
+      "presetAltitudeStep"
+    ],
+    "actions": [
+      {
+        "id": "master_switch",
+        "type": "boolean"
+      },
+      {
+        "id": "switch_to_hold_current",
+        "type": "boolean"
+      },
+      {
+        "id": "switch_to_hold_preset",
+        "type": "boolean"
+      },
+      {
+        "id": "switch_to_minimum_altitude",
+        "type": "boolean"
+      },
+      {
+        "id": "increase_preset_altitude",
+        "type": "boolean"
+      },
+      {
+        "id": "decrease_preset_altitude",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "path": "velocity_coupler",
+    "className": "ace.flight.block.VelocityCouplerBlockEntity",
+    "fields": [
+      {
+        "name": "defaultEnabled",
+        "port": "enabled",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "defaultEnabled",
+        "defaultVal": true
+      },
+      {
+        "name": "kpX",
+        "port": "kp_x",
+        "type": "number",
+        "group": "x_axis",
+        "nativeName": "kpX",
+        "defaultVal": 1.0
+      },
+      {
+        "name": "kpY",
+        "port": "kp_y",
+        "type": "number",
+        "group": "y_axis",
+        "nativeName": "kpY",
+        "defaultVal": 1.0
+      },
+      {
+        "name": "kpZ",
+        "port": "kp_z",
+        "type": "number",
+        "group": "z_axis",
+        "nativeName": "kpZ",
+        "defaultVal": 1.0
+      },
+      {
+        "name": "kdX",
+        "port": "kd_x",
+        "type": "number",
+        "group": "x_axis",
+        "nativeName": "kdX",
+        "defaultVal": 0.0
+      },
+      {
+        "name": "kdY",
+        "port": "kd_y",
+        "type": "number",
+        "group": "y_axis",
+        "nativeName": "kdY",
+        "defaultVal": 0.0
+      },
+      {
+        "name": "kdZ",
+        "port": "kd_z",
+        "type": "number",
+        "group": "z_axis",
+        "nativeName": "kdZ",
+        "defaultVal": 0.0
+      },
+      {
+        "name": "maxVxPos",
+        "port": "max_vx_pos",
+        "type": "number",
+        "group": "x_axis",
+        "nativeName": "maxVxPos",
+        "defaultVal": 5.0
+      },
+      {
+        "name": "maxVxNeg",
+        "port": "max_vx_neg",
+        "type": "number",
+        "group": "x_axis",
+        "nativeName": "maxVxNeg",
+        "defaultVal": 5.0
+      },
+      {
+        "name": "maxVyPos",
+        "port": "max_vy_pos",
+        "type": "number",
+        "group": "y_axis",
+        "nativeName": "maxVyPos",
+        "defaultVal": 5.0
+      },
+      {
+        "name": "maxVyNeg",
+        "port": "max_vy_neg",
+        "type": "number",
+        "group": "y_axis",
+        "nativeName": "maxVyNeg",
+        "defaultVal": 5.0
+      },
+      {
+        "name": "maxVzPos",
+        "port": "max_vz_pos",
+        "type": "number",
+        "group": "z_axis",
+        "nativeName": "maxVzPos",
+        "defaultVal": 5.0
+      },
+      {
+        "name": "maxVzNeg",
+        "port": "max_vz_neg",
+        "type": "number",
+        "group": "z_axis",
+        "nativeName": "maxVzNeg",
+        "defaultVal": 5.0
+      }
+    ],
+    "config": [
+      "defaultEnabled",
+      "kpX",
+      "kpY",
+      "kpZ",
+      "kdX",
+      "kdY",
+      "kdZ",
+      "maxVxPos",
+      "maxVxNeg",
+      "maxVyPos",
+      "maxVyNeg",
+      "maxVzPos",
+      "maxVzNeg"
+    ],
+    "actions": [
+      {
+        "id": "master_switch",
+        "type": "boolean"
+      },
+      {
+        "id": "body_vx_pos",
+        "type": "number"
+      },
+      {
+        "id": "body_vx_neg",
+        "type": "number"
+      },
+      {
+        "id": "body_vy_pos",
+        "type": "number"
+      },
+      {
+        "id": "body_vy_neg",
+        "type": "number"
+      },
+      {
+        "id": "body_vz_pos",
+        "type": "number"
+      },
+      {
+        "id": "body_vz_neg",
+        "type": "number"
+      },
+      {
+        "id": "disable_vx",
+        "type": "boolean"
+      },
+      {
+        "id": "disable_vy",
+        "type": "boolean"
+      },
+      {
+        "id": "disable_vz",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "path": "angular_velocity_coupler",
+    "className": "ace.flight.block.AngularVelocityCouplerBlockEntity",
+    "fields": [
+      {
+        "name": "defaultEnabled",
+        "port": "enabled",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "defaultEnabled",
+        "defaultVal": true
+      },
+      {
+        "name": "kpX",
+        "port": "kp_x",
+        "type": "number",
+        "group": "x_axis",
+        "nativeName": "kpX",
+        "defaultVal": 1.0
+      },
+      {
+        "name": "kpY",
+        "port": "kp_y",
+        "type": "number",
+        "group": "y_axis",
+        "nativeName": "kpY",
+        "defaultVal": 1.0
+      },
+      {
+        "name": "kpZ",
+        "port": "kp_z",
+        "type": "number",
+        "group": "z_axis",
+        "nativeName": "kpZ",
+        "defaultVal": 1.0
+      },
+      {
+        "name": "kdX",
+        "port": "kd_x",
+        "type": "number",
+        "group": "x_axis",
+        "nativeName": "kdX",
+        "defaultVal": 0.0
+      },
+      {
+        "name": "kdY",
+        "port": "kd_y",
+        "type": "number",
+        "group": "y_axis",
+        "nativeName": "kdY",
+        "defaultVal": 0.0
+      },
+      {
+        "name": "kdZ",
+        "port": "kd_z",
+        "type": "number",
+        "group": "z_axis",
+        "nativeName": "kdZ",
+        "defaultVal": 0.0
+      },
+      {
+        "name": "maxWxPos",
+        "port": "max_wx_pos",
+        "type": "number",
+        "group": "x_axis",
+        "nativeName": "maxWxPos",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "maxWxNeg",
+        "port": "max_wx_neg",
+        "type": "number",
+        "group": "x_axis",
+        "nativeName": "maxWxNeg",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "maxWyPos",
+        "port": "max_wy_pos",
+        "type": "number",
+        "group": "y_axis",
+        "nativeName": "maxWyPos",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "maxWyNeg",
+        "port": "max_wy_neg",
+        "type": "number",
+        "group": "y_axis",
+        "nativeName": "maxWyNeg",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "maxWzPos",
+        "port": "max_wz_pos",
+        "type": "number",
+        "group": "z_axis",
+        "nativeName": "maxWzPos",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "maxWzNeg",
+        "port": "max_wz_neg",
+        "type": "number",
+        "group": "z_axis",
+        "nativeName": "maxWzNeg",
+        "defaultVal": 0.2
+      }
+    ],
+    "config": [
+      "defaultEnabled",
+      "kpX",
+      "kpY",
+      "kpZ",
+      "kdX",
+      "kdY",
+      "kdZ",
+      "maxWxPos",
+      "maxWxNeg",
+      "maxWyPos",
+      "maxWyNeg",
+      "maxWzPos",
+      "maxWzNeg"
+    ],
+    "actions": [
+      {
+        "id": "master_switch",
+        "type": "boolean"
+      },
+      {
+        "id": "body_wx_pos",
+        "type": "number"
+      },
+      {
+        "id": "body_wx_neg",
+        "type": "number"
+      },
+      {
+        "id": "body_wy_pos",
+        "type": "number"
+      },
+      {
+        "id": "body_wy_neg",
+        "type": "number"
+      },
+      {
+        "id": "body_wz_pos",
+        "type": "number"
+      },
+      {
+        "id": "body_wz_neg",
+        "type": "number"
+      },
+      {
+        "id": "disable_wx",
+        "type": "boolean"
+      },
+      {
+        "id": "disable_wy",
+        "type": "boolean"
+      },
+      {
+        "id": "disable_wz",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "path": "distance_coupler",
+    "className": "ace.flight.block.DistanceCouplerBlockEntity",
+    "fields": [
+      {
+        "name": "defaultEnabled",
+        "port": "enabled",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "defaultEnabled",
+        "defaultVal": false
+      },
+      {
+        "name": "kp",
+        "port": "kp",
+        "type": "number",
+        "group": "response",
+        "nativeName": "kp",
+        "defaultVal": 3.0
+      },
+      {
+        "name": "kd",
+        "port": "kd",
+        "type": "number",
+        "group": "response",
+        "nativeName": "kd",
+        "defaultVal": 0.0
+      },
+      {
+        "name": "lowerDistance",
+        "port": "lower_distance",
+        "type": "number",
+        "group": "general",
+        "nativeName": "lowerDistance",
+        "defaultVal": 2.0
+      },
+      {
+        "name": "upperDistance",
+        "port": "upper_distance",
+        "type": "number",
+        "group": "general",
+        "nativeName": "upperDistance",
+        "defaultVal": 8.0
+      },
+      {
+        "name": "invertedRange",
+        "port": "inverted_range",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "invertedRange",
+        "defaultVal": false
+      },
+      {
+        "name": "distanceMode",
+        "port": "distance_mode",
+        "type": "string",
+        "group": "general",
+        "nativeName": "distanceMode",
+        "defaultVal": "average"
+      }
+    ],
+    "config": [
+      "defaultEnabled",
+      "kp",
+      "kd",
+      "lowerDistance",
+      "upperDistance",
+      "invertedRange",
+      "distanceMode"
+    ],
+    "actions": [
+      {
+        "id": "master_switch",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "path": "mouse_flight_controller",
+    "className": "ace.flight.block.MouseFlightControllerBlockEntity",
+    "fields": [
+      {
+        "name": "enabled",
+        "port": "enabled",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "defaultEnabled",
+        "defaultVal": false
+      },
+      {
+        "name": "forwardFacing",
+        "port": "body_forward_facing",
+        "type": "string",
+        "group": "general",
+        "nativeName": "bodyForwardFacing",
+        "defaultVal": "north",
+        "options": [
+          "north",
+          "south",
+          "east",
+          "west",
+          "up",
+          "down"
+        ]
+      },
+      {
+        "name": "mouseSensitivity",
+        "port": "mouse_sensitivity",
+        "type": "number",
+        "group": "view",
+        "nativeName": "mouseSensitivity",
+        "defaultVal": 0.12
+      },
+      {
+        "name": "maxAimAngleDegrees",
+        "port": "max_aim_angle_degrees",
+        "type": "number",
+        "group": "view",
+        "nativeName": "maxAimAngleDegrees",
+        "defaultVal": 82.0
+      },
+      {
+        "name": "pitchKp",
+        "port": "pitch_kp",
+        "type": "number",
+        "group": "pitch",
+        "nativeName": "pitchKp",
+        "defaultVal": 4.5
+      },
+      {
+        "name": "pitchKd",
+        "port": "pitch_kd",
+        "type": "number",
+        "group": "pitch",
+        "nativeName": "pitchKd",
+        "defaultVal": 2.2
+      },
+      {
+        "name": "yawKp",
+        "port": "yaw_kp",
+        "type": "number",
+        "group": "yaw",
+        "nativeName": "yawKp",
+        "defaultVal": 2.5
+      },
+      {
+        "name": "yawKd",
+        "port": "yaw_kd",
+        "type": "number",
+        "group": "yaw",
+        "nativeName": "yawKd",
+        "defaultVal": 1.8
+      },
+      {
+        "name": "rollKp",
+        "port": "roll_kp",
+        "type": "number",
+        "group": "roll",
+        "nativeName": "rollKp",
+        "defaultVal": 4.5
+      },
+      {
+        "name": "rollKd",
+        "port": "roll_kd",
+        "type": "number",
+        "group": "roll",
+        "nativeName": "rollKd",
+        "defaultVal": 2.2
+      },
+      {
+        "name": "maxPitchAcceleration",
+        "port": "max_pitch_acceleration",
+        "type": "number",
+        "group": "general",
+        "nativeName": "maxPitchAcceleration",
+        "defaultVal": 8.0
+      },
+      {
+        "name": "maxYawAcceleration",
+        "port": "max_yaw_acceleration",
+        "type": "number",
+        "group": "general",
+        "nativeName": "maxYawAcceleration",
+        "defaultVal": 4.0
+      },
+      {
+        "name": "maxRollAcceleration",
+        "port": "max_roll_acceleration",
+        "type": "number",
+        "group": "general",
+        "nativeName": "maxRollAcceleration",
+        "defaultVal": 8.0
+      },
+      {
+        "name": "maxBankDegrees",
+        "port": "max_bank_degrees",
+        "type": "number",
+        "group": "general",
+        "nativeName": "maxBankDegrees",
+        "defaultVal": 65.0
+      },
+      {
+        "name": "aggressiveTurnDegrees",
+        "port": "aggressive_turn_degrees",
+        "type": "number",
+        "group": "general",
+        "nativeName": "aggressiveTurnDegrees",
+        "defaultVal": 35.0
+      },
+      {
+        "name": "noseCrosshairDistance",
+        "port": "nose_crosshair_distance",
+        "type": "number",
+        "group": "view",
+        "nativeName": "noseCrosshairDistance",
+        "defaultVal": 64.0
+      },
+      {
+        "name": "maxPitchVelocity",
+        "port": "max_pitch_velocity",
+        "type": "number",
+        "group": "general",
+        "nativeName": "maxPitchVelocity",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "maxYawVelocity",
+        "port": "max_yaw_velocity",
+        "type": "number",
+        "group": "general",
+        "nativeName": "maxYawVelocity",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "maxRollVelocity",
+        "port": "max_roll_velocity",
+        "type": "number",
+        "group": "general",
+        "nativeName": "maxRollVelocity",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "redstonePitchKp",
+        "port": "redstone_pitch_kp",
+        "type": "number",
+        "group": "redstone",
+        "nativeName": "redstonePitchKp",
+        "defaultVal": 4.5
+      },
+      {
+        "name": "redstonePitchKd",
+        "port": "redstone_pitch_kd",
+        "type": "number",
+        "group": "redstone",
+        "nativeName": "redstonePitchKd",
+        "defaultVal": 2.2
+      },
+      {
+        "name": "redstoneYawKp",
+        "port": "redstone_yaw_kp",
+        "type": "number",
+        "group": "redstone",
+        "nativeName": "redstoneYawKp",
+        "defaultVal": 2.5
+      },
+      {
+        "name": "redstoneYawKd",
+        "port": "redstone_yaw_kd",
+        "type": "number",
+        "group": "redstone",
+        "nativeName": "redstoneYawKd",
+        "defaultVal": 1.8
+      },
+      {
+        "name": "redstoneRollKp",
+        "port": "redstone_roll_kp",
+        "type": "number",
+        "group": "redstone",
+        "nativeName": "redstoneRollKp",
+        "defaultVal": 4.5
+      },
+      {
+        "name": "redstoneRollKd",
+        "port": "redstone_roll_kd",
+        "type": "number",
+        "group": "redstone",
+        "nativeName": "redstoneRollKd",
+        "defaultVal": 2.2
+      },
+      {
+        "name": "redstoneMaxPitchVelocity",
+        "port": "redstone_max_pitch_velocity",
+        "type": "number",
+        "group": "redstone",
+        "nativeName": "redstoneMaxPitchVelocity",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "redstoneMaxYawVelocity",
+        "port": "redstone_max_yaw_velocity",
+        "type": "number",
+        "group": "redstone",
+        "nativeName": "redstoneMaxYawVelocity",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "redstoneMaxRollVelocity",
+        "port": "redstone_max_roll_velocity",
+        "type": "number",
+        "group": "redstone",
+        "nativeName": "redstoneMaxRollVelocity",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "sableCameraCenterYOffset",
+        "port": "sable_camera_center_y_offset",
+        "type": "number",
+        "group": "view",
+        "nativeName": "sableCameraCenterYOffset",
+        "defaultVal": 0.0
+      },
+      {
+        "name": "mouseTargetYOffset",
+        "port": "mouse_target_y_offset",
+        "type": "number",
+        "group": "general",
+        "nativeName": "mouseTargetYOffset",
+        "defaultVal": 0.0
+      },
+      {
+        "name": "syncRedstoneMaxAngularVelocity",
+        "port": "sync_redstone_max_angular_velocity",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "syncRedstoneMaxAngularVelocity",
+        "defaultVal": true
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "mouse_view_lock",
+        "type": "boolean",
+        "group": "mouse",
+        "defaultVal": true
+      }
+    ],
+    "config": [
+      "enabled",
+      "forwardFacing",
+      "mouseSensitivity",
+      "maxAimAngleDegrees",
+      "pitchKp",
+      "pitchKd",
+      "yawKp",
+      "yawKd",
+      "rollKp",
+      "rollKd",
+      "maxPitchAcceleration",
+      "maxYawAcceleration",
+      "maxRollAcceleration",
+      "maxBankDegrees",
+      "aggressiveTurnDegrees",
+      "noseCrosshairDistance",
+      "maxPitchVelocity",
+      "maxYawVelocity",
+      "maxRollVelocity",
+      "redstonePitchKp",
+      "redstonePitchKd",
+      "redstoneYawKp",
+      "redstoneYawKd",
+      "redstoneRollKp",
+      "redstoneRollKd",
+      "redstoneMaxPitchVelocity",
+      "redstoneMaxYawVelocity",
+      "redstoneMaxRollVelocity",
+      "sableCameraCenterYOffset",
+      "mouseTargetYOffset",
+      "syncRedstoneMaxAngularVelocity"
+    ],
+    "actions": [
+      {
+        "id": "master_switch",
+        "type": "boolean"
+      },
+      {
+        "id": "reset_view",
+        "type": "boolean"
+      },
+      {
+        "id": "toggle_view_lock",
+        "type": "boolean"
+      },
+      {
+        "id": "roll_left",
+        "type": "number"
+      },
+      {
+        "id": "roll_right",
+        "type": "number"
+      },
+      {
+        "id": "pitch_up",
+        "type": "number"
+      },
+      {
+        "id": "pitch_down",
+        "type": "number"
+      },
+      {
+        "id": "yaw_left",
+        "type": "number"
+      },
+      {
+        "id": "yaw_right",
+        "type": "number"
+      },
+      {
+        "id": "level_no_yaw_mode",
+        "type": "boolean"
+      },
+      {
+        "id": "level_mode",
+        "type": "boolean"
+      },
+      {
+        "id": "hold_current_mode",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "path": "hud_projector",
+    "className": "ace.flight.block.HudProjectorBlockEntity",
+    "fields": [
+      {
+        "name": "",
+        "port": "enabled",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "",
+        "defaultVal": true
+      },
+      {
+        "name": "projectionHeight",
+        "port": "projection_height",
+        "type": "number",
+        "group": "general",
+        "nativeName": "projectionHeight",
+        "defaultVal": 2
+      },
+      {
+        "name": "projectionDepth",
+        "port": "projection_depth",
+        "type": "number",
+        "group": "general",
+        "nativeName": "projectionDepth",
+        "defaultVal": 0.53
+      },
+      {
+        "name": "hudScale",
+        "port": "hud_scale",
+        "type": "number",
+        "group": "general",
+        "nativeName": "hudScale",
+        "defaultVal": 1
+      },
+      {
+        "name": "bodyForwardFacing",
+        "port": "body_forward_facing",
+        "type": "string",
+        "group": "general",
+        "nativeName": "bodyForwardFacing",
+        "defaultVal": "north",
+        "options": [
+          "north",
+          "south",
+          "east",
+          "west",
+          "up",
+          "down"
+        ]
+      },
+      {
+        "name": "",
+        "port": "mouse_steering",
+        "type": "boolean",
+        "group": "mouse_flight",
+        "nativeName": "",
+        "defaultVal": true
+      },
+      {
+        "name": "",
+        "port": "mouse_sensitivity",
+        "type": "number",
+        "group": "mouse_flight",
+        "nativeName": "",
+        "defaultVal": 1.0
+      },
+      {
+        "name": "",
+        "port": "mouse_turn_speed_degrees",
+        "type": "number",
+        "group": "mouse_flight",
+        "nativeName": "",
+        "defaultVal": 11.459155902616466
+      },
+      {
+        "name": "",
+        "port": "mouse_turn_mode",
+        "type": "string",
+        "group": "mouse_flight",
+        "nativeName": "",
+        "defaultVal": "bank",
+        "options": ["bank", "pitch_yaw"]
+      }
+    ],
+    "config": [
+      "projectionHeight",
+      "projectionDepth",
+      "hudScale",
+      "bodyForwardFacing"
+    ],
+    "actions": []
+  },
+  {
+    "path": "attitude_display",
+    "className": "ace.flight.block.AttitudeDisplayBlockEntity",
+    "fields": [
+      {
+        "name": "",
+        "port": "enabled",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "",
+        "defaultVal": true
+      },
+      {
+        "name": "displayHeight",
+        "port": "display_height",
+        "type": "number",
+        "group": "general",
+        "nativeName": "displayHeight",
+        "defaultVal": 1.25
+      },
+      {
+        "name": "displayScale",
+        "port": "display_scale",
+        "type": "number",
+        "group": "general",
+        "nativeName": "displayScale",
+        "defaultVal": 1
+      },
+      {
+        "name": "groundPlaneHeight",
+        "port": "ground_plane_height",
+        "type": "number",
+        "group": "general",
+        "nativeName": "groundPlaneHeight",
+        "defaultVal": 0
+      },
+      {
+        "name": "showGroundPlane",
+        "port": "show_ground_plane",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "showGroundPlane",
+        "defaultVal": true
+      },
+      {
+        "name": "showAxes",
+        "port": "show_axes",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "showAxes",
+        "defaultVal": true
+      }
+    ],
+    "config": [
+      "displayHeight",
+      "displayScale",
+      "groundPlaneHeight",
+      "showGroundPlane",
+      "showAxes"
+    ],
+    "actions": []
+  },
+  {
+    "path": "forward_indicator",
+    "className": "ace.flight.block.ForwardIndicatorBlockEntity",
+    "fields": [
+      {
+        "name": "",
+        "port": "enabled",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "",
+        "defaultVal": true
+      },
+      {
+        "name": "",
+        "port": "body_forward_facing",
+        "type": "string",
+        "group": "orientation",
+        "nativeName": "",
+        "defaultVal": "north"
+      }
+    ],
+    "config": [],
+    "actions": []
+  },
+  {
+    "path": "navigation_profile_builder",
+    "className": "ace.flight.block.NavigationProfileBuilderBlockEntity",
+    "fields": [
+      {
+        "name": "",
+        "port": "enabled",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "",
+        "defaultVal": true
+      },
+      {
+        "name": "",
+        "port": "profile_name",
+        "type": "string",
+        "group": "navigation",
+        "nativeName": "",
+        "defaultVal": "Flight Plan"
+      },
+      {
+        "name": "",
+        "port": "paths",
+        "type": "list",
+        "group": "navigation",
+        "nativeName": "",
+        "defaultVal": [
+          {
+            "x": 0,
+            "y": 0,
+            "z": 0,
+            "pitch": 0,
+            "roll": 0,
+            "yaw": 0
+          }
+        ]
+      },
+      {
+        "name": "",
+        "port": "end_behavior",
+        "type": "string",
+        "group": "navigation",
+        "nativeName": "",
+        "defaultVal": "release_control",
+        "options": [
+          "release_control",
+          "hold_last_target",
+          "hover"
+        ]
+      },
+      {
+        "name": "",
+        "port": "hover_attitude",
+        "type": "map",
+        "group": "navigation",
+        "nativeName": "",
+        "defaultVal": null
+      },
+      {
+        "name": "",
+        "port": "afn_channels",
+        "type": "list",
+        "group": "navigation",
+        "nativeName": "",
+        "defaultVal": null
+      }
+    ],
+    "config": [],
+    "actions": []
+  },
+  {
+    "path": "navigation_terminal",
+    "className": "ace.flight.block.NavigationTerminalBlockEntity",
+    "fields": [
+      {
+        "name": "",
+        "port": "enabled",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "",
+        "defaultVal": true
+      },
+      {
+        "name": "",
+        "port": "profile",
+        "type": "map",
+        "group": "navigation",
+        "nativeName": "",
+        "defaultVal": null
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "afn_auto_infinite_range",
+        "type": "boolean",
+        "group": "afn",
+        "defaultVal": false
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "task_action",
+        "type": "string",
+        "group": "navigation",
+        "defaultVal": "none",
+        "options": [
+          "none",
+          "start",
+          "pause",
+          "resume",
+          "cancel"
+        ]
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "afn_channel_ranges",
+        "type": "map",
+        "group": "afn",
+        "defaultVal": {}
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "redstone_outputs",
+        "type": "list",
+        "group": "redstone",
+        "defaultVal": []
+      }
+    ],
+    "config": [],
+    "actions": [
+      {
+        "id": "master_switch",
+        "type": "boolean"
+      },
+      {
+        "id": "next_path",
+        "type": "boolean"
+      },
+      {
+        "id": "previous_path",
+        "type": "boolean"
+      }
+    ]
+  },
+  {
+    "path": "flight_control_redstone_proxy",
+    "className": "ace.flight.block.FlightControlRedstoneProxyBlockEntity",
+    "fields": [
+      {
+        "name": "",
+        "port": "enabled",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "",
+        "defaultVal": true
+      },
+      {
+        "name": "",
+        "port": "action",
+        "type": "string",
+        "group": "redstone",
+        "nativeName": "",
+        "defaultVal": "master_switch"
+      },
+      {
+        "name": "",
+        "port": "strength",
+        "type": "number",
+        "group": "redstone",
+        "nativeName": "",
+        "defaultVal": 0
+      },
+      {
+        "name": "",
+        "port": "signals",
+        "type": "map",
+        "group": "redstone",
+        "nativeName": "",
+        "defaultVal": null
+      }
+    ],
+    "config": [],
+    "actions": []
+  },
+  {
+    "path": "aerodynamic_trail_creator",
+    "className": "ace.flight.block.AerodynamicTrailCreatorBlockEntity",
+    "fields": [
+      {
+        "name": "",
+        "port": "enabled",
+        "type": "boolean",
+        "group": "general",
+        "nativeName": "",
+        "defaultVal": true
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "module_color",
+        "type": "number",
+        "group": "appearance",
+        "defaultVal": 9079434
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "length",
+        "type": "number",
+        "group": "trail",
+        "defaultVal": 80
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "thickness",
+        "type": "number",
+        "group": "trail",
+        "defaultVal": 0.2
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "min_speed",
+        "type": "number",
+        "group": "trail",
+        "defaultVal": 0
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "density_percent",
+        "type": "number",
+        "group": "trail",
+        "defaultVal": 100
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "red",
+        "type": "number",
+        "group": "appearance",
+        "defaultVal": 255
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "green",
+        "type": "number",
+        "group": "appearance",
+        "defaultVal": 255
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "blue",
+        "type": "number",
+        "group": "appearance",
+        "defaultVal": 255
+      },
+      {
+        "name": "",
+        "nativeName": "",
+        "port": "alpha",
+        "type": "number",
+        "group": "appearance",
+        "defaultVal": 118
+      }
+    ],
+    "config": [],
+    "actions": [
+      {
+        "id": "master_switch",
+        "type": "boolean"
+      }
+    ]
+  }
+]

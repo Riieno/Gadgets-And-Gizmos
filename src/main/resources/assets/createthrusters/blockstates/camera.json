@@ -1,0 +1,29 @@
+{
+  "variants": {
+    "facing=up": {
+      "model": "createthrusters:block/camera/contraption_camera_base"
+    },
+    "facing=down": {
+      "model": "createthrusters:block/camera/contraption_camera_base",
+      "x": 180
+    },
+    "facing=north": {
+      "model": "createthrusters:block/camera/contraption_camera_base",
+      "x": 90
+    },
+    "facing=south": {
+      "model": "createthrusters:block/camera/contraption_camera_base",
+      "x": 270
+    },
+    "facing=east": {
+      "model": "createthrusters:block/camera/contraption_camera_base",
+      "x": 90,
+      "y": 90
+    },
+    "facing=west": {
+      "model": "createthrusters:block/camera/contraption_camera_base",
+      "x": 90,
+      "y": 270
+    }
+  }
+}

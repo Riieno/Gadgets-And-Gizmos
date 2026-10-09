@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.mixin;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.physics.archive.SubLevelConstructionState;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
@@ -49,6 +50,7 @@ public abstract class SableSubLevelContainerRemovalSafetyMixin {
         SubLevelContainer container = (SubLevelContainer) (Object) this;
         for (SubLevel subLevel : List.copyOf(container.getAllSubLevels())) {
             if (subLevel instanceof ServerSubLevel serverSubLevel
+                    && !SubLevelConstructionState.isBuilding(serverSubLevel)
                     && !serverSubLevel.isRemoved()
                     && serverSubLevel.getMassTracker() != null
                     && serverSubLevel.getMassTracker().isInvalid()) {

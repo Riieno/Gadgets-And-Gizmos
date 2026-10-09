@@ -2,15 +2,13 @@
   "type": "minecraft:crafting_shaped",
   "category": "misc",
   "pattern": [
-    " M ",
-    "PBP",
-    " X "
+    " B ",
+    "BPB",
+    " B "
   ],
   "key": {
-    "M": { "item": "minecraft:soul_lantern" },
-    "P": { "item": "createthrusters:processing_upgrade_haunting_t3" },
-    "B": { "item": "create:brass_sheet" },
-    "X": { "item": "create:blaze_cake" }
+    "B": { "item": "createthrusters:blackstone_sheet" },
+    "P": { "item": "createthrusters:processing_upgrade_haunting_t3" }
   },
   "result": {
     "id": "createthrusters:processing_upgrade_haunting_t4",

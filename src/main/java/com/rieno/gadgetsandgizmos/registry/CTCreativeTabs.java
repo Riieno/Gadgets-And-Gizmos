@@ -149,6 +149,7 @@ public final class CTCreativeTabs {
         blockCount += accept(displayItems, searchItems, CTItems.SHIP_CONTROL_MODULE);
         blockCount += accept(displayItems, searchItems, CTItems.SHIP_COUPLER);
         blockCount += accept(displayItems, searchItems, CTItems.ACC_DISPLAY);
+        blockCount += accept(displayItems, searchItems, CTItems.CAMERA);
         blockCount += accept(displayItems, searchItems, CTItems.ACC_DISPLAY_BLOCK);
         blockCount += accept(displayItems, searchItems, CTItems.ACC_DISPLAY_PANEL);
         blockCount += accept(displayItems, searchItems, CTItems.ACC_DISPLAY_HALF_PANEL);

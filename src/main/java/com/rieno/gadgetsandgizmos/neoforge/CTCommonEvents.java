@@ -46,6 +46,7 @@ import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayTextInputOpenPayloa
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayTextInputPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayModePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayComputerInputPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayCameraControlPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AileronBearingConfigPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AnalogueJoystickConfigPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AnalogueJoystickDragPayload;
@@ -176,15 +177,12 @@ public final class CTCommonEvents {
         evt.addListener((PreparableReloadListener) MobHauntingConversions.RELOAD_LISTENER);
         evt.addListener((PreparableReloadListener) GraphV2ThemeData.RELOAD_LISTENER);
         evt.addListener((PreparableReloadListener) DiagnosticTabletAppStoreConfig.RELOAD_LISTENER);
-        evt.addListener((PreparableReloadListener) (barrier, resources, preparations, reload, background, game) ->
-                java.util.concurrent.CompletableFuture.completedFuture(Boolean.TRUE).thenCompose(barrier::wait)
-                        .thenRunAsync(WorkerRecipeCatalog::invalidate, game));
     }
 
-    // Build the resolved worker recipe graph before the first controller request
+    // Warm the recipe index within the shared lookup budget after the server starts
     public static void warmWorkerRecipes(ServerStartedEvent evt){
         WorkerRecipeCatalog.invalidate();
-        WorkerRecipeCatalog.index(evt.getServer().overworld());
+        WorkerRecipeCatalog.prepareRelationships(evt.getServer().overworld());
     }
 
     // Register the entity attributes
@@ -252,6 +250,9 @@ public final class CTCommonEvents {
                 registrar.playToServer(AccDisplayComputerInputPayload.TYPE,
                                 AccDisplayComputerInputPayload.STREAM_CODEC,
                                 AccDisplayComputerInputPayload::handle);
+                registrar.playToServer(AccDisplayCameraControlPayload.TYPE,
+                                AccDisplayCameraControlPayload.STREAM_CODEC,
+                                AccDisplayCameraControlPayload::handle);
                 registrar.playToServer(PortableContraptionControllerKeyPayload.TYPE, PortableContraptionControllerKeyPayload.STREAM_CODEC,
                                 PortableContraptionControllerKeyPayload::handle);
                 registrar.playToServer(PortableContraptionControllerModePayload.TYPE, PortableContraptionControllerModePayload.STREAM_CODEC,
@@ -304,6 +305,9 @@ public final class CTCommonEvents {
                                 ShippingManifestLockPayload::handle);
                 registrar.playToServer(DiagnosticTabletActionPayload.TYPE, DiagnosticTabletActionPayload.STREAM_CODEC,
                                 DiagnosticTabletActionPayload::handle);
+                registrar.playToServer(com.rieno.gadgetsandgizmos.neoforge.network.DigisableSchematicUploadPayload.TYPE,
+                                com.rieno.gadgetsandgizmos.neoforge.network.DigisableSchematicUploadPayload.STREAM_CODEC,
+                                com.rieno.gadgetsandgizmos.neoforge.network.DigisableSchematicUploadPayload::handle);
                 registrar.playToServer(ContraptionNetworkLinkerSyncPayload.TYPE, ContraptionNetworkLinkerSyncPayload.STREAM_CODEC,
                                 ContraptionNetworkLinkerSyncPayload::handle);
                 registrar.playBidirectional(ContraptionNetworkLinkerAreaConfigPayload.TYPE,

@@ -8,7 +8,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
-import com.rieno.gadgetsandgizmos.config.CTConfigs;
+import com.rieno.gadgetsandgizmos.registry.CTFeatureToggles;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.rieno.gadgetsandgizmos.lib.scm.ShipPermission;
 import com.rieno.gadgetsandgizmos.lib.scm.ShipPermissionManager;
@@ -104,7 +104,7 @@ public final class ShipPermissions {
     }
 
     public static boolean storeEnabled(){
-        return Boolean.TRUE.equals(CTConfigs.COMMON.enableDiagnosticTablet.get());
+        return CTFeatureToggles.isBlockEnabled("diagnostic_tablet");
     }
 
     // Send online players and saved members while keeping the owner out of the list

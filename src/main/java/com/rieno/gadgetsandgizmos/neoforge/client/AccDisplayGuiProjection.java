@@ -8,11 +8,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
-import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.pipeline.TextureTarget;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexSorting;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.AccDisplayBlockEntity;
@@ -24,6 +20,7 @@ import com.rieno.gadgetsandgizmos.content.NotationDraftStore;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphValidator;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphVersionHistory;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode;
+import com.rieno.gadgetsandgizmos.lib.client.render.FramebufferGuiRenderer;
 import com.rieno.gadgetsandgizmos.lib.display.DisplayFrameSchedule;
 import com.rieno.gadgetsandgizmos.lib.display.DisplayRasterSize;
 import com.rieno.gadgetsandgizmos.lib.display.DisplaySurfaceProjection;
@@ -31,28 +28,23 @@ import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget;
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayComputerInputPayload;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.BlockHitResult;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.InputEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.joml.Matrix4f;
-import org.joml.Matrix4fStack;
 import org.lwjgl.glfw.GLFW;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -131,9 +123,6 @@ public final class AccDisplayGuiProjection {
         if (display == null || minecraft.level == null || minecraft.player == null) {
             return false;
         }
-        MultiBufferSource.BufferSource bufferSource =
-                buffers instanceof MultiBufferSource.BufferSource direct
-                        ? direct : minecraft.renderBuffers().bufferSource();
         Session session = session(display);
         if (!session.prepare(display, mode)) {
             return false;
@@ -145,17 +134,17 @@ public final class AccDisplayGuiProjection {
                 || plotterMode && session.plotter != null && session.plotter.projectionNeedsLiveFrames();
         boolean dirty = session.lastFrame == 0L || plotterMode && session.plotter != null
                 && session.plotter.projectionFrameSignature() != session.lastPlotterSignature;
-        if (DisplayFrameSchedule.shouldRender(session.target != null,
+        if (DisplayFrameSchedule.shouldRender(session.projection != null && session.projection.isReady(),
                 !mode.equals(session.lastRenderedMode), dirty, live,
                 now, session.lastFrame, FRAME_INTERVAL_MILLIS)) {
-            session.renderFrame(mode, partialTick, bufferSource);
+            session.renderFrame(mode, partialTick);
             session.lastFrame = now;
             session.lastRenderedMode = mode;
             if (plotterMode && session.plotter != null) {
                 session.lastPlotterSignature = session.plotter.projectionFrameSignature();
             }
         }
-        if (session.target == null || session.texture == null) {
+        if (session.projection == null || !session.projection.isReady() || session.texture == null) {
             return false;
         }
         var vertices = buffers.getBuffer(RenderType.text(session.texture));
@@ -186,6 +175,10 @@ public final class AccDisplayGuiProjection {
         AccDisplayBlockEntity root = clicked == null ? null : clicked.networkRoot();
         if (root == null || hit == null) {
             return false;
+        }
+        if(root.displayedCamera() != null){
+            ScreenPoint point = contentPoint(root, screenPoint(root, clicked, hit));
+            return point != null && AccDisplayCameraProjection.interact(root, point.x, point.y, mouseButton);
         }
         if ("diagnostic_tablet".equals(root.displayFrame().getString("ActiveSource"))) {
             ScreenPoint point = contentPoint(root, screenPoint(root, clicked, hit));
@@ -237,6 +230,11 @@ public final class AccDisplayGuiProjection {
 
     // Handle the client tick event
     public static void onClientTick(ClientTickEvent.Pre evt) {
+        DisplayHit cameraHit = currentDisplayHit();
+        ScreenPoint cameraPoint = cameraHit == null ? null
+                : contentPoint(cameraHit.root, screenPoint(cameraHit.root, cameraHit.clicked, cameraHit.hit));
+        if(cameraPoint == null) AccDisplayCameraProjection.release();
+        else AccDisplayCameraProjection.updatePointer(cameraHit.root, cameraPoint.x, cameraPoint.y);
         long now = Util.getMillis();
         for (Session visible : new ArrayList<>(SESSIONS.values())) {
             if (now - visible.lastUse <= 250L) {
@@ -632,7 +630,7 @@ public final class AccDisplayGuiProjection {
         // Current controller target
         private MenuConfigTarget controllerTarget;
         // Current session target
-        private TextureTarget target;
+        private FramebufferGuiRenderer projection;
         // Current texture
         private ResourceLocation texture;
         // Current GUI width
@@ -707,72 +705,38 @@ public final class AccDisplayGuiProjection {
             return true;
         }
 
-        // Match the GUI work to the display texture resolution.
+        // Size the projected editor independently of the player's GUI scale
         private static DisplayRasterSize guiSize(Minecraft minecraft, int fallbackWidth, int fallbackHeight) {
-            int width = minecraft.getWindow().getGuiScaledWidth();
-            int height = minecraft.getWindow().getGuiScaledHeight();
+            int width = minecraft.getWindow().getWidth();
+            int height = minecraft.getWindow().getHeight();
             return DisplayRasterSize.fit(width > 1 ? width : Math.max(2, fallbackWidth),
                     height > 1 ? height : Math.max(2, fallbackHeight),
                     MAX_TEXTURE_WIDTH, MAX_TEXTURE_HEIGHT);
         }
 
-        // Draw the frame
-        private void renderFrame(String mode, float partialTick,
-                                 MultiBufferSource.BufferSource bufferSource) {
+        // Draw the projected screen with private buffers and framebuffer-relative clipping
+        private void renderFrame(String mode, float partialTick){
             Minecraft minecraft = Minecraft.getInstance();
-            RenderTarget main = minecraft.getMainRenderTarget();
             int windowWidth = minecraft.getWindow().getWidth();
             int windowHeight = minecraft.getWindow().getHeight();
-            if (windowWidth <= 0 || windowHeight <= 0) {
-                return;
-            }
+            if(windowWidth <= 0 || windowHeight <= 0) return;
             DisplayRasterSize raster = DisplayRasterSize.fit(
                     windowWidth, windowHeight, MAX_TEXTURE_WIDTH, MAX_TEXTURE_HEIGHT);
-            int targetWidth = raster.width();
-            int targetHeight = raster.height();
-            if (target == null) {
-                target = new TextureTarget(targetWidth, targetHeight, true, Minecraft.ON_OSX);
+            if(projection == null){
                 texture = ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID,
                         "acc_display_projection/" + TEXTURE_IDS.incrementAndGet());
-                minecraft.getTextureManager().register(texture, new TargetTexture(target));
-            } else if (target.width != targetWidth || target.height != targetHeight) {
-                target.resize(targetWidth, targetHeight, Minecraft.ON_OSX);
+                projection = new FramebufferGuiRenderer(texture);
             }
-            bufferSource.endBatch();
-            RenderSystem.backupProjectionMatrix();
-            Matrix4fStack modelView = RenderSystem.getModelViewStack();
-            modelView.pushMatrix();
-            try {
-                target.setClearColor(0.04F, 0.055F, 0.075F, 1.0F);
-                target.clear(Minecraft.ON_OSX);
-                target.bindWrite(true);
-                Matrix4f projection = new Matrix4f().setOrtho(
-                        0.0F, guiWidth, guiHeight, 0.0F, 1000.0F,
-                        net.neoforged.neoforge.client.ClientHooks.getGuiFarPlane());
-                RenderSystem.setProjectionMatrix(projection, VertexSorting.ORTHOGRAPHIC_Z);
-                modelView.translation(0.0F, 0.0F,
-                        10000.0F - net.neoforged.neoforge.client.ClientHooks.getGuiFarPlane());
-                RenderSystem.applyModelViewMatrix();
-                GuiGraphics graphics = new GuiGraphics(minecraft, bufferSource);
-                int mouseX = activeInteraction == this ? (int) Math.round(activeMouseX) : -10000;
-                int mouseY = activeInteraction == this ? (int) Math.round(activeMouseY) : -10000;
-                if ("plotter".equals(mode) && plotter != null) {
+            int mouseX = activeInteraction == this ? (int) Math.round(activeMouseX) : -10000;
+            int mouseY = activeInteraction == this ? (int) Math.round(activeMouseY) : -10000;
+            projection.render(raster.width(), raster.height(), guiWidth, guiHeight, graphics -> {
+                if("plotter".equals(mode) && plotter != null){
                     plotter.renderProjection(graphics, mouseX, mouseY, partialTick,
-                            targetWidth, targetHeight);
-                } else {
+                            raster.width(), raster.height());
+                }else{
                     graph.renderProjection(graphics, mouseX, mouseY, partialTick);
                 }
-                graphics.flush();
-            } finally {
-                target.unbindWrite();
-                main.bindWrite(true);
-                modelView.popMatrix();
-                RenderSystem.applyModelViewMatrix();
-                RenderSystem.restoreProjectionMatrix();
-                RenderSystem.enableDepthTest();
-                RenderSystem.enableBlend();
-                RenderSystem.defaultBlendFunc();
-            }
+            });
         }
 
         // Handle mouse clicked
@@ -864,50 +828,14 @@ public final class AccDisplayGuiProjection {
             }
         }
 
-        // Close the session
-        private void close() {
+        // Release the projected screen and its owned render surface
+        private void close(){
             closeScreens();
-            Minecraft minecraft = Minecraft.getInstance();
-            if (texture != null) {
-                minecraft.getTextureManager().release(texture);
+            if(projection != null){
+                projection.close();
+                projection = null;
                 texture = null;
             }
-            if (target != null) {
-                target.destroyBuffers();
-                target = null;
-            }
-        }
-    }
-
-    // Handle the target texture
-    private static final class TargetTexture extends AbstractTexture {
-        // Target texture target
-        private final TextureTarget target;
-
-        // Initialize the target texture
-        private TargetTexture(TextureTarget target) {
-            this.target = target;
-        }
-
-        // Get the id
-        @Override
-        public int getId() {
-            return target.getColorTextureId();
-        }
-
-        // Release the id
-        @Override
-        public void releaseId() {
-        }
-
-        // Load the target texture
-        @Override
-        public void load(ResourceManager resourceManager) throws IOException {
-        }
-
-        // Close the target texture
-        @Override
-        public void close() {
         }
     }
 

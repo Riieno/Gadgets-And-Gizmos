@@ -29,6 +29,44 @@ class WorkerStorageEndpointTest{
 
     @BeforeAll static void bootstrap(){ ControllerTestBootstrap.bootstrap(); }
 
+    @Test void managedDiscoveryRejectsBeforeIdentityAndObservesNewManifests(){
+        Level level = mock(Level.class);
+        BlockEntity blockEntity = mock(BlockEntity.class);
+        when(blockEntity.getLevel()).thenReturn(level);
+        when(blockEntity.getBlockPos()).thenReturn(POS);
+        when(level.getBlockEntity(POS)).thenReturn(blockEntity);
+        when(level.getBlockState(POS)).thenReturn(Blocks.CHEST.defaultBlockState());
+        when(level.dimension()).thenReturn(Level.OVERWORLD);
+        var uses = new java.util.concurrent.atomic.AtomicInteger(-1);
+        var inventory = new ItemStackHandler(1);
+        inventory.setStackInSlot(0, new ItemStack(Items.OAK_LOG, 7));
+        try(var machines = mockStatic(WorkerMachineRegistry.class);
+            var manifests = mockStatic(ShippingManifestBlockEntity.class);
+            var tablets = mockStatic(ManifestTabletStorage.class);
+            var simulated = mockStatic(SimulatedHelper.class);
+            var access = mockStatic(WorkerContainerAccess.class)){
+            manifests.when(() -> ShippingManifestBlockEntity.attachedResourceUses(level, POS))
+                    .thenAnswer(call -> uses.get());
+            access.when(() -> WorkerContainerAccess.itemHandlers(level, POS, null))
+                    .thenReturn(List.of(inventory));
+            assertNull(WorkerStorageEndpoint.managed(blockEntity));
+            simulated.verifyNoInteractions();
+            uses.set(ShippingManifestBlockEntity.USE_ITEMS);
+            WorkerStorageEndpoint endpoint = WorkerStorageEndpoint.managed(blockEntity);
+            assertNotNull(endpoint);
+            assertEquals("minecraft:chest", endpoint.snapshot().blockId());
+            assertEquals(7, endpoint.stockedItems().getFirst().getCount());
+            inventory.setStackInSlot(0, new ItemStack(Items.OAK_LOG, 11));
+            assertEquals(11, endpoint.stockedItems().getFirst().getCount());
+            uses.set(-1);
+            assertNull(WorkerStorageEndpoint.managed(blockEntity));
+            machines.when(() -> WorkerMachineRegistry.resolve(level, POS, null))
+                    .thenReturn(mock(WorkerMachine.class));
+            uses.set(ShippingManifestBlockEntity.USE_ITEMS);
+            assertNull(WorkerStorageEndpoint.managed(blockEntity));
+        }
+    }
+
     // Discover crafting tables even though they have no block entity or item capability
     @Test void linkedCraftingTableIsAProcessorWithoutBeingStorage(){
         Level level = mock(Level.class);

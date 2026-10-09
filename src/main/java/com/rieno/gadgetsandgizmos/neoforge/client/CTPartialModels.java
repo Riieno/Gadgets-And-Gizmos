@@ -24,6 +24,8 @@ public final class CTPartialModels {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     public static final PartialModel PHYSICS_STAFF_CORE_GLOW = item("physics_staff/core_glow");
+    public static final PartialModel CAMERA_STAND = block("camera/contraption_camera_stand");
+    public static final PartialModel CAMERA_HEAD = block("camera/contraption_camera");
     public static final PartialModel PILOT_CAP = PartialModel.of(ResourceLocation.fromNamespaceAndPath(
             CreateThrusters.MOD_ID, "entity/pilot_cap"));
     public static final PartialModel PHYSICS_STAFF_CORE = item("physics_staff/core");

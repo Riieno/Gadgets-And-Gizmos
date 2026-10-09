@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.client.ui.GuiButtonPainter;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.network.chat.Component;
@@ -26,6 +27,7 @@ final class CTScaledButton extends Button {
 
     // Scalable GUI
     private final CTScalableGui scalableGui;
+    private final GuiButtonPainter painter;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -38,8 +40,15 @@ final class CTScaledButton extends Button {
     // Initialize the CT scaled button
     CTScaledButton(CTScalableGui scalableGui, int x, int y, int width, int height,
                    Component msg, OnPress onPress) {
+        this(scalableGui, x, y, width, height, msg, onPress, null);
+    }
+
+    // Initialize a scaled button with a custom painter
+    CTScaledButton(CTScalableGui scalableGui, int x, int y, int width, int height,
+                   Component msg, OnPress onPress, GuiButtonPainter painter){
         super(x, y, width, height, msg, onPress, DEFAULT_NARRATION);
         this.scalableGui = scalableGui;
+        this.painter = painter;
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -55,7 +64,12 @@ final class CTScaledButton extends Button {
     protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         scalableGui.push(graphics);
         try {
-            super.renderWidget(graphics, mouseX, mouseY, partialTick);
+            isHovered = isMouseOver(mouseX, mouseY);
+            if(painter == null){
+                super.renderWidget(graphics, mouseX, mouseY, partialTick);
+            }else{
+                painter.draw(graphics, this, isHovered, partialTick);
+            }
         } finally {
             scalableGui.pop(graphics);
         }

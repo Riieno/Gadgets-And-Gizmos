@@ -23,6 +23,7 @@ import com.rieno.gadgetsandgizmos.lib.display.ShipInformationDisplayModes;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget;
 import com.rieno.gadgetsandgizmos.lib.multiblock.MultiblockOutlineTargets;
+import com.rieno.gadgetsandgizmos.lib.nbt.CompoundTagCopies;
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayTextInputOpenPayload;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
@@ -52,6 +53,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -756,6 +758,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
             return root.interactExternal(contentNode, point, mouseButton);
         }
         if (contentNode != null && ("acc_display_graph".equals(contentNode.type())
+                || "acc_display_camera_source".equals(contentNode.type())
                 || "acc_display_plotter".equals(contentNode.type())
                 || isShippingInformationNode(contentNode)
                 || "acc_display_scm_information".equals(contentNode.type()))) {
@@ -852,6 +855,30 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
                 && "CC:Tweaked".equalsIgnoreCase(external.getString("Source"));
     }
 
+    // Resolve the camera selected by the current display tab
+    public @Nullable com.rieno.gadgetsandgizmos.lib.view.ViewReference displayedCamera(){
+        CompoundTag frame = displayFrame();
+        CompoundTag source = "external".equals(frame.getString("State"))
+                ? frame.getCompound("External") : frame.getCompound("ExternalPayload");
+        if(!"camera".equals(source.getString("Format"))) return null;
+        return com.rieno.gadgetsandgizmos.lib.view.ViewReference.fromTag(source.getCompound("ViewSource"));
+    }
+    // Authorize camera controls against the display's live source and nearby player
+    public boolean submitCameraControls(ServerPlayer player,
+            com.rieno.gadgetsandgizmos.lib.view.ViewReference ref,
+            com.rieno.gadgetsandgizmos.lib.view.ViewControlInput input){
+        AccDisplayBlockEntity root = networkRoot();
+        if(root == null || player == null || !root.playerIsNear(player)
+                || ref == null || !ref.equals(root.displayedCamera())) return false;
+        var source = ref.resolve(player.level());
+        if(!(source instanceof CameraBlockEntity camera)) return false;
+        if(!com.rieno.gadgetsandgizmos.lib.access.WorldAccessPolicy.canAccessLocal(player, player.serverLevel(),
+                SimulatedHelper.getContainingSubLevelId(root), root.getBlockPos())
+                || !com.rieno.gadgetsandgizmos.lib.access.WorldAccessPolicy.canAccessLocal(player, player.serverLevel(),
+                ref.subLevelId(), ref.blockPos())) return false;
+        return com.rieno.gadgetsandgizmos.lib.view.ViewControlSessions.apply(player, ref, input);
+    }
+
     // Submit ComputerCraft input
     public boolean submitComputerCraftInput(ServerPlayer player, String action,
                                             double x, double y, int val) {
@@ -918,7 +945,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
                 if (val.length() > 64) {
                     val = val.substring(0, 64);
                 }
-                activeController.handleHudInteraction(nodeId, interactionId,
+                activeController.handleHudInteraction(player, nodeId, interactionId,
                         AdvancedGraphDocument.Value.string(val));
                 return;
             }
@@ -939,13 +966,13 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         switch (type) {
             case "button" -> {
                 if (activeController.handleHudButtonInteraction(
-                        node.id(), interactionId)) {
+                        player, node.id(), interactionId)) {
                     widgetInteractionPulse(node.id(), interactionId);
                 }
             }
             case "toggle" -> {
                 if (activeController.handleHudToggleInteraction(
-                        node.id(), interactionId)) {
+                        player, node.id(), interactionId)) {
                     widgetInteractionPulse(node.id(), interactionId);
                 }
             }
@@ -960,7 +987,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
                     next = minimum + Math.round((next - minimum) / step) * step;
                 }
                 if (activeController.handleHudInteraction(
-                        node.id(), interactionId,
+                        player, node.id(), interactionId,
                         AdvancedGraphDocument.Value.number(
                                 Mth.clamp(next, minimum, maximum)))) {
                     widgetInteractionPulse(node.id(), interactionId);
@@ -1261,7 +1288,11 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
                     active == null ? new CompoundTag() : active.getCompound("Frame"),
                     shipInformationDisplayMode);
         } else if (active != null) {
-            frame = active.getCompound("Frame").copy();
+            CompoundTag selected = active.getCompound("Frame");
+            if(selected.get("Graph") == cachedGraphTag){
+                frame = CompoundTagCopies.copyExcept(selected, Set.of("Graph"));
+                frame.put("Graph", cachedGraphTag);
+            }else frame = selected.copy();
         } else if (DISPLAY_MODE_AUTO.equals(configuredDisplayMode)) {
             CompoundTag presentation = presentations.getCompound(0);
             activeSourceId = presentation.getString("Id");
@@ -1443,6 +1474,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
                 .filter(node -> "acc_display_graph".equals(node.type())
                         || "acc_display_plotter".equals(node.type())
                         || "acc_display_external".equals(node.type())
+                        || "acc_display_camera_source".equals(node.type())
                         || isShippingInformationNode(node)
                         || "acc_display_scm_information".equals(node.type()))
                 .toList();
@@ -1467,7 +1499,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
             int typeIndex = typeIndexes.merge(node.type(), 1, Integer::sum);
             addSource(sources, "acc:" + node.id(),
                     controllerSourceLabel(node, typeIndex,
-                            typeTotals.getOrDefault(node.type(), 1)),
+                            typeTotals.getOrDefault(node.type(), 1), inputs, outputs),
                     createControllerFrame(controller, inputs, outputs, node, sharedValues));
         }
         return sources;
@@ -1493,12 +1525,13 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
             frame.putString("Status", controller.getShipInitializationProgressStatus());
             return frame;
         }
-        if (contentNode != null && "acc_display_external".equals(contentNode.type())) {
+        if (contentNode != null && ("acc_display_external".equals(contentNode.type())
+                || "acc_display_camera_source".equals(contentNode.type()))) {
             frame.putString("State", "external");
             putContentLayout(frame, contentNode, inputs, outputs);
             CompoundTag source = externalSourceData(contentNode, inputs);
             frame.put("ExternalSourceData", source);
-            frame.put("External", externalFrame(source,
+            frame.put("External", externalFrame(contentNode, source,
                     Math.max(1, (int) Math.round(frame.getDouble("ContentWidth"))),
                     Math.max(1, (int) Math.round(frame.getDouble("ContentHeight")))));
             return frame;
@@ -1578,8 +1611,14 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
 
     // Get the controller source label
     private static String controllerSourceLabel(
-            AdvancedGraphDocument.Node node, int typeIndex, int typeTotal
+            AdvancedGraphDocument.Node node, int typeIndex, int typeTotal,
+            Map<String, AdvancedGraphDocument.Value> inputs,
+            Map<String, AdvancedGraphDocument.Value> outputs
     ) {
+        if("acc_display_camera_source".equals(node.type()) || "acc_display_external".equals(node.type())){
+            String name = runtimeString(node, "name", inputs, outputs, "").strip();
+            if(!name.isBlank()) return name;
+        }
         String custom = node.label();
         if (!custom.isBlank() && !custom.equals(node.type())) {
             return custom;
@@ -1588,6 +1627,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
             case "acc_display_graph" -> "Graph";
             case "acc_display_plotter" -> "Plotter";
             case "acc_display_external" -> "External";
+            case "acc_display_camera_source" -> "Camera";
             case "acc_display_crn" -> "ACC Display Ship Information";
             case "acc_display_shipping_information" -> "ACC Display Shipping Information";
             case "acc_display_scm_information" -> "ACC Display SCM Information";
@@ -1839,17 +1879,27 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         }
         AdvancedGraphDocument.Node node = controller.activeGraphView().nodes().stream()
                 .filter(candidate -> contentNodeId.equals(candidate.id())
-                        && "acc_display_external".equals(candidate.type()))
+                        && ("acc_display_external".equals(candidate.type())
+                        || "acc_display_camera_source".equals(candidate.type())))
                 .findFirst().orElse(null);
         if (node == null) {
             return;
         }
         CompoundTag selectedSource = frame.contains("ExternalSourceData")
                 ? frame.getCompound("ExternalSourceData") : node.data().getCompound("SourceData");
-        frame.put("External", externalFrame(selectedSource,
+        frame.put("External", externalFrame(node, selectedSource,
                 Math.max(1, (int) Math.round(frame.getDouble("ContentWidth"))),
                 Math.max(1, (int) Math.round(frame.getDouble("ContentHeight")))));
         src.put("Frame", frame);
+    }
+
+    // Enforce the selected camera source on the server
+    private CompoundTag externalFrame(AdvancedGraphDocument.Node node, CompoundTag src, int width, int height){
+        if(!"acc_display_camera_source".equals(node.type())) return externalFrame(src, width, height);
+        if(level == null || !src.contains("BlockPos")) return unavailableExternalFrame("Select a camera source");
+        BlockEntity source = linkedExternalSource(src);
+        return source instanceof CameraBlockEntity camera ? camera.displayFrame()
+                : unavailableExternalFrame("Camera source is unavailable");
     }
 
     // Get the external frame
@@ -2089,13 +2139,18 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
     @Override
     protected void write(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.write(tag, provider, clientPacket);
+        writeDisplayMetadata(tag);
+        if (clientPacket) {
+            tag.put("AccDisplayFrame", displayFrame.copy());
+        }
+    }
+
+    // Keep full and incremental packets on the same display configuration
+    private void writeDisplayMetadata(CompoundTag tag){
         tag.putString("AccDisplayMode", configuredDisplayMode);
         tag.putString("AccDisplayShipInformationMode", shipInformationDisplayMode);
         tag.putBoolean("AccDisplayShipInformationModeConfigured",
                 shipInformationModeConfigured);
-        if (clientPacket) {
-            tag.put("AccDisplayFrame", displayFrame.copy());
-        }
     }
 
     // Create the display update packet
@@ -2108,14 +2163,17 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
     // Write the incremental update
     private CompoundTag writeIncrementalUpdate(HolderLookup.Provider provider) {
         CompoundTag tag = new CompoundTag();
-        write(tag, provider, true);
-        CompoundTag packetFrame = tag.getCompound("AccDisplayFrame");
-        CompoundTag currentFrame = displayFrame.copy();
+        super.write(tag, provider, true);
+        writeDisplayMetadata(tag);
+        CompoundTag currentFrame = CompoundTagCopies.copyExcept(displayFrame, Set.of("Graph"));
+        int graphRevision = displayFrame.getInt("GraphRevision");
+        boolean canSendDelta = "graph".equals(displayFrame.getString("State"))
+                && !forceFullGraphSync && graphRevision == lastNetworkGraphRevision
+                && "graph".equals(lastNetworkFrame.getString("State"));
+        CompoundTag packetFrame = canSendDelta ? currentFrame.copy() : displayFrame.copy();
+        tag.put("AccDisplayFrame", packetFrame);
         if ("graph".equals(packetFrame.getString("State"))) {
             int revision = packetFrame.getInt("GraphRevision");
-            boolean canSendDelta = !forceFullGraphSync
-                    && revision == lastNetworkGraphRevision
-                    && "graph".equals(lastNetworkFrame.getString("State"));
             if (!canSendDelta) {
                 forceFullGraphSync = false;
                 lastNetworkGraphRevision = revision;

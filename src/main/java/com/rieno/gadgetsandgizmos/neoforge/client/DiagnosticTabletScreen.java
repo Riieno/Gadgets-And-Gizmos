@@ -2966,15 +2966,35 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
 
     // Apply mode changes requested by an app surface through the host tablet
     private void sendClientAppAction(String action, String val){
-        if("prepare_extract".equals(action)){
+        if("schematic_preview".equals(action) && com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.DIGISABLE.id().equals(state.app())){
+            try{
+                java.util.UUID id = java.util.UUID.fromString(val);
+                if(com.rieno.gadgetsandgizmos.lib.client.schematic.ClientSchematicFiles.contains(id)){
+                    var request = new DiagnosticTabletActionPayload(placed, hand, tabletPos, tabletSubLevelId,
+                            sourceTabletId, state.app(), "schematics", action, val);
+                    com.rieno.gadgetsandgizmos.lib.client.schematic.ClientSchematicFiles.upload(id,
+                            chunk -> PacketDistributor.sendToServer(new com.rieno.gadgetsandgizmos.neoforge.network.DigisableSchematicUploadPayload(
+                                    request, chunk.total(), chunk.offset(), chunk.data())),
+                            err -> {
+                                if(minecraft != null && minecraft.player != null) minecraft.player.displayClientMessage(
+                                        Component.literal(err.getMessage()), true);
+                            });
+                    return;
+                }
+            }catch(IllegalArgumentException err){
+                if(minecraft != null && minecraft.player != null) minecraft.player.displayClientMessage(Component.literal(err.getMessage()), true);
+                return;
+            }
+        }
+        if("prepare_extract".equals(action) || "prepare_build".equals(action)){
             if(placed){
                 if(minecraft != null && minecraft.player != null) minecraft.player.displayClientMessage(
-                        Component.literal("Hold a tablet to extract a stored sublevel"), true);
+                        Component.literal("Hold a tablet to place an assembly"), true);
                 return;
             }
             try{
                 com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps.DigisablePlacementClient.begin(
-                        hand, state.tabletId(), java.util.UUID.fromString(val));
+                        hand, state.tabletId(), java.util.UUID.fromString(val), "prepare_build".equals(action));
                 send(action, val);
                 onClose();
             }catch(IllegalArgumentException err){
@@ -3252,6 +3272,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     private static String readerActionFor(TabletAppDefinition app) {
         if(app != null && com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.DIGISABLE.id().equals(app.id())) return "store";
         if(app != null && com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.BLOCKMATES.id().equals(app.id())) return "pair";
+        if(app != null && com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.CCTV.id().equals(app.id())) return "pair";
         if (isBuiltInApp(app, "nfc")) return "nfc_scan";
         if (isBuiltInApp(app, "redstone_link")) return "bind_channel";
         return "";

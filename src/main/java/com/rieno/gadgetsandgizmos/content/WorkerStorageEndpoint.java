@@ -194,6 +194,8 @@ public final class WorkerStorageEndpoint implements WorkerEndpoint {
             targetPos = ShippingManifestBlock.attachedTargetPos(manifest.getBlockPos(), state);
             targetSide = ShippingManifestBlock.attachedTargetSide(state);
         }
+        WorkerMachine machine = WorkerMachineRegistry.resolve(level, targetPos, targetSide);
+        if(machine != null || !isManagedStorage(level, targetPos)) return null;
         UUID subLevelId = SimulatedHelper.getContainingSubLevelId(blockEntity);
         BlockState targetState = level.getBlockState(targetPos);
         String blockId = BuiltInRegistries.BLOCK.getKey(targetState.getBlock()).toString();
@@ -202,7 +204,8 @@ public final class WorkerStorageEndpoint implements WorkerEndpoint {
                 + ":" + (targetSide == null ? "all" : targetSide.getName());
         WorkerStorageEndpoint endpoint = new WorkerStorageEndpoint(level, targetPos, targetSide,
                 subLevelId, label, blockId, reference, true, true, false);
-        return endpoint.isManagedStorage() && endpoint.hasAnyCapability() ? endpoint : null;
+        endpoint.machineCacheTick = level.getGameTime();
+        return endpoint.hasAnyCapability() ? endpoint : null;
     }
 
     // Resolve storage or machine endpoints explicitly targeted by the ACC linker
@@ -304,6 +307,9 @@ public final class WorkerStorageEndpoint implements WorkerEndpoint {
     private record AreaCacheKey(UUID id, @Nullable UUID subLevelId, WorkerArea bounds){}
     private record AreaCacheEntry(long tick, List<BlockPos> blocks, boolean complete){}
 
+    // Get the world that owns this endpoint's local block position
+    public Level level(){ return level; }
+
     // Identify shared storage independently of which face was linked
     public UUID storageId(){
         BlockPos storagePos = com.rieno.gadgetsandgizmos.lib.inventory.ContainerStorageIdentity.position(level, pos);
@@ -337,6 +343,12 @@ public final class WorkerStorageEndpoint implements WorkerEndpoint {
 
     public boolean isProcessingMachine(){
         return machine() != null;
+    }
+
+    // Read machine type declarations before the library expands recipe prerequisites
+    public Set<ResourceLocation> supportedProcessorTypes(){
+        WorkerMachine machine = machine();
+        return machine == null ? Set.of() : machine.supportedProcessorTypes();
     }
 
     // Prefer the bounded view when a machine also has a direct face link
@@ -550,7 +562,7 @@ public final class WorkerStorageEndpoint implements WorkerEndpoint {
 
     public List<String> recipeRouteDiagnostics(WorkerRecipePlan plan){
         WorkerMachine machine = machine();
-        return machine == null || areaBounds == null ? List.of() : machine.routeDiagnostics(plan, machineSite());
+        return machine == null ? List.of() : machine.routeDiagnostics(plan, machineSite());
     }
 
     // Keep legacy adapter call order unless an adapter explicitly permits a cheap preload probe.
@@ -1047,6 +1059,11 @@ public final class WorkerStorageEndpoint implements WorkerEndpoint {
     // Check whether automatic workers may use this storage without an explicit machine route
     private boolean isManagedStorage() {
         if(isProcessingMachine()) return false;
+        return isManagedStorage(level, pos);
+    }
+
+    // Reject unmanaged blocks before constructing endpoint metadata
+    private static boolean isManagedStorage(Level level, BlockPos pos){
         BlockEntity blockEntity = level.getBlockEntity(pos);
         if(ManifestTabletStorage.attached(level, pos)) return true;
         if (blockEntity instanceof SmartVaultBlockEntity

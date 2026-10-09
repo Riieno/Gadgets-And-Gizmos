@@ -22,6 +22,7 @@ import com.rieno.gadgetsandgizmos.lib.control.OrientationPayload;
 import com.rieno.gadgetsandgizmos.lib.control.OrientationTarget;
 import com.rieno.gadgetsandgizmos.lib.kinetics.KineticAngleHelper;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SableConstraintApi;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.rieno.gadgetsandgizmos.util.CTPropulsionTelemetry;
@@ -42,7 +43,6 @@ import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import dev.ryanhcode.sable.api.physics.PhysicsPipeline;
 import dev.ryanhcode.sable.api.physics.PhysicsPipelineBody;
-import dev.ryanhcode.sable.api.physics.constraint.PhysicsConstraintConfiguration;
 import dev.ryanhcode.sable.api.physics.constraint.PhysicsConstraintHandle;
 import dev.ryanhcode.sable.api.schematic.SubLevelSchematicSerializationContext;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
@@ -135,10 +135,6 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
     private static final Field LOCK_OPTION_FIELD = getDeclaredField("lockedDefaultOption");
     private static final Field HANDLE_FIELD = getDeclaredField("handle");
     private static final Field ASSEMBLING_FIELD = getDeclaredField("assembling");
-    private static final String[] ROTARY_CONSTRAINT_CONFIGURATION_CLASSES = {
-            "dev.ryanhcode.sable.api.physics.constraint.RotaryConstraintConfiguration",
-            "dev.ryanhcode.sable.api.physics.constraint.rotary.RotaryConstraintConfiguration"
-    };
     private static final String ALL_THRUSTERS_GRAPH_PORT = "all_thrusters";
     private static final List<String> THRUSTER_GRAPH_CONTROL_FIELDS =
             List.copyOf(ThrusterBlockEntity.graphControlData().keySet());
@@ -154,6 +150,12 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
+
+    // Fixed joint used by the servo bearing
+    private PhysicsConstraintHandle servoJoint;
+    // Bodies attached to the current fixed joint
+    private ServerSubLevel servoJointParent;
+    private ServerSubLevel servoJointChild;
 
     // Assembly fluid handler
     private final IFluidHandler assemblyFluidHandler = new AssemblyFluidDistributor(this);
@@ -560,21 +562,27 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
             return;
         }
 
+        validateThrusterLinkHandle();
+        NestedAssemblyFrame parentFrame = NestedAssemblyFrame.resolve(this);
+        if(servoJoint != null && !parentFrame.isRemoved()
+                && servoJointParent == parentFrame.parentBody() && servoJointChild == plateSubLevel){
+            if(updatePlate) associatePlateWithParent();
+            updateServoCoefficients();
+            return;
+        }
         removeThrusterLinkHandle();
         if (updatePlate) {
             associatePlateWithParent();
         }
 
         BlockState plateState = level.getBlockState(platePos);
-        if (isThrusterBearingLink(plateState)) {
+        if (plateState.getBlock() instanceof SwivelBearingPlateBlock) {
             Direction plateFacing = plateState.getValue(SwivelBearingPlateBlock.FACING);
             if (!attachThrusterLinks(plateSubLevel, centerOf(platePos.relative(plateFacing)))) {
                 disassemble();
             }
             return;
         }
-
-        super.reattachConstraint(plateSubLevel, updatePlate);
     }
 
     // Associate the plate with parent
@@ -597,7 +605,7 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
 
     // Validate the thruster links
     private void checkThrusterLinks() {
-        if (level == null || !isAssembled() || getSubLevelID() == null) {
+        if (level == null || !isAssembled()) {
             return;
         }
         BlockPos platePos = getPlatePos();
@@ -605,7 +613,7 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
             return;
         }
         BlockState plateState = level.getBlockState(platePos);
-        if (!isThrusterBearingLink(plateState)) {
+        if (!(plateState.getBlock() instanceof SwivelBearingPlateBlock)) {
             return;
         }
 
@@ -615,7 +623,12 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
         }
 
         SubLevelContainer container = SubLevelContainer.getContainer(level);
-        SubLevel subLevel = container == null ? null : container.getSubLevel(getSubLevelID());
+        if(container == null) return;
+        if(getSubLevelID() == null){
+            reattachConstraint(null, true);
+            return;
+        }
+        SubLevel subLevel = container.getSubLevel(getSubLevelID());
         if (subLevel instanceof ServerSubLevel serverSubLevel) {
             reattachConstraint(serverSubLevel, true);
         }
@@ -654,21 +667,15 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
             return false;
         }
         BlockState plateState = level.getBlockState(platePos);
-        if (!isThrusterBearingLink(plateState)) {
+        if (!(plateState.getBlock() instanceof SwivelBearingPlateBlock)) {
             return false;
         }
 
         Direction facing = getFacing();
         Direction plateFacing = plateState.getValue(SwivelBearingPlateBlock.FACING);
         Vector3d anchorPos = centerOf(getBlockPos().relative(facing));
-        Vector3d facingVec = vectorOf(facing);
         Vector3d plateFacingVec = vectorOf(plateFacing);
         Vector3d plateAttachPos = new Vector3d(attachPos).sub(new Vector3d(plateFacingVec).mul(0.001D));
-        PhysicsConstraintConfiguration<PhysicsConstraintHandle> constraint =
-                createRotaryConstraintConfiguration(anchorPos, plateAttachPos, facingVec, plateFacingVec);
-        if (constraint == null) {
-            return false;
-        }
 
         ServerSubLevelContainer container = SubLevelContainer.getContainer(serverLevel);
         if (container == null) {
@@ -682,86 +689,88 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
         if (containingSubLevel == plateSubLevel) {
             return false;
         }
-        PhysicsPipeline pipeline = container.physicsSystem().getPipeline();
-        PhysicsConstraintHandle handle = addThrusterLinkConstraint(pipeline, containingSubLevel, plateSubLevel, constraint);
-        if (handle == null) {
+        try{
+            PhysicsConstraintHandle handle = SableConstraintApi.rigidFixedConstraint(serverLevel, containingSubLevel,
+                    plateSubLevel, anchorPos, plateAttachPos, servoJointOrientation(facing, plateFacing, getTargetAngleDegrees()));
+            if(handle == null) return false;
+            handle.setContactsEnabled(false);
+            servoJoint = handle;
+            servoJointParent = containingSubLevel;
+            servoJointChild = plateSubLevel;
+            return true;
+        }catch(ReflectiveOperationException | RuntimeException | LinkageError error){
             return false;
         }
-        setThrusterLinkHandle(handle);
-        return true;
     }
 
-    // Create the rotary constraint configuration
-    @SuppressWarnings("unchecked")
-    private static @org.jetbrains.annotations.Nullable PhysicsConstraintConfiguration<PhysicsConstraintHandle>
-    createRotaryConstraintConfiguration(Vector3dc anchorPos, Vector3dc plateAttachPos,
-                                        Vector3dc facingVec, Vector3dc plateFacingVec) {
-        for (String className : ROTARY_CONSTRAINT_CONFIGURATION_CLASSES) {
-            try {
-                Object constraint = Class.forName(className)
-                        .getConstructor(Vector3dc.class, Vector3dc.class, Vector3dc.class, Vector3dc.class)
-                        .newInstance(anchorPos, plateAttachPos, facingVec, plateFacingVec);
-                if (constraint instanceof PhysicsConstraintConfiguration<?> physicsConstraintConfiguration) {
-                    return (PhysicsConstraintConfiguration<PhysicsConstraintHandle>) physicsConstraintConfiguration;
-                }
-            } catch (ReflectiveOperationException | LinkageError | ClassCastException ignored) {
-            }
+    // Get the fixed servo joint
+    private PhysicsConstraintHandle getThrusterLinkHandle(){
+        return servoJoint;
+    }
+
+    // Set the fixed servo joint
+    private void setThrusterLinkHandle(@org.jetbrains.annotations.Nullable PhysicsConstraintHandle handle){
+        servoJoint = handle;
+    }
+
+    // Convert the servo angle to the mounted body's parent-local orientation
+    private static Quaterniond servoJointOrientation(Direction facing, Direction plateFacing, double angleDegrees){
+        return SableConstraintApi.rotaryOrientation(new Quaterniond(facing.getRotation()),
+                new Quaterniond(plateFacing.getRotation()), Math.toRadians(angleDegrees));
+    }
+
+    // Retarget fixed frames instead of applying Simulated's spring motor
+    @Override
+    public void updateServoCoefficients(){
+        if(level == null || level.isClientSide || !isAssembled()) return;
+        validateThrusterLinkHandle();
+        if(servoJoint == null) return;
+        BlockPos platePos = getPlatePos();
+        if(platePos == null) return;
+        BlockState plateState = level.getBlockState(platePos);
+        if(!plateState.hasProperty(SwivelBearingPlateBlock.FACING)) return;
+        Direction facing = getFacing();
+        Direction plateFacing = plateState.getValue(SwivelBearingPlateBlock.FACING);
+        ServerLevel serverLevel = SableLevelApi.serverLevel(level);
+        if(serverLevel == null) return;
+        ServerSubLevelContainer container = SubLevelContainer.getContainer(serverLevel);
+        NestedAssemblyFrame parentFrame = NestedAssemblyFrame.resolve(this);
+        if(container == null || parentFrame.isRemoved()) return;
+        SubLevel child = getSubLevelID() == null ? null : container.getSubLevel(getSubLevelID());
+        ServerSubLevel childBody = child instanceof ServerSubLevel body ? body : null;
+        if(getSubLevelID() != null && (childBody == null || childBody.isRemoved())) return;
+        Vector3d baseAnchor = centerOf(worldPosition.relative(facing));
+        Vector3d childAnchor = centerOf(platePos.relative(plateFacing)).sub(vectorOf(plateFacing).mul(0.001D));
+        double targetAngle;
+        try{
+            targetAngle = AngleHelper.angleLerp(container.physicsSystem().getPartialPhysicsTick(),
+                    LAST_TARGET_ANGLE_FIELD.getDouble(this), getTargetAngleDegrees());
+        }catch(IllegalAccessException error){
+            throw new IllegalStateException("Failed to read the previous servo angle", error);
         }
-        return null;
-    }
-
-    // Add the thruster link constraint
-    private static @org.jetbrains.annotations.Nullable PhysicsConstraintHandle addThrusterLinkConstraint(
-            PhysicsPipeline pipeline,
-            @org.jetbrains.annotations.Nullable ServerSubLevel containingSubLevel,
-            @org.jetbrains.annotations.Nullable ServerSubLevel plateSubLevel,
-            PhysicsConstraintConfiguration<PhysicsConstraintHandle> constraint) {
-        PhysicsConstraintHandle handle = addThrusterLinkConstraint(pipeline,
-                PhysicsPipelineBody.class, (PhysicsPipelineBody) containingSubLevel, (PhysicsPipelineBody) plateSubLevel,
-                constraint);
-        if (handle != null) {
-            return handle;
-        }
-        return addThrusterLinkConstraint(pipeline, ServerSubLevel.class, containingSubLevel, plateSubLevel, constraint);
-    }
-
-    // Add the thruster link constraint
-    private static @org.jetbrains.annotations.Nullable PhysicsConstraintHandle addThrusterLinkConstraint(
-            PhysicsPipeline pipeline,
-            Class<?> bodyClass,
-            @org.jetbrains.annotations.Nullable Object containingSubLevel,
-            @org.jetbrains.annotations.Nullable Object plateSubLevel,
-            PhysicsConstraintConfiguration<PhysicsConstraintHandle> constraint) {
-        try {
-            Object handle = pipeline.getClass()
-                    .getMethod("addConstraint", bodyClass, bodyClass, PhysicsConstraintConfiguration.class)
-                    .invoke(pipeline, containingSubLevel, plateSubLevel, constraint);
-            return handle instanceof PhysicsConstraintHandle physicsConstraintHandle ? physicsConstraintHandle : null;
-        } catch (ReflectiveOperationException | LinkageError | ClassCastException ignored) {
-            return null;
-        }
-    }
-
-    // Get the thruster link handle
-    private PhysicsConstraintHandle getThrusterLinkHandle() {
-        try {
-            return (PhysicsConstraintHandle) HANDLE_FIELD.get(this);
-        } catch (IllegalAccessException err) {
-            throw new IllegalStateException("Failed to read swivel-bearing constraint handle", err);
+        Quaterniond orientation = servoJointOrientation(facing, plateFacing, targetAngle);
+        try{
+            SableConstraintApi.setFrame(servoJoint, 1, baseAnchor, orientation);
+            SableConstraintApi.setFrame(servoJoint, 2, childAnchor, new Quaterniond());
+            PhysicsPipeline pipeline = container.physicsSystem().getPipeline();
+            if(parentFrame.parentBody() != null) pipeline.wakeUp(parentFrame.parentBody());
+            if(childBody != null) pipeline.wakeUp(childBody);
+        }catch(ReflectiveOperationException | RuntimeException | LinkageError error){
+            removeThrusterLinkHandle();
         }
     }
 
-    // Set the thruster link handle
-    private void setThrusterLinkHandle(@org.jetbrains.annotations.Nullable PhysicsConstraintHandle handle) {
-        try {
-            HANDLE_FIELD.set(this, handle);
-        } catch (IllegalAccessException err) {
-            throw new IllegalStateException("Failed to update swivel-bearing constraint handle", err);
-        }
-    }
-
-    // Remove the thruster link handle
+    // Remove the fixed joint and any inherited rotary joint
     private void removeThrusterLinkHandle() {
+        servoJointParent = null;
+        servoJointChild = null;
+        try{
+            Object inherited = HANDLE_FIELD.get(this);
+            if(inherited instanceof PhysicsConstraintHandle handle && handle.isValid()) handle.remove();
+            HANDLE_FIELD.set(this, null);
+        }catch(IllegalAccessException error){
+            throw new IllegalStateException("Failed to clear the inherited servo joint", error);
+        }
         PhysicsConstraintHandle handle = getThrusterLinkHandle();
         if (handle != null) {
             try {

@@ -115,6 +115,9 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                 return;
             }
             boolean persistPortable = false;
+            if(context.player() instanceof ServerPlayer player){
+                com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.author(controller, player);
+            }
             // ------------------------------------DRAFTS / VALIDATION------------------------------------
             switch (payload.action()) {
                 case "controller_alias" -> {
@@ -543,7 +546,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
         candidates.putString("DetectedVehicleType", controller.getScmDetectedVehicleType());
         candidates.putString("DetectedSteeringType", controller.getScmDetectedSteeringType());
         ListTag entries = new ListTag();
-        controller.getScmConfigurationCandidates().stream().limit(2048).forEach(unit -> {
+        controller.getScmConfigurationCandidates().stream().limit(com.rieno.gadgetsandgizmos.lib.scm.ScmCapacity.MAX_CONTROL_UNITS).forEach(unit -> {
             entries.add(unit.toTag());
         });
         candidates.put("Units", entries);
@@ -565,7 +568,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
             // is only a renderer/picker fallback; all selected targets are
             // still checked against the server's current assembled bodies.
             ListTag previewBlocks = new ListTag();
-            controller.getScmConfigurationPreviewBlocks(16_384).forEach(block -> {
+            controller.getScmConfigurationPreviewBlocks(com.rieno.gadgetsandgizmos.lib.scm.ScmCapacity.MAX_PREVIEW_BLOCKS).forEach(block -> {
                 CompoundTag entry = new CompoundTag();
                 entry.putUUID("SubLevelId", block.subLevelId());
                 entry.putLong("Position", block.position().asLong());

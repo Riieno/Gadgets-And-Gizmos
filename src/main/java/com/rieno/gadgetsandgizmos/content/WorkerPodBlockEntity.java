@@ -26,6 +26,8 @@ import com.rieno.gadgetsandgizmos.lib.worker.WorkerEndpointSnapshot;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerPathing;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerProfile;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipePlan;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog;
+import com.rieno.gadgetsandgizmos.lib.util.DeferredWorkScheduler;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerResourceKey;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerResourcePacket;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerResourceType;
@@ -39,7 +41,6 @@ import com.simibubi.create.content.logistics.box.PackageStyles;
 import com.simibubi.create.content.processing.recipe.ProcessingRecipe;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
-import com.simibubi.create.foundation.recipe.RecipeFinder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
@@ -300,7 +301,7 @@ public class WorkerPodBlockEntity extends SmartBlockEntity {
 
     // Assign and store one mannequin placed directly into this pod
     boolean admitWorker(PlayerMannequinEntity mannequin) {
-        if (mannequin == null || mannequin.assignedWorkerPod()
+        if (mannequin == null || mannequin.isConstructionVisual() || mannequin.assignedWorkerPod()
                 .filter(assignedPodId -> !assignedPodId.equals(podId)).isPresent()) return false;
         UUID workerId = mannequin.getUUID();
         mannequin.setAssignedWorkerPod(podId);
@@ -317,7 +318,7 @@ public class WorkerPodBlockEntity extends SmartBlockEntity {
     public List<PlayerMannequinEntity> assignableMannequins() {
         if (level == null) return List.of();
         AABB bounds = new AABB(worldPosition).inflate(ASSIGNMENT_RANGE);
-        return level.getEntitiesOfClass(PlayerMannequinEntity.class, bounds, mannequin -> mannequin.isAlive()
+        return level.getEntitiesOfClass(PlayerMannequinEntity.class, bounds, mannequin -> mannequin.isAlive() && !mannequin.isConstructionVisual()
                 && (mannequin.assignedWorkerPod().isEmpty()
                 || mannequin.assignedWorkerPod().filter(podId::equals).isPresent()));
     }
@@ -417,7 +418,7 @@ public class WorkerPodBlockEntity extends SmartBlockEntity {
                 worldPosition.getX() + 1.0D, worldPosition.getY() + 2.6D, worldPosition.getZ() + 1.0D);
         boolean changed = false;
         for (PlayerMannequinEntity mannequin : level.getEntitiesOfClass(PlayerMannequinEntity.class, podTop,
-                candidate -> candidate.isAlive() && (candidate.assignedWorkerPod().isEmpty()
+                candidate -> candidate.isAlive() && !candidate.isConstructionVisual() && (candidate.assignedWorkerPod().isEmpty()
                         || candidate.assignedWorkerPod().filter(podId::equals).isPresent()))) {
             UUID workerId = mannequin.getUUID();
             mannequin.setAssignedWorkerPod(podId);
@@ -475,7 +476,8 @@ public class WorkerPodBlockEntity extends SmartBlockEntity {
         if (!runtime.queue.enqueueAll(orders)) return false;
         runtime.profile = new WorkerProfile(runtime.profile.workerId(), runtime.profile.name(),
                 runtime.profile.job(), true);
-        runtime.status = runtime.active() ? "Task chain queued" : "Finding a delivery";
+        runtime.status = runtime.queue.current() != null && runtime.queue.current().lookingUpRecipe()
+                ? "Looking up recipe" : runtime.active() ? "Task chain queued" : "Finding a delivery";
         setChanged();
         sendData();
         return true;
@@ -634,7 +636,21 @@ public class WorkerPodBlockEntity extends SmartBlockEntity {
 
     // Tick one assigned worker
     private void tickWorker(ServerLevel serverLevel, @Nullable AdvancedContraptionControllerBlockEntity controller,
-                            WorkerRuntime runtime, boolean refreshEndpoints) {
+                            WorkerRuntime runtime, boolean refreshEndpoints){
+        try{
+            advanceWorker(serverLevel, controller, runtime, refreshEndpoints);
+        }catch(DeferredWorkScheduler.Pending pending){
+            if(!"Looking up recipe".equals(runtime.status)){
+                runtime.status = "Looking up recipe";
+                sendData();
+            }
+            PlayerMannequinEntity mannequin = findMannequin(runtime);
+            if(mannequin != null) presentWorker(runtime, mannequin);
+        }
+    }
+
+    private void advanceWorker(ServerLevel serverLevel, @Nullable AdvancedContraptionControllerBlockEntity controller,
+                                WorkerRuntime runtime, boolean refreshEndpoints) {
         if(runtime.queue.current() != null || runtime.travel != null){
             WorkerDeliveryTravel.retainPosition(serverLevel, runtime.profile.workerId(), runtime.lastPosition);
         }
@@ -720,6 +736,25 @@ public class WorkerPodBlockEntity extends SmartBlockEntity {
             return;
         }
         restoreRecipeProgress(runtime);
+        if(order.lookingUpRecipe()){
+            if(controller != null && runtime.profile.enabled() && refreshEndpoints){
+                List<WorkerWorkOrder> orders = controller.retryWorkerRecipe(order,
+                        workerPlanningStock(runtime.profile.workerId()));
+                if(orders.stream().anyMatch(next -> !runtime.profile.job().accepts(next.task().resource().type()))){
+                    runtime.status = "Worker cannot carry this recipe's ingredients";
+                    presentWorker(runtime, mannequin);
+                    return;
+                }
+                if(runtime.queue.replaceCurrent(orders)){
+                    clearRecipeProgress(runtime);
+                    resetRuntime(runtime, "Recipe found");
+                    setChanged();
+                    sendData();
+                }else runtime.status = controller.workerRecipeFailure();
+            }
+            presentWorker(runtime, mannequin);
+            return;
+        }
         if (order.returningToStation()) {
             returnToStation(controller, runtime, mannequin, order);
             presentWorker(runtime, mannequin);
@@ -885,31 +920,6 @@ public class WorkerPodBlockEntity extends SmartBlockEntity {
             return;
         }
         if(completeStockedIntermediate(runtime, order, storageEndpoints, stock)) return;
-        if(order.recipePlan() != null && order.recipePlan().operation() != WorkerRecipePlan.Operation.WORKER_CRAFTING
-                && order.task().completedAmount() == 0L && runtime.recipeInputIndex == 0
-                && runtime.recipeInputDelivered == 0L && runtime.recipeBatchCount == 0L
-                && !order.id().equals(runtime.recipeChoiceReviewed)){
-            runtime.recipeChoiceReviewed = order.id();
-            Map<WorkerResourceKey, Long> personal = new LinkedHashMap<>(stock.contents());
-            if(mannequin.workerCurios() != null)
-                toolInventory(runtime.profile.workerId(), mannequin).contents().forEach((key, amount) ->
-                        personal.merge(key, amount, (first, second) -> first >= Long.MAX_VALUE - second
-                                ? Long.MAX_VALUE : first + second));
-            if(wireless != null) wireless.contents().forEach((key, amount) ->
-                    personal.merge(key, amount, (first, second) -> first >= Long.MAX_VALUE - second
-                            ? Long.MAX_VALUE : first + second));
-            List<WorkerWorkOrder> revised = controller.retryWorkerRecipe(order, personal);
-            if(revised == null) revised = List.of();
-            WorkerRecipePlan selected = revised.stream().map(WorkerWorkOrder::recipePlan)
-                    .filter(Objects::nonNull).reduce((first, second) -> second).orElse(null);
-            if(selected != null && selected.operation() != WorkerRecipePlan.Operation.PROCESSING
-                    && !selected.equals(order.recipePlan())
-                    && runtime.queue.replaceCurrent(revised)){
-                order = runtime.queue.current();
-                runtime.recipeChoiceReviewed = order.id();
-                setChanged();
-            }
-        }
         boolean returningInventory = order.mode() == WorkerWorkOrder.Mode.TRANSFER
                 && runtime.profile.workerId().equals(order.sourceEndpointId())
                 && order.destinationEndpointId() != null;
@@ -1382,9 +1392,9 @@ public class WorkerPodBlockEntity extends SmartBlockEntity {
                         || storage.isWorkerRecipeSource()) && endpoint.canExtract(input.resource())
                         && endpoint.available(input.resource()) > 0L);
         if(source) return false;
-        runtime.unavailableRouteReviewed = order.id();
         List<WorkerWorkOrder> revised = controller.retryWorkerRecipe(order,
                 workerPlanningStock(runtime.profile.workerId()));
+        runtime.unavailableRouteReviewed = order.id();
         WorkerRecipePlan replacement = revised.stream().map(WorkerWorkOrder::recipePlan)
                 .filter(Objects::nonNull).reduce((first, second) -> second).orElse(null);
         if(replacement == null || replacement.equals(plan) || !runtime.queue.replaceCurrent(revised)){
@@ -3298,8 +3308,8 @@ public class WorkerPodBlockEntity extends SmartBlockEntity {
         ItemStack ingredient = workerItemStack(input);
         var output = BuiltInRegistries.ITEM.get(order.outputResource().id());
         if (ingredient.isEmpty() || output == null) return null;
-        for (RecipeHolder<? extends Recipe<?>> holder : RecipeFinder.get(null, level,
-                candidate -> candidate.value() instanceof StonecutterRecipe)) {
+        for(RecipeHolder<?> holder : WorkerRecipeCatalog.producingRecipes(level, order.outputResource())){
+            if(!(holder.value() instanceof StonecutterRecipe)) continue;
             StonecutterRecipe recipe = (StonecutterRecipe) holder.value();
             if (!recipe.matches(new SingleRecipeInput(ingredient), level)) continue;
             ItemStack result = recipe.assemble(new SingleRecipeInput(ingredient), level.registryAccess());
@@ -3335,8 +3345,8 @@ public class WorkerPodBlockEntity extends SmartBlockEntity {
                     stacks.add((mask & 1 << slot) == 0 ? ItemStack.EMPTY : input.copy());
                 }
                 CraftingInput grid = CraftingInput.of(size, size, stacks);
-                for (RecipeHolder<? extends Recipe<?>> holder : RecipeFinder.get(null, level,
-                        candidate -> candidate.value() instanceof CraftingRecipe)) {
+                for(RecipeHolder<?> holder : WorkerRecipeCatalog.producingRecipes(level, order.outputResource())){
+                    if(!(holder.value() instanceof CraftingRecipe)) continue;
                     CraftingRecipe recipe = (CraftingRecipe) holder.value();
                     if (!recipe.matches(grid, level)) continue;
                     ItemStack result = recipe.assemble(grid, level.registryAccess());
@@ -3372,16 +3382,15 @@ public class WorkerPodBlockEntity extends SmartBlockEntity {
         if (output == null || input.isEmpty()) return false;
         if (order.mode() == WorkerWorkOrder.Mode.AUTO_CRAFT) {
             CraftingInput grid = CraftingInput.of(1, 1, List.of(input));
-            return RecipeFinder.get(null, level,
-                    holder -> holder.value() instanceof CraftingRecipe).stream()
+            return WorkerRecipeCatalog.producingRecipes(level, order.outputResource()).stream()
                     .map(RecipeHolder::value)
                     .filter(CraftingRecipe.class::isInstance)
                     .map(CraftingRecipe.class::cast)
                     .anyMatch(recipe -> recipe.matches(grid, level)
                             && recipe.getResultItem(level.registryAccess()).is(output));
         }
-        for (RecipeHolder<? extends Recipe<?>> holder : RecipeFinder.get(null, level,
-                candidate -> candidate.value() instanceof ProcessingRecipe<?, ?>)) {
+        for(RecipeHolder<?> holder : WorkerRecipeCatalog.producingRecipes(level, order.outputResource())){
+            if(!(holder.value() instanceof ProcessingRecipe<?, ?>)) continue;
             ProcessingRecipe<?, ?> recipe = (ProcessingRecipe<?, ?>) holder.value();
             int resultAmount = CreateWorkerRecipes.singleItemOutput(recipe, level, input, output);
             if(resultAmount <= 0) continue;
@@ -3489,8 +3498,8 @@ public class WorkerPodBlockEntity extends SmartBlockEntity {
                     inputAmount / unit.inputCount());
         }
         if (order.mode() != WorkerWorkOrder.Mode.PROCESS) return 0L;
-        for (RecipeHolder<? extends Recipe<?>> holder : RecipeFinder.get(null, level,
-                candidate -> candidate.value() instanceof ProcessingRecipe<?, ?>)) {
+        for(RecipeHolder<?> holder : WorkerRecipeCatalog.producingRecipes(level, order.outputResource())){
+            if(!(holder.value() instanceof ProcessingRecipe<?, ?>)) continue;
             ProcessingRecipe<?, ?> recipe = (ProcessingRecipe<?, ?>) holder.value();
             int resultAmount = CreateWorkerRecipes.singleItemOutput(recipe, level, input, output);
             if(resultAmount > 0) return safeRecipeOutputAmount(resultAmount, inputAmount);
@@ -4101,6 +4110,7 @@ public class WorkerPodBlockEntity extends SmartBlockEntity {
         WorkerWorkOrder order = runtime.queue.current();
         String name = runtime.profile.name();
         if(order != null){
+            if(!order.lookingUpRecipe() && "Looking up recipe".equals(runtime.status)) name += " | Looking up recipe";
             WorkerWorkOrder parent = runtime.queue.planned().stream()
                     .filter(next -> runtime.suspendedRecipes.containsKey(next.id()))
                     .findFirst().orElse(null);
@@ -4116,6 +4126,7 @@ public class WorkerPodBlockEntity extends SmartBlockEntity {
     }
 
     private static String workDescription(WorkerWorkOrder order){
+        if(order.lookingUpRecipe()) return "Looking up recipe for " + resourceName(order.outputResource());
         if(order.mode() == WorkerWorkOrder.Mode.RECLAIM_INPUT) return "Clearing Machine";
         if(order.returningToStation()) return "Returning to Pod";
         if(order.mode() == WorkerWorkOrder.Mode.FILL_CONTAINER)
@@ -4439,7 +4450,6 @@ public class WorkerPodBlockEntity extends SmartBlockEntity {
         private boolean returningSurplus;
         private @Nullable UUID recipeProcessorEndpoint;
         private boolean retryRecipe;
-        private @Nullable UUID recipeChoiceReviewed;
         private @Nullable UUID unavailableRouteReviewed;
         private @Nullable UUID portablePrerequisiteOrder;
         private long portablePrerequisiteRevision = -1L;

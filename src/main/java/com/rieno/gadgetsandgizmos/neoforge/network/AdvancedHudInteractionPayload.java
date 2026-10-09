@@ -97,7 +97,7 @@ public record AdvancedHudInteractionPayload(MenuConfigTarget target, UUID pairId
                     AdvancedContraptionControllerBlockEntity.class);
             if (controller != null
                     && controller.getGogglesTrackerPairLabels().containsKey(payload.pairId())) {
-                controller.handleHudElementInteraction(payload.nodeId(), payload.interactionId(), val);
+                controller.handleHudElementInteraction(player, payload.nodeId(), payload.interactionId(), val);
                 return;
             }
             PortableContraptionControllerRuntime.handleHudInteraction(

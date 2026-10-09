@@ -16,6 +16,7 @@ import com.rieno.gadgetsandgizmos.lib.kinetics.GadgetsNGizmosKineticGuard;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntityDataAdapters;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
+import com.rieno.gadgetsandgizmos.registry.CTCasings;
 import com.rieno.gadgetsandgizmos.registry.CTCreativeTabs;
 import com.rieno.gadgetsandgizmos.registry.CTDataComponents;
 import com.rieno.gadgetsandgizmos.registry.CTDisplaySources;
@@ -80,6 +81,7 @@ public final class CreateThrusters {
         modEventBus.addListener(CTDisplaySources::onCommonSetup);
         modEventBus.addListener(CTDisplayTargets::onCommonSetup);
         modEventBus.addListener(CTCreateContraptionCompat::onCommonSetup);
+        modEventBus.addListener(CTCasings::onCommonSetup);
         CTCreativeTabs.REGISTRAR.register(modEventBus);
     }
 

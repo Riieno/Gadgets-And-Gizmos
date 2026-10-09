@@ -8,26 +8,20 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
-import com.mojang.blaze3d.pipeline.RenderTarget;
-import com.mojang.blaze3d.pipeline.TextureTarget;
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.VertexSorting;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
+import com.rieno.gadgetsandgizmos.lib.client.render.FramebufferGuiRenderer;
 import com.rieno.gadgetsandgizmos.content.CTDirectionalBlock;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletBlockEntity;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletData;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletSurface;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
-import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.BlockHitResult;
@@ -35,9 +29,7 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import org.joml.Matrix4f;
-import org.joml.Matrix4fStack;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.IdentityHashMap;
@@ -200,11 +192,10 @@ public final class DiagnosticTabletGuiProjection {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.player == null || minecraft.level == null) return;
         long now = Util.getMillis();
-        MultiBufferSource.BufferSource buffers = minecraft.renderBuffers().bufferSource();
         renderFrames(BLOCK_SESSIONS, now,
-                evt.getPartialTick().getGameTimeDeltaPartialTick(true), buffers);
+                evt.getPartialTick().getGameTimeDeltaPartialTick(true));
         renderFrames(ITEM_SESSIONS, now,
-                evt.getPartialTick().getGameTimeDeltaPartialTick(true), buffers);
+                evt.getPartialTick().getGameTimeDeltaPartialTick(true));
     }
 
     // Update the diagnostic tablet gui projection
@@ -217,12 +208,11 @@ public final class DiagnosticTabletGuiProjection {
     }
 
     // Draw the frames
-    private static <K> void renderFrames(Map<K, Session> sessions, long now, float partialTick,
-                                         MultiBufferSource.BufferSource buffers) {
+    private static <K> void renderFrames(Map<K, Session> sessions, long now, float partialTick) {
         for (Session session : new ArrayList<>(sessions.values())) {
             if (session.screen != null && now - session.lastUse <= SESSION_TIMEOUT_MILLIS
-                    && (session.target == null || now - session.lastFrame >= FRAME_INTERVAL_MILLIS)) {
-                session.renderFrame(partialTick, buffers);
+                    && (session.projection == null || !session.projection.isReady() || now - session.lastFrame >= FRAME_INTERVAL_MILLIS)) {
+                session.renderFrame(partialTick);
                 session.lastFrame = now;
             }
         }
@@ -234,7 +224,7 @@ public final class DiagnosticTabletGuiProjection {
                                 MultiBufferSource buffers) {
         long now = Util.getMillis();
         session.lastUse = now;
-        if (session.target == null || session.texture == null) return false;
+        if (session.projection == null || !session.projection.isReady() || session.texture == null) return false;
 
         Vec3 offset = itemCoordinates ? new Vec3(-0.5D, -0.5D, -0.5D) : Vec3.ZERO;
         Vec3 topLeft = surface.topLeft().add(offset);
@@ -291,7 +281,7 @@ public final class DiagnosticTabletGuiProjection {
         // Current session source
         private Object source;
         // Current session target
-        private TextureTarget target;
+        private FramebufferGuiRenderer projection;
         // Current texture
         private ResourceLocation texture;
         // Last frame
@@ -316,96 +306,31 @@ public final class DiagnosticTabletGuiProjection {
             return true;
         }
 
-        // Draw the frame
-        private void renderFrame(float partialTick, MultiBufferSource.BufferSource buffers) {
-            Minecraft minecraft = Minecraft.getInstance();
-            RenderTarget main = minecraft.getMainRenderTarget();
+        // Draw tablet app views without consuming pending world geometry
+        private void renderFrame(float partialTick){
             int width = DiagnosticTabletScreen.projectionWidth();
             int height = DiagnosticTabletScreen.projectionHeight();
-            if (target == null) {
-                target = new TextureTarget(width, height, true, Minecraft.ON_OSX);
+            if(projection == null){
                 texture = ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID,
                         "diagnostic_tablet_projection/" + TEXTURE_IDS.incrementAndGet());
-                minecraft.getTextureManager().register(texture, new TargetTexture(target));
+                projection = new FramebufferGuiRenderer(texture);
             }
-            buffers.endBatch();
-            RenderSystem.backupProjectionMatrix();
-            Matrix4fStack modelView = RenderSystem.getModelViewStack();
-            modelView.pushMatrix();
-            try {
-                target.setClearColor(0.03F, 0.045F, 0.06F, 1.0F);
-                target.clear(Minecraft.ON_OSX);
-                target.bindWrite(true);
-                Matrix4f projection = new Matrix4f().setOrtho(0.0F, width, height, 0.0F,
-                        1000.0F, net.neoforged.neoforge.client.ClientHooks.getGuiFarPlane());
-                RenderSystem.setProjectionMatrix(projection, VertexSorting.ORTHOGRAPHIC_Z);
-                modelView.translation(0.0F, 0.0F,
-                        10000.0F - net.neoforged.neoforge.client.ClientHooks.getGuiFarPlane());
-                RenderSystem.applyModelViewMatrix();
-                GuiGraphics graphics = new GuiGraphics(minecraft, buffers);
-                screen.render(graphics, -10000, -10000, partialTick);
-                graphics.flush();
-            } finally {
-                target.unbindWrite();
-                main.bindWrite(true);
-                modelView.popMatrix();
-                RenderSystem.applyModelViewMatrix();
-                RenderSystem.restoreProjectionMatrix();
-                RenderSystem.enableDepthTest();
-                RenderSystem.enableBlend();
-                RenderSystem.defaultBlendFunc();
-            }
+            projection.render(width, height, width, height,
+                    graphics -> screen.render(graphics, -10000, -10000, partialTick));
         }
 
-        // Close the session
-        private void close() {
-            if (screen != null) {
+        // Release the projected app and its owned render surface
+        private void close(){
+            if(screen != null){
                 screen.removed();
                 screen = null;
             }
             source = null;
-            Minecraft minecraft = Minecraft.getInstance();
-            if (texture != null) {
-                minecraft.getTextureManager().release(texture);
+            if(projection != null){
+                projection.close();
+                projection = null;
                 texture = null;
             }
-            if (target != null) {
-                target.destroyBuffers();
-                target = null;
-            }
-        }
-    }
-
-    // Handle the target texture
-    private static final class TargetTexture extends AbstractTexture {
-        // Target texture target
-        private final TextureTarget target;
-
-        // Initialize the target texture
-        private TargetTexture(TextureTarget target) {
-            this.target = target;
-            setFilter(false, false);
-        }
-
-        // Get the id
-        @Override
-        public int getId() {
-            return target.getColorTextureId();
-        }
-
-        // Release the id
-        @Override
-        public void releaseId() {
-        }
-
-        // Load the target texture
-        @Override
-        public void load(ResourceManager resourceManager) throws IOException {
-        }
-
-        // Close the target texture
-        @Override
-        public void close() {
         }
     }
 }

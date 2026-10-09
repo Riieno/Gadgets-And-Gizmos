@@ -9,6 +9,9 @@ package com.rieno.gadgetsandgizmos.registry;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.CreateThrusters;
+import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
+import com.simibubi.create.content.kinetics.simpleRelays.SimpleKineticBlockEntity;
+import com.rieno.gadgetsandgizmos.content.CameraBlockEntity;
 import com.rieno.gadgetsandgizmos.content.AlternatorBlockEntity;
 import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEntity;
 import com.rieno.gadgetsandgizmos.content.AccDisplayBlockEntity;
@@ -74,6 +77,21 @@ public final class CTBlockEntities {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     public static final DeferredRegister<BlockEntityType<?>> REGISTRAR = DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, CreateThrusters.MOD_ID);
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<KineticBlockEntity>> BLACKSTONE_ENCASED_SHAFT =
+            register("blackstone_encased_shaft", () -> BlockEntityType.Builder.of(
+                    (pos, state) -> new KineticBlockEntity(CTBlockEntities.BLACKSTONE_ENCASED_SHAFT.get(), pos, state),
+                    CTBlocks.BLACKSTONE_ENCASED_SHAFT.get()).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<SimpleKineticBlockEntity>> BLACKSTONE_ENCASED_COGWHEEL =
+            register("blackstone_encased_cogwheel", () -> BlockEntityType.Builder.of(
+                    (pos, state) -> new SimpleKineticBlockEntity(CTBlockEntities.BLACKSTONE_ENCASED_COGWHEEL.get(), pos, state),
+                    CTBlocks.BLACKSTONE_ENCASED_COGWHEEL.get()).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<SimpleKineticBlockEntity>> BLACKSTONE_ENCASED_LARGE_COGWHEEL =
+            register("blackstone_encased_large_cogwheel", () -> BlockEntityType.Builder.of(
+                    (pos, state) -> new SimpleKineticBlockEntity(CTBlockEntities.BLACKSTONE_ENCASED_LARGE_COGWHEEL.get(), pos, state),
+                    CTBlocks.BLACKSTONE_ENCASED_LARGE_COGWHEEL.get()).build(null));
 
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ShipControlModuleBlockEntity>> SHIP_CONTROL_MODULE =
             register("ship_control_module", () -> BlockEntityType.Builder.of(
@@ -175,6 +193,9 @@ public final class CTBlockEntities {
             () -> BlockEntityType.Builder.of(AdvancedContraptionControllerBlockEntity::new, CTBlocks.ADVANCED_CONTRAPTION_CONTROLLER.get()).build(null));
 
     @Nullable
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<CameraBlockEntity>> CAMERA =
+            register("camera", () -> BlockEntityType.Builder.of(CameraBlockEntity::new, CTBlocks.CAMERA.get()).build(null));
+
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<AccDisplayBlockEntity>> ACC_DISPLAY =
             CTBlocks.ACC_DISPLAY == null ? null : register("acc_display",
                     () -> BlockEntityType.Builder.of(AccDisplayBlockEntity::new,

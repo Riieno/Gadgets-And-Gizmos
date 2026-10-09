@@ -18,7 +18,6 @@ import com.simibubi.create.content.contraptions.AssemblyException;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import dev.ryanhcode.sable.api.physics.PhysicsPipeline;
-import dev.ryanhcode.sable.api.physics.constraint.ConstraintJointAxis;
 import dev.ryanhcode.sable.api.physics.constraint.PhysicsConstraintHandle;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
@@ -46,7 +45,6 @@ import org.joml.Vector3dc;
 import org.slf4j.Logger;
 
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -64,13 +62,6 @@ final class VectorBearingMountedAssembly {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final Set<ConstraintJointAxis> MOUNT_JOINT_AXES = EnumSet.of(
-            ConstraintJointAxis.LINEAR_X,
-            ConstraintJointAxis.LINEAR_Y,
-            ConstraintJointAxis.LINEAR_Z,
-            ConstraintJointAxis.ANGULAR_X,
-            ConstraintJointAxis.ANGULAR_Y,
-            ConstraintJointAxis.ANGULAR_Z);
     private static final Set<UUID> RECOVERING_CHILDREN = ConcurrentHashMap.newKeySet();
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -494,7 +485,7 @@ final class VectorBearingMountedAssembly {
         TiltCandidate accepted = createTiltCandidate(bearing, facing, relativeOrientation);
 
         if (!ensureJoint(mountedPos, facing, accepted.baseAnchor(), accepted.baseFrameOrientation(),
-                pipeline, parent, child)) {
+                parent, child)) {
             return false;
         }
         if (!hasJointTargetOrientation(accepted.baseFrameOrientation())) {
@@ -517,7 +508,7 @@ final class VectorBearingMountedAssembly {
 
     // Ensure the joint
     private boolean ensureJoint(BlockPos mountedPos, Direction facing, Vector3d baseAnchor, Quaterniond baseFrameOrientation,
-                                PhysicsPipeline pipeline, ServerSubLevel parent, ServerSubLevel child) {
+                                ServerSubLevel parent, ServerSubLevel child) {
         if (parent == child) {
             releaseJoint();
             return false;
@@ -527,9 +518,8 @@ final class VectorBearingMountedAssembly {
         }
         releaseJoint();
         try {
-            Object genericConstraint = createGenericConstraint(baseAnchor, getChildAnchor(mountedPos, facing), baseFrameOrientation);
-            joint = (PhysicsConstraintHandle) SableConstraintApi.addConstraint(
-                    pipeline, parent, child, genericConstraint);
+            joint = SableConstraintApi.rigidFixedConstraint(child.getLevel(), parent, child,
+                    baseAnchor, getChildAnchor(mountedPos, facing), baseFrameOrientation);
         } catch (ReflectiveOperationException | LinkageError | ClassCastException error) {
             LOGGER.warn("Vector Bearing constraint creation failed at {}: {}", mountedPos, error.toString());
             joint = null;
@@ -557,14 +547,6 @@ final class VectorBearingMountedAssembly {
             LOGGER.warn("Vector Bearing constraint retarget failed at {}: {}", mountedPos, error.toString());
             releaseJoint();
         }
-    }
-
-    // Create the generic constraint
-    private Object createGenericConstraint(Vector3dc baseAnchor, Vector3dc childAnchor,
-                                           Quaterniondc baseFrameOrientation)
-            throws ReflectiveOperationException {
-        return SableConstraintApi.genericConfiguration(
-                baseAnchor, childAnchor, baseFrameOrientation, new Quaterniond(), MOUNT_JOINT_AXES);
     }
 
     // Check whether the joint already targets this orientation

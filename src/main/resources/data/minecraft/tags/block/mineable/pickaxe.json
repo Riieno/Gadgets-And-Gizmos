@@ -1,6 +1,10 @@
 {
   "replace": false,
   "values": [
+    { "id": "createthrusters:blackstone_encased_shaft", "required": false },
+    { "id": "createthrusters:blackstone_encased_cogwheel", "required": false },
+    { "id": "createthrusters:blackstone_encased_large_cogwheel", "required": false },
+    { "id": "createthrusters:camera", "required": false },
     { "id": "createthrusters:thruster", "required": false },
     { "id": "createthrusters:blackstone_alloy_block", "required": false },
     { "id": "createthrusters:blackstone_casing", "required": false },

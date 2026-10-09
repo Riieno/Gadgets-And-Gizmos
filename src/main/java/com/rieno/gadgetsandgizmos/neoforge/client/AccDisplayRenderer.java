@@ -174,10 +174,10 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
                     || !DiagnosticTabletGuiProjection.renderAccDisplay(
                     blockEntity.diagnosticTabletSource(), renderWidth, renderHeight,
                     partialTick, poseStack, buffer)) {
-                renderExternal(external, renderWidth, renderHeight, poseStack, buffer);
+                renderExternal(blockEntity, external, renderWidth, renderHeight, poseStack, buffer);
             }
         } else if ("crn".equals(state)) {
-            renderCrn(frame, renderWidth, renderHeight, poseStack, buffer);
+            renderCrn(blockEntity, frame, renderWidth, renderHeight, poseStack, buffer);
         } else if ("graph".equals(state)) {
             String mode = frame.getString("Mode");
             if (!("graph".equals(mode) || "plotter".equals(mode))
@@ -256,7 +256,7 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
     }
 
     // Draw the CRN
-    private void renderCrn(CompoundTag frame, int width, int height,
+    private void renderCrn(AccDisplayBlockEntity display, CompoundTag frame, int width, int height,
                            PoseStack poseStack, MultiBufferSource buffer) {
         // -----------------------------------------------------DISPLAY DATA-----------------------------------------------------
         CompoundTag data = frame.getCompound("CrnData");
@@ -291,7 +291,7 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
             crnHeader(ship, crnCategory(mode), width, poseStack, buffer);
             poseStack.pushPose();
             poseStack.translate(0.0F, 14.0F, 0.0F);
-            renderExternal(externalPayload, width, Math.max(1, height - 26),
+            renderExternal(display, externalPayload, width, Math.max(1, height - 26),
                     poseStack, buffer);
             poseStack.popPose();
             crnFooter(eta + "  •  " + status, width, height, poseStack, buffer);
@@ -494,10 +494,20 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
     }
 
     // Draw the external
-    private void renderExternal(CompoundTag frame, int width, int height,
+    private void renderExternal(AccDisplayBlockEntity display, CompoundTag frame, int width, int height,
                                 PoseStack poseStack, MultiBufferSource buffer) {
+        if("camera".equals(frame.getString("Format"))){
+            if(com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer.isCapturing()) return;
+            var ref = com.rieno.gadgetsandgizmos.lib.view.ViewReference.fromTag(frame.getCompound("ViewSource"));
+            if(ref == null || !com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer.draw(
+                    ref, width, height, CONTENT_Z, poseStack, buffer)){
+                drawCentered("Waiting for camera", width, height / 2, 0xFFADC3D4, poseStack, buffer);
+            }
+            AccDisplayCameraProjection.render(display, ref, width, height, font, poseStack, buffer, CONTENT_Z);
+            return;
+        }
         if ("crn".equals(frame.getString("Format"))) {
-            renderCrn(frame, width, height, poseStack, buffer);
+            renderCrn(display, frame, width, height, poseStack, buffer);
             return;
         }
         if ("computed".equals(frame.getString("Format"))) {

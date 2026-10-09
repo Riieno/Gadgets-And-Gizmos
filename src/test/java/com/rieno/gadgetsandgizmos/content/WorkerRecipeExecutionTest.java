@@ -4,6 +4,7 @@ import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.compat.worker.WorkerToolStorageEndpoint;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.lib.worker.*;
+import com.rieno.gadgetsandgizmos.lib.util.DeferredWorkScheduler;
 import com.simibubi.create.content.logistics.box.PackageStyles;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
@@ -20,6 +21,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import net.neoforged.neoforge.items.ItemStackHandler;
@@ -34,11 +36,18 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class WorkerRecipeExecutionTest{
+    private static final List<DeferredWorkScheduler> SCHEDULERS = new java.util.ArrayList<>();
     private static final WorkerResourceKey LOG = item("oak_log");
     private static final WorkerResourceKey PLANK = item("oak_planks");
     private static final WorkerResourceKey TABLE = item("crafting_table");
 
     @BeforeAll static void bootstrap(){ ControllerTestBootstrap.bootstrap(); }
+
+    @AfterEach void closeLookups(){
+        SCHEDULERS.forEach(DeferredWorkScheduler::close);
+        SCHEDULERS.clear();
+        WorkerRecipeCatalog.invalidate();
+    }
 
     @Test void toolStorageCapabilitySuppliesItemsWithoutOpeningItsScreen(){
         var server = mock(net.minecraft.server.level.ServerLevel.class);
@@ -478,8 +487,8 @@ class WorkerRecipeExecutionTest{
         doReturn(RecipeType.SMELTING).when(cutting).getType();
         when(ctx.storage.selectRecipeResult(any())).thenReturn(true);
         var recipeId = ResourceLocation.parse("test:legacy_cutting");
-        try(var finder = mockStatic(com.simibubi.create.foundation.recipe.RecipeFinder.class)){
-            finder.when(() -> com.simibubi.create.foundation.recipe.RecipeFinder.get(isNull(), eq(ctx.level), any()))
+        try(var catalog = mockStatic(WorkerRecipeCatalog.class)){
+            catalog.when(() -> WorkerRecipeCatalog.producingRecipes(ctx.level, TABLE))
                     .thenReturn(List.of(new RecipeHolder<>(recipeId, cutting)));
             var amount = WorkerPodBlockEntity.class.getDeclaredMethod("recipeOutputAmount", WorkerWorkOrder.class, long.class);
             amount.setAccessible(true);
@@ -544,7 +553,7 @@ class WorkerRecipeExecutionTest{
         field.set(runtime, val);
     }
 
-    // Compile the real addon recipe adapter and preserve both orders in the submitted job
+    // Save the complete output request before any recipe tree is evaluated
     @Test void submitsPlanksBeforeTableFromLogsOnly(){
         var ctx = new Fixture();
         var receiver = mock(WorkerPodBlockEntity.class);
@@ -562,10 +571,58 @@ class WorkerRecipeExecutionTest{
             ctx.controller.requestItems(request);
             ArgumentCaptor<List<WorkerWorkOrder>> submitted = ArgumentCaptor.forClass(List.class);
             verify(receiver).submit(eq(workerId), submitted.capture());
-            assertEquals(List.of(PLANK, TABLE), submitted.getValue().stream().map(WorkerWorkOrder::outputResource).toList());
-            assertEquals(4, submitted.getValue().getFirst().task().requestedAmount());
+            assertEquals(List.of(TABLE), submitted.getValue().stream().map(WorkerWorkOrder::outputResource).toList());
+            assertTrue(submitted.getValue().getFirst().lookingUpRecipe());
+            assertEquals(1, submitted.getValue().getFirst().task().requestedAmount());
             assertEquals(request.id(), submitted.getValue().getLast().id());
             assertEquals(request.destinationId(), submitted.getValue().getLast().destinationEndpointId());
+        }
+    }
+
+    // Retry a cold routine lookup without failing its controller tick or recording a permanent rejection
+    @Test void routineDispatchResumesAfterPendingRecipeDiscovery() throws Exception{
+        var ctx = new Fixture();
+        var graph = new AdvancedGraphDocument.FunctionGraph("workers", "Workers");
+        CompoundTag root = new CompoundTag();
+        root.putBoolean("WorkerGraphRoot", true);
+        var routine = new AdvancedGraphDocument.Node("routine", "worker_routine", "Routine", 0, 0, root);
+        var craft = new AdvancedGraphDocument.Node("craft", "worker_craft", "Craft", 0, 0, new CompoundTag());
+        var station = new AdvancedGraphDocument.Node("station", "worker_return_to_pod", "Return", 0, 0, new CompoundTag());
+        CompoundTag payload = new CompoundTag();
+        payload.putString("Value", TABLE.id().toString());
+        CompoundTag value = new CompoundTag();
+        value.put("Payload", payload);
+        CompoundTag defaults = new CompoundTag();
+        defaults.put("items", value);
+        CompoundTag data = new CompoundTag();
+        data.put("Defaults", defaults);
+        var filter = new AdvancedGraphDocument.Node("result", "worker_item_filter", "Result", 0, 0, data);
+        graph.nodes().addAll(List.of(routine, craft, station, filter));
+        graph.edges().add(new AdvancedGraphDocument.Edge("start", "routine", "start", "craft", "exec"));
+        graph.edges().add(new AdvancedGraphDocument.Edge("return", "craft", "complete", "station", "exec"));
+        graph.edges().add(new AdvancedGraphDocument.Edge("output", "result", "filter", "craft", "result_item_filter"));
+        var active = new AdvancedGraphDocument();
+        active.functions().add(graph);
+        set(ctx.controller, "activeGraph", active);
+        set(ctx.controller, "dispatchedWorkerRoutineRevision", active.revision());
+        set(ctx.controller, "dispatchedWorkerRoutines", new java.util.LinkedHashSet<>());
+        set(ctx.controller, "compiledWorkerRoutines", new java.util.LinkedHashMap<>());
+        var unavailable = new java.util.LinkedHashMap<>();
+        set(ctx.controller, "unavailableWorkerRoutines", unavailable);
+        doReturn(BlockPos.ZERO).when(ctx.controller).getBlockPos();
+        doReturn(true).when(ctx.pod).hasAvailableWorker();
+        doReturn(false).when(ctx.pod).hasQueuedOrder(any(UUID.class));
+        doNothing().when(ctx.pod).bindController(ctx.controller);
+        var dispatch = AdvancedContraptionControllerBlockEntity.class.getDeclaredMethod("dispatchWorkerRoutines");
+        dispatch.setAccessible(true);
+        try(var pods = mockStatic(WorkerPodBlockEntity.class);
+            var catalog = mockStatic(WorkerRecipeCatalog.class)){
+            pods.when(() -> WorkerPodBlockEntity.linkedPods(ctx.controller)).thenReturn(List.of(ctx.pod));
+            catalog.when(() -> WorkerRecipeCatalog.deferredIndex(ctx.level, TABLE)).thenThrow(new DeferredWorkScheduler.Pending());
+            dispatch.invoke(ctx.controller);
+            dispatch.invoke(ctx.controller);
+            catalog.verify(() -> WorkerRecipeCatalog.deferredIndex(ctx.level, TABLE), times(2));
+            assertTrue(unavailable.isEmpty());
         }
     }
 
@@ -602,8 +659,8 @@ class WorkerRecipeExecutionTest{
                 var orders = compiled.getClass().getDeclaredMethod("orders");
                 orders.setAccessible(true);
                 List<WorkerWorkOrder> chain = (List<WorkerWorkOrder>) orders.invoke(compiled);
-                assertEquals(List.of(PLANK, TABLE), chain.stream().map(WorkerWorkOrder::outputResource).toList());
-                assertEquals(LOG, chain.getFirst().recipePlan().inputs().getFirst().resource());
+                assertEquals(List.of(TABLE), chain.stream().map(WorkerWorkOrder::outputResource).toList());
+                assertTrue(chain.getFirst().lookingUpRecipe());
             }
             CompoundTag target = new CompoundTag();
             target.putString("NodeId", "worker:endpoint:" + ctx.storage.id());
@@ -790,6 +847,13 @@ class WorkerRecipeExecutionTest{
         final ItemStackHandler inventory = new ItemStackHandler(36);
 
         Fixture(){
+            try{
+                var lookup = AdvancedContraptionControllerBlockEntity.class.getDeclaredField("workerRecipeLookup");
+                lookup.setAccessible(true);
+                lookup.set(controller, new WorkerRecipeLookup());
+            }catch(ReflectiveOperationException ex){ throw new AssertionError(ex); }
+            when(level.getServer()).thenReturn(mock(net.minecraft.server.MinecraftServer.class));
+            SCHEDULERS.add(DeferredWorkScheduler.forServer(level.getServer()));
             controller.setLevel(level);
             pod.setLevel(level);
             doNothing().when(pod).setChanged();
@@ -831,6 +895,7 @@ class WorkerRecipeExecutionTest{
                             Ingredient.of(Items.OAK_PLANKS), Ingredient.of(Items.OAK_PLANKS)));
             when(manager.getRecipes()).thenReturn(recipes);
             for(RecipeHolder<?> holder : recipes) when(manager.byKey(holder.id())).thenReturn(Optional.of(holder));
+            WorkerRecipeCatalog.index(level);
         }
 
         WorkerWorkOrder tableOrder(){
@@ -908,7 +973,18 @@ class WorkerRecipeExecutionTest{
         var method = WorkerPodBlockEntity.class.getDeclaredMethod(name,
                 AdvancedContraptionControllerBlockEntity.class, runtime.getClass(), PlayerMannequinEntity.class);
         method.setAccessible(true);
-        method.invoke(pod, controller, runtime, worker);
+        long deadline = System.nanoTime() + 10_000_000_000L;
+        while(true){
+            try{
+                method.invoke(pod, controller, runtime, worker);
+                return;
+            }catch(java.lang.reflect.InvocationTargetException ex){
+                if(!(ex.getCause() instanceof DeferredWorkScheduler.Pending)) throw ex;
+                assertTrue(System.nanoTime() < deadline, "Deferred recipe lookup did not finish");
+                DeferredWorkScheduler.forServer(controller.getLevel().getServer()).tick();
+                java.util.concurrent.locks.LockSupport.parkNanos(1_000_000L);
+            }
+        }
     }
 
     private static WorkerResourceKey item(String id){

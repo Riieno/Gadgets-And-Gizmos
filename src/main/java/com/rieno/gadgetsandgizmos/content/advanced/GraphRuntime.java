@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content.advanced;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.graph.GraphTextInputs;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import com.rieno.gadgetsandgizmos.compat.create.CreateFantasizingGraphCompat;
@@ -19,8 +20,9 @@ import com.rieno.gadgetsandgizmos.lib.control.math.PidControllerMath;
 import com.rieno.gadgetsandgizmos.lib.control.math.AdrcControllerMath;
 import com.rieno.gadgetsandgizmos.lib.control.math.AdrcControllerNthOrderMath;
 import com.rieno.gadgetsandgizmos.lib.control.math.LqrControllerMath;
-import com.rieno.gadgetsandgizmos.lib.control.math.RotationMath;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphEventScheduler;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphPlayerScopePlan;
+import com.rieno.gadgetsandgizmos.lib.graph.PlayerScopedMap;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphApi;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphExecutionContext;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphHostServices;
@@ -92,7 +94,14 @@ public final class GraphRuntime {
     private final GraphEventScheduler<RuntimeEvent> eventScheduler =
             new GraphEventScheduler<>(MAX_EVENTS_PER_TICK, MAX_SCHEDULED_EVENTS);
     // Tracked graph state
-    private final Map<String, AdvancedGraphDocument.Value> state = new LinkedHashMap<>();
+    private GraphPlayerScopePlan playerScopes = new GraphPlayerScopePlan(Set.of(), Set.of());
+    private final PlayerScopedMap<AdvancedGraphDocument.Value> state = new PlayerScopedMap<>(
+            () -> this.currentEventPlayerId, key -> playerScopes.containsStateKey(key));
+    private final Map<String, UUID> bindingPlayers = new LinkedHashMap<>();
+    private final Map<String, UUID> changedBindingPlayers = new LinkedHashMap<>();
+    private final Map<String, Long> bindingChangeTicks = new LinkedHashMap<>();
+    private final Map<String, Set<String>> bindingSources = new LinkedHashMap<>();
+    private final Map<String, com.rieno.gadgetsandgizmos.lib.interaction.InteractionOrigin> pendingOutputOrigins = new LinkedHashMap<>();
     // Tracked binding states
     private final Map<String, Boolean> bindingStates = new LinkedHashMap<>();
     // Tracked live inputs
@@ -115,6 +124,7 @@ public final class GraphRuntime {
     private String currentEventId = "";
     // Current event player id
     private @Nullable UUID currentEventPlayerId;
+    private boolean samplingPlayerHud;
     // Current game time
     private long currentGameTime;
     // Last game time
@@ -184,7 +194,7 @@ public final class GraphRuntime {
 
     // Queue the graph
     public void enqueue(String eventId) {
-        tryEnqueue(eventId, null);
+        tryEnqueue(eventId, currentEventPlayerId);
     }
 
     // Queue the graph
@@ -197,6 +207,13 @@ public final class GraphRuntime {
         return !shutdownPrepared && eventId != null
                 && eventScheduler.enqueue(new RuntimeEvent(eventId,
                 AdvancedGraphDocument.Value.number(0), triggeringPlayerId));
+    }
+    // Scope an authenticated host interaction while retaining nested graph ownership
+    public <T> T withInteractionPlayer(UUID playerId, java.util.function.Supplier<T> action){
+        UUID prev = currentEventPlayerId;
+        currentEventPlayerId = playerId;
+        try{ return action.get(); }
+        finally{ currentEventPlayerId = prev; }
     }
 
     // Queue the current controller-session state so interaction nodes never depend on a menu opening
@@ -212,12 +229,16 @@ public final class GraphRuntime {
 
     // Queue the named controller event
     public void enqueueNamedControllerEvent(String name, AdvancedGraphDocument.Value data) {
+        enqueueNamedControllerEvent(name, data, currentEventPlayerId);
+    }
+    // Preserve interaction ownership across a controller-to-controller event
+    public void enqueueNamedControllerEvent(String name, AdvancedGraphDocument.Value data, @Nullable UUID playerId){
         if (shutdownPrepared || name == null || name.isBlank()
                 || eventScheduler.immediateSize() >= MAX_EVENTS_PER_TICK) {
             return;
         }
         eventScheduler.enqueue(new RuntimeEvent("named:" + name.trim(),
-                data == null ? AdvancedGraphDocument.Value.number(0) : data, null));
+                data == null ? AdvancedGraphDocument.Value.number(0) : data, playerId));
     }
 
     // Queue the HUD interaction
@@ -228,7 +249,7 @@ public final class GraphRuntime {
             return false;
         }
         return eventScheduler.enqueue(new RuntimeEvent("hud:" + nodeId + ":" + interactionId,
-                val == null ? AdvancedGraphDocument.Value.number(0) : val, null));
+                val == null ? AdvancedGraphDocument.Value.number(0) : val, currentEventPlayerId));
     }
 
     // Queue one momentary HUD button press and its later release
@@ -240,9 +261,9 @@ public final class GraphRuntime {
         }
         String eventId = "hud:" + nodeId + ":" + interactionId;
         return eventScheduler.enqueueAndSchedule(
-                new RuntimeEvent(eventId, AdvancedGraphDocument.Value.bool(true), null),
+                new RuntimeEvent(eventId, AdvancedGraphDocument.Value.bool(true), currentEventPlayerId),
                 serverGameTime + 2L,
-                new RuntimeEvent(eventId, AdvancedGraphDocument.Value.bool(false), null));
+                new RuntimeEvent(eventId, AdvancedGraphDocument.Value.bool(false), currentEventPlayerId));
     }
 
     // Queue an authoritative HUD toggle operation
@@ -253,20 +274,48 @@ public final class GraphRuntime {
         }
         return eventScheduler.enqueue(new RuntimeEvent(
                 "hud_toggle:" + nodeId + ":" + interactionId,
-                AdvancedGraphDocument.Value.bool(true), null));
+                AdvancedGraphDocument.Value.bool(true), currentEventPlayerId));
     }
 
     // Check if the set binding is active
     public boolean setBindingActive(String bindingId, boolean active) {
+        return setBindingActive(bindingId, active, currentEventPlayerId == null
+                ? bindingInteractionPlayer(bindingId, !active) : currentEventPlayerId);
+    }
+    // Retain pulse ownership until an input releases, including automatic button releases
+    public boolean setBindingActive(String bindingId, boolean active, @Nullable UUID playerId){
         if (shutdownPrepared || bindingId == null || bindingId.isBlank()) {
             return false;
         }
+        if(playerId != null){
+            changedBindingPlayers.put(bindingId, playerId);
+            bindingChangeTicks.put(bindingId, gameTime());
+        }else{
+            changedBindingPlayers.remove(bindingId);
+            bindingChangeTicks.remove(bindingId);
+        }
+        if(active && playerId != null) bindingPlayers.put(bindingId, playerId);
+        else bindingPlayers.remove(bindingId);
         Boolean prev = bindingStates.put(bindingId, active);
         if (prev != null && prev == active) {
             return false;
         }
-        enqueue("input:" + bindingId + ":" + (active ? "active" : "inactive"));
+        enqueue("input:" + bindingId + ":" + (active ? "active" : "inactive"), playerId);
         return true;
+    }
+    // Resolve only the input responsible for a new signal, retaining ownership for release
+    public @Nullable UUID bindingInteractionPlayer(String bindingId, boolean releasing){
+        Set<UUID> players = new HashSet<>();
+        if(controller != null && compiledProgram != null){
+            for(NodeInstruction node : compiledProgram.nodes().values()){
+                if(!bindingId.equals(node.bindingId())) continue;
+                UUID id = controller.graphInputPlayer(node.source());
+                if(id != null) players.add(id);
+            }
+        }
+        if(players.size() > 1) return null;
+        if(!players.isEmpty()) return players.iterator().next();
+        return releasing ? bindingPlayers.get(bindingId) : null;
     }
 
     // Check if this has pending work
@@ -350,8 +399,12 @@ public final class GraphRuntime {
         }
         pollShipControlCommands(program);
         Frame samplingFrame = null;
-        if (sampleUnconnectedPassiveOutputs) {
+        if(program.cameraNodes.length > 0 && !simulationOnly){
             samplingFrame = new Frame(program);
+            updateCameraConfigurations(program, samplingFrame);
+        }
+        if (sampleUnconnectedPassiveOutputs) {
+            if(samplingFrame == null) samplingFrame = new Frame(program);
             updatePassiveOutputs(program, true, samplingFrame);
         }
         if (program.profilerNodes().length > 0) {
@@ -378,6 +431,10 @@ public final class GraphRuntime {
         activeCurveSweeps.clear();
         state.clear();
         bindingStates.clear();
+        bindingPlayers.clear();
+        changedBindingPlayers.clear();
+        bindingChangeTicks.clear();
+        bindingSources.clear();
         if (!liveInputs.isEmpty() || !liveOutputs.isEmpty() || !executionPulses.isEmpty()) {
             liveValueRevision++;
         }
@@ -420,8 +477,11 @@ public final class GraphRuntime {
     public CompoundTag createShutdownSnapshot() {
         CompoundTag snapshot = new CompoundTag();
         CompoundTag runtimeState = new CompoundTag();
-        state.forEach((key, val) -> runtimeState.put(key, val.toTag()));
+        state.sharedSnapshot().forEach((key, val) -> runtimeState.put(key, val.toTag()));
         snapshot.put("State", runtimeState);
+        CompoundTag playerState = new CompoundTag();
+        state.playerSnapshot().forEach((id, values) -> playerState.put(id.toString(), valueMapTag(values)));
+        snapshot.put("PlayerState", playerState);
         CompoundTag bindings = new CompoundTag();
         bindingStates.forEach(bindings::putBoolean);
         snapshot.put("Bindings", bindings);
@@ -438,6 +498,7 @@ public final class GraphRuntime {
             CompoundTag entry = new CompoundTag();
             entry.putString("Id", evt.id());
             entry.put("Data", evt.data().toTag());
+            if(evt.triggeringPlayerId() != null) entry.putUUID("Player", evt.triggeringPlayerId());
             queuedEvents.add(entry);
         }
         snapshot.put("Events", queuedEvents);
@@ -448,6 +509,7 @@ public final class GraphRuntime {
             entry.putLong("Tick", scheduledEvent.tick());
             entry.putString("Id", evt.id());
             entry.put("Data", evt.data().toTag());
+            if(evt.triggeringPlayerId() != null) entry.putUUID("Player", evt.triggeringPlayerId());
             scheduledEvents.add(entry);
         }
         snapshot.put("Scheduled", scheduledEvents);
@@ -469,6 +531,15 @@ public final class GraphRuntime {
                 state.put(key, AdvancedGraphDocument.Value.fromTag(
                         runtimeState.getCompound(key)));
             }
+        }
+        CompoundTag playerState = snapshot.getCompound("PlayerState");
+        for(String id : playerState.getAllKeys()){
+            try{
+                Map<String, AdvancedGraphDocument.Value> values = new LinkedHashMap<>();
+                CompoundTag tags = playerState.getCompound(id);
+                for(String key : tags.getAllKeys()) values.put(key, AdvancedGraphDocument.Value.fromTag(tags.getCompound(key)));
+                state.restorePlayer(UUID.fromString(id), values);
+            }catch(IllegalArgumentException ignored){}
         }
         bindingStates.clear();
         CompoundTag bindings = snapshot.getCompound("Bindings");
@@ -492,7 +563,7 @@ public final class GraphRuntime {
         for (int idx = 0; idx < queuedEvents.size(); idx++) {
             CompoundTag entry = queuedEvents.getCompound(idx);
             eventScheduler.enqueue(new RuntimeEvent(entry.getString("Id"),
-                    AdvancedGraphDocument.Value.fromTag(entry.getCompound("Data")), null));
+                    AdvancedGraphDocument.Value.fromTag(entry.getCompound("Data")), entry.hasUUID("Player") ? entry.getUUID("Player") : null));
         }
         ListTag scheduledEvents = snapshot.getList("Scheduled", Tag.TAG_COMPOUND);
         for (int idx = 0; idx < scheduledEvents.size(); idx++) {
@@ -501,7 +572,7 @@ public final class GraphRuntime {
                     ? AdvancedGraphDocument.Value.fromTag(entry.getCompound("Data"))
                     : AdvancedGraphDocument.Value.number(0);
             eventScheduler.schedule(entry.getLong("Tick"),
-                    new RuntimeEvent(entry.getString("Id"), data, null));
+                    new RuntimeEvent(entry.getString("Id"), data, entry.hasUUID("Player") ? entry.getUUID("Player") : null));
         }
         currentEventId = snapshot.getString("CurrentEvent");
         passiveSampleCursor = Math.max(0, snapshot.getInt("PassiveCursor"));
@@ -642,6 +713,10 @@ public final class GraphRuntime {
 
     // Get the live input
     public AdvancedGraphDocument.Value liveInput(String nodeId, String port) {
+        if(currentEventPlayerId != null && playerScopes.nodes().contains(nodeId)){
+            AdvancedGraphDocument.Value val = playerHudValues(currentEventPlayerId).inputs().get(nodeId + ":" + port);
+            if(val != null) return val;
+        }
         return liveInputs.get(nodeId + ":" + port);
     }
 
@@ -664,6 +739,39 @@ public final class GraphRuntime {
     public Map<String, AdvancedGraphDocument.Value> liveOutputs() {
         return Map.copyOf(liveOutputs);
     }
+    // Sample personal UI state without overwriting the graph's shared live values
+    public PlayerHudValues playerHudValues(UUID playerId){
+        Map<String, AdvancedGraphDocument.Value> inputs = new LinkedHashMap<>();
+        Map<String, AdvancedGraphDocument.Value> outputs = new LinkedHashMap<>();
+        UUID prevPlayer = currentEventPlayerId;
+        boolean prevSampling = samplingPlayerHud;
+        currentEventPlayerId = playerId;
+        samplingPlayerHud = true;
+        try{
+            Frame frame = new Frame(compiledProgram, false);
+            int[] operations = frame.resetOperations();
+            for(NodeInstruction node : compiledProgram.hudNodes()){
+                if(!"hud_element".equals(node.type()) && !"advanced_hud_element".equals(node.type())) continue;
+                try{
+                    for(String port : node.inputPorts()) inputs.put(node.portKey(port), frame.value(node, port, operations));
+                    for(var entry : node.outputTypes().entrySet()){
+                        if(!"exec".equals(entry.getValue())) outputs.put(node.portKey(entry.getKey()), frame.output(node, entry.getKey(), operations));
+                    }
+                }catch(RuntimeException err){
+                    String msg = "Personal HUD sample failed: " + err.getMessage();
+                    if(diagnostics.stream().noneMatch(diag -> node.id().equals(diag.nodeId()) && msg.equals(diag.message()))){
+                        diagnostics.add(new AdvancedGraphValidator.Diagnostic("warning", "personal_hud", msg, node.id()));
+                    }
+                }
+            }
+        }finally{
+            currentEventPlayerId = prevPlayer;
+            samplingPlayerHud = prevSampling;
+        }
+        return new PlayerHudValues(Map.copyOf(inputs), Map.copyOf(outputs));
+    }
+    public record PlayerHudValues(Map<String, AdvancedGraphDocument.Value> inputs,
+                                  Map<String, AdvancedGraphDocument.Value> outputs){}
 
     // Get the execution pulses
     public Map<String, Long> executionPulses() {
@@ -730,12 +838,65 @@ public final class GraphRuntime {
         compiledEdgeCount = graph.edges().size();
         compiledTopologyHash = topologyHash;
         invalidatePreviewFrame();
-        compiledProgram = CompiledProgram.compile(
-                graph, AdvancedGraphFunctions.expandForRuntime(graph));
+        AdvancedGraphDocument expanded = AdvancedGraphFunctions.expandForRuntime(graph);
+        Map<String, AdvancedGraphDocument.Node> scopeNodes = new HashMap<>();
+        expanded.nodes().forEach(node -> scopeNodes.put(node.id(), node));
+        playerScopes = GraphPlayerScopePlan.analyze(expanded,
+                node -> "hud_element".equals(node.type()) || "advanced_hud_element".equals(node.type()),
+                node -> "control_camera".equals(node.type()),
+                node -> "variable_get".equals(node.type()) ? node.data().getString("Variable") : "",
+                node -> "variable_set".equals(node.type()) ? node.data().getString("Variable") : "",
+                edge -> scopeNodes.containsKey(edge.fromNode()) && "exec".equals(
+                        AdvancedGraphCatalog.outputs(scopeNodes.get(edge.fromNode())).get(edge.fromPort())));
+        compiledProgram = CompiledProgram.compile(graph, expanded);
+        reconcileBindingSources();
+        state.prunePlayers();
+        bindingPlayers.keySet().retainAll(compiledProgram.polledBindings());
+        changedBindingPlayers.keySet().retainAll(compiledProgram.polledBindings());
+        bindingChangeTicks.keySet().retainAll(compiledProgram.polledBindings());
         graphReadyPending = compiledProgram.graphReadyNodes().length > 0;
         passiveSampleCursor = 0;
+        reconcileLivePorts(compiledProgram);
         seedPersistentPortState(compiledProgram);
         return compiledProgram;
+    }
+
+    // Retain release ownership across role changes, clearing it when the physical input changes
+    private void reconcileBindingSources(){
+        Map<String, Set<String>> next = new LinkedHashMap<>();
+        for(NodeInstruction node : compiledProgram.nodes().values()){
+            String binding = node.bindingId();
+            if(binding == null || binding.isBlank()) continue;
+            CompoundTag data = node.source().data();
+            String face = data.getCompound("Defaults").getCompound("face").getCompound("Payload").getString("Value");
+            if(face.isBlank()) face = data.getString("Face");
+            var target = com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode.fromTag(data.getCompound("TargetData"));
+            String source = target == null ? node.type() + ":" + face
+                    : target.subLevelId() + ":" + target.blockPos() + ":" + face;
+            next.computeIfAbsent(binding, ignored -> new HashSet<>()).add(source);
+        }
+        next.forEach((binding, sources) -> {
+            Set<String> prev = bindingSources.get(binding);
+            if(prev == null || prev.equals(sources)) return;
+            bindingPlayers.remove(binding);
+            changedBindingPlayers.remove(binding);
+            bindingChangeTicks.remove(binding);
+        });
+        bindingSources.clear();
+        bindingSources.putAll(next);
+    }
+
+    // Stop publishing values from nodes and ports removed from the compiled graph
+    private void reconcileLivePorts(CompiledProgram program){
+        Set<String> inputs = new HashSet<>();
+        Set<String> outputs = new HashSet<>();
+        for(NodeInstruction node : program.nodes().values()){
+            node.inputTypes().keySet().forEach(port -> inputs.add(node.id() + ":" + port));
+            node.outputTypes().keySet().forEach(port -> outputs.add(node.id() + ":" + port));
+        }
+        boolean changed = liveInputs.keySet().removeIf(key -> !inputs.contains(key));
+        changed |= liveOutputs.keySet().removeIf(key -> !outputs.contains(key));
+        if(changed) liveValueRevision++;
     }
 
     // Seed the persistent port state
@@ -848,6 +1009,20 @@ public final class GraphRuntime {
         }
     }
 
+    // Apply camera controls independently of output sampling and graph observers
+    private void updateCameraConfigurations(CompiledProgram program, Frame frame){
+        int[] operations = frame.resetOperations();
+        for(NodeInstruction node : program.cameraNodes){
+            try{
+                CameraGraphNodes.configure(controller, node.source(),
+                        port -> frame.value(node, port, operations), simulationOnly);
+            }catch(RuntimeException err){
+                diagnostics.add(new AdvancedGraphValidator.Diagnostic("warning", "camera_configuration",
+                        "Could not update camera controls: " + err.getMessage(), node.id()));
+            }
+        }
+    }
+
     // Update the passive outputs
     private void updatePassiveOutputs(
             CompiledProgram program, boolean sampleUnconnectedOutputs, Frame frame
@@ -933,7 +1108,7 @@ public final class GraphRuntime {
                 }
             }
             if (pendingReset || hasPendingOutputs()) {
-                controller.setGraphBindingValues(pendingOutputsOrEmpty(), pendingReset);
+                commitBindingOutputs();
                 AdvancedGraphOutputDelta.invalidateSamples(controller);
             }
         } catch (RuntimeException err) {
@@ -949,15 +1124,19 @@ public final class GraphRuntime {
     private void queueBindingOutput(String binding, double val) {
         if (pendingOutputs == null) {
             pendingOutputs = new LinkedHashMap<>();
+            pendingOutputOrigins.clear();
         }
         pendingOutputs.put(binding, val);
+        pendingOutputOrigins.put(binding, interactionOrigin());
     }
 
     // Queue the binding output if absent
     private void queueBindingOutputIfAbsent(String binding, double val) {
         if (pendingOutputs == null) {
             pendingOutputs = new LinkedHashMap<>();
+            pendingOutputOrigins.clear();
         }
+        if(!pendingOutputs.containsKey(binding)) pendingOutputOrigins.put(binding, interactionOrigin());
         pendingOutputs.putIfAbsent(binding, val);
     }
 
@@ -969,6 +1148,13 @@ public final class GraphRuntime {
     // Get the pending outputs or an empty map
     private Map<String, Double> pendingOutputsOrEmpty() {
         return pendingOutputs == null ? Map.of() : pendingOutputs;
+    }
+    // Preserve per-binding players even when scalar pulses restore their temporary execution context
+    private void commitBindingOutputs(){
+        com.rieno.gadgetsandgizmos.lib.interaction.InteractionContext.runOutputs(pendingOutputOrigins,
+                () -> com.rieno.gadgetsandgizmos.lib.interaction.InteractionContext.run(interactionOrigin(),
+                        () -> controller.setGraphBindingValues(pendingOutputsOrEmpty(), pendingReset)));
+        pendingOutputOrigins.clear();
     }
 
     // Run the ship control command
@@ -1018,6 +1204,7 @@ public final class GraphRuntime {
         String eventId = evt.id();
         currentEventId = eventId;
         currentEventPlayerId = evt.triggeringPlayerId();
+        if(currentEventPlayerId != null) liveValueRevision++;
         diagnostics.clear();
         pendingOutputs = null;
         pendingReset = false;
@@ -1044,7 +1231,11 @@ public final class GraphRuntime {
                     String key = node.id() + ":observed";
                     AdvancedGraphDocument.Value prev = state.put(key, val);
                     if (prev != null && !sameValue(prev, val)) {
+                        UUID prevPlayer = currentEventPlayerId;
+                        currentEventPlayerId = frame.inputPlayer(node, "value");
+                        if(currentEventPlayerId != null) liveValueRevision++;
                         followExec(frame, node, "exec", operations);
+                        currentEventPlayerId = prevPlayer;
                     }
                 }
             }
@@ -1145,7 +1336,7 @@ public final class GraphRuntime {
 
             // ------------------------------------OUTPUT COMMIT------------------------------------
             if (!simulationOnly && (pendingReset || hasPendingOutputs())) {
-                controller.setGraphBindingValues(pendingOutputsOrEmpty(), pendingReset);
+                commitBindingOutputs();
                 AdvancedGraphOutputDelta.invalidateSamples(controller);
             }
         } catch (RuntimeException err) {
@@ -1327,6 +1518,18 @@ public final class GraphRuntime {
 
     // Run the node
     private void executeNode(Frame frame, NodeInstruction node, String incomingPort, int[] operations) {
+        com.rieno.gadgetsandgizmos.lib.interaction.InteractionContext.run(interactionOrigin(),
+                () -> executeNodeWithOrigin(frame, node, incomingPort, operations));
+    }
+    // Resolve an online actor without inventing a nearby or observing player
+    private com.rieno.gadgetsandgizmos.lib.interaction.InteractionOrigin interactionOrigin(){
+        if(currentEventPlayerId == null || controller == null || controller.getLevel() == null
+                || controller.getLevel().getServer() == null) return null;
+        ServerPlayer player = controller.getLevel().getServer().getPlayerList().getPlayer(currentEventPlayerId);
+        return player == null ? null : com.rieno.gadgetsandgizmos.lib.interaction.InteractionOrigin.of(player);
+    }
+    // Apply node logic inside the reusable backend ownership scope
+    private void executeNodeWithOrigin(Frame frame, NodeInstruction node, String incomingPort, int[] operations){
         if (node == null) {
             return;
         }
@@ -1382,6 +1585,11 @@ public final class GraphRuntime {
             }
             // ------------------------------------NODE LOGIC------------------------------------
             switch (node.type()) {
+            case "control_camera" -> {
+                if(!simulationOnly && controller != null){
+                    controller.controlGraphCamera(node.source(), frame.value(node, "target", operations), currentEventPlayerId);
+                }
+            }
             case "reroute" -> followExec(frame, node, "value", operations);
             case "desmos_plot_point" -> {
                 String name = frame.value(node, "name", operations).asString();
@@ -1547,7 +1755,8 @@ public final class GraphRuntime {
                         : frame.value(node, "default", operations);
                 AdvancedGraphDocument.Value prev = variableValue(frame.program(), node.variable());
                 boolean changed = !Objects.equals(prev, val);
-                if (simulationOnly) {
+                boolean personal = currentEventPlayerId != null && playerScopes.variables().contains(node.variable());
+                if (simulationOnly || personal) {
                     if (changed) {
                         state.put(variableStateKey(node.variable()), val);
                     }
@@ -1559,7 +1768,7 @@ public final class GraphRuntime {
                 frame.seedOutput(node, "value", val);
                 putLiveOutput(node.id() + ":value", val);
                 if (changed) {
-                    if (simulationOnly) {
+                    if (simulationOnly || personal) {
                         enqueue("variable:" + node.variable());
                     } else {
                         controller.markGraphRuntimeChanged(node.variable());
@@ -1635,7 +1844,7 @@ public final class GraphRuntime {
             }
             // ------------------------------------TIMING------------------------------------
             case "timer" -> {
-                eventScheduler.removeScheduledIf(evt -> evt.id().equals("timer:" + node.id()));
+                eventScheduler.removeScheduledIf(evt -> evt.id().equals("timer:" + node.id()) && sameScheduledPlayer(evt, node.id()));
                 if ("stop".equals(incomingPort)) {
                     state.put(node.id() + ":elapsed", AdvancedGraphDocument.Value.number(timerElapsed(node)));
                     state.put(node.id() + ":running", AdvancedGraphDocument.Value.bool(false));
@@ -1694,11 +1903,11 @@ public final class GraphRuntime {
                     throw new IllegalStateException("Graph exceeded the 1024 scheduled event limit");
                 }
                 if ("debounce".equals(node.type())) {
-                    eventScheduler.removeScheduledIf(evt -> evt.id().equals("delayed:" + node.id()));
+                    eventScheduler.removeScheduledIf(evt -> evt.id().equals("delayed:" + node.id()) && sameScheduledPlayer(evt, node.id()));
                 }
                 eventScheduler.schedule(gameTime() + ticks,
                         new RuntimeEvent("delayed:" + node.id(),
-                                AdvancedGraphDocument.Value.number(0), null));
+                                AdvancedGraphDocument.Value.number(0), currentEventPlayerId));
             }
             case "reset_outputs" -> {
                 pendingReset = true;
@@ -1931,6 +2140,13 @@ public final class GraphRuntime {
                         : AdvancedGraphDocument.Value.number(0);
                 yield state.getOrDefault(node.id() + ":hud:" + port, fallback);
             }
+            case "ship_tracker" -> controller == null
+                    ? defaultShipTrackingValue(port)
+                    : controller.getShipTrackingValue(node.id(),
+                            frame.value(node, "filter", operations).asString(),
+                            frame.value(node, "tracking_distance", operations).asNumber(), port);
+            case "camera" -> CameraGraphNodes.value(controller, node.source(), port,
+                    key -> frame.value(node, key, operations), simulationOnly);
             case "portable_tracker" -> controller == null
                     ? defaultPortableTrackingValue(port)
                     : controller.getGogglesTrackingValue(node.data().getString("GogglesPair"), port);
@@ -2134,8 +2350,8 @@ public final class GraphRuntime {
                     structuredValue(frame.value(node, "value", operations), port);
             // ------------------------------------TEXT------------------------------------
             case "string_concat" -> AdvancedGraphDocument.Value.string(
-                    valueText(frame.value(node, "a", operations))
-                            + valueText(frame.value(node, "b", operations)));
+                    node.textJoin.join(
+                            input -> valueText(frame.value(node, input, operations))));
             case "split_string" -> splitString(
                     frame.value(node, "string", operations).asString(),
                     frame.value(node, "delimiter", operations).asString());
@@ -2307,18 +2523,9 @@ public final class GraphRuntime {
             case "vector_distance" -> AdvancedGraphDocument.Value.number(
                     AdvancedGraphMathValues.vector(frame.value(node, "a", operations)).distance(
                             AdvancedGraphMathValues.vector(frame.value(node, "b", operations))));
-            case "quaternion_to_euler" -> AdvancedGraphMathValues.vector(RotationMath.quaternionToEulerZxz(
-                    AdvancedGraphMathValues.quaternion(frame.value(node, "quaternion", operations))));
-            case "quaternion_to_tait_bryan" -> AdvancedGraphMathValues.vector(RotationMath.quaternionToTaitBryanXyz(
-                    AdvancedGraphMathValues.quaternion(frame.value(node, "quaternion", operations))));
-            case "euler_to_quaternion" -> AdvancedGraphMathValues.quaternion(RotationMath.eulerZxzToQuaternion(
-                    AdvancedGraphMathValues.vector(frame.value(node, "euler", operations))));
-            case "tait_bryan_to_quaternion" -> AdvancedGraphMathValues.quaternion(RotationMath.taitBryanXyzToQuaternion(
-                    AdvancedGraphMathValues.vector(frame.value(node, "tait_bryan", operations))));
-            case "euler_to_tait_bryan" -> AdvancedGraphMathValues.vector(RotationMath.eulerZxzToTaitBryanXyz(
-                    AdvancedGraphMathValues.vector(frame.value(node, "euler", operations))));
-            case "tait_bryan_to_euler" -> AdvancedGraphMathValues.vector(RotationMath.taitBryanXyzToEulerZxz(
-                    AdvancedGraphMathValues.vector(frame.value(node, "tait_bryan", operations))));
+            case "quaternion_to_euler", "quaternion_to_tait_bryan", "euler_to_quaternion",
+                    "tait_bryan_to_quaternion", "euler_to_tait_bryan", "tait_bryan_to_euler" ->
+                    executeLibraryNode(frame, node, port, operations);
             case "random", "random_int", "random_float_in_range", "random_int_in_range" -> {
                 long seed = controller.getBlockPos().asLong() ^ node.id().hashCode()
                         ^ (controller.getLevel() == null ? 0 : controller.getLevel().getGameTime());
@@ -2362,6 +2569,8 @@ public final class GraphRuntime {
         GraphExecutionContext ctx = new GraphExecutionContext() {
             // Update the graph
             @Override public long tick() { return gameTime(); }
+            @Override public boolean executionTriggered(){ return requestedPort == null; }
+            @Override public String nodeId(){ return node.id(); }
             // Get the state
             @Override public GraphValue state(String key) {
                 return toLibraryValue(state.get(statePrefix + key));
@@ -2372,7 +2581,12 @@ public final class GraphRuntime {
             }
             // Get the service
             @Override public <T> Optional<T> service(GraphServiceKey<T> key) {
-                if (controller == null || !GraphHostServices.BLOCK_ENTITY.equals(key)) {
+                if(controller != null && GraphHostServices.NODE_OUTPUTS.equals(key)){
+                    com.rieno.gadgetsandgizmos.lib.graph.GraphNodeOutputs outputs = id ->
+                            com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.outputs(controller, id);
+                    return Optional.of(key.type().cast(outputs));
+                }
+                if (simulationOnly || controller == null || !GraphHostServices.BLOCK_ENTITY.equals(key)) {
                     return Optional.empty();
                 }
                 return Optional.of(key.type().cast(controller));
@@ -2562,7 +2776,8 @@ public final class GraphRuntime {
     private AdvancedGraphDocument.Value variableValue(CompiledProgram program, String variable) {
         AdvancedGraphDocument.Value initial = program.graph().variables()
                 .getOrDefault(variable, AdvancedGraphDocument.Value.number(0));
-        return simulationOnly ? state.getOrDefault(variableStateKey(variable), initial) : initial;
+        return simulationOnly || currentEventPlayerId != null && playerScopes.variables().contains(variable)
+                ? state.getOrDefault(variableStateKey(variable), initial) : initial;
     }
 
     // Get the variable state key
@@ -2587,6 +2802,19 @@ public final class GraphRuntime {
 
     // Get the graph binding value
     private AdvancedGraphDocument.Value graphBindingValue(String bindingId, String port, boolean redstone) {
+        if(samplingPlayerHud && controller != null){
+            Set<UUID> owners = new HashSet<>();
+            UUID activeOwner = bindingPlayers.get(bindingId);
+            if(activeOwner != null) owners.add(activeOwner);
+            else for(NodeInstruction node : compiledProgram.nodes().values()){
+                if(!bindingId.equals(node.bindingId())) continue;
+                UUID id = controller.graphInputPlayer(node.source(), false);
+                if(id != null) owners.add(id);
+            }
+            if(!owners.isEmpty() && (owners.size() != 1 || !owners.contains(currentEventPlayerId))){
+                return "active".equals(port) ? AdvancedGraphDocument.Value.bool(false) : AdvancedGraphDocument.Value.number(0);
+            }
+        }
         if ("active".equals(port)) {
             return AdvancedGraphDocument.Value.bool(isBindingActive(bindingId));
         }
@@ -2906,9 +3134,13 @@ public final class GraphRuntime {
         if (eventScheduler.scheduledSize() >= MAX_SCHEDULED_EVENTS) {
             throw new IllegalStateException("Graph exceeded the 1024 scheduled event limit");
         }
-        eventScheduler.removeScheduledIf(evt -> evt.id().equals(prefix + nodeId));
+        eventScheduler.removeScheduledIf(evt -> evt.id().equals(prefix + nodeId) && sameScheduledPlayer(evt, nodeId));
         eventScheduler.schedule(gameTime() + Math.max(1, ticks),
-                new RuntimeEvent(prefix + nodeId, AdvancedGraphDocument.Value.number(0), null));
+                new RuntimeEvent(prefix + nodeId, AdvancedGraphDocument.Value.number(0), currentEventPlayerId));
+    }
+    // Keep one player's timer or debounce from cancelling another player's pending action
+    private boolean sameScheduledPlayer(RuntimeEvent evt, String nodeId){
+        return !playerScopes.nodes().contains(nodeId) || Objects.equals(evt.triggeringPlayerId(), currentEventPlayerId);
     }
 
     // Require the operation
@@ -3496,6 +3728,26 @@ public final class GraphRuntime {
             return val;
         }
 
+        // Trace interaction ownership through scalar and map expressions without adding visible ports
+        private @Nullable UUID inputPlayer(NodeInstruction node, String port){
+            Set<UUID> players = new HashSet<>();
+            ValueExpression input = node.input(port);
+            if(input instanceof EdgeExpression edge) collectPlayers(edge.from, players, new HashSet<>());
+            return players.size() == 1 ? players.iterator().next() : null;
+        }
+        private void collectPlayers(NodeInstruction node, Set<UUID> players, Set<String> visited){
+            if(!visited.add(node.id())) return;
+            UUID id = controller == null ? null : controller.graphInputPlayer(node.source());
+            if(id == null && currentGameTime - bindingChangeTicks.getOrDefault(node.bindingId(), Long.MIN_VALUE / 2) <= 4){
+                id = changedBindingPlayers.get(node.bindingId());
+            }
+            if(id != null) players.add(id);
+            for(String port : node.connectedInputPorts()){
+                ValueExpression input = node.input(port);
+                if(input instanceof EdgeExpression edge) collectPlayers(edge.from, players, visited);
+            }
+        }
+
         // Combine explicitly supplied inline fields into their parent MAP input.
         private AdvancedGraphDocument.Value inlineMapInput(
                 Frame frame, NodeInstruction node, String port,
@@ -3670,6 +3922,8 @@ public final class GraphRuntime {
         private final Map<String, String> portKeys = new HashMap<>();
         // Input ports
         private final String[] inputPorts;
+        // Prepared text input order
+        private final GraphTextInputs.CompiledJoin textJoin;
         // Current connected input ports
         private String[] connectedInputPorts = NO_PORTS;
 
@@ -3685,6 +3939,7 @@ public final class GraphRuntime {
             this.inputTypes = Map.copyOf(inputTypes);
             this.outputTypes = Map.copyOf(outputTypes);
             this.inputPorts = this.inputTypes.keySet().toArray(String[]::new);
+            this.textJoin = "string_concat".equals(src.type()) ? GraphTextInputs.compileJoin(src.data()) : null;
             for (String port : this.inputTypes.keySet()) {
                 portKeys.put(port, src.id() + ":" + port);
             }
@@ -3857,6 +4112,8 @@ public final class GraphRuntime {
         private final NodeInstruction[] hudNodes;
         // Passive nodes
         private final NodeInstruction[] passiveNodes;
+        // Camera controls run even when their output values are not sampled
+        private final NodeInstruction[] cameraNodes;
         // Ship command nodes
         private final NodeInstruction[] shipCommandNodes;
         // Tracked trigger nodes
@@ -3918,6 +4175,8 @@ public final class GraphRuntime {
             this.profilerNodes = profilerNodes;
             this.hudNodes = hudNodes;
             this.passiveNodes = passiveNodes;
+            this.cameraNodes = java.util.Arrays.stream(passiveNodes)
+                    .filter(node -> "camera".equals(node.type())).toArray(NodeInstruction[]::new);
             this.shipCommandNodes = shipCommandNodes;
             this.triggerNodes = Map.copyOf(triggerNodes);
             this.keyNodes = Map.copyOf(keyNodes);
@@ -3994,6 +4253,8 @@ public final class GraphRuntime {
                         AdvancedGraphCatalog.outputs(src));
                 nodes.put(src.id(), node);
                 if ("variable_get".equals(src.type())
+                        || "camera".equals(src.type())
+                        || "ship_tracker".equals(src.type())
                         || "portable_tracker".equals(src.type())
                         || "controller_tracker".equals(src.type())
                         || AdvancedGraphCatalog.isShipControlPassiveType(src.type())) {
@@ -4046,6 +4307,7 @@ public final class GraphRuntime {
                             profilerNodes.add(node);
                     case "hud_element", "advanced_hud_element", "acc_display_widget", "acc_hologram_widget",
                             "acc_display_graph", "acc_display_plotter", "acc_display_external",
+                            "acc_display_camera_source",
                             "acc_display_crn", "acc_display_shipping_information",
                             "acc_display_scm_information" ->
                             hudNodes.add(node);
@@ -4323,6 +4585,7 @@ public final class GraphRuntime {
             return hasAutomaticEventNodes() || profilerNodes.length > 0
                     || needsHudInputSampling()
                     || samplePassiveOutputs && passiveNodes.length > 0
+                    || cameraNodes.length > 0
                     || shipCommandNodes.length > 0;
         }
 
@@ -4455,8 +4718,25 @@ public final class GraphRuntime {
                                 @Nullable UUID triggeringPlayerId) {
     }
 
+    // Create the default ship tracking value
+    public static AdvancedGraphDocument.Value defaultShipTrackingValue(String port) {
+        return switch (port == null ? "" : port) {
+            case "available" -> AdvancedGraphDocument.Value.bool(false);
+            case "ship_name", "sub_level" -> AdvancedGraphDocument.Value.string("");
+            case "coordinates" -> fromLibraryValue(
+                    com.rieno.gadgetsandgizmos.lib.physics.EntityTelemetryApi.vector(Vec3.ZERO));
+            case "relative_angle" -> fromLibraryValue(
+                    com.rieno.gadgetsandgizmos.lib.physics.EntityTelemetryApi.angles(
+                            new com.rieno.gadgetsandgizmos.lib.physics.TrackingGeometry.Angles(0, 0)));
+            case "ships" -> AdvancedGraphDocument.Value.list(new CompoundTag());
+            default -> AdvancedGraphDocument.Value.number(0);
+        };
+    }
+
     // Create the default portable tracking value
     private static AdvancedGraphDocument.Value defaultPortableTrackingValue(String port) {
+        var extra = com.rieno.gadgetsandgizmos.lib.physics.EntityTelemetryApi.unavailable().get(port == null ? "" : port);
+        if (extra != null) return fromLibraryValue(extra);
         return switch (port == null ? "" : port) {
             case "available", "holding_player", "on_lectern", "is_player", "is_mannequin",
                  "is_armor_stand" -> AdvancedGraphDocument.Value.bool(false);

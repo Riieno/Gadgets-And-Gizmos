@@ -38,6 +38,7 @@ final class TabletAppTargets{
         if(point == null || ctx.player().distanceToSqr(point) > 256) throw new IllegalArgumentException("Pair the target from within 16 blocks");
         if(!WorldAccessPolicy.canAccessLocal(ctx.player(), ctx.player().serverLevel(), binding.subLevelId(), binding.pos())) throw new IllegalArgumentException("This target is protected");
         if(app.equals(PaidTabletApps.BLOCKMATES.id()) && !(be instanceof com.rieno.gadgetsandgizmos.lib.worker.WorkerOrchestrator)) throw new IllegalArgumentException("Blockmates must be linked to an ACC managing workers");
+        if(app.equals(PaidTabletApps.DIGISABLE.id()) && !(be instanceof com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEntity)) throw new IllegalArgumentException("Pair Digisable with an ACC worker storage network");
         DiagnosticTabletAppStorage.addBinding(ctx.player().server, ctx.sourceTabletId(), app, binding, true);
         DiagnosticTabletAppStorage.clearSelections(ctx.player().server, ctx.sourceTabletId(), app);
         return binding;

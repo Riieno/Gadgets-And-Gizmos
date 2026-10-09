@@ -9,6 +9,8 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.lib.scm.ScmOrientation;
+import com.rieno.gadgetsandgizmos.lib.control.ActionGroupRouting;
+import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockIndex;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmLeggedGait;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmSteeringMode;
 import org.jetbrains.annotations.Nullable;
@@ -152,6 +154,16 @@ public final class ScmConfigurationProfile {
     private final Map<DockingConnectorReference, DockingConnectorGroup> dockingConnectorGroups =
             new LinkedHashMap<>();
 
+    private ActionGroupRouting<UnitReference> routing;
+    private List<Group> groupSnapshot;
+    private Map<String, String> actionSnapshot;
+    private Set<UnitReference> excludedSnapshot;
+    private Set<UnitReference> accelerationControlUnits;
+    private Set<UnitReference> ikJointUnits;
+    private Set<UnitReference> groupedUnits;
+    private final SubLevelBlockIndex.Cache<UnitReference> unitIndexes = new SubLevelBlockIndex.Cache<>(
+            64, UnitReference::subLevelId, UnitReference::blockPosition);
+
     public static ScmConfigurationProfile empty() {
         return new ScmConfigurationProfile();
     }
@@ -177,15 +189,18 @@ public final class ScmConfigurationProfile {
     }
 
     public List<Group> groups() {
-        return List.copyOf(groups);
+        if(groupSnapshot == null) groupSnapshot = List.copyOf(groups);
+        return groupSnapshot;
     }
 
     public Map<String, String> actionGroups() {
-        return Map.copyOf(actionGroups);
+        if(actionSnapshot == null) actionSnapshot = Map.copyOf(actionGroups);
+        return actionSnapshot;
     }
 
     public Set<UnitReference> excludedUnits() {
-        return Set.copyOf(excludedUnits);
+        if(excludedSnapshot == null) excludedSnapshot = Set.copyOf(excludedUnits);
+        return excludedSnapshot;
     }
 
     // Get the player-selected docking connector groups
@@ -277,12 +292,7 @@ public final class ScmConfigurationProfile {
      * Return the units assigned to the optional Auto group.
      */
     public Set<UnitReference> autoUnits() {
-        String groupId = actionGroups.get(AUTO_ACTION);
-        if (groupId == null || groupId.isBlank()) {
-            return Set.of();
-        }
-        return groups.stream().filter(group -> groupId.equals(group.id()))
-                .findFirst().map(Group::units).orElse(Set.of());
+        return routing().firstUnitsForAction(AUTO_ACTION);
     }
 
     public boolean hasAutoUnits() {
@@ -299,12 +309,7 @@ public final class ScmConfigurationProfile {
      * Travel direction is selected by the directional action groups instead.
      */
     public Set<UnitReference> accelerationUnits() {
-        String groupId = actionGroups.get(ACCELERATION_ACTION);
-        if (groupId == null || groupId.isBlank()) {
-            return Set.of();
-        }
-        return groups.stream().filter(group -> groupId.equals(group.id()))
-                .findFirst().map(Group::units).orElse(Set.of());
+        return routing().firstUnitsForAction(ACCELERATION_ACTION);
     }
 
     /** Return the blocks assigned to direction-independent speed reduction. */
@@ -318,7 +323,7 @@ public final class ScmConfigurationProfile {
     }
 
     public boolean allows(ShipControlMap.PropulsionUnit unit) {
-        return unit != null && excludedUnits.stream().noneMatch(reference -> reference.sameBlock(unit));
+        return unit != null && unitIndex(excludedUnits()).at(unit.subLevelId(), unit.blockPosition()).isEmpty();
     }
 
     /**
@@ -328,13 +333,7 @@ public final class ScmConfigurationProfile {
      * unsafe (for example, a Forward action waking vertical lift units).
      */
     public boolean hasActionGroupsFor(Collection<String> actions) {
-        if (actions == null || actions.isEmpty()) {
-            return false;
-        }
-        return actions.stream().allMatch(action -> {
-            String group = actionGroups.get(action);
-            return group != null && groups.stream().anyMatch(value -> value.id().equals(group));
-        });
+        return routing().hasGroupsFor(actions);
     }
 
     /**
@@ -343,8 +342,7 @@ public final class ScmConfigurationProfile {
      * while a named group contributes only to its matching action.
      */
     public boolean hasActionBindings() {
-        return actionGroups.values().stream().anyMatch(group -> !group.isBlank()
-                && groups.stream().anyMatch(value -> value.id().equals(group)));
+        return routing().hasBindings();
     }
 
     /**
@@ -353,24 +351,7 @@ public final class ScmConfigurationProfile {
      * a profile declares routing.
      */
     public Set<UnitReference> unitsForExplicitActions(Collection<String> actions) {
-        if (actions == null || actions.isEmpty() || actionGroups.isEmpty()) {
-            return Set.of();
-        }
-        Set<String> requestedGroups = new LinkedHashSet<>();
-        String autoGroup = actionGroups.get(AUTO_ACTION);
-        if (autoGroup != null && !autoGroup.isBlank()) {
-            requestedGroups.add(autoGroup);
-        }
-        for (String action : actions) {
-            String group = actionGroups.get(action);
-            if (group != null && !group.isBlank()) {
-                requestedGroups.add(group);
-            }
-        }
-        Set<UnitReference> selected = new LinkedHashSet<>();
-        groups.stream().filter(group -> requestedGroups.contains(group.id()))
-                .forEach(group -> selected.addAll(group.units()));
-        return Set.copyOf(selected);
+        return routing().unitsForExplicitActions(actions, AUTO_ACTION);
     }
 
     /**
@@ -379,22 +360,20 @@ public final class ScmConfigurationProfile {
      * intentionally selected an empty group, and therefore no unit is allowed.
      */
     public Set<UnitReference> unitsForActions(Collection<String> actions) {
-        if (!hasActionGroupsFor(actions)) {
-            return Set.of();
-        }
-        Set<String> requestedGroups = new LinkedHashSet<>();
-        for (String action : actions) {
-            requestedGroups.add(actionGroups.get(action));
-        }
-        Set<UnitReference> selected = new LinkedHashSet<>();
-        groups.stream().filter(group -> requestedGroups.contains(group.id()))
-                .forEach(group -> selected.addAll(group.units()));
-        return Set.copyOf(selected);
+        return routing().unitsForActions(actions);
     }
 
     public void replace(UUID targetMapId, List<Group> requestedGroups,
                         Map<String, String> requestedActionGroups,
                         Set<UnitReference> requestedExcludedUnits) {
+        routing = null;
+        groupSnapshot = null;
+        actionSnapshot = null;
+        excludedSnapshot = null;
+        accelerationControlUnits = null;
+        ikJointUnits = null;
+        groupedUnits = null;
+        unitIndexes.clear();
         mapId = targetMapId;
         groups.clear();
         if (requestedGroups != null) {
@@ -418,6 +397,53 @@ public final class ScmConfigurationProfile {
             requestedExcludedUnits.stream().filter(Objects::nonNull)
                     .forEach(excludedUnits::add);
         }
+    }
+
+    // Prepare routing only after the complete profile has been loaded or replaced
+    private ActionGroupRouting<UnitReference> routing(){
+        if(routing == null){
+            routing = new ActionGroupRouting<>(groups.stream()
+                    .map(group -> new ActionGroupRouting.Group<>(group.id(), List.copyOf(group.units())))
+                    .toList(), actionGroups);
+        }
+        return routing;
+    }
+
+    // Keep dedicated and legacy acceleration bindings in one stable selection
+    Set<UnitReference> accelerationControlUnits(){
+        if(accelerationControlUnits == null){
+            Set<UnitReference> units = new LinkedHashSet<>(accelerationUnits());
+            units.addAll(unitsForActions(Set.of("ship_accelerate")));
+            accelerationControlUnits = Set.copyOf(units);
+        }
+        return accelerationControlUnits;
+    }
+
+    // Keep joint ownership separate from the IK propulsion roles
+    Set<UnitReference> ikJointUnits(){
+        if(ikJointUnits == null){
+            Set<UnitReference> units = new LinkedHashSet<>(autoUnits());
+            units.addAll(unitsForActions(actionGroups.keySet().stream()
+                    .filter(ScmConfigurationProfile::isIkAction)
+                    .filter(action -> !action.endsWith("_propulsion")).toList()));
+            ikJointUnits = Set.copyOf(units);
+        }
+        return ikJointUnits;
+    }
+
+    // Retain every authored reference for implicit-control ownership checks
+    Set<UnitReference> groupedUnits(){
+        if(groupedUnits == null){
+            Set<UnitReference> units = new LinkedHashSet<>();
+            groups.forEach(group -> units.addAll(group.units()));
+            groupedUnits = Set.copyOf(units);
+        }
+        return groupedUnits;
+    }
+
+    // Index immutable selections until the authored configuration changes
+    SubLevelBlockIndex<UnitReference> unitIndex(Collection<UnitReference> references){
+        return unitIndexes.get(references);
     }
 
     public CompoundTag toTag() {
@@ -477,7 +503,7 @@ public final class ScmConfigurationProfile {
             }
         }
         ListTag excludedTags = tag.getList("ExcludedUnits", Tag.TAG_COMPOUND);
-        for (int index = 0; index < excludedTags.size() && profile.excludedUnits.size() < 2048; index++) {
+        for (int index = 0; index < excludedTags.size() && profile.excludedUnits.size() < com.rieno.gadgetsandgizmos.lib.scm.ScmCapacity.MAX_CONTROL_UNITS; index++) {
             UnitReference unit = UnitReference.fromTag(excludedTags.getCompound(index));
             if (unit.isValid()) {
                 profile.excludedUnits.add(unit);
@@ -570,9 +596,13 @@ public final class ScmConfigurationProfile {
             // Keep one control scope per block in a group, including saved groups.
             Set<UnitReference> direct = new LinkedHashSet<>();
             selected.stream().filter(unit -> !unit.usesFaceControl()).forEach(direct::add);
+            Map<UUID, Set<BlockPos>> directBlocks = new LinkedHashMap<>();
+            direct.forEach(unit -> directBlocks.computeIfAbsent(unit.subLevelId(),
+                    ignored -> new LinkedHashSet<>()).add(unit.blockPosition()));
             Set<UnitReference> resolved = new LinkedHashSet<>(direct);
             selected.stream().filter(UnitReference::usesFaceControl)
-                    .filter(unit -> direct.stream().noneMatch(unit::sameBlock))
+                    .filter(unit -> !directBlocks.getOrDefault(unit.subLevelId(), Set.of())
+                            .contains(unit.blockPosition()))
                     .forEach(resolved::add);
             units = Set.copyOf(resolved);
         }
@@ -594,7 +624,7 @@ public final class ScmConfigurationProfile {
         public static Group fromTag(CompoundTag tag) {
             Set<UnitReference> units = new LinkedHashSet<>();
             ListTag unitTags = tag.getList("Units", Tag.TAG_COMPOUND);
-            for (int index = 0; index < unitTags.size() && units.size() < 2048; index++) {
+            for (int index = 0; index < unitTags.size() && units.size() < com.rieno.gadgetsandgizmos.lib.scm.ScmCapacity.MAX_CONTROL_UNITS; index++) {
                 UnitReference unit = UnitReference.fromTag(unitTags.getCompound(index));
                 if (unit.isValid()) {
                     units.add(unit);

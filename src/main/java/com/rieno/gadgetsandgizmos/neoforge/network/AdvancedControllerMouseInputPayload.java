@@ -102,7 +102,7 @@ public record AdvancedControllerMouseInputPayload(Target target, BlockPos pos, U
                     if (controller != null && (openMenuTarget || controller.canPlayerUse(player)
                             || DiagnosticTabletRemoteSessions.isInteractionAuthorized(
                             player, payload.pos(), payload.subLevelId()))) {
-                        controller.handleMouseInput(payload.input(), payload.value(), payload.active());
+                        controller.handleMouseInput(player, payload.input(), payload.value(), payload.active());
                     }
                 }
                 case PORTABLE -> PortableContraptionControllerRuntime.handleMouseInput(

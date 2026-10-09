@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.simibubi.create.Create;
+import com.rieno.gadgetsandgizmos.lib.inventory.ItemStackNbtSanitizer;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtAccounter;
@@ -106,6 +107,7 @@ final class ControllerSchematicPayload {
         CompoundTag envelope = blockEntityTag.getCompound(BLOCK_ENTITY_TAG).copy();
         blockEntityTag.remove(BLOCK_ENTITY_TAG);
         CompoundTag payload = decode(envelope);
+        if(payload != null) payload = ItemStackNbtSanitizer.withoutUnavailableItems(payload);
         discardLegacyPlotPoints(payload);
         return payload;
     }

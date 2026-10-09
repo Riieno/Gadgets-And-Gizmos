@@ -44,6 +44,7 @@ class RedstoneTargetWriteTest {
                 "minecraft:redstone_wire", "Wire", ContraptionNetworkLinkerData.LinkMode.OUTPUT,
                 ContraptionNetworkLinkerData.TargetScope.BLOCK, List.of());
         var target = ContraptionNetworkLinkerData.toDiscoveryNodes(List.of(linked)).getFirst();
+        doReturn(new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.STICK)).when(controller).getStoredLinker();
         CompoundTag data = new CompoundTag();
         data.put("TargetData", target.toTag());
         var node = new AdvancedGraphDocument.Node("output", "set_block_data", "", 0, 0, data);
@@ -52,7 +53,9 @@ class RedstoneTargetWriteTest {
                 "state_power", AdvancedGraphDocument.Value.number(5));
         try (var simulated = mockStatic(SimulatedHelper.class);
              var collector = mockStatic(SubLevelBlockEntityCollector.class);
-             var bus = mockStatic(ContraptionNetworkLinkerSignalBus.class)) {
+             var bus = mockStatic(ContraptionNetworkLinkerSignalBus.class);
+             var linkerData = mockStatic(ContraptionNetworkLinkerData.class, CALLS_REAL_METHODS)) {
+            linkerData.when(() -> ContraptionNetworkLinkerData.toDiscoveryNodes(controller.getStoredLinker())).thenReturn(List.of(target));
             collector.when(() -> SubLevelBlockEntityCollector.resolveTargetLevel(level, null)).thenReturn(level);
             collector.when(() -> SubLevelBlockEntityCollector.isTargetLoaded(level, null, POS)).thenReturn(true);
             assertTrue(controller.setGraphTargetData(node, values.keySet(), values::get));
@@ -81,13 +84,17 @@ class RedstoneTargetWriteTest {
                 ContraptionNetworkLinkerData.TargetScope.FACE,
                 List.of(new ContraptionNetworkLinkerData.LinkedFace(Direction.NORTH, "North", "")));
         var target = ContraptionNetworkLinkerData.toDiscoveryNodes(List.of(linked)).getFirst();
+        doReturn(new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.STICK)).when(controller).getStoredLinker();
         CompoundTag data = new CompoundTag();
         data.put("TargetData", target.toTag());
         var node = new AdvancedGraphDocument.Node("face-output", "set_block_data", "", 0, 0, data);
         try(var simulated = mockStatic(SimulatedHelper.class);
-            var collector = mockStatic(SubLevelBlockEntityCollector.class)){
+            var collector = mockStatic(SubLevelBlockEntityCollector.class);
+            var linkerData = mockStatic(ContraptionNetworkLinkerData.class, CALLS_REAL_METHODS)){
+            linkerData.when(() -> ContraptionNetworkLinkerData.toDiscoveryNodes(controller.getStoredLinker())).thenReturn(List.of(target));
             collector.when(() -> SubLevelBlockEntityCollector.resolveTargetLevel(level, null)).thenReturn(level);
             collector.when(() -> SubLevelBlockEntityCollector.isTargetLoaded(level, null, POS)).thenReturn(true);
+            collector.when(() -> SubLevelBlockEntityCollector.isTargetLoaded(level, null, support)).thenReturn(true);
             assertTrue(controller.setGraphTargetData(node, Set.of("state_power"),
                     port -> AdvancedGraphDocument.Value.number(5)));
             verify(level).setBlock(eq(support),

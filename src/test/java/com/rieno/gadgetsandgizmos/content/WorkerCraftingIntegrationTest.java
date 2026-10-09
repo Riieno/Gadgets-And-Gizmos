@@ -11,6 +11,7 @@ package com.rieno.gadgetsandgizmos.content;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.worker.*;
+import com.rieno.gadgetsandgizmos.lib.util.DeferredWorkScheduler;
 import com.simibubi.create.content.logistics.box.PackageStyles;
 import com.simibubi.create.content.logistics.crate.BottomlessItemHandler;
 import com.simibubi.create.content.logistics.crate.CreativeCrateBlockEntity;
@@ -168,6 +169,7 @@ class WorkerCraftingIntegrationTest{
                     recipe("stick", Items.STICK, 4, Items.OAK_PLANKS, 2), pickaxe));
             ctx.finish(ctx.request(Items.WOODEN_PICKAXE, 1), true);
             assertEquals(1, ctx.recipient.getInventory().countItem(Items.WOODEN_PICKAXE));
+            verify(ctx.controller, never()).retryWorkerRecipe(argThat(order -> order.recipePlan() != null), anyMap());
         }
     }
 
@@ -183,6 +185,7 @@ class WorkerCraftingIntegrationTest{
             ctx.finish(runtime);
             assertEquals(16, ctx.recipient.getInventory().countItem(Items.IRON_BLOCK));
             assertEquals(0, ctx.recipient.getInventory().countItem(Items.IRON_INGOT));
+            verify(ctx.controller, never()).retryWorkerRecipe(argThat(order -> order.recipePlan() != null), anyMap());
         }
     }
 
@@ -557,6 +560,11 @@ class WorkerCraftingIntegrationTest{
         MockedStatic<WorkerContainerAccess> access;
 
         Fixture(Item supplied){
+            try{
+                var lookup = AdvancedContraptionControllerBlockEntity.class.getDeclaredField("workerRecipeLookup");
+                lookup.setAccessible(true);
+                lookup.set(controller, new WorkerRecipeLookup());
+            }catch(ReflectiveOperationException ex){ throw new AssertionError(ex); }
             controller.setLevel(level);
             pod.setLevel(level);
             doNothing().when(pod).setChanged();
@@ -578,6 +586,13 @@ class WorkerCraftingIntegrationTest{
             when(worker.blockPosition()).thenReturn(new BlockPos(0, 64, 0));
             when(worker.workerInventory()).thenReturn(inventory);
             when(worker.workerCurios()).thenReturn(tools);
+            doAnswer(call -> {
+                var stock = new java.util.LinkedHashMap<>(new WorkerInventoryEndpoint(workerId,
+                        worker::blockPosition, inventory, level.registryAccess(), stack -> true, false).contents());
+                new WorkerInventoryEndpoint(workerId, worker::blockPosition, tools, level.registryAccess(),
+                        stack -> true, false).contents().forEach((key, count) -> stock.merge(key, count, Long::sum));
+                return stock;
+            }).when(pod).workerPlanningStock(any());
             when(worker.getItemBySlot(any(EquipmentSlot.class))).thenReturn(ItemStack.EMPTY);
             var server = mock(MinecraftServer.class);
             var players = mock(PlayerList.class);
@@ -678,7 +693,13 @@ class WorkerCraftingIntegrationTest{
             var type = Class.forName(WorkerPodBlockEntity.class.getName() + "$WorkerRuntime");
             var read = type.getDeclaredMethod("fromTag", CompoundTag.class);
             read.setAccessible(true);
-            return read.invoke(null, tag);
+            Object runtime = read.invoke(null, tag);
+            long deadline = System.nanoTime() + 10_000_000_000L;
+            while(craft && queue(runtime).current() != null && queue(runtime).current().lookingUpRecipe()){
+                assertTrue(System.nanoTime() < deadline, "Recipe lookup did not finish");
+                tick(runtime);
+            }
+            return runtime;
         }
 
         void finish(Object runtime) throws Exception{
@@ -705,7 +726,17 @@ class WorkerCraftingIntegrationTest{
             var tick = WorkerPodBlockEntity.class.getDeclaredMethod("tickWorker", ServerLevel.class,
                     AdvancedContraptionControllerBlockEntity.class, runtime.getClass(), boolean.class);
             tick.setAccessible(true);
-            tick.invoke(pod, level, controller, runtime, true);
+            var scheduler = DeferredWorkScheduler.forServer(level.getServer());
+            long deadline = System.nanoTime() + 10_000_000_000L;
+            var status = runtime.getClass().getDeclaredField("status");
+            status.setAccessible(true);
+            do{
+                scheduler.tick();
+                tick.invoke(pod, level, controller, runtime, true);
+                if(!"Looking up recipe".equals(status.get(runtime))) break;
+                assertTrue(System.nanoTime() < deadline, "Deferred recipe query did not finish");
+                java.util.concurrent.locks.LockSupport.parkNanos(1_000_000L);
+            }while(true);
         }
 
         <T> MockedStatic<T> scoped(Class<T> type){
@@ -715,6 +746,8 @@ class WorkerCraftingIntegrationTest{
         }
 
         @Override public void close(){
+            DeferredWorkScheduler.forServer(level.getServer()).close();
+            WorkerRecipeCatalog.invalidate();
             for(var mock : mocks.reversed()) mock.close();
         }
     }

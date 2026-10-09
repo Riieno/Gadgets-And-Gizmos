@@ -1,0 +1,47 @@
+{
+	"format_version": "1.9.0",
+	"credit": "Made with Blockbench",
+	"parent": "contraption_camera",
+	"texture_size": [32, 32],
+	"textures": {
+		"0": "createthrusters:block/camera/camera",
+		"particle": "createthrusters:block/camera/camera"
+	},
+	"elements": [
+		{
+			"from": [4, 4, 5],
+			"to": [12, 12, 11],
+			"rotation": {"angle": 0, "axis": "y", "origin": [8, 8, 6.42225]},
+			"faces": {
+				"north": {"uv": [7, 0, 3, 4], "texture": "#0"},
+				"east": {"uv": [7, 4, 4, 8], "rotation": 180, "texture": "#0"},
+				"south": {"uv": [7, 0, 3, 4], "texture": "#0"},
+				"west": {"uv": [7, 4, 4, 8], "rotation": 180, "texture": "#0"},
+				"up": {"uv": [4, 8, 7, 4], "rotation": 270, "texture": "#0"},
+				"down": {"uv": [4, 8, 7, 4], "rotation": 270, "texture": "#0"}
+			}
+		},
+		{
+			"from": [5, 5, 3],
+			"to": [11, 11, 5],
+			"rotation": {"angle": 0, "axis": "y", "origin": [8, 8, 6.42225]},
+			"faces": {
+				"north": {"uv": [0, 0, 3, 3], "texture": "#0"},
+				"east": {"uv": [10, 6.5, 7, 7.5], "texture": "#0"},
+				"south": {"uv": [0, 3, 0.5, 3.5], "texture": "#0"},
+				"west": {"uv": [3.5, 4, 2.5, 7], "texture": "#0"},
+				"up": {"uv": [3.5, 7, 2.5, 4], "rotation": 90, "texture": "#0"},
+				"down": {"uv": [10, 6.5, 7, 7.5], "texture": "#0"}
+			}
+		}
+	],
+	"groups": [
+		{
+			"name": "Camera",
+			"origin": [7.5, 16.5, 1],
+			"scope": 0,
+			"color": 0,
+			"children": [0, 1]
+		}
+	]
+}

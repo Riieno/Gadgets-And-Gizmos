@@ -42,6 +42,7 @@ final class DigisableApp{
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     static String execute(TabletActionContext ctx, TabletAction action) throws Exception{
+        if(DigisableSchematics.handles(action.actionId())) return DigisableSchematics.execute(ctx, action);
         String val = action.arguments().getOrDefault("value", "").strip();
         UUID selected = val.isBlank() || "refresh".equals(action.actionId()) ? null
                 : UUID.fromString("extract".equals(action.actionId()) ? val.split("\\|", 2)[0] : val);
@@ -152,7 +153,7 @@ final class DigisableApp{
         return location;
     }
 
-    private static CompoundTag snapshot(TabletActionContext ctx) throws Exception{
+    static CompoundTag snapshot(TabletActionContext ctx) throws Exception{
         CompoundTag data = new CompoundTag();
         data.putBoolean("StoreAllowed", TabletAppsServerConfig.STORE.get());
         data.putBoolean("LocateAllowed", TabletAppsServerConfig.LOCATE.get());
@@ -185,6 +186,7 @@ final class DigisableApp{
         data.put("Archives", archives);
         data.putInt("ArchiveLimit", TabletAppsServerConfig.ARCHIVES.get());
         data.putInt("ExtractionRange", Math.max(2, Math.min(64, TabletAppsServerConfig.STORE_RANGE.get())));
+        DigisableSchematics.append(ctx, data);
         return data;
     }
 

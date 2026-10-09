@@ -15,9 +15,11 @@ public final class PaidTabletAppClients{
         TabletAppClientRegistry.register(PaidTabletApps.DIGISABLE.id(), new Digisable());
         TabletAppClientRegistry.register(PaidTabletApps.MANIFEST.id(), new Manifest());
         TabletAppClientRegistry.register(PaidTabletApps.BLOCKMATES.id(), new Blockmates());
+        TabletAppClientRegistry.register(PaidTabletApps.CCTV.id(), new Cctv());
         icon(PaidTabletApps.DIGISABLE, new ItemStack(Items.ENDER_CHEST));
         icon(PaidTabletApps.MANIFEST, new ItemStack(Items.CHEST));
         icon(PaidTabletApps.BLOCKMATES, new ItemStack(Items.ARMOR_STAND));
+        icon(PaidTabletApps.CCTV, new ItemStack(com.rieno.gadgetsandgizmos.registry.CTBlocks.CAMERA.get()));
     }
 
     private static void icon(TabletAppDefinition app, ItemStack item){

@@ -2,15 +2,13 @@
   "type": "minecraft:crafting_shaped",
   "category": "misc",
   "pattern": [
-    " M ",
-    "PBP",
-    " X "
+    " B ",
+    "BPB",
+    " B "
   ],
   "key": {
-    "M": { "item": "minecraft:soul_soil" },
-    "P": { "item": "createthrusters:processing_upgrade_haunting_t1" },
-    "B": { "item": "create:brass_sheet" },
-    "X": { "item": "create:brass_sheet" }
+    "B": { "item": "createthrusters:blackstone_alloy" },
+    "P": { "item": "createthrusters:processing_upgrade_haunting_t1" }
   },
   "result": {
     "id": "createthrusters:processing_upgrade_haunting_t2",

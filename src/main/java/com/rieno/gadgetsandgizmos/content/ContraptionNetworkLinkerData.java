@@ -2005,6 +2005,7 @@ public final class ContraptionNetworkLinkerData {
         if (directTarget == null) {
             return null;
         }
+        if(directTarget.face() != null) return directTarget.face();
         String targetId = directTarget.targetId();
         int optionIndex = targetId.indexOf(DIRECT_TARGET_OPTION_PREFIX);
         if (optionIndex < 0) {
@@ -2028,7 +2029,7 @@ public final class ContraptionNetworkLinkerData {
         ControllerDirectTargetReference base = node.asDirectTargetReference();
         boolean rcsThruster = isRcsThrusterBlockId(node.blockId());
         if (face == null || !isLinkerFaceTarget(base) && !rcsThruster) {
-            return base;
+            return base.withFace(face);
         }
         for (FaceOption option : faceOptionsForNode(node)) {
             if (option.face() != face || option.targetChannelId() == null

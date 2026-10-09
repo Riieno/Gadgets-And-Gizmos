@@ -66,6 +66,7 @@ public record AnalogueContraptionControllerKeyPayload(BlockPos pos, UUID subLeve
     // Handle the analogue contraption controller key
     public static void handle(AnalogueContraptionControllerKeyPayload payload, IPayloadContext ctx) {
         ctx.enqueueWork(() -> {
+            if(!(ctx.player() instanceof ServerPlayer player)) return;
             AnalogueContraptionControllerBlockEntity controller = controllerFromOpenMenu(ctx, payload);
             boolean openMenuTarget = controller != null;
             if (controller == null) {
@@ -75,12 +76,17 @@ public record AnalogueContraptionControllerKeyPayload(BlockPos pos, UUID subLeve
             if (controller == null) {
                 return;
             }
-            if (ctx.player() instanceof ServerPlayer player && !openMenuTarget
+            if (!openMenuTarget
                     && !controller.canPlayerUse(player)
                     && !DiagnosticTabletRemoteSessions.isInteractionAuthorized(
                     player, payload.pos(), payload.subLevelId())) return;
 
-            controller.handleControllerKeyInput(payload.channelId(), payload.pressed());
+            if(controller instanceof com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEntity advanced){
+                advanced.handleControllerKeyInput(player, payload.channelId(), payload.pressed());
+            }else{
+                com.rieno.gadgetsandgizmos.lib.interaction.BlockInteractionTracker.record(controller.getLevel(), controller.getBlockPos(), player);
+                controller.handleControllerKeyInput(payload.channelId(), payload.pressed());
+            }
         });
     }
 

@@ -11,6 +11,8 @@ package com.rieno.gadgetsandgizmos.content;
 import com.mojang.logging.LogUtils;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
+import com.rieno.gadgetsandgizmos.lib.physics.archive.SchematicImportAdapters;
+import com.rieno.gadgetsandgizmos.lib.physics.archive.SubLevelSchematic;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -112,7 +114,103 @@ public final class PhotomancyBlueprintCompat {
 
     // Handle the common setup event
     public static void onCommonSetup(FMLCommonSetupEvent evt) {
-        evt.enqueueWork(PhotomancyBlueprintCompat::registerIfPresent);
+        evt.enqueueWork(() -> {
+            SchematicImportAdapters.register(net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("createthrusters", "photomancy"),
+                    PhotomancyBlueprintCompat::prepareSchematicImport);
+            registerIfPresent();
+        });
+    }
+
+    // Convert owned Photomancy references without requiring the optional mod to be installed
+    private static void prepareSchematicImport(SubLevelSchematic schematic, SubLevelSchematic.Body body,
+                                               SubLevelSchematic.Block block, CompoundTag tag){
+        if(body.importFrame().format() != SubLevelSchematic.Format.PHOTOMANCY) return;
+        var id = BuiltInRegistries.BLOCK.getKey(block.state().getBlock());
+        if(id.getNamespace().equals("createthrusters")) importSchematicTag(id.getPath(), schematic, tag);
+    }
+
+    // Restore template-local bearing and controller references before native safe serialization
+    static void importSchematicTag(String type, SubLevelSchematic schematic, CompoundTag tag){
+        boolean controller = type.equals("analogue_contraption_controller") || type.equals("advanced_contraption_controller");
+        if(!controller) SchematicBlockEntityConfigPayload.restore(tag);
+        if(type.equals("aileron_bearing")){
+            for(String head : List.of("primary", "secondary")){
+                if(tag.contains(head, Tag.TAG_COMPOUND)) restoreSchematicBearing(schematic, tag.getCompound(head),
+                        MOUNTED_SUB_LEVEL, MOUNTED_LOCAL_POS, PositionEncoding.PACKED_LONG);
+            }
+        }else if(type.equals("vector_bearing")){
+            restoreSchematicBearing(schematic, tag, MOUNTED_SUB_LEVEL, MOUNTED_LOCAL_POS, PositionEncoding.PACKED_LONG);
+        }else if(type.equals("thruster_bearing")){
+            restoreSchematicBearing(schematic, tag, SUB_LEVEL_ID, SWIVEL_PLATE, PositionEncoding.COMPOUND);
+        }else if(type.equals("thruster_bearing_link")){
+            restoreSchematicBearing(schematic, tag, PARENT_SUB_LEVEL_ID, PARENT_POS, PositionEncoding.COMPOUND);
+            if(tag.hasUUID(PARENT_SUB_LEVEL_ID) && tag.contains(PARENT_POS)){
+                tag.putUUID(THRUSTER_PARENT_SUB_LEVEL_ID, tag.getUUID(PARENT_SUB_LEVEL_ID));
+                tag.put(THRUSTER_PARENT_POS, tag.get(PARENT_POS).copy());
+            }
+        }else if(type.equals("aileron_bearing_link") || type.equals("vector_bearing_link")){
+            restoreSchematicBearing(schematic, tag, PARENT_SUB_LEVEL_ID, PARENT_POS, PositionEncoding.COMPOUND);
+        }
+        if(controller){
+            clearCtrlManifestMetadata(tag);
+            CompoundTag payload = ControllerSchematicPayload.take(tag);
+            if(payload != null){
+                List<IdentifierReplacement> replacements = new ArrayList<>();
+                restoreSchematicController(schematic, payload, replacements);
+                rewriteIdStrings(payload, replacements);
+                payload.remove(ControllerSchematicPayload.PLACEMENT_PREPARED_TAG);
+                ControllerSchematicPayload.write(tag, payload);
+            }
+        }
+    }
+
+    // Resolve a portable Photomancy reference to the corresponding template body
+    private static SubLevelSchematic.Body schematicBody(SubLevelSchematic schematic, UUID source, int blueprintId){
+        return schematic.bodies().stream().filter(row -> row.id().equals(source)
+                && row.importFrame().blueprintId() == blueprintId).findFirst().orElse(null);
+    }
+
+    // Restore the native bearing fields which the Photomancy mapper replaced
+    private static void restoreSchematicBearing(SubLevelSchematic schematic, CompoundTag tag,
+                                                String uuidKey, String positionKey, PositionEncoding encoding){
+        PortableReference ref = readPortableReference(tag);
+        tag.remove(PORTABLE_REF);
+        if(ref == null) return;
+        var body = schematicBody(schematic, ref.sourceUuid(), ref.blueprintSubLevelId());
+        if(body == null){
+            tag.remove(uuidKey); tag.remove(positionKey);
+            tag.remove(THRUSTER_PARENT_SUB_LEVEL_ID); tag.remove(THRUSTER_PARENT_POS);
+            if(encoding == PositionEncoding.PACKED_LONG) tag.putBoolean(MOUNTED_ASSEMBLY_PRESENT, false);
+            return;
+        }
+        tag.putUUID(uuidKey, body.id());
+        writePosition(tag, positionKey, ref.localPos(), encoding);
+        if(encoding == PositionEncoding.PACKED_LONG) tag.putBoolean(MOUNTED_ASSEMBLY_PRESENT, true);
+    }
+
+    // Restore portable controller positions and remove the temporary ship map frame marker
+    private static void restoreSchematicController(SubLevelSchematic schematic, Tag tag, List<IdentifierReplacement> replacements){
+        if(tag instanceof CompoundTag compound){
+            if(compound.contains(PORTABLE_CONTROLLER_REF, Tag.TAG_COMPOUND)){
+                CompoundTag ref = compound.getCompound(PORTABLE_CONTROLLER_REF);
+                var body = schematicBody(schematic, ref.getUUID(REF_SOURCE_UUID), ref.getInt(REF_SUB_LEVEL_ID));
+                if(body == null){
+                    compound.remove(NATIVE_SUB_LEVEL_ID); compound.remove(NATIVE_BLOCK_POS);
+                }else{
+                    BlockPos local = ref.getBoolean(REF_HAS_POSITION) ? readNbtPos(ref, REF_LOCAL_POS) : null;
+                    if(ref.getBoolean(REF_HAS_POSITION) && local == null) throw new IllegalArgumentException("Invalid Photomancy controller position");
+                    compound.putUUID(NATIVE_SUB_LEVEL_ID, body.id());
+                    if(local != null) compound.putLong(NATIVE_BLOCK_POS, local.asLong());
+                    replacements.add(new IdentifierReplacement(ref.getUUID(REF_SOURCE_UUID),
+                            ref.contains(REF_SOURCE_POS, Tag.TAG_LONG) ? BlockPos.of(ref.getLong(REF_SOURCE_POS)) : null, body.id(), local));
+                }
+                compound.remove(PORTABLE_CONTROLLER_REF);
+            }
+            compound.remove(PORTABLE_SHIP_MAP);
+            for(String key : List.copyOf(compound.getAllKeys())) restoreSchematicController(schematic, compound.get(key), replacements);
+        }else if(tag instanceof ListTag list){
+            for(Tag child : list) restoreSchematicController(schematic, child, replacements);
+        }
     }
 
     // Register the photomancy blueprint compat if present

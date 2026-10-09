@@ -45,6 +45,9 @@ repositories {
 }
 
 def libsDir = file('libs')
+def casingGameTests = providers.gradleProperty('casing_game_tests').map { it.toBoolean() }.getOrElse(false)
+def flightControlJar = providers.gradleProperty('flight_control_jar')
+        .orElse('G:/Minecraft/Instances/Addon Dev/mods/create_flight_control-neoforge-0.7.7.jar')
 def requiredSableJar = file("libs/sable-neoforge-${minecraft_version}-${sable_version}.jar")
 def propulsionNightlyJar = file('libs/createpropulsion-nightly-1.1.5-c89a53e7.jar')
 def propulsionReleaseJar = file('libs/createpropulsion-1.1.5.jar')
@@ -64,6 +67,15 @@ def selectedLocalJars = propulsionNightlyJar.isFile()
         ? localJars.minus(files(propulsionReleaseJar)) : localJars
 def selectedLocalRuntimeJars = propulsionNightlyJar.isFile()
         ? localRuntimeJars.minus(files(propulsionReleaseJar)) : localRuntimeJars
+if(casingGameTests || providers.gradleProperty('flight_control_validation').map { it.toBoolean() }.getOrElse(false)) {
+    selectedLocalRuntimeJars = selectedLocalRuntimeJars.filter { jar ->
+        jar.name.startsWith('architectury-') || jar.name.startsWith('create-')
+                || jar.name.startsWith('dev.simulated_team.simulated.simulated-')
+                || jar.name.startsWith('dev.eriksonn.aeronautics.aeronautics-')
+                || jar.name.startsWith('sable-companion-') || jar.name.startsWith('kotlinforforge-')
+                || jar.name.startsWith('accessories-') || jar.name.startsWith('owo-lib-')
+    }
+}
 def libraryProjectDir = file(library_project_dir)
 def librarySourceDir = new File(libraryProjectDir, 'src')
 def librarySourceAvailable = librarySourceDir.isDirectory()
@@ -80,6 +92,12 @@ def fallbackLibraryJar = fallbackLibraryJars.find {
 def libraryJarFile = librarySourceAvailable
         ? siblingLibraryJarFile
         : fallbackLibraryJar ?: new File(libsDir, "${library_archive_name}-${artifact_version}.jar")
+sourceSets {
+    gameTest {
+        compileClasspath += sourceSets.main.output + configurations.compileClasspath
+        runtimeClasspath += sourceSets.main.output + configurations.runtimeClasspath
+    }
+}
 def addonReplaceProperties = [
     mod_group_id: mod_group_id,
     mod_id: mod_id,
@@ -130,6 +148,7 @@ neoForge {
     mods {
         "${mod_id}" {
             sourceSet(sourceSets.main)
+            if(casingGameTests) sourceSet(sourceSets.gameTest)
         }
     }
 
@@ -147,7 +166,15 @@ neoForge {
 
         server {
             server()
-            gameDirectory = file('run/server')
+            gameDirectory = file(providers.gradleProperty('flight_control_validation').map {
+                it.toBoolean() ? 'run/flight-control-validation' : 'run/server'
+            }.getOrElse('run/server'))
+        }
+        casingGameTest {
+            type = 'gameTestServer'
+            sourceSet = sourceSets.gameTest
+            gameDirectory = file('build/casing-gametest')
+            systemProperty 'neoforge.enabledGameTestNamespaces', mod_id
         }
     }
 }
@@ -253,6 +280,13 @@ dependencies {
         }
     })
     compileOnly selectedLocalJars
+    compileOnly files(selectedLocalJars.files.findAll { it.name.startsWith('create-') }.collect { jar ->
+        zipTree(jar).matching { include 'META-INF/jarjar/Registrate-*.jar' }
+    })
+    compileOnly files(flightControlJar.get())
+    if(providers.gradleProperty('flight_control_runtime').map { it.toBoolean() }.getOrElse(false)) {
+        runtimeOnly files(flightControlJar.get())
+    }
     compileOnly files(requiredSableJar)
     compileOnly files(libraryJarFile)
     compileOnly 'mezz.jei:jei-1.21.1-neoforge-api:19.27.0.340'

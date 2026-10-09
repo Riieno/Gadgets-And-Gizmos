@@ -205,6 +205,8 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     private final Map<String, Float> sampledCustomEntryValues = new LinkedHashMap<>();
     // Tracked stored targets
     private final List<ControllerDiscoveryNode> storedTargets = new ArrayList<>();
+    // Targets used by the last linker route snapshot
+    private List<ContraptionNetworkLinkerData.LinkedTarget> syncedLinkerTargets = List.of();
 
     // Linker slot
     private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
@@ -1486,11 +1488,14 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         }
         // -----------------------------------------------------OUTPUT SYNC-----------------------------------------------------
         for (String channelId : changedChannels) {
-            pushChannelSignal(channelId);
-            cacheChannelOutput(channelId);
+            com.rieno.gadgetsandgizmos.lib.interaction.InteractionContext.runOutput(channelId, () -> {
+                pushChannelSignal(channelId);
+                cacheChannelOutput(channelId);
+            });
         }
         for (String entryId : changedCustomEntries) {
-            pushCustomEntrySignal(entryId, resolveCustomEntryOutputValue(entryId));
+            com.rieno.gadgetsandgizmos.lib.interaction.InteractionContext.runOutput(entryId,
+                    () -> pushCustomEntrySignal(entryId, resolveCustomEntryOutputValue(entryId)));
         }
         refreshLocalSideOutputs(true);
         markRuntimeStateDirty();
@@ -1721,7 +1726,11 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         entry.deadzone = deadzone;
         entry.smoothing = smoothing;
         entry.localOutputSide = localOutputSide;
-        entry.directTarget = ControllerRedstoneCompat.ensureCompatTarget(level, sanitizeDirectTarget(directTarget));
+        ControllerDirectTargetReference nextTarget = ControllerRedstoneCompat.ensureCompatTarget(level, sanitizeDirectTarget(directTarget));
+        if(!Objects.equals(entry.directTarget, nextTarget)){
+            clearDirectOutputSignalAndSiblings(entry.directTarget, id, true);
+        }
+        entry.directTarget = nextTarget;
         entry.inputTarget = ControllerRedstoneCompat.ensureCompatTarget(level, sanitizeDirectTarget(inputTarget));
         entry.bindingPreset = bindingPreset == null || bindingPreset.isBlank() ? "none" : bindingPreset;
         ItemStack sanitizedFirst = copyMenuStack(first == null ? ItemStack.EMPTY : first);
@@ -1770,7 +1779,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
 
     // Sync the custom fanout
     private void syncCustomFanout(CustomKeyEntry src) {
-        if (src == null) {
+        if (src == null || !usesLinkerFanout()) {
             return;
         }
         for (CustomKeyEntry sibling : customKeyEntries) {
@@ -2573,6 +2582,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         if (java.util.Objects.equals(prev, sanitized)) {
             return;
         }
+        clearDirectOutputSignalAndSiblings(prev, normalized, false);
         directTargets.put(normalized, sanitized);
         invalidateControllerRuntimeProgram();
         setChanged();
@@ -2654,6 +2664,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         }
 
         if (directTargetChanged) {
+            clearDirectOutputSignalAndSiblings(previousDirectTarget, normalizedChannelId, false);
             directTargets.put(normalizedChannelId, sanitizedDirectTarget);
         }
         if (inputTargetChanged) {
@@ -3017,6 +3028,13 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+    // Carry controller graphs through Create's safe schematic writer for every controller version
+    @Override
+    public void writeSafe(CompoundTag tag, HolderLookup.Provider provider){
+        super.writeSafe(tag, provider);
+        writeSchematicPayload(tag, provider, SubLevelSchematicSerializationContext.getCurrentContext());
+    }
+
     // Write the analogue contraption controller
     @Override
     protected void write(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
@@ -3024,14 +3042,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         SubLevelSchematicSerializationContext schematicContext =
                 SubLevelSchematicSerializationContext.getCurrentContext();
         if (!clientPacket && schematicContext != null) {
-            CompoundTag payload = pendingControllerSchematicPayload == null
-                    ? createSchematicData(provider)
-                    : pendingControllerSchematicPayload.copy();
-            remapSchematicData(payload, schematicContext);
-            if (schematicContext.getType() == SubLevelSchematicSerializationContext.Type.PLACE) {
-                payload.putBoolean(ControllerSchematicPayload.PLACEMENT_PREPARED_TAG, true);
-            }
-            ControllerSchematicPayload.write(tag, payload);
+            writeSchematicPayload(tag, provider, schematicContext);
             return;
         }
         if (!clientPacket && pendingControllerSchematicPayload != null) {
@@ -3050,6 +3061,21 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         writeControllerBody(tag, provider);
         writeAdditionalControllerManifestData(tag, provider);
         SchematicSubLevelReferenceRemapper.remapInPlace(tag);
+    }
+
+    // Preserve pending imports and serialize live graphs without copying a database identity
+    private void writeSchematicPayload(CompoundTag tag, HolderLookup.Provider provider,
+                                       @Nullable SubLevelSchematicSerializationContext ctx){
+        CompoundTag payload = pendingControllerSchematicPayload == null
+                ? createSchematicData(provider) : pendingControllerSchematicPayload.copy();
+        payload.remove(ControllerSchematicPayload.PLACEMENT_PREPARED_TAG);
+        if(ctx != null){
+            remapSchematicData(payload, ctx);
+            if(ctx.getType() == SubLevelSchematicSerializationContext.Type.PLACE)
+                payload.putBoolean(ControllerSchematicPayload.PLACEMENT_PREPARED_TAG, true);
+        }
+        if(!ControllerSchematicPayload.write(tag, payload))
+            throw new IllegalArgumentException("Controller graph exceeds the schematic payload limit");
     }
 
     // Create the schematic data
@@ -3758,7 +3784,8 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     public boolean canPlayerUse(Player player) {
         return level != null
                 && level.getBlockEntity(worldPosition) == this
-                && player.distanceToSqr(Vec3.atCenterOf(worldPosition)) <= 64.0D;
+                && SimulatedHelper.distanceSquaredWithSubLevels(
+                        level, player.position(), Vec3.atCenterOf(worldPosition)) <= 64.0D;
     }
 
     // Send the menu data
@@ -3896,6 +3923,8 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
 
     // Sync the inserted linker
     private void syncFromInsertedLinker() {
+        // Keep virtual schematic and preview controllers from changing live linker bindings
+        if(isVirtual()) return;
         ItemStack storedLinker = getStoredLinker();
         if (level != null && !level.isClientSide && !storedLinker.isEmpty()) {
             ContraptionNetworkLinkerData.ensureStoredIdentity(storedLinker);
@@ -3914,20 +3943,6 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         }
 
         Map<String, ContraptionNetworkLinkerData.ChannelBind> binds = ContraptionNetworkLinkerData.readChannelBindings(linker);
-        if (binds.isEmpty()) {
-
-            for (String channelId : channels.keySet()) {
-                ControllerDirectTargetReference existingDirect = directTargets.get(channelId);
-                ControllerDirectTargetReference existingInput = inputTargets.get(channelId);
-                if (!ContraptionNetworkLinkerData.isLinkerFaceTarget(existingDirect)
-                        && !ContraptionNetworkLinkerData.isLinkerFaceTarget(existingInput)) {
-                    continue;
-                }
-                ContraptionNetworkLinkerData.writeChannelBinding(linker, channelId, existingDirect, existingInput);
-            }
-            binds = ContraptionNetworkLinkerData.readChannelBindings(linker);
-        }
-
         clearLinkerFaceBindings();
         for (String channelId : channels.keySet()) {
             ContraptionNetworkLinkerData.ChannelBind bind = binds.get(channelId);
@@ -3939,22 +3954,6 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         }
 
         List<CompoundTag> customBindTags = ContraptionNetworkLinkerData.readCustomEntryBindings(linker);
-        if (customBindTags.isEmpty() && level != null) {
-            List<CompoundTag> existingCustomTags = new ArrayList<>();
-            HolderLookup.Provider provider = level.registryAccess();
-            for (CustomKeyEntry entry : customKeyEntries) {
-                if (!isLinkerBoundCustomEntry(entry)) {
-                    continue;
-                }
-                existingCustomTags.add(entry.toTag(provider));
-            }
-            if (!existingCustomTags.isEmpty()) {
-
-                ContraptionNetworkLinkerData.writeCustomEntryBindings(linker, existingCustomTags);
-                customBindTags = ContraptionNetworkLinkerData.readCustomEntryBindings(linker);
-            }
-        }
-
         clearLinkerBoundCustomEntries();
         if (!customBindTags.isEmpty()) {
             loadLinkerBindings(linker);
@@ -4027,6 +4026,11 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
                 inputTarget.refreshRegistration(level);
             }
         }
+    }
+
+    // Release a graph route without editing the authoritative linker bindings
+    protected void removeRuntimeCustomKeyEntry(String id){
+        removeCustomKey(id, false, true);
     }
 
     // Save the linker binding
@@ -4131,6 +4135,11 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
 
     // Let advanced controllers display their live control source.
     protected boolean showGoggleAxes(boolean showDetails) {
+        return true;
+    }
+
+    // Let graph hosts route each selected target independently
+    protected boolean usesLinkerFanout(){
         return true;
     }
 
@@ -5163,7 +5172,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
 
     // Get the linker sibling output targets
     private ControllerDirectTargetReference[] linkerSiblingOutputTargets(@Nullable ControllerDirectTargetReference directTarget) {
-        if (directTarget == null || !ContraptionNetworkLinkerData.isLinkerFaceOutputTarget(directTarget)) {
+        if (!usesLinkerFanout() || directTarget == null || !ContraptionNetworkLinkerData.isLinkerFaceOutputTarget(directTarget)) {
             return new ControllerDirectTargetReference[0];
         }
         ItemStack insertedLinker = getActiveStoredLinker();
@@ -5886,7 +5895,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
                                                 @Nullable ControllerDirectTargetReference directTarget,
                                                 float outputValue,
                                                 boolean customRoute) {
-        if (directTarget == null || !ContraptionNetworkLinkerData.isLinkerFaceOutputTarget(directTarget)) {
+        if (!usesLinkerFanout() || directTarget == null || !ContraptionNetworkLinkerData.isLinkerFaceOutputTarget(directTarget)) {
             return;
         }
         ItemStack insertedLinker = getActiveStoredLinker();
@@ -5924,6 +5933,10 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
             return;
         }
 
+        List<ContraptionNetworkLinkerData.LinkedTarget> nextTargets = ContraptionNetworkLinkerData.readTargets(linker);
+        boolean targetsChanged = !syncedLinkerTargets.equals(nextTargets);
+        syncedLinkerTargets = List.copyOf(nextTargets);
+
         Map<String, ControllerDirectTargetReference> nextStandardRoutes = new LinkedHashMap<>();
         if (!linker.isEmpty()) {
             Map<String, ContraptionNetworkLinkerData.ChannelBind> binds = ContraptionNetworkLinkerData.readChannelBindings(linker);
@@ -5941,7 +5954,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
             if (!ContraptionNetworkLinkerData.isLinkerFaceOutputTarget(directTarget)) {
                 continue;
             }
-            if (!Objects.equals(directTarget, nextStandardRoutes.get(channelId))) {
+            if (targetsChanged || !Objects.equals(directTarget, nextStandardRoutes.get(channelId))) {
                 clearDirectOutputSignalAndSiblings(directTarget, channelId, false);
             }
         }
@@ -5965,7 +5978,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
             if (entry == null || !ContraptionNetworkLinkerData.isLinkerFaceOutputTarget(entry.directTarget)) {
                 continue;
             }
-            if (!Objects.equals(entry.directTarget, nextCustomRoutes.get(entry.id()))) {
+            if (targetsChanged || !Objects.equals(entry.directTarget, nextCustomRoutes.get(entry.id()))) {
                 clearDirectOutputSignalAndSiblings(entry.directTarget, entry.id(), true);
             }
         }
@@ -5977,6 +5990,10 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
                                                     boolean customRoute) {
         clearDirectOutputSignal(directTarget, routeId, customRoute);
         pushLinkerSiblingOutputSignals(routeId, directTarget, 0.0f, customRoute);
+        if(level != null && !level.isClientSide && routeId != null && !routeId.isBlank()){
+            ControllerRedstoneCompat.clearSource(level,
+                    customRoute ? customSignalSourceId(routeId) : channelSignalSourceId(routeId));
+        }
     }
 
     // Clear the direct output signal

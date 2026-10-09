@@ -121,9 +121,6 @@ public final class CTConfigs {
         Map<String, ModConfigSpec.ConfigValue<Boolean>> values = new LinkedHashMap<>();
         builder.push(group);
         for (Map.Entry<String, Boolean> entry : defaults.entrySet()) {
-            if ("diagnostic_tablet".equals(entry.getKey())) {
-                continue;
-            }
             String featureLabel = CTFeatureToggles.featureLabel(entry.getKey());
             values.put(entry.getKey(), builder
                     .comment("Allow " + featureLabel + " on this server. Existing content is not removed automatically.")
@@ -136,25 +133,16 @@ public final class CTConfigs {
     // Sync the server feature config
     private static synchronized void syncServerFeatureConfig(ModConfig config) {
         if (config.getSpec() == SERVER_SPEC) {
-            FeatureToggleSnapshot current = featureToggleSnapshot;
             Map<String, Boolean> blocks = new LinkedHashMap<>(
                     snapshotFeatureValues(SERVER.blockFeatures, CTFeatureToggles.blockDefaults()));
             Map<String, Boolean> items = new LinkedHashMap<>(
                     snapshotFeatureValues(SERVER.itemFeatures, CTFeatureToggles.itemDefaults()));
-            boolean tabletEnabled = current.blocks().getOrDefault("diagnostic_tablet", false); // Disable the Smart Tablet by default in release
-            blocks.put("diagnostic_tablet", tabletEnabled);
             featureToggleSnapshot = new FeatureToggleSnapshot(
                     Map.copyOf(blocks), Map.copyOf(items),
                     snapshotFeatureValues(SERVER.entityFeatures, CTFeatureToggles.entityDefaults()));
         } else if (config.getSpec() == COMMON_SPEC) {
             ScmBuiltinControlModes.setIkEnabled(Boolean.TRUE.equals(COMMON.enableScmIk.get()));
-            FeatureToggleSnapshot current = featureToggleSnapshot;
-            Map<String, Boolean> blocks = new LinkedHashMap<>(current.blocks());
-            Map<String, Boolean> items = new LinkedHashMap<>(current.items());
-            boolean tabletEnabled = Boolean.TRUE.equals(COMMON.enableDiagnosticTablet.get());
-            blocks.put("diagnostic_tablet", tabletEnabled);
-            featureToggleSnapshot = new FeatureToggleSnapshot(
-                    Map.copyOf(blocks), Map.copyOf(items), current.entities());
+            return;
         } else {
             return;
         }
@@ -189,6 +177,8 @@ public final class CTConfigs {
 
     // Keep visual and input settings on the client
     public static final class Client {
+        // Minimum refresh rate for each visible camera feed
+        public final ModConfigSpec.IntValue cameraMinimumRefreshRate;
         // Show detailed goggle tooltips
         public final ModConfigSpec.BooleanValue showDetailedGoggleTooltips;
         // Show shipping manifest goggle tooltip
@@ -225,6 +215,9 @@ public final class CTConfigs {
         // Initialize the client
         private Client(ModConfigSpec.Builder builder) {
             builder.comment("Client-side visuals and UX").push("client");
+            cameraMinimumRefreshRate = builder
+                    .comment("Minimum updates per second for each visible ACC Display or CCTV camera feed. Actual FPS is limited by your computer's frame rate.")
+                    .defineInRange("cameraMinimumRefreshRate", 10, 1, 60);
             showDetailedGoggleTooltips = builder
                     .comment("Legacy option; addon goggle tooltip details now follow Create's Sneak detail behavior")
                     .define("showDetailedGoggleTooltips", false);
@@ -374,6 +367,8 @@ public final class CTConfigs {
         public final ModConfigSpec.IntValue advancedControllerMaxNodes;
         // Enable experimental SCM IK
         public final ModConfigSpec.BooleanValue enableScmIk;
+        // Allow Flight Control graph nodes without their dedicated blocks
+        public final ModConfigSpec.BooleanValue easyFlightControlIntegration;
         // Enable diagnostic tablet
         public final ModConfigSpec.BooleanValue enableDiagnosticTablet;
         // App purchase Ownership Scope
@@ -381,6 +376,12 @@ public final class CTConfigs {
         // Initialize the common
         private Common(ModConfigSpec.Builder builder) {
             builder.comment("Gameplay values shared between client and server").push("common");
+            builder.comment("Flight Control graph integration").push("flight_control");
+            easyFlightControlIntegration = builder
+                    .comment("Easy Flight control integration. Allow control nodes without dedicated Flight Control blocks. A Creative Flight Control Computer on the sublevel also enables this. Its node always requires the physical block. Existing blocks synchronize with their nodes in either mode. The HUD node is always available.")
+                    .translation("createthrusters.configuration.easyFlightControlIntegration")
+                    .define("easyFlightControlIntegration", false);
+            builder.pop();
             builder.comment("Thruster propulsion, fuel, beam mode, and upgrade scaling").push("thruster");
             thrusterBaseThrust = builder
                     .comment("Base thrust at 100% throttle for normal thrusters. Default 900.")
@@ -548,7 +549,7 @@ public final class CTConfigs {
 
             builder.comment("Smart Tablet availability").push("diagnostic_tablet");
             enableDiagnosticTablet = builder
-                    .comment("Enable the Smart Tablet block, item, user interface, apps and networking")
+                    .comment("Legacy startup fallback for the Smart Tablet. The server.features.blocks.diagnostic_tablet setting takes precedence.")
                     .define("enabled", false); // Disable the Tablet by default in release
             builder.pop();
 

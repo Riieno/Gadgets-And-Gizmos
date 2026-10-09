@@ -2,16 +2,13 @@
   "type": "minecraft:crafting_shaped",
   "category": "misc",
   "pattern": [
-    "XBX",
-    "TRT",
-    "XGX"
+    " B ",
+    "BPB",
+    " B "
   ],
   "key": {
-    "X": { "item": "minecraft:ghast_tear" },
-    "B": { "item": "minecraft:beacon" },
-    "T": { "item": "createthrusters:propulsion_upgrade_t3" },
-    "R": { "item": "createthrusters:thruster" },
-    "G": { "item": "minecraft:emerald_block" }
+    "B": { "item": "createthrusters:blackstone_alloy" },
+    "P": { "item": "createthrusters:propulsion_upgrade_t3" }
   },
   "result": {
     "id": "createthrusters:propulsion_upgrade_t4",

@@ -407,6 +407,9 @@ public final class AnalogueContraptionControllerClientHandler {
                 minecraft.level, player.getEyePosition(), activeControllerPos.getCenter()) > range * range) {
             stopInteractMode(false);
         }
+        if(controller instanceof AdvancedContraptionControllerBlockEntity advanced && net.neoforged.fml.ModList.get().isLoaded("create_flight_control")){
+            com.rieno.gadgetsandgizmos.compat.flightcontrol.client.FlightControlClient.steer(advanced);
+        }
     }
 
     // Handle the key input
@@ -554,6 +557,8 @@ public final class AnalogueContraptionControllerClientHandler {
 
     // Handle the mouse movement
     public static boolean onMouseMove(double yaw, double pitch) {
+        boolean nativeMouse = net.neoforged.fml.ModList.get().isLoaded("create_flight_control")
+                && com.rieno.gadgetsandgizmos.compat.flightcontrol.client.FlightControlClient.activeMouse() != null;
         AdvancedContraptionControllerBlockEntity controller = activeAdvCtrl();
         if (controller == null) return false;
         Set<String> inputs = controller.getConfiguredMouseInputs();
@@ -577,7 +582,7 @@ public final class AnalogueContraptionControllerClientHandler {
                 lastSentMouseY = val;
             }
         }
-        return true;
+        return !nativeMouse;
     }
 
     // Handle the mouse button input
@@ -786,6 +791,12 @@ public final class AnalogueContraptionControllerClientHandler {
         AnalogueContraptionControllerBlockEntity controller = activePortable ? activePortableController
                 : activeLecternPos != null ? activeLecternController : activeController;
         return controller instanceof AdvancedContraptionControllerBlockEntity advanced ? advanced : null;
+    }
+
+    // Expose the physical ACC session to optional native controller clients
+    public static AdvancedContraptionControllerBlockEntity physicalAdvancedController(){
+        return activeControllerPos != null && activeController instanceof AdvancedContraptionControllerBlockEntity controller
+                ? controller : null;
     }
 
     // Reset the mouse send state

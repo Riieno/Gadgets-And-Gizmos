@@ -154,6 +154,13 @@ public class DiagnosticTabletItem extends BlockItem {
         if(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.DIGISABLE.id().equals(current.app())
                 && current.mode() == TabletInteractionMode.READER){
             if(player instanceof ServerPlayer serverPlayer){
+                if("pair_network".equals(current.pendingAction())){
+                    DiagnosticTabletAppStorage.addSelection(serverPlayer.server, current.tabletId(), current.app(), selected);
+                    var res = DiagnosticTabletApps.dispatch(serverPlayer, ctx.getItemInHand(), current,
+                            new TabletAction(current.app(), "schematics", "pair_network", Map.of()));
+                    if(res.success()) DiagnosticTabletData.write(ctx.getItemInHand(), current.withMode(TabletInteractionMode.STANDARD, ""));
+                    return InteractionResult.SUCCESS;
+                }
                 if(selected.subLevelId() == null){
                     serverPlayer.displayClientMessage(Component.literal("Point Reader mode at a sublevel block"), true);
                     return InteractionResult.FAIL;
@@ -324,6 +331,7 @@ public class DiagnosticTabletItem extends BlockItem {
 
     // Get the binding type
     private static String bindingType(BlockEntity target, BlockState clickedState) {
+        if(target instanceof CameraBlockEntity) return "camera";
         if (target instanceof AdvancedContraptionControllerBlockEntity) return "controller";
         if (isWirelessComputer(target)) return "computer";
         if (target instanceof ShipDockBlockEntity) return "dock";

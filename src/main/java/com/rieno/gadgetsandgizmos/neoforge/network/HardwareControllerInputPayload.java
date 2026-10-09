@@ -133,7 +133,12 @@ public record HardwareControllerInputPayload(Target target, BlockPos pos, UUID s
                     if (controller != null && (openMenuTarget || controller.canPlayerUse(player)
                             || DiagnosticTabletRemoteSessions.isInteractionAuthorized(
                             player, payload.pos(), payload.subLevelId()))) {
-                        controller.applyHardwareControllerInput(payload.values());
+                        if(controller instanceof com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEntity advanced){
+                            advanced.applyHardwareControllerInput(player, payload.values());
+                        }else{
+                            com.rieno.gadgetsandgizmos.lib.interaction.BlockInteractionTracker.record(controller.getLevel(), controller.getBlockPos(), player);
+                            controller.applyHardwareControllerInput(payload.values());
+                        }
                     }
                 }
                 case PORTABLE -> PortableContraptionControllerRuntime.handleHardwareInput(

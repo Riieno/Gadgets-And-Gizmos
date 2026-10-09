@@ -90,6 +90,8 @@ public final class CTClientBootstrap {
         CTPartialModels.init();
         modEventBus.addListener((FMLClientSetupEvent evt) -> {
             evt.enqueueWork(() -> {
+                com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer.setMinimumRefreshRate(
+                        () -> com.rieno.gadgetsandgizmos.config.CTConfigs.CLIENT.cameraMinimumRefreshRate.get());
                 if (ModList.get().isLoaded("veil")) VeilColoredLightBackend.install();
                 SoftParticleRenderTypes.setShaderPackActiveSupplier(ShaderPackClientCompat::isActive);
                 if (ShaderPackClientCompat.canBindWorldTarget()) {
@@ -189,6 +191,9 @@ public final class CTClientBootstrap {
         FtbLibraryScreenCompat.registerAdvancedControllerScreenBlacklist();
 
         NeoForge.EVENT_BUS.addListener(CTClientCommands::registerClientCommands);
+        if(net.neoforged.fml.ModList.get().isLoaded("create_flight_control")){
+            NeoForge.EVENT_BUS.addListener(com.rieno.gadgetsandgizmos.compat.flightcontrol.client.FlightControlClient::onRenderWorld);
+        }
         NeoForge.EVENT_BUS.addListener(CTPhysicsStaffOverlayRenderer::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(PortableContraptionControllerItemRenderer::onRenderHand);
         NeoForge.EVENT_BUS.addListener(SupporterHeadClientEvents::onItemTooltip);

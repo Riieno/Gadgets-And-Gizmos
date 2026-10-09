@@ -25,9 +25,12 @@ import java.util.Set;
 
 // Register independent paid app runtimes through the tablet API
 public final class PaidTabletApps{
+    public static final TabletAppDefinition CCTV = app("cctv", "CCTV", "Watch and control bound cameras", 0xFF5BAAA3,
+            tab("live", "Live", "refresh", "pair", "select_camera", "control", "forget", "rename"));
     public static final TabletAppDefinition DIGISABLE = app("digisable", "Digisable", "View, locate, store and extract sublevels", 0xFF5EBAF2,
-            tab("archives", "Stored", "refresh", "preview", "extract", "store"),
-            tab("sublevels", "Sublevels", "refresh", "preview", "store", "teleport", "delete"));
+            tab("archives", "Stored", "refresh", "preview", "prepare_extract", "extract", "store", "export"),
+            tab("sublevels", "Sublevels", "refresh", "preview", "store", "teleport", "delete"),
+            tab("schematics", "Schematics", "refresh", "schematic_preview", "materials", "prepare_build", "build", "pair_network", "cancel_build"));
     public static final TabletAppDefinition MANIFEST = app("manifest", "Manifest", "Detailed cargo, Create filters and automatic stocking", 0xFFDCB75F,
             tab("cargo", "Cargo", "refresh", "inspect", "detach", "filter", "lock", "push", "pull"),
             tab("resources", "Resources", "refresh", "inspect", "detach"),
@@ -44,23 +47,24 @@ public final class PaidTabletApps{
         TabletAppRegistry.register(DIGISABLE, (ctx, action) -> execute(ctx, action, DigisableApp::execute));
         TabletAppRegistry.register(MANIFEST, (ctx, action) -> execute(ctx, action, ManifestApp::execute));
         TabletAppRegistry.register(BLOCKMATES, (ctx, action) -> execute(ctx, action, BlockmatesApp::execute));
+        TabletAppRegistry.register(CCTV, (ctx, action) -> execute(ctx, action, CctvApp::execute));
         ManifestContainerPolicies.register();
     }
 
     public static boolean canonical(TabletAppDefinition app){
-        return app == DIGISABLE || app == MANIFEST || app == BLOCKMATES;
+        return app == DIGISABLE || app == MANIFEST || app == BLOCKMATES || app == CCTV;
     }
 
     public static boolean ownsId(net.minecraft.resources.ResourceLocation id){
-        return DIGISABLE.id().equals(id) || MANIFEST.id().equals(id) || BLOCKMATES.id().equals(id);
+        return DIGISABLE.id().equals(id) || MANIFEST.id().equals(id) || BLOCKMATES.id().equals(id) || CCTV.id().equals(id);
     }
 
     public static boolean standalone(net.minecraft.resources.ResourceLocation id){
-        return DIGISABLE.id().equals(id) || MANIFEST.id().equals(id);
+        return DIGISABLE.id().equals(id) || MANIFEST.id().equals(id) || CCTV.id().equals(id);
     }
 
     public static boolean readerEnabled(net.minecraft.resources.ResourceLocation id){
-        return DIGISABLE.id().equals(id) || BLOCKMATES.id().equals(id);
+        return DIGISABLE.id().equals(id) || BLOCKMATES.id().equals(id) || CCTV.id().equals(id);
     }
 
     public static boolean inspectManifest(net.minecraft.server.level.ServerPlayer player, java.util.UUID tabletId,
@@ -82,7 +86,9 @@ public final class PaidTabletApps{
         }catch(Exception err){
             String message = err.getMessage() == null ? "Application operation failed" : err.getMessage();
             ctx.player().displayClientMessage(Component.literal(message), true);
-            CompoundTag data = new CompoundTag();
+            CompoundTag data = CCTV.id().equals(action.appId()) && ctx.sourceTabletId() != null
+                    ? CctvApp.snapshot(ctx) : new CompoundTag();
+            if(DIGISABLE.id().equals(action.appId()) && ctx.sourceTabletId() != null) data = DigisableSchematics.errorSnapshot(ctx);
             data.putString("Error", message);
             if(MANIFEST.id().equals(action.appId()) && ctx.sourceTabletId() != null){
                 data.putBoolean("Bound", com.rieno.gadgetsandgizmos.content.DiagnosticTabletAppStorage.selectedBinding(

@@ -130,6 +130,8 @@ public class PlayerMannequinEntity extends ArmorStand implements ZiplineRider {
     private final ItemStackHandler workerCurios = new ItemStackHandler(6);
     private Vec3 lastWorkerPositionOutsideNoEntry;
     private boolean ziplinePreviousNoGravity;
+    // Keep temporary construction workers out of persistent logistics and equipment interactions
+    private boolean constructionVisual;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -144,6 +146,24 @@ public class PlayerMannequinEntity extends ArmorStand implements ZiplineRider {
         super(entityType, level);
         applyMannequinDefaults();
     }
+
+    // Configure a non-colliding visual worker without recoverable items
+    public void makeConstructionVisual(){
+        CompoundTag tag = new CompoundTag();
+        tag.putBoolean("Marker", true);
+        readAdditionalSaveData(tag);
+        constructionVisual = true;
+        setNoGravity(true);
+        setInvulnerable(true);
+        noPhysics = true;
+        applyMannequinDefaults();
+    }
+
+    // Exclude temporary workers from pod assignment
+    public boolean isConstructionVisual(){ return constructionVisual; }
+
+    // Keep temporary workers out of world saves
+    @Override public boolean shouldBeSaved(){ return !constructionVisual && super.shouldBeSaved(); }
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -368,6 +388,7 @@ public class PlayerMannequinEntity extends ArmorStand implements ZiplineRider {
     // Apply damage to the mannequin
     @Override
     public boolean hurt(DamageSource source, float amount) {
+        if(constructionVisual) return false;
         if (isRemoved()) {
             return false;
         }

@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.compat.scm;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.compat.OptionalTypeMatcher;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlProbe;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlProbeRegistry;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmRotaryAngles;
@@ -46,14 +47,14 @@ public final class OptionalScmCompatibility {
             ResourceLocation.fromNamespaceAndPath("createthrusters", "coaster_sublevel_relations");
     private static final ResourceLocation SYNAXIS_CONTROL =
             ResourceLocation.fromNamespaceAndPath("createthrusters", "synaxis_joint_control");
-    private static final String SYNAXIS_MOTOR =
-            "com.verr1.synaxis.content.blocks.motor.AbstractDynamicMotorBlockEntity";
-    private static final String SYNAXIS_LINEAR =
-            "com.verr1.synaxis.content.blocks.slider.HydraulicLinearActuatorBlockEntity";
-    private static final String SYNAXIS_COMPANION =
-            "com.verr1.synaxis.foundation.blockentity.CompanionPhysicsBlockEntity";
-    private static final String COASTER_RIVET =
-            "dev.silvergold.simulatedcoasters.rivet.RivetBlockEntity";
+    private static final OptionalTypeMatcher SYNAXIS_MOTOR = new OptionalTypeMatcher(
+            "com.verr1.synaxis.content.blocks.motor.AbstractDynamicMotorBlockEntity");
+    private static final OptionalTypeMatcher SYNAXIS_LINEAR = new OptionalTypeMatcher(
+            "com.verr1.synaxis.content.blocks.slider.HydraulicLinearActuatorBlockEntity");
+    private static final OptionalTypeMatcher SYNAXIS_COMPANION = new OptionalTypeMatcher(
+            "com.verr1.synaxis.foundation.blockentity.CompanionPhysicsBlockEntity");
+    private static final OptionalTypeMatcher COASTER_RIVET = new OptionalTypeMatcher(
+            "dev.silvergold.simulatedcoasters.rivet.RivetBlockEntity");
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -71,12 +72,14 @@ public final class OptionalScmCompatibility {
     public static void register() {
         if (ModList.get().isLoaded("synaxis")) {
             ScmSubLevelRelationRegistry.register(SYNAXIS_RELATIONS, 100,
+                    SYNAXIS_COMPANION::test,
                     OptionalScmCompatibility::synaxisRelations);
             ScmControlProbeRegistry.register(SYNAXIS_CONTROL, 100,
                     OptionalScmCompatibility::synaxisProbes);
         }
         if (ModList.get().isLoaded("simulatedcoasters")) {
             ScmSubLevelRelationRegistry.register(COASTER_RELATIONS, 100,
+                    COASTER_RIVET::test,
                     OptionalScmCompatibility::coasterRelations);
         }
     }
@@ -96,7 +99,7 @@ public final class OptionalScmCompatibility {
         List<ScmSubLevelRelationRegistry.Relation> relations = new ArrayList<>();
         for (ScmSubLevelRelationRegistry.ScopedBlockEntity scoped : ctx.blockEntities()) {
             BlockEntity blockEntity = scoped.blockEntity();
-            if (!isInstanceOf(blockEntity, SYNAXIS_COMPANION)) continue;
+            if (!SYNAXIS_COMPANION.test(blockEntity)) continue;
             Object resolvedBodies = optionalValue(invoke(blockEntity, "resolveBodies"));
             UUID self = bodyId(invoke(resolvedBodies, "selfBody"));
             UUID companion = bodyId(invoke(resolvedBodies, "companionBody"));
@@ -123,7 +126,7 @@ public final class OptionalScmCompatibility {
         List<ScmSubLevelRelationRegistry.Relation> relations = new ArrayList<>();
         for (ScmSubLevelRelationRegistry.ScopedBlockEntity scoped : ctx.blockEntities()) {
             BlockEntity blockEntity = scoped.blockEntity();
-            if (!isInstanceOf(blockEntity, COASTER_RIVET)) continue;
+            if (!COASTER_RIVET.test(blockEntity)) continue;
             Object host = invoke(blockEntity, "hostKey");
             UUID parent = uuid(invoke(host, "hostSubLevelId"));
             if (parent != null) {
@@ -139,27 +142,15 @@ public final class OptionalScmCompatibility {
     private static List<ScmControlProbe> synaxisProbes(
             BlockEntity blockEntity, ScmControlProbeRegistry.Context ctx
     ) {
-        if (isInstanceOf(blockEntity, SYNAXIS_MOTOR)) {
+        if (SYNAXIS_MOTOR.test(blockEntity)) {
             return List.of(new SynaxisJointProbe(blockEntity, ctx.target(),
                     ctx.suggestedDirection(), false));
         }
-        if (isInstanceOf(blockEntity, SYNAXIS_LINEAR)) {
+        if (SYNAXIS_LINEAR.test(blockEntity)) {
             return List.of(new SynaxisJointProbe(blockEntity, ctx.target(),
                     ctx.suggestedDirection(), true));
         }
         return List.of();
-    }
-
-    // Check whether a runtime instance implements a class without loading that optional class here
-    private static boolean isInstanceOf(Object value, String className) {
-        if (value == null) return false;
-        for (Class<?> type = value.getClass(); type != null; type = type.getSuperclass()) {
-            if (className.equals(type.getName())) return true;
-            for (Class<?> iface : type.getInterfaces()) {
-                if (className.equals(iface.getName())) return true;
-            }
-        }
-        return false;
     }
 
     // Invoke a public no-argument optional method

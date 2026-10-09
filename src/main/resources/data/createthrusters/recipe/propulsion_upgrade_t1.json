@@ -8,8 +8,8 @@
   ],
   "key": {
     "B": { "item": "create:blaze_burner" },
-    "T": { "item": "createthrusters:thruster" },
-    "E": { "item": "simulated:red_portable_engine" },
+    "E": { "item": "createthrusters:thruster" },
+    "T": { "item": "createthrusters:blackstone_alloy" },
     "A": { "item": "create:andesite_alloy" }
   },
   "result": {

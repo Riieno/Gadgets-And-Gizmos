@@ -66,6 +66,50 @@ public final class AdvancedGraphNodeFactory {
     public static CompoundTag createDefaultData(String type, Context context) {
         Context safeContext = context == null ? Context.EMPTY : context;
         CompoundTag data = new CompoundTag();
+        com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.initialize(type, data);
+        if("camera".equals(type)){
+            CompoundTag defaults = new CompoundTag();
+            defaults.put("max_ray_length", graphDefault("number", 64.0D));
+            defaults.put("rays_per_second", graphDefault("number", 20.0D));
+            defaults.put("filter", graphDefault("string", ""));
+            defaults.put("filter_type", graphDefault("string", "blacklist"));
+            defaults.put("mode", graphDefault("string", "Locked"));
+            defaults.put("orientation_mode", graphDefault("string", "local"));
+            defaults.put("pan", graphDefault("number", 0.0D));
+            defaults.put("tilt", graphDefault("number", 0.0D));
+            data.put("Defaults", defaults);
+            CompoundTag opts = new CompoundTag();
+            for(var entry : Map.of("filter", com.rieno.gadgetsandgizmos.lib.view.ViewRaycast.Category.optionIds(),
+                    "filter_type", List.of("allowlist", "blacklist"),
+                    "mode", List.of("Locked", "Sentry", "Manual"),
+                    "orientation_mode", List.of("local", "global")).entrySet()){
+                ListTag vals = new ListTag();
+                entry.getValue().forEach(val -> vals.add(StringTag.valueOf(val)));
+                opts.put(entry.getKey(), vals);
+            }
+            data.put("InputOptions", opts);
+        }
+        if("camera".equals(type) || "control_camera".equals(type) || "acc_display_camera_source".equals(type)){
+            CompoundTag labels = new CompoundTag();
+            labels.putString("target", "acc_display_camera_source".equals(type) ? "Display Target" : "Camera Target");
+            labels.putString("source", "Camera Source");
+            labels.putString("exec", "Execution");
+            data.put(AdvancedGraphCatalog.INPUT_LABELS_TAG, labels);
+            if("camera".equals(type)){
+                CompoundTag outputs = new CompoundTag();
+                outputs.putString("ray_cast", "Ray-cast");
+                outputs.putString("hit_x", "Hit X");
+                outputs.putString("hit_y", "Hit Y");
+                outputs.putString("hit_z", "Hit Z");
+                outputs.putString("is_sub_level", "Is Sub-level");
+                data.put("OutputLabels", outputs);
+            }
+        }
+        if("acc_display_camera_source".equals(type) || "acc_display_external".equals(type)){
+            CompoundTag defaults = data.getCompound("Defaults");
+            defaults.put("name", graphDefault("string", ""));
+            data.put("Defaults", defaults);
+        }
         if ("constant_color".equals(type)) data.putInt("Value", 0xFFFFFFFF);
         if ("desmos_plot_point".equals(type)) {
             CompoundTag defaults = new CompoundTag();
@@ -220,6 +264,12 @@ public final class AdvancedGraphNodeFactory {
         if ("portable_tracker".equals(type)
                 && !safeContext.firstGogglesPairId().isBlank()) {
             data.putString("GogglesPair", safeContext.firstGogglesPairId());
+        }
+        if ("ship_tracker".equals(type)) {
+            CompoundTag defaults = data.getCompound("Defaults");
+            defaults.put("filter", graphDefault("string", "All"));
+            defaults.put("tracking_distance", graphDefault("number", 128.0D));
+            data.put("Defaults", defaults);
         }
         if ("mouse_input".equals(type)) {
             data.putString("MouseInput", "left_click");
@@ -458,6 +508,14 @@ public final class AdvancedGraphNodeFactory {
         if (type.startsWith("worker_") || "request_worker_task".equals(type)
                 || "cancel_worker_task".equals(type)) {
             putWorkerDefaults(type, data);
+        }
+        var math = AdvancedGraphCatalog.mathNode(type);
+        if(math != null){
+            CompoundTag defaults = data.getCompound("Defaults");
+            math.defaults().forEach((port, val) -> {
+                if(math.definition().inputs().containsKey(port)) defaults.put(port, GraphRuntime.fromLibraryValue(val).toTag());
+            });
+            data.put("Defaults", defaults);
         }
         return data;
     }

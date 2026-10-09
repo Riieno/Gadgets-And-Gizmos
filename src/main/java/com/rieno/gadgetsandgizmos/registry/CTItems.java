@@ -59,6 +59,9 @@ public final class CTItems {
 
     public static final DeferredRegister.Items REGISTRAR = DeferredRegister.createItems(CreateThrusters.MOD_ID);
 
+    public static final DeferredItem<BlockItem> CAMERA = register("camera",
+            () -> new CTTooltipBlockItem(CTBlocks.CAMERA.get(), new Item.Properties()));
+
     @Nullable
     public static final DeferredItem<BlockItem> THRUSTER = register("thruster",
         () -> new CTTooltipBlockItem(CTBlocks.THRUSTER.get(), new Item.Properties()));

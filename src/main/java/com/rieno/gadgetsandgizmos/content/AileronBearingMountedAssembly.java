@@ -18,7 +18,6 @@ import com.simibubi.create.content.contraptions.AssemblyException;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import dev.ryanhcode.sable.api.physics.PhysicsPipeline;
-import dev.ryanhcode.sable.api.physics.constraint.ConstraintJointAxis;
 import dev.ryanhcode.sable.api.physics.constraint.PhysicsConstraintHandle;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
@@ -28,7 +27,6 @@ import dev.ryanhcode.sable.sublevel.SubLevel;
 import dev.ryanhcode.sable.sublevel.plot.ServerLevelPlot;
 import dev.ryanhcode.sable.sublevel.storage.SubLevelRemovalReason;
 import dev.ryanhcode.sable.sublevel.system.SubLevelPhysicsSystem;
-import dev.simulated_team.simulated.service.SimConfigService;
 import dev.simulated_team.simulated.util.SimAssemblyHelper;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -57,7 +55,6 @@ final class AileronBearingMountedAssembly {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final double MIN_ROTARY_SERVO_INERTIA = 10.0D;
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -364,10 +361,11 @@ final class AileronBearingMountedAssembly {
         ServerSubLevel parent = parentFrame.parentBody();
         PhysicsPipeline pipeline = container.physicsSystem().getPipeline();
 
-        if (!ensureJoint(bearing, mountedPos, baseAnchor, axis, pipeline, parent, child)) {
+        Quaterniond orientation = new Quaterniond().rotationAxis(Math.toRadians(angleDegrees), axis.x, axis.y, axis.z);
+        if (!ensureJoint(bearing, mountedPos, baseAnchor, orientation, parent, child)) {
             return false;
         }
-        if (!setJointServo(angleDegrees, axis, parent, child)) {
+        if (!setJointOrientation(baseAnchor, getChildAnchor(bearing, mountedPos), orientation)) {
             return false;
         }
         if (parent != null) {
@@ -379,8 +377,8 @@ final class AileronBearingMountedAssembly {
 
     // Ensure the joint
     private boolean ensureJoint(AileronBearingBlockEntity bearing, BlockPos mountedPos, Vector3d baseAnchor,
-                                Vector3d rotationAxis,
-                                PhysicsPipeline pipeline, ServerSubLevel parent, ServerSubLevel child) {
+                                Quaterniond orientation,
+                                ServerSubLevel parent, ServerSubLevel child) {
         if (parent == child) {
             releaseJoint();
             return false;
@@ -390,10 +388,8 @@ final class AileronBearingMountedAssembly {
         }
         releaseJoint();
         try {
-            Object rotaryConstraint = SableConstraintApi.rotaryConfiguration(
-                    baseAnchor, getChildAnchor(bearing, mountedPos), rotationAxis, rotationAxis);
-            Object created = SableConstraintApi.addConstraint(pipeline, parent, child, rotaryConstraint);
-            joint = created instanceof PhysicsConstraintHandle handle ? handle : null;
+            joint = SableConstraintApi.rigidFixedConstraint(child.getLevel(), parent, child,
+                    baseAnchor, getChildAnchor(bearing, mountedPos), orientation);
         } catch (ReflectiveOperationException | LinkageError | ClassCastException error) {
             LOGGER.warn("Aileron Bearing constraint creation failed at {}: {}", mountedPos, error.toString());
             joint = null;
@@ -406,38 +402,21 @@ final class AileronBearingMountedAssembly {
         return joint != null && joint.isValid();
     }
 
-    // Drive the physical hinge toward the requested aileron angle
-    private boolean setJointServo(double angleDegrees, Vector3dc rotationAxis,
-                                  ServerSubLevel parent, ServerSubLevel child) {
+    // Retarget the fixed frames to the requested aileron angle
+    private boolean setJointOrientation(Vector3dc baseAnchor, Vector3dc childAnchor, Quaterniond orientation) {
         if (joint == null || !joint.isValid()) {
             return false;
         }
         try {
-            double inertia = rotaryServoInertia(parent, child, rotationAxis);
-            double stiffness = SimConfigService.INSTANCE.server().physics.swivelBearingStiffness.get() * inertia;
-            double damping = SimConfigService.INSTANCE.server().physics.swivelBearingDamping.get() * inertia;
-            joint.setMotor(ConstraintJointAxis.ANGULAR_X, Math.toRadians(angleDegrees),
-                    stiffness, damping, false, 0.0D);
+            SableConstraintApi.setFrame(joint, 1, baseAnchor, orientation);
+            SableConstraintApi.setFrame(joint, 2, childAnchor, new Quaterniond());
             joint.setContactsEnabled(false);
             return true;
-        } catch (RuntimeException | LinkageError error) {
-            LOGGER.warn("Aileron Bearing rotary servo update failed: {}", error.toString());
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError error) {
+            LOGGER.warn("Aileron Bearing fixed constraint update failed: {}", error.toString());
             releaseJoint();
             return false;
         }
-    }
-
-    // Calculate the same inertia-scaled servo coefficients used by Simulated's swivel bearing
-    private static double rotaryServoInertia(ServerSubLevel parent, ServerSubLevel child, Vector3dc axis) {
-        Vector3d transformed = new Vector3d();
-        double parentInertia = parent == null ? Double.MAX_VALUE
-                : parent.getMassTracker().getInertiaTensor().transform(axis, transformed).dot(axis);
-        double childInertia = child == null ? Double.MAX_VALUE
-                : child.getMassTracker().getInertiaTensor().transform(axis, transformed).dot(axis);
-        double relevantInertia = parent != null && child != null
-                ? Math.max(parentInertia, childInertia)
-                : Math.min(parentInertia, childInertia);
-        return Math.max(MIN_ROTARY_SERVO_INERTIA, relevantInertia);
     }
 
     // Get the base anchor

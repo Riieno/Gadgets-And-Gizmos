@@ -40,11 +40,16 @@ public final class DigisablePlacementClient{
     private DigisablePlacementClient(){}
 
     public static void begin(InteractionHand hand, UUID tabletId, UUID archiveId){
+        begin(hand, tabletId, archiveId, false);
+    }
+
+    // Share the placement controls between archive extraction and schematic construction
+    public static void begin(InteractionHand hand, UUID tabletId, UUID archiveId, boolean schematic){
         if(tabletId == null || archiveId == null) throw new IllegalArgumentException("A tablet and archive are required");
         Minecraft minecraft = Minecraft.getInstance();
         if(minecraft.level == null) throw new IllegalArgumentException("A world is required");
         DiagnosticTabletClientAppData.apply(APP, false, tabletId, null, null, new CompoundTag());
-        session = new Session(hand, tabletId, archiveId, minecraft.level.dimension().location());
+        session = new Session(hand, tabletId, archiveId, minecraft.level.dimension().location(), schematic);
     }
 
     public static void onClientTick(ClientTickEvent.Pre evt){
@@ -101,8 +106,8 @@ public final class DigisablePlacementClient{
         if(current == null || Minecraft.getInstance().screen != null) return;
         GuiGraphics graphics = evt.getGuiGraphics();
         var font = Minecraft.getInstance().font;
-        String prompt = !current.ready ? "Loading sublevel preview...  |  Esc: cancel"
-                : current.awaiting ? "Placing sublevel..."
+        String prompt = !current.ready ? "Loading preview...  |  Esc: cancel"
+                : current.awaiting ? current.schematic ? "Starting worker construction..." : "Placing sublevel..."
                 : "Wheel: push/pull  |  Hold Tab + move mouse: rotate  |  Use: place  |  Esc: cancel";
         graphics.drawCenteredString(font, prompt, graphics.guiWidth() / 2,
                 graphics.guiHeight() - 52, 0xFFB9EAFB);
@@ -143,7 +148,7 @@ public final class DigisablePlacementClient{
         data.remove("Error");
         DiagnosticTabletClientAppData.apply(APP, false, current.tabletId, null, null, data);
         PacketDistributor.sendToServer(new DiagnosticTabletActionPayload(false, current.hand,
-                BlockPos.ZERO, null, current.tabletId, APP, "archives", "extract", value));
+                BlockPos.ZERO, null, current.tabletId, APP, current.schematic ? "schematics" : "archives", current.schematic ? "build" : "extract", value));
         current.awaiting = true;
         return true;
     }
@@ -172,14 +177,16 @@ public final class DigisablePlacementClient{
         private final UUID tabletId;
         private final UUID archiveId;
         private final ResourceLocation dimension;
+        private final boolean schematic;
         private List<SubLevelPreviewRenderer.SnapshotBlock> blocks = List.of();
         private WorldPlacementControls controls;
         private int waitTicks;
         private boolean ready;
         private boolean awaiting;
 
-        private Session(InteractionHand hand, UUID tabletId, UUID archiveId, ResourceLocation dimension){
+        private Session(InteractionHand hand, UUID tabletId, UUID archiveId, ResourceLocation dimension, boolean schematic){
             this.hand = hand; this.tabletId = tabletId; this.archiveId = archiveId; this.dimension = dimension;
+            this.schematic = schematic;
         }
     }
 }

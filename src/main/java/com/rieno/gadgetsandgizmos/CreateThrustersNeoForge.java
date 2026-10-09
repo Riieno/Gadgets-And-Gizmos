@@ -55,6 +55,7 @@ public final class CreateThrustersNeoForge {
         CTFeatureToggles.prepareDedicatedServerRegistration();
         CTMountedSeats.register();
         OptionalScmCompatibility.register();
+        com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.register();
         WorkerRecipeCatalog.register(ResourceLocation.parse("createdieselgenerators:hammering"),
                 new PortableToolRecipeAdapter(ResourceLocation.parse("createdieselgenerators:hammer"), 1));
         WorkerRecipeCatalog.registerPortableCraftingTool(
@@ -70,6 +71,8 @@ public final class CreateThrustersNeoForge {
         NeoForge.EVENT_BUS.addListener(ShippingRouteOverlayService::onServerTick);
         NeoForge.EVENT_BUS.addListener(PortableContraptionControllerRuntime::postServerTick);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletRedstoneLinkRuntime::onServerTick);
+        NeoForge.EVENT_BUS.addListener(com.rieno.gadgetsandgizmos.content.tablet.DigisableSchematics::onServerTick);
+        NeoForge.EVENT_BUS.addListener(com.rieno.gadgetsandgizmos.content.tablet.DigisableSchematics::onServerStopping);
         NeoForge.EVENT_BUS.addListener(PortableContraptionControllerRuntime::onChunkLoad);
         NeoForge.EVENT_BUS.addListener(PortableContraptionControllerRuntime::onChunkUnload);
         NeoForge.EVENT_BUS.addListener(PortableContraptionControllerRuntime::onServerStopped);

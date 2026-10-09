@@ -75,7 +75,7 @@ class ScmIkBindingTest {
             MockedStatic<SubLevelBlockEntityCollector> collector = mockStatic(SubLevelBlockEntityCollector.class);
             MockedStatic<ScmSubLevelRelationRegistry> relations = mockStatic(ScmSubLevelRelationRegistry.class)){
             containers.when(() -> SubLevelContainer.getContainer(level)).thenReturn(container);
-            relations.when(() -> ScmSubLevelRelationRegistry.relations(any(), any())).thenReturn(links);
+            relations.when(() -> ScmSubLevelRelationRegistry.loadedRelations(root)).thenReturn(links);
             var discover = ShipControlModuleRuntime.class.getDeclaredMethod("discoverAssemblyTopology", ServerSubLevel.class);
             discover.setAccessible(true);
             var topology = (SableAssemblyTopologyApi.Topology) discover.invoke(null, root);

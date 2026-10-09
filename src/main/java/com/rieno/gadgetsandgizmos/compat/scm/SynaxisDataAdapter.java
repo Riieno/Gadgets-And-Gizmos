@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.compat.scm;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.compat.OptionalTypeMatcher;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
 import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataAdapter;
 import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataPort;
@@ -27,10 +28,10 @@ public final class SynaxisDataAdapter implements BlockEntityDataAdapter<BlockEnt
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    private static final String DYNAMIC_MOTOR =
-            "com.verr1.synaxis.content.blocks.motor.AbstractDynamicMotorBlockEntity";
-    private static final String LINEAR_ACTUATOR =
-            "com.verr1.synaxis.content.blocks.slider.HydraulicLinearActuatorBlockEntity";
+    private static final OptionalTypeMatcher DYNAMIC_MOTOR = new OptionalTypeMatcher(
+            "com.verr1.synaxis.content.blocks.motor.AbstractDynamicMotorBlockEntity");
+    private static final OptionalTypeMatcher LINEAR_ACTUATOR = new OptionalTypeMatcher(
+            "com.verr1.synaxis.content.blocks.slider.HydraulicLinearActuatorBlockEntity");
     private static final List<BlockEntityDataPort> GEOMETRY_PORTS = List.of(
             BlockEntityDataPort.readWrite("self_offset_x", "number"),
             BlockEntityDataPort.readWrite("self_offset_y", "number"),
@@ -110,13 +111,13 @@ public final class SynaxisDataAdapter implements BlockEntityDataAdapter<BlockEnt
     // Check whether this is one of Synaxis's dynamic joint implementations
     @Override
     public boolean supports(BlockEntity target) {
-        return isInstanceOf(target, DYNAMIC_MOTOR) || isInstanceOf(target, LINEAR_ACTUATOR);
+        return DYNAMIC_MOTOR.test(target) || LINEAR_ACTUATOR.test(target);
     }
 
     // Get the selected Synaxis motor's graph data ports
     @Override
     public List<BlockEntityDataPort> ports(BlockEntity target) {
-        return isInstanceOf(target, LINEAR_ACTUATOR) ? LINEAR_PORTS : ROTARY_PORTS;
+        return LINEAR_ACTUATOR.test(target) ? LINEAR_PORTS : ROTARY_PORTS;
     }
 
     // Read one live Synaxis motor value
@@ -166,15 +167,6 @@ public final class SynaxisDataAdapter implements BlockEntityDataAdapter<BlockEnt
         ports.addAll(first);
         ports.addAll(second);
         return List.copyOf(ports);
-    }
-
-    // Check the runtime class hierarchy without linking optional Synaxis classes
-    private static boolean isInstanceOf(Object value, String className) {
-        if (value == null) return false;
-        for (Class<?> type = value.getClass(); type != null; type = type.getSuperclass()) {
-            if (className.equals(type.getName())) return true;
-        }
-        return false;
     }
 
     // Resolve the public getter for one graph port

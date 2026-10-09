@@ -9,6 +9,8 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
+import com.rieno.gadgetsandgizmos.lib.physics.SubLevelAttachmentApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SubLevelBlockAttachment;
 import com.simibubi.create.foundation.block.IBE;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -30,7 +32,7 @@ import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
 // Add selectable linker faces which relay their configured redstone signal
-public class ContraptionNetworkLinkerPlaneBlock extends Block implements IBE<ContraptionNetworkLinkerPlaneBlockEntity> {
+public class ContraptionNetworkLinkerPlaneBlock extends Block implements IBE<ContraptionNetworkLinkerPlaneBlockEntity>, SubLevelBlockAttachment {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -160,6 +162,7 @@ public class ContraptionNetworkLinkerPlaneBlock extends Block implements IBE<Con
     @Override
     protected void neighborChanged(BlockState state, Level level, BlockPos pos, Block block, BlockPos fromPos,
                                    boolean isMoving) {
+        if(SubLevelAttachmentApi.isMoving(level, pos) || SubLevelAttachmentApi.isMoving(level, fromPos)) return;
         if (level.isClientSide || !(level.getBlockEntity(pos) instanceof ContraptionNetworkLinkerPlaneBlockEntity plane)) {
             return;
         }
@@ -183,6 +186,12 @@ public class ContraptionNetworkLinkerPlaneBlock extends Block implements IBE<Con
     @Override
     public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean isMoving) {
         IBE.onRemove(state, level, pos, newState);
+    }
+
+    // Carry each configured face with its supporting neighbor
+    @Override
+    public boolean isAttachedTo(BlockState state, Direction supportDir){
+        return hasPlane(state, supportDir.getOpposite());
     }
 
     // Check if this has plane

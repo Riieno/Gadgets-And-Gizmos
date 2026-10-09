@@ -229,6 +229,9 @@ public final class AdvancedGraphValidator {
                             "Only direct SCM primitives may be used inside a graph function",
                             node.id()));
                 }
+                if(node.type().startsWith("createthrusters:flight_control_")){
+                    diagnostics.add(error("flight_control_main_graph", "Flight Control components belong in the Main Graph", node.id()));
+                }
                 if (AdvancedGraphFunctions.CALL_TYPE.equals(node.type())
                         && graph.function(node.data().getString(AdvancedGraphFunctions.FUNCTION_ID)) == null) {
                     diagnostics.add(error("missing_function",

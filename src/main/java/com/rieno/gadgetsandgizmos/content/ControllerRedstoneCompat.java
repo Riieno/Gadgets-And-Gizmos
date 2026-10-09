@@ -16,6 +16,7 @@ import com.rieno.gadgetsandgizmos.lib.control.ControllerDirectTargetReference;
 import com.rieno.gadgetsandgizmos.lib.control.DirectionalAnalogSnapshot;
 import com.rieno.gadgetsandgizmos.lib.control.DirectionalAnalogSource;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.physics.SubLevelBlockTargetApi;
 import com.simibubi.create.Create;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -141,8 +142,9 @@ public final class ControllerRedstoneCompat {
         }
         Direction planeFace = ContraptionNetworkLinkerData.resolveFaceFromDirectTarget(resolvedTarget);
         BlockState targetState = targetLevel.getBlockState(targetPos);
+        if(resolvedTarget.face() != null) planeFace = resolveOutputInjectionFace(resolvedTarget, targetLevel, targetPos);
         // ------------------------------------LINKER SIGNALS------------------------------------
-        if (ContraptionNetworkLinkerData.isLinkerFaceTarget(resolvedTarget) && planeFace != null) {
+        if ((ContraptionNetworkLinkerData.isLinkerFaceTarget(resolvedTarget) || resolvedTarget.face() != null) && planeFace != null) {
             return Mth.clamp(samplePlaneInputSignal(
                     targetLevel, resolvedTarget.subLevelId(), targetPos, planeFace, targetBe) / 15.0D,
                     0.0D, 1.0D);
@@ -244,9 +246,7 @@ public final class ControllerRedstoneCompat {
         } else if (STATE_BACKED_BLOCK.equals(compatMode)) {
             face = Direction.NORTH;
         } else {
-            face = ContraptionNetworkLinkerData.isLinkerFaceOutputTarget(resolvedTarget)
-                    ? resolveOutputInjectionFace(resolvedTarget, targetLevel, targetPos)
-                    : planeFace;
+            face = resolveOutputInjectionFace(resolvedTarget, targetLevel, targetPos);
             if (face == null) face = Direction.NORTH;
         }
         return ContraptionNetworkLinkerSignalBus.sourceSignal(
@@ -333,7 +333,7 @@ public final class ControllerRedstoneCompat {
         // -----------------------------------------------------COMPAT MODES-----------------------------------------------------
         String compatMode = resolvedTarget.compatModeId();
         if (redstoneOnly && (DIRECT_ADAPTER.equals(compatMode) || resolvedTargetBe instanceof RcsThrusterBlockEntity)) {
-            compatMode = VIRTUAL_BLOCK_REDSTONE;
+            compatMode = resolvedTarget.face() == null ? VIRTUAL_BLOCK_REDSTONE : VIRTUAL_FACE_REDSTONE;
         }
         if (DIRECT_ADAPTER.equals(compatMode)
                 && AeroworksControllerCompat.applyDirectSignal(resolvedTargetBe, optionChannelId, sourceId, value)) {
@@ -371,9 +371,7 @@ public final class ControllerRedstoneCompat {
             return;
         }
 
-        Direction face = ContraptionNetworkLinkerData.isLinkerFaceOutputTarget(resolvedTarget)
-                ? resolveOutputInjectionFace(resolvedTarget, targetLevel, targetPos)
-                : ContraptionNetworkLinkerData.resolveFaceFromDirectTarget(resolvedTarget);
+        Direction face = resolveOutputInjectionFace(resolvedTarget, targetLevel, targetPos);
         if (face == null) {
             face = Direction.NORTH;
         }
@@ -420,6 +418,8 @@ public final class ControllerRedstoneCompat {
         if (AeroworksControllerCompat.isDirectAdapter(targetBe)) {
             return DIRECT_ADAPTER;
         }
+
+        if(target.face() != null) return VIRTUAL_FACE_REDSTONE;
 
         if (ContraptionNetworkLinkerData.isLinkerFaceTarget(target)) {
             return ContraptionNetworkLinkerData.resolveFaceFromDirectTarget(target) == null
@@ -485,6 +485,9 @@ public final class ControllerRedstoneCompat {
                                                                   @Nullable Level targetLevel,
                                                                   @Nullable BlockPos targetPos) {
         Direction mappedFace = ContraptionNetworkLinkerData.resolveFaceFromDirectTarget(directTarget);
+        if(directTarget != null && directTarget.targetId().startsWith("scm_picker:")){
+            mappedFace = SubLevelBlockTargetApi.resolveFace(targetLevel, directTarget);
+        }
         if (directTarget == null || targetLevel == null || targetPos == null) {
             return mappedFace;
         }
@@ -526,6 +529,7 @@ public final class ControllerRedstoneCompat {
         if (ownerLevel == null || target == null || !target.isBound() || ownerLevel.getServer() == null) {
             return target;
         }
+        if(target.targetId().startsWith("scm_picker:")) return SubLevelBlockTargetApi.resolve(ownerLevel, target);
         return ContraptionNetworkLinkerTracker.get(ownerLevel.getServer()).resolveTargetReference(ownerLevel, target);
     }
 

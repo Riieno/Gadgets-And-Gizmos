@@ -38,6 +38,8 @@ import com.rieno.gadgetsandgizmos.lib.control.AnalogueControlChannel;
 import com.rieno.gadgetsandgizmos.lib.control.IDirectControlReceiver;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphTargetPortLayout;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphReconciliation;
+import com.rieno.gadgetsandgizmos.lib.nbt.CompoundTagCopies;
 import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataAccessPolicy;
 import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataAdapterRegistry;
 import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataPortGroups;
@@ -70,7 +72,6 @@ import com.simibubi.create.content.equipment.clipboard.ClipboardContent;
 import com.simibubi.create.content.equipment.clipboard.ClipboardEntry;
 import com.simibubi.create.content.equipment.clipboard.ClipboardOverrides;
 import com.simibubi.create.content.redstone.displayLink.DisplayLinkBlockEntity;
-import com.simibubi.create.foundation.recipe.RecipeFinder;
 import com.simibubi.create.content.processing.recipe.ProcessingRecipe;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.api.schematic.SubLevelSchematicSerializationContext;
@@ -110,6 +111,11 @@ import com.rieno.gadgetsandgizmos.lib.control.ControllerDirectTargetReference;
 import com.rieno.gadgetsandgizmos.lib.control.FrequencyBinding;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.physics.SubLevelBlockTargetApi;
+import com.rieno.gadgetsandgizmos.lib.physics.EntityTelemetryApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SubLevelTrackingApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SableTransformApi;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
 import com.rieno.gadgetsandgizmos.lib.display.AccDisplaySourceRegistry;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerAssignmentRanker;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerEndpointSnapshot;
@@ -117,7 +123,10 @@ import com.rieno.gadgetsandgizmos.lib.worker.WorkerFailureReason;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerResourceKey;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeChain;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeDefinition;
-import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipePlanner;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeLookup;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeIndex;
+import com.rieno.gadgetsandgizmos.lib.util.DeferredWorkScheduler;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipePlan;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerResourceType;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerRoster;
@@ -167,7 +176,7 @@ import java.util.Set;
 import java.util.function.Function;
 
 // Handle ACC graphs, manifests, displays and SCM control
-public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptionControllerBlockEntity implements com.rieno.gadgetsandgizmos.lib.worker.WorkerOrchestrator {
+public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptionControllerBlockEntity implements com.rieno.gadgetsandgizmos.lib.worker.WorkerOrchestrator, dev.ryanhcode.sable.api.block.BlockEntitySubLevelActor {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -183,6 +192,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private static final int GRAPH_DATA_SCHEMA_REFRESH_INTERVAL = 4;
     private static final long CLIENT_PROFILER_SAMPLE_TIMEOUT_TICKS = 40L;
     private static final String GRAPH_DATA_SCHEMA_REVISION_TAG = "GraphDataSchemaRevision";
+    private static final String GRAPH_DATA_SCHEMA_REVISIONS_TAG = "GraphDataSchemaRevisions";
     private static final String GRAPH_VERSIONS_TAG = "AdvancedGraphVersions";
     private static final String SHIPPING_SCHEDULE_DRAFT_GRAPH_TAG = "ShippingScheduleDraftGraph";
     private static final String SHIPPING_SCHEDULE_ACTIVE_GRAPH_TAG = "ShippingScheduleActiveGraph";
@@ -284,6 +294,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private final WorkerRoster workerRoster = new WorkerRoster();
     private WorkerFailureReason workerPlanningFailure = WorkerFailureReason.none();
     private List<String> workerPlanningDetails = List.of();
+    private final WorkerRecipeLookup workerRecipeLookup = new WorkerRecipeLookup();
 
     public List<String> workerPlanningDetails(){ return workerPlanningDetails; }
     private @Nullable UUID scmPersistenceSubLevelId;
@@ -417,6 +428,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private long lastClientProfilerSample = Long.MIN_VALUE;
     // Last goggles tracking sample
     private long lastGogglesTrackingSample = Long.MIN_VALUE;
+    private long lastShipTrackingSample = Long.MIN_VALUE;
+    private final Map<String, ShipTrackingSnapshot> shipTrackingSnapshots = new LinkedHashMap<>();
+    private final Map<UUID, TrackedShipMetadata> trackedShips = new LinkedHashMap<>();
     // Current client profiler fps
     private double clientProfilerFps;
     // Current client profiler frame time millis
@@ -556,6 +570,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private void invalidateWorkerRoutinePlans(){
         compiledWorkerRoutines.clear();
         unavailableWorkerRoutines.clear();
+        workerRecipeLookup.clear();
     }
 
     // Compile direct item and recipe requests through the existing worker runtime
@@ -584,52 +599,17 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         else if(request.craft()){
             FluidContainerRecipe filling = filledContainerRecipe(request.itemId());
             WorkerFailureReason fillingFailure = null;
-            List<String> fillingDetails = List.of();
             if(filling != null && request.destinationId() != null){
                 fillingFailure = requestFluidContainers(filling.fluidId(), filling.emptyContainerId(),
                         (int)Math.min(Integer.MAX_VALUE, request.amount()), filling.millibuckets(),
                         request.destinationId(), request.selectedWorkerId());
                 if(!fillingFailure.failed()) return WorkerFailureReason.none();
-                fillingDetails = workerPlanningDetails;
             }
             WorkerResourceKey result = new WorkerResourceKey(WorkerResourceType.ITEM, request.itemId());
-            WorkerRecipeChain shared = null;
-            WorkerFailureReason sharedFailure = null;
-            List<String> sharedDetails = List.of();
-            for(WorkerStatusSnapshot worker : candidates){
-                UUID workerId = worker.workerId();
-                for(WorkerPodBlockEntity pod : pods){
-                    if(!pod.compatibleWorkers(WorkerResourceType.ITEM, Set.of(workerId)).contains(workerId)) continue;
-                    WorkerRecipeChain personal = workerRecipeChain(result, request.amount(), null, null, null,
-                            pod.workerPlanningStock(workerId));
-                    if(personal.executable()){
-                        WorkerGraphOrder assigned = workerRecipeOrders(personal, taskRequest,
-                                request.destinationId(), null, Set.of(workerId));
-                        if(pod.submit(workerId, assigned.orders())) return WorkerFailureReason.none();
-                    }
-                    if(shared == null){
-                        shared = workerRecipeChain(result, request.amount(), null);
-                        sharedFailure = workerPlanningFailure;
-                        sharedDetails = workerPlanningDetails;
-                    }
-                    if(shared.executable()){
-                        WorkerGraphOrder assigned = workerRecipeOrders(shared, taskRequest,
-                                request.destinationId(), null, Set.of(workerId));
-                        if(pod.submit(workerId, assigned.orders())) return WorkerFailureReason.none();
-                    }
-                }
-            }
-            if(shared != null && !shared.executable()){
-                if(fillingFailure != null){
-                    workerPlanningDetails = fillingDetails.isEmpty()
-                            ? List.of(fillingFailure.message()) : fillingDetails;
-                    return fillingFailure;
-                }
-                workerPlanningDetails = sharedDetails;
-                return sharedFailure != null && sharedFailure.failed()
-                        ? sharedFailure : new WorkerFailureReason("recipe_unavailable", "No complete recipe schedule is available");
-            }
-            return new WorkerFailureReason("no_worker_available", "No eligible worker can accept this request");
+            WorkerTask task = new WorkerTask(request.id(), taskRequest.taskName(), result,
+                    request.amount(), 0L, 0, true);
+            compiled = new WorkerGraphOrder(List.of(WorkerWorkOrder.recipeLookup(task, null, null,
+                    request.destinationId(), null, null)), Set.of());
         }else{
             WorkerTask task = new WorkerTask(request.id(), "Deliver " + request.itemId(),
                     new WorkerResourceKey(WorkerResourceType.ITEM, request.itemId()), request.amount(), 0, 0, true);
@@ -756,14 +736,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 long missing = Math.max(0L, count - matching);
                 List<WorkerWorkOrder> orders = new ArrayList<>();
                 if(missing > 0L){
-                    WorkerRecipeChain chain = workerRecipeChain(containerKey, missing, null, null, null,
-                            workerStock, new WorkerRecipePlanningCache(), true);
-                    if(!chain.executable()) continue;
-                    WorkerTaskRequest prerequisite = new WorkerTaskRequest(UUID.randomUUID(),
-                            "Craft fluid containers", Set.of(), 0, WorkerTaskRequest.InterruptPolicy.QUEUE,
-                            true, new CompoundTag());
-                    orders.addAll(workerRecipeOrders(chain, prerequisite, null, null,
-                            Set.of(workerId)).orders());
+                    WorkerTask prerequisite = new WorkerTask(UUID.randomUUID(), "Craft fluid containers",
+                            containerKey, missing, 0L, 0, true);
+                    orders.add(WorkerWorkOrder.recipeLookup(prerequisite, null, null, null, null, null));
                 }
                 UUID id = UUID.randomUUID();
                 WorkerTask task = new WorkerTask(id, "Fill " + count + " " + container.getHoverName().getString(),
@@ -833,6 +808,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Cancel one queued Worker Graph task at every linked Worker Pod.
     public boolean cancelWorkerTask(UUID requestId) {
         if (requestId == null) return false;
+        workerRecipeLookup.cancel(requestId);
         boolean cancelled = false;
         for (WorkerPodBlockEntity pod : WorkerPodBlockEntity.linkedPods(this)) {
             cancelled |= pod.cancel(requestId);
@@ -978,11 +954,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         UUID sourceId = wiredSource == null ? preferredSourceId : wiredSource;
         UUID processorId = workerTargetEndpoint(craft, "target");
         if(workerHasTarget(craft, "target") && processorId == null) return null;
-        WorkerRecipeSelection selection = workerRecipeForWorkers(
-                new WorkerResourceKey(WorkerResourceType.ITEM, outputId), amount,
-                null, sourceId, processorId, workerSelectedIds(craft));
-        WorkerRecipeChain chain = selection.chain();
-        if (!chain.executable()) return null;
         AdvancedGraphDocument.Node next = workerExecutionTarget(workerGraph, craft, "complete");
         UUID destinationId = null;
         if (next != null && "worker_give_items".equals(next.type())) {
@@ -996,16 +967,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         UUID returnStationId = next != null && "worker_return_to_pod".equals(next.type())
                 ? workerReturnStation(next) : null;
         if (next != null && "worker_return_to_pod".equals(next.type()) && returnStationId == null) return null;
-        List<WorkerWorkOrder> orders = new ArrayList<>(chain.orders(request.id(), request.taskName(), request.priority(),
-                destinationId, returnStationId, sourceId));
-        if(processorId != null){
-            for(int idx = orders.size() - 1; idx >= 0; idx--){
-                if(orders.get(idx).recipePlan() == null) continue;
-                orders.set(idx, orders.get(idx).withProcessor(processorId));
-                break;
-            }
-        }
-        return new WorkerGraphOrder(orders, selection.workers());
+        WorkerTask task = new WorkerTask(request.id(), request.taskName(),
+                new WorkerResourceKey(WorkerResourceType.ITEM, outputId), amount, 0L, request.priority(), true);
+        return new WorkerGraphOrder(List.of(WorkerWorkOrder.recipeLookup(task, null, sourceId,
+                destinationId, processorId, returnStationId)), workerSelectedIds(craft));
     }
 
     // Compile a direct Process node into automatic dependency-first worker orders.
@@ -1040,10 +1005,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (outputId == null) return null;
         long amount = workerRequestedAmount(request, outputType,
                 Math.max(1L, Math.round(workerInputNumber(process, "count", 1.0D))));
-        WorkerRecipeSelection selection = workerRecipeForWorkers(new WorkerResourceKey(outputType, outputId), amount,
-                WorkerRecipePlan.Operation.PROCESSING, sourceId, processorId, workerSelectedIds(process));
-        WorkerRecipeChain chain = selection.chain();
-        if (!chain.executable()) return null;
         AdvancedGraphDocument.Node next = workerExecutionTarget(workerGraph, process, "complete");
         UUID destinationId = null;
         if (next != null && "worker_give_items".equals(next.type())) {
@@ -1058,16 +1019,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         UUID returnStationId = next != null && "worker_return_to_pod".equals(next.type())
                 ? workerReturnStation(next) : null;
         if (next != null && "worker_return_to_pod".equals(next.type()) && returnStationId == null) return null;
-        List<WorkerWorkOrder> orders = new ArrayList<>(chain.orders(request.id(), request.taskName(), request.priority(),
-                destinationId, returnStationId, sourceId));
-        if(processorId != null){
-            for(int idx = orders.size() - 1; idx >= 0; idx--){
-                if(orders.get(idx).recipePlan() == null) continue;
-                orders.set(idx, orders.get(idx).withProcessor(processorId));
-                break;
-            }
-        }
-        return new WorkerGraphOrder(orders, selection.workers());
+        WorkerTask task = new WorkerTask(request.id(), request.taskName(), new WorkerResourceKey(outputType, outputId),
+                amount, 0L, request.priority(), true);
+        return new WorkerGraphOrder(List.of(WorkerWorkOrder.recipeLookup(task, WorkerRecipePlan.Operation.PROCESSING,
+                sourceId, destinationId, processorId, returnStationId)), workerSelectedIds(process));
     }
 
     // Turn one resolved recipe chain into the persistent orders consumed by Worker Pods.
@@ -1128,7 +1083,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                     WorkerTaskRequest request = workerRoutineRequest(workerGraph, routine);
                     graphOrder = workerGraphOrder(workerGraph, move, request);
                     if(graphOrder == null || graphOrder.orders().isEmpty()){
-                        Set<WorkerResourceKey> relevant = workerRoutineRelevantResources(workerGraph, move);
+                        Set<WorkerResourceKey> relevant;
+                        try{ relevant = workerRoutineRelevantResources(workerGraph, move); }
+                        catch(DeferredWorkScheduler.Pending pending){ continue; }
                         if(inputRevisions == null) inputRevisions = workerRoutineInputRevisions(pods);
                         unavailableWorkerRoutines.put(routineKey, new WorkerRoutineFailure(relevant,
                                 workerRoutineStock(pods, relevant), inputRevisions));
@@ -1202,8 +1159,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             type = WorkerResourceType.FLUID;
         }
         ResourceLocation output = workerFilterResource(filter, type);
-        return output == null ? Set.of() : com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog
-                .index(level).relevantResources(new WorkerResourceKey(type, output));
+        if(output == null) return Set.of();
+        WorkerResourceKey result = new WorkerResourceKey(type, output);
+        return workerRecipeLookup.relevantResources(DeferredWorkScheduler.forServer(level.getServer()),
+                WorkerRecipeCatalog.deferredIndex(level, result), result);
     }
 
     // Read worker selection before compiling a routine's potentially expensive recipe chain
@@ -1359,8 +1318,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             if (outputType != WorkerResourceType.ITEM) return null;
             var expected = BuiltInRegistries.ITEM.get(outputId);
             if (expected == null) return null;
-            return RecipeFinder.get(null, level,
-                            holder -> holder.value() instanceof CraftingRecipe).stream()
+            return WorkerRecipeCatalog.producingRecipes(level, new WorkerResourceKey(outputType, outputId)).stream()
+                    .filter(holder -> holder.value() instanceof CraftingRecipe)
                     .sorted(Comparator.comparing(holder -> holder.id().toString()))
                     .map(holder -> {
                         CraftingRecipe recipe = (CraftingRecipe) holder.value();
@@ -1376,8 +1335,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                                 new WorkerResourceKey(WorkerResourceType.ITEM, outputId), result.getCount());
                     }).filter(Objects::nonNull).findFirst().orElse(null);
         }
-        return RecipeFinder.get(null, level,
-                        holder -> holder.value() instanceof ProcessingRecipe<?, ?>).stream()
+        return WorkerRecipeCatalog.producingRecipes(level, new WorkerResourceKey(outputType, outputId)).stream()
+                .filter(holder -> holder.value() instanceof ProcessingRecipe<?, ?>)
                 .sorted(Comparator.comparing(holder -> holder.id().toString()))
                 .map(holder -> {
                     ProcessingRecipe recipe = (ProcessingRecipe) holder.value();
@@ -1392,75 +1351,20 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 }).filter(Objects::nonNull).findFirst().orElse(null);
     }
 
-    // Build a dependency-first recipe chain from managed worker storage.
-    private WorkerRecipeChain workerRecipeChain(WorkerResourceKey result, long amount,
-                                                @Nullable WorkerRecipePlan.Operation rootOperation) {
-        return workerRecipeChain(result, amount, rootOperation, null);
-    }
-
-    // Build a dependency-first recipe chain, optionally validating against one selected source endpoint.
-    private WorkerRecipeChain workerRecipeChain(WorkerResourceKey result, long amount,
-                                                @Nullable WorkerRecipePlan.Operation rootOperation,
-                                                @Nullable UUID preferredSourceId) {
-        return workerRecipeChain(result, amount, rootOperation, preferredSourceId, null);
-    }
-
-    // Keep an explicitly selected final processor in the plan while resolving prerequisites elsewhere
-    private WorkerRecipeChain workerRecipeChain(WorkerResourceKey result, long amount,
-                                                @Nullable WorkerRecipePlan.Operation rootOperation,
-                                                @Nullable UUID preferredSourceId, @Nullable UUID processorId){
-        return workerRecipeChain(result, amount, rootOperation, preferredSourceId, processorId, Map.of());
-    }
-
-    // Bind a graph schedule to the worker whose own items made it executable
-    private WorkerRecipeSelection workerRecipeForWorkers(WorkerResourceKey result, long amount,
-                                                         @Nullable WorkerRecipePlan.Operation rootOperation,
-                                                         @Nullable UUID sourceId, @Nullable UUID processorId,
-                                                         Set<UUID> selectedWorkers){
-        WorkerRecipePlanningCache cache = new WorkerRecipePlanningCache();
-        Set<WorkerResourceKey> relevant = level == null ? Set.of()
-                : com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog.index(level)
-                .relevantResources(result);
-        if(selectedWorkers.size() <= 1){
-            for(WorkerPodBlockEntity pod : WorkerPodBlockEntity.linkedPods(this)){
-                for(UUID workerId : pod.compatibleWorkers(result.type(), selectedWorkers)){
-                    Map<WorkerResourceKey, Long> workerStock = pod.workerPlanningStock(workerId);
-                    if(workerStock.keySet().stream().noneMatch(relevant::contains)) continue;
-                    WorkerRecipeChain chain = workerRecipeChain(result, amount, rootOperation, sourceId, processorId,
-                            workerStock, cache);
-                    if(chain.executable()) return new WorkerRecipeSelection(chain, Set.of(workerId));
-                }
-            }
-        }
-        return new WorkerRecipeSelection(workerRecipeChain(result, amount, rootOperation, sourceId, processorId,
-                Map.of(), cache), selectedWorkers);
-    }
-
-    // Include only the selected worker's unreserved personal inventory in its schedule
-    private WorkerRecipeChain workerRecipeChain(WorkerResourceKey result, long amount,
-                                                @Nullable WorkerRecipePlan.Operation rootOperation,
-                                                @Nullable UUID preferredSourceId, @Nullable UUID processorId,
-                                                Map<WorkerResourceKey, Long> workerStock){
-        return workerRecipeChain(result, amount, rootOperation, preferredSourceId, processorId, workerStock,
-                new WorkerRecipePlanningCache());
-    }
-
+    // Resume one selected worker's lookup while retaining its detached stock snapshot
     private WorkerRecipeChain workerRecipeChain(WorkerResourceKey result, long amount,
                                                 @Nullable WorkerRecipePlan.Operation rootOperation,
                                                 @Nullable UUID preferredSourceId, @Nullable UUID processorId,
                                                 Map<WorkerResourceKey, Long> workerStock,
-                                                WorkerRecipePlanningCache cache){
-        return workerRecipeChain(result, amount, rootOperation, preferredSourceId, processorId,
-                workerStock, cache, false);
-    }
-
-    private WorkerRecipeChain workerRecipeChain(WorkerResourceKey result, long amount,
-                                                @Nullable WorkerRecipePlan.Operation rootOperation,
-                                                @Nullable UUID preferredSourceId, @Nullable UUID processorId,
-                                                Map<WorkerResourceKey, Long> workerStock,
-                                                WorkerRecipePlanningCache cache, boolean ignoreResultStock){
+                                                UUID requestId, boolean refresh){
         if(level == null || result == null || amount <= 0L) return new WorkerRecipeChain(List.of());
+        WorkerRecipePlanningCache cache = new WorkerRecipePlanningCache();
+        DeferredWorkScheduler scheduler = DeferredWorkScheduler.forServer(level.getServer());
+        var source = com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog.deferredSource(level);
         List<WorkerStorageEndpoint> processors = WorkerStorageEndpoint.linked(this, true);
+        source = new com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeRoutes(source, processors.stream()
+                .flatMap(endpoint -> endpoint.supportedProcessorTypes().stream())
+                .collect(java.util.stream.Collectors.toSet()));
         Map<WorkerResourceKey, Long> available = workerRecipeAvailability(processors.stream()
                 .filter(endpoint -> preferredSourceId == null ? endpoint.isWorkerRecipeSource()
                         : preferredSourceId.equals(endpoint.id())).toList());
@@ -1468,11 +1372,12 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             if(stocked > 0L) available.merge(resource, stocked,
                     AdvancedContraptionControllerBlockEntity::saturatedWorkerAmount);
         });
-        if(ignoreResultStock) available.remove(result);
-        var planned = WorkerRecipePlanner.planDetailed(result, amount, available,
-                com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog.index(level), rootOperation,
-                recipe -> cache.supported.computeIfAbsent(recipe,
-                        candidate -> supportedWorkerRecipe(candidate, processors)),
+        WorkerRecipeContext ctx = new WorkerRecipeContext(preferredSourceId, processorId,
+                Map.copyOf(workerStock), processors.stream().map(WorkerStorageEndpoint::snapshot).toList());
+        var planned = workerRecipeLookup.planFromStock(scheduler, source, result, amount, available, rootOperation,
+                new WorkerRecipeLookup.RequestContext(requestId, ctx, refresh),
+                (recipe, owner) -> cache.supported.computeIfAbsent(recipe,
+                        candidate -> supportedWorkerRecipe(candidate, processors, owner)),
                 plan -> executableWorkerRecipe(plan, processors), plan -> processorId == null
                         || processors.stream().filter(endpoint -> processorId.equals(endpoint.id()))
                         .anyMatch(endpoint -> supportsFinalWorkerRecipe(endpoint, plan)),
@@ -1513,6 +1418,13 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if(!expanded.executable() && "recipe_unavailable".equals(workerPlanningFailure.code())
                 && !workerPlanningDetails.isEmpty())
             workerPlanningFailure = new WorkerFailureReason("recipe_unavailable", workerPlanningDetails.getFirst());
+        if(!expanded.executable()){
+            String reason = workerPlanningDetails.stream().filter(row -> row.startsWith("No linked machine")
+                    || row.startsWith("Recipe compatibility:") || row.startsWith("Recipe needs a captured blaze burner"))
+                    .findFirst().orElse("");
+            if(!reason.isEmpty()) workerPlanningFailure = new WorkerFailureReason(
+                    reason.startsWith("Recipe compatibility:") ? "recipe_compatibility" : "missing_machine", reason);
+        }
         return expanded;
     }
 
@@ -1520,14 +1432,20 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private List<String> workerRecipeFailureDetails(WorkerResourceKey result,
                                                     List<WorkerStorageEndpoint> processors, List<String> details){
         Set<String> reported = new LinkedHashSet<>(details);
-        var index = com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog.index(level);
         if(reported.isEmpty()){
-            if(index.producing(result).isEmpty()) reported.add("Recipe: no loaded recipe produces " + result.id());
-            else reported.add("Recipe inputs and machine routes exist, but the planner could not reserve a complete schedule");
+            var holders = com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog.producingRecipes(level, result);
+            for(var holder : holders) reported.addAll(com.rieno.gadgetsandgizmos.lib.worker.WorkerModdedRecipes
+                    .diagnostics(level, holder, null).stream().map(reason -> "Recipe compatibility: " + reason + " (" + holder.id() + ")").toList());
+            if(holders.isEmpty())
+                reported.add("Recipe: no loaded recipe produces " + result.id());
+            else if(reported.isEmpty()) reported.add("Missing ingredients or usable linked machines for " + result.id());
         }
         if(reported.stream().noneMatch(row -> row.startsWith("Machine route:")))
             return reported.stream().limit(12).toList();
-        var recipes = index.dependencies(List.of(result));
+        List<WorkerRecipeDefinition> recipes = reported.stream().filter(row -> row.startsWith("Machine route:"))
+                .map(row -> ResourceLocation.tryParse(row.substring(row.lastIndexOf(' ') + 1)))
+                .filter(Objects::nonNull).flatMap(id -> com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog
+                        .resolvedRecipes(level, id).stream()).distinct().toList();
         for(WorkerRecipeDefinition recipe : recipes){
             if(reported.stream().noneMatch(row -> row.startsWith("Machine route:")
                     && row.contains(recipe.recipeId().toString()))) continue;
@@ -1549,7 +1467,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                         .collect(java.util.stream.Collectors.joining(", "))
                         + " rejects this recipe or its selected input face");
             for(WorkerStorageEndpoint endpoint : processors){
-                if(!endpoint.isAreaMachine()) continue;
                 List<String> route = endpoint.recipeRouteDiagnostics(plan);
                 if(route.isEmpty()) continue;
                 reported.addAll(route);
@@ -1597,38 +1514,45 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     }
 
     List<WorkerWorkOrder> retryWorkerRecipe(WorkerWorkOrder order, Map<WorkerResourceKey, Long> workerStock){
-        WorkerRecipeChain chain = workerRecipeChain(order.outputResource(), order.task().remainingAmount(), null,
-                order.sourceEndpointId(), order.processorEndpointId(), workerStock);
-        var orders = new ArrayList<>(chain.orders(order.id(), order.task().name(), order.task().priority(), order.destinationEndpointId(),
-                order.returnStationId(), order.sourceEndpointId()));
-        if(!orders.isEmpty() && order.processorEndpointId() != null){
-            orders.set(orders.size() - 1, orders.getLast().withProcessor(order.processorEndpointId()));
-        }
-        return orders;
+        WorkerRecipeChain chain = workerRecipeChain(order.outputResource(), order.task().remainingAmount(),
+                order.mode() == WorkerWorkOrder.Mode.LOOKUP_PROCESSING_RECIPE ? WorkerRecipePlan.Operation.PROCESSING : null,
+                order.sourceEndpointId(), order.processorEndpointId(), workerStock, order.id(), !order.lookingUpRecipe());
+        return chain.orders(order.id(), order.task().name(), order.task().priority(), order.destinationEndpointId(),
+                order.returnStationId(), order.sourceEndpointId(), order.processorEndpointId());
     }
+
+    String workerRecipeFailure(){ return workerPlanningFailure.message(); }
 
     // Rebuild missing prerequisites from the worker's loaded endpoints while preserving its active recipe
     WorkerRecipeChain workerRecipePrerequisites(WorkerWorkOrder order, int inputIdx, long delivered, long batches,
                                                 List<WorkerStorageEndpoint> endpoints,
                                                 Map<WorkerResourceKey, Long> carried){
+        DeferredWorkScheduler scheduler = DeferredWorkScheduler.forServer(level.getServer());
+        var source = com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog.deferredSource(level);
         List<WorkerStorageEndpoint> sources = endpoints.stream()
                 .filter(endpoint -> order.sourceEndpointId() == null ? endpoint.isWorkerRecipeSource()
                         : order.sourceEndpointId().equals(endpoint.id())).toList();
+        source = new com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeRoutes(source, endpoints.stream()
+                .flatMap(endpoint -> endpoint.supportedProcessorTypes().stream())
+                .collect(java.util.stream.Collectors.toSet()));
         Map<WorkerResourceKey, Long> available = workerRecipeAvailability(sources);
         carried.forEach((resource, amount) -> available.merge(resource, amount,
                 AdvancedContraptionControllerBlockEntity::saturatedWorkerAmount));
-        WorkerRecipeChain chain = WorkerRecipePlanner.prerequisites(order.recipePlan(), inputIdx, delivered, batches,
-                available, com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog.index(level),
-                recipe -> supportedWorkerRecipe(recipe, endpoints),
+        WorkerRecipeContext ctx = new WorkerRecipeContext(order.sourceEndpointId(), order.processorEndpointId(),
+                Map.copyOf(carried), endpoints.stream().map(WorkerStorageEndpoint::snapshot).toList());
+        WorkerRecipeChain chain = workerRecipeLookup.prerequisitesFromStock(scheduler, source, order.recipePlan(), inputIdx,
+                delivered, batches, available, new WorkerRecipeLookup.RequestContext(order.id(), ctx),
+                (recipe, owner) -> supportedWorkerRecipe(recipe, endpoints, owner),
                 plan -> executableWorkerRecipe(plan, endpoints));
         return com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog.expand(level, chain,
                 plan -> endpoints.stream().anyMatch(endpoint -> endpoint.supportsRecipePlan(plan)));
     }
 
     // Check machine routes only for recipes reached from the requested output
-    private boolean supportedWorkerRecipe(WorkerRecipeDefinition recipe, List<WorkerStorageEndpoint> processors){
-        return com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog.supported(level, recipe,
-                plan -> !plan.requiresProcessor() || processors.stream().anyMatch(endpoint -> endpoint.supportsRecipePlan(plan)));
+    private boolean supportedWorkerRecipe(WorkerRecipeDefinition recipe, List<WorkerStorageEndpoint> processors,
+                                           DeferredWorkScheduler scheduler){
+        return com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog.routableDeferred(scheduler, level, recipe,
+                plan -> processors.stream().anyMatch(endpoint -> endpoint.hasProcessorFor(plan)));
     }
 
     // Require every stage of a composite recipe to have a loaded machine route
@@ -1789,8 +1713,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                     stacks.add((mask & 1 << slot) == 0 ? ItemStack.EMPTY : input.copy());
                 }
                 CraftingInput grid = CraftingInput.of(size, size, stacks);
-                for (RecipeHolder<? extends Recipe<?>> holder : RecipeFinder.get(null, level,
-                        candidate -> candidate.value() instanceof CraftingRecipe)) {
+                for(RecipeHolder<?> holder : WorkerRecipeCatalog.producingRecipes(level,
+                        new WorkerResourceKey(WorkerResourceType.ITEM, outputId))){
+                    if(!(holder.value() instanceof CraftingRecipe)) continue;
                     CraftingRecipe recipe = (CraftingRecipe) holder.value();
                     if (recipe.matches(grid, level) && recipe.assemble(grid, level.registryAccess()).is(output)) {
                         return true;
@@ -1956,7 +1881,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     }
 
     // Keep the recipe chain with the worker whose inventory supplied its inputs
-    private record WorkerRecipeSelection(WorkerRecipeChain chain, Set<UUID> workers){}
+    private record WorkerRecipeContext(@Nullable UUID sourceId, @Nullable UUID processorId,
+                                       Map<WorkerResourceKey, Long> carried, List<WorkerEndpointSnapshot> endpoints){}
 
     private record WorkerRoutineFailure(Set<WorkerResourceKey> relevant,
                                         Map<WorkerResourceKey, Long> stock, Map<UUID, Long> revisions){
@@ -2153,6 +2079,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         restoreScmPersistenceIfAvailable();
         syncScmPersistenceSubLevel();
+        com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.tick(this);
         shipControlRuntime.tick();
         syncScmGoggleControl();
         if (currentLevel != null && !currentLevel.isClientSide
@@ -2210,6 +2137,13 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
     }
 
+    // Forward physics to the native components hosted by this ACC
+    @Override
+    public void sable$physicsTick(dev.ryanhcode.sable.sublevel.ServerSubLevel subLevel,
+            dev.ryanhcode.sable.api.physics.handle.RigidBodyHandle handle, double dt){
+        com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.physicsTick(this, subLevel, handle, dt);
+    }
+
     // Prepare the server shutdown
     void prepareForServerShutdown() {
         if (serverShutdownPrepared) {
@@ -2221,6 +2155,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         snapshot.put("ShipControl", shipControlRuntime.createShutdownSnapshot());
         snapshot.put("GraphRuntime", graphRuntime.createShutdownSnapshot());
         pendingServerShutdownSnapshot = snapshot;
+        com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.suspend(this);
         shippingScheduleRuntime.prepareForServerShutdown();
         graphRuntime.prepareForServerShutdown();
         shipControlRuntime.prepareForServerShutdown();
@@ -3123,8 +3058,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             return;
         }
         if (prev != null && Math.abs(prev - val) > 0.0001) {
-            graphRuntime.setBindingActive(bindingId, active);
-            graphRuntime.enqueue("channel:" + bindingId);
+            UUID playerId = graphRuntime.bindingInteractionPlayer(bindingId, !active);
+            graphRuntime.setBindingActive(bindingId, active, playerId);
+            graphRuntime.enqueue("channel:" + bindingId, playerId);
         }
     }
 
@@ -3243,6 +3179,11 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         Map<String, AdvancedGraphLiveValue> liveOutputs = graphLiveValues(graphLiveOutputs);
         UUID subLevelId = SimulatedHelper.getContainingSubLevelId(this);
         for (GraphRuntimeObserver observer : observers) {
+            var personal = graphRuntime.playerHudValues(observer.player().getUUID());
+            Map<String, AdvancedGraphLiveValue> playerInputs = new LinkedHashMap<>(liveInputs);
+            Map<String, AdvancedGraphLiveValue> playerOutputs = new LinkedHashMap<>(liveOutputs);
+            playerInputs.putAll(graphLiveValues(personal.inputs()));
+            playerOutputs.putAll(graphLiveValues(personal.outputs()));
             Map<UUID, String> trackerPairs = trackerPairsForObserver(
                     gogglesTrackerPairs,
                     observer.pairId(),
@@ -3250,7 +3191,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             PacketDistributor.sendToPlayer(observer.player(), new AdvancedControllerRuntimePayload(
                     getBlockPos(), subLevelId, observer.containerId(),
                     trackerPairs,
-                    liveInputs, liveOutputs, graphExecutionPulses));
+                    playerInputs, playerOutputs, graphExecutionPulses));
         }
     }
 
@@ -3281,11 +3222,16 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 || gameTime - prev.gameTime() < GRAPH_RUNTIME_SEND_INTERVAL)) {
             return;
         }
+        var personal = graphRuntime.playerHudValues(player.getUUID());
+        Map<String, AdvancedGraphDocument.Value> playerInputs = new LinkedHashMap<>(graphRuntime.liveInputs());
+        Map<String, AdvancedGraphDocument.Value> playerOutputs = new LinkedHashMap<>(graphRuntime.liveOutputs());
+        playerInputs.putAll(personal.inputs());
+        playerOutputs.putAll(personal.outputs());
         PacketDistributor.sendToPlayer(player, new AdvancedControllerRuntimePayload(
                 getBlockPos(), SimulatedHelper.getContainingSubLevelId(this), containerId,
                 getGogglesTrackerPairLabels(),
-                graphLiveValues(graphRuntime.liveInputs()),
-                graphLiveValues(graphRuntime.liveOutputs()),
+                graphLiveValues(playerInputs),
+                graphLiveValues(playerOutputs),
                 graphRuntime.executionPulses()));
         directRuntimeSendStates.put(sendKey, new DirectRuntimeSendState(gameTime, runtimeRevision));
     }
@@ -3571,6 +3517,39 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
     }
 
+    // Mirror native GUI settings without replacing an independently edited graph draft
+    public void updateNativeGraphSettings(String nodeId, String type, Map<String, com.rieno.gadgetsandgizmos.lib.graph.GraphValue> settings){
+        if(level == null || level.isClientSide || settings.isEmpty()) return;
+        var active = activeGraph.nodes().stream().filter(node -> node.id().equals(nodeId) && node.type().equals(type)).findFirst().orElse(null);
+        if(active == null) return;
+        CompoundTag defaults = active.data().getCompound("Defaults");
+        var draft = draftGraph.nodes().stream().filter(node -> node.id().equals(nodeId) && node.type().equals(type)).findFirst().orElse(null);
+        CompoundTag draftDefaults = draft == null ? null : draft.data().getCompound("Defaults");
+        boolean changed = false;
+        boolean draftChanged = false;
+        for(var pair : settings.entrySet()){
+            var tag = GraphRuntime.fromLibraryValue(pair.getValue()).toTag();
+            if(tag.equals(defaults.get(pair.getKey()))) continue;
+            if(draftDefaults != null && java.util.Objects.equals(defaults.get(pair.getKey()), draftDefaults.get(pair.getKey()))){
+                draftDefaults.put(pair.getKey(), tag.copy());
+                draftChanged = true;
+            }
+            defaults.put(pair.getKey(), tag);
+            changed = true;
+        }
+        if(!changed) return;
+        active.data().put("Defaults", defaults);
+        activeGraph.setRevision(activeGraph.revision() + 1);
+        if(draftChanged){
+            draft.data().put("Defaults", draftDefaults);
+            draftGraph.setRevision(draftGraph.revision() + 1);
+        }
+        graphRuntime.compile(activeGraph);
+        saveControllerManifestNow();
+        setChanged();
+        sendData();
+    }
+
     // Save the draft
     public boolean saveDraft(AdvancedGraphDocument graph, int expectedRevision) {
         syncGraphAlias();
@@ -3819,16 +3798,20 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Remove the advanced contraption controller
     @Override
     public void remove() {
+        com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.remove(this);
         releaseAccDisplays();
         AccDisplayControllerRegistry.unregister(this);
         AdvancedControllerNamedEventBus.unregister(this);
         shipControlRuntime.close();
+        workerRecipeLookup.clear();
         super.remove();
     }
 
     // Handle the chunk unloaded event
     @Override
     public void onChunkUnloaded() {
+        com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.suspend(this);
+        workerRecipeLookup.clear();
         releaseAccDisplays();
         AccDisplayControllerRegistry.unregister(this);
         AdvancedControllerNamedEventBus.unregister(this);
@@ -3995,6 +3978,12 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return name.isBlank() ? "Advanced Controller Graph" : name;
     }
 
+    // ACC graph nodes own their selected targets instead of every sibling linker output
+    @Override
+    protected boolean usesLinkerFanout(){
+        return false;
+    }
+
     // Apply the graph bindings
     private void applyGraphBindings(AdvancedGraphDocument graph) {
         if (level != null && !level.isClientSide) {
@@ -4042,7 +4031,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             if (binding.isBlank()) continue;
             ControllerDiscoveryNode targetNode = ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
             ControllerDiscoveryNode currentTarget = findCurrentTarget(targetNode);
-            if (currentTarget != null) targetNode = currentTarget;
+            if (currentTarget != null || isLinkerGraphTarget(targetNode)) targetNode = currentTarget;
             Direction configuredFace = configuredDirection(node, "face");
             ControllerDirectTargetReference target = targetNode == null ? null
                     : ContraptionNetworkLinkerData.directTargetForFace(targetNode, configuredFace);
@@ -4059,6 +4048,11 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 } else if ("wireless_frequency_output".equals(node.type())) {
                     setChannelFrequency(binding, first, second);
                 }
+            }
+        }
+        for(CustomKeyEntry entry : List.copyOf(getCustomKeyEntries())){
+            if(entry.owner == ControllerBindingOwner.GRAPH && !graphOwnedRoutes.containsKey(entry.id())){
+                removeRuntimeCustomKeyEntry(entry.id());
             }
         }
         for (GraphRouteConfig route : graphOwnedRoutes.values()) {
@@ -4099,13 +4093,19 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (binding == null || binding.isBlank() || getChannel(binding) == null) {
             return;
         }
-        if (input && target != null) {
+        if (input && ("discovered_target_input".equals(nodeType) || "linker_face_input".equals(nodeType))) {
             setChannelInputTarget(binding, target);
-        } else if (output && target != null) {
+        } else if (output && ("direct_target_output".equals(nodeType) || "linker_face_output".equals(nodeType))) {
             setChannelDirectTarget(binding, target);
         }
         if ("local_redstone_output".equals(nodeType)) {
             setLocalOutputSide(binding, localSide);
+        }
+        if(("discovered_target_input".equals(nodeType) || "linker_face_input".equals(nodeType)
+                || "direct_target_output".equals(nodeType) || "linker_face_output".equals(nodeType))
+                && !getStoredLinker().isEmpty()){
+            ContraptionNetworkLinkerData.writeChannelBinding(getStoredLinker(), binding,
+                    getDirectTarget(binding), getInputTarget(binding));
         }
     }
 
@@ -4278,6 +4278,14 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Reset one target output to its configured defaults
     private void resetGraphTargetWrite(AdvancedGraphDocument.Node node, Set<String> ports) {
+        if(level != null && !level.isClientSide && (ports.contains("direct_signal")
+                || ports.contains(GraphSignalRange.REDSTONE_SIGNAL_PORT))){
+            ControllerDirectTargetReference target = graphDirectTargetReference(node);
+            if(target != null){
+                ControllerRedstoneCompat.writeTarget(level, target, null, graphDirectSignalSourceId(node), 0);
+            }
+            ControllerRedstoneCompat.clearSource(level, graphDirectSignalSourceId(node));
+        }
         setGraphTargetData(node, ports, port -> graphTargetResetValue(node, port));
     }
 
@@ -4504,10 +4512,16 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (player == null || getLevel() == null || getLevel().isClientSide) {
             return;
         }
-        if (active) {
-            physicalInteractionParticipants.add(player.getUUID());
-        } else {
-            physicalInteractionParticipants.remove(player.getUUID());
+        if(active){
+            com.rieno.gadgetsandgizmos.lib.interaction.BlockInteractionTracker.record(getLevel(), getBlockPos(), player);
+        }
+        // Only controller use begins or ends the piloting session
+        if("use".equals(keyPressed)){
+            if(active){
+                physicalInteractionParticipants.add(player.getUUID());
+            }else{
+                physicalInteractionParticipants.remove(player.getUUID());
+            }
         }
         graphRuntime.enqueuePhysicalInteraction(player, active, remote, keyPressed);
     }
@@ -4537,6 +4551,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     public void receiveNamedControllerEvent(String name, AdvancedGraphDocument.Value data) {
         graphRuntime.enqueueNamedControllerEvent(name,
                 data == null ? AdvancedGraphDocument.Value.number(0) : data);
+    }
+    // Retain the player responsible for a transported graph event
+    public void receiveNamedControllerEvent(String name, AdvancedGraphDocument.Value data, @Nullable UUID playerId){
+        graphRuntime.enqueueNamedControllerEvent(name, data == null ? AdvancedGraphDocument.Value.number(0) : data, playerId);
     }
 
     // Check if the goggles tracker is available
@@ -4609,9 +4627,82 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         sendGraphRuntimeData(graphRuntimeObservers());
     }
 
+    // Read the nearest detection and the complete ordered detection list
+    public AdvancedGraphDocument.Value getShipTrackingValue(String nodeId, String filter, double range, String port) {
+        ServerLevel level = SableLevelApi.serverLevel(getLevel());
+        if (level == null || getLevel().isClientSide) return GraphRuntime.defaultShipTrackingValue(port);
+        long gameTime = level.getGameTime();
+        if (lastShipTrackingSample != gameTime) {
+            lastShipTrackingSample = gameTime;
+            shipTrackingSnapshots.clear();
+            trackedShips.clear();
+        }
+        ShipTrackingSnapshot snapshot = shipTrackingSnapshots.get(nodeId);
+        if (snapshot == null || !Objects.equals(snapshot.filter(), filter)
+                || Double.compare(snapshot.range(), range) != 0) {
+            List<SubLevelTrackingApi.Target> targets = SubLevelTrackingApi.scan(level, trackingOrigin(),
+                    trackingForward(), trackingUp(), SableLevelApi.containingId(this), filter, range,
+                    body -> trackedShipMetadata(body).name(),
+                    body -> trackedShipMetadata(body).controlModule());
+            snapshot = new ShipTrackingSnapshot(filter, range, targets);
+            shipTrackingSnapshots.put(nodeId, snapshot);
+        }
+        if ("count".equals(port)) return AdvancedGraphDocument.Value.number(snapshot.targets().size());
+        if ("ships".equals(port)) return GraphRuntime.fromLibraryValue(GraphValue.list(
+                snapshot.targets().stream().map(this::shipTrackingData).toList()));
+        if (snapshot.targets().isEmpty()) return GraphRuntime.defaultShipTrackingValue(port);
+        GraphValue val = shipTrackingData(snapshot.targets().getFirst()).get(port == null ? "" : port);
+        return val == null ? GraphRuntime.defaultShipTrackingValue(port) : GraphRuntime.fromLibraryValue(val);
+    }
+
+    // Adapt library detections to the addon node's ports
+    private Map<String, GraphValue> shipTrackingData(SubLevelTrackingApi.Target target) {
+        return Map.of("available", GraphValue.bool(true), "distance", GraphValue.number(target.distance()),
+                "coordinates", EntityTelemetryApi.vector(target.position()),
+                "relative_angle", EntityTelemetryApi.angles(target.angles()),
+                "ship_name", GraphValue.string(target.name()), "sub_level", GraphValue.string(target.id().toString()));
+    }
+
+    // Resolve the controller's world-space position and mounted axes
+    private Vec3 trackingOrigin() {
+        return SableTransformApi.toWorldPosition(this, getBlockPos().getCenter());
+    }
+
+    private Vec3 trackingForward() {
+        return SableTransformApi.toWorldDirection(this, getScmDefaultOrientation().forwardVector());
+    }
+
+    private Vec3 trackingUp() {
+        return SableTransformApi.toWorldDirection(this, getScmDefaultOrientation().upVector());
+    }
+
+    private record ShipTrackingSnapshot(String filter, double range, List<SubLevelTrackingApi.Target> targets) {
+    }
+
+    // Resolve both tracker predicates from one body discovery pass
+    private TrackedShipMetadata trackedShipMetadata(dev.ryanhcode.sable.sublevel.SubLevel body){
+        return trackedShips.computeIfAbsent(body.getUniqueId(), id -> {
+            boolean controlModule = false;
+            AdvancedContraptionControllerBlockEntity named = null;
+            for(BlockEntity blockEntity : SubLevelBlockEntityCollector.getBlockEntities(body)){
+                if(blockEntity instanceof ShipControlModuleBlockEntity) controlModule = true;
+                if(blockEntity instanceof AdvancedContraptionControllerBlockEntity acc
+                        && acc.isMountedOnShipControlModule()){
+                    controlModule = true;
+                    if(named == null || acc.getBlockPos().asLong() < named.getBlockPos().asLong()) named = acc;
+                }
+            }
+            return new TrackedShipMetadata(named == null ? "" : named.getShipName(), controlModule);
+        });
+    }
+
+    private record TrackedShipMetadata(String name, boolean controlModule){}
+
     // Get the goggles tracking value
     public AdvancedGraphDocument.Value getGogglesTrackingValue(String selectedPair, String port) {
         GogglesTrackingSnapshot tracking = gogglesTrackingSnapshot(selectedPair);
+        GraphValue extra = tracking.telemetry().get(port == null ? "" : port);
+        if (extra != null) return GraphRuntime.fromLibraryValue(extra);
         return switch (port == null ? "" : port) {
             case "available" -> AdvancedGraphDocument.Value.bool(tracking.available());
             case "holding_player", "is_player" -> AdvancedGraphDocument.Value.bool(
@@ -4676,25 +4767,16 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 : wearer instanceof PlayerMannequinEntity ? "mannequin"
                 : wearer instanceof ArmorStand ? "armor_stand" : "entity";
         Vec3 facing = wearer.getLookAngle();
-        AdvancedGraphDocument.Value lookingAt = emptyTrackingVector();
-        if (wearer instanceof Player player) {
-            double range = Math.max(player.blockInteractionRange(), 8.0D);
-            if (subLevel != null) {
-                Vec3 pos = SableLevelApi.traceTrackedBlock(player, range);
-                if (pos != null) lookingAt = trackingVector(pos.x, pos.y, pos.z);
-            } else {
-                HitResult hit = player.pick(range, 0.0F, false);
-                if (hit.getType() == HitResult.Type.BLOCK && hit instanceof BlockHitResult blockHit) {
-                    BlockPos pos = blockHit.getBlockPos();
-                    lookingAt = trackingVector(pos.getX(), pos.getY(), pos.getZ());
-                }
-            }
-        }
+        double range = wearer instanceof Player player ? Math.max(player.blockInteractionRange(), 8.0D) : 8.0D;
+        Map<String, GraphValue> telemetry = EntityTelemetryApi.sample(wearer, trackingOrigin(),
+                trackingForward(), trackingUp(), getLevel().dimension().location().toString(), range);
+        AdvancedGraphDocument.Value lookingAt = telemetry.get("looking_at_block").asBoolean()
+                ? GraphRuntime.fromLibraryValue(telemetry.get("look_block_position")) : emptyTrackingVector();
         return new GogglesTrackingSnapshot(true, new Vec3(feet.x, feet.y, feet.z),
                 wearer.level().dimension().location().toString(),
                 subLevelId == null ? "" : subLevelId.toString(), wearerType,
                 wearer.getDisplayName().getString(), wearer.getUUID().toString(),
-                trackingVector(facing.x, facing.y, facing.z), lookingAt);
+                trackingVector(facing.x, facing.y, facing.z), lookingAt, telemetry);
     }
 
     // Get the portable tracking value
@@ -4745,11 +4827,12 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                                            String subLevel, String wearerType, String wearerName,
                                            String wearerUuid,
                                            AdvancedGraphDocument.Value playerFacing,
-                                           AdvancedGraphDocument.Value lookingAt) {
+                                           AdvancedGraphDocument.Value lookingAt,
+                                           Map<String, GraphValue> telemetry) {
         // Create an unavailable goggles tracking snapshot
         private static GogglesTrackingSnapshot unavailable() {
             return new GogglesTrackingSnapshot(false, Vec3.ZERO, "", "", "", "", "",
-                    emptyTrackingVector(), emptyTrackingVector());
+                    emptyTrackingVector(), emptyTrackingVector(), EntityTelemetryApi.unavailable());
         }
     }
 
@@ -5081,6 +5164,40 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 keyCodes.add(keyCode);
             }
         }
+    }
+
+    // Carry the player behind a validated display or goggles interaction
+    public boolean handleHudInteraction(ServerPlayer player, String nodeId, String interactionId, AdvancedGraphDocument.Value value){
+        com.rieno.gadgetsandgizmos.lib.interaction.BlockInteractionTracker.record(getLevel(), getBlockPos(), player);
+        return graphRuntime.withInteractionPlayer(player.getUUID(), () -> handleHudInteraction(nodeId, interactionId, value));
+    }
+    public boolean handleHudElementInteraction(ServerPlayer player, String nodeId, String interactionId, AdvancedGraphDocument.Value value){
+        com.rieno.gadgetsandgizmos.lib.interaction.BlockInteractionTracker.record(getLevel(), getBlockPos(), player);
+        return graphRuntime.withInteractionPlayer(player.getUUID(), () -> handleHudElementInteraction(nodeId, interactionId, value));
+    }
+    public boolean handleHudButtonInteraction(ServerPlayer player, String nodeId, String interactionId){
+        return graphRuntime.withInteractionPlayer(player.getUUID(), () -> handleHudButtonInteraction(nodeId, interactionId));
+    }
+    public boolean handleHudToggleInteraction(ServerPlayer player, String nodeId, String interactionId){
+        return graphRuntime.withInteractionPlayer(player.getUUID(), () -> handleHudToggleInteraction(nodeId, interactionId));
+    }
+
+    // Attribute input devices and portable controller actions before they queue graph work
+    public void runGraphInteraction(ServerPlayer player, Runnable action){
+        if(player == null) return;
+        if(getLevel() != null && getLevel().getBlockEntity(getBlockPos()) == this){
+            com.rieno.gadgetsandgizmos.lib.interaction.BlockInteractionTracker.record(getLevel(), getBlockPos(), player);
+        }
+        graphRuntime.withInteractionPlayer(player.getUUID(), () -> { action.run(); return null; });
+    }
+    public void handleMouseInput(ServerPlayer player, String input, double value, boolean active){
+        runGraphInteraction(player, () -> handleMouseInput(input, value, active));
+    }
+    public void applyHardwareControllerInput(ServerPlayer player, Map<String, Double> values){
+        runGraphInteraction(player, () -> applyHardwareControllerInput(values));
+    }
+    public void handleControllerKeyInput(ServerPlayer player, String channelId, boolean pressed){
+        runGraphInteraction(player, () -> handleControllerKeyInput(channelId, pressed));
     }
 
     // Handle the HUD interaction
@@ -5887,7 +6004,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Get the graph redstone power
     private static int graphRedstonePower(AdvancedGraphDocument.Node node, TargetAccess target, BlockState state) {
-        Direction face = configuredDirection(node, "face");
+        Direction face = target.side() == null ? configuredDirection(node, "face") : target.side();
         if (face == null) {
             face = singleLinkerFace(node);
         }
@@ -5930,7 +6047,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 return plane.sampleInputSignal(face);
             }
             BlockPos attachedPos = targetPos.relative(face.getOpposite());
-            if (!targetLevel.isLoaded(attachedPos)) {
+            if (!SubLevelBlockEntityCollector.isTargetLoaded(targetLevel, null, attachedPos)) {
                 return 0;
             }
             BlockState attachedState = targetLevel.getBlockState(attachedPos);
@@ -5984,13 +6101,13 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             if (!(raw instanceof CompoundTag target)) continue;
             ControllerDiscoveryNode discovery = ControllerDiscoveryNode.fromTag(target);
             if (discovery == null || !targetId.equals(discovery.nodeId())) continue;
-            CompoundTag data = node.data().copy();
+            CompoundTag data = CompoundTagCopies.copyExcept(node.data(), Set.of(
+                    AdvancedGraphCatalog.DATA_TARGET_BINDINGS_TAG, AdvancedGraphCatalog.DATA_TARGETS_TAG,
+                    GRAPH_DATA_SCHEMA_REVISIONS_TAG, "Target", "TargetLabel", "TargetData"));
             data.putString("Target", discovery.nodeId());
             data.putString("TargetLabel", discovery.label().isBlank()
                     ? discovery.nodeId() : discovery.label());
             data.put("TargetData", discovery.toTag());
-            data.remove(AdvancedGraphCatalog.DATA_TARGET_BINDINGS_TAG);
-            data.remove(AdvancedGraphCatalog.DATA_TARGETS_TAG);
             Direction face = selectedDataTargetFace(node, discovery);
             if (face != null) {
                 putGraphDefault(data, "face", "direction", face.getSerializedName());
@@ -6285,7 +6402,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (discovery == null) {
             return null;
         }
-        return ContraptionNetworkLinkerData.directTargetForFace(discovery, configuredDirection(node, "face"));
+        Direction face = selectedDataTargetFace(node, discovery);
+        return ContraptionNetworkLinkerData.directTargetForFace(discovery,
+                face == null ? configuredDirection(node, "face") : face);
     }
 
     // Get every node in the root graph and its function bodies
@@ -6326,6 +6445,13 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)) {
             if (!"get_block_data".equals(node.type()) && !"set_block_data".equals(node.type())) continue;
             TargetAccess target = resolveGraphTarget(node);
+            if(!node.data().getList(AdvancedGraphCatalog.DATA_TARGETS_TAG, Tag.TAG_COMPOUND).isEmpty()){
+                CompoundTag revisions = multiDataTargetSchemaRevisions(node);
+                if(revisions != null && !revisions.equals(node.data().getCompound(GRAPH_DATA_SCHEMA_REVISIONS_TAG))){
+                    return true;
+                }
+                continue;
+            }
             if (target == null) continue;
             BlockEntity blockEntity = target.level().getBlockEntity(target.pos());
             if (!BlockEntityDataAdapterRegistry.isDataSchemaReady(blockEntity)) continue;
@@ -6419,6 +6545,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Refresh one composed Get Data or Set Data target schema
     private void refreshMultiDataTargetPorts(AdvancedGraphDocument.Node node) {
         if (node == null || level == null) return;
+        CompoundTag revisions = multiDataTargetSchemaRevisions(node);
+        if(revisions == null) return;
         boolean writable = "set_block_data".equals(node.type());
         List<GraphTargetPortLayout.Target> targets = new ArrayList<>();
         ListTag configured = node.data().getList(AdvancedGraphCatalog.DATA_TARGETS_TAG, Tag.TAG_COMPOUND);
@@ -6430,8 +6558,29 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         if (targets.size() != configured.size()) return;
         applyDataTargetPortLayout(node, targets, writable);
+        node.data().put(GRAPH_DATA_SCHEMA_REVISIONS_TAG, revisions);
         ControllerDiscoveryNode primary = ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
         configureDataTargetFaceOptions(node, primary);
+    }
+
+    // Retain each composed target's revision after its schema is refreshed
+    private @Nullable CompoundTag multiDataTargetSchemaRevisions(AdvancedGraphDocument.Node node){
+        CompoundTag revisions = new CompoundTag();
+        for(Tag raw : node.data().getList(AdvancedGraphCatalog.DATA_TARGETS_TAG, Tag.TAG_COMPOUND)){
+            if(!(raw instanceof CompoundTag encoded)) return null;
+            ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(encoded);
+            if(target == null) return null;
+            if(ContraptionDiagramControllerCompat.isTarget(target)){
+                revisions.putLong(target.nodeId(), 0L);
+                continue;
+            }
+            GraphDataTarget resolved = resolveGraphDataTarget(level, node, target);
+            if(resolved == null) return null;
+            BlockEntity blockEntity = resolved.level().getBlockEntity(resolved.pos());
+            if(!BlockEntityDataAdapterRegistry.isDataSchemaReady(blockEntity)) return null;
+            revisions.putLong(target.nodeId(), BlockEntityDataAdapterRegistry.dataSchemaRevision(blockEntity));
+        }
+        return revisions;
     }
 
     // Keep valid inline MAP breakout ports when a target refresh replaces its derived port schema.
@@ -6594,7 +6743,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         dynamicInputs.remove("face");
         inputOptions.remove("face");
 
-        List<Direction> directions = target == null
+        List<Direction> directions = isPickedGraphTarget(target) ? List.of(Direction.values()) : target == null
                 || !ContraptionNetworkLinkerData.nodeUsesFaceOptions(target)
                 ? List.of()
                 : ContraptionNetworkLinkerData.faceOptionsForNode(target).stream()
@@ -6609,7 +6758,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 values.add(StringTag.valueOf(direction.getSerializedName()));
             }
             inputOptions.put("face", values);
-            Direction configured = configuredDirection(node, "face");
+            Direction selected = selectedDataTargetFace(node, target);
+            Direction configured = selected == null ? configuredDirection(node, "face") : selected;
             if (!directions.contains(configured)) {
                 putGraphDefault(node.data(), "face", "direction",
                         directions.getFirst().getSerializedName());
@@ -6774,11 +6924,20 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return new GraphTargetPortLayout.Target(target.nodeId(), label, entries);
     }
 
-    // Resolve one data target through its face-bound linker plane
+    // Resolve a moving data target and its face-bound linker support
     public static @Nullable GraphDataTarget resolveGraphDataTarget(
             @Nullable Level ownerLevel, @Nullable AdvancedGraphDocument.Node node,
             @Nullable ControllerDiscoveryNode target) {
         if (ownerLevel == null || target == null || target.blockPos() == null) return null;
+        Direction side = selectedDataTargetFace(node, target);
+        if(isPickedGraphTarget(target)){
+            var reference = ControllerRedstoneCompat.resolveMovingTarget(ownerLevel,
+                    target.asDirectTargetReference().withFace(side));
+            if(reference == null) return null;
+            target = target.withLocation(reference.subLevelId(), reference.blockPos());
+            updatePickedGraphTargetLocation(node, target);
+            side = SubLevelBlockTargetApi.resolveFace(ownerLevel, reference);
+        }
         BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
                 ownerLevel, target.subLevelId(), target.blockPos());
         Level targetLevel = blockEntity != null && blockEntity.getLevel() != null
@@ -6786,15 +6945,16 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 : SubLevelBlockEntityCollector.resolveTargetLevel(ownerLevel, target.subLevelId());
         if (targetLevel == null) return null;
         BlockPos targetPos = blockEntity == null ? target.blockPos() : blockEntity.getBlockPos();
-        if (!targetLevel.isLoaded(targetPos) || targetLevel.getBlockState(targetPos).isAir()) return null;
-        Direction side = selectedDataTargetFace(node, target);
+        if (!SubLevelBlockEntityCollector.isTargetLoaded(targetLevel, target.subLevelId(), targetPos)
+                || targetLevel.getBlockState(targetPos).isAir()) return null;
         if (!(targetLevel.getBlockState(targetPos).getBlock() instanceof ContraptionNetworkLinkerPlaneBlock)
                 && !"createthrusters:contraption_network_linker_plane".equalsIgnoreCase(target.blockId())) {
             return new GraphDataTarget(targetLevel, targetPos, side);
         }
         if (side == null) return null;
         BlockPos attachedPos = targetPos.relative(side.getOpposite());
-        if (!targetLevel.isLoaded(attachedPos) || targetLevel.getBlockState(attachedPos).isAir()) return null;
+        if (!SubLevelBlockEntityCollector.isTargetLoaded(targetLevel, target.subLevelId(), attachedPos)
+                || targetLevel.getBlockState(attachedPos).isAir()) return null;
         return new GraphDataTarget(targetLevel, attachedPos, side);
     }
 
@@ -6809,12 +6969,34 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 .filter(Objects::nonNull)
                 .distinct()
                 .toList();
-        if (faces.isEmpty()) return null;
+        if (faces.isEmpty()){
+            if(stored != null) return stored;
+            return node != null && isPickedGraphTarget(target) ? configuredDirection(node, "face") : null;
+        }
         if (stored != null && faces.contains(stored)) return stored;
         boolean primary = node != null && target.nodeId().equals(node.data().getString("Target"));
         Direction configured = primary ? configuredDirection(node, "face") : null;
         if (configured != null && faces.contains(configured)) return configured;
         return faces.getFirst();
+    }
+
+    // Identify direct block picks whose stable bindings use native block tracking
+    private static boolean isPickedGraphTarget(@Nullable ControllerDiscoveryNode target){
+        return target != null && target.nodeId().startsWith("scm_picker:");
+    }
+
+    // Keep picker previews at the current block without changing generated port or face keys
+    private static void updatePickedGraphTargetLocation(@Nullable AdvancedGraphDocument.Node node,
+            ControllerDiscoveryNode target){
+        if(node == null || !isPickedGraphTarget(target)) return;
+        CompoundTag data = node.data();
+        ControllerDiscoveryNode primary = ControllerDiscoveryNode.fromTag(data.getCompound("TargetData"));
+        if(primary != null && primary.nodeId().equals(target.nodeId())) data.put("TargetData", target.toTag());
+        ListTag targets = data.getList(AdvancedGraphCatalog.DATA_TARGETS_TAG, Tag.TAG_COMPOUND);
+        for(int idx = 0; idx < targets.size(); idx++){
+            ControllerDiscoveryNode current = ControllerDiscoveryNode.fromTag(targets.getCompound(idx));
+            if(current != null && current.nodeId().equals(target.nodeId())) targets.set(idx, target.toTag());
+        }
     }
 
     // Format a generated data port label
@@ -6837,7 +7019,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Get the graph readable data port labels
     public static CompoundTag graphReadableDataPortLabels(Level level, BlockPos pos) {
         CompoundTag labels = new CompoundTag();
-        if (level == null || pos == null || !level.isLoaded(pos)) return labels;
+        if (level == null || pos == null || !SubLevelBlockEntityCollector.isTargetLoaded(level, null, pos)) return labels;
         LinkedTypewriterGraphCompat.readableLabels(level.getBlockEntity(pos)).forEach(labels::putString);
         return labels;
     }
@@ -6847,7 +7029,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                                              @Nullable String aeroworksSectionId) {
         // Resolve the target and its block state ports
         CompoundTag ports = new CompoundTag();
-        if (level == null || pos == null || !level.isLoaded(pos)) return ports;
+        if (level == null || pos == null || !SubLevelBlockEntityCollector.isTargetLoaded(level, null, pos)) return ports;
         BlockState state = level.getBlockState(pos);
         BlockEntity blockEntity = level.getBlockEntity(pos);
         AeroworksControllerCompat.ConsoleSection aeroworksSection =
@@ -7097,7 +7279,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             return;
         }
         boolean mergeLikePorts = node.data().getBoolean(AdvancedGraphCatalog.MERGE_LIKE_PORTS_TAG);
-        GraphTargetPortLayout.Layout layout = GraphTargetPortLayout.compose(targets, mergeLikePorts);
+        Map<String, String> stableTargetIds = new LinkedHashMap<>();
+        CompoundTag portIds = node.data().getCompound("DataTargetPortIds");
+        portIds.getAllKeys().forEach(id -> stableTargetIds.put(id, portIds.getString(id)));
+        GraphTargetPortLayout.Layout layout = GraphTargetPortLayout.compose(targets, mergeLikePorts, stableTargetIds);
         CompoundTag dynamicInputs = new CompoundTag();
         CompoundTag dynamicOutputs = new CompoundTag();
         if (writable) {
@@ -7173,7 +7358,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Check if this is a graph container target
     public static boolean isGraphContainerTarget(Level level, BlockPos pos) {
-        if (level == null || pos == null || !level.isLoaded(pos)) return false;
+        if (level == null || pos == null || !SubLevelBlockEntityCollector.isTargetLoaded(level, null, pos)) return false;
         BlockState state = level.getBlockState(pos);
         BlockEntity blockEntity = level.getBlockEntity(pos);
         if (!BlockEntityDataAdapterRegistry.readableData(blockEntity).isEmpty()
@@ -7191,7 +7376,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Get the graph data port options
     public static CompoundTag graphDataPortOptions(Level level, BlockPos pos, boolean writable) {
         CompoundTag opts = new CompoundTag();
-        if (level == null || pos == null || !level.isLoaded(pos)) return opts;
+        if (level == null || pos == null || !SubLevelBlockEntityCollector.isTargetLoaded(level, null, pos)) return opts;
         BlockState state = level.getBlockState(pos);
         BlockEntity blockEntity = level.getBlockEntity(pos);
         BlockStateDataAccess.options(state, writable).forEach((port, entries) -> {
@@ -7454,12 +7639,71 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return id == null ? "" : id + " x " + stack.getAmount();
     }
 
-    // Resolve the graph target
+    // Resolve the selected loaded camera through the existing target API
+    public @Nullable CameraBlockEntity graphCamera(AdvancedGraphDocument.Node node, AdvancedGraphDocument.Value val){
+        AdvancedGraphDocument.Node selected = node;
+        if(val != null && "target".equals(val.type()) && val.payload().contains("BlockPos")){
+            CompoundTag data = node.data().copy();
+            data.put("TargetData", val.payload().copy());
+            selected = new AdvancedGraphDocument.Node(node.id(), node.type(), node.label(), node.x(), node.y(), data);
+        }
+        TargetAccess target = resolveGraphTarget(selected);
+        if(target == null) return null;
+        return target.level().getBlockEntity(target.pos()) instanceof CameraBlockEntity camera ? camera : null;
+    }
+
+    // Read backend interaction ownership through the same loaded target used for graph signals
+    public @Nullable UUID graphInputPlayer(AdvancedGraphDocument.Node node){
+        return graphInputPlayer(node, true);
+    }
+    // Read retained ownership when sampling a player's personal HUD
+    public @Nullable UUID graphInputPlayer(AdvancedGraphDocument.Node node, boolean recent){
+        if(node == null || level == null) return null;
+        TargetAccess target = null;
+        if(node.data().contains("TargetData") && ("discovered_target_input".equals(node.type())
+                || "linker_face_input".equals(node.type()) || "get_block_data".equals(node.type()))){
+            target = resolveGraphTarget(node);
+        }else if("local_redstone_input".equals(node.type())){
+            Direction face = configuredDirection(node, "face");
+            if(face != null) target = new TargetAccess(level, getBlockPos().relative(face), null);
+        }else if("controller_channel_input".equals(node.type()) || "gamepad_input".equals(node.type())
+                || "mouse_input".equals(node.type()) || "event_key".equals(node.type())){
+            target = new TargetAccess(level, getBlockPos(), null);
+        }
+        if(target == null) return null;
+        var origin = recent ? com.rieno.gadgetsandgizmos.lib.interaction.BlockInteractionTracker.recent(target.level(), target.pos(), 4)
+                : com.rieno.gadgetsandgizmos.lib.interaction.BlockInteractionTracker.last(target.level(), target.pos());
+        return origin == null ? null : origin.playerId();
+    }
+
+    // Enter the selected camera only for the player responsible for this execution
+    public void controlGraphCamera(AdvancedGraphDocument.Node node, AdvancedGraphDocument.Value target, @Nullable UUID playerId){
+        CameraBlockEntity camera = graphCamera(node, target);
+        if(camera == null || level == null || level.getServer() == null) return;
+        var ref = com.rieno.gadgetsandgizmos.lib.view.ViewReference.of(camera);
+        if(playerId != null){
+            ServerPlayer player = level.getServer().getPlayerList().getPlayer(playerId);
+            if(player != null) com.rieno.gadgetsandgizmos.lib.view.RemoteViewSessions.open(player, ref);
+            return;
+        }
+    }
+
+    // Resolve a graph target through moving assemblies and loaded linker supports
     private TargetAccess resolveGraphTarget(AdvancedGraphDocument.Node node) {
         ControllerDiscoveryNode discovery = ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
         if (discovery == null || discovery.blockPos() == null || level == null) return null;
+        if(isLinkerGraphTarget(discovery)){
+            ControllerDiscoveryNode current = findCurrentTarget(discovery);
+            if(current == null || !graphTargetFaceAvailable(node, current)) return null;
+            discovery = current;
+            node.data().putString("Target", current.nodeId());
+            node.data().put("TargetData", current.toTag());
+        }
         ControllerDirectTargetReference resolvedReference =
-                ControllerRedstoneCompat.resolveMovingTarget(level, discovery.asDirectTargetReference());
+                ControllerRedstoneCompat.resolveMovingTarget(level, isPickedGraphTarget(discovery)
+                        ? discovery.asDirectTargetReference().withFace(selectedDataTargetFace(node, discovery))
+                        : discovery.asDirectTargetReference());
+        if(isPickedGraphTarget(discovery) && resolvedReference == null) return null;
         if (resolvedReference != null && (!Objects.equals(discovery.subLevelId(), resolvedReference.subLevelId())
                 || !Objects.equals(discovery.blockPos(), resolvedReference.blockPos())
                 || !Objects.equals(discovery.nodeId(), ContraptionNetworkLinkerData.baseNodeIdFromTargetId(resolvedReference.targetId())))) {
@@ -7474,6 +7718,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             node.data().putString("Target", discovery.nodeId());
             node.data().putString("TargetLabel", discovery.label().isBlank() ? discovery.nodeId() : discovery.label());
             node.data().put("TargetData", discovery.toTag());
+            updatePickedGraphTargetLocation(node, discovery);
         }
         BlockEntity blockEntity =
                 SimulatedHelper.findLoadedBlockEntityExact(level, discovery.subLevelId(), discovery.blockPos());
@@ -7507,7 +7752,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             return null;
         }
         BlockPos targetPos = blockEntity != null ? blockEntity.getBlockPos() : discovery.blockPos();
-        TargetAccess target = new TargetAccess(targetLevel, targetPos, configuredDirection(node, "face"));
+        Direction face = isPickedGraphTarget(discovery)
+                ? SubLevelBlockTargetApi.resolveFace(level, resolvedReference) : configuredDirection(node, "face");
+        TargetAccess target = new TargetAccess(targetLevel, targetPos, face);
         return resolveAttachedDataTarget(node, target);
     }
 
@@ -7554,7 +7801,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             return null;
         }
         BlockPos attachedPos = target.pos().relative(side.getOpposite());
-        if (!target.level().isLoaded(attachedPos)
+        if (!SubLevelBlockEntityCollector.isTargetLoaded(target.level(), null, attachedPos)
                 || target.level().getBlockState(attachedPos).isAir()) {
             return null;
         }
@@ -7578,7 +7825,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             return target;
         }
         BlockPos attachedPos = target.pos().relative(side.getOpposite());
-        if (!target.level().isLoaded(attachedPos) || target.level().getBlockState(attachedPos).isAir()) {
+        if (!SubLevelBlockEntityCollector.isTargetLoaded(target.level(), null, attachedPos)
+                || target.level().getBlockState(attachedPos).isAir()) {
             return target;
         }
         return new TargetAccess(target.level(), attachedPos, side);
@@ -7587,17 +7835,27 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Find the current target
     private ControllerDiscoveryNode findCurrentTarget(ControllerDiscoveryNode stale) {
         if (stale == null || level == null) return null;
+        if(isLinkerGraphTarget(stale)){
+            ControllerDirectTargetReference moved = ControllerRedstoneCompat.resolveMovingTarget(level, stale.asDirectTargetReference());
+            if(moved != null && moved.blockPos() != null){
+                stale = new ControllerDiscoveryNode(ContraptionNetworkLinkerData.baseNodeIdFromTargetId(moved.targetId()),
+                        stale.kind(), moved.groupId(), stale.blockId(), stale.label(), moved.subLevelId(), moved.blockPos());
+            }
+        }
         ControllerDiscoveryNode sameLocation = null;
         boolean ambiguousSameLocation = false;
         ControllerDiscoveryNode exact = null;
         ControllerDiscoveryNode fallback = null;
-        for (ControllerDiscoveryNode candidate : getAssignableTargets()) {
-            if (!graphTargetExists(candidate)) continue;
+        boolean linked = isLinkerGraphTarget(stale);
+        List<ControllerDiscoveryNode> candidates = linked
+                ? ContraptionNetworkLinkerData.toDiscoveryNodes(getStoredLinker()) : getAssignableTargets();
+        for (ControllerDiscoveryNode candidate : candidates) {
+            if (!linked && !graphTargetExists(candidate)) continue;
             if (candidate.nodeId().equals(stale.nodeId())) {
                 exact = candidate;
                 continue;
             }
-            if (candidate.kind() == stale.kind()
+            if ((linked || candidate.kind() == stale.kind())
                     && candidate.blockId().equals(stale.blockId())
                     && Objects.equals(candidate.subLevelId(), stale.subLevelId())
                     && Objects.equals(candidate.blockPos(), stale.blockPos())) {
@@ -7609,11 +7867,13 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 }
                 continue;
             }
-            if (!candidate.blockId().equals(stale.blockId()) || !candidate.label().equals(stale.label())) continue;
+            if (linked || !candidate.blockId().equals(stale.blockId()) || !candidate.label().equals(stale.label())) continue;
             if (fallback != null) return null;
             fallback = candidate;
         }
-        return sameLocation != null && !ambiguousSameLocation ? sameLocation : exact != null ? exact : fallback;
+        ControllerDiscoveryNode res = exact != null ? exact
+                : sameLocation != null && !ambiguousSameLocation ? sameLocation : fallback;
+        return res;
     }
 
     // Check if the graph target exists
@@ -7679,6 +7939,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Refresh the current target
     private ControllerDiscoveryNode refreshCurrentTarget(ControllerDiscoveryNode stale) {
         if (stale == null || stale.blockPos() == null || level == null) return null;
+        if(isLinkerGraphTarget(stale)) return findCurrentTarget(stale);
         ControllerDirectTargetReference resolved =
                 ControllerRedstoneCompat.resolveMovingTarget(level, stale.asDirectTargetReference());
         if (resolved != null && resolved.blockPos() != null) {
@@ -7762,13 +8023,54 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Reconcile the graph targets
     private boolean reconcileGraphTargets(AdvancedGraphDocument graph) {
+        if(getStoredLinker().isEmpty()) return false;
+        List<ControllerDiscoveryNode> linkerTargets = graphLinkerTargets(getStoredLinker());
         boolean changed = false;
         for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)) {
+            ControllerDiscoveryNode source = ControllerDiscoveryNode.fromTag(node.data().getCompound("SourceData"));
+            if(isLinkerGraphTarget(source)){
+                ControllerDiscoveryNode currentSource = retainedCurrentLinkerGraphTarget(node, source, linkerTargets);
+                if(currentSource == null){
+                    node.data().remove("SourceData");
+                    node.data().remove("Source");
+                    node.data().remove("SourceLabel");
+                    node.data().getCompound("Defaults").remove("source");
+                    changed = true;
+                }else if(!currentSource.equals(source)){
+                    remapGraphTargetSelection(node, source, currentSource);
+                    node.data().put("SourceData", currentSource.toTag());
+                    node.data().putString("Source", currentSource.nodeId());
+                    node.data().putString("SourceLabel", currentSource.label());
+                    changed = true;
+                }
+            }
+            ListTag targets = node.data().getList(AdvancedGraphCatalog.DATA_TARGETS_TAG, Tag.TAG_COMPOUND);
+            ListTag retainedTargets = new ListTag();
+            for(Tag raw : targets){
+                ControllerDiscoveryNode selected = ControllerDiscoveryNode.fromTag((CompoundTag) raw);
+                ControllerDiscoveryNode currentSelected = isLinkerGraphTarget(selected)
+                        ? retainedCurrentLinkerGraphTarget(node, selected, linkerTargets) : selected;
+                if(currentSelected != null){
+                    if(!currentSelected.equals(selected)) remapGraphTargetSelection(node, selected, currentSelected);
+                    retainedTargets.add(currentSelected.toTag());
+                }
+            }
+            if(!targets.equals(retainedTargets)){
+                node.data().put(AdvancedGraphCatalog.DATA_TARGETS_TAG, retainedTargets);
+                changed = true;
+            }
             CompoundTag workerTargets = node.data().getCompound("WorkerTargets");
-            for (String port : workerTargets.getAllKeys()) {
+            for (String port : List.copyOf(workerTargets.getAllKeys())) {
                 ControllerDiscoveryNode staleWorker = ControllerDiscoveryNode.fromTag(
                         workerTargets.getCompound(port));
-                ControllerDiscoveryNode currentWorker = refreshCurrentTarget(staleWorker);
+                ControllerDiscoveryNode currentWorker = isLinkerGraphTarget(staleWorker)
+                        ? retainedCurrentLinkerGraphTarget(node, staleWorker, linkerTargets) : refreshCurrentTarget(staleWorker);
+                if(currentWorker == null && isLinkerGraphTarget(staleWorker)){
+                    workerTargets.remove(port);
+                    node.data().getCompound("Defaults").remove(port);
+                    changed = true;
+                    continue;
+                }
                 if (currentWorker == null || currentWorker.equals(staleWorker)) continue;
                 workerTargets.put(port, currentWorker.toTag());
                 putGraphDefault(node.data(), port, "target", currentWorker.nodeId());
@@ -7776,15 +8078,145 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             }
             if (!workerTargets.isEmpty()) node.data().put("WorkerTargets", workerTargets);
             ControllerDiscoveryNode stale = ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
-            ControllerDiscoveryNode current = refreshCurrentTarget(stale);
+            ControllerDiscoveryNode current = isLinkerGraphTarget(stale)
+                    ? retainedCurrentLinkerGraphTarget(node, stale, linkerTargets) : refreshCurrentTarget(stale);
+            if(isLinkerGraphTarget(stale) && current == null){
+                if(isGraphTargetOutputNode(node)) resetGraphTargetWrite(node, graphTargetResetPorts(graph, node));
+                ControllerRedstoneCompat.clearSource(level, graphDirectSignalSourceId(node));
+                node.data().remove("Target");
+                node.data().remove("TargetLabel");
+                node.data().remove("TargetData");
+                node.data().getCompound("Defaults").remove("target");
+                changed = true;
+                continue;
+            }
             if (current != null && !current.equals(stale)) {
+                remapGraphTargetSelection(node, stale, current);
                 node.data().putString("Target", current.nodeId());
                 node.data().putString("TargetLabel", current.label().isBlank() ? current.nodeId() : current.label());
                 node.data().put("TargetData", current.toTag());
                 changed = true;
             }
         }
+        if(changed) graph.setRevision(graph.revision() + 1);
         return changed;
+    }
+
+    // Linker targets require current membership even while their blocks still exist
+    private static boolean isLinkerGraphTarget(@Nullable ControllerDiscoveryNode target){
+        return target != null && ContraptionNetworkLinkerData.isLinkerFaceTarget(target.asDirectTargetReference());
+    }
+
+    // Keep a removed face unavailable instead of choosing another face automatically
+    private static boolean graphTargetFaceAvailable(AdvancedGraphDocument.Node node, ControllerDiscoveryNode target){
+        Direction face = configuredDirection(node, "face");
+        return !ContraptionNetworkLinkerData.nodeUsesFaceOptions(target) || face == null
+                || ContraptionNetworkLinkerData.faceOptionsForNode(target).stream().anyMatch(option -> option.face() == face);
+    }
+
+    // Withdraw held signals from single and composed targets whose linker membership is unavailable
+    private boolean hasUnavailableLinkerGraphTarget(AdvancedGraphDocument.Node node, boolean absent){
+        List<ControllerDiscoveryNode> selected = new ArrayList<>();
+        ControllerDiscoveryNode primary = ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
+        if(primary != null) selected.add(primary);
+        for(Tag raw : node.data().getList(AdvancedGraphCatalog.DATA_TARGETS_TAG, Tag.TAG_COMPOUND)){
+            ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag((CompoundTag) raw);
+            if(target != null) selected.add(target);
+        }
+        for(ControllerDiscoveryNode target : selected){
+            if(!isLinkerGraphTarget(target)) continue;
+            ControllerDiscoveryNode current = absent ? null : findCurrentTarget(target);
+            if(current == null || retainedLinkerGraphTarget(node, target, List.of(current)) == null) return true;
+        }
+        return false;
+    }
+
+    // Include SCM membership when retaining selections while keeping signal discovery unchanged
+    private static List<ControllerDiscoveryNode> graphLinkerTargets(ItemStack linker){
+        return ContraptionNetworkLinkerData.toDiscoveryNodes(ContraptionNetworkLinkerData.readTargets(linker).stream()
+                .map(target -> target.mode() == ContraptionNetworkLinkerData.LinkMode.SCM
+                        ? new ContraptionNetworkLinkerData.LinkedTarget(target.blockPos(), target.subLevelId(),
+                        target.blockId(), target.label(), ContraptionNetworkLinkerData.LinkMode.OUTPUT,
+                        target.scope(), target.faces()) : target).toList());
+    }
+
+    // Follow a Sable assembly remap before checking the retained linker's membership
+    private @Nullable ControllerDiscoveryNode retainedCurrentLinkerGraphTarget(AdvancedGraphDocument.Node node,
+            ControllerDiscoveryNode stale, List<ControllerDiscoveryNode> linkerTargets){
+        ControllerDiscoveryNode res = retainedLinkerGraphTarget(node, stale, linkerTargets);
+        if(res != null || stale == null || level == null) return res;
+        ControllerDirectTargetReference moved = ControllerRedstoneCompat.resolveMovingTarget(level, stale.asDirectTargetReference());
+        if(moved == null || moved.blockPos() == null) return null;
+        ControllerDiscoveryNode relocated = new ControllerDiscoveryNode(
+                ContraptionNetworkLinkerData.baseNodeIdFromTargetId(moved.targetId()), stale.kind(), moved.groupId(),
+                stale.blockId(), stale.label(), moved.subLevelId(), moved.blockPos());
+        return retainedLinkerGraphTarget(node, relocated, linkerTargets);
+    }
+
+    // Update references without changing a retained target's generated ports or selected face
+    private static void remapGraphTargetSelection(AdvancedGraphDocument.Node node,
+            ControllerDiscoveryNode stale, ControllerDiscoveryNode current){
+        String prevId = stale.nodeId(), nextId = current.nodeId();
+        if(prevId.equals(nextId)) return;
+        if(!node.data().getList(AdvancedGraphCatalog.DATA_TARGETS_TAG, Tag.TAG_COMPOUND).isEmpty()){
+            CompoundTag portIds = node.data().getCompound("DataTargetPortIds");
+            String stableId = portIds.contains(prevId) ? portIds.getString(prevId) : prevId;
+            portIds.remove(prevId);
+            portIds.putString(nextId, stableId);
+            node.data().put("DataTargetPortIds", portIds);
+        }
+        CompoundTag faces = node.data().getCompound(AdvancedGraphCatalog.DATA_TARGET_FACES_TAG);
+        if(faces.contains(prevId)){
+            Tag face = faces.get(prevId).copy();
+            faces.remove(prevId);
+            faces.put(nextId, face);
+        }
+        CompoundTag bindings = node.data().getCompound(AdvancedGraphCatalog.DATA_TARGET_BINDINGS_TAG);
+        for(String port : bindings.getAllKeys()){
+            for(Tag raw : bindings.getList(port, Tag.TAG_COMPOUND)){
+                CompoundTag binding = (CompoundTag) raw;
+                if(prevId.equals(binding.getString("Target"))) binding.putString("Target", nextId);
+            }
+        }
+        CompoundTag defaults = node.data().getCompound("Defaults");
+        for(String port : List.of("target", "source")){
+            CompoundTag entry = defaults.getCompound(port);
+            if(prevId.equals(entry.getCompound("Payload").getString("Value"))){
+                putGraphDefault(node.data(), port, "target", nextId);
+            }
+        }
+    }
+
+    // Retain a physical target only while its previously selected face remains on the linker
+    private static @Nullable ControllerDiscoveryNode retainedLinkerGraphTarget(AdvancedGraphDocument.Node node,
+            ControllerDiscoveryNode stale, List<ControllerDiscoveryNode> linkerTargets){
+        if(stale == null) return null;
+        ControllerDiscoveryNode current = matchingLinkerTarget(stale, linkerTargets);
+        if(current == null) return null;
+        Direction face = Direction.byName(node.data().getCompound(AdvancedGraphCatalog.DATA_TARGET_FACES_TAG)
+                .getString(stale.nodeId()));
+        if(face == null && stale.nodeId().equals(node.data().getString("Target"))) face = configuredDirection(node, "face");
+        List<ContraptionNetworkLinkerData.FaceOption> prevFaces = ContraptionNetworkLinkerData.faceOptionsForNode(stale);
+        if(face == null && prevFaces.size() == 1) face = prevFaces.getFirst().face();
+        Direction selected = face;
+        if(selected != null && ContraptionNetworkLinkerData.nodeUsesFaceOptions(current)
+                && ContraptionNetworkLinkerData.faceOptionsForNode(current).stream()
+                .noneMatch(option -> option.face() == selected)) return null;
+        return current;
+    }
+
+    // Match physical membership independently of the linker's current input/output role
+    private static @Nullable ControllerDiscoveryNode matchingLinkerTarget(ControllerDiscoveryNode stale,
+            List<ControllerDiscoveryNode> linkerTargets){
+        ControllerDiscoveryNode res = null;
+        for(ControllerDiscoveryNode candidate : linkerTargets){
+            if(candidate == null) continue;
+            if(candidate.nodeId().equals(stale.nodeId())) return candidate;
+            if(!candidate.hasSameBlockTarget(stale)) continue;
+            if(res != null) return null;
+            res = candidate;
+        }
+        return res;
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -7804,10 +8236,28 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Handle the inserted linker synchronized event
     private void onInsertedLinkerSynchronized(ItemStack linker, boolean forceGraphReplace) {
         super.onInsertedLinkerSynchronized(linker);
-        if (getLevel() == null || getLevel().isClientSide || linker == null || linker.isEmpty()) {
+        if (getLevel() == null || getLevel().isClientSide || linker == null) {
+            return;
+        }
+        graphTargetAccessCache.clear();
+        missingGraphTargetAccessCache.clear();
+        graphTargetAccessCacheTick = Long.MIN_VALUE;
+        invalidateWorkerRoutinePlans();
+        for(AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(activeGraph)){
+            if(hasUnavailableLinkerGraphTarget(node, linker.isEmpty())){
+                ControllerRedstoneCompat.clearSource(level, graphDirectSignalSourceId(node));
+            }
+        }
+        if(linker.isEmpty()){
+            applyGraphBindings(activeGraph);
+            graphRuntime.compile(activeGraph);
+            queueGraphBindingSync();
+            setChanged();
+            sendData();
             return;
         }
         boolean changed = importInsertedLinkerBindings(linker, forceGraphReplace);
+        reconcileGraphTargets();
         refreshDataPorts(draftGraph);
         refreshDataPorts(activeGraph);
         applyGraphBindings(activeGraph);
@@ -7823,6 +8273,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Import the inserted linker bindings
     private boolean importInsertedLinkerBindings(ItemStack linker, boolean forceGraphReplace) {
+        if(linker.isEmpty()) return false;
         if (forceGraphReplace) {
             ContraptionNetworkLinkerData.StoredGraph storedGraph =
                     ContraptionNetworkLinkerData.readSelectedStoredGraph(linker);
@@ -7830,10 +8281,15 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 return replaceGraphFromStoredLinker(storedGraph, true);
             }
         }
-        List<ControllerDiscoveryNode> linkerTargets = ContraptionNetworkLinkerData.toDiscoveryNodes(linker);
+        List<ControllerDiscoveryNode> linkerTargets = graphLinkerTargets(linker);
         HolderLookup.Provider provider = getLevel().registryAccess();
+        AdvancedGraphDocument prev = activeGraph.copy();
         boolean draftChanged = importLinkerBindingsIntoGraph(draftGraph, linker, linkerTargets, provider);
         boolean activeChanged = importLinkerBindingsIntoGraph(activeGraph, linker, linkerTargets, provider);
+        if(activeChanged){
+            resetDeletedGraphTargetWrites(prev, activeGraph);
+            resetDeletedGraphOutputs(prev, activeGraph);
+        }
         if (draftChanged) {
             draftGraph.setRevision(draftGraph.revision() + 1);
         }
@@ -7881,7 +8337,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (graph == null || linker == null || linker.isEmpty() || provider == null) {
             return false;
         }
-        return importLinkerBindingsIntoGraph(graph, linker, ContraptionNetworkLinkerData.toDiscoveryNodes(linker), provider);
+        return importLinkerBindingsIntoGraph(graph, linker, graphLinkerTargets(linker), provider);
     }
 
     // Import the controller data into graph
@@ -8067,6 +8523,40 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (graph == null || provider == null) {
             return false;
         }
+        AdvancedGraphDocument desired = new AdvancedGraphDocument();
+        populateLinkerBindings(desired, channelBindings, customEntryBindings, linkerTargets, provider);
+        Set<String> retained = new HashSet<>();
+        desired.nodes().forEach(node -> retained.add(importedBindingKey(node)));
+        Set<String> retainedBindings = new HashSet<>();
+        for(AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)){
+            ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
+            if(node.data().getBoolean("ImportedLinkerBinding") && isLinkerGraphTarget(target)
+                    && retainedLinkerGraphTarget(node, target, linkerTargets) != null){
+                retained.add(importedBindingKey(node));
+                retainedBindings.add(node.data().getString("BindingId"));
+            }
+        }
+        for(AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)){
+            if(node.data().getBoolean("ImportedLinkerBinding") && !node.data().contains("TargetData")
+                    && retainedBindings.contains(node.data().getString("BindingId"))) retained.add(importedBindingKey(node));
+        }
+        Set<String> seen = new HashSet<>();
+        boolean changed = !GraphReconciliation.removeNodes(graph, node ->
+                node.data().getBoolean("ImportedLinkerBinding")
+                        && (!retained.contains(importedBindingKey(node)) || !seen.add(importedBindingKey(node)))).isEmpty();
+        for(AdvancedGraphDocument.FunctionGraph function : graph.functions()){
+            changed |= !GraphReconciliation.removeNodes(function, node ->
+                    node.data().getBoolean("ImportedLinkerBinding")
+                            && !retained.contains(importedBindingKey(node))).isEmpty();
+        }
+        return populateLinkerBindings(graph, channelBindings, customEntryBindings, linkerTargets, provider) || changed;
+    }
+
+    // Populate the current linker bindings after retired imports have been removed
+    private static boolean populateLinkerBindings(AdvancedGraphDocument graph,
+            Map<String, ContraptionNetworkLinkerData.ChannelBind> channelBindings,
+            List<CompoundTag> customEntryBindings, List<ControllerDiscoveryNode> linkerTargets,
+            HolderLookup.Provider provider){
         boolean changed = false;
         for (Map.Entry<String, ContraptionNetworkLinkerData.ChannelBind> entry : channelBindings.entrySet()) {
             changed |= importChannelBindingIntoGraph(graph, entry.getKey(), entry.getValue(), linkerTargets);
@@ -8154,18 +8644,11 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                                                             String seed, String nodeLabel) {
         String type = input ? "controller_channel_input" : "controller_channel_output";
         String nodeId = importNodeId(type, bindingId, seed);
-        if (nodeExists(graph, nodeId)) {
-            return new ImportedNode(nodeId, false);
-        }
-        if (graph.nodes().size() >= AdvancedGraphDocument.maxNodes()) {
-            return null;
-        }
         double y = nextImportedNodeY(graph);
         CompoundTag data = bindingNodeData(bindingId, label, graphOwned, keyCode);
         data.putBoolean("ImportedLinkerBinding", true);
-        graph.nodes().add(new AdvancedGraphDocument.Node(nodeId, type, nodeLabel,
+        return upsertImportedNode(graph, new AdvancedGraphDocument.Node(nodeId, type, nodeLabel,
                 input ? -260 : 120, y, data));
-        return new ImportedNode(nodeId, true);
     }
 
     // Ensure the target graph node
@@ -8179,12 +8662,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         String type = targetNodeType(target, input);
         String nodeId = importNodeId(type, bindingId, target.targetId());
-        if (nodeExists(graph, nodeId)) {
-            return new ImportedNode(nodeId, false);
-        }
-        if (graph.nodes().size() >= AdvancedGraphDocument.maxNodes()) {
-            return null;
-        }
         double y = nextImportedNodeY(graph);
         CompoundTag data = bindingNodeData(bindingId, label, graphOwned, keyCode);
         data.putBoolean("ImportedLinkerBinding", true);
@@ -8198,9 +8675,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             data.putString("Face", storedFace.getSerializedName());
             putGraphDefault(data, "face", "direction", storedFace.getSerializedName());
         }
-        graph.nodes().add(new AdvancedGraphDocument.Node(nodeId, type,
+        return upsertImportedNode(graph, new AdvancedGraphDocument.Node(nodeId, type,
                 input ? "Linker Input" : "Linker Output", input ? -260 : 120, y, data));
-        return new ImportedNode(nodeId, true);
     }
 
     // Ensure the wireless graph node
@@ -8215,12 +8691,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         String type = input ? "wireless_frequency_input" : "wireless_frequency_output";
         String nodeId = importNodeId(type, bindingId, firstId + "|" + secondId);
-        if (nodeExists(graph, nodeId)) {
-            return new ImportedNode(nodeId, false);
-        }
-        if (graph.nodes().size() >= AdvancedGraphDocument.maxNodes()) {
-            return null;
-        }
         double y = nextImportedNodeY(graph);
         CompoundTag data = bindingNodeData(bindingId, label, graphOwned, keyCode);
         data.putBoolean("ImportedLinkerBinding", true);
@@ -8229,29 +8699,53 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         putFrequencyStack(data, "FrequencyFirst", first, provider);
         putFrequencyStack(data, "FrequencySecond", second, provider);
         putGraphDefault(data, "frequency", "frequency", firstId + "|" + secondId);
-        graph.nodes().add(new AdvancedGraphDocument.Node(nodeId, type,
+        return upsertImportedNode(graph, new AdvancedGraphDocument.Node(nodeId, type,
                 input ? "Redstone Link Input" : "Redstone Link Output", input ? -260 : 120, y, data));
-        return new ImportedNode(nodeId, true);
     }
 
     // Ensure the local redstone graph node
     private static ImportedNode ensureLocalRedstoneGraphNode(AdvancedGraphDocument graph, String bindingId, String label,
                                                              boolean graphOwned, int keyCode, Direction side) {
         String nodeId = importNodeId("local_redstone_output", bindingId, side.getSerializedName());
-        if (nodeExists(graph, nodeId)) {
-            return new ImportedNode(nodeId, false);
-        }
-        if (graph.nodes().size() >= AdvancedGraphDocument.maxNodes()) {
-            return null;
-        }
         double y = nextImportedNodeY(graph);
         CompoundTag data = bindingNodeData(bindingId, label, graphOwned, keyCode);
         data.putBoolean("ImportedLinkerBinding", true);
         data.putString("Face", side.getSerializedName());
         putGraphDefault(data, "face", "direction", side.getSerializedName());
-        graph.nodes().add(new AdvancedGraphDocument.Node(nodeId, "local_redstone_output",
+        return upsertImportedNode(graph, new AdvancedGraphDocument.Node(nodeId, "local_redstone_output",
                 "Local Redstone Output", 120, y, data));
-        return new ImportedNode(nodeId, true);
+    }
+
+    // Identify one imported input or output independently of its selected target
+    private static String importedBindingKey(AdvancedGraphDocument.Node node){
+        return node.type() + ":" + node.data().getString("BindingId");
+    }
+
+    // Retarget imports in place so existing wires and layout keep their identifiers
+    private static ImportedNode upsertImportedNode(AdvancedGraphDocument graph, AdvancedGraphDocument.Node desired){
+        for(AdvancedGraphDocument.Node node : graph.nodes()){
+            if(!node.data().getBoolean("ImportedLinkerBinding")
+                    || !importedBindingKey(node).equals(importedBindingKey(desired))) continue;
+            CompoundTag prev = node.data().copy();
+            for(String key : List.of("BindingId", "BindingLabel", "GraphOwnedBinding", "KeyCode",
+                    "Target", "TargetLabel", "TargetData", "Face", "FrequencyFirst", "FrequencySecond",
+                    "FrequencyFirstStack", "FrequencySecondStack")){
+                node.data().remove(key);
+                if(desired.data().contains(key)) node.data().put(key, desired.data().get(key).copy());
+            }
+            CompoundTag defaults = node.data().getCompound("Defaults");
+            for(String port : List.of("target", "face", "frequency")){
+                defaults.remove(port);
+                if(desired.data().getCompound("Defaults").contains(port)){
+                    defaults.put(port, desired.data().getCompound("Defaults").get(port).copy());
+                }
+            }
+            if(!defaults.isEmpty()) node.data().put("Defaults", defaults);
+            return new ImportedNode(node.id(), !prev.equals(node.data()));
+        }
+        if(graph.nodes().size() >= AdvancedGraphDocument.maxNodes()) return null;
+        graph.nodes().add(desired);
+        return new ImportedNode(desired.id(), true);
     }
 
     // Get the binding node data
@@ -8319,9 +8813,24 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         String baseNodeId = ContraptionNetworkLinkerData.baseNodeIdFromTargetId(target.targetId());
         for (ControllerDiscoveryNode node : linkerTargets) {
             if (node != null && node.nodeId().equals(baseNodeId)) {
+                Direction face = ContraptionNetworkLinkerData.resolveFaceFromDirectTarget(target);
+                if(ContraptionNetworkLinkerData.nodeUsesFaceOptions(node) && face != null
+                        && ContraptionNetworkLinkerData.directTargetForFace(node, face) == null) return null;
                 return node;
             }
         }
+        if(ContraptionNetworkLinkerData.isLinkerFaceTarget(target)){
+            ControllerDiscoveryKind kind = ControllerDiscoveryKind.byId(target.targetTypeId());
+            ControllerDiscoveryNode stale = new ControllerDiscoveryNode(baseNodeId,
+                    kind == null ? ControllerDiscoveryKind.UNKNOWN : kind, target.groupId(), "", target.label(),
+                    target.subLevelId(), target.blockPos());
+            ControllerDiscoveryNode current = matchingLinkerTarget(stale, linkerTargets);
+            Direction face = ContraptionNetworkLinkerData.resolveFaceFromDirectTarget(target);
+            if(current == null || face != null && ContraptionNetworkLinkerData.nodeUsesFaceOptions(current)
+                    && ContraptionNetworkLinkerData.directTargetForFace(current, face) == null) return null;
+            return current;
+        }
+        if(ContraptionNetworkLinkerData.isLinkerFaceTarget(target)) return null;
         ControllerDiscoveryKind kind = ControllerDiscoveryKind.byId(target.targetTypeId());
         return new ControllerDiscoveryNode(
                 baseNodeId,
@@ -8342,11 +8851,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         return ContraptionNetworkLinkerData.isLinkerFaceOutputTarget(target)
                 ? "linker_face_output" : "direct_target_output";
-    }
-
-    // Check if the node exists
-    private static boolean nodeExists(AdvancedGraphDocument graph, String nodeId) {
-        return graph.nodes().stream().anyMatch(node -> node.id().equals(nodeId));
     }
 
     // Get the next imported node y
@@ -8541,7 +9045,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Get the graph block data snapshot
     public static CompoundTag graphBlockDataSnapshot(Level level, BlockPos pos) {
-        if (level == null || pos == null || !level.isLoaded(pos)) return new CompoundTag();
+        if (level == null || pos == null || !SubLevelBlockEntityCollector.isTargetLoaded(level, null, pos)) return new CompoundTag();
         BlockState state = level.getBlockState(pos);
         if (state.isAir()) return new CompoundTag();
         return blockDataSnapshot(level, pos, state, level.getBlockEntity(pos), null);
@@ -9112,6 +9616,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     @Override
     protected void write(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.write(tag, provider, clientPacket);
+        tag.put("FlightControl", com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.save(this));
         if (!clientPacket) {
             shipControlRuntime.writePersistentCouplerState(tag);
         }
@@ -9145,6 +9650,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         readingClientUpdatePacket = clientPacket;
         try {
             super.read(tag, provider, clientPacket);
+            com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.load(this, tag.getCompound("FlightControl"));
         } finally {
             readingClientUpdatePacket = previousClientUpdateRead;
         }

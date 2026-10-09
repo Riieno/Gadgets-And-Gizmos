@@ -13,6 +13,10 @@ import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.rieno.gadgetsandgizmos.registry.CTEntityTypes;
 import com.simibubi.create.content.fluids.tank.FluidTankRenderer;
+import com.simibubi.create.content.kinetics.base.ShaftRenderer;
+import com.simibubi.create.content.kinetics.simpleRelays.encased.EncasedCogRenderer;
+import com.simibubi.create.content.kinetics.simpleRelays.encased.EncasedCogVisual;
+import com.simibubi.create.content.kinetics.base.SingleAxisRotatingVisual;
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer;
 import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -38,6 +42,12 @@ public final class CTClientRenderers {
 
     // Register the visualizers
     public static void registerVisualizers() {
+        SimpleBlockEntityVisualizer.builder(CTBlockEntities.BLACKSTONE_ENCASED_SHAFT.get())
+                .factory(SingleAxisRotatingVisual::shaft).apply();
+        SimpleBlockEntityVisualizer.builder(CTBlockEntities.BLACKSTONE_ENCASED_COGWHEEL.get())
+                .factory(EncasedCogVisual::small).apply();
+        SimpleBlockEntityVisualizer.builder(CTBlockEntities.BLACKSTONE_ENCASED_LARGE_COGWHEEL.get())
+                .factory(EncasedCogVisual::large).apply();
         if (CTBlockEntities.THRUSTER_BEARING != null) {
             SimpleBlockEntityVisualizer.builder(CTBlockEntities.THRUSTER_BEARING.get())
                     .factory(ThrusterBearingVisual::new)
@@ -88,6 +98,10 @@ public final class CTClientRenderers {
     // Register the renderers
     public static void registerRenderers(EntityRenderersEvent.RegisterRenderers evt) {
         CTPartialModels.init();
+        evt.registerBlockEntityRenderer(CTBlockEntities.BLACKSTONE_ENCASED_SHAFT.get(), ShaftRenderer::new);
+        evt.registerBlockEntityRenderer(CTBlockEntities.BLACKSTONE_ENCASED_COGWHEEL.get(), EncasedCogRenderer::small);
+        evt.registerBlockEntityRenderer(CTBlockEntities.BLACKSTONE_ENCASED_LARGE_COGWHEEL.get(), EncasedCogRenderer::large);
+        evt.registerBlockEntityRenderer(CTBlockEntities.CAMERA.get(), CameraRenderer::new);
         if (CTEntityTypes.LAUNCHED_CLAW != null) {
             evt.registerEntityRenderer(CTEntityTypes.LAUNCHED_CLAW.get(), EntityLauncherClawRenderer::new);
         }
@@ -167,11 +181,10 @@ public final class CTClientRenderers {
         if (CTBlocks.BLACKSTONE_CASING != null) {
             evt.getModels().replaceAll((location, model) -> {
                 net.minecraft.world.level.block.Block block = BuiltInRegistries.BLOCK.get(location.id());
-                if (block != CTBlocks.BLACKSTONE_CASING.get()
-                        || ModelResourceLocation.INVENTORY_VARIANT.equals(location.getVariant())) {
+                if (ModelResourceLocation.INVENTORY_VARIANT.equals(location.getVariant())) {
                     return model;
                 }
-                return BlackstoneCasingConnectedTextures.wrap(model);
+                return BlackstoneCasingConnectedTextures.wrap(model, block);
             });
         }
         AccDisplayConnectedTextures.register();

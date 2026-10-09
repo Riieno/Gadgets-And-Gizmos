@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.control.FaceBoundSignalRoute;
+import com.rieno.gadgetsandgizmos.lib.control.SourceSignalBatch;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import net.minecraft.core.BlockPos;
@@ -121,62 +122,48 @@ public final class ContraptionNetworkLinkerSignalBus {
                                       Direction planeFace,
                                       String sourceId,
                                       int strength) {
-        if (level == null || planePos == null || planeFace == null || sourceId == null || sourceId.isBlank()) {
-            return;
+        PlaneSignalBatch batch = new PlaneSignalBatch(level);
+        batch.set(subLevelId, planePos, planeFace, sourceId, strength);
+        batch.apply();
+    }
+
+    // Publish a control pass before its attached blocks receive notifications
+    static final class PlaneSignalBatch{
+        private final Level level;
+        private final Level signalLevel;
+        private final SourceSignalBatch<PlaneSignalKey> updates = new SourceSignalBatch<>(15);
+
+        PlaneSignalBatch(Level level){
+            this.level = level;
+            this.signalLevel = level == null ? null : resolveSignalLevel(level);
         }
 
-        Level signalLevel = resolveSignalLevel(level);
-        BlockPos immutablePos = planePos.immutable();
-        UUID resolvedSubLevelId = resolveTargetSubLevelId(level, immutablePos, subLevelId);
-        if (!SubLevelBlockEntityCollector.ensureTargetLoaded(level, resolvedSubLevelId, immutablePos)) {
-            return;
+        void set(@Nullable UUID subLevelId, BlockPos pos, Direction face, String source, int strength){
+            if(level == null || pos == null || face == null || source == null || source.isBlank()) return;
+            BlockPos immutablePos = pos.immutable();
+            UUID resolvedId = resolveTargetSubLevelId(level, immutablePos, subLevelId);
+            if(!SubLevelBlockEntityCollector.ensureTargetLoaded(level, resolvedId, immutablePos)) return;
+            updates.set(new PlaneSignalKey(immutablePos, face, resolvedId), source, strength);
         }
 
-        boolean changed = false;
-        synchronized (SIGNALS) {
-            Map<PlaneSignalKey, Map<String, Integer>> byPlane = PLANE_SIGNALS.get(signalLevel);
-            PlaneSignalKey key = new PlaneSignalKey(immutablePos, planeFace, resolvedSubLevelId);
-            Map<String, Integer> bySource = byPlane == null ? null : byPlane.get(key);
-            int previousMax = maxPlaneSignal(bySource);
-
-            if (strength <= 0) {
-                if (bySource != null) {
-                    bySource.remove(sourceId);
-                }
-            } else {
-                if (byPlane == null) {
-                    byPlane = new HashMap<>();
-                    PLANE_SIGNALS.put(signalLevel, byPlane);
-                }
-                if (bySource == null) {
-                    bySource = new HashMap<>();
-                    byPlane.put(key, bySource);
-                }
-                bySource.put(sourceId, Math.min(15, strength));
+        void apply(){
+            if(signalLevel == null) return;
+            List<SourceSignalBatch.Change<PlaneSignalKey>> changes;
+            synchronized(SIGNALS){
+                Map<PlaneSignalKey, Map<String, Integer>> byPlane = PLANE_SIGNALS.get(signalLevel);
+                if(byPlane == null) byPlane = new HashMap<>();
+                changes = updates.applyTo(byPlane);
+                if(byPlane.isEmpty()) PLANE_SIGNALS.remove(signalLevel);
+                else PLANE_SIGNALS.put(signalLevel, byPlane);
+                if(!changes.isEmpty()) refreshPlaneSignalSnapshotLocked(signalLevel, byPlane);
             }
-
-            int nextMax = maxPlaneSignal(bySource);
-            // A plane is a single face-scoped output. Source bookkeeping may
-            // change while its effective redstone value does not; notifying
-            // the attached block in that case creates a false neighbour pulse.
-            changed = previousMax != nextMax;
-
-            if (bySource != null && bySource.isEmpty() && byPlane != null) {
-                byPlane.remove(key);
+            for(var change : changes){
+                PlaneSignalKey key = change.key();
+                com.rieno.gadgetsandgizmos.lib.interaction.BlockInteractionTracker.signal(level, key.planePos(),
+                        com.rieno.gadgetsandgizmos.lib.interaction.InteractionContext.current());
+                notifyPlaneSignalTarget(level, key.subLevelId(), key.planePos(), key.planeFace(),
+                        level.getBlockState(key.planePos()).getBlock());
             }
-            if (byPlane != null && byPlane.isEmpty()) {
-                PLANE_SIGNALS.remove(signalLevel);
-                if (changed) {
-                    refreshPlaneSignalSnapshotLocked(signalLevel, null);
-                }
-            } else if (changed) {
-                refreshPlaneSignalSnapshotLocked(signalLevel, byPlane);
-            }
-        }
-
-        if (changed) {
-            notifyPlaneSignalTarget(level, resolvedSubLevelId, immutablePos, planeFace,
-                    level.getBlockState(immutablePos).getBlock());
         }
     }
 
@@ -335,6 +322,11 @@ public final class ContraptionNetworkLinkerSignalBus {
             return;
         }
 
+        // Carry backend ownership before downstream blocks receive their changed signal
+        if(stateMaxChanged || injectedMaxChanged){
+            com.rieno.gadgetsandgizmos.lib.interaction.BlockInteractionTracker.signal(level, immutablePos,
+                    com.rieno.gadgetsandgizmos.lib.interaction.InteractionContext.current());
+        }
         // -----------------------------------------------------STATE COMMIT-----------------------------------------------------
         boolean stateApplied = false;
         if (updated != targetState) {
