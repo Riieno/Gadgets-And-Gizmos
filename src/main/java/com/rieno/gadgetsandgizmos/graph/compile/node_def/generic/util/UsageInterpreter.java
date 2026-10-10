@@ -4,7 +4,10 @@ import com.llamalad7.mixinextras.expression.impl.flow.DummyFlowValue;
 import com.llamalad7.mixinextras.expression.impl.flow.FlowValue;
 import com.rieno.gadgetsandgizmos.graph.compile.util.BoxingTool;
 import com.rieno.gadgetsandgizmos.graph.compile.util.CompileUtil;
-import it.unimi.dsi.fastutil.ints.*;
+import it.unimi.dsi.fastutil.ints.Int2IntMap;
+import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
@@ -33,19 +36,21 @@ public class UsageInterpreter extends FlowInterpreterExt implements Opcodes {
     //public static final String RETURN_MARKER = "copy";
     public static final String NEW_MARKER = "new";
     public static final String USAGE_STAT = "usage_stat";
+    private final int parameterCount;
     public boolean needOutput, needInput;
     public Map<Type, Set<String>> recordFields;
-    public Int2IntMap localArgToArgIndex=new Int2IntOpenHashMap();
-    public BitSet wasWriteIntoArguments=new  BitSet();
+    public Int2IntMap localArgToArgIndex = new Int2IntOpenHashMap();
+    public BitSet wasWriteIntoArguments = new BitSet();
 
-    public UsageInterpreter(ClassNode classNode, MethodNode found, Map<Type, Set<String>> recordFields) {
+    public UsageInterpreter(ClassNode classNode, MethodNode found, Map<Type, Set<String>> recordFields, int parameterCount) {
         super(classNode, found);
+        this.parameterCount = parameterCount;
         this.recordFields = recordFields;
         Type[] argumentTypes = Type.getArgumentTypes(found.desc);
-        int offset=0;
+        int offset = 0;
         for(int i = 0; i < argumentTypes.length; i++) {
-            localArgToArgIndex.put(offset,i);
-            offset+=argumentTypes[i].getSize();
+            localArgToArgIndex.put(offset, i);
+            offset += argumentTypes[i].getSize();
         }
         postProcessors.add((node, sink) -> {
             if(node.hasDecoration(COPY_MARKER)) return;
@@ -111,6 +116,8 @@ public class UsageInterpreter extends FlowInterpreterExt implements Opcodes {
                     usageStatistics.fieldValue = true;
                 };
             }
+        } else if(insn instanceof InvokeDynamicInsnNode) {
+            return (flowValue, usageStatistics) -> usageStatistics.invokeDynamic = true;
         }
         return null;
     }
@@ -170,7 +177,11 @@ public class UsageInterpreter extends FlowInterpreterExt implements Opcodes {
 
         FlowValue flowValue = super.newParameterValue(isInstanceMethod, local, type);
         if(isInstanceMethod && local >= 1 || !isInstanceMethod && local >= 0) {
-            flowValue.decorate(INPUT_MARKER, localArgToArgIndex.get(local));
+            int argIndex = localArgToArgIndex.get(local);
+            int offset = localArgToArgIndex.size() - parameterCount;
+            if(argIndex >= offset) {
+                flowValue.decorate(INPUT_MARKER, argIndex - offset);
+            }
 
         }
         return flowValue;
@@ -178,7 +189,7 @@ public class UsageInterpreter extends FlowInterpreterExt implements Opcodes {
 
     @Override
     public FlowValue copyOperation(AbstractInsnNode insn, FlowValue value) {
-        if(insn instanceof VarInsnNode varInsnNode && varInsnNode.getOpcode()>=Opcodes.ISTORE){
+        if(insn instanceof VarInsnNode varInsnNode && varInsnNode.getOpcode() >= Opcodes.ISTORE) {
             wasWriteIntoArguments.set(varInsnNode.var);
         }
         FlowValue copied = super.copyOperation(insn, value);
@@ -301,5 +312,5 @@ public class UsageInterpreter extends FlowInterpreterExt implements Opcodes {
         }
     }
 
-    public record BoxUnboxEntry(int insn, boolean isBoxing){}
+    public record BoxUnboxEntry(int insn, boolean isBoxing) {}
 }

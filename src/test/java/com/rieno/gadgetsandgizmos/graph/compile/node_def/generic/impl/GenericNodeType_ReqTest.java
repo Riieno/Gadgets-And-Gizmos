@@ -39,14 +39,15 @@ public class GenericNodeType_ReqTest extends AbstractJVMGraphCompilerTest {
                 .findFirst().orElse(-1)
         ));
 
-        simpleTest(1,2,"test",2,"allowInnerLambdasWithInnerCtx");
+        simpleTest(1,2,"test",3,"allowInnerLambdasWithInnerCtx");
     }
 
     @Test
     void allowContextVariables() {
         double v=2;
+        double v1=1;
         JVMRegistry.register("test",DefHelper.binary("c",(Double a,Double b) -> {
-            return a*b*v;
+            return a*b*v*v1;
         }));
         simpleTest(1,2,"test",4,"xy2");
         simpleTest(2,2,"test",8,"xy2_1");

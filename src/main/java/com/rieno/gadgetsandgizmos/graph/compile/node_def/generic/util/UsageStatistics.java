@@ -26,6 +26,7 @@ public class UsageStatistics {
     public boolean instanceGetField;
     public boolean fieldValue;
     public boolean recordField;
+    public boolean invokeDynamic;
     public boolean otherMethod;
     //public boolean usedInInsn;
     //public boolean usedInJump;
@@ -89,6 +90,7 @@ public class UsageStatistics {
         if(instanceGetField) sb.append("getfield,");
         if(fieldValue) sb.append("fieldv,");
         if(recordField) sb.append("rfield,");
+        if(invokeDynamic) sb.append("invDyn,");
         if(otherMethod) sb.append("omethod,");
         if(other) sb.append("o,");
         if(returnValue) sb.append("ret,");

@@ -65,6 +65,9 @@ public class GeneratorHelper extends GeneratorAdapter {
         mv.visitInsn(Opcodes.ACONST_NULL);
     }
 
+    public void privateField(int opcode, String owner, String fieldName, String desc) {
+        InsnAdapter.privateField(this, opcode, owner, fieldName, desc);
+    }
 
     //region if
 

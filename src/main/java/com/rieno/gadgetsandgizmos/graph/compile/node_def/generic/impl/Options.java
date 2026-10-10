@@ -11,14 +11,14 @@ public record Options(
     boolean isPure,
     @NonNull
     String outputPortDefName,
-    boolean useReflectionIfPrivate
+    PrivateAccessResolutionStratage privateAccessResolutionStratage
 ) {
     public static final Options defaultOptions = new Options(
         ShouldFlatInputPredicate.RECORD.and((type, argumentTypes, argIndex) -> argumentTypes.length == 1).or(ShouldFlatInputPredicate.PRIMITIVE_WRAPPERS),
         ShouldFlatOutputPredicate.RECORD_OR_BOXED,
         false,
         "value",
-        false
+        PrivateAccessResolutionStratage.INVOKE_DYNAMIC
     );
 
     public static OptionsBuilder builder() {

@@ -182,7 +182,8 @@ public class JVMGraphCompiler {
             if(iterable == null) continue;
             fields.add(Map.entry(snapNode, iterable));
         }
-        defineCtorAndStateFields(calculatorTracker, classNode, fields);
+        ObjectArrayList<Object> extraArgumentsArray=new ObjectArrayList<>();
+        defineCtorAndStateFields(calculatorTracker, classNode, fields,extraArgumentsArray);
         for(Map.Entry<String, EventMethodCompiler> entry : eventCompilers.entrySet()) {
             var eventNodes = nodesGroupedByEvent.remove(entry.getKey());
             entry.getValue().compile(
@@ -196,8 +197,9 @@ public class JVMGraphCompiler {
         try {
             return (AbstractJVMGraph) defineClass(new JVMGraphLoader(debugProps), classNode).getDeclaredConstructor(
                 AdvancedGraphDocument.class,
-                Cache.class
-            ).newInstance(document, cache);
+                Cache.class,
+                Object[].class
+            ).newInstance(document, cache,extraArgumentsArray.toArray());
         } catch(ClassNotFoundException | InvocationTargetException | InstantiationException | IllegalAccessException |
                 NoSuchMethodException e) {
             throw Lombok.sneakyThrow(e);
@@ -212,11 +214,12 @@ public class JVMGraphCompiler {
         return Integer.toHexString(System.identityHashCode(node));
     }
 
-    private static void defineCtorAndStateFields(int calculatorTracker, ClassNode node, ObjectArrayList<Map.Entry<SnapNode, Iterable<UnboundStateField>>> fields) {
+    private static void defineCtorAndStateFields(int calculatorTracker, ClassNode node, ObjectArrayList<Map.Entry<SnapNode, Iterable<UnboundStateField>>> fields, ObjectArrayList<Object> extraArgumentsArray) {
         MethodNode ctor = new MethodNode(Opcodes.ACC_PUBLIC, "<init>", Type.getMethodDescriptor(
             Type.VOID_TYPE,
             documentType,
-            Type.getType(Cache.class)
+            Type.getType(Cache.class),
+            Type.getType(Object[].class)
         ), null, null);
         var adapter = adapter(ctor, node);
         adapter.loadThis();
@@ -257,6 +260,18 @@ public class JVMGraphCompiler {
                         adapter.storeField(node.name, fieldDef);
                     }
                     case FieldInitExpr.Value value -> fieldDef.value = value.getValue();
+                    case FieldInitExpr.AnyObject anyObject -> {
+                        int idx = extraArgumentsArray.size();
+                        extraArgumentsArray.add(anyObject.value());
+                        adapter.loadThis();
+
+                        adapter.loadArg(2);
+                        adapter.push(idx);
+                        adapter.visitInsn(Opcodes.AALOAD);
+                        adapter.checkCast(Type.getType(anyObject.type()));
+
+                        adapter.storeField(node.name, fieldDef);
+                    }
                 }
             }
         }

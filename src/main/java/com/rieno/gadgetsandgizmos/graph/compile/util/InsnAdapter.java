@@ -1,6 +1,10 @@
 package com.rieno.gadgetsandgizmos.graph.compile.util;
 
+import com.rieno.gadgetsandgizmos.graph.compile.node_def.generic.impl.metafactory.PrivateAccMetafactory;
+import it.unimi.dsi.fastutil.Arrays;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
+import org.apache.commons.lang3.ArrayUtils;
 import org.intellij.lang.annotations.MagicConstant;
 import org.jetbrains.annotations.NotNull;
 import org.objectweb.asm.MethodVisitor;
@@ -136,6 +140,18 @@ public class InsnAdapter {
             }
             case Opcodes.H_INVOKEINTERFACE -> mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, owner,name,desc,isInterface);
         }
+    }
+
+    public static void privateField(MethodVisitor mv, int opcode, String owner, String fieldName, String desc) {
+        mv.visitInvokeDynamicInsn(
+            "privateField_"+fieldName,
+            //Type.getMethodDescriptor(Type.getType(desc),owner),
+            Type.getMethodDescriptor(Type.getType(desc),OBJECT_TYPE),
+            PrivateAccMetafactory.field,
+            owner,
+            fieldName,
+            opcode
+        );
     }
 
     public static void loadArgumentsFromArr(

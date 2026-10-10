@@ -3,6 +3,7 @@ package com.rieno.gadgetsandgizmos.graph.compile.util;
 import it.unimi.dsi.fastutil.ints.Int2IntMap;
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
+import org.jetbrains.annotations.Nullable;
 import org.objectweb.asm.*;
 import org.objectweb.asm.Handle;
 import org.objectweb.asm.tree.*;
@@ -13,7 +14,12 @@ public class PtrExtractor {
     static StackWalker walker = StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE);
 
     public static Handle tryExtractMethod(int callerDepth) {
-        var frames = walker.walk(it -> it.skip(callerDepth ).limit(2).toList());
+        InvokeDynamicInsnNode node = tryExtractInvokeDynamic(callerDepth + 1);
+        return node == null ? null : findHandle(node.bsmArgs);
+    }
+
+    public static @Nullable InvokeDynamicInsnNode tryExtractInvokeDynamic(int callerDepth) {
+        var frames = walker.walk(it -> it.skip(callerDepth).limit(2).toList());
         if(frames.size() < 2) return null;
         var frame = frames.get(1);
         var frameNext = frames.get(0);
@@ -48,8 +54,8 @@ public class PtrExtractor {
             if(!(node instanceof MethodInsnNode insnNode) || !matchesFrame(insnNode, frameNext)) return null;
             var prev = prevInsn(node);
             if(!(prev instanceof InvokeDynamicInsnNode dynamicInsnNode)) return null;
-            if(!isLambdaMetafactory(dynamicInsnNode.bsm))return null;
-            return findHandle(dynamicInsnNode.bsmArgs);
+            if(!isLambdaMetafactory(dynamicInsnNode.bsm)) return null;
+            return dynamicInsnNode;
 
 
         } catch(Exception e) {
@@ -58,7 +64,7 @@ public class PtrExtractor {
         }
     }
 
-    private static Handle findHandle(Object[] args) {
+    public static Handle findHandle(Object[] args) {
         for(Object arg : args) {
             if(arg instanceof Handle handle) {
                 return handle;

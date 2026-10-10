@@ -4,8 +4,11 @@ import com.llamalad7.mixinextras.expression.impl.flow.FlowValue;
 import com.llamalad7.mixinextras.expression.impl.flow.postprocessing.InstantiationInfo;
 import com.llamalad7.mixinextras.expression.impl.utils.FlowDecorations;
 import com.llamalad7.mixinextras.lib.apache.commons.tuple.Pair;
+import com.rieno.gadgetsandgizmos.graph.compile.asm.FieldInitExpr;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.Inputs;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.Outputs;
+import com.rieno.gadgetsandgizmos.graph.compile.node_def.generic.impl.metafactory.OwnLambdaMetafactory;
+import com.rieno.gadgetsandgizmos.graph.compile.node_def.generic.impl.metafactory.PrivateAccMetafactory;
 import com.rieno.gadgetsandgizmos.graph.compile.node_def.generic.util.RecordInfo;
 import com.rieno.gadgetsandgizmos.graph.compile.node_def.generic.util.UsageInterpreter;
 import com.rieno.gadgetsandgizmos.graph.compile.node_def.generic.util.UsageStatistics;
@@ -16,6 +19,7 @@ import it.unimi.dsi.fastutil.ints.*;
 import it.unimi.dsi.fastutil.objects.*;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
+import lombok.Lombok;
 import net.minecraft.nbt.CompoundTag;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -26,6 +30,9 @@ import org.objectweb.asm.tree.*;
 import org.objectweb.asm.tree.analysis.Frame;
 
 import java.io.IOException;
+import java.lang.invoke.MethodType;
+import java.lang.reflect.*;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -39,6 +46,7 @@ public class ProcessedLambda {
     public final IOValue[] inputValues;
     public final Object2ObjectArrayMap<String, ValueType<?>> inputPorts;
     public final Object2ObjectArrayMap<String, ValueType<?>> outputPorts;
+    public final UnboundStateField[] stateFields;
 
     /**
      * TODO: flat records
@@ -50,13 +58,18 @@ public class ProcessedLambda {
         int searchLevelOffset,
         Object lambda
     ) {
-        targetInterace = getTargetInterace(lambda, targetInterace);
         var classAndMethod = findMethod(1 + searchLevelOffset);
+        var resolvedInterface = getTargetInterface(lambda, targetInterace,classAndMethod);
         MethodNode methodNode = classAndMethod.methodNode;
-        var params = bakeArgNames(methodNode);
+
+        String[] raw = bakeArgNames(methodNode);
+        var params = Arrays.copyOfRange(raw,raw.length-resolvedInterface.argumentCount(),raw.length);
+
         return make(
             options, methodNode,
             classAndMethod.classNode,
+            resolvedInterface,
+            lambda,
             key -> params[key]
         );
 
@@ -85,26 +98,28 @@ public class ProcessedLambda {
     private static ProcessedLambda make(
         Options options, final MethodNode lambdaBody,
         final ClassNode lambdaOwner,
-        final Int2ObjectFunction<String> argumentDefNames
+        ResolvedInterfaced resolvedInterface,
+        Object lambdaObject, final Int2ObjectFunction<String> argumentDefNames
     ) {
+        final int startOfRealInput = Type.getArgumentCount(lambdaBody.desc)-resolvedInterface.argumentCount();
         AbstractInsnNode[] originalInsnArray = lambdaBody.instructions.toArray();
         var fields = new Object2ObjectOpenHashMap<Type, Set<String>>();
-        for(Type type : Type.getArgumentTypes(lambdaBody.desc)) {
+        for(Type type :  resolvedInterface.getArgumentTypes()) {
             addRecordFields(fields, type);
         }
-        addRecordFields(fields,Type.getReturnType(lambdaBody.desc));
-        var usageAnalyzerResult = new UsageInterpreter(lambdaOwner, lambdaBody, fields).findValuesFramesUsages();
+        addRecordFields(fields, Type.getReturnType(lambdaBody.desc));
+        var usageAnalyzerResult = new UsageInterpreter(lambdaOwner, lambdaBody, fields,resolvedInterface.method.getParameterCount()).findValuesFramesUsages();
 
         ObjectArrayList<AbstractInsnNode> transformedNodes = new ObjectArrayList<>();
         var frames = usageAnalyzerResult.frames();
-        Type[] argumentTypes = Type.getArgumentTypes(lambdaBody.desc);
+        Type[] argumentTypes = resolvedInterface.realArgs(Type.getArgumentTypes(lambdaBody.desc));
         IOValue[] inputValues = new IOValue[argumentTypes.length];
         Type returnType = Type.getReturnType(lambdaBody.desc);
 
         for(int i = 0; i < argumentTypes.length; i++) {
             Type argumentType = argumentTypes[i];
             var val = inputValues[i] = IOValue.make(
-                frames[0].getLocal(i),
+                frames[0].getLocal(i+startOfRealInput),
                 argumentType,
                 options.flatInputPredicate().test(CompileUtil.type2class(argumentType), argumentTypes, i)
             );
@@ -113,35 +128,51 @@ public class ProcessedLambda {
             if(unboxedType != null) {
                 val.couldRemoveBoxing(val.needToBeFlat() && val.usage().onlyUnwrapperAndReturn());
 
-                val.variableState(IOValueVariableState.forBox(val.couldRemoveBoxing(),val.needToBeFlat()));
+                val.variableState(IOValueVariableState.forBox(val.couldRemoveBoxing(), val.needToBeFlat()));
                 //outputValue.couldReduceVariable(true);
-            }else{
+            } else {
 
-                val.variableState(IOValueVariableState.forRecord(val.couldRemoveRecordVariables(),val.needToBeFlat()));
+                val.variableState(IOValueVariableState.forRecord(val.couldRemoveRecordVariables(), val.needToBeFlat()));
 
             }
         }
+
+        var handledInputVars = new IntOpenHashSet();
         {
             int offset = 0;
             for(int i = 0; i < inputValues.length; i++) {
                 IOValue value = inputValues[i];
                 boolean needToFlat = options.flatInputPredicate().test(value.clazz(), argumentTypes, i);
-                if((needToFlat && value.isRecord()) ) {
+                int myOffset = offset, myI = i;
+                if((needToFlat && value.isRecord())) {
                     if(!value.couldRemoveRecordVariables()) {
                         transformedNodes.add(makeInputRecordVar(value, i, offset));
                     }
+                } else if(needToFlat && value.isBox() && value.variableState().keep()) {
+                    String portName = argumentDefNames.get(i);
+                    BoxingTool.Entry boxingEntry = BoxingTool.boxingEntry(value.type());
+                    Type boxed = boxingEntry.boxed();
+                    Handle boxingMethod = boxingEntry.boxingMethod();
+                    handledInputVars.add(i);
+                    transformedNodes.add(compilable("boxing for " + i, (mv, snapNode, inputs, outputs, data, context) -> {
+                        int newLocal = mv.newLocal(boxed);
+                        inputs.load(mv, portName);
+                        mv.invoke(boxingMethod);
+                        mv.storeLocal(newLocal);
+                        context.varMap.put(myOffset, newLocal);
+                    }));
                 } else {
-                    int myOffset = offset, myI = i;
+
                     String portName = argumentDefNames.get(i);
                     if(usageAnalyzerResult.modifiedArguments().get(offset)) {
                         Type type = value.type();
                         transformedNodes.add(compilable("init varMap MUT input_" + i, (mv, snapNode, inputs, outputs, data, context) -> {
                             int tmpVar = mv.newLocal(type);
                             context.varMap.put(myOffset, tmpVar);
-                            inputs.load(mv,portName);
+                            inputs.load(mv, portName);
                             mv.storeLocal(tmpVar);
                         }));
-                    }else{
+                    } else {
                         transformedNodes.add(compilable("init varMap input_" + i, (mv, snapNode, inputs, outputs, data, context) -> {
                             context.varMap.put(myOffset, -myI);
                             context.varToPortMap.put(myI, portName);
@@ -149,6 +180,36 @@ public class ProcessedLambda {
                     }
                 }
                 offset += value.type().getSize();
+            }
+        }
+
+        var stateFields = new ObjectArrayList<UnboundStateField>();
+
+        if(resolvedInterface.argumentCount()<Type.getArgumentCount(lambdaBody.desc)){
+            int varOffset=0;
+            UnboundStateField stateField = UnboundStateField.make("lambda_body", Object.class, FieldInitExpr.someObject(Object.class,lambdaObject));
+            stateFields.add(stateField);
+            Class<?> ownerClass = lambdaObject.getClass();
+            PrivateAccMetafactory.hiddenClass(ownerClass);
+            String ownerClassName = ownerClass.getName();
+            for(int i = 0; i < startOfRealInput; i++) {
+                handledInputVars.add(i);
+                int localArgIndex= i +1;
+                try {
+                    String fieldName = "arg$" + localArgIndex;
+                    var fieldType=Type.getType(ownerClass.getDeclaredField(fieldName).getType());
+                    int myVarOffset = varOffset;
+                    transformedNodes.add(compilable("load extra arg#"+localArgIndex+"#"+i,(mv, snapNode, inputs, outputs, data, context) -> {
+                        mv.loadStateField(stateField,snapNode.id);
+                        mv.privateField(Opcodes.GETFIELD, ownerClassName,fieldName,fieldType.getDescriptor());
+                        int local = mv.newLocal(fieldType);
+                        mv.storeLocal(local);
+                        context.varMap.put(myVarOffset,local);
+                    }));
+                    varOffset+=fieldType.getSize();
+                } catch(NoSuchFieldException e) {
+                    throw Lombok.sneakyThrow(e);
+                }
             }
         }
         transformedNodes.add(compilable("init offset and shift locals", (mv, snapNode, inputs, outputs, data, context) -> {
@@ -160,6 +221,7 @@ public class ProcessedLambda {
         var oldInsnToNew = new Int2IntOpenHashMap();
         var replacedNodes = new Int2ObjectOpenHashMap<List<AbstractInsnNode>>();
         var ignoreInsn = new IntOpenHashSet();
+
         var outputPortRef = new OutputPortRef();
 
         var rawOutputValue = IOValue.make(
@@ -193,7 +255,7 @@ public class ProcessedLambda {
 
             }
             if(doUnwrapOutput) {
-                outputPortRef.used=true;
+                outputPortRef.used = true;
                 var replacement = List.of(compilable("store_single_output", (mv, snapNode, inputs, outputs, data, context) -> {
                     outputs.store(mv, outputPortRef.name);
                 }));
@@ -222,13 +284,14 @@ public class ProcessedLambda {
                     }
                 }
             }
-            rawOutputValue.variableState(IOValueVariableState.forBox(doUnwrapOutput,rawOutputValue.needToBeFlat()));
+            rawOutputValue.variableState(IOValueVariableState.forBox(doUnwrapOutput, rawOutputValue.needToBeFlat()));
         }
 
         rawOutputValue.couldRemoveBoxing(doUnwrapOutput);
         for(int i = 0; i < originalInsnArray.length; i++) {
             AbstractInsnNode node = originalInsnArray[i];
-            handleReplaced:{
+            handleReplaced:
+            {
                 List<AbstractInsnNode> nodes = replacedNodes.get(i);
                 if(nodes != null) {
                     transformedNodes.addAll(nodes);
@@ -240,6 +303,28 @@ public class ProcessedLambda {
 
             shortcut:
             {
+                if(node instanceof InvokeDynamicInsnNode invokeDynamicNode) {
+                    Handle bsm = invokeDynamicNode.bsm;
+                    if(bsm.equals(OwnLambdaMetafactory.originalMetaFactory)) {
+                        Type interfaceMethodType = (Type) invokeDynamicNode.bsmArgs[0];
+                        Handle implementation = (Handle) invokeDynamicNode.bsmArgs[1];
+                        Type dynMethodType = (Type) invokeDynamicNode.bsmArgs[2];
+
+                        //bootstrapMethodArguments[bootstrapMethodArguments.length-1]=Type.getObjectType(lambdaOwner.name);
+                        transformedNodes.add(new InvokeDynamicInsnNode(
+                            invokeDynamicNode.name,
+                            invokeDynamicNode.desc,
+                            OwnLambdaMetafactory.myMetaFactory,
+                            interfaceMethodType,
+                            dynMethodType,
+                            implementation.getTag(),
+                            implementation.getOwner().replace('/','.'),
+                            implementation.getName(),
+                            Type.getType(implementation.getDesc())
+                        ));
+                        continue;
+                    }
+                }
                 UsageStatistics statistics = usageAnalyzerResult.usageStatistics().get(i);
                 if(statistics != null && statistics.returnValue) {
                     IOValue outputValue = cachedOutputValue(outputValues, topStack(frames[i + 1], 1), rawOutputValue);
@@ -274,15 +359,15 @@ public class ProcessedLambda {
                     Frame<FlowValue> frame = isLoad ? frames[i + 1] : frames[i];
                     FlowValue local1 = topStack(frame, 1);
                     int argI = UsageInterpreter.getArgumentIndex(local1);
-                    if(argI >= 0) {
+                    if(argI >= 0 && !handledInputVars.contains(varNode.var)) {
                         IOValueVariableState var = inputValues[argI].variableState();
                         if(var.loadInputFromInputPort()) {
                             String name = argumentDefNames.get(argI);
-                            transformedNodes.add(compilable("transformed VarInsn loadInput#" +argI, (mv, snapNode, inputs, outputs, data, context) -> {
-                                inputs.load(mv,name);
+                            transformedNodes.add(compilable("transformed VarInsn loadInput#" + argI, (mv, snapNode, inputs, outputs, data, context) -> {
+                                inputs.load(mv, name);
                             }));
                             continue;
-                        }else if(!var.loadStoreNormalVariable()){
+                        } else if(!var.loadStoreNormalVariable()) {
                             continue;
                         }
                     }
@@ -307,7 +392,7 @@ public class ProcessedLambda {
                     }));
                     continue;
                 }
-                if(node instanceof MethodInsnNode && node.getOpcode()!=Opcodes.INVOKESTATIC || node instanceof FieldInsnNode && node.getOpcode()>Opcodes.PUTSTATIC) {
+                if(node instanceof MethodInsnNode && node.getOpcode() != Opcodes.INVOKESTATIC || node instanceof FieldInsnNode && node.getOpcode() > Opcodes.PUTSTATIC) {
 
                     shortcut2:
                     {
@@ -338,10 +423,10 @@ public class ProcessedLambda {
                 if(node.getOpcode() == Opcodes.ARETURN) {
                     IOValue outputValue = cachedOutputValue(outputValues, topStack(frames[i], 1), rawOutputValue);
                     if(!outputValue.variableState().keep()) continue;
-                    if(outputValue.isRecord()){
+                    if(outputValue.isRecord()) {
                         recordDestructor(transformedNodes, outputValue);
-                    }else if(outputValue.needToBeFlat() && outputValue.usage().onlyUnwrapperAndReturn()){
-                        boxDestructor(transformedNodes, outputValue,outputPortRef);
+                    } else if(outputValue.needToBeFlat() && outputValue.usage().onlyUnwrapperAndReturn()) {
+                        boxDestructor(transformedNodes, outputValue, outputPortRef);
                     }
 
                     continue;
@@ -355,7 +440,7 @@ public class ProcessedLambda {
                     int numeric2double = CompileUtil.numeric2double(type.getSort());
                     ValueType<?> returnedValueType = ValueType.byClass(CompileUtil.type2class(type), true);
 
-                    outputPortRef.used=true;
+                    outputPortRef.used = true;
                     transformedNodes.add(compilable(i + ": single return", (mv, snapNode, inputs, outputs, data, context) -> {
                         if(numeric2double >= 0 && returnedValueType == null) {
                             mv.visitInsn(numeric2double);
@@ -373,6 +458,7 @@ public class ProcessedLambda {
             transformedNodes.add(node.clone(cloner));
         }
 
+
         return ProcessedLambda.of(
             transformedNodes.toArray(AbstractInsnNode[]::new),
             outputPortRef,
@@ -380,20 +466,21 @@ public class ProcessedLambda {
             rawOutputValue,
             inputValues,
             argumentDefNames,
-            options
+            options, stateFields
         );
     }
 
     private static void boxDestructor(ObjectArrayList<AbstractInsnNode> transformedNodes, IOValue outputValue, OutputPortRef outputPortRef) {
         BoxingTool.Entry boxingEntry = BoxingTool.boxingEntry(outputValue.type());
-        if(boxingEntry==null)return;
-        outputPortRef.used=true;
+        if(boxingEntry == null) return;
+        outputPortRef.used = true;
         Handle unboxingMethod = boxingEntry.unboxingMethod();
         transformedNodes.add(compilable("output_destruct_unbox", (mv, snapNode, inputs, outputs, data, context) -> {
             mv.invoke(unboxingMethod);
             outputs.store(mv, outputPortRef.name);
         }));
     }
+
     private static void recordDestructor(ObjectArrayList<AbstractInsnNode> transformedNodes, IOValue outputValue) {
         RecordInfo outputRecord = outputValue.recordInfo();
         for(Map.Entry<String, Type> entry : outputRecord.fieldMap.entrySet()) {
@@ -410,36 +497,36 @@ public class ProcessedLambda {
     private static void addRecordFields(Object2ObjectOpenHashMap<Type, Set<String>> fields, Type type) {
         Class<?> aClass = CompileUtil.type2class(type);
         if(!aClass.isRecord()) return;
-        fields.put(type,RecordInfo.make(type).fieldMap.keySet());
+        fields.put(type, RecordInfo.make(type).fieldMap.keySet());
     }
 
     private static boolean areEqual(MethodInsnNode method, Handle boxingMethod) {
         return method.owner.equals(boxingMethod.getOwner()) && method.name.equals(boxingMethod.getName()) && method.desc.equals(boxingMethod.getDesc());
     }
 
-    private static ProcessedLambda of(AbstractInsnNode[] array, OutputPortRef outputPortRef, Object2ObjectOpenCustomHashMap<AbstractInsnNode, IOValue> outputValues, IOValue rawOutputValue, IOValue[] inputValues, Int2ObjectFunction<String> argumentDefNames, Options options) {
-        var inputPorts=new Object2ObjectArrayMap<String, ValueType<?>>();
-        var outputPorts=new Object2ObjectArrayMap<String, ValueType<?>>();
+    private static ProcessedLambda of(AbstractInsnNode[] array, OutputPortRef outputPortRef, Object2ObjectOpenCustomHashMap<AbstractInsnNode, IOValue> outputValues, IOValue rawOutputValue, IOValue[] inputValues, Int2ObjectFunction<String> argumentDefNames, Options options, ObjectArrayList<UnboundStateField> stateFields) {
+        var inputPorts = new Object2ObjectArrayMap<String, ValueType<?>>();
+        var outputPorts = new Object2ObjectArrayMap<String, ValueType<?>>();
         for(int i = 0; i < inputValues.length; i++) {
             IOValue value = inputValues[i];
             addPorts(inputPorts, value, argumentDefNames.get(i));
         }
 
         addPorts(outputPorts, rawOutputValue, options.outputPortDefName());
-        if(outputPortRef.used){
+        if(outputPortRef.used) {
             Object2ObjectMap.Entry<String, ValueType<?>> next = Object2ObjectMaps.fastIterator(outputPorts).next();
-            outputPortRef.name=next.getKey();
-            outputPortRef.valueType=next.getValue();
+            outputPortRef.name = next.getKey();
+            outputPortRef.valueType = next.getValue();
         }
         return new ProcessedLambda(
-            array, outputPortRef, outputValues, rawOutputValue, inputValues,inputPorts,outputPorts
+            array, outputPortRef, outputValues, rawOutputValue, inputValues, inputPorts, outputPorts, stateFields.toArray(UnboundStateField[]::new)
         );
     }
 
     private static void addPorts(Object2ObjectArrayMap<String, ValueType<?>> ports, IOValue value, String def) {
         if(value.needToBeFlat() && value.isRecord()) {
             var iterator = Object2ObjectMaps.fastIterator(value.recordInfo().fieldMap);
-            while (iterator.hasNext()) {
+            while(iterator.hasNext()) {
                 final var e = iterator.next();
                 ports.put(e.getKey(), valueType(e.getValue()));
             }
@@ -448,9 +535,9 @@ public class ProcessedLambda {
 
         Class<?> clazz = value.clazz();
         Type unboxedType = BoxingTool.getUnboxedType(clazz);
-        if(value.needToBeFlat() && value.couldRemoveBoxing() && unboxedType!=null){
+        if(value.needToBeFlat() && value.isBox()) {
             ports.put(def, valueType(unboxedType));
-        }else{
+        } else {
             ports.put(def, valueType(clazz));
         }
     }
@@ -461,7 +548,7 @@ public class ProcessedLambda {
 
     private static @Nullable ValueType<?> valueType(@NotNull Class<?> clazz) {
         ValueType<?> valueType = ValueType.byClass(clazz, true);
-        if(valueType==null)throw new RuntimeException("Cannot find value for type: "+clazz);
+        if(valueType == null) throw new RuntimeException("Cannot find value for type: " + clazz);
         return valueType;
     }
 
@@ -472,14 +559,32 @@ public class ProcessedLambda {
             int i = mv.newLocal(localInputRecordVar, inputRecord.type);
             context.varMap.put(byteCodeArgIndex, i);
 
-            mv.newInstance(inputRecord.type);
-            mv.dup();
+            Constructor<?> ctor = inputRecord.canonicalCtor;
+            boolean isPrivate = isPrivate(ctor);
+            if(!isPrivate) {
+                mv.newInstance(inputRecord.type);
+                mv.dup();
+            }
             inputRecord.fieldMap.forEach((port, type) -> {
                 inputs.load(mv, port);
             });
-            mv.invoke(inputRecord.canonicalCtor);
+            if(isPrivate) {
+                mv.invokeDynamic(
+                    PrivateAccMetafactory.ctor.getName(),
+                    Type.getConstructorDescriptor(ctor),
+                    PrivateAccMetafactory.ctor,
+                    ctor.getDeclaringClass().getName(),
+                    Type.getType(ctor)
+                );
+            } else {
+                mv.invoke(ctor);
+            }
             mv.storeLocal(localInputRecordVar);
         });
+    }
+
+    private static boolean isPrivate(Executable ctor) {
+        return Modifier.isPrivate(ctor.getModifiers()) || Modifier.isPrivate(ctor.getDeclaringClass().getModifiers());
     }
 
     private static @NotNull AbstractInsnNode storePorts(List<String> ports) {
@@ -519,7 +624,7 @@ public class ProcessedLambda {
         return outputValue;
     }
 
-    private static @NotNull Class<?> getTargetInterace(Object o, @Nullable Class<?> targetInterace) {
+    private static @NotNull ProcessedLambda.ResolvedInterfaced getTargetInterface(Object o, @Nullable Class<?> targetInterace, FoundMethod foundMethod) {
         Class<?> type = o.getClass();
         if(type.getSuperclass() != Object.class) throw new IllegalArgumentException("Only lambdas allowed");
         @NotNull Class<?>[] interfaces = type.getInterfaces();
@@ -531,7 +636,18 @@ public class ProcessedLambda {
             if(!targetInterace.isInstance(o))
                 throw new IllegalArgumentException("Object is not implemented targetInterface");
         }
-        return targetInterace;
+
+
+        try {
+            Method method = targetInterace.getDeclaredMethod(
+                foundMethod.insn.name,
+                MethodType.fromMethodDescriptorString(((Type) foundMethod.insn.bsmArgs[0]).getDescriptor(), o.getClass().getClassLoader()).parameterArray()
+
+            );
+            return new ResolvedInterfaced(targetInterace, method);
+        } catch(NoSuchMethodException e) {
+            throw new IllegalArgumentException(e.getMessage());
+        }
     }
 
     private static FlowValue topStack(Frame<FlowValue> frame, int i1) {
@@ -564,23 +680,33 @@ public class ProcessedLambda {
     }
 
     private static @NotNull ProcessedLambda.FoundMethod findMethod(int callerDepth) {
-        Handle handle = PtrExtractor.tryExtractMethod(1 + callerDepth);
-        if(handle == null) {
-            throw new IllegalArgumentException("Cannot find lambda body");
-        }
-        return toClassAndMethod(handle);
+        var insn = PtrExtractor.tryExtractInvokeDynamic(1 + callerDepth);
+        if(insn == null) throw new IllegalArgumentException("Cannot find lambda body");
+        return toClassAndMethod(insn);
     }
 
-    private static @NotNull ProcessedLambda.FoundMethod toClassAndMethod(Handle handle) {
+    private static @NotNull FoundMethod toClassAndMethod(InvokeDynamicInsnNode insn) {
+        Handle handle = PtrExtractor.findHandle(insn.bsmArgs);
         ClassNode node = toClassNode(handle.getOwner());
         int foundIdx = findMethod(node, handle);
         if(foundIdx < 0) {
             throw new IllegalArgumentException("Cannot find lambda body in bytecode");
         }
-        return new FoundMethod(node, node.methods.get(foundIdx), foundIdx, handle);
+        return new FoundMethod(node, node.methods.get(foundIdx), foundIdx, insn);
     }
 
-    record FoundMethod(ClassNode classNode, MethodNode methodNode, int index, Handle handle) {}
+    record FoundMethod(ClassNode classNode, MethodNode methodNode, int index, InvokeDynamicInsnNode insn) {}
+    record ResolvedInterfaced(Class<?> type, Method method) {
+        public int argumentCount(){return method.getParameterCount();}
+
+        public Type[] getArgumentTypes() {
+            return Type.getArgumentTypes(method);
+        }
+
+        public Type[] realArgs(Type[] argumentTypes) {
+            return Arrays.copyOfRange(argumentTypes,argumentTypes.length-argumentCount(),argumentTypes.length);
+        }
+    }
 
     private static int findMethod(ClassNode node, Handle handle) {
 

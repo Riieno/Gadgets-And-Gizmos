@@ -20,6 +20,7 @@ import java.util.function.Supplier;
 
 public class RecordInfo {
     public final Type type;
+    public final Class<?> myClass;
     public final Object2ObjectArrayMap<String, Type> fieldMap = new Object2ObjectArrayMap<>();
     public final Lazy<Object2ObjectMap<String, MethodNode>> methodMap;
     public final Constructor<?> canonicalCtor;
@@ -50,7 +51,7 @@ public class RecordInfo {
     public RecordInfo(Type myType) {
         this.type = myType;
         Class<?> recordClass = Class.forName(myType.getClassName());
-
+        myClass = recordClass;
         for(RecordComponent component : recordClass.getRecordComponents()) {
             fieldMap.put(component.getName(), Type.getType(component.getType()));
         }

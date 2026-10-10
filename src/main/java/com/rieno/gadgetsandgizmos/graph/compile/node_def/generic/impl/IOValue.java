@@ -4,6 +4,7 @@ import com.llamalad7.mixinextras.expression.impl.flow.FlowValue;
 import com.rieno.gadgetsandgizmos.graph.compile.node_def.generic.util.RecordInfo;
 import com.rieno.gadgetsandgizmos.graph.compile.node_def.generic.util.UsageInterpreter;
 import com.rieno.gadgetsandgizmos.graph.compile.node_def.generic.util.UsageStatistics;
+import com.rieno.gadgetsandgizmos.graph.compile.util.BoxingTool;
 import com.rieno.gadgetsandgizmos.graph.compile.util.CompileUtil;
 import lombok.*;
 import lombok.experimental.Accessors;
@@ -18,6 +19,7 @@ import org.objectweb.asm.Type;
 @Builder(toBuilder = true)
 public final class IOValue {
     private final boolean isRecord;
+    private final boolean isBox;
     private final Class<?> clazz;
     private final Type type;
     private final FlowValue flowValue;
@@ -45,6 +47,7 @@ public final class IOValue {
         boolean record = clazz.isRecord();
         return IOValue.builder()
             .isRecord(record)
+            .isBox(BoxingTool.getUnboxedType(clazz)!=null)
             .clazz(clazz)
             .type(type)
             .flowValue(value)

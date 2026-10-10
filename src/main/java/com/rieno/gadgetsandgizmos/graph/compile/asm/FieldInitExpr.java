@@ -2,12 +2,13 @@ package com.rieno.gadgetsandgizmos.graph.compile.asm;
 
 import com.machinezoo.noexception.throwing.ThrowingSupplier;
 import com.rieno.gadgetsandgizmos.graph.compile.util.Handle;
+import lombok.NonNull;
 import lombok.SneakyThrows;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 
-public sealed interface FieldInitExpr permits AsmExpression, FieldInitExpr.Value {
+public sealed interface FieldInitExpr permits AsmExpression, FieldInitExpr.AnyObject, FieldInitExpr.Value {
     static AsmExpression.ReflectionConstructor constructor(ThrowingSupplier<Constructor<?>> constructor) {return constructor(Handle.constructor(constructor));}
 
     static AsmExpression.ReflectionConstructor constructor(Constructor<?> constructor) {return new AsmExpression.ReflectionConstructor(constructor);}
@@ -15,6 +16,8 @@ public sealed interface FieldInitExpr permits AsmExpression, FieldInitExpr.Value
     static AsmExpression.ReflectionMethod method(ThrowingSupplier<Method> method) {return method(Handle.method(method));}
 
     static AsmExpression.ReflectionMethod method(Method method) {return new AsmExpression.ReflectionMethod(method);}
+    static AnyObject someObject(@NonNull Object value) {return new AnyObject(value.getClass(),value);}
+    static <T> AnyObject someObject(Class<? super T> type,T value) {return new AnyObject(type,value);}
 
     sealed interface Value extends FieldInitExpr {
         record Int(int value) implements Value {}
@@ -34,4 +37,7 @@ public sealed interface FieldInitExpr permits AsmExpression, FieldInitExpr.Value
             return accessor.invoke(this);
         }
     }
+
+
+    record AnyObject(Class<?> type, Object value) implements FieldInitExpr {}
 }
