@@ -3,6 +3,8 @@ package com.rieno.gadgetsandgizmos.graph.compile.util;
 import com.rieno.gadgetsandgizmos.graph.compile.AbstractJVMGraph;
 import com.rieno.gadgetsandgizmos.graph.compile.annotations.StateHolder;
 import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapNode;
+import com.rieno.gadgetsandgizmos.graph.compile.util.helper.InsnAdapter;
+import com.rieno.gadgetsandgizmos.graph.compile.util.helper.InvokePrivateHelper;
 import com.rieno.gadgetsandgizmos.graph.type.ValueType;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
@@ -66,8 +68,19 @@ public class GeneratorHelper extends GeneratorAdapter {
     }
 
     public void privateField(int opcode, String owner, String fieldName, String desc) {
-        InsnAdapter.privateField(this, opcode, owner, fieldName, desc);
+        InvokePrivateHelper.privateField(this, opcode, owner, fieldName, desc);
     }
+    /*
+    public void privateMethod(Class<?> owner, boolean isStatic, String methodName, Class<?> returnType, Class<?>... arguments) {
+        InvokePrivateHelper.privateMethod(this,owner,isStatic,methodName,returnType, callerCtr,arguments);
+    }
+    public void privateMethod(java.lang.reflect.Method method) {
+        InvokePrivateHelper.privateMethod(this, callerCtx, method);
+    }
+    public void privateGetRecordField(Class<?> owner, String fieldName) {
+        InvokePrivateHelper.privateGetRecordField(this, callerCtx, owner,fieldName);
+    }
+    */
 
     //region if
 

@@ -1,7 +1,7 @@
 package com.rieno.gadgetsandgizmos.graph.type;
 
 import com.rieno.gadgetsandgizmos.graph.compile.util.Handle;
-import com.rieno.gadgetsandgizmos.graph.compile.util.InsnAdapter;
+import com.rieno.gadgetsandgizmos.graph.compile.util.helper.InsnAdapter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.commons.GeneratorAdapter;

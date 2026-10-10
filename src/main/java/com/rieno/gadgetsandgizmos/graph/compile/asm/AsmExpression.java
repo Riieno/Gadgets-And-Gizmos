@@ -1,7 +1,6 @@
 package com.rieno.gadgetsandgizmos.graph.compile.asm;
 
-import com.rieno.gadgetsandgizmos.graph.compile.util.InsnAdapter;
-import org.jetbrains.annotations.Nullable;
+import com.rieno.gadgetsandgizmos.graph.compile.util.helper.InsnAdapter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.AbstractInsnNode;

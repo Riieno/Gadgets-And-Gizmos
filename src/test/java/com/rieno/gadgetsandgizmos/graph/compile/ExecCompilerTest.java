@@ -16,6 +16,7 @@ class ExecCompilerTest extends AbstractJVMGraphCompilerTest {
 
     @Test
     void test() {
+        TestTypeRegister.register();
         String block = "temp";
         addPorts(block,"a","b","c");
 

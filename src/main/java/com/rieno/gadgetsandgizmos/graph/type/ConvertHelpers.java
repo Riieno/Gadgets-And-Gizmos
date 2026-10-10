@@ -2,7 +2,7 @@ package com.rieno.gadgetsandgizmos.graph.type;
 
 import com.machinezoo.noexception.throwing.ThrowingSupplier;
 import com.rieno.gadgetsandgizmos.graph.compile.util.Handle;
-import com.rieno.gadgetsandgizmos.graph.compile.util.InsnAdapter;
+import com.rieno.gadgetsandgizmos.graph.compile.util.helper.InsnAdapter;
 import com.rieno.gadgetsandgizmos.graph.compile.util.PtrExtractor;
 import lombok.SneakyThrows;
 import org.intellij.lang.annotations.MagicConstant;

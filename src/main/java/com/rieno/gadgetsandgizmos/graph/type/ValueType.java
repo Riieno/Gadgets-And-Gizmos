@@ -3,7 +3,7 @@ package com.rieno.gadgetsandgizmos.graph.type;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
-import com.rieno.gadgetsandgizmos.graph.compile.util.InsnAdapter;
+import com.rieno.gadgetsandgizmos.graph.compile.util.helper.InsnAdapter;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;

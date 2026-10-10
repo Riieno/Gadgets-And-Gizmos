@@ -14,12 +14,12 @@ import com.rieno.gadgetsandgizmos.graph.compile.node_def.generic.util.UsageInter
 import com.rieno.gadgetsandgizmos.graph.compile.node_def.generic.util.UsageStatistics;
 import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapNode;
 import com.rieno.gadgetsandgizmos.graph.compile.util.*;
+import com.rieno.gadgetsandgizmos.graph.compile.util.helper.InsnAdapter;
+import com.rieno.gadgetsandgizmos.graph.compile.util.helper.InvokePrivateHelper;
 import com.rieno.gadgetsandgizmos.graph.type.ValueType;
 import it.unimi.dsi.fastutil.ints.*;
 import it.unimi.dsi.fastutil.objects.*;
-import lombok.AccessLevel;
-import lombok.AllArgsConstructor;
-import lombok.Lombok;
+import lombok.*;
 import net.minecraft.nbt.CompoundTag;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -31,7 +31,10 @@ import org.objectweb.asm.tree.analysis.Frame;
 
 import java.io.IOException;
 import java.lang.invoke.MethodType;
-import java.lang.reflect.*;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Executable;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +42,7 @@ import java.util.Set;
 
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class ProcessedLambda {
+    public static final ClassLoader MY_LOADER = ProcessedLambda.class.getClassLoader();
     public final AbstractInsnNode[] insnArray;
     public final OutputPortRef outputPortRef;
     public final Object2ObjectOpenCustomHashMap<AbstractInsnNode, IOValue> outputValues;
@@ -59,11 +63,11 @@ public class ProcessedLambda {
         Object lambda
     ) {
         var classAndMethod = findMethod(1 + searchLevelOffset);
-        var resolvedInterface = getTargetInterface(lambda, targetInterace,classAndMethod);
+        var resolvedInterface = getTargetInterface(lambda, targetInterace, classAndMethod);
         MethodNode methodNode = classAndMethod.methodNode;
 
         String[] raw = bakeArgNames(methodNode);
-        var params = Arrays.copyOfRange(raw,raw.length-resolvedInterface.argumentCount(),raw.length);
+        var params = Arrays.copyOfRange(raw, raw.length - resolvedInterface.argumentCount(), raw.length);
 
         return make(
             options, methodNode,
@@ -101,17 +105,18 @@ public class ProcessedLambda {
         ResolvedInterfaced resolvedInterface,
         Object lambdaObject, final Int2ObjectFunction<String> argumentDefNames
     ) {
-        final int startOfRealInput = Type.getArgumentCount(lambdaBody.desc)-resolvedInterface.argumentCount();
+        final int startOfRealInput = Type.getArgumentCount(lambdaBody.desc) - resolvedInterface.argumentCount();
         AbstractInsnNode[] originalInsnArray = lambdaBody.instructions.toArray();
         var fields = new Object2ObjectOpenHashMap<Type, Set<String>>();
-        for(Type type :  resolvedInterface.getArgumentTypes()) {
+        for(Type type : resolvedInterface.getArgumentTypes()) {
             addRecordFields(fields, type);
         }
         addRecordFields(fields, Type.getReturnType(lambdaBody.desc));
-        var usageAnalyzerResult = new UsageInterpreter(lambdaOwner, lambdaBody, fields,resolvedInterface.method.getParameterCount()).findValuesFramesUsages();
+        var usageAnalyzerResult = new UsageInterpreter(lambdaOwner, lambdaBody, fields, resolvedInterface.method.getParameterCount()).findValuesFramesUsages();
 
         ObjectArrayList<AbstractInsnNode> transformedNodes = new ObjectArrayList<>();
         var frames = usageAnalyzerResult.frames();
+        final InsnAdapter.LabelCloner cloner = InsnAdapter.labelCloner();
         Type[] argumentTypes = resolvedInterface.realArgs(Type.getArgumentTypes(lambdaBody.desc));
         IOValue[] inputValues = new IOValue[argumentTypes.length];
         Type returnType = Type.getReturnType(lambdaBody.desc);
@@ -119,7 +124,7 @@ public class ProcessedLambda {
         for(int i = 0; i < argumentTypes.length; i++) {
             Type argumentType = argumentTypes[i];
             var val = inputValues[i] = IOValue.make(
-                frames[0].getLocal(i+startOfRealInput),
+                frames[0].getLocal(i + startOfRealInput),
                 argumentType,
                 options.flatInputPredicate().test(CompileUtil.type2class(argumentType), argumentTypes, i)
             );
@@ -146,7 +151,7 @@ public class ProcessedLambda {
                 int myOffset = offset, myI = i;
                 if((needToFlat && value.isRecord())) {
                     if(!value.couldRemoveRecordVariables()) {
-                        transformedNodes.add(makeInputRecordVar(value, i, offset));
+                        transformedNodes.add(makeInputRecordVar(value, i, offset, cloner));
                     }
                 } else if(needToFlat && value.isBox() && value.variableState().keep()) {
                     String portName = argumentDefNames.get(i);
@@ -185,28 +190,28 @@ public class ProcessedLambda {
 
         var stateFields = new ObjectArrayList<UnboundStateField>();
 
-        if(resolvedInterface.argumentCount()<Type.getArgumentCount(lambdaBody.desc)){
-            int varOffset=0;
-            UnboundStateField stateField = UnboundStateField.make("lambda_body", Object.class, FieldInitExpr.someObject(Object.class,lambdaObject));
+        if(resolvedInterface.argumentCount() < Type.getArgumentCount(lambdaBody.desc)) {
+            int varOffset = 0;
+            UnboundStateField stateField = UnboundStateField.make("lambda_body", Object.class, FieldInitExpr.someObject(Object.class, lambdaObject));
             stateFields.add(stateField);
             Class<?> ownerClass = lambdaObject.getClass();
             PrivateAccMetafactory.hiddenClass(ownerClass);
             String ownerClassName = ownerClass.getName();
             for(int i = 0; i < startOfRealInput; i++) {
                 handledInputVars.add(i);
-                int localArgIndex= i +1;
+                int localArgIndex = i + 1;
                 try {
                     String fieldName = "arg$" + localArgIndex;
-                    var fieldType=Type.getType(ownerClass.getDeclaredField(fieldName).getType());
+                    var fieldType = Type.getType(ownerClass.getDeclaredField(fieldName).getType());
                     int myVarOffset = varOffset;
-                    transformedNodes.add(compilable("load extra arg#"+localArgIndex+"#"+i,(mv, snapNode, inputs, outputs, data, context) -> {
-                        mv.loadStateField(stateField,snapNode.id);
-                        mv.privateField(Opcodes.GETFIELD, ownerClassName,fieldName,fieldType.getDescriptor());
+                    transformedNodes.add(compilable("load extra arg#" + localArgIndex + "#" + i, (mv, snapNode, inputs, outputs, data, context) -> {
+                        mv.loadStateField(stateField, snapNode.id);
+                        mv.privateField(Opcodes.GETFIELD, ownerClassName, fieldName, fieldType.getDescriptor());
                         int local = mv.newLocal(fieldType);
                         mv.storeLocal(local);
-                        context.varMap.put(myVarOffset,local);
+                        context.varMap.put(myVarOffset, local);
                     }));
-                    varOffset+=fieldType.getSize();
+                    varOffset += fieldType.getSize();
                 } catch(NoSuchFieldException e) {
                     throw Lombok.sneakyThrow(e);
                 }
@@ -217,7 +222,7 @@ public class ProcessedLambda {
             mv.nextLocal(offset + 1 + lambdaBody.maxLocals);
             context.setOffset(offset);
         }));
-        InsnAdapter.LabelCloner cloner = InsnAdapter.labelCloner();
+
         var oldInsnToNew = new Int2IntOpenHashMap();
         var replacedNodes = new Int2ObjectOpenHashMap<List<AbstractInsnNode>>();
         var ignoreInsn = new IntOpenHashSet();
@@ -318,7 +323,7 @@ public class ProcessedLambda {
                             interfaceMethodType,
                             dynMethodType,
                             implementation.getTag(),
-                            implementation.getOwner().replace('/','.'),
+                            implementation.getOwner().replace('/', '.'),
                             implementation.getName(),
                             Type.getType(implementation.getDesc())
                         ));
@@ -352,6 +357,20 @@ public class ProcessedLambda {
                         }
                     }
 
+                }
+                if(node.getOpcode() == Opcodes.NEW) {
+
+                    InstantiationInfo instantiationInfo = topStack(frames[i + 1], 1).getDecoration(FlowDecorations.INSTANTIATION_INFO);
+                    try {
+                        Class<?> type = Class.forName(instantiationInfo.type.getClassName(), false, MY_LOADER);
+                        InvokePrivateHelper.CallerCtx callerCtx = cloner.callerCtx();
+                        if(InvokePrivateHelper.isPrivateOrHidden(type, callerCtx)) {
+                            ignoreInsn.add(i + 1);
+                            continue;
+                        }
+                    } catch(ClassNotFoundException e) {
+
+                    }
                 }
                 if(node instanceof VarInsnNode varNode) {
                     int varOpcode = varNode.getOpcode();
@@ -417,8 +436,8 @@ public class ProcessedLambda {
 
                     }
                     if(!(node instanceof FieldInsnNode fieldInsn)) break shortcut;
-                    transformedNodes.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, fieldInsn.owner, fieldInsn.name, "()" + fieldInsn.desc, false));
-                    continue;
+                    node = new MethodInsnNode(Opcodes.INVOKEVIRTUAL, fieldInsn.owner, fieldInsn.name, "()" + fieldInsn.desc, false);
+                    break shortcut;
                 }
                 if(node.getOpcode() == Opcodes.ARETURN) {
                     IOValue outputValue = cachedOutputValue(outputValues, topStack(frames[i], 1), rawOutputValue);
@@ -455,7 +474,7 @@ public class ProcessedLambda {
 
 
             oldInsnToNew.put(i, transformedNodes.size());
-            transformedNodes.add(node.clone(cloner));
+            transformedNodes.add(cloneOrHandlePrivateCall(node, cloner));
         }
 
 
@@ -468,6 +487,106 @@ public class ProcessedLambda {
             argumentDefNames,
             options, stateFields
         );
+    }
+
+    @SneakyThrows
+    private static AbstractInsnNode cloneOrHandlePrivateCall(AbstractInsnNode node, InsnAdapter.LabelCloner cloner) {
+        return switch(node) {
+            case MethodInsnNode methodInsnNode -> {
+                {
+                    var owner = findClassOr(methodInsnNode.owner, null);
+                    if(owner != null) {
+                        Class[] parameterTypes = ArrayTransformUtil.map(Type.getArgumentTypes(methodInsnNode.desc), Class.class, CompileUtil::type2class);
+                        if(methodInsnNode.name.equals("<init>")) {
+                            var ctor = owner.getDeclaredConstructor(parameterTypes);
+
+                            if(InvokePrivateHelper.isPrivateOrHidden(cloner.callerCtx(), ctor)) {
+                                yield cloner.getNode(mv -> InvokePrivateHelper.privateConstructor(mv, cloner.callerCtx(), ctor));
+                            }
+                        } else {
+                            Method method = findMethod(owner, methodInsnNode.itf, methodInsnNode.name, parameterTypes);
+                            if(InvokePrivateHelper.isPrivateOrHidden(cloner.callerCtx(), method)) {
+                                yield cloner.getNode(mv -> InvokePrivateHelper.privateMethod(mv, cloner.callerCtx(), method));
+                            }
+                        }
+                    }
+                    yield node.clone(cloner);
+                }
+            }
+            case FieldInsnNode fieldInsnNode -> {
+
+                isPublic:
+                {
+                    var owner = findClassOr(fieldInsnNode.owner, null);
+                    if(owner != null) {
+                        if(owner.isHidden() || !Modifier.isPublic(owner.getModifiers())) break isPublic;
+
+                        java.lang.reflect.Field field = owner.getDeclaredField(fieldInsnNode.name);
+                        if(!Modifier.isPublic(field.getModifiers())) break isPublic;
+                    }
+                    yield node.clone(cloner);
+                }
+                yield cloner.getNode(mv -> InvokePrivateHelper.privateField(mv, fieldInsnNode));
+            }
+
+
+            default -> node.clone(cloner);
+        };
+
+    }
+
+    private static @NotNull Method findMethod(Class<?> owner, boolean isInterface, String name, Class<?>[] parameterTypes) throws NoSuchMethodException {
+        if(isInterface) {
+            Method type = findInterfaceMethod(owner, name, parameterTypes);
+            if(type != null) return type;
+        }else{
+            Class<?> type = owner;
+            while(type!=null) {
+                try {
+                    return type.getDeclaredMethod(name, parameterTypes);
+                } catch(NoSuchMethodException e) {
+                    type=type.getSuperclass();
+                }
+            }
+        }
+
+
+        return owner.getDeclaredMethod(name,parameterTypes);
+    }
+
+    private static @Nullable Method findInterfaceMethod(Class<?> owner, String name, Class<?>[] parameterTypes) {
+        ObjectSet<Class<?>> visited = new ObjectOpenHashSet<>();
+        ObjectSet<Class<?>> next = new ObjectOpenHashSet<>();
+        ObjectSet<Class<?>> cur = new ObjectOpenHashSet<>();
+        cur.add(owner);
+
+        while(!cur.isEmpty()) {
+            for(Class<?> type : cur) {
+                try {
+                    return type.getDeclaredMethod(name, parameterTypes);
+                } catch(NoSuchMethodException ignore) {
+                }
+                for(Class<?> subInterface : type.getInterfaces()) {
+                    if(visited.add(subInterface)) {
+                        next.add(subInterface);
+                    }
+                }
+            }
+            ObjectSet<Class<?>> cur1 = cur;
+            cur1.clear();
+            cur = next;
+            next = cur1;
+        }
+        return null;
+    }
+
+
+    private static Class<?> findClassOr(String owner, Class<?> objectClass) {
+        try {
+            return PrivateAccMetafactory.findClass(owner.replace('/', '.'));
+        } catch(ClassNotFoundException e) {
+            return objectClass;
+        }
     }
 
     private static void boxDestructor(ObjectArrayList<AbstractInsnNode> transformedNodes, IOValue outputValue, OutputPortRef outputPortRef) {
@@ -552,7 +671,9 @@ public class ProcessedLambda {
         return valueType;
     }
 
-    private static @NotNull AbstractInsnNode makeInputRecordVar(IOValue value, int argIndex, int byteCodeArgIndex) {
+    private static @NotNull AbstractInsnNode makeInputRecordVar(IOValue value, int argIndex, int byteCodeArgIndex, InsnAdapter.@NonNull LabelCloner cloner) {
+
+        InvokePrivateHelper.CallerCtx make = cloner.callerCtx();
         return compilable("input_record_var#" + argIndex, (mv, snapNode, inputs, outputs, data, context) -> {
             String localInputRecordVar = "var_" + snapNode.id + "_inrecord_" + argIndex;
             RecordInfo inputRecord = value.recordInfo();
@@ -569,13 +690,7 @@ public class ProcessedLambda {
                 inputs.load(mv, port);
             });
             if(isPrivate) {
-                mv.invokeDynamic(
-                    PrivateAccMetafactory.ctor.getName(),
-                    Type.getConstructorDescriptor(ctor),
-                    PrivateAccMetafactory.ctor,
-                    ctor.getDeclaringClass().getName(),
-                    Type.getType(ctor)
-                );
+                InvokePrivateHelper.privateConstructor(mv, make, ctor);
             } else {
                 mv.invoke(ctor);
             }
@@ -584,7 +699,7 @@ public class ProcessedLambda {
     }
 
     private static boolean isPrivate(Executable ctor) {
-        return Modifier.isPrivate(ctor.getModifiers()) || Modifier.isPrivate(ctor.getDeclaringClass().getModifiers());
+        return !Modifier.isPublic(ctor.getModifiers()) && !Modifier.isPublic(ctor.getDeclaringClass().getModifiers());
     }
 
     private static @NotNull AbstractInsnNode storePorts(List<String> ports) {
@@ -696,15 +811,16 @@ public class ProcessedLambda {
     }
 
     record FoundMethod(ClassNode classNode, MethodNode methodNode, int index, InvokeDynamicInsnNode insn) {}
+
     record ResolvedInterfaced(Class<?> type, Method method) {
-        public int argumentCount(){return method.getParameterCount();}
+        public int argumentCount() {return method.getParameterCount();}
 
         public Type[] getArgumentTypes() {
             return Type.getArgumentTypes(method);
         }
 
         public Type[] realArgs(Type[] argumentTypes) {
-            return Arrays.copyOfRange(argumentTypes,argumentTypes.length-argumentCount(),argumentTypes.length);
+            return Arrays.copyOfRange(argumentTypes, argumentTypes.length - argumentCount(), argumentTypes.length);
         }
     }
 

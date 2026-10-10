@@ -13,7 +13,7 @@ import com.rieno.gadgetsandgizmos.graph.compile.asm.Outputs;
 import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapNode;
 import com.rieno.gadgetsandgizmos.graph.compile.util.GeneratorHelper;
 import com.rieno.gadgetsandgizmos.graph.compile.util.HandleExtractor;
-import com.rieno.gadgetsandgizmos.graph.compile.util.InsnAdapter;
+import com.rieno.gadgetsandgizmos.graph.compile.util.helper.InsnAdapter;
 import com.rieno.gadgetsandgizmos.graph.compile.util.UnboundStateField;
 import com.rieno.gadgetsandgizmos.graph.type.ValueType;
 import com.rieno.gadgetsandgizmos.graph.type.ValueTypes;

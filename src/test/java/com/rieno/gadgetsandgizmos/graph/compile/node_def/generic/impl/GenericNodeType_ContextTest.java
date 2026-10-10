@@ -23,11 +23,11 @@ class GenericNodeType_ContextTest extends AbstractJVMGraphCompilerTest {
     @Test
     void test() {
         double v=2;
-        JVMRegistry.register("xy2",DefHelper.binary("c",(Double x,Double y) -> {
-            return x*y*v;
+        JVMRegistry.register("ab2",DefHelper.binary("c",(Double a,Double b) -> {
+            return a*b*v;
         }));
-        test(1,2,"xy2",4);
-        test(2,2,"xy2",8);
+        test(1,2,"ab2",4);
+        test(2,2,"ab2",8);
     }
 
     public void test(double a, double b, String type, double c) {

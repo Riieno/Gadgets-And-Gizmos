@@ -20,6 +20,17 @@ public class PrivateAccMetafactory {
     public static final Handle field = HandleExtractor.getMethod(PrivateAccMetafactory::privateField);
     public static final Handle method = HandleExtractor.getMethod(PrivateAccMetafactory::privateMethod);
     public static final Map<String, WeakReference<Class<?>>> hiddenClassNameToClass = new ConcurrentHashMap<>();
+    static {
+        hiddenClass(boolean.class);
+        hiddenClass(byte.class);
+        hiddenClass(char.class);
+        hiddenClass(short.class);
+        hiddenClass(int.class);
+        hiddenClass(long.class);
+        hiddenClass(float.class);
+        hiddenClass(double.class);
+        hiddenClass(void.class);
+    }
 
     @SneakyThrows
     public static CallSite privateCtor(MethodHandles.Lookup caller, String methodName, MethodType invokeDesc, String ownerClassName, String rawDesc) {
@@ -27,7 +38,7 @@ public class PrivateAccMetafactory {
         var lookup = LookupFinder.findFullPrivilegeAccessLookup(owner, caller);
         Constructor<?> constructor = owner.getDeclaredConstructor(unpackMethodArguments(rawDesc));
         constructor.setAccessible(true);
-        return new ConstantCallSite(lookup.unreflectConstructor(constructor));
+        return new ConstantCallSite(lookup.unreflectConstructor(constructor).asType(invokeDesc));
     }
 
     @SneakyThrows
@@ -56,15 +67,14 @@ public class PrivateAccMetafactory {
         var lookup = LookupFinder.findFullPrivilegeAccessLookup(owner, caller);
         Method found = owner.getDeclaredMethod(name, unpackMethodArguments(rawDesc));
         found.setAccessible(true);
-        return new ConstantCallSite(lookup.unreflect(found));
+        return new ConstantCallSite(lookup.unreflect(found).asType(invokeDesc));
     }
 
 
-    private static Class<?> findClass(String ownerClassName) throws ClassNotFoundException {
+    public static Class<?> findClass(String ownerClassName) throws ClassNotFoundException {
         Class<?> hiddenClass = findHiddenClass(ownerClassName);
         if(hiddenClass != null) return hiddenClass;
         return Class.forName(ownerClassName);
-
     }
 
     private static @Nullable Class<?> findHiddenClass(String ownerClassName) {
@@ -90,10 +100,10 @@ public class PrivateAccMetafactory {
         int amountOf = tokenizer.countTokens();
         if(amountOf == 0) throw new IllegalArgumentException("Excepted array of classes but found nothing");
         Class<?>[] parameterTypes = new Class[amountOf - 1];
-        tokenizer.nextToken();
         for(int i = 0; i < parameterTypes.length; i++) {
             parameterTypes[i] = findClass(tokenizer.nextToken());
         }
+        tokenizer.nextToken();
 
         return parameterTypes;
     }
@@ -103,10 +113,10 @@ public class PrivateAccMetafactory {
         int amountOf = tokenizer.countTokens();
         if(amountOf == 0) throw new IllegalArgumentException("Excepted array of classes but found nothing");
         Class<?>[] parameterTypes = new Class[amountOf - 1];
-        Class<?> returnType = findClass(tokenizer.nextToken());
         for(int i = 0; i < parameterTypes.length; i++) {
             parameterTypes[i] = findClass(tokenizer.nextToken());
         }
+        Class<?> returnType = findClass(tokenizer.nextToken());
 
         return MethodType.methodType(returnType, parameterTypes);
     }

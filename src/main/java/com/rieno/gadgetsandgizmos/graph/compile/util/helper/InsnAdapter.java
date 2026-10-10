@@ -1,10 +1,7 @@
-package com.rieno.gadgetsandgizmos.graph.compile.util;
+package com.rieno.gadgetsandgizmos.graph.compile.util.helper;
 
-import com.rieno.gadgetsandgizmos.graph.compile.node_def.generic.impl.metafactory.PrivateAccMetafactory;
-import it.unimi.dsi.fastutil.Arrays;
+import com.rieno.gadgetsandgizmos.graph.compile.util.Handle;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.objects.ObjectArrayList;
-import org.apache.commons.lang3.ArrayUtils;
 import org.intellij.lang.annotations.MagicConstant;
 import org.jetbrains.annotations.NotNull;
 import org.objectweb.asm.MethodVisitor;
@@ -13,11 +10,13 @@ import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.LabelNode;
+import org.objectweb.asm.tree.MethodNode;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Executable;
 import java.lang.reflect.Modifier;
 import java.util.Map;
+import java.util.function.Consumer;
 
 public class InsnAdapter {
 
@@ -28,7 +27,7 @@ public class InsnAdapter {
 
     public static void newarray(final MethodVisitor methodVisitor, final Type type) {
         int arrayType;
-        switch (type.getSort()) {
+        switch(type.getSort()) {
             case Type.BOOLEAN:
                 arrayType = Opcodes.T_BOOLEAN;
                 break;
@@ -104,18 +103,18 @@ public class InsnAdapter {
         var name = method.getName();
         var desc = method.getDesc();
         switch(method.getTag()) {
-            case Opcodes.H_INVOKEVIRTUAL -> mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, owner,name,desc,isInterface);
-            case Opcodes.H_INVOKESTATIC -> mv.visitMethodInsn(Opcodes.INVOKESTATIC, owner,name,desc,isInterface);
-            case Opcodes.H_INVOKESPECIAL -> mv.visitMethodInsn(Opcodes.INVOKESPECIAL, owner,name,desc,isInterface);
+            case Opcodes.H_INVOKEVIRTUAL -> mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL, owner, name, desc, isInterface);
+            case Opcodes.H_INVOKESTATIC -> mv.visitMethodInsn(Opcodes.INVOKESTATIC, owner, name, desc, isInterface);
+            case Opcodes.H_INVOKESPECIAL -> mv.visitMethodInsn(Opcodes.INVOKESPECIAL, owner, name, desc, isInterface);
             case Opcodes.H_NEWINVOKESPECIAL -> {
                 int argumentCount = Type.getArgumentCount(desc);
                 Type[] argumentTypes = Type.getArgumentTypes(desc);
-                if(argumentCount==0){
-                    mv.visitTypeInsn(Opcodes.NEW,owner);
+                if(argumentCount == 0) {
+                    mv.visitTypeInsn(Opcodes.NEW, owner);
                     mv.visitInsn(Opcodes.DUP);
-                    mv.visitMethodInsn(Opcodes.INVOKESPECIAL, owner,name,desc,isInterface);
+                    mv.visitMethodInsn(Opcodes.INVOKESPECIAL, owner, name, desc, isInterface);
                 } else if(argumentCount == 1) {
-                    mv.visitTypeInsn(Opcodes.NEW,owner);
+                    mv.visitTypeInsn(Opcodes.NEW, owner);
 
                     if(argumentTypes[0].getSize() == 2) {
                         mv.visitInsn(Opcodes.DUP_X2);
@@ -124,48 +123,38 @@ public class InsnAdapter {
                         mv.visitInsn(Opcodes.DUP_X1);
                         mv.visitInsn(Opcodes.SWAP);
                     }
-                    mv.visitMethodInsn(Opcodes.INVOKESPECIAL, owner,name,desc,isInterface);
-                }else if(argumentCount==2 && argumentTypes[0].getSize()==1 && argumentTypes[1].getSize()==1){
-                    mv.visitTypeInsn(Opcodes.NEW,owner);
+                    mv.visitMethodInsn(Opcodes.INVOKESPECIAL, owner, name, desc, isInterface);
+                } else if(argumentCount == 2 && argumentTypes[0].getSize() == 1 && argumentTypes[1].getSize() == 1) {
+                    mv.visitTypeInsn(Opcodes.NEW, owner);
                     mv.visitInsn(Opcodes.DUP_X2);
-                    mv.visitMethodInsn(Opcodes.INVOKESPECIAL, owner,name,desc,isInterface);
-                }else{
+                    mv.visitMethodInsn(Opcodes.INVOKESPECIAL, owner, name, desc, isInterface);
+                } else {
                     int variant = storeArgumentsAsArr(mv, argumentTypes);
-                    mv.visitTypeInsn(Opcodes.NEW,owner);
+                    mv.visitTypeInsn(Opcodes.NEW, owner);
                     mv.visitInsn(Opcodes.DUP_X1);
                     mv.visitInsn(Opcodes.SWAP);
 
                     loadArgumentsFromArr(mv, argumentTypes, variant);
                 }
             }
-            case Opcodes.H_INVOKEINTERFACE -> mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, owner,name,desc,isInterface);
+            case Opcodes.H_INVOKEINTERFACE ->
+                mv.visitMethodInsn(Opcodes.INVOKEINTERFACE, owner, name, desc, isInterface);
         }
     }
 
-    public static void privateField(MethodVisitor mv, int opcode, String owner, String fieldName, String desc) {
-        mv.visitInvokeDynamicInsn(
-            "privateField_"+fieldName,
-            //Type.getMethodDescriptor(Type.getType(desc),owner),
-            Type.getMethodDescriptor(Type.getType(desc),OBJECT_TYPE),
-            PrivateAccMetafactory.field,
-            owner,
-            fieldName,
-            opcode
-        );
-    }
 
     public static void loadArgumentsFromArr(
         MethodVisitor mv,
         Type[] argumentTypes,
-        @MagicConstant(intValues = {SINGLE_TYPE_SIZE_1,SINGLE_TYPE_SIZE_2,MULTI_TYPE}) int variant
+        @MagicConstant(intValues = {SINGLE_TYPE_SIZE_1, SINGLE_TYPE_SIZE_2, MULTI_TYPE}) int variant
     ) {
         Type sample = argumentTypes[0];
-        int sampleLoadInsn=sample.getOpcode(Opcodes.IALOAD);
+        int sampleLoadInsn = sample.getOpcode(Opcodes.IALOAD);
         switch(variant) {
             case InsnAdapter.SINGLE_TYPE_SIZE_1 -> {
                 for(int i = 0; i < argumentTypes.length; i++) {
                     mv.visitInsn(Opcodes.DUP);//[arr,arr]
-                    push(mv,i);//[arr,arr,index]
+                    push(mv, i);//[arr,arr,index]
                     mv.visitInsn(sampleLoadInsn);//[arr,value]
                     mv.visitInsn(Opcodes.SWAP);//[value,arr]
                 }
@@ -174,7 +163,7 @@ public class InsnAdapter {
             case InsnAdapter.SINGLE_TYPE_SIZE_2 -> {
                 for(int i = 0; i < argumentTypes.length; i++) {
                     mv.visitInsn(Opcodes.DUP);//[arr,arr]
-                    push(mv,i);//[arr,arr,index]
+                    push(mv, i);//[arr,arr,index]
                     mv.visitInsn(sampleLoadInsn);//[arr,value_0,value_1]
                     swap_top2_bottom1(mv);//[value_0,value_1,arr]
                 }
@@ -183,12 +172,12 @@ public class InsnAdapter {
                 for(int i = 0; i < argumentTypes.length; i++) {
                     Type type = argumentTypes[i];
                     mv.visitInsn(Opcodes.DUP);//[arr,arr]
-                    push(mv,i);//[arr,arr,index]
+                    push(mv, i);//[arr,arr,index]
                     mv.visitInsn(Opcodes.AALOAD);//[arr,boxed]
-                    unbox(mv,type);
-                    if(type.getSize()==2){//[arr,unboxed_0,unboxed_1]
+                    unbox(mv, type);
+                    if(type.getSize() == 2) {//[arr,unboxed_0,unboxed_1]
                         swap_top2_bottom1(mv);//[unboxed_0,unboxed_1,arr]
-                    }else{//[arr,unboxed]
+                    } else {//[arr,unboxed]
                         mv.visitInsn(Opcodes.SWAP);//[unboxed, arr]
                     }
                 }
@@ -197,13 +186,13 @@ public class InsnAdapter {
         mv.visitInsn(Opcodes.POP);
     }
 
-    @MagicConstant(intValues = {SINGLE_TYPE_SIZE_1,SINGLE_TYPE_SIZE_2,MULTI_TYPE})
+    @MagicConstant(intValues = {SINGLE_TYPE_SIZE_1, SINGLE_TYPE_SIZE_2, MULTI_TYPE})
     public static int storeArgumentsAsArr(MethodVisitor mv, Type[] argumentTypes) {
         int variant;
-        boolean differentTypes=false;
+        boolean differentTypes = false;
         for(int i = 1; i < argumentTypes.length; i++) {
             if(!argumentTypes[i].equals(argumentTypes[0])) {
-                differentTypes=true;
+                differentTypes = true;
                 break;
             }
         }
@@ -211,43 +200,43 @@ public class InsnAdapter {
         if(!differentTypes) {
             Type sample = argumentTypes[0];
             newarray(mv, sample);
-            int arrayStore=sample.getOpcode(Opcodes.IASTORE);
+            int arrayStore = sample.getOpcode(Opcodes.IASTORE);
             if(sample.getSize() == 2) {
-                variant= SINGLE_TYPE_SIZE_2;
+                variant = SINGLE_TYPE_SIZE_2;
                 for(int i = 0; i < argumentTypes.length; i++) {
                     //[...,num0_0,num0_1,arr]
                     mv.visitInsn(Opcodes.DUP_X2);//[...,arr, num0_0,num0_1, arr]
                     mv.visitInsn(Opcodes.DUP_X2);//[...,arr, arr, num0_0,num0_1, arr]
                     mv.visitInsn(Opcodes.POP);//[...,arr, arr, num0_0,num0_1]
-                    push(mv,i);//[...,arr, arr, num0_0,num0_1, index]
+                    push(mv, i);//[...,arr, arr, num0_0,num0_1, index]
                     swap_top1_bottom2(mv);
                     mv.visitInsn(arrayStore);//[..., arr]
                 }
-            }else{
-                variant=SINGLE_TYPE_SIZE_1;
+            } else {
+                variant = SINGLE_TYPE_SIZE_1;
                 for(int i = 0; i < argumentTypes.length; i++) {
                     mv.visitInsn(Opcodes.DUP_X1);
                     mv.visitInsn(Opcodes.SWAP);
-                    push(mv,i);
+                    push(mv, i);
                     mv.visitInsn(Opcodes.SWAP);
                     mv.visitInsn(arrayStore);
                 }
             }
-        }else{
-            variant=MULTI_TYPE;
+        } else {
+            variant = MULTI_TYPE;
             newarray(mv, OBJECT_TYPE);
             for(int i = argumentTypes.length - 1; i >= 0; i--) {
                 Type argumentType = argumentTypes[i];
-                if(argumentType.getSize() == 2){
+                if(argumentType.getSize() == 2) {
                     mv.visitInsn(Opcodes.DUP_X2);
                     swap_top1_bottom2(mv);
-                }else{
+                } else {
                     mv.visitInsn(Opcodes.DUP_X1);
                     mv.visitInsn(Opcodes.SWAP);
                 }
 
                 box(mv, argumentType);
-                push(mv,i);
+                push(mv, i);
                 mv.visitInsn(Opcodes.SWAP);
                 mv.visitInsn(Opcodes.AASTORE);
             }
@@ -257,25 +246,28 @@ public class InsnAdapter {
 
     /**
      * [.., value_0,value_1, other] -> [.., other, value_0,value_1]
-     * */
+     *
+     */
     public static void swap_top1_bottom2(MethodVisitor mv) {
         mv.visitInsn(Opcodes.DUP_X2);
         mv.visitInsn(Opcodes.POP);
     }
+
     /**
      * [.., other, value_0,value_1] -> [.., value_0,value_1, other]
-     * */
+     *
+     */
     public static void swap_top2_bottom1(MethodVisitor mv) {
         mv.visitInsn(Opcodes.DUP2_X1);
         mv.visitInsn(Opcodes.POP2);
     }
 
     public static void push(MethodVisitor mv, final int value) {
-        if (value >= -1 && value <= 5) {
+        if(value >= -1 && value <= 5) {
             mv.visitInsn(Opcodes.ICONST_0 + value);
-        } else if (value >= Byte.MIN_VALUE && value <= Byte.MAX_VALUE) {
+        } else if(value >= Byte.MIN_VALUE && value <= Byte.MAX_VALUE) {
             mv.visitIntInsn(Opcodes.BIPUSH, value);
-        } else if (value >= Short.MIN_VALUE && value <= Short.MAX_VALUE) {
+        } else if(value >= Short.MIN_VALUE && value <= Short.MAX_VALUE) {
             mv.visitIntInsn(Opcodes.SIPUSH, value);
         } else {
             mv.visitLdcInsn(value);
@@ -305,19 +297,35 @@ public class InsnAdapter {
 
     /**
      * @see org.objectweb.asm.tree.AbstractInsnNode#clone(Map)
-     * */
+     *
+     */
     public static @NotNull InsnAdapter.LabelCloner labelCloner() {
         return new LabelCloner();
     }
 
     /**
      * @see org.objectweb.asm.tree.AbstractInsnNode#clone(Map)
-     * */
+     *
+     */
     public static class LabelCloner extends Object2ObjectOpenHashMap<LabelNode, LabelNode> {
+        public final MethodNode mockNode = new MethodNode();
+        private final InvokePrivateHelper.CallerCtx callerCtx = InvokePrivateHelper.CallerCtx.make();
+
+        public InvokePrivateHelper.CallerCtx callerCtx() {
+            return callerCtx;
+        }
+
+        public AbstractInsnNode getNode(Consumer<MethodVisitor> mv) {
+            mv.accept(mockNode);
+            AbstractInsnNode last = mockNode.instructions.getLast();
+            mockNode.instructions.remove(last);
+            return last;
+        }
+
         @Override
         public LabelNode get(Object k) {
             LabelNode labelNode = super.get(k);
-            if(labelNode==null)put((LabelNode) k,labelNode=new LabelNode());
+            if(labelNode == null) put((LabelNode) k, labelNode = new LabelNode());
             return labelNode;
         }
 
