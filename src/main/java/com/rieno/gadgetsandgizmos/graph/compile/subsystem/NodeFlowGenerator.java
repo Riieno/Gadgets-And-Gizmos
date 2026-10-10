@@ -139,7 +139,6 @@ public class NodeFlowGenerator {
         }else if(generateSourceExec){
             buildNodeCallTree(context, adapter,sourceNodeID);
         }
-        int prevSize = 0;
         IntArrayList curQueue = new IntArrayList();
         IntArrayList nextQueue = new IntArrayList();
         curQueue.add(sourceNodeID);

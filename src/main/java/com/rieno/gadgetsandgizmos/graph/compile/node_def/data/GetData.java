@@ -6,7 +6,7 @@ import com.rieno.gadgetsandgizmos.graph.compile.asm.*;
 import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapNode;
 import com.rieno.gadgetsandgizmos.graph.compile.subsystem.CalculatorGenerator;
 import com.rieno.gadgetsandgizmos.graph.compile.util.GeneratorHelper;
-import com.rieno.gadgetsandgizmos.graph.compile.util.Handle;
+import com.rieno.gadgetsandgizmos.graph.compile.util.Handles;
 import com.rieno.gadgetsandgizmos.graph.compile.util.UnboundStateField;
 import com.rieno.gadgetsandgizmos.graph.init.GNG_Events;
 import com.rieno.gadgetsandgizmos.graph.struct.NodeCalculator;
@@ -84,7 +84,7 @@ public class GetData extends JVMNodeType {
 
             mv.dup();
             mv.push(portName);
-            mv.invoke(Handle.method(() -> Map.class.getDeclaredMethod("get", Object.class)));
+            mv.invoke(Handles.method(() -> Map.class.getDeclaredMethod("get", Object.class)));
             mv.checkCast(Type.getType(AdvancedGraphDocument.Value.class));
             outputs.store(mv, portName);
 
@@ -98,7 +98,7 @@ public class GetData extends JVMNodeType {
 
         mv.push(blockPos);
         mv.loadStateField(entry);
-        mv.invoke(Handle.method(() -> BlockData.class.getDeclaredMethod("getValues", String.class, Map.class)));
+        mv.invoke(Handles.method(() -> BlockData.class.getDeclaredMethod("getValues", String.class, Map.class)));
 
 
     }

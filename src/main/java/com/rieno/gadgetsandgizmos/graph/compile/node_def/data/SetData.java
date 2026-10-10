@@ -4,7 +4,7 @@ import com.rieno.gadgetsandgizmos.graph.compile.CompilationContext;
 import com.rieno.gadgetsandgizmos.graph.compile.asm.*;
 import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapNode;
 import com.rieno.gadgetsandgizmos.graph.compile.util.GeneratorHelper;
-import com.rieno.gadgetsandgizmos.graph.compile.util.Handle;
+import com.rieno.gadgetsandgizmos.graph.compile.util.Handles;
 import com.rieno.gadgetsandgizmos.graph.type.ValueType;
 import com.rieno.gadgetsandgizmos.graph.type.ValueTypes;
 import it.unimi.dsi.fastutil.objects.Object2ObjectMap;
@@ -47,7 +47,7 @@ public class SetData extends JVMNodeType {
             inputs.load(mv,portName);
             mv.visitInsn(Opcodes.AASTORE);
         }
-        mv.invoke(Handle.method(()->BlockData.class.getDeclaredMethod("setValues", String.class, Object[].class)));
+        mv.invoke(Handles.method(()->BlockData.class.getDeclaredMethod("setValues", String.class, Object[].class)));
 
     }
 

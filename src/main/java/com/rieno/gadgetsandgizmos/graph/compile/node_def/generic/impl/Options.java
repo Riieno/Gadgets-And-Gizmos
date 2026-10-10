@@ -10,15 +10,13 @@ public record Options(
     ShouldFlatOutputPredicate flatOutputPredicate,
     boolean isPure,
     @NonNull
-    String outputPortDefName,
-    PrivateAccessResolutionStratage privateAccessResolutionStratage
+    String outputPortDefName
 ) {
     public static final Options defaultOptions = new Options(
         ShouldFlatInputPredicate.RECORD.and((type, argumentTypes, argIndex) -> argumentTypes.length == 1).or(ShouldFlatInputPredicate.PRIMITIVE_WRAPPERS),
         ShouldFlatOutputPredicate.RECORD_OR_BOXED,
         false,
-        "value",
-        PrivateAccessResolutionStratage.INVOKE_DYNAMIC
+        "value"
     );
 
     public static OptionsBuilder builder() {

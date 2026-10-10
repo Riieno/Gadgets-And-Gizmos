@@ -1,7 +1,7 @@
 package com.rieno.gadgetsandgizmos.graph.type;
 
 import com.machinezoo.noexception.throwing.ThrowingSupplier;
-import com.rieno.gadgetsandgizmos.graph.compile.util.Handle;
+import com.rieno.gadgetsandgizmos.graph.compile.util.Handles;
 import com.rieno.gadgetsandgizmos.graph.compile.util.helper.InsnAdapter;
 import com.rieno.gadgetsandgizmos.graph.compile.util.PtrExtractor;
 import lombok.SneakyThrows;
@@ -29,7 +29,7 @@ public interface ConvertHelpers<T> {
 
     @SneakyThrows
     default void convertViaMethodUnsafe(ValueType<?> other, ThrowingSupplier<Method> methodMaker) {
-        Method method = Handle.method(methodMaker);
+        Method method = Handles.method(methodMaker);
         MethodNode tmp = new MethodNode();
         InsnAdapter.invoke(tmp, method);
         setConvertExpression(other, tmp.instructions.getFirst());

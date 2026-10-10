@@ -1,6 +1,6 @@
 package com.rieno.gadgetsandgizmos.graph.type;
 
-import com.rieno.gadgetsandgizmos.graph.compile.util.Handle;
+import com.rieno.gadgetsandgizmos.graph.compile.util.Handles;
 import com.rieno.gadgetsandgizmos.graph.compile.util.helper.InsnAdapter;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Type;
@@ -12,8 +12,8 @@ import java.util.function.Function;
 
 public class InternalLambdaStorage {
     private static Function<?, ?>[] array;
-    private static final Method getMethod = Handle.method(() -> InternalLambdaStorage.class.getDeclaredMethod("get", int.class));
-    private static final Method invokeFunction = Handle.method(() -> Function.class.getDeclaredMethod("apply", Object.class));
+    private static final Method getMethod = Handles.method(() -> InternalLambdaStorage.class.getDeclaredMethod("get", int.class));
+    private static final Method invokeFunction = Handles.method(() -> Function.class.getDeclaredMethod("apply", Object.class));
 
     public static Function<?, ?> get(int index) {
         return array[index];

@@ -1,7 +1,7 @@
 package com.rieno.gadgetsandgizmos.graph.struct;
 
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
-import com.rieno.gadgetsandgizmos.graph.compile.util.Handle;
+import com.rieno.gadgetsandgizmos.graph.compile.util.Handles;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -25,7 +25,7 @@ public abstract class NodeCalculator {
         ExecFollow,
         Passive;
         public final int id = ordinal();
-        public final Field myField = Handle.field(() -> Mode.class.getDeclaredField(name()));
+        public final Field myField = Handles.field(() -> Mode.class.getDeclaredField(name()));
         public final static Mode[] all = values();
 
     }

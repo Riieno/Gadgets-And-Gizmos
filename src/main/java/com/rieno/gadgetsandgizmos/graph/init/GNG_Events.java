@@ -4,9 +4,8 @@ import com.machinezoo.noexception.throwing.ThrowingSupplier;
 import com.rieno.gadgetsandgizmos.graph.compile.AbstractJVMGraph;
 import com.rieno.gadgetsandgizmos.graph.compile.EventNode;
 import com.rieno.gadgetsandgizmos.graph.compile.JVMGraphCompiler;
-import com.rieno.gadgetsandgizmos.graph.compile.subsystem.NodeFlowGenerator;
 import com.rieno.gadgetsandgizmos.graph.compile.util.GeneratorHelper;
-import com.rieno.gadgetsandgizmos.graph.compile.util.Handle;
+import com.rieno.gadgetsandgizmos.graph.compile.util.Handles;
 import com.rieno.gadgetsandgizmos.graph.struct.NodeCalculator;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
@@ -75,7 +74,7 @@ public class GNG_Events {
         var eventMethod = node.methods.getLast();
 
         adapter.loadLocal("eventId");
-        adapter.invoke(Handle.secondPartOfEvent); //[...,part]
+        adapter.invoke(Handles.secondPartOfEvent); //[...,part]
 
         {
             Label doExec = adapter.newLabel();
@@ -90,16 +89,16 @@ public class GNG_Events {
 
         adapter.loadThis();//[...,part,this]
         adapter.swap();//[...,this,part]
-        adapter.invoke(Handle.jvmGraph_nodeId);//[...,nodeId]
+        adapter.invoke(Handles.jvmGraph_nodeId);//[...,nodeId]
 
         adapter.loadThis();//[...,nodeId,this]
         adapter.swap();//[...,this,nodeId]
-        adapter.invoke(Handle.jvmGraph_calculator_fromInt);//[...,calculator]
+        adapter.invoke(Handles.jvmGraph_calculator_fromInt);//[...,calculator]
 
         adapter.get(NodeCalculator.Mode.ExecFollow.myField);//[...,calculator,mode]
         //adapter.swap();//[...,mode,calc]
         adapter.loadLocal("eventId");//[...,calc,mode,event]
-        adapter.invoke(Handle.calculator_calc);
+        adapter.invoke(Handles.calculator_calc);
         adapter.visitInsn(Opcodes.RETURN);
         adapter.visitEnd();
         /*if(tickers == null) {
@@ -122,11 +121,11 @@ public class GNG_Events {
 
             adapter.loadThis();
             adapter.push(nodeId);
-            adapter.invoke(Handle.jvmGraph_calculator_fromInt);
+            adapter.invoke(Handles.jvmGraph_calculator_fromInt);
 
             adapter.get(passive.myField);
             adapter.loadLocal("eventId");
-            adapter.invoke(Handle.calculator_calc);
+            adapter.invoke(Handles.calculator_calc);
 
             //NodeFlowGenerator.buildNodeCallTree(cache, adapter, nodeId);
         }

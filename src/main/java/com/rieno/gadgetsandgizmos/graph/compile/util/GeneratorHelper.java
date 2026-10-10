@@ -32,7 +32,6 @@ public class GeneratorHelper extends GeneratorAdapter {
     public final MethodNode node;
     public final Object2ObjectMap<String, PortVarEntry> portVariables = new Object2ObjectOpenHashMap<>();
     public final Object2ObjectMap<String, VarEntry> variables = new Object2ObjectOpenHashMap<>();
-    public final Object2ObjectMap<String, UnboundStateField> fields = new Object2ObjectOpenHashMap<>();
     private final Label startLabel = new Label();
     private final Label endLabel = new Label();
 
@@ -98,7 +97,7 @@ public class GeneratorHelper extends GeneratorAdapter {
     }
 
     public void objectEquals(boolean nullable) {
-        invoke(nullable ? Handle.NULLABLE_OBJECT_EQUALS : Handle.NOT_NULL_OBJECT_EQUALS);
+        invoke(nullable ? Handles.NULLABLE_OBJECT_EQUALS : Handles.NOT_NULL_OBJECT_EQUALS);
     }
 
     //endregion

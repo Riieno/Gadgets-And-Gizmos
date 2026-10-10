@@ -2,9 +2,7 @@ package com.rieno.gadgetsandgizmos.graph.compile;
 
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.graph.compile.node_def.DefHelper;
-import com.rieno.gadgetsandgizmos.graph.compile.node_def.generic.impl.NonPublicReference;
 import net.minecraft.nbt.DoubleTag;
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

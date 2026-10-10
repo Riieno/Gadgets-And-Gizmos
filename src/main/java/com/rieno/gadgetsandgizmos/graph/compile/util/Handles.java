@@ -5,6 +5,8 @@ import com.rieno.gadgetsandgizmos.graph.compile.AbstractJVMGraph;
 import com.rieno.gadgetsandgizmos.graph.struct.NodeCalculator;
 import lombok.Lombok;
 import lombok.SneakyThrows;
+import org.jetbrains.annotations.ApiStatus;
+import org.objectweb.asm.Handle;
 
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -13,15 +15,17 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Objects;
 
-public class Handle {
-    public static final Method firstPartOfEvent, secondPartOfEvent;
-    public static final Method jvmGraph_nodeId;
+public class Handles {
+    public static final Handle firstPartOfEvent=HandleExtractor.<String,String>getMethod(Handles::firstPartOfEvent);
+    public static final Handle secondPartOfEvent=HandleExtractor.<String,String>getMethod(Handles::secondPartOfEvent);
+    public static final Handle jvmGraph_nodeId= HandleExtractor.<AbstractJVMGraph, String, Integer>getMethod(Handles::jvmGraph_nodeId);
     public static final Method jvmGraph_calculator_fromInt = method(() -> AbstractJVMGraph.class.getDeclaredMethod("getOrCreateNodeCalculator", int.class));
     public static final Method calculator_calc = method(() -> NodeCalculator.class.getDeclaredMethod("calculate", NodeCalculator.Mode.class, String.class));
     public static Method NULLABLE_OBJECT_EQUALS = method(() -> Objects.class.getDeclaredMethod("equals", Object.class, Object.class));
     public static Method NOT_NULL_OBJECT_EQUALS = method(() -> Object.class.getDeclaredMethod("equals", Object.class));
 
     @SneakyThrows
+    @ApiStatus.Obsolete
     public static Method method(ThrowingSupplier<Method> getter) {
         return getter.get();
     }
@@ -32,24 +36,16 @@ public class Handle {
         return lookup.unreflect(m);
     }
     @SneakyThrows
+    @ApiStatus.Obsolete
     public static Constructor<?> constructor(ThrowingSupplier<Constructor<?>> getter) {
         return getter.get();
     }
     @SneakyThrows
+    @ApiStatus.Obsolete
     public static Field field(ThrowingSupplier<Field> getter) {
         return getter.get();
     }
     //TODO compile time check
-
-    static {
-        try {
-            firstPartOfEvent = Handle.class.getDeclaredMethod("firstPartOfEvent", String.class);
-            secondPartOfEvent = Handle.class.getDeclaredMethod("secondPartOfEvent", String.class);
-            jvmGraph_nodeId = Handle.class.getDeclaredMethod("jvmGraph_nodeId", AbstractJVMGraph.class, String.class);
-        } catch(NoSuchMethodException e) {
-            throw Lombok.sneakyThrow(e);
-        }
-    }
 
     public static String firstPartOfEvent(String eventId) {
         int i = eventId.indexOf(':');

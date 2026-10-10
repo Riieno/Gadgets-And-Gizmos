@@ -1,6 +1,6 @@
 package com.rieno.gadgetsandgizmos.graph.compile.util.helper;
 
-import com.rieno.gadgetsandgizmos.graph.compile.util.Handle;
+import com.rieno.gadgetsandgizmos.graph.compile.util.Handles;
 import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
 import org.intellij.lang.annotations.MagicConstant;
 import org.jetbrains.annotations.NotNull;
@@ -61,31 +61,31 @@ public class InsnAdapter {
 
     public static void box(MethodVisitor mv, Type type) {
         switch(type.getSort()) {
-            case Type.BYTE -> invoke(mv, Handle.method(() -> Byte.class.getDeclaredMethod("valueOf", byte.class)));
-            case Type.SHORT -> invoke(mv, Handle.method(() -> Short.class.getDeclaredMethod("valueOf", short.class)));
-            case Type.INT -> invoke(mv, Handle.method(() -> Integer.class.getDeclaredMethod("valueOf", int.class)));
-            case Type.LONG -> invoke(mv, Handle.method(() -> Long.class.getDeclaredMethod("valueOf", long.class)));
+            case Type.BYTE -> invoke(mv, Handles.method(() -> Byte.class.getDeclaredMethod("valueOf", byte.class)));
+            case Type.SHORT -> invoke(mv, Handles.method(() -> Short.class.getDeclaredMethod("valueOf", short.class)));
+            case Type.INT -> invoke(mv, Handles.method(() -> Integer.class.getDeclaredMethod("valueOf", int.class)));
+            case Type.LONG -> invoke(mv, Handles.method(() -> Long.class.getDeclaredMethod("valueOf", long.class)));
 
-            case Type.FLOAT -> invoke(mv, Handle.method(() -> Float.class.getDeclaredMethod("valueOf", float.class)));
+            case Type.FLOAT -> invoke(mv, Handles.method(() -> Float.class.getDeclaredMethod("valueOf", float.class)));
             case Type.DOUBLE ->
-                invoke(mv, Handle.method(() -> Double.class.getDeclaredMethod("valueOf", double.class)));
+                invoke(mv, Handles.method(() -> Double.class.getDeclaredMethod("valueOf", double.class)));
 
             case Type.BOOLEAN ->
-                invoke(mv, Handle.method(() -> Boolean.class.getDeclaredMethod("valueOf", boolean.class)));
+                invoke(mv, Handles.method(() -> Boolean.class.getDeclaredMethod("valueOf", boolean.class)));
         }
     }
 
     public static void unbox(MethodVisitor mv, Type type) {
         switch(type.getSort()) {
-            case Type.BYTE -> invoke(mv, Handle.method(() -> Byte.class.getDeclaredMethod("byteValue")));
-            case Type.SHORT -> invoke(mv, Handle.method(() -> Short.class.getDeclaredMethod("shortValue")));
-            case Type.INT -> invoke(mv, Handle.method(() -> Integer.class.getDeclaredMethod("intValue")));
-            case Type.LONG -> invoke(mv, Handle.method(() -> Long.class.getDeclaredMethod("longValue")));
+            case Type.BYTE -> invoke(mv, Handles.method(() -> Byte.class.getDeclaredMethod("byteValue")));
+            case Type.SHORT -> invoke(mv, Handles.method(() -> Short.class.getDeclaredMethod("shortValue")));
+            case Type.INT -> invoke(mv, Handles.method(() -> Integer.class.getDeclaredMethod("intValue")));
+            case Type.LONG -> invoke(mv, Handles.method(() -> Long.class.getDeclaredMethod("longValue")));
 
-            case Type.FLOAT -> invoke(mv, Handle.method(() -> Float.class.getDeclaredMethod("floatValue")));
-            case Type.DOUBLE -> invoke(mv, Handle.method(() -> Double.class.getDeclaredMethod("doubleValue")));
+            case Type.FLOAT -> invoke(mv, Handles.method(() -> Float.class.getDeclaredMethod("floatValue")));
+            case Type.DOUBLE -> invoke(mv, Handles.method(() -> Double.class.getDeclaredMethod("doubleValue")));
 
-            case Type.BOOLEAN -> invoke(mv, Handle.method(() -> Boolean.class.getDeclaredMethod("booleanValue")));
+            case Type.BOOLEAN -> invoke(mv, Handles.method(() -> Boolean.class.getDeclaredMethod("booleanValue")));
         }
     }
 

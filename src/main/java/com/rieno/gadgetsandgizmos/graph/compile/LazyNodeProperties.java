@@ -6,7 +6,7 @@ import com.rieno.gadgetsandgizmos.graph.compile.asm.Outputs;
 import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapNode;
 import com.rieno.gadgetsandgizmos.graph.compile.util.ClassNodeUtil;
 import com.rieno.gadgetsandgizmos.graph.compile.util.GeneratorHelper;
-import com.rieno.gadgetsandgizmos.graph.compile.util.Handle;
+import com.rieno.gadgetsandgizmos.graph.compile.util.Handles;
 import com.rieno.gadgetsandgizmos.graph.compile.util.UnboundStateField;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import lombok.AllArgsConstructor;
@@ -36,7 +36,7 @@ public class LazyNodeProperties {
         return hasCustomControlFlow1;
     });
     public final Lazy<Boolean> isModeSensitive = Lazy.of(() -> {
-        Field calculatorMode = Handle.field(() -> CompilationContext.class.getDeclaredField("calculatorMode"));
+        Field calculatorMode = Handles.field(() -> CompilationContext.class.getDeclaredField("calculatorMode"));
         for(Class<? extends JVMNodeType> it = aClass; it != JVMNodeType.class; it = superClass(it)) {
             try {
                 var method = JVMNodeType.class.getDeclaredMethod("compileOutputPortCalculations", GeneratorHelper.class, SnapNode.class, Inputs.class, Outputs.class, CompoundTag.class, CompilationContext.class);

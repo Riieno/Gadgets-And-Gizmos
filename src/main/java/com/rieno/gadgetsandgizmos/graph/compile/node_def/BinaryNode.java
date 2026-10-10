@@ -8,9 +8,10 @@ import com.rieno.gadgetsandgizmos.graph.type.ValueType;
 import com.rieno.gadgetsandgizmos.graph.compile.snapshot.SnapNode;
 import com.rieno.gadgetsandgizmos.graph.compile.util.GeneratorHelper;
 import net.minecraft.nbt.CompoundTag;
+import org.jetbrains.annotations.ApiStatus;
 
 import java.util.Map;
-
+@ApiStatus.Obsolete
 public abstract class BinaryNode extends JVMNodeType {
     public BinaryNode() {
         super(Map.of(), Map.of());

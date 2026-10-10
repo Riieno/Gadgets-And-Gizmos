@@ -94,13 +94,13 @@ public class CalculatorGenerator {
             dflt,
             modeToLabel
         );
-        var tableSwitchInsnNode = ((TableSwitchInsnNode) adapter.node.instructions.getLast());
+        //var tableSwitchInsnNode = ((TableSwitchInsnNode) adapter.node.instructions.getLast());
         for(NodeCalculator.Mode mode : NodeCalculator.Mode.all) {
             adapter.visitLabel(modeToLabel[mode.id]);
             context.reset();
             context.calculatorMode = mode;
             //For compile time checks
-            Void i = switch(mode) {
+            Void ignore = switch(mode) {
                 case CalculatePorts -> {
                     if(needSeparateCallTree) {
                         callTree(targetNode, adapter, context);

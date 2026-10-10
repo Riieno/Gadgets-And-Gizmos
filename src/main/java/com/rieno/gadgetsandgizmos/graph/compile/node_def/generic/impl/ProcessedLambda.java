@@ -240,7 +240,6 @@ public class ProcessedLambda {
         boolean doUnwrapOutput = rawOutputValue.needToBeFlat();
         if(boxingEntry != null && rawOutputValue.needToBeFlat()) {
             IntArrayList output = new IntArrayList();
-            Handle boxingMethod = boxingEntry.boxingMethod();
             Int2ObjectMap<UsageStatistics> usageStatistics = usageAnalyzerResult.usageStatistics();
             for(var entry : usageStatistics.int2ObjectEntrySet()) {
                 UsageStatistics usage = entry.getValue();
