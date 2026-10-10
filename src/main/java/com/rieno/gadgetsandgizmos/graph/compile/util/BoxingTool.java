@@ -1,5 +1,8 @@
 package com.rieno.gadgetsandgizmos.graph.compile.util;
 
+import it.unimi.dsi.fastutil.objects.Object2ObjectMaps;
+import it.unimi.dsi.fastutil.objects.Object2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import org.intellij.lang.annotations.MagicConstant;
 import org.jetbrains.annotations.Nullable;
 import org.objectweb.asm.Handle;
@@ -22,7 +25,19 @@ public class BoxingTool {
         typeEntry(Float.class, Float::floatValue),
         typeEntry(Double.class, Double::doubleValue)
     );
+    public static final Map<String, Entry> primitiveToEntry;
+    static {
+        ObjectArrayList<Entry> entries = new ObjectArrayList<>(wrapperInternalName2Entry.values());
+        Object2ObjectOpenHashMap<String, Entry> map = new Object2ObjectOpenHashMap<>();
+        for(Entry entry : entries) {
+            map.put(entry.unboxed.getClassName(),entry);
+        }
+        primitiveToEntry = Object2ObjectMaps.unmodifiable(map);
+    }
 
+    @Nullable
+    public static Entry boxingEntryForPrimitive(Type type) {return primitiveToEntry.get(type.getClassName());}
+    public static Entry boxingEntryForPrimitive(Class<?> type) {return primitiveToEntry.get(type.getName());}
     @Nullable
     public static Entry boxingEntry(Type type) {return wrapperInternalName2Entry.get(type.getInternalName());}
 

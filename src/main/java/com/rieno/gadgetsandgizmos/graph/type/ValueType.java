@@ -3,6 +3,7 @@ package com.rieno.gadgetsandgizmos.graph.type;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
+import com.rieno.gadgetsandgizmos.graph.compile.util.BoxingTool;
 import com.rieno.gadgetsandgizmos.graph.compile.util.helper.InsnAdapter;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
@@ -84,7 +85,20 @@ public class ValueType<T> implements ConvertHelpers<T>{
 
 
     public void convertTo(MethodVisitor mv, ValueType<?> other) {
-        if(id == other.id || other==ValueTypes.ANY) return;
+        if(id == other.id) return;
+        if(other==ValueTypes.ANY){
+            if(this.innerClass.isPrimitive()){
+                BoxingTool.Entry entry = BoxingTool.boxingEntryForPrimitive(innerType);
+                if(entry!=null) {
+                    InsnAdapter.invoke(mv, entry.boxingMethod());
+                }else{
+                    mv.visitInsn(Opcodes.POP-1+innerType.getSize());
+                    mv.visitInsn(Opcodes.ACONST_NULL);
+
+                }
+            }
+            return;
+        }
         var nodes = convertNodes.get(other.id);
 
         if(nodes != null) {

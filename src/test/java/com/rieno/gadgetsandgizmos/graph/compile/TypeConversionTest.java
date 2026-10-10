@@ -24,9 +24,9 @@ public class TypeConversionTest extends AbstractJVMGraphCompilerTest {
     @Test
     void double2Object() {
         register("test", DefHelper.binary("c",(Object a,Object b) ->
-            (double)(a.hashCode()+b.hashCode())
+            (double)(a.hashCode()+b.hashCode())*Double.NaN
         ));
-        simpleTest(1,2,"test",4,"double2Object");
+        simpleTest(1,2,"test",Double.NaN,"double2Object");
     }
 
     public void test(double a, double b, String type, double c) {
