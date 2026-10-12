@@ -45,7 +45,11 @@ public final class CTClientEvents {
         DoubleButtonClientHandler.tick();
         DoubleButtonSlotRenderer.tick();
         CTPhysicsGogglesClient.tick();
+        CTActionKeys.tick();
         EntityLauncherClientInputHandler.tick();
+        PhysicsStaffActionClient.tick();
+        DiagnosticTabletClientInteraction.tick();
+        ContraptionNetworkLinkerClient.tick();
         ArmorStandPoseClientState.tick();
         PoweredZiplinePlacementHandler.clientTick();
         PoweredZiplineRidingHandler.clientTick();

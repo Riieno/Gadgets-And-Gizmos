@@ -28,6 +28,7 @@ public final class AdvancedHudInteractions {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     public static final String ELEMENTS = "WidgetElements";
+    public static final int MAX_TEXT_INPUT_LENGTH = 64;
     private static final String MANAGED_PORTS = "HudInteractionPorts";
 
     /*--------------------------------------------------------##---------------------------------------------------------

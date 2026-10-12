@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:acc_display_slab",
+  "properties": {
+    "sable:mass": 0.125
+  }
+}

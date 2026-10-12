@@ -142,10 +142,10 @@ final class DiagnosticTabletRdpApp {
         switch (type) {
             case "button" -> accepted =
                     controller.handleHudButtonInteraction(
-                            node.id(), interactionId);
+                            ctx.player(), node.id(), interactionId);
             case "toggle" -> accepted =
                     controller.handleHudToggleInteraction(
-                            node.id(), interactionId);
+                            ctx.player(), node.id(), interactionId);
             case "slider" -> {
                 double minimum = resolved.getDouble("Min");
                 double maximum = resolved.getDouble("Max");
@@ -160,13 +160,13 @@ final class DiagnosticTabletRdpApp {
                 if (step > 0.0D && Double.isFinite(step)) {
                     next = minimum + Math.round((next - minimum) / step) * step;
                 }
-                accepted = controller.handleHudInteraction(node.id(), interactionId,
+                accepted = controller.handleHudInteraction(ctx.player(), node.id(), interactionId,
                         AdvancedGraphDocument.Value.number(Mth.clamp(next, minimum, maximum)));
             }
             case "text_input" -> {
                 String textValue = requested == null ? "" : requested.strip();
                 if (textValue.length() > 64) textValue = textValue.substring(0, 64);
-                accepted = controller.handleHudInteraction(node.id(), interactionId,
+                accepted = controller.handleHudInteraction(ctx.player(), node.id(), interactionId,
                         AdvancedGraphDocument.Value.string(textValue));
             }
             default -> {

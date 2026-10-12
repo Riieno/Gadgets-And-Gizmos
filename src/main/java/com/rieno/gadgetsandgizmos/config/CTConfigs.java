@@ -547,6 +547,11 @@ public final class CTConfigs {
         public final ModConfigSpec.DoubleValue controllerOrientationSourceMaxTiltDegrees;
         // Allow thruster manual toggle
         public final ModConfigSpec.BooleanValue allowThrusterManualToggle;
+        // Allow graphs to send chat to nearby players
+        public final ModConfigSpec.BooleanValue allowNearbyChatBroadcast;
+        // Retain the previous Java accessor for existing integrations
+        @Deprecated
+        public final ModConfigSpec.BooleanValue allowGlobalChatBroadcast;
         // Physics gantry belt wheel max distance
         public final ModConfigSpec.IntValue physicsGantryBeltWheelMaxDistance;
         // Shipping schedule work spread tick count
@@ -567,6 +572,12 @@ public final class CTConfigs {
             blockFeatures = defineFeatureGroup(builder, "blocks", CTFeatureToggles.blockDefaults());
             itemFeatures = defineFeatureGroup(builder, "items", CTFeatureToggles.itemDefaults());
             entityFeatures = defineFeatureGroup(builder, "entities", CTFeatureToggles.entityDefaults());
+            builder.pop();
+            builder.comment("Advanced Contraption Controller chat delivery").push("advanced_controller");
+            allowNearbyChatBroadcast = builder
+                    .comment("Allow Send Chat Message nodes to broadcast nearby: the same sub-level, or a centered 3x3 chunk area in the main world. Private messages remain available when disabled. The legacy config key is retained so existing opt-outs keep working.")
+                    .define("allowGlobalChatBroadcast", true);
+            allowGlobalChatBroadcast = allowNearbyChatBroadcast;
             builder.pop();
             enableThrusterParticles = builder
                     .comment("Spawn thruster exhaust particles while active")

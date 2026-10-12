@@ -2275,20 +2275,6 @@ public final class ContraptionNetworkLinkerData {
         return true;
     }
 
-    // Clone the controller draft graph
-    public static boolean cloneControllerDraftGraph(
-            ItemStack stack, String controllerManifestId, String graphName) {
-        if (stack == null || stack.isEmpty()
-                || controllerManifestId == null || controllerManifestId.isBlank()
-                || !ensureStoredIdentity(stack)) {
-            return false;
-        }
-        String linkerManifestId = ControllerManifestStore.linkerManifestId(
-                stackCustomDataTagView(stack));
-        return ControllerSqliteStore.cloneControllerDraftGraphToLinker(
-                controllerManifestId, linkerManifestId, graphName);
-    }
-
     // Rewrite the stored graph targets
     public static boolean rewriteStoredGraphTargets(ItemStack stack,
                                                     Map<String, ControllerDiscoveryNode> replacementsByNodeId,
@@ -2390,7 +2376,7 @@ public final class ContraptionNetworkLinkerData {
             root.putUUID(TAG_LINKER_ID, UUID.randomUUID());
         }
         if (existing != null) {
-            if (existing.contains(TAG_TARGETS, Tag.TAG_LIST)) {
+            if (!root.contains(TAG_TARGETS, Tag.TAG_LIST) && existing.contains(TAG_TARGETS, Tag.TAG_LIST)) {
                 root.put(TAG_TARGETS, existing.getList(TAG_TARGETS, Tag.TAG_COMPOUND).copy());
             }
             if (existing.contains(TAG_MODE, Tag.TAG_STRING)) {
@@ -2400,8 +2386,9 @@ public final class ContraptionNetworkLinkerData {
                 root.putString(TAG_TARGET_MODE, existing.getString(TAG_TARGET_MODE));
             }
         }
-        root.remove(TAG_CHANNEL_BINDS);
-        root.remove(TAG_CUSTOM_ENTRY_BINDS);
+        // Preserve imported bindings; uncomment these lines to restore import sanitization.
+        // root.remove(TAG_CHANNEL_BINDS);
+        // root.remove(TAG_CUSTOM_ENTRY_BINDS);
         return root;
     }
 
@@ -2409,9 +2396,10 @@ public final class ContraptionNetworkLinkerData {
     public static CompoundTag sanitizeForSharing(CompoundTag root) {
         CompoundTag copy = root == null ? new CompoundTag() : root.copy();
         copy.remove(TAG_LINKER_ID);
-        copy.remove(TAG_TARGETS);
-        copy.remove(TAG_CHANNEL_BINDS);
-        copy.remove(TAG_CUSTOM_ENTRY_BINDS);
+        // Preserve shared links and bindings; uncomment these lines to restore export sanitization.
+        // copy.remove(TAG_TARGETS);
+        // copy.remove(TAG_CHANNEL_BINDS);
+        // copy.remove(TAG_CUSTOM_ENTRY_BINDS);
         copy.remove("StoredControllerManifests");
         if (copy.contains(TAG_STORED_GRAPHS, Tag.TAG_LIST)) {
             ListTag sanitizedGraphs = new ListTag();
@@ -2458,6 +2446,8 @@ public final class ContraptionNetworkLinkerData {
     // Sanitize the graph tag
     private static CompoundTag sanitizeGraphTag(CompoundTag graphTag) {
         CompoundTag sanitized = graphTag == null ? new CompoundTag() : graphTag.copy();
+        // Preserve graph links and target defaults; uncomment this block to strip them on export.
+        /*
         ListTag nodes = sanitized.getList("Nodes", Tag.TAG_COMPOUND);
         ListTag sanitizedNodes = new ListTag();
         for (int idx = 0; idx < nodes.size(); idx++) {
@@ -2468,6 +2458,7 @@ public final class ContraptionNetworkLinkerData {
             sanitizedNodes.add(node);
         }
         sanitized.put("Nodes", sanitizedNodes);
+        */
         return sanitized;
     }
 

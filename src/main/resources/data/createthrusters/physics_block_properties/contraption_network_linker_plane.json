@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:contraption_network_linker_plane",
+  "properties": {
+    "sable:mass": 0.0
+  }
+}

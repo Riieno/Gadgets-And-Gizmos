@@ -9,6 +9,8 @@ package com.rieno.gadgetsandgizmos.compat.jei;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.CreateThrusters;
+import com.rieno.gadgetsandgizmos.compat.recipe.OxidizedSolidFuelRecipes;
+import com.rieno.gadgetsandgizmos.lib.compat.jei.ProcessingTransformationJeiCategory;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinCrafting;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariant;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariants;
@@ -46,6 +48,8 @@ import mezz.jei.api.registration.ISubtypeRegistration;
 import mezz.jei.api.ingredients.subtypes.ISubtypeInterpreter;
 import mezz.jei.api.ingredients.subtypes.UidContext;
 import mezz.jei.api.registration.IRecipeRegistration;
+import mezz.jei.api.registration.IRecipeCategoryRegistration;
+import mezz.jei.api.registration.IRecipeCatalystRegistration;
 import mezz.jei.api.runtime.IJeiRuntime;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.NonNullList;
@@ -82,6 +86,7 @@ public class CTJeiPlugin implements IModPlugin {
 
     private static final ResourceLocation ID = ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID, "jei");
     private static final Logger CT_LOGGER = LogUtils.getLogger();
+    private static ProcessingTransformationJeiCategory fuelCategory;
     // Keep removed JEI entries ready for feature toggle changes
     private static final Map<ResourceLocation, List<ItemStack>> KNOWN_ITEM_STACKS = new LinkedHashMap<>();
     private static final Map<ResourceLocation, List<ItemStack>> REMOVED_ITEM_STACKS = new LinkedHashMap<>();
@@ -269,6 +274,24 @@ public class CTJeiPlugin implements IModPlugin {
         }
     }
 
+    @Override
+    public void registerCategories(IRecipeCategoryRegistration registration){
+        fuelCategory = null;
+        if(!OxidizedSolidFuelRecipes.enabled()) return;
+        fuelCategory = new ProcessingTransformationJeiCategory(OxidizedSolidFuelRecipes.CATEGORY,
+                OxidizedSolidFuelRecipes.title(), OxidizedSolidFuelRecipes.icon(),
+                registration.getJeiHelpers().getGuiHelper());
+        registration.addRecipeCategories(fuelCategory);
+    }
+
+    @Override
+    public void registerRecipeCatalysts(IRecipeCatalystRegistration registration){
+        if(fuelCategory == null) return;
+        for(var workstation : OxidizedSolidFuelRecipes.workstations()){
+            registration.addRecipeCatalyst(workstation, fuelCategory.getRecipeType());
+        }
+    }
+
     // Register the recipes
     @Override
     public void registerRecipes(IRecipeRegistration registration) {
@@ -280,6 +303,10 @@ public class CTJeiPlugin implements IModPlugin {
             registration.addRecipes(RecipeTypes.ANVIL, mannequinAnvilRecipes(registration));
         } catch (Throwable throwable) {
             CT_LOGGER.warn("[CT][JEI] Failed to register player mannequin recipe displays", throwable);
+        }
+        if(fuelCategory != null && Minecraft.getInstance().level != null){
+            registration.addRecipes(fuelCategory.getRecipeType(),
+                    OxidizedSolidFuelRecipes.views(Minecraft.getInstance().level.getRecipeManager()));
         }
     }
 

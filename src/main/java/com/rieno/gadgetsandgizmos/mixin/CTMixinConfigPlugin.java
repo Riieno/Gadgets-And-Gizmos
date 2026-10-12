@@ -9,6 +9,8 @@ package com.rieno.gadgetsandgizmos.mixin;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.mojang.logging.LogUtils;
+import com.rieno.gadgetsandgizmos.lib.compat.MixinArrayCloneCompatibility;
+import com.rieno.gadgetsandgizmos.lib.compat.MixinCompatibility;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.loading.LoadingModList;
 import net.neoforged.fml.loading.moddiscovery.ModFileInfo;
@@ -62,6 +64,10 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
     // Handle the load event
     @Override
     public void onLoad(String mixinPackage) {
+        if(MixinCompatibility.isModLoaded("create_flight_control")){
+            MixinArrayCloneCompatibility.register("com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity",
+                    "ace.flight.neoforge.mixin.compat.GadgetsThrusterFCCMixin");
+        }
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -81,9 +87,11 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
     // Check if this should apply mixin
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
+        String targetMod = optionalTargetMod(targetClassName);
+        if(targetMod != null && !MixinCompatibility.canApply(targetClassName, targetMod)) return false;
         // ---------------------------------------------------DIRECT MOD GATES---------------------------------------------------
         if ("com.rieno.gadgetsandgizmos.mixin.WaystonesTeleportMomentumMixin".equals(mixinClassName)) {
-            return isModLoadedDuringMixinSelection("waystones");
+            return MixinCompatibility.isModLoaded("waystones");
         }
         if ("com.rieno.gadgetsandgizmos.mixin.ComputerCraftRemoteDesktopMenuMixin"
                 .equals(mixinClassName)) {
@@ -94,7 +102,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
         }
         if ("com.rieno.gadgetsandgizmos.mixin.CreateAdditionEnergyThresholdConditionMixin"
                 .equals(mixinClassName)) {
-            return isModLoadedDuringMixinSelection("createaddition");
+            return MixinCompatibility.isModLoaded("createaddition");
         }
 
         // ------------------------------------------------SIMULATED / SABLE APIS------------------------------------------------
@@ -119,7 +127,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
         }
 
         if ("com.rieno.gadgetsandgizmos.mixin.SableServerLevelPlotContraptionsBridgeMixin".equals(mixinClassName)) {
-            boolean apply = isModLoadedDuringMixinSelection("dimensional_sable")
+            boolean apply = MixinCompatibility.isModLoaded("dimensional_sable")
                     && needsSablePlotContraptionsBridge();
             if (apply && CT_LOGGED_DIMENSIONAL_SABLE_BRIDGE.compareAndSet(false, true)) {
                 CT_LOGGER.info("[G&G][Compat] Enabled Dimensional Sable ServerLevelPlot#getContraptions bridge");
@@ -130,7 +138,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
         // ------------------------------------------------CONTROLLER / STORAGE-------------------------------------------------
         if ("com.rieno.gadgetsandgizmos.mixin.AeroworksMechanicalServoRedstoneMixin".equals(mixinClassName)
                 || "com.rieno.gadgetsandgizmos.mixin.AeroworksStepperServoRedstoneMixin".equals(mixinClassName)) {
-            boolean loaded = isModLoadedDuringMixinSelection("aeroworks");
+            boolean loaded = MixinCompatibility.isModLoaded("aeroworks");
             if (loaded && CT_LOGGED_AEROWORKS_COMPAT.compareAndSet(false, true)) {
                 CT_LOGGER.info("[G&G][Compat] Enabled Aeroworks controller redstone compatibility");
             }
@@ -139,23 +147,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
 
         if ("com.rieno.gadgetsandgizmos.mixin.WheelMountDirectControlMixin".equals(mixinClassName)
                 || "com.rieno.gadgetsandgizmos.mixin.WheelMountDirectControlDbwCompatMixin".equals(mixinClassName)) {
-            ModList modList = ModList.get();
-            if (modList == null) {
-                if ("com.rieno.gadgetsandgizmos.mixin.WheelMountDirectControlMixin".equals(mixinClassName)) {
-
-                    if (CT_LOGGED_WHEEL_MOUNT_SKIP.compareAndSet(false, true)) {
-                        CT_LOGGER.warn("[G&G][Compat] Skipped WheelMountDirectControlMixin during early bootstrap because ModList is not ready");
-                    }
-                    return false;
-                }
-
-                if (CT_LOGGED_WHEEL_MOUNT_DBW_COMPAT.compareAndSet(false, true)) {
-                    CT_LOGGER.warn("[G&G][Compat] Applied WheelMountDirectControlDbwCompatMixin during early bootstrap fallback");
-                }
-                return true;
-            }
-
-            boolean driveByWireLoaded = modList.isLoaded("drivebywire");
+            boolean driveByWireLoaded = MixinCompatibility.isModLoaded("drivebywire");
             if ("com.rieno.gadgetsandgizmos.mixin.WheelMountDirectControlMixin".equals(mixinClassName)) {
                 if (!driveByWireLoaded) {
                     return true;
@@ -177,11 +169,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
         }
 
         if ("com.rieno.gadgetsandgizmos.mixin.TomsStorageTerminalRangeCompatMixin".equals(mixinClassName)) {
-            ModList modList = ModList.get();
-            if (modList == null) {
-                return false;
-            }
-            boolean loaded = modList.isLoaded("toms_storage");
+            boolean loaded = MixinCompatibility.isModLoaded("toms_storage");
 
             if (loaded && CT_LOGGED_TOMS_RANGE_COMPAT.compareAndSet(false, true)) {
                 CT_LOGGER.info("[G&G][Compat] Enabled Tom's Storage terminal range shim");
@@ -190,7 +178,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
         }
 
         if ("com.rieno.gadgetsandgizmos.mixin.AeroworksConsoleControllerCompatMixin".equals(mixinClassName)) {
-            boolean loaded = isModLoadedDuringMixinSelection("aeroworks");
+            boolean loaded = MixinCompatibility.isModLoaded("aeroworks");
             String version = getLoadedModVersion("aeroworks");
             boolean apply = loaded && version != null
                     && compareVersions(version, "1.3.0") >= 0
@@ -202,11 +190,11 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
         }
 
         if ("com.rieno.gadgetsandgizmos.mixin.SophisticatedCoreMusicDiscFilterMixin".equals(mixinClassName)) {
-            return isModLoadedDuringMixinSelection("sophisticatedcore");
+            return MixinCompatibility.isModLoaded("sophisticatedcore");
         }
 
         if ("com.rieno.gadgetsandgizmos.mixin.BitsNBobsCogwheelChainPlacementInteractionMixin".equals(mixinClassName)) {
-            boolean loaded = isModLoadedDuringMixinSelection("bits_n_bobs");
+            boolean loaded = MixinCompatibility.isModLoaded("bits_n_bobs");
             if (loaded && CT_LOGGED_BITS_N_BOBS_GANTRY_BELT.compareAndSet(false, true)) {
                 CT_LOGGER.info("[G&G][Compat] Enabled Bits'n'Bobs gantry belt wheel interaction compatibility");
             }
@@ -215,7 +203,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
 
         // -----------------------------------------------------PROPULSION------------------------------------------------------
         if (isPropulsionVectorAngleMixin(mixinClassName)) {
-            boolean loaded = isModLoadedDuringMixinSelection("createpropulsion");
+            boolean loaded = MixinCompatibility.isModLoaded("createpropulsion");
             if (loaded && CT_LOGGED_PROPULSION_VECTOR_ANGLES.compareAndSet(false, true)) {
                 CT_LOGGER.info("[G&G][Compat] Enabled Create Propulsion vector angle controls");
             }
@@ -223,8 +211,8 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
         }
 
         if (isPropulsionComputerCraftAngleMixin(mixinClassName)) {
-            boolean loaded = isModLoadedDuringMixinSelection("createpropulsion")
-                    && isModLoadedDuringMixinSelection("computercraft");
+            boolean loaded = MixinCompatibility.isModLoaded("createpropulsion")
+                    && MixinCompatibility.isModLoaded("computercraft");
             if (loaded && CT_LOGGED_PROPULSION_CC_ANGLES.compareAndSet(false, true)) {
                 CT_LOGGER.info("[G&G][Compat] Enabled Create Propulsion ComputerCraft vector angle controls");
             }
@@ -232,8 +220,8 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
         }
 
         if (isPropulsionComputerCraftThrottleMixin(mixinClassName)) {
-            boolean loaded = isModLoadedDuringMixinSelection("createpropulsion")
-                    && isModLoadedDuringMixinSelection("computercraft");
+            boolean loaded = MixinCompatibility.isModLoaded("createpropulsion")
+                    && MixinCompatibility.isModLoaded("computercraft");
             if (loaded && CT_LOGGED_PROPULSION_PRECISE_THROTTLE.compareAndSet(false, true)) {
                 CT_LOGGER.info("[G&G][Compat] Enabled precise Create Propulsion ComputerCraft throttle control");
             }
@@ -241,7 +229,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
         }
 
         if (isPropulsionGraphThrottleMixin(mixinClassName)) {
-            boolean loaded = isModLoadedDuringMixinSelection("createpropulsion");
+            boolean loaded = MixinCompatibility.isModLoaded("createpropulsion");
             if (loaded && CT_LOGGED_PROPULSION_PRECISE_THROTTLE.compareAndSet(false, true)) {
                 CT_LOGGER.info("[G&G][Compat] Enabled Create Propulsion direct graph and ship throttle control");
             }
@@ -249,7 +237,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
         }
 
         if (isPropulsionPlatinumTankMixin(mixinClassName)) {
-            boolean loaded = isModLoadedDuringMixinSelection("createpropulsion");
+            boolean loaded = MixinCompatibility.isModLoaded("createpropulsion");
             if (loaded && CT_LOGGED_PROPULSION_PLATINUM_TANK.compareAndSet(false, true)) {
                 CT_LOGGER.info("[G&G][Compat] Enabled Create Propulsion Platinum Tank oxidized fuel storage");
             }
@@ -257,7 +245,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
         }
 
         if (isPropulsionSimulatedThrusterWidthAccessor(mixinClassName)) {
-            boolean loaded = isModLoadedDuringMixinSelection("createpropulsion");
+            boolean loaded = MixinCompatibility.isModLoaded("createpropulsion");
             if (loaded && CT_LOGGED_PROPULSION_THRUSTER_WIDTH_ACCESSOR.compareAndSet(false, true)) {
                 CT_LOGGER.info("[G&G][Compat] Enabled Create Propulsion Simulated Thruster Width Accessor");
             }
@@ -265,7 +253,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
         }
 
         if (isPropulsionSimulatedOxidizedFuelThrusterSupportMixin(mixinClassName)) {
-            boolean loaded = isModLoadedDuringMixinSelection("createpropulsion");
+            boolean loaded = MixinCompatibility.isModLoaded("createpropulsion");
             if (loaded && CT_LOGGED_PROPULSION_OXIDIZED_FUEL.compareAndSet(false, true)) {
                 CT_LOGGER.info("[G&G][Compat] Enabled Create Propulsion Simulated oxidized fuel Thruster bonus");
             }
@@ -274,8 +262,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
 
         // --------------------------------------------------COMPUTERS / EVENTS--------------------------------------------------
         if (isBasicNavTableComputerCraftMixin(mixinClassName)) {
-            boolean loaded = isModLoadedDuringMixinSelection("simulated")
-                    && isModLoadedDuringMixinSelection("computercraft");
+            boolean loaded = MixinCompatibility.canApply(targetClassName, "simulated", "computercraft");
             if (loaded && CT_LOGGED_BASIC_NAVIGATION_CC.compareAndSet(false, true)) {
                 CT_LOGGER.info("[G&G][Compat] Enabled basic navigation table ComputerCraft position methods");
             }
@@ -283,7 +270,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
         }
 
         if (isComputedEventMixin(mixinClassName)) {
-            boolean loaded = isModLoadedDuringMixinSelection("computed");
+            boolean loaded = MixinCompatibility.isModLoaded("computed");
             if (loaded && CT_LOGGED_COMPUTED_EVENTS.compareAndSet(false, true)) {
                 CT_LOGGER.info("[G&G][Compat] Enabled Computed named event compatibility");
             }
@@ -291,26 +278,32 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
         }
 
         if (isSynaxisEventMixin(mixinClassName)) {
-            boolean loaded = isModLoadedDuringMixinSelection("synaxis");
+            boolean loaded = MixinCompatibility.isModLoaded("synaxis");
             if (loaded && CT_LOGGED_SYNAXIS_EVENTS.compareAndSet(false, true)) {
                 CT_LOGGER.info("[G&G][Compat] Enabled Synaxis named event compatibility");
             }
-            // The Synaxis targets are @Pseudo string targets. Do not reject them merely because
-            // NeoForge has not populated its mod list yet during early Mixin selection.
-            return true;
+            return loaded;
         }
 
         return true;
     }
 
-    // Check if the mod is loaded during mixin selection
-    private static boolean isModLoadedDuringMixinSelection(String modId) {
-        LoadingModList loadingModList = LoadingModList.get();
-        if (loadingModList != null) {
-            return loadingModList.getModFileById(modId) != null;
-        }
-        ModList modList = ModList.get();
-        return modList != null && modList.isLoaded(modId);
+    // Identify the owning mod for optional addon targets
+    private static String optionalTargetMod(String targetClassName){
+        if(targetClassName.startsWith("com.verr1.synaxis.")) return "synaxis";
+        if(targetClassName.startsWith("de.mrjulsen.crn.")) return "createrailwaysnavigator";
+        if(targetClassName.startsWith("dev.ryanhcode.offroad.")) return "offroad";
+        if(targetClassName.startsWith("com.tom.storagemod.")) return "toms_storage";
+        if(targetClassName.startsWith("dev.architectury.")) return "architectury";
+        if(targetClassName.startsWith("dan200.computercraft.")) return "computercraft";
+        if(targetClassName.startsWith("dev.propulsionteam.computed.")) return "computed";
+        if(targetClassName.startsWith("dev.propulsionteam.propulsionsimulated.")) return "createpropulsion";
+        if(targetClassName.startsWith("com.mred231.aeroworks.")) return "aeroworks";
+        if(targetClassName.startsWith("com.kipti.bnb.")) return "bits_n_bobs";
+        if(targetClassName.startsWith("com.mrh0.createaddition.")) return "createaddition";
+        if(targetClassName.startsWith("net.p3pp3rf1y.sophisticatedcore.")) return "sophisticatedcore";
+        if(targetClassName.startsWith("net.blay09.mods.waystones.")) return "waystones";
+        return null;
     }
 
     // Check if this is a simulated create rope mixin

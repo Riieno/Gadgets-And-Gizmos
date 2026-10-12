@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:virtual_orientation_source",
+  "properties": {
+    "sable:mass": 0.0
+  }
+}

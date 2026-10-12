@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:physics_staff_anchor",
+  "properties": {
+    "sable:mass": 0.25
+  }
+}

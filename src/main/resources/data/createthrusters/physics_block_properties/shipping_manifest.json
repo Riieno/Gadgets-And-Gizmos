@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:shipping_manifest",
+  "properties": {
+    "sable:mass": 0.001
+  }
+}

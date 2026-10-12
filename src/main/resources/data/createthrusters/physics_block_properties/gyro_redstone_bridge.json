@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:gyro_redstone_bridge",
+  "properties": {
+    "sable:mass": 0.01
+  }
+}

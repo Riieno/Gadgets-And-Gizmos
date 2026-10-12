@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.control.ActionInputState;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
@@ -331,6 +332,11 @@ public class EntityLauncherItem extends Item {
     // Handle entity launcher item use
     @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
+        return useLauncher(level, player, hand, false);
+    }
+
+    // Start a launcher action without tying its lifetime to vanilla Use
+    private InteractionResultHolder<ItemStack> useLauncher(Level level, Player player, InteractionHand hand, boolean keybound) {
         ItemStack stack = player.getItemInHand(hand);
         if (level.isClientSide()) {
             if (!isInstantMode(stack)) {
@@ -343,6 +349,7 @@ public class EntityLauncherItem extends Item {
         }
 
         Session session = SESSIONS.computeIfAbsent(player.getUUID(), id -> new Session());
+        session.keybound = keybound;
         retractDuplicateOwnedClaws(serverPlayer, session.activeClawId);
         if (session.activeClawId == null) {
             EntityLauncherClawEntity owned = findOwnedClaw(serverPlayer);
@@ -355,7 +362,7 @@ public class EntityLauncherItem extends Item {
             session.charging = false;
             if (activeClaw.hasGrabbedEntity() || activeClaw.hasBlockAnchor()) {
                 session.beginClawUse(hand);
-                player.startUsingItem(hand);
+                if (!keybound) player.startUsingItem(hand);
                 return InteractionResultHolder.consume(stack);
             }
             session.endClawUse();
@@ -364,7 +371,7 @@ public class EntityLauncherItem extends Item {
             return InteractionResultHolder.consume(stack);
         }
 
-        if (player.isShiftKeyDown()) {
+        if (!keybound && player.isShiftKeyDown()) {
             session.clear(serverPlayer);
             retractDuplicateOwnedClaws(serverPlayer, null);
             return InteractionResultHolder.success(stack);
@@ -382,7 +389,8 @@ public class EntityLauncherItem extends Item {
         }
         session.charging = true;
         session.chargeStartedAt = ((ServerLevel) level).getGameTime();
-        player.startUsingItem(hand);
+        if (keybound) session.keyboundChargeAction = EntityLauncherActions.FIRE;
+        if (!keybound) player.startUsingItem(hand);
         return InteractionResultHolder.consume(stack);
     }
 
@@ -436,7 +444,14 @@ public class EntityLauncherItem extends Item {
         if (session == null) {
             return;
         }
-        if (session.charging && player.isUsingItem() && player.getUsedItemHand() == session.hand && (session.activeClawId == null || session.heldEntityId != null)) {
+        if (session.keybound && stack != player.getItemInHand(session.hand)) return;
+        LauncherInput input = LAUNCHER_INPUTS.get(player.getUUID());
+        if (session.keybound && (input == null || level.getGameTime() - input.sampleTick() > 40L)) {
+            cancelKeyboundUse(player, session);
+            return;
+        }
+        if (session.charging && (session.keybound || player.isUsingItem() && player.getUsedItemHand() == session.hand)
+                && (session.activeClawId == null || session.heldEntityId != null)) {
             int used = session.getChargeTicks(player.serverLevel());
             if (used % 5 == 0) {
                 int percent = Mth.floor(Mth.clamp(used / (float) MAX_CHARGE_TICKS, 0.0f, 1.0f) * 100.0f);
@@ -447,14 +462,16 @@ public class EntityLauncherItem extends Item {
         if (claw == null) {
             session.activeClawId = null;
             session.endClawUse();
-        } else if (session.isClawUseActive() && player.isUsingItem() && player.getUsedItemHand() == session.hand) {
+        } else if (session.isClawUseActive() && (session.keybound
+                ? input != null && (input.held() & EntityLauncherActions.ROPE_CONTROLS) != 0
+                : player.isUsingItem() && player.getUsedItemHand() == session.hand)) {
             long heldTicks = player.getTicksUsingItem();
-            if (heldTicks >= CLAW_HOLD_DEBOUNCE_TICKS) {
+            if (session.keybound || heldTicks >= CLAW_HOLD_DEBOUNCE_TICKS) {
                 if (claw.hasGrabbedEntity()) {
-                    if (player.isShiftKeyDown()) {
+                    if (isLauncherActionHeld(player, EntityLauncherActions.LENGTHEN)) {
                         session.clawUseMode = ClawUseMode.ENTITY_LENGTHEN;
                         claw.extendHeldRope(player, ENTITY_REEL_MANUAL_AMOUNT);
-                    } else if (player.isSprinting()) {
+                    } else if (isLauncherActionHeld(player, EntityLauncherActions.SHORTEN)) {
                         session.clawUseMode = ClawUseMode.ENTITY_SHORTEN;
                         claw.shortenHeldRope(player, ENTITY_REEL_MANUAL_AMOUNT);
                     } else {
@@ -466,10 +483,10 @@ public class EntityLauncherItem extends Item {
                         }
                     }
                 } else if (claw.hasBlockAnchor()) {
-                    if (player.isSprinting()) {
+                    if (isLauncherActionHeld(player, EntityLauncherActions.LENGTHEN)) {
                         session.clawUseMode = ClawUseMode.BLOCK_LENGTHEN;
                         claw.extendHeldRope(player, BLOCK_GRAPPLE_MANUAL_AMOUNT);
-                    } else if (isJumpHeld(player)) {
+                    } else if (isLauncherActionHeld(player, EntityLauncherActions.SHORTEN)) {
                         session.clawUseMode = ClawUseMode.BLOCK_SHORTEN;
                         claw.shortenHeldRope(player, BLOCK_GRAPPLE_MANUAL_AMOUNT);
                     } else {
@@ -529,20 +546,61 @@ public class EntityLauncherItem extends Item {
         }
     }
 
-    // Handle the launcher input
-    public static void handleLauncherInput(ServerPlayer player, boolean jumpHeld, boolean jumpPressed) {
-        if (!isHoldingLauncher(player)) {
+    // Apply configured actions on the server without checking sprint or sneak movement
+    public static void handleLauncherInput(ServerPlayer player, int actions, boolean active) {
+        Session session = SESSIONS.get(player.getUUID());
+        if (!active || !player.isAlive() || player.isSpectator() || !isHoldingLauncher(player)) {
+            if (session != null && session.keybound) cancelKeyboundUse(player, session);
             LAUNCHER_INPUTS.remove(player.getUUID());
             return;
         }
-        LAUNCHER_INPUTS.put(player.getUUID(), new LauncherInput(jumpHeld));
-        if (!jumpPressed || player.isUsingItem()) {
+        LauncherInput previous = LAUNCHER_INPUTS.get(player.getUUID());
+        ActionInputState input = ActionInputState.sample(previous == null ? 0 : previous.held(),
+                actions & EntityLauncherActions.ALL);
+        LAUNCHER_INPUTS.put(player.getUUID(), new LauncherInput(input.held(), player.level().getGameTime()));
+        InteractionHand hand = player.getMainHandItem().getItem() instanceof EntityLauncherItem
+                ? InteractionHand.MAIN_HAND : InteractionHand.OFF_HAND;
+        EntityLauncherItem item = (EntityLauncherItem) player.getItemInHand(hand).getItem();
+
+        if (input.wasPressed(EntityLauncherActions.DETACH)) {
+            if (session != null) {
+                cancelKeyboundUse(player, session);
+                EntityLauncherClawEntity claw = session.getActiveClaw(player.serverLevel());
+                if (claw != null) claw.beginRetracting(player);
+            }
+            protectGrappleFall(player);
             return;
         }
-        Session session = SESSIONS.get(player.getUUID());
-        if (session != null && session.releaseBlockGrappleForTraversal(player)) {
-            protectGrappleFall(player);
+        if (input.wasPressed(EntityLauncherActions.FIRE)
+                || input.wasPressed(EntityLauncherActions.REEL) && findOwnedClaw(player) != null) {
+            item.useLauncher(player.level(), player, hand, true);
+            session = SESSIONS.get(player.getUUID());
         }
+        if (session == null) return;
+        session.keybound = true;
+        session.hand = hand;
+        if (session.charging && input.wasReleased(session.keyboundChargeAction)) {
+            int used = session.getChargeTicks(player.serverLevel());
+            item.releaseUsing(player.getItemInHand(hand), player.level(), player,
+                    item.getUseDuration(player.getItemInHand(hand), player) - used);
+        }
+        EntityLauncherClawEntity claw = session.getActiveClaw(player.serverLevel());
+        if (claw != null && (claw.hasGrabbedEntity() || claw.hasBlockAnchor())) {
+            if (input.isHeld(EntityLauncherActions.ROPE_CONTROLS)) {
+                if (!session.isClawUseActive()) session.beginClawUse(hand);
+            } else {
+                claw.stopOwnerGrapple();
+                session.endClawUse();
+            }
+        }
+    }
+
+    // Stop unavailable controls without firing a partially charged shot
+    private static void cancelKeyboundUse(ServerPlayer player, Session session) {
+        session.charging = false;
+        session.endClawUse();
+        EntityLauncherClawEntity claw = session.getActiveClaw(player.serverLevel());
+        if (claw != null) claw.stopOwnerGrapple();
     }
 
     // Register the active claw
@@ -660,6 +718,10 @@ public class EntityLauncherItem extends Item {
         private boolean grappleRequested;
         // Tracks whether session is charging
         private boolean charging;
+        // Keep configured controls independent of vanilla item use
+        private boolean keybound;
+        // Release the action that started this charge
+        private int keyboundChargeAction = EntityLauncherActions.FIRE;
         // Charge start time
         private long chargeStartedAt;
 
@@ -700,8 +762,9 @@ public class EntityLauncherItem extends Item {
             activeClawId = null;
             heldEntityId = entityId;
             endClawUse();
-            hand = player.getUsedItemHand();
+            if (!keybound) hand = player.getUsedItemHand();
             charging = true;
+            if (keybound) keyboundChargeAction = EntityLauncherActions.REEL;
             chargeStartedAt = player.serverLevel().getGameTime();
             Entity entity = getEntity(player, entityId);
             if (entity != null) {
@@ -938,10 +1001,10 @@ public class EntityLauncherItem extends Item {
                 || player.getOffhandItem().getItem() instanceof EntityLauncherItem;
     }
 
-    // Check if the jump is held
-    private static boolean isJumpHeld(ServerPlayer player) {
+    // Read the validated action state received from the owning player
+    private static boolean isLauncherActionHeld(ServerPlayer player, int action) {
         LauncherInput input = LAUNCHER_INPUTS.get(player.getUUID());
-        return input != null && input.jumpHeld();
+        return input != null && (input.held() & action) != 0;
     }
 
     // Clean up the owner claw
@@ -1020,7 +1083,7 @@ public class EntityLauncherItem extends Item {
     }
 
     // Store the launcher input
-    private record LauncherInput(boolean jumpHeld) {
+    private record LauncherInput(int held, long sampleTick) {
     }
 
 }

@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:acc_display",
+  "properties": {
+    "sable:mass": 0.05
+  }
+}

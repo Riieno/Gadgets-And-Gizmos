@@ -448,7 +448,9 @@ public class ClawBlockEntity extends SmartBlockEntity implements RopeStrandHolde
             return;
         }
 
-        if (grabbedEntity instanceof Player grabbedPlayer && grabbedPlayer.isShiftKeyDown()) {
+        if (grabbedEntity instanceof Player grabbedPlayer
+                && com.rieno.gadgetsandgizmos.lib.control.PlayerActionInputs.isHeld(grabbedPlayer,
+                com.rieno.gadgetsandgizmos.neoforge.network.ServerboundPlayerActionInputPacket.CLAW_ESCAPE)) {
             releaseEntity();
             return;
         }

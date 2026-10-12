@@ -131,7 +131,10 @@
     "PortableContraptionControllerPlayerPoseMixin",
     "DockingConnectorModelDataMixin",
     "DockingConnectorRendererMixin",
-    "PhysicsStaffAnchorPlacementMixin"
+    "PhysicsStaffAnchorPlacementMixin",
+    "PhysicsStaffActionInputMixin",
+    "ActionKeyKeyboardMixin",
+    "ActionKeyMouseMixin"
   ],
   "injectors": {
     "defaultRequire": 1

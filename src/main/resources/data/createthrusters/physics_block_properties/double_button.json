@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:double_button",
+  "properties": {
+    "sable:mass": 0.005
+  }
+}

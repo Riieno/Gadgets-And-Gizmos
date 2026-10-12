@@ -17,7 +17,12 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphProfilerMath;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDataProvider;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementBinding;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementStyle;
+import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudInteractions;
 import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
+import com.rieno.gadgetsandgizmos.config.CTConfigs;
+import com.rieno.gadgetsandgizmos.lib.chat.ServerChatApi;
+import com.rieno.gadgetsandgizmos.lib.chat.ServerTitleApi;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphValueMirrors;
 import com.rieno.gadgetsandgizmos.content.advanced.GraphSignalRange;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphTemplates;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphValidator;
@@ -191,6 +196,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private CompoundTag graphAliasActive = new CompoundTag();
     // Graph runtime
     private final GraphRuntime graphRuntime = new GraphRuntime(this);
+    private ServerChatApi.Subscription chatSubscription;
     private final com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline plotPoints =
             new com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline();
     private boolean legacyPlotCleanupPending;
@@ -526,6 +532,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             serverRuntimeInitialized = true;
             AccDisplayControllerRegistry.register(this);
             AdvancedControllerNamedEventBus.register(this);
+            ensureChatListener();
             refreshGraphRuntime(true);
             restoreShutdownSnapshot();
             shipControlRuntime.resumeAfterLoad(
@@ -560,6 +567,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         super.tick();
         Level currentLevel = getLevel();
+        ensureChatListener();
         if (legacyPlotCleanupPending && currentLevel != null && !currentLevel.isClientSide) {
             legacyPlotCleanupPending = false;
             saveControllerManifestNow();
@@ -1178,16 +1186,17 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             graphObserverSampledDraft = sampleDraft;
         }
         long runtimeRevision = graphRuntime.liveValueRevision();
-        if (!observerSampleDue && runtimeRevision == lastGraphRuntimeMirrorRevision) {
+        boolean runtimeChanged = runtimeRevision != lastGraphRuntimeMirrorRevision;
+        if (!observerSampleDue && !runtimeChanged) {
             return;
         }
         Map<String, AdvancedGraphDocument.Value> liveInputs = new LinkedHashMap<>(graphRuntime.liveInputs());
-        Map<String, AdvancedGraphDocument.Value> liveOutputs = new LinkedHashMap<>(graphRuntime.liveOutputs());
+        Map<String, AdvancedGraphDocument.Value> liveOutputs = GraphValueMirrors.merge(
+                graphRuntime.liveOutputs(), graphObserverOutputs, graphRuntime::isInteractiveOutput);
         liveInputs.putAll(graphObserverInputs);
-        liveOutputs.putAll(graphObserverOutputs);
         Map<String, Long> executionPulses = graphRuntime.executionPulses();
         lastGraphRuntimeMirrorRevision = runtimeRevision;
-        if (!graphLiveInputs.equals(liveInputs) || !graphLiveOutputs.equals(liveOutputs)
+        if (runtimeChanged || !graphLiveInputs.equals(liveInputs) || !graphLiveOutputs.equals(liveOutputs)
                 || !graphExecutionPulses.equals(executionPulses)) {
             graphLiveInputs = liveInputs;
             graphLiveOutputs = liveOutputs;
@@ -1594,7 +1603,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         graphAliasSaveConflict = false;
         saveControllerManifestNow();
         if (graphAliasSaveConflict) return false;
-        storeGraphOnInsertedLinker(defaultStoredGraphName());
         setChanged();
         sendData();
         return true;
@@ -1823,6 +1831,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         releaseAccDisplays();
         AccDisplayControllerRegistry.unregister(this);
         AdvancedControllerNamedEventBus.unregister(this);
+        closeChatListener();
         shipStockNetworkCache.clear();
         shipControlRuntime.close();
         super.remove();
@@ -1834,6 +1843,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         releaseAccDisplays();
         AccDisplayControllerRegistry.unregister(this);
         AdvancedControllerNamedEventBus.unregister(this);
+        closeChatListener();
         shipStockNetworkCache.clear();
         shippingScheduleRuntime.suspendForChunkUnload();
         shipControlRuntime.suspendForChunkUnload();
@@ -2000,22 +2010,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         graphOwnedBindingSyncQueued = false;
         setChanged();
         sendData();
-    }
-
-    // Store the graph on the inserted linker
-    private boolean storeGraphOnInsertedLinker(String name) {
-        ItemStack linker = getStoredLinker();
-        if (linker.isEmpty()) {
-            return false;
-        }
-        return ContraptionNetworkLinkerData.cloneControllerDraftGraph(
-                linker, controllerManifestId(), name);
-    }
-
-    // Create the default stored graph name
-    private String defaultStoredGraphName() {
-        String name = getCustomName() == null ? "" : getCustomName();
-        return name.isBlank() ? "Advanced Controller Graph" : name;
     }
 
     // Apply the graph bindings
@@ -2560,6 +2554,43 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return SimulatedHelper.toGlobalWorldPosition(this, Vec3.atCenterOf(getBlockPos()));
     }
 
+    // Subscribe while this placed or portable controller is loaded
+    private void ensureChatListener(){
+        if(chatSubscription != null || getLevel() == null || getLevel().isClientSide
+                || getLevel().getServer() == null || serverShutdownPrepared || isRemoved()) return;
+        chatSubscription = ServerChatApi.intercept(getLevel().getServer(), message -> {
+            if(isRemoved() || serverShutdownPrepared || !isControllerRuntimeLoaded()) return false;
+            GraphRuntime.ChatCapture captured = graphRuntime.captureChatMessage(activeGraph, message);
+            if(captured.queued()) lastGraphObserverSample = Long.MIN_VALUE;
+            return captured.hidden();
+        });
+    }
+
+    private void closeChatListener(){
+        if(chatSubscription == null) return;
+        chatSubscription.close();
+        chatSubscription = null;
+    }
+
+    public boolean announceGraphTitle(List<String> players, @Nullable UUID playerId, ServerTitleApi.Action action,
+                                      ServerTitleApi.Text text, ServerTitleApi.Animation animation){
+        if(getLevel() == null || getLevel().isClientSide || getLevel().getServer() == null) return false;
+        return ServerTitleApi.send(getLevel().getServer(), players, playerId, action, text, animation);
+    }
+
+    // Apply the server gate and the controller's location before nearby delivery
+    public boolean sendGraphChatMessage(String message, boolean nearby, @Nullable UUID playerId){
+        return sendGraphChatMessage(message, nearby, playerId, List.of());
+    }
+
+    // Explicit player lists allow unattended logging; empty lists retain triggering-player delivery
+    public boolean sendGraphChatMessage(String message, boolean nearby, @Nullable UUID playerId, List<String> players){
+        if(getLevel() == null || getLevel().isClientSide || getLevel().getServer() == null) return false;
+        if(nearby) return ServerChatApi.sendNearby(this, message, CTConfigs.SERVER.allowNearbyChatBroadcast.get());
+        if(players != null && !players.isEmpty()) return ServerChatApi.sendToPlayers(getLevel().getServer(), players, message);
+        return ServerChatApi.send(getLevel().getServer(), playerId, message, false, false);
+    }
+
     // Receive the named controller event
     public void receiveNamedControllerEvent(String name, AdvancedGraphDocument.Value data) {
         graphRuntime.enqueueNamedControllerEvent(name,
@@ -3017,6 +3048,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Deactivate the portable outputs
     @Override
     public void deactivatePortableOutputs() {
+        closeChatListener();
         clearMouseInputs();
         super.deactivatePortableOutputs();
     }
@@ -3102,6 +3134,26 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
     }
 
+    // Preserve the player responsible for authenticated HUD input
+    public boolean handleHudInteraction(ServerPlayer player, String nodeId, String interactionId,
+                                        AdvancedGraphDocument.Value value){
+        if(player == null) return false;
+        return graphRuntime.withInteractionPlayer(player.getUUID(), () -> handleHudInteraction(nodeId, interactionId, value));
+    }
+    public boolean handleHudElementInteraction(ServerPlayer player, String nodeId, String interactionId,
+                                               AdvancedGraphDocument.Value value){
+        if(player == null) return false;
+        return graphRuntime.withInteractionPlayer(player.getUUID(), () -> handleHudElementInteraction(nodeId, interactionId, value));
+    }
+    public boolean handleHudButtonInteraction(ServerPlayer player, String nodeId, String interactionId){
+        if(player == null) return false;
+        return graphRuntime.withInteractionPlayer(player.getUUID(), () -> handleHudButtonInteraction(nodeId, interactionId));
+    }
+    public boolean handleHudToggleInteraction(ServerPlayer player, String nodeId, String interactionId){
+        if(player == null) return false;
+        return graphRuntime.withInteractionPlayer(player.getUUID(), () -> handleHudToggleInteraction(nodeId, interactionId));
+    }
+
     // Handle the HUD interaction
     public boolean handleHudInteraction(String nodeId, String interactionId,
                                         AdvancedGraphDocument.Value value) {
@@ -3143,6 +3195,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 case "toggle" -> value != null && "boolean".equals(value.type()) && value.asBoolean()
                         && handleHudToggleInteraction(nodeId, interactionId);
                 case "slider" -> handleHudSliderInteraction(nodeId, interactionId, elm, value);
+                case "text_input" -> value != null && "string".equals(value.type())
+                        && value.asString().length() <= AdvancedHudInteractions.MAX_TEXT_INPUT_LENGTH
+                        && handleHudInteraction(nodeId, interactionId, value);
                 default -> false;
             };
         }
@@ -3948,7 +4003,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             AdvancedGraphDocument.Value val = values.apply(port);
             if (GraphSignalRange.REDSTONE_SIGNAL_PORT.equals(port) && val != null
                     && !Double.isFinite(val.asNumber())) {
-                val = AdvancedGraphDocument.Value.number(GraphSignalRange.outputStrength(val.asNumber()));
+                val = AdvancedGraphDocument.Value.number(GraphSignalRange.outputStrength(node, val.asNumber()));
             }
             if (!isSafeGraphWriteValue(val)) {
                 return false;
@@ -3983,6 +4038,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 }
                 safeValues.put(GRAPH_RAW_DIRECT_SIGNAL_PORT, rawSignal);
             }
+        }
+        if("set_block_data".equals(node.type()) && safePorts.contains("direct_signal")){
+            safeValues.put("direct_signal", GraphSignalRange.targetValue(
+                    node, "direct_signal", safeValues.get("direct_signal")));
         }
         activePorts = safePorts;
         values = safeValues::get;
@@ -4092,7 +4151,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             if (redstoneTarget != null && redstoneTarget.isBound()) {
                 ControllerRedstoneCompat.writeRedstoneTarget(level, redstoneTarget, null,
                         graphDirectSignalSourceId(node),
-                        GraphSignalRange.outputStrength(values.apply(GraphSignalRange.REDSTONE_SIGNAL_PORT).asNumber()));
+                        GraphSignalRange.outputStrength(node, values.apply(GraphSignalRange.REDSTONE_SIGNAL_PORT).asNumber()));
                 changed = true;
             }
         }

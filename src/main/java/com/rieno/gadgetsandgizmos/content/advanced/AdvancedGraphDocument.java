@@ -417,15 +417,26 @@ public final class AdvancedGraphDocument
             }
         }
         // ------------------------------------PORT NORMALIZATION------------------------------------
+        ensureSignalValueTypes(graph.nodes);
         ensureAccDisplayDefaults(graph.nodes);
         removeInactiveCrnTextEdges(graph.nodes, graph.edges);
         syncAccDisplayWidgets(graph.nodes, graph.edges);
         for (FunctionGraph function : graph.functions) {
+            ensureSignalValueTypes(function.nodes);
             ensureAccDisplayDefaults(function.nodes);
             removeInactiveCrnTextEdges(function.nodes, function.edges);
             syncAccDisplayWidgets(function.nodes, function.edges);
         }
         return graph;
+    }
+
+    // Give loaded graphs and nested functions an explicit output range
+    private static void ensureSignalValueTypes(List<Node> nodes){
+        for(Node node : nodes){
+            if(GraphSignalRange.usesValueType(node.type())){
+                node.data().putString(GraphSignalRange.VALUE_TYPE_TAG, GraphSignalRange.valueType(node).id());
+            }
+        }
     }
 
     // Ensure the ACC display defaults

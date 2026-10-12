@@ -437,12 +437,11 @@ public final class AnalogueContraptionControllerClientHandler {
         if (action != 0 && action != 1 && action != 2) {
             return false;
         }
-        if (key < 32) {
+        if (CTActionKeys.CONTROLLER_EXIT.matchesKeyboard(key, scanCode) && action == 1) {
+            stopInteractMode(true);
             return true;
         }
-
-        if (key == 256 && action == 1) {
-            stopInteractMode(true);
+        if (key < 32) {
             return true;
         }
 
@@ -582,8 +581,14 @@ public final class AnalogueContraptionControllerClientHandler {
 
     // Handle the mouse button input
     public static boolean onMouseButton(int btn, int action) {
+        if (action != 0 && action != 1 && action != 2) return false;
+        if ((activeControllerPos != null || activePortable || activeLecternPos != null)
+                && action == 1 && CTActionKeys.CONTROLLER_EXIT.matchesMouse(btn)) {
+            stopInteractMode(true);
+            return true;
+        }
         AdvancedContraptionControllerBlockEntity controller = activeAdvCtrl();
-        if (controller == null || (action != 0 && action != 1 && action != 2)) return false;
+        if (controller == null) return false;
         Minecraft minecraft = Minecraft.getInstance();
         if (gateUseInputUntilRelease && minecraft.options.keyUse.matchesMouse(btn)) {
             minecraft.options.keyUse.consumeClick();

@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.neoforge.network;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.CreateThrusters;
+import com.rieno.gadgetsandgizmos.lib.physics.StrandAnchor;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedRopeCompat;
 import com.rieno.gadgetsandgizmos.content.RopeKnotBlockEntity;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
@@ -28,7 +29,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
-import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.ItemStack;
@@ -37,8 +37,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import org.jetbrains.annotations.Nullable;
-import org.joml.Vector3d;
-import org.joml.Vector3dc;
 
 import java.util.UUID;
 
@@ -90,6 +88,9 @@ public record ServerboundRopeKnotAttachPacket(UUID ropeUuid, Vec3 targetPosition
             if (CTBlocks.ROPE_KNOT == null) {
                 return;
             }
+            if (!Float.isFinite(payload.pathPosition()) || payload.pathPosition() < 0.0f
+                    || !Double.isFinite(payload.targetPosition().x) || !Double.isFinite(payload.targetPosition().y)
+                    || !Double.isFinite(payload.targetPosition().z)) return;
             if (!player.isShiftKeyDown()) {
                 return;
             }
@@ -107,7 +108,7 @@ public record ServerboundRopeKnotAttachPacket(UUID ropeUuid, Vec3 targetPosition
             if (strand == null) {
                 return;
             }
-            Vec3 sampledPosition = sampleRope(strand, payload.pathPosition());
+            Vec3 sampledPosition = StrandAnchor.samplePath(strand.getPoints(), payload.pathPosition());
             if (sampledPosition == null || sampledPosition.distanceToSqr(payload.targetPosition()) > 1.0D) {
                 return;
             }
@@ -121,13 +122,13 @@ public record ServerboundRopeKnotAttachPacket(UUID ropeUuid, Vec3 targetPosition
             knot.setRopeAnchor(payload.ropeUuid(), payload.pathPosition(), sampledPosition);
             BlockPos knotPos = knot.getBlockPos();
             if (ropeStack.has(SimDataComponents.ROPE_FIRST_CONNECTION)) {
-                ropeStack.remove(SimDataComponents.ROPE_FIRST_CONNECTION);
                 if (first != null && attachRope(level, first, knotPos, !player.getAbilities().instabuild)) {
+                    ropeStack.remove(SimDataComponents.ROPE_FIRST_CONNECTION);
                     if (!player.getAbilities().instabuild) {
                         ropeStack.shrink(1);
                     }
-                    return;
                 }
+                return;
             }
 
             ropeStack.set(SimDataComponents.ROPE_FIRST_CONNECTION, knotPos);
@@ -319,29 +320,6 @@ public record ServerboundRopeKnotAttachPacket(UUID ropeUuid, Vec3 targetPosition
             return null;
         }
         return smartBlockEntity.getBehaviour(RopeStrandHolderBehavior.TYPE);
-    }
-
-    // Sample the rope
-    private static @Nullable Vec3 sampleRope(ServerRopeStrand strand, float pos) {
-        var points = strand.getPoints();
-        float cumulative = 0.0f;
-        for (int i = 0; i < points.size() - 1; i++) {
-            Vector3d a = new Vector3d((Vector3dc) points.get(i));
-            Vector3d b = new Vector3d((Vector3dc) points.get(i + 1));
-            Vector3d ab = b.sub((Vector3dc) a, new Vector3d());
-            float segmentLength = (float) ab.length();
-            if (pos <= cumulative + segmentLength) {
-                double local = segmentLength <= 1.0E-5f ? 0.0D : (pos - cumulative) / segmentLength;
-                Vector3d res = a.fma(Mth.clamp(local, 0.0D, 1.0D), ab, new Vector3d());
-                return new Vec3(res.x, res.y, res.z);
-            }
-            cumulative += segmentLength;
-        }
-        if (points.isEmpty()) {
-            return null;
-        }
-        Vector3d last = new Vector3d((Vector3dc) points.get(points.size() - 1));
-        return new Vec3(last.x, last.y, last.z);
     }
 
     // Encode the serverbound rope knot attach

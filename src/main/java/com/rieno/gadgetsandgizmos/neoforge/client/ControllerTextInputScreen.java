@@ -9,14 +9,16 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.EditBox;
+import com.rieno.gadgetsandgizmos.lib.client.ui.TextInputScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import com.rieno.gadgetsandgizmos.CreateThrusters;
 
 import java.util.function.Consumer;
 
 // Collect one bounded text value before returning it to the controller screen
-public class ControllerTextInputScreen extends Screen {
+public class ControllerTextInputScreen extends TextInputScreen {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -25,8 +27,10 @@ public class ControllerTextInputScreen extends Screen {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    private static final int PANEL_W = 288;
-    private static final int PANEL_H = 96;
+    private static final int PANEL_W = 190;
+    private static final int PANEL_H = 87;
+    private static final ResourceLocation BACKGROUND = ResourceLocation.fromNamespaceAndPath(
+            CreateThrusters.MOD_ID, "textures/gui/text_input.png");
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -38,23 +42,12 @@ public class ControllerTextInputScreen extends Screen {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Parent controller text input
-    private final Screen parent;
     // Title
     private final Component title;
     // Prompt
     private final Component prompt;
-    // Initial text
-    private final String initialText;
-    // On confirm
-    private final Consumer<String> onConfirm;
-    // Maximum length
-    private final int maximumLength;
     // Scalable GUI
     private final CTScalableGui scalableGui = new CTScalableGui();
-
-    // Current input
-    private EditBox input;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -80,13 +73,9 @@ public class ControllerTextInputScreen extends Screen {
                                      String initialText,
                                      Consumer<String> onConfirm,
                                      int maximumLength) {
-        super(title);
-        this.parent = parent;
+        super(parent, title, initialText, onConfirm, maximumLength);
         this.title = title;
         this.prompt = prompt;
-        this.initialText = initialText == null ? "" : initialText;
-        this.onConfirm = onConfirm;
-        this.maximumLength = Math.max(1, maximumLength);
     }
 
     // Initialize the controller text input
@@ -96,21 +85,15 @@ public class ControllerTextInputScreen extends Screen {
         int y = (height - PANEL_H) / 2;
         scalableGui.update(x, y, PANEL_W, PANEL_H, width, height);
 
-        input = new CTScaledEditBox(scalableGui, font, x + 12, y + 34, PANEL_W - 24, 18, Component.literal("value"));
-        input.setValue(initialText);
-        input.setMaxLength(maximumLength);
-        input.setResponder(val -> {
-            if (val != null && val.length() > maximumLength) {
-                input.setValue(val.substring(0, maximumLength));
-            }
-        });
-        addRenderableWidget(input);
-        setInitialFocus(input);
+        CTScaledEditBox input = new CTScaledEditBox(scalableGui, font,
+                x + 28, y + 42, 134, 10, prompt);
+        input.setBordered(false);
+        initializeInput(input);
 
-        addRenderableWidget(new CTScaledButton(scalableGui, x + 12, y + PANEL_H - 24, 62, 18,
+        addRenderableWidget(new CTScaledButton(scalableGui, x + 6, y + 72, 50, 14,
                 Component.literal("Cancel"), btn -> onClose()));
 
-        addRenderableWidget(new CTScaledButton(scalableGui, x + PANEL_W - 74, y + PANEL_H - 24, 62, 18,
+        addRenderableWidget(new CTScaledButton(scalableGui, x + PANEL_W - 56, y + 72, 50, 14,
                 Component.literal("Save"), btn -> confirm()));
     }
 
@@ -125,16 +108,16 @@ public class ControllerTextInputScreen extends Screen {
     // Draw the controller text input
     @Override
     public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        renderBackground(guiGraphics, mouseX, mouseY, partialTick);
-
         int x = (width - PANEL_W) / 2;
         int y = (height - PANEL_H) / 2;
         scalableGui.update(x, y, PANEL_W, PANEL_H, width, height);
         scalableGui.push(guiGraphics);
         try {
-            CTCreateScreenHelper.renderPanel(guiGraphics, x, y, PANEL_W, PANEL_H);
-            guiGraphics.drawCenteredString(font, title, x + PANEL_W / 2, y + 8, CTCreateScreenHelper.BANNER_TITLE_COLOR);
-            guiGraphics.drawString(font, prompt, x + 12, y + 24, CTCreateScreenHelper.LABEL_COLOR, false);
+            guiGraphics.blit(BACKGROUND, x, y, 0, 0, PANEL_W, PANEL_H, PANEL_W, PANEL_H);
+            guiGraphics.drawCenteredString(font, font.plainSubstrByWidth(title.getString(), PANEL_W - 16),
+                    x + PANEL_W / 2, y + 3, 0xFF29231A);
+            guiGraphics.drawString(font, font.plainSubstrByWidth(prompt.getString(), PANEL_W - 16),
+                    x + 8, y + 25, CTCreateScreenHelper.LABEL_COLOR, false);
         } finally {
             scalableGui.pop(guiGraphics);
         }
@@ -148,39 +131,4 @@ public class ControllerTextInputScreen extends Screen {
         return super.mouseClicked(mouseX, mouseY, btn);
     }
 
-    // Handle key pressed
-    @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (keyCode == 257 || keyCode == 335) {
-            confirm();
-            return true;
-        }
-        return super.keyPressed(keyCode, scanCode, modifiers);
-    }
-
-    /*--------------------------------------------------------##---------------------------------------------------------
-
-    =======================================================================================================================
-                                                           Functions
-    =======================================================================================================================
-
-    ------------------------------------------------------------##-----------------------------------------------------*/
-
-    // Confirm the text input
-    private void confirm() {
-        if (onConfirm != null) {
-            onConfirm.accept(input == null ? "" : input.getValue().trim());
-        }
-        if (minecraft != null) {
-            minecraft.setScreen(parent);
-        }
-    }
-
-    // Handle the close event
-    @Override
-    public void onClose() {
-        if (minecraft != null) {
-            minecraft.setScreen(parent);
-        }
-    }
 }

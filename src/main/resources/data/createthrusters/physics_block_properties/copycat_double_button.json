@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:copycat_double_button",
+  "properties": {
+    "sable:mass": 0.005
+  }
+}

@@ -1,8 +1,11 @@
 package com.rieno.gadgetsandgizmos.content.advanced;
 
-// Convert normalized graph redstone signals
+import com.rieno.gadgetsandgizmos.lib.control.SignalValueType;
+
+// Convert graph signals using the node's explicitly selected value type
 public final class GraphSignalRange {
     public static final String REDSTONE_SIGNAL_PORT = "redstone_signal_strength";
+    public static final String VALUE_TYPE_TAG = "SignalValueType";
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -23,32 +26,56 @@ public final class GraphSignalRange {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Create the graph signal range from normalized redstone
-    static double fromNormalizedRedstone(double val) {
-        if (Double.isNaN(val)) {
-            return 0.0D;
+    // Identify output nodes that consume scalar or redstone signals
+    public static boolean usesValueType(String type){
+        if(type == null) return false;
+        return switch(type){
+            case "controller_channel_output", "direct_target_output", "linker_face_output",
+                    "local_redstone_output", "wireless_frequency_output", "set_block_data" -> true;
+            default -> false;
+        };
+    }
+
+    // Resolve the saved output type without guessing from the input value
+    public static SignalValueType valueType(AdvancedGraphDocument.Node node){
+        return SignalValueType.fromId(node == null ? "" : node.data().getString(VALUE_TYPE_TAG));
+    }
+
+    // Read normalized redstone inputs as signal strengths
+    static double fromNormalizedRedstone(double val){
+        return SignalValueType.SCALAR.toRedstoneStrength(val);
+    }
+
+    // Convert an untyped strength using the explicit redstone default
+    public static int outputStrength(double val){
+        return SignalValueType.REDSTONE.toRedstoneStrength(val);
+    }
+
+    // Convert output strengths according to the node's saved selection
+    public static int outputStrength(AdvancedGraphDocument.Node node, double val){
+        return valueType(node).toRedstoneStrength(val);
+    }
+
+    // Normalize quantized signal outputs for transport
+    static double toNormalizedRedstone(AdvancedGraphDocument.Node node, double val){
+        return valueType(node).toNormalizedRedstone(val);
+    }
+
+    // Preserve continuous scalar values when driving analogue receivers
+    public static double toDirectControl(AdvancedGraphDocument.Node node, double val){
+        return valueType(node).toScalar(val);
+    }
+
+    // Compare and cache the same signal value that the target receives
+    public static AdvancedGraphDocument.Value targetValue(AdvancedGraphDocument.Node node, String port,
+                                                   AdvancedGraphDocument.Value val){
+        if(val == null || !"number".equals(val.type())) return val;
+        if(REDSTONE_SIGNAL_PORT.equals(port)){
+            return AdvancedGraphDocument.Value.number(outputStrength(node, val.asNumber()));
         }
-        return Math.round(Math.max(0.0D, Math.min(1.0D, val)) * 15.0D);
-    }
-
-    // Convert the graph signal range to normalized redstone
-    public static int outputStrength(double val) {
-        if (Double.isNaN(val)) {
-            return 0;
+        if("set_block_data".equals(node.type()) && "direct_signal".equals(port)){
+            return AdvancedGraphDocument.Value.number(toDirectControl(node, val.asNumber()));
         }
-        // Graph numbers share a double representation. Treat 0..1 as a
-        // fraction of full power, and larger numbers as redstone strengths.
-        double strength = val <= 1.0D ? val * 15.0D : val;
-        return (int) Math.round(Math.max(0.0D, Math.min(15.0D, strength)));
-    }
-
-    static double toNormalizedRedstone(double val) {
-        return outputStrength(val) / 15.0D;
-    }
-
-    // Preserve continuous values for analogue receivers; quantize only redstone.
-    static double toDirectControl(double val) {
-        if (Double.isNaN(val)) return 0.0D;
-        return val > 1.0D ? toNormalizedRedstone(val) : Math.max(0.0D, val);
+        return val;
     }
 }

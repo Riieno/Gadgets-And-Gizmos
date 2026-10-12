@@ -13,6 +13,7 @@ import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEntity;
 import com.rieno.gadgetsandgizmos.content.PortableContraptionControllerRuntime;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
+import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudInteractions;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
@@ -26,7 +27,7 @@ import java.util.UUID;
 // Send Advanced HUD Interaction
 public record AdvancedHudInteractionPayload(MenuConfigTarget target, UUID pairId, String nodeId,
                                             String interactionId, ValueKind valueKind,
-                                            double numberValue, boolean booleanValue)
+                                            double numberValue, boolean booleanValue, String stringValue)
         implements CustomPacketPayload {
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -48,6 +49,20 @@ public record AdvancedHudInteractionPayload(MenuConfigTarget target, UUID pairId
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
+
+    // Preserve the constructor used by numeric and boolean interactions
+    public AdvancedHudInteractionPayload(MenuConfigTarget target, UUID pairId, String nodeId,
+                                         String interactionId, ValueKind valueKind,
+                                         double numberValue, boolean booleanValue){
+        this(target, pairId, nodeId, interactionId, valueKind, numberValue, booleanValue, "");
+    }
+
+    // Send a bounded text value through the paired goggles interaction route
+    public static AdvancedHudInteractionPayload text(MenuConfigTarget target, UUID pairId,
+                                                     String nodeId, String interactionId, String val){
+        return new AdvancedHudInteractionPayload(
+                target, pairId, nodeId, interactionId, ValueKind.STRING, 0.0D, false, val == null ? "" : val);
+    }
 
     // Read the numeric value
     public static AdvancedHudInteractionPayload number(MenuConfigTarget target, UUID pairId,
@@ -89,15 +104,17 @@ public record AdvancedHudInteractionPayload(MenuConfigTarget target, UUID pairId
                 return;
             }
 
-            AdvancedGraphDocument.Value val = payload.valueKind() == ValueKind.BOOLEAN
-                    ? AdvancedGraphDocument.Value.bool(payload.booleanValue())
-                    : AdvancedGraphDocument.Value.number(payload.numberValue());
+            AdvancedGraphDocument.Value val = switch(payload.valueKind()){
+                case BOOLEAN -> AdvancedGraphDocument.Value.bool(payload.booleanValue());
+                case NUMBER -> AdvancedGraphDocument.Value.number(payload.numberValue());
+                case STRING -> AdvancedGraphDocument.Value.string(payload.stringValue());
+            };
             AdvancedContraptionControllerBlockEntity controller = SimulatedHelper.findBlockEntity(
                     player.level(), payload.target().subLevelId(), payload.target().pos(),
                     AdvancedContraptionControllerBlockEntity.class);
             if (controller != null
                     && controller.getGogglesTrackerPairLabels().containsKey(payload.pairId())) {
-                controller.handleHudElementInteraction(payload.nodeId(), payload.interactionId(), val);
+                controller.handleHudElementInteraction(player, payload.nodeId(), payload.interactionId(), val);
                 return;
             }
             PortableContraptionControllerRuntime.handleHudInteraction(
@@ -115,23 +132,30 @@ public record AdvancedHudInteractionPayload(MenuConfigTarget target, UUID pairId
         buffer.writeEnum(payload.valueKind());
         buffer.writeDouble(payload.numberValue());
         buffer.writeBoolean(payload.booleanValue());
+        if(payload.valueKind() == ValueKind.STRING){
+            buffer.writeUtf(payload.stringValue(), AdvancedHudInteractions.MAX_TEXT_INPUT_LENGTH);
+        }
     }
 
     // Decode the advanced HUD interaction
     private static AdvancedHudInteractionPayload decode(RegistryFriendlyByteBuf buffer) {
+        MenuConfigTarget target = MenuConfigTarget.STREAM_CODEC.decode(buffer);
+        UUID pairId = buffer.readUUID();
+        String nodeId = buffer.readUtf(128);
+        String interactionId = buffer.readUtf(128);
+        ValueKind valueKind = buffer.readEnum(ValueKind.class);
+        double numberValue = buffer.readDouble();
+        boolean booleanValue = buffer.readBoolean();
+        String stringValue = valueKind == ValueKind.STRING
+                ? buffer.readUtf(AdvancedHudInteractions.MAX_TEXT_INPUT_LENGTH) : "";
         return new AdvancedHudInteractionPayload(
-                MenuConfigTarget.STREAM_CODEC.decode(buffer),
-                buffer.readUUID(),
-                buffer.readUtf(128),
-                buffer.readUtf(128),
-                buffer.readEnum(ValueKind.class),
-                buffer.readDouble(),
-                buffer.readBoolean());
+                target, pairId, nodeId, interactionId, valueKind, numberValue, booleanValue, stringValue);
     }
 
     // Define the value kind values
     public enum ValueKind {
         NUMBER,
-        BOOLEAN
+        BOOLEAN,
+        STRING
     }
 }

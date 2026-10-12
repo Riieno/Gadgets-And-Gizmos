@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.PoweredZiplineBlockEntity;
+import com.rieno.gadgetsandgizmos.content.RopeKnotBlockEntity;
 import com.rieno.gadgetsandgizmos.neoforge.network.ServerboundRopeKnotAttachPacket;
 import com.rieno.gadgetsandgizmos.neoforge.network.ServerboundZiplineAttachPacket;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
@@ -24,8 +25,10 @@ import dev.simulated_team.simulated.content.blocks.rope.strand.client.ClientLeve
 import dev.simulated_team.simulated.content.blocks.rope.strand.client.ClientRopePoint;
 import dev.simulated_team.simulated.content.blocks.rope.strand.client.ClientRopeStrand;
 import dev.simulated_team.simulated.content.items.rope.RopeItem.RopeItem;
+import dev.simulated_team.simulated.index.SimPartialModels;
 import it.unimi.dsi.fastutil.objects.ObjectArrayList;
 import net.createmod.catnip.math.VecHelper;
+import net.createmod.catnip.render.CachedBuffers;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -40,8 +43,10 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.LevelAccessor;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.client.event.InputEvent;
@@ -127,9 +132,7 @@ public final class PoweredZiplinePlacementHandler {
         double range = player.getAttributeValue(Attributes.BLOCK_INTERACTION_RANGE) + 1.0D;
         Vec3 from = player.getEyePosition();
         Vec3 to = from.add(player.getLookAngle().scale(range));
-        double bestDistance = minecraft.hitResult == null || minecraft.hitResult.getType() == HitResult.Type.MISS
-                ? Double.MAX_VALUE
-                : minecraft.hitResult.getLocation().distanceToSqr(from);
+        double bestDistance = selectionDistance(minecraft, from, ropeKnotMode);
 
         Target ropeTarget = findRopeTarget(minecraft.level, from, to, bestDistance);
         Target chainTarget = ziplineMode ? findChainTarget(minecraft.level, from, to, bestDistance) : null;
@@ -166,27 +169,35 @@ public final class PoweredZiplinePlacementHandler {
         }
 
         Minecraft minecraft = Minecraft.getInstance();
+        if (minecraft.level == null) return;
         Camera camera = evt.getCamera();
         Vec3 cameraPos = camera.getPosition();
         Vec3 target = selectedTarget.targetPosition();
-        AABB bounds = new AABB(
-                target.x - 0.14D,
-                target.y - 0.14D,
-                target.z - 0.14D,
-                target.x + 0.14D,
-                target.y + 0.14D,
-                target.z + 0.14D);
         PoseStack poseStack = evt.getPoseStack();
         MultiBufferSource.BufferSource bufferSource = minecraft.renderBuffers().bufferSource();
-        VertexConsumer lines = bufferSource.getBuffer(RenderType.lines());
+        RenderType renderType = selectedMode == TargetMode.ROPE_KNOT ? RenderType.solid() : RenderType.lines();
 
         poseStack.pushPose();
         poseStack.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z);
-        float red = selectedMode == TargetMode.ROPE_KNOT ? 0.85f : 0.15f;
-        float green = selectedTarget.targetType() == ServerboundZiplineAttachPacket.TargetType.ROPE ? 0.85f : 0.55f;
-        LevelRenderer.renderLineBox(poseStack, lines, bounds, red, green, 1.0f, 1.0f);
+        if (selectedMode == TargetMode.ROPE_KNOT) {
+            poseStack.translate(target.x - 0.5D, target.y - 0.5D, target.z - 0.5D);
+            CachedBuffers.partial(SimPartialModels.ROPE_KNOT, Blocks.AIR.defaultBlockState())
+                    .light(LevelRenderer.getLightColor(minecraft.level, BlockPos.containing(target)))
+                    .renderInto(poseStack, bufferSource.getBuffer(renderType));
+        } else {
+            AABB bounds = new AABB(
+                    target.x - 0.14D,
+                    target.y - 0.14D,
+                    target.z - 0.14D,
+                    target.x + 0.14D,
+                    target.y + 0.14D,
+                    target.z + 0.14D);
+            VertexConsumer lines = bufferSource.getBuffer(renderType);
+            float green = selectedTarget.targetType() == ServerboundZiplineAttachPacket.TargetType.ROPE ? 0.85f : 0.55f;
+            LevelRenderer.renderLineBox(poseStack, lines, bounds, 0.15f, green, 1.0f, 1.0f);
+        }
         poseStack.popPose();
-        bufferSource.endBatch(RenderType.lines());
+        bufferSource.endBatch(renderType);
     }
 
     // Sample the zipline world position
@@ -302,7 +313,7 @@ public final class PoweredZiplinePlacementHandler {
         double range = player.getAttributeValue(Attributes.BLOCK_INTERACTION_RANGE) + 1.0D;
         Vec3 from = player.getEyePosition();
         Vec3 to = from.add(player.getLookAngle().scale(range));
-        double maxDistanceSq = range * range;
+        double maxDistanceSq = ropeKnotMode ? Math.min(range * range, selectionDistance(minecraft, from, true)) : range * range;
         Target ropeTarget = findRopeTarget(minecraft.level, from, to, maxDistanceSq);
         Target chainTarget = ziplineMode ? findChainTarget(minecraft.level, from, to, maxDistanceSq) : null;
         return chainTarget != null && (ropeTarget == null
@@ -383,6 +394,20 @@ public final class PoweredZiplinePlacementHandler {
         } catch (ReflectiveOperationException ignored) {
             return null;
         }
+    }
+
+    // Let a knot's small hitbox reach its parent strand without selecting through other blocks
+    private static double selectionDistance(Minecraft minecraft, Vec3 from, boolean ropeKnotMode) {
+        HitResult hit = minecraft.hitResult;
+        if (hit == null || hit.getType() == HitResult.Type.MISS) return Double.MAX_VALUE;
+        double distance = hit.getLocation().distanceToSqr(from);
+        if (ropeKnotMode && minecraft.level != null && hit instanceof BlockHitResult blockHit
+                && SimulatedHelper.findBlockEntityIncludingSubLevels(minecraft.level, blockHit.getBlockPos())
+                instanceof RopeKnotBlockEntity) {
+            double reach = Math.sqrt(distance) + ROPE_SELECTION_RADIUS;
+            return reach * reach;
+        }
+        return distance;
     }
 
     // Find the rope target

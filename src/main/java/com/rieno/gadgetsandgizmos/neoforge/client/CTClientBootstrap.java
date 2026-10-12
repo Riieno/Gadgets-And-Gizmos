@@ -82,7 +82,7 @@ public final class CTClientBootstrap {
         });
         modEventBus.addListener((FMLLoadCompleteEvent evt) -> evt.enqueueWork(CTClientBootstrap::ct$runLateClientBootstrap));
         modEventBus.addListener(CTPhysicsGogglesClient::registerKeyMappings);
-        modEventBus.addListener(ContraptionNetworkLinkerClient::registerKeyMappings);
+        modEventBus.addListener(CTActionKeys::registerKeyMappings);
         modEventBus.addListener((EntityRenderersEvent.RegisterRenderers evt) -> CTClientRenderers.registerRenderers(evt));
         modEventBus.addListener(PortableContraptionControllerPlayerLayer::register);
         modEventBus.addListener((ModelEvent.ModifyBakingResult evt) -> CTClientRenderers.modifyBakingResult(evt));
@@ -129,6 +129,7 @@ public final class CTClientBootstrap {
 
     // Register the client extensions
     private static void registerClientExtensions(RegisterClientExtensionsEvent evt) {
+        evt.registerItem(PhysicsGogglesHeightClient.armorExtensions(), CTItems.PHYSICS_GOGGLES.get());
         evt.registerBlock(
                 new ReducedDestroyEffects(),
                 CTBlocks.ANALOGUE_CONTRAPTION_CONTROLLER.get(),
@@ -175,10 +176,12 @@ public final class CTClientBootstrap {
         NeoForge.EVENT_BUS.addListener(ContraptionNetworkLinkerFaceRenderer::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(PoweredZiplinePlacementHandler::onInteractionKeyMappingTriggered);
         NeoForge.EVENT_BUS.addListener(PhysicsGantryBeltWheelShearsClient::onInteractionKeyMappingTriggered);
-        NeoForge.EVENT_BUS.addListener(ContraptionNetworkLinkerClient::onInteractionKeyMappingTriggered);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletClientInteraction::onInteractionKeyMappingTriggered);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletClientInteraction::onKeyInput);
         NeoForge.EVENT_BUS.addListener(EntityLauncherClientInputHandler::onInteractionKeyMappingTriggered);
+        NeoForge.EVENT_BUS.addListener(EntityLauncherClientInputHandler::onRenderGui);
+        NeoForge.EVENT_BUS.addListener(CTActionKeys::onItemTooltip);
+        NeoForge.EVENT_BUS.addListener(PhysicsStaffActionClient::onInteractionKeyMappingTriggered);
         NeoForge.EVENT_BUS.addListener(ShippingManifestClientHandler::onMouseScrolling);
         NeoForge.EVENT_BUS.addListener(AccDisplayGuiProjection::onMouseScrolling);
         NeoForge.EVENT_BUS.addListener(AccDisplayGuiProjection::onClientTick);
@@ -187,6 +190,7 @@ public final class CTClientBootstrap {
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletLandingZoneClient::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletLandingZoneClient::onMouseScrolling);
         NeoForge.EVENT_BUS.addListener(CTPhysicsGogglesClient::onRenderGui);
+        NeoForge.EVENT_BUS.addListener(PhysicsGogglesHeightClient::onMouseScrolled);
         NeoForge.EVENT_BUS.addListener(AnalogueJoystickHudOverlay::onRenderGui);
         NeoForge.EVENT_BUS.addListener(CTClientEvents::onClientTick);
         NeoForge.EVENT_BUS.addListener(CTClientEvents::onScreenRender);

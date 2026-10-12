@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:aileron_bearing_link",
+  "properties": {
+    "sable:mass": 0.25
+  }
+}

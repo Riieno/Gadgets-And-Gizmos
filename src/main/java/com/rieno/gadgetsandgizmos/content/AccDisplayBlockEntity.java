@@ -896,11 +896,11 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
             CompoundTag elm = elements.getCompound(idx);
             if ("text_input".equals(elm.getString("Type"))
                     && interactionId.equals(elm.getString("InteractionId"))) {
-                String val = text == null ? "" : text.strip();
+                String val = text == null ? "" : text;
                 if (val.length() > 64) {
                     val = val.substring(0, 64);
                 }
-                activeController.handleHudInteraction(nodeId, interactionId,
+                activeController.handleHudInteraction(player, nodeId, interactionId,
                         AdvancedGraphDocument.Value.string(val));
                 return;
             }
@@ -921,13 +921,13 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
         switch (type) {
             case "button" -> {
                 if (activeController.handleHudButtonInteraction(
-                        node.id(), interactionId)) {
+                        player, node.id(), interactionId)) {
                     widgetInteractionPulse(node.id(), interactionId);
                 }
             }
             case "toggle" -> {
                 if (activeController.handleHudToggleInteraction(
-                        node.id(), interactionId)) {
+                        player, node.id(), interactionId)) {
                     widgetInteractionPulse(node.id(), interactionId);
                 }
             }
@@ -942,7 +942,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity {
                     next = minimum + Math.round((next - minimum) / step) * step;
                 }
                 if (activeController.handleHudInteraction(
-                        node.id(), interactionId,
+                        player, node.id(), interactionId,
                         AdvancedGraphDocument.Value.number(
                                 Mth.clamp(next, minimum, maximum)))) {
                     widgetInteractionPulse(node.id(), interactionId);

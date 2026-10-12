@@ -16,7 +16,11 @@ import com.rieno.gadgetsandgizmos.lib.graph.GraphNodeDefinition;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphNodeRegistry;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphApi;
 import com.rieno.gadgetsandgizmos.lib.graph.math.MathGraphNodes;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphCounters;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphDataOperations;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -40,6 +44,8 @@ public final class AdvancedGraphCatalog {
     public static final String PID_INTEGRAL_MIN_PORT = "integral_min";
     public static final String PID_INTEGRAL_MAX_PORT = "integral_max";
     public static final String CONTROLLER_RESET_PORT = "reset";
+    public static final String COUNT_DIRECTION_TAG = "Direction";
+    public static final String CHAT_BROADCAST_TAG = "BroadcastNearby";
     public static final String COLLAPSE_INPUTS_TO_MAP_TAG = "CollapseInputsToMap";
     public static final String COLLAPSE_OUTPUTS_TO_MAP_TAG = "CollapseOutputsToMap";
     public static final String COLLAPSED_INPUT_MAP_PORT = "input_map";
@@ -101,6 +107,17 @@ public final class AdvancedGraphCatalog {
         register("event_value_change", "events", Map.of("value", "any"),
                 Map.of("exec", "exec", "value", "any"), true);
         register("event_trigger", "events", Map.of(), Map.of("exec", "exec"), false);
+        register("watch_chat", "events", Map.of("start_word", "string", "players", "list", "hide_message", "boolean"),
+                Map.of("exec", "exec", "value", "list"), true);
+        register("send_chat_message", "events", Map.of("exec", "exec", "message", "string", "players", "list"),
+                Map.of("exec", "exec"), false);
+        register("createthrusters:announce", "events", Map.ofEntries(
+                Map.entry("exec", "exec"), Map.entry("players", "list"), Map.entry("action", "string"),
+                Map.entry("message", "string"), Map.entry("text_format", "string"), Map.entry("color", "color"),
+                Map.entry("color_mode", "string"), Map.entry("bold", "string"), Map.entry("italic", "string"),
+                Map.entry("underlined", "string"), Map.entry("strikethrough", "string"), Map.entry("obfuscated", "string"),
+                Map.entry("fade_in", "number"), Map.entry("stay", "number"), Map.entry("fade_out", "number"),
+                Map.entry("time_unit", "string")), Map.of("exec", "exec"), false);
         register("event_physical_interaction", "events", Map.of(), physicalInteractionOutputs(), false);
         register("event_redstone_change", "events", Map.of(), Map.of("exec", "exec", "value", "number"), false);
         register("event_channel_change", "events", Map.of(), Map.of("exec", "exec", "value", "number"), false);
@@ -135,7 +152,8 @@ public final class AdvancedGraphCatalog {
         register("gate", "logic", Map.of("exec", "exec", "open", "boolean"), Map.of("exec", "exec"), true);
         register("flip_flop", "logic", Map.of("exec", "exec"), Map.of("exec", "exec", "value", "boolean"), true);
         register("do_once", "flow", Map.of("exec", "exec", "reset", "boolean"), Map.of("exec", "exec"), true);
-        register("do_n", "flow", Map.of("exec", "exec", "count", "number", "reset", "exec"), Map.of("exec", "exec", "index", "number"), true);
+        register("do_n", "flow", Map.of("exec", "exec", "count", "number", "reset", "boolean"), Map.of("exec", "exec", "index", "number"), true);
+        register("count", "flow", Map.of("exec", "exec", "step", "number", "reset", "boolean"), Map.of("exec", "exec", "value", "number"), true);
         register("bounded_loop", "flow", Map.of("exec", "exec", "iterations", "number"), Map.of("body", "exec", "complete", "exec", "index", "number"), true);
         register("delay", "flow", Map.of("exec", "exec", "ticks", "number"), Map.of("exec", "exec"), true);
         register("debounce", "flow", Map.of("exec", "exec", "ticks", "number"), Map.of("exec", "exec"), true);
@@ -257,6 +275,13 @@ public final class AdvancedGraphCatalog {
         register("str_regex", "string", Map.of("In", "string", "Pattern", "string"),
                 Map.of("Matches", "list", "Found", "boolean"), false);
         register("convert_type", "data", Map.of("value", "any"), Map.of("value", "string"), false);
+        register("createthrusters:length", "data", Map.of("value", "any"), Map.of("length", "number"), false);
+        GraphApi.runtimes().register("createthrusters:length", (ctx, inputs) ->
+                Map.of("length", GraphValue.number(GraphDataOperations.length(inputs.get("value")))));
+        register("createthrusters:strip_json", "data", Map.of("value", "string"), Map.of("value", "string"), false);
+        GraphApi.runtimes().register("createthrusters:strip_json", (ctx, inputs) ->
+                Map.of("value", GraphValue.string(GraphDataOperations.stripJson(
+                        inputs.getOrDefault("value", GraphValue.string("")).asString()))));
         register("list_create", "data", Map.of("value", "any"), Map.of("list", "list"), false);
         register("list_get", "data", Map.of("list", "list", "index", "number"), Map.of("value", "any"), false);
         register("map_create", "data", Map.of("key", "string", "value", "any"), Map.of("map", "map"), false);
@@ -872,10 +897,26 @@ public final class AdvancedGraphCatalog {
         return "createthrusters.advanced_controller.node." + id + ".summary";
     }
 
+    // Preserve saved broadcast toggles while restricting their audience to nearby players
+    public static boolean chatBroadcastNearby(AdvancedGraphDocument.Node node){
+        return node.data().contains(CHAT_BROADCAST_TAG, Tag.TAG_BYTE)
+                ? node.data().getBoolean(CHAT_BROADCAST_TAG) : node.data().getBoolean("BroadcastGlobally");
+    }
+
+    // Read the configured direction for one retained counter
+    public static GraphCounters.Direction countDirection(AdvancedGraphDocument.Node node){
+        return GraphCounters.Direction.fromId(node.data().getString(COUNT_DIRECTION_TAG));
+    }
+
     // Get the inputs
     public static Map<String, String> inputs(AdvancedGraphDocument.Node node) {
         Definition definition = get(node.type());
         CompoundTag dynamicInputs = node.data().getCompound("DynamicInputs");
+        if("do_n".equals(node.type())){
+            dynamicInputs = dynamicInputs.copy();
+            dynamicInputs.remove("reset");
+            dynamicInputs.remove("count");
+        }
         Map<String, String> baseInputs = definition == null ? Map.of() : definition.inputs();
         if ("switch".equals(node.type()) && switchDataMode(node)) {
             baseInputs = Map.of(
@@ -1099,6 +1140,9 @@ public final class AdvancedGraphCatalog {
     // Check if the values are compatible
     public static boolean compatible(String from, AdvancedGraphDocument.Node toNode, String toPort) {
         String to = toNode == null ? null : inputs(toNode).get(toPort);
+        // Keep saved execution-reset wires valid after exposing the boolean reset control
+        if("exec".equals(from) && toNode != null && "do_n".equals(toNode.type())
+                && "reset".equals(toPort)) return true;
         if ("set_block_data".equals(toNode == null ? "" : toNode.type())
                 && from != null && to != null && !"exec".equals(from) && !"exec".equals(to)) {
             return true;
@@ -1124,6 +1168,9 @@ public final class AdvancedGraphCatalog {
             case "event_named_controller" -> "On Named Controller Event";
             case "event_delta_time" -> "Delta Time";
             case "send_named_controller_event" -> "Send Named Controller Event";
+            case "watch_chat" -> "Watch Chat";
+            case "send_chat_message" -> "Send Chat Message";
+            case "createthrusters:announce" -> "Announce";
             case "average" -> "Average";
             case "profiler_fps" -> "FPS";
             case "profiler_mspt" -> "MSPT";
@@ -1149,6 +1196,7 @@ public final class AdvancedGraphCatalog {
             case "function_output" -> "Function Outputs";
             case "do_once" -> "Do Once";
             case "do_n" -> "Do N";
+            case "count" -> "Count";
             case "bounded_loop" -> "Bounded Loop";
             case "parallel_execution" -> "Parallel Execution";
             case "sequenced_execution" -> "Sequenced Execution";
@@ -1194,6 +1242,8 @@ public final class AdvancedGraphCatalog {
             case "str_join_array" -> "Join From List";
             case "str_regex" -> "Regex";
             case "convert_type" -> "Convert Type";
+            case "createthrusters:length" -> "Length";
+            case "createthrusters:strip_json" -> "Strip JSON";
             case "list_create" -> "Make List";
             case "list_get" -> "Get List Value";
             case "map_create" -> "Create Structure";

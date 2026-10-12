@@ -11,20 +11,14 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerData;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerItem;
 import com.rieno.gadgetsandgizmos.neoforge.network.ContraptionNetworkLinkerSyncPayload;
-import com.mojang.blaze3d.platform.InputConstants;
 import net.createmod.catnip.gui.ScreenOpener;
 import net.minecraft.ChatFormatting;
-import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
-import net.neoforged.neoforge.client.event.InputEvent;
-import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
-import org.lwjgl.glfw.GLFW;
 
 import java.util.Locale;
 
@@ -38,13 +32,6 @@ public final class ContraptionNetworkLinkerClient {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    private static final String CATEGORY = "key.categories.createthrusters";
-    private static final KeyMapping CYCLE_SCOPE_MODE_MODIFIER = new KeyMapping(
-            "key.createthrusters.contraption_network_linker.cycle_scope_mode_modifier",
-            InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_LEFT_ALT,
-            CATEGORY);
-
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -57,11 +44,6 @@ public final class ContraptionNetworkLinkerClient {
     private ContraptionNetworkLinkerClient() {
     }
 
-    // Register the key mappings
-    public static void registerKeyMappings(RegisterKeyMappingsEvent evt) {
-        evt.register(CYCLE_SCOPE_MODE_MODIFIER);
-    }
-
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -70,19 +52,11 @@ public final class ContraptionNetworkLinkerClient {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Handle the interaction key mapping triggered event
-    public static void onInteractionKeyMappingTriggered(InputEvent.InteractionKeyMappingTriggered evt) {
-
-        if (!evt.isUseItem()) {
-            return;
-        }
-
-        if (!attemptCycleScopeMode()) {
-            return;
-        }
-
-        evt.setSwingHand(false);
-        evt.setCanceled(true);
+    // Cycle the scope once when its configured action key is pressed
+    public static void tick() {
+        Minecraft minecraft = Minecraft.getInstance();
+        InteractionHand hand = minecraft.player == null ? null : findHeldLinkerHand(minecraft.player);
+        if (CTActionKeys.LINKER_SCOPE.sample(hand != null).wasPressed(1)) attemptCycleScopeMode();
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -99,10 +73,6 @@ public final class ContraptionNetworkLinkerClient {
         Minecraft minecraft = Minecraft.getInstance();
         LocalPlayer player = minecraft.player;
         if (player == null || minecraft.level == null || minecraft.screen != null) {
-            return false;
-        }
-
-        if (!isCycleModifierDown()) {
             return false;
         }
 
@@ -128,16 +98,6 @@ public final class ContraptionNetworkLinkerClient {
                 player.displayClientMessage(msg, true);
                 minecraft.gui.setOverlayMessage(msg, false);
                 return true;
-    }
-
-    // Check if the cycle modifier is held
-    private static boolean isCycleModifierDown() {
-                Minecraft minecraft = Minecraft.getInstance();
-                long window = minecraft.getWindow().getWindow();
-                return CYCLE_SCOPE_MODE_MODIFIER.isDown()
-                    || Screen.hasAltDown()
-                    || InputConstants.isKeyDown(window, GLFW.GLFW_KEY_LEFT_ALT)
-                    || InputConstants.isKeyDown(window, GLFW.GLFW_KEY_RIGHT_ALT);
     }
 
     // Find the held linker hand

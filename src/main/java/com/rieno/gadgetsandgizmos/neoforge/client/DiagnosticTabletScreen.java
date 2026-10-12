@@ -370,7 +370,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         int promptLeft = statusLeft + font.width(worldStatus) + 14;
         int promptRight = left + PANEL_WIDTH - modeWidth - (notifications > 0 ? 74 : 61);
         if (promptRight > promptLeft + 30) {
-            graphics.drawString(font, font.plainSubstrByWidth("Press Alt + Use to switch modes.",
+            graphics.drawString(font, font.plainSubstrByWidth(CTActionKeys.TABLET_MODE.hint("createthrusters.controls.tablet.mode").getString(),
                     promptRight - promptLeft), promptLeft, top + 13, 0xFFB7C7DA, false);
         }
     }

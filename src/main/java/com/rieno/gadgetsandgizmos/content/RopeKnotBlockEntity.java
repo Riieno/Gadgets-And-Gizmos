@@ -9,6 +9,12 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SableTransformApi;
+import com.rieno.gadgetsandgizmos.lib.physics.StrandAnchor;
+import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityLookupApi;
+import dev.ryanhcode.sable.api.physics.object.rope.RopeHandle;
+import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
@@ -25,15 +31,14 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.util.Mth;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Vector3d;
-import org.joml.Vector3dc;
 
 import java.util.List;
 import java.util.UUID;
@@ -54,11 +59,9 @@ public class RopeKnotBlockEntity extends SmartBlockEntity implements RopeStrandH
     private RopeStrandHolderBehavior ropeHolder;
     // Attachment offset
     private Vec3 attachmentOffset = new Vec3(0.5D, 0.5D, 0.5D);
-    // Current anchor rope UUID
+    // Saved strand position and owner, retained while the owner is unloaded
     @Nullable
-    private UUID anchorRopeUUID;
-    // Current anchor path position
-    private float anchorPathPosition;
+    private StrandAnchor anchor;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -100,17 +103,14 @@ public class RopeKnotBlockEntity extends SmartBlockEntity implements RopeStrandH
     @Override
     public void tick() {
         super.tick();
-        if (ropeHolder != null) {
-            ropeHolder.tick();
-        }
         if (level == null || level.isClientSide()) {
             return;
         }
-        if (anchorRopeUUID != null && !updateAnchoredAttachmentPoint()) {
+        if (anchor != null && !updateAnchoredAttachmentPoint()) {
             level.removeBlock(worldPosition, false);
             return;
         }
-        if (!level.isClientSide() && isFree() && !isPendingRopeEndpoint()) {
+        if (anchor == null && isFree() && !isPendingRopeEndpoint()) {
             level.removeBlock(worldPosition, false);
         }
     }
@@ -157,18 +157,25 @@ public class RopeKnotBlockEntity extends SmartBlockEntity implements RopeStrandH
 
     // Set the rope anchor
     public void setRopeAnchor(UUID ropeUUID, float pathPosition, Vec3 worldPoint) {
-        anchorRopeUUID = ropeUUID;
-        anchorPathPosition = pathPosition;
-        setAttachmentPoint(worldPoint, true);
+        anchor = new StrandAnchor(ropeUUID, pathPosition, null, null);
+        ServerLevel serverLevel = SableLevelApi.serverLevel(level);
+        ServerLevelRopeManager manager = serverLevel == null ? null : ServerLevelRopeManager.getOrCreate(serverLevel);
+        ServerRopeStrand strand = manager == null ? null : manager.getStrand(ropeUUID);
+        if (strand != null) retainAnchorOwner(strand);
+        setAttachmentPoint(worldPoint, false);
+        setChanged();
+        sendData();
     }
 
     // Set the attachment point
     private void setAttachmentPoint(Vec3 worldPoint, boolean notify) {
-        Vec3 newOffset = worldPoint.subtract(Vec3.atLowerCornerOf(worldPosition));
+        Vec3 localPoint = SableTransformApi.toLocalPosition(this, worldPoint);
+        if (localPoint == null) return;
+        Vec3 newOffset = localPoint.subtract(Vec3.atLowerCornerOf(worldPosition));
         if (newOffset.distanceToSqr(attachmentOffset) <= 1.0E-6D) {
             return;
         }
-        attachmentOffset = worldPoint.subtract(Vec3.atLowerCornerOf(worldPosition));
+        attachmentOffset = newOffset;
         setChanged();
         if (notify) {
             sendData();
@@ -194,59 +201,58 @@ public class RopeKnotBlockEntity extends SmartBlockEntity implements RopeStrandH
         return new AABB(attachmentPoint, attachmentPoint).inflate(8.0D);
     }
 
-    // Update the anchored attachment point
+    // Follow a loaded parent strand and wait for saved owners to reload
     private boolean updateAnchoredAttachmentPoint() {
         ServerLevel serverLevel = SableLevelApi.serverLevel(level);
-        if (serverLevel == null || anchorRopeUUID == null) {
-            return true;
-        }
+        if (serverLevel == null || anchor == null) return true;
         ServerLevelRopeManager manager = ServerLevelRopeManager.getOrCreate(serverLevel);
-        ServerRopeStrand strand = manager == null ? null : manager.getStrand(anchorRopeUUID);
-        Vec3 sampled = strand == null ? null : sampleRope(strand, anchorPathPosition);
-        if (sampled == null) {
-            return false;
+        ServerRopeStrand strand = manager == null ? null : manager.getStrand(anchor.strandId());
+        if (strand == null && anchor.ownerPos() != null) {
+            if (!SubLevelBlockEntityCollector.isTargetLoaded(serverLevel, anchor.ownerSubLevelId(), anchor.ownerPos())) {
+                return true;
+            }
+            BlockEntity owner = BlockEntityLookupApi.findLoadedExact(serverLevel, anchor.ownerSubLevelId(), anchor.ownerPos());
+            RopeStrandHolderBehavior holder = owner instanceof PoweredZiplineBlockEntity zipline
+                    ? zipline.getOwnedHangingRopeHolder(anchor.strandId())
+                    : owner instanceof SmartBlockEntity smart ? smart.getBehaviour(RopeStrandHolderBehavior.TYPE) : null;
+            strand = holder == null ? null : holder.getOwnedStrand();
+            if (anchor.isBroken(true, strand == null ? null : strand.getUUID())) return false;
         }
-        setAttachmentPoint(sampled, true);
+        if (strand == null) return true;
+        retainAnchorOwner(strand);
+        Vec3 sampled = anchor.sample(strand.getPoints());
+        if (sampled != null) setAttachmentPoint(sampled, true);
+        refreshAttachedRopeAttachment();
         return true;
     }
 
-    // Refresh the attached rope attachment
-    private void refreshAttachedRopeAttachment() {
-        ServerLevel serverLevel = SableLevelApi.serverLevel(level);
-        if (serverLevel == null || ropeHolder == null || !ropeHolder.isAttached()) {
-            return;
-        }
-        ServerRopeStrand strand = ropeHolder.getAttachedStrand();
-        if (strand == null) {
-            return;
-        }
-        RopeAttachmentPoint point = ropeHolder.ownsRope() ? RopeAttachmentPoint.START : RopeAttachmentPoint.END;
-        RopeAttachment existing = strand.getAttachment(point);
-        UUID subLevelId = existing == null ? null : existing.subLevelID();
-        strand.addAttachment(serverLevel, point, new RopeAttachment(point, subLevelId, worldPosition));
+    // Retain the parent owner so unloading can be distinguished from breaking a rope
+    private void retainAnchorOwner(ServerRopeStrand strand) {
+        RopeAttachment owner = strand.getAttachment(RopeAttachmentPoint.START);
+        if (anchor == null || owner == null) return;
+        StrandAnchor updated = anchor.withOwner(owner.blockAttachment(), owner.subLevelID());
+        if (updated.equals(anchor)) return;
+        anchor = updated;
+        setChanged();
     }
 
-    // Sample the rope
-    private static @Nullable Vec3 sampleRope(ServerRopeStrand strand, float pos) {
-        var points = strand.getPoints();
-        float cumulative = 0.0f;
-        for (int i = 0; i < points.size() - 1; i++) {
-            Vector3d a = new Vector3d((Vector3dc) points.get(i));
-            Vector3d b = new Vector3d((Vector3dc) points.get(i + 1));
-            Vector3d ab = b.sub((Vector3dc) a, new Vector3d());
-            float segmentLength = (float) ab.length();
-            if (pos <= cumulative + segmentLength) {
-                double local = segmentLength <= 1.0E-5f ? 0.0D : (pos - cumulative) / segmentLength;
-                Vector3d res = a.fma(Mth.clamp(local, 0.0D, 1.0D), ab, new Vector3d());
-                return new Vec3(res.x, res.y, res.z);
-            }
-            cumulative += segmentLength;
+    // Update the physical endpoint without replacing its saved attachment or constraints
+    private void refreshAttachedRopeAttachment() {
+        ServerLevel serverLevel = SableLevelApi.serverLevel(level);
+        if (serverLevel == null || ropeHolder == null || !ropeHolder.isAttached()) return;
+        ServerRopeStrand strand = ropeHolder.getAttachedStrand();
+        if (strand == null || !strand.isActive()) return;
+        RopeAttachmentPoint point = ropeHolder.ownsRope() ? RopeAttachmentPoint.START : RopeAttachmentPoint.END;
+        RopeAttachment existing = strand.getAttachment(point);
+        if (existing == null) return;
+        ServerSubLevel subLevel = null;
+        if (existing.subLevelID() != null) {
+            if (!(SableLevelApi.subLevel(serverLevel, existing.subLevelID()) instanceof ServerSubLevel resolved)) return;
+            subLevel = resolved;
         }
-        if (points.isEmpty()) {
-            return null;
-        }
-        Vector3d last = new Vector3d((Vector3dc) points.get(points.size() - 1));
-        return new Vec3(last.x, last.y, last.z);
+        Vec3 pos = getAttachmentPoint(worldPosition, getBlockState());
+        strand.setAttachment(point == RopeAttachmentPoint.START ? RopeHandle.AttachmentPoint.START : RopeHandle.AttachmentPoint.END,
+                new Vector3d(pos.x, pos.y, pos.z), subLevel);
     }
 
     // Write the rope knot
@@ -256,10 +262,7 @@ public class RopeKnotBlockEntity extends SmartBlockEntity implements RopeStrandH
         tag.putDouble("AttachmentOffsetX", attachmentOffset.x);
         tag.putDouble("AttachmentOffsetY", attachmentOffset.y);
         tag.putDouble("AttachmentOffsetZ", attachmentOffset.z);
-        if (anchorRopeUUID != null) {
-            tag.putUUID("AnchorRopeUUID", anchorRopeUUID);
-            tag.putFloat("AnchorPathPosition", anchorPathPosition);
-        }
+        if (anchor != null) anchor.write(tag);
     }
 
     // Read the rope knot
@@ -272,7 +275,6 @@ public class RopeKnotBlockEntity extends SmartBlockEntity implements RopeStrandH
                 tag.getDouble("AttachmentOffsetY"),
                 tag.getDouble("AttachmentOffsetZ"));
         }
-        anchorRopeUUID = tag.hasUUID("AnchorRopeUUID") ? tag.getUUID("AnchorRopeUUID") : null;
-        anchorPathPosition = tag.contains("AnchorPathPosition") ? tag.getFloat("AnchorPathPosition") : 0.0f;
+        anchor = StrandAnchor.read(tag);
     }
 }

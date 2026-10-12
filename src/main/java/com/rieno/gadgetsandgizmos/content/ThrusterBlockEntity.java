@@ -2176,7 +2176,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
                     * getActivePropulsionUpgradeMultiplier();
         }
         boolean queuedFuelRejectsPressure = usingQueuedSolidFuel
-                && "createthrusters:oxidized_creative_blaze_cake".equals(
+                && OxidizedFuel.isOxidizedSolidFuel(
                 queuedSolidFuel.fuelId());
         double maximum = maximumUnscaledThrust()
                 * finiteNonNegativeOrDefault(powerMultiplier, 0.0D)
@@ -2216,7 +2216,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
             return false;
         }
         if (infiniteSolidFuel || solidFuelTicks > 0) {
-            return "createthrusters:oxidized_creative_blaze_cake".equals(solidFuelTypeId);
+            return OxidizedFuel.isOxidizedSolidFuel(solidFuelTypeId);
         }
         return OxidizedFuel.isOxidized(fuelTank.getFluid());
     }

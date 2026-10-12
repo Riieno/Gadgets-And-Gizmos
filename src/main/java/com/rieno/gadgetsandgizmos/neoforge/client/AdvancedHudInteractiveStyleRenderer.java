@@ -9,6 +9,9 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.rieno.gadgetsandgizmos.CreateThrusters;
+import com.rieno.gadgetsandgizmos.lib.client.render.GuiNineSlice;
+import com.rieno.gadgetsandgizmos.lib.client.render.GuiTextureRegion;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementStyle;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudInteractiveStyles;
 import com.simibubi.create.foundation.gui.AllGuiTextures;
@@ -28,6 +31,13 @@ public final class AdvancedHudInteractiveStyleRenderer {
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
+
+    private static final ResourceLocation TEXT_INPUT_TEXTURE = ResourceLocation.fromNamespaceAndPath(
+            CreateThrusters.MOD_ID, "textures/gui/widgets/text_input_widget.png");
+    private static final GuiNineSlice TEXT_INPUT_WIDGET = new GuiNineSlice(
+            textInputRegion(0, 0, 18, 5), textInputRegion(20, 0, 17, 5), textInputRegion(39, 0, 20, 5),
+            textInputRegion(0, 6, 18, 8), textInputRegion(20, 6, 17, 8), textInputRegion(39, 6, 20, 8),
+            textInputRegion(0, 15, 18, 4), textInputRegion(20, 15, 17, 4), textInputRegion(39, 15, 20, 4));
 
     private static final WidgetSprites MINECRAFT_BUTTON_SPRITES = new WidgetSprites(
             ResourceLocation.withDefaultNamespace("widget/button"),
@@ -70,6 +80,11 @@ public final class AdvancedHudInteractiveStyleRenderer {
             return;
         }
 
+        if("text_input".equals(type)){
+            drawTextInput(graphics, font, elm, x, y, width, height, layoutScale);
+            return;
+        }
+
         drawButtonBg(graphics, elm, x, y, width, height, toggleActive, hovered);
         String label = elm.getString("Text");
         if (label.isBlank()) {
@@ -81,6 +96,29 @@ public final class AdvancedHudInteractiveStyleRenderer {
         AdvancedHudElementRenderer.drawText(
                 graphics, font, elm, label, x + 4, textY,
                 Math.max(1, width - 8), Math.max(1, height - 4), layoutScale);
+    }
+
+    // Draw the text field frame and keep its label clear of the textured caret
+    private static void drawTextInput(GuiGraphics graphics, Font font, CompoundTag elm,
+                                      int x, int y, int width, int height, double layoutScale){
+        TEXT_INPUT_WIDGET.draw(graphics, x, y, width, height, layoutScale);
+        int top = Math.max(1, (int)Math.round(5.0D * layoutScale));
+        int bottom = Math.max(1, (int)Math.round(4.0D * layoutScale));
+        int textHeight = Math.max(1, (int)Math.round(AdvancedHudElementStyle.fontSize(elm) * layoutScale));
+        int innerHeight = height - top - bottom;
+        if(textHeight > innerHeight) return;
+        int left = Math.max(1, (int)Math.round(4.0D * layoutScale));
+        int right = Math.max(1, (int)Math.round(12.0D * layoutScale));
+        String label = elm.getString("Text");
+        if(label.isBlank()) label = "Enter text";
+        AdvancedHudElementRenderer.drawText(graphics, font, elm, label,
+                x + left, y + top + (innerHeight - textHeight) / 2,
+                width - left - right, innerHeight, layoutScale);
+    }
+
+    // Resolve a partial while excluding the transparent atlas gutters
+    private static GuiTextureRegion textInputRegion(int u, int v, int width, int height){
+        return new GuiTextureRegion(TEXT_INPUT_TEXTURE, 59, 19, u, v, width, height);
     }
 
     // Draw the button bg

@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:rope_knot",
+  "properties": {
+    "sable:mass": 0.01
+  }
+}
