@@ -21,6 +21,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.HashSet;
 
 // Store one graph document and keep its node, wire and nested function data safe to copy
 public final class AdvancedGraphDocument
@@ -417,6 +418,8 @@ public final class AdvancedGraphDocument
             }
         }
         // ------------------------------------PORT NORMALIZATION------------------------------------
+        migrateNamedDockInputs(graph.nodes, graph.edges);
+        for(FunctionGraph function : graph.functions) migrateNamedDockInputs(function.nodes, function.edges);
         ensureSignalValueTypes(graph.nodes);
         ensureAccDisplayDefaults(graph.nodes);
         removeInactiveCrnTextEdges(graph.nodes, graph.edges);
@@ -428,6 +431,29 @@ public final class AdvancedGraphDocument
             syncAccDisplayWidgets(function.nodes, function.edges);
         }
         return graph;
+    }
+
+    // Coordinate-based graph docking nodes require an explicit dock name after loading
+    private static void migrateNamedDockInputs(List<Node> nodes, List<Edge> edges){
+        Set<String> docks = new HashSet<>();
+        Set<String> ports = Set.of("exec", "dock", "speed");
+        for(Node node : nodes){
+            if(!"ship_dock".equals(node.type())) continue;
+            docks.add(node.id());
+            for(String key : List.of("Defaults", "DynamicInputs", "InputLabels", "InputOptions",
+                    "InputTooltips", "PersistentPorts", "PersistentPortValues")){
+                CompoundTag data = node.data().getCompound(key);
+                if("PersistentPorts".equals(key) || "PersistentPortValues".equals(key)){
+                    data.getAllKeys().removeIf(port -> port.startsWith("input:") && !ports.contains(port.substring(6)));
+                }else{
+                    data.getAllKeys().removeIf(port -> !ports.contains(port));
+                }
+            }
+            CompoundTag defaults = node.data().getCompound("Defaults");
+            if(!defaults.contains("dock")) defaults.put("dock", Value.string("").toTag());
+            node.data().put("Defaults", defaults);
+        }
+        edges.removeIf(edge -> docks.contains(edge.toNode()) && !ports.contains(edge.toPort()));
     }
 
     // Give loaded graphs and nested functions an explicit output range
@@ -952,7 +978,7 @@ public final class AdvancedGraphDocument
         }
 
         // Write the value data
-        CompoundTag toTag() {
+        public CompoundTag toTag() {
             CompoundTag tag = new CompoundTag();
             tag.putString("Type", type);
             tag.put("Payload", payload.copy());
@@ -960,7 +986,7 @@ public final class AdvancedGraphDocument
         }
 
         // Read the value data
-        static Value fromTag(CompoundTag tag) {
+        public static Value fromTag(CompoundTag tag) {
             return new Value(tag.getString("Type"), tag.getCompound("Payload"));
         }
     }

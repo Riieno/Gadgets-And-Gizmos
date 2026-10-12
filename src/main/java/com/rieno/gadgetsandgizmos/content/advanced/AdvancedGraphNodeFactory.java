@@ -215,7 +215,16 @@ public final class AdvancedGraphNodeFactory {
         }
         // -----------------------------------------------------SHIP DEFAULTS-----------------------------------------------------
 
-        if ("ship_dock".equals(type) || "ship_navigate".equals(type)) {
+        if("ship_dock".equals(type)){
+            CompoundTag defaults = data.getCompound("Defaults");
+            defaults.put("dock", graphDefault("string", ""));
+            data.put("Defaults", defaults);
+            CompoundTag labels = data.getCompound("InputLabels");
+            labels.putString("dock", "Ship Dock");
+            data.put("InputLabels", labels);
+        }
+
+        if ("ship_navigate".equals(type)) {
             CompoundTag defaults = data.getCompound("Defaults");
             defaults.put("target_point", graphDefault("string", "center_of_mass"));
             data.put("Defaults", defaults);

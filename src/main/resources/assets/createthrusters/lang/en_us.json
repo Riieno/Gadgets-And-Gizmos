@@ -1000,7 +1000,7 @@
   "createthrusters.advanced_controller.node.ship_hover.summary": "Holds the ship at its current world height and keeps it stable without taking away movement control.",
   "createthrusters.advanced_controller.node.ship_climb.summary": "Adds controlled climbing or descending toward a world Y level without replacing other controls.",
   "createthrusters.advanced_controller.node.ship_face.summary": "Turns the ship to face world coordinates.",
-  "createthrusters.advanced_controller.node.ship_dock.summary": "Approaches world coordinates and brakes within the selected tolerance.",
+  "createthrusters.advanced_controller.node.ship_dock.summary": "Navigates to a named Ship Dock and engages its docking connectors.",
   "createthrusters.advanced_controller.node.ship_navigate.summary": "Flies to world coordinates automatically, handling acceleration, braking, altitude, facing, and optional Sable-aware collision avoidance.",
   "createthrusters.advanced_controller.node.ship_follow.summary": "Continuously follows a moving set of world coordinates while maintaining the requested distance, with optional world and sub-level collision avoidance.",
   "createthrusters.advanced_controller.node.ship_stop.summary": "Releases automatic ship control and gives the mapped propulsion inputs back to their normal controllers.",

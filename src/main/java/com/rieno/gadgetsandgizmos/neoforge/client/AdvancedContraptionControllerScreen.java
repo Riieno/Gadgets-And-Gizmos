@@ -366,6 +366,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private boolean draftDirty;
     // Draft simulation runtime
     private GraphRuntime draftSimulationRuntime;
+    private AdvancedGraphDocument previewActiveGraph;
+    private int previewActiveGraphRevision = Integer.MIN_VALUE;
     private ColorPickerModal graphColorPicker;
     private PlayerSelectModal playerSelectModal;
     private final Map<String, Long> previewInputPulses = new LinkedHashMap<>();
@@ -910,17 +912,23 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (draftSimulationRuntime == null || draftSimulationController != controller) {
             draftSimulationRuntime = new GraphRuntime(controller, true);
             draftSimulationController = controller;
+            previewActiveGraph = null;
             simulatedDraft = null;
             simulatedDraftFingerprint = 0;
         }
         int draftFingerprint = simulatedDraft == draft
                 ? simulatedDraftFingerprint : draft.simulationFingerprint();
         if (simulatedDraft != draft || simulatedDraftFingerprint != draftFingerprint) {
-            draftSimulationRuntime.clear();
             simulatedDraft = draft;
             simulatedDraftFingerprint = draftFingerprint;
         }
-        draftSimulationRuntime.beginPreviewSample(draft);
+        int activeRevision = controller.getActiveGraphRevision();
+        if(previewActiveGraph == null || previewActiveGraphRevision != activeRevision){
+            previewActiveGraph = controller.getActiveGraph();
+            previewActiveGraphRevision = activeRevision;
+        }
+        draftSimulationRuntime.beginPreviewSample(draft, previewActiveGraph,
+                controller.getClientGraphVariablesSnapshot(), controller.getClientGraphOutputsSnapshot());
         samplePreviewInputPulses();
     }
 
@@ -956,6 +964,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         draftSimulationRuntime = null;
         draftSimulationController = null;
+        previewActiveGraph = null;
+        previewActiveGraphRevision = Integer.MIN_VALUE;
         simulatedDraft = null;
         simulatedDraftFingerprint = 0;
     }
@@ -10297,7 +10307,6 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return "...";
         }
         AdvancedGraphLiveValue liveValue = controller.getGraphLiveInput(node.id(), port);
-        if (!hasUnsavedDraft() && liveValue != null) return graphValueLabel(liveValue, type);
         AdvancedGraphLiveValue simulatedValue = simulatedLiveInput(node.id(), port);
         if (simulatedValue != null) return graphValueLabel(simulatedValue, type);
         if (liveValue != null) return graphValueLabel(liveValue, type);
@@ -11676,7 +11685,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (!(menu.getMenuConfigTargetBlockEntity() instanceof AdvancedContraptionControllerBlockEntity controller)) {
             return 0;
         }
-        AdvancedGraphDocument.Value preview = controller.previewGraphInput(draft, node, "list");
+        AdvancedGraphDocument.Value preview = draftSimulationRuntime == null
+                ? controller.previewGraphInput(draft, node, "list") : previewDraftInput(node, "list");
         int previewSize = GraphRuntime.listSize(preview);
         if (previewSize > 0 || !isInputConnected(node, "list")) return previewSize;
         AdvancedGraphLiveValue liveValue = controller.getGraphLiveInput(node.id(), "list");
@@ -11688,7 +11698,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (!(menu.getMenuConfigTargetBlockEntity() instanceof AdvancedContraptionControllerBlockEntity controller)) {
             return 0;
         }
-        AdvancedGraphDocument.Value preview = controller.previewGraphInput(draft, node, "string");
+        AdvancedGraphDocument.Value preview = draftSimulationRuntime == null
+                ? controller.previewGraphInput(draft, node, "string") : previewDraftInput(node, "string");
         int previewLength = "string".equals(preview.type()) || "direction".equals(preview.type())
                 ? substringSliderMaximum(preview.asString()) : 0;
         if (previewLength > 0 || !isInputConnected(node, "string")) {
@@ -13528,6 +13539,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             live = controller.getGraphLiveInput(node.id(), port);
         }
         if (live != null) {
+            if(live.value() != null) return live.value();
             return switch (live.type()) {
                 case "number" -> AdvancedGraphDocument.Value.number(live.numberValue());
                 case "boolean" -> AdvancedGraphDocument.Value.bool(live.booleanValue());
@@ -15719,7 +15731,6 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (!hit.output()) return wiredInputValueLabel(hit.node(), hit.port(), type);
         if (controller == null) return "...";
         AdvancedGraphLiveValue liveValue = controller.getGraphLiveOutput(hit.node().id(), hit.port());
-        if (!hasUnsavedDraft() && liveValue != null) return graphValueLabel(liveValue, type);
         AdvancedGraphLiveValue simulatedValue = simulatedLiveOutput(hit.node().id(), hit.port());
         if (simulatedValue != null) return graphValueLabel(simulatedValue, type);
         if (liveValue != null) return graphValueLabel(liveValue, type);

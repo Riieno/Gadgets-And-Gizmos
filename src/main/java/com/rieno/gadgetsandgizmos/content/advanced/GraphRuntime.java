@@ -35,6 +35,9 @@ import com.rieno.gadgetsandgizmos.lib.graph.GraphHostServices;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphNodeExecutor;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphServiceKey;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphValueMirrors;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphEvaluationState;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphPreviewPlan;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ByteTag;
 import net.minecraft.nbt.DoubleTag;
@@ -97,7 +100,7 @@ public final class GraphRuntime {
     private final GraphEventScheduler<RuntimeEvent> eventScheduler =
             new GraphEventScheduler<>(MAX_EVENTS_PER_TICK, MAX_SCHEDULED_EVENTS);
     // Tracked graph state
-    private final Map<String, AdvancedGraphDocument.Value> state = new LinkedHashMap<>();
+    private final GraphEvaluationState<AdvancedGraphDocument.Value> state = new GraphEvaluationState<>(new LinkedHashMap<>());
     // Tracked binding states
     private final Map<String, Boolean> bindingStates = new LinkedHashMap<>();
     // Submitted UI outputs available to ordinary graph evaluation
@@ -145,6 +148,17 @@ public final class GraphRuntime {
     private GraphDataDependencies dataDependencies = GraphDataDependencies.empty();
     // Current preview frame program
     private CompiledProgram previewFrameProgram;
+    // Compile observer graphs independently of the running graph
+    private AdvancedGraphDocument previewCompiledGraph;
+    private int previewCompiledFingerprint;
+    private CompiledProgram previewCompiledProgram;
+    private Map<String, AdvancedGraphDocument.Value> previewVariables = Map.of();
+    private Map<String, AdvancedGraphDocument.Value> previewOutputs = Map.of();
+    private Map<String, AdvancedGraphDocument.Value> simulationPreviewState;
+    private GraphPreviewPlan previewPlan;
+    private AdvancedGraphDocument previewSourceGraph;
+    private int previewSourceFingerprint;
+    private int previewPlanFingerprint;
     // Current function preview source
     private AdvancedGraphDocument functionPreviewSource;
     // Current function preview id
@@ -468,6 +482,13 @@ public final class GraphRuntime {
         currentDeltaTimeSeconds = 1.0D / TICKS_PER_SECOND;
         compiledGraph = null;
         compiledProgram = CompiledProgram.empty(new AdvancedGraphDocument());
+        previewCompiledGraph = null;
+        previewCompiledProgram = null;
+        previewVariables = Map.of();
+        previewOutputs = Map.of();
+        previewPlan = null;
+        previewSourceGraph = null;
+        simulationPreviewState = null;
         dataDependencies = GraphDataDependencies.empty();
         compiledRevision = -1;
         compiledNodeCount = -1;
@@ -729,7 +750,44 @@ public final class GraphRuntime {
 
     // Begin the preview sample
     public void beginPreviewSample(AdvancedGraphDocument graph) {
-        CompiledProgram program = programFor(graph);
+        if(compiledGraph != null && graph != null){
+            beginPreviewSample(graph, compiledGraph, Map.of(), Map.of());
+            return;
+        }
+        previewVariables = Map.of();
+        previewOutputs = Map.of();
+        previewPlan = null;
+        previewSourceGraph = null;
+        resetPreviewSample(graph);
+    }
+
+    // Seed editor evaluation with complete server values while invalidating changed data and execution paths
+    public void beginPreviewSample(AdvancedGraphDocument graph, AdvancedGraphDocument source,
+                                   Map<String, AdvancedGraphDocument.Value> variables,
+                                   Map<String, AdvancedGraphDocument.Value> outputs){
+        int sourceFingerprint = source.programFingerprint();
+        int fingerprint = graph.programFingerprint();
+        if(previewPlan == null || previewSourceGraph != source
+                || previewSourceFingerprint != sourceFingerprint || previewPlanFingerprint != fingerprint){
+            previewPlan = GraphPreviewPlan.compile(AdvancedGraphFunctions.expandForRuntime(source),
+                    AdvancedGraphFunctions.expandForRuntime(graph), GraphRuntime::samePreviewNode);
+            if(simulationPreviewState != null){
+                List<String> changed = AdvancedGraphFunctions.expandForRuntime(graph).nodes().stream()
+                        .filter(node -> !previewPlan.unchanged(node.id())).map(node -> node.id() + ":").toList();
+                simulationPreviewState.keySet().removeIf(key -> changed.stream().anyMatch(key::startsWith));
+            }
+            previewSourceGraph = source;
+            previewSourceFingerprint = sourceFingerprint;
+            previewPlanFingerprint = fingerprint;
+        }
+        previewVariables = Map.copyOf(variables);
+        previewOutputs = Map.copyOf(outputs);
+        resetPreviewSample(graph);
+    }
+
+    private void resetPreviewSample(AdvancedGraphDocument graph){
+        previewFrameProgram = null;
+        CompiledProgram program = programForPreview(graph);
         previewFrame = new Frame(program, false);
         previewFrameProgram = program;
     }
@@ -767,9 +825,30 @@ public final class GraphRuntime {
                 && !"exec".equals(node.outputTypes().get(key.substring(separator + 1)));
     }
 
+    // Identify execution-owned outputs that observer snapshots must preserve
+    public boolean isRetainedOutput(String key){
+        if(key == null) return false;
+        int separator = key.lastIndexOf(':');
+        if(separator < 0) return false;
+        NodeInstruction node = compiledProgram.node(key.substring(0, separator));
+        return node != null && retainedPreviewOutput(node, key.substring(separator + 1));
+    }
+
     // Get the live outputs
     public Map<String, AdvancedGraphDocument.Value> liveOutputs() {
         return Map.copyOf(liveOutputs);
+    }
+
+    // Export complete variables in the observer's scope for editor evaluation
+    public Map<String, AdvancedGraphDocument.Value> previewVariables(UUID playerId){
+
+        Map<String, AdvancedGraphDocument.Value> values = new LinkedHashMap<>();
+        for(String key : compiledProgram.graph().variables().keySet()){
+            AdvancedGraphDocument.Value val = variableValue(compiledProgram, key);
+            values.put(key, new AdvancedGraphDocument.Value(val.type(), val.payload()));
+        }
+        return Map.copyOf(values);
+
     }
 
     // Get the execution pulses
@@ -898,10 +977,17 @@ public final class GraphRuntime {
 
     // Get the program for preview
     private CompiledProgram programForPreview(AdvancedGraphDocument graph) {
-        if (previewFrameProgram != null && previewFrameProgram.graph() == graph) {
-            return previewFrameProgram;
+        if(graph == null) return CompiledProgram.empty(new AdvancedGraphDocument());
+        if(previewFrameProgram != null && previewFrameProgram.graph() == graph) return previewFrameProgram;
+        if(graph == compiledGraph) return compiledProgram;
+        int fingerprint = graph.programFingerprint();
+        if(previewCompiledProgram == null || previewCompiledGraph != graph
+                || previewCompiledFingerprint != fingerprint){
+            previewCompiledGraph = graph;
+            previewCompiledFingerprint = fingerprint;
+            previewCompiledProgram = CompiledProgram.compile(graph, AdvancedGraphFunctions.expandForRuntime(graph));
         }
-        return programFor(graph);
+        return previewCompiledProgram;
     }
 
     // Get the function program for preview
@@ -2121,7 +2207,7 @@ public final class GraphRuntime {
             case "ceil" -> AdvancedGraphDocument.Value.number(Math.ceil(frame.value(node, "value", operations).asNumber()));
             case "-x" -> AdvancedGraphDocument.Value.number(-frame.value(node, "value", operations).asNumber());
             case "lerp" -> {
-                if (!recentlyPulsed(node)) {
+                if (frame.recordLiveValues && !recentlyPulsed(node)) {
                     yield AdvancedGraphDocument.Value.number(0);
                 }
                 double a = frame.value(node, "a", operations).asNumber();
@@ -2323,7 +2409,7 @@ public final class GraphRuntime {
                 yield val;
             }
             case "smoothing" -> {
-                double val = recentlyPulsed(node) ? frame.value(node, "value", operations).asNumber() : 0;
+                double val = !frame.recordLiveValues || recentlyPulsed(node) ? frame.value(node, "value", operations).asNumber() : 0;
                 double amount = node.hasInput("amount") || node.defaultValue("amount") != null
                         ? frame.value(node, "amount", operations).asNumber() : DEFAULT_SMOOTHING_AMOUNT;
                 String stateKey = node.id() + ":smooth";
@@ -2334,7 +2420,7 @@ public final class GraphRuntime {
                 yield smoothed;
             }
             case "ramp" -> {
-                boolean active = recentlyPulsed(node);
+                boolean active = !frame.recordLiveValues || recentlyPulsed(node);
                 double target = active ? frame.value(node, "value", operations).asNumber() : 0;
                 double rate = Math.abs(frame.value(node, active ? "rise" : "fall", operations).asNumber());
                 String stateKey = node.id() + ":ramp";
@@ -2459,7 +2545,7 @@ public final class GraphRuntime {
             }
             // Get the service
             @Override public <T> Optional<T> service(GraphServiceKey<T> key) {
-                if (controller == null || !GraphHostServices.BLOCK_ENTITY.equals(key)) {
+                if (simulationOnly || !frame.recordLiveValues || controller == null || !GraphHostServices.BLOCK_ENTITY.equals(key)) {
                     return Optional.empty();
                 }
                 return Optional.of(key.type().cast(controller));
@@ -2647,9 +2733,45 @@ public final class GraphRuntime {
 
     // Get the variable value
     private AdvancedGraphDocument.Value variableValue(CompiledProgram program, String variable) {
-        AdvancedGraphDocument.Value initial = program.graph().variables()
-                .getOrDefault(variable, AdvancedGraphDocument.Value.number(0));
+        AdvancedGraphDocument.Value initial = GraphValueMirrors.sample(
+                compiledProgram.graph().variables(), variable, key -> program != compiledProgram,
+                () -> program.graph().variables().getOrDefault(variable, AdvancedGraphDocument.Value.number(0)));
+        if(state.evaluating()) initial = previewVariables.getOrDefault(variable, initial);
         return simulationOnly ? state.getOrDefault(variableStateKey(variable), initial) : initial;
+    }
+
+    // Keep execution-owned outputs available when a preview follows their data wires
+    private boolean retainedPreviewOutput(NodeInstruction node, String port){
+        NodeInstruction live = compiledProgram.node(node.id());
+        if(live == null || !live.type().equals(node.type()) || !live.variable().equals(node.variable())
+                || "exec".equals(node.outputTypes().get(port)) || "variable_get".equals(node.type())) return false;
+        return samePreviewNode(live.source(), node.source())
+                && (previewPlan == null || previewPlan.unchanged(node.id())) && snapshotPreviewNode(node);
+    }
+
+    private static boolean snapshotPreviewNode(NodeInstruction node){
+        AdvancedGraphCatalog.Definition definition = AdvancedGraphCatalog.get(node.type());
+        if(definition != null && definition.stateful()) return true;
+        if(AdvancedGraphCatalog.isShipControlPassiveType(node.type())) return true;
+        return node.type().startsWith("event_") && !"event_value_change".equals(node.type())
+                || node.type().endsWith("_input") || node.type().endsWith("_tracker")
+                || node.type().startsWith("profiler_")
+                || switch(node.type()){
+                    case "get_block_data", "camera", "scm_brain_debug", "math_average", "math_delta",
+                         "math_peak_tracker", "pid", "adrc", "adrc_nth_order", "lqr", "edge_detector" -> true;
+                    default -> false;
+                };
+    }
+
+    private static boolean samePreviewNode(AdvancedGraphDocument.Node prev, AdvancedGraphDocument.Node node){
+        return prev.type().equals(node.type()) && previewNodeData(prev).equals(previewNodeData(node));
+    }
+
+    private static CompoundTag previewNodeData(AdvancedGraphDocument.Node node){
+        CompoundTag data = node.data().copy();
+        for(String key : List.of("EditorCollapsed", "PersistentPortValues", "InputLabels", "OutputLabels",
+                "FunctionPortLabels", "FunctionInputLabels", "FunctionOutputLabels")) data.remove(key);
+        return data;
     }
 
     // Get the variable state key
@@ -3509,6 +3631,7 @@ public final class GraphRuntime {
         private final int[] operations = {0};
         // Tracks whether live values are being recorded
         private final boolean recordLiveValues;
+        private final Map<String, AdvancedGraphDocument.Value> previewState;
 
         // Initialize the frame
         private Frame(CompiledProgram program) {
@@ -3520,6 +3643,15 @@ public final class GraphRuntime {
             this.program = program;
             this.executingNodes = new boolean[program.nodeCount()];
             this.recordLiveValues = recordLiveValues;
+            if(recordLiveValues){
+                this.previewState = null;
+            }else if(simulationOnly && compiledGraph == null){
+                if(simulationPreviewState == null) simulationPreviewState = state.snapshot(
+                        val -> new AdvancedGraphDocument.Value(val.type(), val.payload()));
+                this.previewState = simulationPreviewState;
+            }else{
+                this.previewState = state.snapshot(val -> new AdvancedGraphDocument.Value(val.type(), val.payload()));
+            }
         }
 
         // Get the program
@@ -3612,6 +3744,16 @@ public final class GraphRuntime {
 
         // Get the output
         private AdvancedGraphDocument.Value output(NodeInstruction node, String port, int[] operations) {
+            if(!recordLiveValues){
+                return state.evaluate(previewState, () -> {
+                    java.util.function.Supplier<AdvancedGraphDocument.Value> evaluate = () ->
+                            GraphValueMirrors.sample(liveOutputs, node.portKey(port),
+                                    key -> retainedPreviewOutput(node, port),
+                                    () -> outputFor(this, node, port, operations));
+                    return GraphValueMirrors.sample(previewOutputs, node.portKey(port),
+                            key -> previewPlan != null && previewPlan.unchanged(node.id()) && snapshotPreviewNode(node), evaluate);
+                });
+            }
             return outputFor(this, node, port, operations);
         }
 

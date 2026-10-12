@@ -16,7 +16,7 @@ import java.util.Map;
 // Store one live graph value
 public record AdvancedGraphLiveValue(String type, double numberValue,
                                      boolean booleanValue, String textValue, int entryCount,
-                                     Map<String, String> entryTypes) {
+                                     Map<String, String> entryTypes, AdvancedGraphDocument.Value value) {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -41,6 +41,26 @@ public record AdvancedGraphLiveValue(String type, double numberValue,
         textValue = truncate(textValue == null ? "" : textValue);
         entryCount = Math.max(0, entryCount);
         entryTypes = entryTypes == null ? Map.of() : Map.copyOf(entryTypes);
+        value = value == null ? null : new AdvancedGraphDocument.Value(value.type(), value.payload());
+    }
+
+    public AdvancedGraphLiveValue(String type, double numberValue, boolean booleanValue, String textValue,
+                                  int entryCount, Map<String, String> entryTypes){
+        this(type, numberValue, booleanValue, textValue, entryCount, entryTypes, switch(type == null ? "" : type){
+            case "number" -> AdvancedGraphDocument.Value.number(numberValue);
+            case "boolean" -> AdvancedGraphDocument.Value.bool(booleanValue);
+            case "string", "direction" -> new AdvancedGraphDocument.Value(type,
+                    AdvancedGraphDocument.Value.string(textValue == null ? "" : textValue).payload());
+            default -> null;
+        });
+    }
+
+    @Override public AdvancedGraphDocument.Value value(){
+        return value == null ? null : new AdvancedGraphDocument.Value(value.type(), value.payload());
+    }
+
+    public AdvancedGraphLiveValue withValue(AdvancedGraphDocument.Value val){
+        return new AdvancedGraphLiveValue(type, numberValue, booleanValue, textValue, entryCount, entryTypes, val);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -56,7 +76,7 @@ public record AdvancedGraphLiveValue(String type, double numberValue,
         if (val == null) {
             return new AdvancedGraphLiveValue("", 0.0D, false, "", 0, Map.of());
         }
-        return switch (val.type()) {
+        AdvancedGraphLiveValue display = switch (val.type()) {
             case "number" -> new AdvancedGraphLiveValue(
                     val.type(), val.asNumber(), false, "", 0, Map.of());
             case "boolean" -> new AdvancedGraphLiveValue(
@@ -71,6 +91,7 @@ public record AdvancedGraphLiveValue(String type, double numberValue,
                     "list".equals(val.type()) ? GraphRuntime.listSize(val) : val.payload().size(),
                     entryTypes(val));
         };
+        return display.withValue(val);
     }
 
     // Get the entry types

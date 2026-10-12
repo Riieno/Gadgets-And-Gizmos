@@ -208,6 +208,7 @@ public final class ShipControlModuleRuntime {
 
     // Ship control module controller
     private final AdvancedContraptionControllerBlockEntity controller;
+    private final NamedShipDockRuntime namedDocking;
     // Assembly topology cache
     private final SableAssemblyTopologyCache assemblyTopologyCache =
             new SableAssemblyTopologyCache(
@@ -513,6 +514,7 @@ public final class ShipControlModuleRuntime {
     // Initialize the ship control module
     public ShipControlModuleRuntime(AdvancedContraptionControllerBlockEntity controller) {
         this.controller = controller;
+        this.namedDocking = new NamedShipDockRuntime(controller, this);
         LIVE_RUNTIMES.add(this);
     }
 
@@ -697,6 +699,7 @@ public final class ShipControlModuleRuntime {
 
     // Prepare the server shutdown
     public void prepareForServerShutdown() {
+        namedDocking.cancel();
         if (shutdownPrepared) {
             return;
         }
@@ -940,6 +943,9 @@ public final class ShipControlModuleRuntime {
             refreshThrusterProtection();
             lastDamageProtectionRefreshTick = level.getGameTime();
         }
+
+        if(phase == Phase.READY && map != null) namedDocking.tick();
+        else namedDocking.cancel();
 
         // -----------------------------------------------------PHASE UPDATE-----------------------------------------------------
         try {
@@ -1228,6 +1234,9 @@ public final class ShipControlModuleRuntime {
         Map<String, String> textValues =
                 textParameters == null ? Map.of() : textParameters;
         String normalizedId = normalizeCommandId(commandId, nodeType);
+        if("ship_dock".equals(nodeType) && textValues.containsKey("dock")){
+            return namedDocking.start(normalizedId, textValues.get("dock"), values.getOrDefault("speed", 0.35D));
+        }
         ActiveShipCommand command;
         // -----------------------------------------------------COMMAND BUILD-----------------------------------------------------
         switch (nodeType) {
@@ -1304,6 +1313,7 @@ public final class ShipControlModuleRuntime {
                 return false;
             }
         }
+        if(!normalizedId.startsWith("graph_dock:") && isTranslationTarget(nodeType)) namedDocking.cancelForMovement();
         registerCommand(command);
         requestPostLoadPoseRelease();
         if ("ship_stop".equals(nodeType)) {
@@ -1531,6 +1541,7 @@ public final class ShipControlModuleRuntime {
     // Check if the command is pending
     public boolean isCommandPending(String commandId, String nodeType) {
         String key = commandKey(commandId, nodeType);
+        if(namedDocking.handles(normalizeCommandId(commandId, nodeType), nodeType)) return namedDocking.pending();
         if (isCouplerControlNode(nodeType)) {
             return isModuleAttached()
                     && couplerControlRequests.containsKey(key)
@@ -1547,6 +1558,7 @@ public final class ShipControlModuleRuntime {
 
     // Check if the command is complete
     public boolean isCommandComplete(String commandId, String nodeType) {
+        if(namedDocking.handles(normalizeCommandId(commandId, nodeType), nodeType)) return namedDocking.complete();
         return completedCommands.contains(commandKey(commandId, nodeType));
     }
 
@@ -1657,6 +1669,7 @@ public final class ShipControlModuleRuntime {
 
     // Get the command graph value
     public AdvancedGraphDocument.Value commandGraphValue(String commandId, String nodeType, String port) {
+        if(namedDocking.handles(normalizeCommandId(commandId, nodeType), nodeType)) return namedDocking.value(port);
         return switch (port) {
             case "success" -> AdvancedGraphDocument.Value.bool(isCommandComplete(commandId, nodeType));
             case "progress" -> "ship_initialize".equals(nodeType)
@@ -8974,6 +8987,23 @@ public final class ShipControlModuleRuntime {
         activeCommands.put(key, command);
     }
 
+    // Supersede earlier translation requests while a named dock waits for its berth
+    void beginNamedDockMovement(String approachId){
+        supersedeTranslationTargets(commandKey(approachId, "ship_navigate"), "ship_navigate");
+    }
+
+    // Release only movement owned by the named dock operation
+    void cancelNamedDockMovement(String approachId, String dockingId){
+        for(String key : List.of(commandKey(approachId, "ship_navigate"), commandKey(dockingId, "ship_dock"))){
+            activeCommands.remove(key);
+            lastIssuedCommands.remove(key);
+            completedCommands.remove(key);
+            navigationPathStates.remove(key);
+            positionIntegralErrors.remove(key);
+            aircraftNavigationStates.remove(key);
+        }
+    }
+
     // Supersede the translation targets
     private void supersedeTranslationTargets(String incomingKey, String incomingType) {
         List<String> superseded = activeCommands.entrySet().stream()
@@ -9139,6 +9169,7 @@ public final class ShipControlModuleRuntime {
 
     // Reset the control state
     private void resetControlState() {
+        namedDocking.cancel();
         releaseControlAuthority();
         magneticConnectorIdx = -1;
         activeCommands.clear();

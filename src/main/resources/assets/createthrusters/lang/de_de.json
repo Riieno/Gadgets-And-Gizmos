@@ -902,7 +902,7 @@
   "createthrusters.advanced_controller.node.ship_hover.summary": "Hält Welt-Y-Höhe und Ausrichtung, ohne andere Bewegungssteuerungen zu ersetzen.",
   "createthrusters.advanced_controller.node.ship_climb.summary": "Steigt oder sinkt geregelt auf eine Welt-Y-Höhe, ohne andere Steuerungen zu ersetzen.",
   "createthrusters.advanced_controller.node.ship_face.summary": "Richtet das Schiff auf Weltkoordinaten aus.",
-  "createthrusters.advanced_controller.node.ship_dock.summary": "Nähert sich Weltkoordinaten und bremst innerhalb der gewählten Toleranz.",
+  "createthrusters.advanced_controller.node.ship_dock.summary": "Navigiert zu einem benannten Schiffsdock und verbindet die Docking-Anschl?sse.",
   "createthrusters.advanced_controller.node.ship_stop.summary": "Stoppt die automatische Schiffssteuerung und gibt alle übernommenen Antriebseingänge frei.",
   "createthrusters.advanced_controller.node.ship_telemetry.summary": "Meldet Bewegung und schiffsbezogenen Kollisionsabstand zu Weltblöcken und anderen Sable-Sub-Levels.",
   "createthrusters.advanced_controller.node.event_delta_time.summary": "Gibt die aktuelle Tick-Zeit in Sekunden aus, ohne die Ausführung auszulösen.",

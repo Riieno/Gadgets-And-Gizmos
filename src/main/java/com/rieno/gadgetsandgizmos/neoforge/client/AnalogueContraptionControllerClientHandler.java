@@ -173,7 +173,7 @@ public final class AnalogueContraptionControllerClientHandler {
                     controller, payload.pos(), payload.subLevelId());
             controller.applyClientGraphRuntime(
                     payload.gogglesTrackerPairs(),
-                    payload.liveInputs(), payload.liveOutputs(), payload.executionPulses());
+                    payload.liveInputs(), payload.liveOutputs(), payload.executionPulses(), payload.variables());
         }
     }
 

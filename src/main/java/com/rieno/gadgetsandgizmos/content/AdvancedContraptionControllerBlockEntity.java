@@ -310,6 +310,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private Map<String, AdvancedGraphLiveValue> clientGraphLiveInputs = new LinkedHashMap<>();
     // Tracked client graph live outputs
     private Map<String, AdvancedGraphLiveValue> clientGraphLiveOutputs = new LinkedHashMap<>();
+    private Map<String, AdvancedGraphDocument.Value> clientGraphVariables = Map.of();
     // Current client graph snapshot draft revision
     private int clientGraphSnapshotDraftRevision;
     // Current client graph snapshot active revision
@@ -1192,7 +1193,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         Map<String, AdvancedGraphDocument.Value> liveInputs = new LinkedHashMap<>(graphRuntime.liveInputs());
         Map<String, AdvancedGraphDocument.Value> liveOutputs = GraphValueMirrors.merge(
-                graphRuntime.liveOutputs(), graphObserverOutputs, graphRuntime::isInteractiveOutput);
+                graphRuntime.liveOutputs(), graphObserverOutputs, graphRuntime::isRetainedOutput);
         liveInputs.putAll(graphObserverInputs);
         Map<String, Long> executionPulses = graphRuntime.executionPulses();
         lastGraphRuntimeMirrorRevision = runtimeRevision;
@@ -1480,7 +1481,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             PacketDistributor.sendToPlayer(observer.player(), new AdvancedControllerRuntimePayload(
                     getBlockPos(), subLevelId, observer.containerId(),
                     trackerPairs,
-                    liveInputs, liveOutputs, graphExecutionPulses));
+                    liveInputs, liveOutputs, graphExecutionPulses, graphRuntime.previewVariables(observer.player().getUUID())));
         }
     }
 
@@ -1516,7 +1517,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 getGogglesTrackerPairLabels(),
                 graphLiveValues(graphRuntime.liveInputs()),
                 graphLiveValues(graphRuntime.liveOutputs()),
-                graphRuntime.executionPulses()));
+                graphRuntime.executionPulses(), graphRuntime.previewVariables(player.getUUID())));
         directRuntimeSendStates.put(sendKey, new DirectRuntimeSendState(gameTime, runtimeRevision));
     }
 
@@ -3418,6 +3419,17 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return clientGraphLiveOutputs.get(nodeId + ":" + port);
     }
 
+    // Get complete client values for evaluating the open graph
+    public Map<String, AdvancedGraphDocument.Value> getClientGraphVariablesSnapshot(){
+        return Map.copyOf(clientGraphVariables);
+    }
+
+    public Map<String, AdvancedGraphDocument.Value> getClientGraphOutputsSnapshot(){
+        Map<String, AdvancedGraphDocument.Value> values = new LinkedHashMap<>();
+        clientGraphLiveOutputs.forEach((key, val) -> { if(val.value() != null) values.put(key, val.value()); });
+        return Map.copyOf(values);
+    }
+
     // Get the graph live inputs snapshot
     public Map<String, AdvancedGraphDocument.Value> getGraphLiveInputsSnapshot() {
         return Collections.unmodifiableMap(new LinkedHashMap<>(graphLiveInputs));
@@ -3677,6 +3689,14 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                                         Map<String, AdvancedGraphLiveValue> liveInputs,
                                         Map<String, AdvancedGraphLiveValue> liveOutputs,
                                         Map<String, Long> executionPulses) {
+        applyClientGraphRuntime(trackerPairs, liveInputs, liveOutputs, executionPulses, Map.of());
+    }
+
+    public void applyClientGraphRuntime(Map<UUID, String> trackerPairs,
+                                        Map<String, AdvancedGraphLiveValue> liveInputs,
+                                        Map<String, AdvancedGraphLiveValue> liveOutputs,
+                                        Map<String, Long> executionPulses,
+                                        Map<String, AdvancedGraphDocument.Value> variables) {
         if (getLevel() == null || !getLevel().isClientSide) {
             return;
         }
@@ -3686,6 +3706,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         clientGraphLiveInputs = new LinkedHashMap<>(liveInputs == null ? Map.of() : liveInputs);
         clientGraphLiveOutputs = new LinkedHashMap<>(liveOutputs == null ? Map.of() : liveOutputs);
+        clientGraphVariables = variables == null ? Map.of() : Map.copyOf(variables);
         graphExecutionPulses = new LinkedHashMap<>(executionPulses == null ? Map.of() : executionPulses);
     }
 

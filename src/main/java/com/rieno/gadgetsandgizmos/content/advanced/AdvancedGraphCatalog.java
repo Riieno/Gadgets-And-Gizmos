@@ -24,6 +24,7 @@ import net.minecraft.nbt.Tag;
 
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 import java.util.Locale;
 import java.util.Comparator;
@@ -461,21 +462,8 @@ public final class AdvancedGraphCatalog {
         register("ship_face", "ship_control",
                 Map.of("exec", "exec", "x", "number", "y", "number", "z", "number", "speed", "number"),
                 targetCommandOutputs(), true);
-        register("ship_dock", "ship_control", Map.ofEntries(
-                        Map.entry("exec", "exec"),
-                        Map.entry("x", "number"),
-                        Map.entry("y", "number"),
-                        Map.entry("z", "number"),
-                        Map.entry("speed", "number"),
-                        Map.entry("tolerance", "number"),
-                        Map.entry("lock_rotation", "boolean"),
-                        Map.entry("target_point", "string"),
-                        Map.entry("target_direction_x", "number"),
-                        Map.entry("target_direction_y", "number"),
-                        Map.entry("target_direction_z", "number"),
-                        Map.entry("target_up_x", "number"),
-                        Map.entry("target_up_y", "number"),
-                        Map.entry("target_up_z", "number")),
+        register("ship_dock", "ship_control",
+                Map.of("exec", "exec", "dock", "string", "speed", "number"),
                 targetCommandOutputs(), true);
         register("ship_navigate", "ship_control", Map.ofEntries(
                         Map.entry("exec", "exec"),
@@ -912,6 +900,10 @@ public final class AdvancedGraphCatalog {
     public static Map<String, String> inputs(AdvancedGraphDocument.Node node) {
         Definition definition = get(node.type());
         CompoundTag dynamicInputs = node.data().getCompound("DynamicInputs");
+        if("ship_dock".equals(node.type())){
+            dynamicInputs = dynamicInputs.copy();
+            dynamicInputs.getAllKeys().removeIf(key -> !Set.of("exec", "dock", "speed").contains(key));
+        }
         if("do_n".equals(node.type())){
             dynamicInputs = dynamicInputs.copy();
             dynamicInputs.remove("reset");
@@ -1318,7 +1310,7 @@ public final class AdvancedGraphCatalog {
             case "ship_hover" -> "Hover";
             case "ship_climb" -> "Climb to Y Level";
             case "ship_face" -> "Face Coordinates";
-            case "ship_dock" -> "Dock at Coordinates";
+            case "ship_dock" -> "Dock at";
             case "ship_navigate" -> "Navigate";
             case "ship_follow" -> "Follow";
             case "ship_stop" -> "Stop Ship Control";
