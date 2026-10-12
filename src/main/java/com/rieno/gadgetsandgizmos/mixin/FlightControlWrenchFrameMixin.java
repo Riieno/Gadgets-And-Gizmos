@@ -12,6 +12,9 @@ import net.minecraft.world.phys.Vec3;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.Unique;
+import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 // Evaluate native controllers in the configured craft frame and return physical body forces
 @Pseudo
@@ -19,9 +22,15 @@ import org.spongepowered.asm.mixin.Unique;
         "ace.flight.block.VelocityCouplerBlockEntity", "ace.flight.block.AngularVelocityCouplerBlockEntity",
         "ace.flight.block.DistanceCouplerBlockEntity", "ace.flight.block.MouseFlightControllerBlockEntity"}, remap = false)
 public abstract class FlightControlWrenchFrameMixin{
+    @Inject(method = "isContributing", at = @At("HEAD"), cancellable = true, require = 0)
+    private void createThrusters$graphIntent(CallbackInfoReturnable<Boolean> cir){
+        if(!FlightControlRequests.allows((BlockEntity) (Object) this)) cir.setReturnValue(false);
+    }
+
     @WrapMethod(method = "contributeWrench")
     private void createThrusters$frame(Object body, RigidBodyHandle handle, double dt, double[] force, double[] torque,
             Operation<Void> original){
+        if(!FlightControlRequests.allows((BlockEntity) (Object) this)) return;
         Object view = FlightControlRequests.frame((BlockEntity) (Object) this, body);
         if(!(view instanceof SableBodyFrameView frame)){ original.call(body, handle, dt, force, torque); return; }
         if(FlightControlRequests.inFrame()){ original.call(view, handle, dt, force, torque); return; }
@@ -36,6 +45,7 @@ public abstract class FlightControlWrenchFrameMixin{
     private NavigationPortResult createThrusters$navigationFrame(NavigationControllerCommandView command,
             Object body, RigidBodyHandle handle, double dt, double[] force, double[] torque,
             Operation<NavigationPortResult> original){
+        if(!FlightControlRequests.allows((BlockEntity) (Object) this)) return NavigationPortResult.accepted(false);
         if((Object) this instanceof ace.flight.block.MouseFlightControllerBlockEntity mouse
                 && command != null && command.effectiveSourceGeneration() == 0){
             var host = FlightControlRequests.host(mouse);

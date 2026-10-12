@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.item.ItemModelOffset;
 import com.simibubi.create.content.equipment.armor.BaseArmorItem;
 import com.simibubi.create.content.equipment.goggles.GogglesItem;
 import net.minecraft.ChatFormatting;
@@ -39,6 +40,7 @@ public class PhysicsGogglesItem extends BaseArmorItem {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     public static final ArmorItem.Type TYPE = ArmorItem.Type.HELMET;
+    public static final ItemModelOffset HEIGHT_OFFSET = new ItemModelOffset("PhysicsGogglesHeight", -16, 16, 0.25F);
     private static final ResourceLocation TEXTURE = ResourceLocation.fromNamespaceAndPath("createthrusters", "physics_goggles");
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -110,6 +112,13 @@ public class PhysicsGogglesItem extends BaseArmorItem {
                     Component.literal(normalizedName)
                             .setStyle(Style.EMPTY.withItalic(false)));
         }
+    }
+
+    // Restrict height adjustment to the physics goggles themselves
+    public static boolean canAdjustHeight(ItemStack stack){
+        return stack != null && !stack.isEmpty()
+                && com.rieno.gadgetsandgizmos.registry.CTItems.PHYSICS_GOGGLES != null
+                && stack.is(com.rieno.gadgetsandgizmos.registry.CTItems.PHYSICS_GOGGLES.get());
     }
 
     // Check if this is functional goggles

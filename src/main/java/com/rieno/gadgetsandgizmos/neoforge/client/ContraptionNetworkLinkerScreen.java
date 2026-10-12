@@ -191,22 +191,22 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
             targetMode = ContraptionNetworkLinkerData.TargetMode.FACE;
             refreshModeButtons();
         });
-        areaModeButton = addFooterButton(46, 241, 34,
+        areaModeButton = addFooterButton(46, 241, 46,
                 Component.translatable("item.createthrusters.contraption_network_linker.target.area_short"), () -> {
             targetMode = ContraptionNetworkLinkerData.TargetMode.AREA;
             refreshModeButtons();
         });
-        machineInputButton = addFooterButton(84, 241, 39,
+        machineInputButton = addFooterButton(96, 241, 35,
                 Component.translatable(ContraptionNetworkLinkerData.LinkMode.INPUT.translationKey()), () -> {
             targetMode = ContraptionNetworkLinkerData.TargetMode.MACHINE_INPUT;
             refreshModeButtons();
         });
-        machineOutputButton = addFooterButton(127, 241, 45,
+        machineOutputButton = addFooterButton(135, 241, 39,
                 Component.translatable(ContraptionNetworkLinkerData.LinkMode.OUTPUT.translationKey()), () -> {
             targetMode = ContraptionNetworkLinkerData.TargetMode.MACHINE_OUTPUT;
             refreshModeButtons();
         });
-        noEntryButton = addFooterButton(176, 241, 60,
+        noEntryButton = addFooterButton(178, 241, 58,
                 Component.translatable("item.createthrusters.contraption_network_linker.target.no_entry"), () -> {
             targetMode = ContraptionNetworkLinkerData.TargetMode.NO_ENTRY;
             refreshModeButtons();

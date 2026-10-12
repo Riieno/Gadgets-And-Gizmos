@@ -19,7 +19,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 // Handle Entity Launcher Input
-public record ServerboundEntityLauncherInputPacket(boolean jumpHeld, boolean jumpPressed) implements CustomPacketPayload {
+public record ServerboundEntityLauncherInputPacket(int actions, boolean active) implements CustomPacketPayload {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -29,10 +29,10 @@ public record ServerboundEntityLauncherInputPacket(boolean jumpHeld, boolean jum
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     public static final Type<ServerboundEntityLauncherInputPacket> TYPE = new Type<>(
-            ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID, "entity_launcher_input"));
+            ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID, "entity_launcher_actions"));
     public static final StreamCodec<ByteBuf, ServerboundEntityLauncherInputPacket> STREAM_CODEC = StreamCodec.composite(
-            ByteBufCodecs.BOOL, ServerboundEntityLauncherInputPacket::jumpHeld,
-            ByteBufCodecs.BOOL, ServerboundEntityLauncherInputPacket::jumpPressed,
+            ByteBufCodecs.VAR_INT, ServerboundEntityLauncherInputPacket::actions,
+            ByteBufCodecs.BOOL, ServerboundEntityLauncherInputPacket::active,
             ServerboundEntityLauncherInputPacket::new);
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -61,7 +61,7 @@ public record ServerboundEntityLauncherInputPacket(boolean jumpHeld, boolean jum
     public static void handle(ServerboundEntityLauncherInputPacket payload, IPayloadContext ctx) {
         ctx.enqueueWork(() -> {
             if (ctx.player() instanceof ServerPlayer player) {
-                EntityLauncherItem.handleLauncherInput(player, payload.jumpHeld(), payload.jumpPressed());
+                EntityLauncherItem.handleLauncherInput(player, payload.actions(), payload.active());
             }
         });
     }

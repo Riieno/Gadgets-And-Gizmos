@@ -180,6 +180,8 @@ public final class CTCreativeTabs {
         itemCount += accept(displayItems, searchItems, CTItems.THRUSTER_LENSE);
         itemCount += accept(displayItems, searchItems, CTItems.SCISSOR_ARMS);
         itemCount += accept(displayItems, searchItems, CTItems.OXIDIZED_CREATIVE_BLAZE_CAKE);
+        itemCount += accept(displayItems, searchItems, CTItems.OXIDIZED_SOLID_FUEL);
+        itemCount += accept(displayItems, searchItems, CTItems.SCORCHING_OXIDIZED_SOLID_FUEL);
         itemCount += accept(displayItems, searchItems, CTItems.PROCESSING_UPGRADE_SMOKING_T1);
         itemCount += accept(displayItems, searchItems, CTItems.PROCESSING_UPGRADE_SMELTING_T1);
         itemCount += accept(displayItems, searchItems, CTItems.PROCESSING_UPGRADE_HAUNTING_T1);

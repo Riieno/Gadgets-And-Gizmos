@@ -495,6 +495,7 @@ public final class ShipControlMapStore {
                 "REAL NOT NULL DEFAULT 0.0");
         ensureColumn(connection, "control_bearing_poses", "max_aerodynamic_torque",
                 "REAL NOT NULL DEFAULT 0.0");
+        ensureColumn(connection, "control_bearings", "geometry_frame", "TEXT");
     }
 
     // Ensure the column
@@ -735,8 +736,8 @@ public final class ShipControlMapStore {
         try (PreparedStatement bearingStatement = connection.prepareStatement("""
                 INSERT INTO control_bearings (
                     map_id, bearing_index, host_sublevel_id, block_x, block_y, block_z,
-                    block_id, adapter, min_x, max_x, min_z, max_z
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    block_id, adapter, min_x, max_x, min_z, max_z, geometry_frame
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """);
              PreparedStatement childStatement = connection.prepareStatement("""
                 INSERT INTO control_bearing_children (
@@ -778,6 +779,8 @@ public final class ShipControlMapStore {
                 bearingStatement.setDouble(10, bearing.maxX());
                 bearingStatement.setDouble(11, bearing.minZ());
                 bearingStatement.setDouble(12, bearing.maxZ());
+                bearingStatement.setString(13, bearing.calibrationFrame() == null
+                        ? null : bearing.calibrationFrame().write().toString());
                 bearingStatement.addBatch();
 
                 // ------------------------------------CHILD SUB-LEVELS------------------------------------
@@ -923,7 +926,7 @@ public final class ShipControlMapStore {
         List<ShipControlMap.BearingUnit> bearings = new ArrayList<>();
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT bearing_index, host_sublevel_id, block_x, block_y, block_z,
-                       block_id, adapter, min_x, max_x, min_z, max_z
+                       block_id, adapter, min_x, max_x, min_z, max_z, geometry_frame
                 FROM control_bearings WHERE map_id = ? ORDER BY bearing_index
                 """)) {
             statement.setString(1, mapId.toString());
@@ -938,11 +941,21 @@ public final class ShipControlMapStore {
                             loadBearingChildren(connection, mapId, bearingIndex),
                             res.getDouble(8), res.getDouble(9),
                             res.getDouble(10), res.getDouble(11),
-                            loadBearingPoses(connection, mapId, bearingIndex)));
+                            loadBearingPoses(connection, mapId, bearingIndex), readGeometryFrame(res.getString(12))));
                 }
             }
         }
         return bearings;
+    }
+
+    // Load an optional calibration frame while preserving older map rows
+    private static com.rieno.gadgetsandgizmos.lib.scm.ScmGeometryFrame readGeometryFrame(String val){
+        if(val == null || val.isBlank()) return null;
+        try{
+            return com.rieno.gadgetsandgizmos.lib.scm.ScmGeometryFrame.read(net.minecraft.nbt.TagParser.parseTag(val));
+        }catch(com.mojang.brigadier.exceptions.CommandSyntaxException err){
+            return null;
+        }
     }
 
     // Load the docking connectors

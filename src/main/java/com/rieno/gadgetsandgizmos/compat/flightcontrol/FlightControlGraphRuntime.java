@@ -74,6 +74,8 @@ public final class FlightControlGraphRuntime implements AutoCloseable{
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     private final AdvancedContraptionControllerBlockEntity host;
+    private final com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache<AdvancedGraphDocument> graphCache =
+            new com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache<>();
     private final Map<String, Entry> entries = new LinkedHashMap<>();
     private final Map<String, CompoundTag> restored = new HashMap<>();
     private final Map<FlightControlComputerBlockEntity, EngineLinks> engineLinks = new LinkedHashMap<>();
@@ -138,7 +140,8 @@ public final class FlightControlGraphRuntime implements AutoCloseable{
             removeEntry(entries.remove(pair.getKey()));
             entries.put(pair.getKey(), create(pair.getKey(), entry.spec));
         }
-        AdvancedGraphDocument graph = host.getActiveGraph();
+        AdvancedGraphDocument graph = host.activeGraphSnapshot(graphCache);
+        host.beginActiveGraphPreview();
         Set<String> retained = new LinkedHashSet<>();
         for(AdvancedGraphDocument.Node node : graph.nodes()){
             FlightControlNodes.Spec spec = FlightControlNodes.get(node.type());
@@ -175,15 +178,15 @@ public final class FlightControlGraphRuntime implements AutoCloseable{
         for(AdvancedGraphDocument.Node node : graph.nodes()){
             Entry hud = entries.get(node.id());
             if(hud == null || !(hud.blockEntity instanceof HudProjectorBlockEntity)) continue;
-            boolean requested = host.previewGraphInput(graph, node, "mouse_steering").asBoolean()
-                    && host.previewGraphInput(graph, node, "enabled").asBoolean();
+            boolean requested = host.previewActiveGraphInput(node, "mouse_steering").asBoolean()
+                    && host.previewActiveGraphInput(node, "enabled").asBoolean();
             mouseRequested |= requested;
             if(requested && hudMouseSettings == null){
                 hudMouseSettings = new LinkedHashMap<>();
                 for(String port : List.of("mouse_sensitivity", "mouse_turn_speed_degrees", "mouse_turn_mode")){
                     boolean configured = node.data().getCompound("Defaults").contains(port)
                             || graph.edges().stream().anyMatch(edge -> edge.toNode().equals(node.id()) && edge.toPort().equals(port));
-                    hudMouseSettings.put(port, configured ? GraphRuntime.toLibraryValue(host.previewGraphInput(graph, node, port))
+                    hudMouseSettings.put(port, configured ? GraphRuntime.toLibraryValue(host.previewActiveGraphInput(node, port))
                             : hud.spec.fields().stream().filter(field -> field.port().equals(port)).findFirst().orElseThrow().defaultValue());
                 }
             }
@@ -244,9 +247,9 @@ public final class FlightControlGraphRuntime implements AutoCloseable{
             Entry entry = entries.get(node.id());
             if(entry == null) continue;
             Map<String, GraphValue> vals = new LinkedHashMap<>();
-            for(var field : entry.spec.fields()) vals.put(field.port(), GraphRuntime.toLibraryValue(host.previewGraphInput(graph, node, field.port())));
+            for(var field : entry.spec.fields()) vals.put(field.port(), GraphRuntime.toLibraryValue(host.previewActiveGraphInput(node, field.port())));
             for(var action : entry.spec.actions()) vals.put("signal_" + action.id(),
-                    GraphRuntime.toLibraryValue(host.previewGraphInput(graph, node, "signal_" + action.id())));
+                    GraphRuntime.toLibraryValue(host.previewActiveGraphInput(node, "signal_" + action.id())));
             try{
                 Set<String> claims = new LinkedHashSet<>();
                 for(var action : entry.spec.actions()){
@@ -361,6 +364,23 @@ public final class FlightControlGraphRuntime implements AutoCloseable{
         return physicsEntries.stream().anyMatch(entry -> (entry.blockEntity == mouse
                 || entry.blockEntity instanceof CreativeFlightControlComputerBlockEntity creative && creative.getFlightTerminal() == mouse)
                 && entry.mouseSignalActive);
+    }
+
+    // Only running nodes authorize their corresponding native controller logic
+    public boolean contributes(BlockEntity component){
+        return physicsEntries.stream().anyMatch(entry -> entry.enabled && (entry.blockEntity == component
+                || entry.blockEntity instanceof CreativeFlightControlComputerBlockEntity creative && creative.getFlightTerminal() == component));
+    }
+
+    public Set<String> translationActions(BlockEntity nativeComputer){
+        Set<String> res = new LinkedHashSet<>();
+        for(Entry entry : physicsEntries){
+            if(entry.enabled && entry.blockEntity instanceof WrenchContributor contributor
+                    && contributor.isLinkedTo(nativeComputer.getBlockPos()) && contributor.isContributing()){
+                res.addAll(FlightControlRequests.translationActions(entry.blockEntity));
+            }
+        }
+        return Set.copyOf(res);
     }
 
     // Forward explicit native rotation intent without turning ordinary navigation yaw into banking
@@ -498,6 +518,7 @@ public final class FlightControlGraphRuntime implements AutoCloseable{
     public void close(){
         if(closed) return;
         closed = true;
+        graphCache.invalidate();
         physicsEntries = List.of();
         releaseEngines();
         try{

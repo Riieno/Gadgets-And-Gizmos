@@ -32,6 +32,9 @@ public final class CTDataComponents {
     public static final DataComponentType<Boolean> OXIDIZED = register("oxidized",
             builder -> builder.persistent(Codec.BOOL).networkSynchronized(ByteBufCodecs.BOOL));
 
+    public static final DataComponentType<Long> COOLING_FINISH_TICK = register("cooling_finish_tick",
+            builder -> builder.persistent(Codec.LONG).networkSynchronized(ByteBufCodecs.VAR_LONG));
+
     public static final DataComponentType<String> PLAYER_MANNEQUIN_VARIANT = register("player_mannequin_variant",
             builder -> builder.persistent(Codec.STRING).networkSynchronized(ByteBufCodecs.STRING_UTF8));
 

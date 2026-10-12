@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:universal_display_adapter",
+  "properties": {
+    "sable:mass": 0.01
+  }
+}

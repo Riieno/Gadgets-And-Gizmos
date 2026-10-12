@@ -59,7 +59,8 @@ public final class DiagnosticTabletApps {
                             "remove_landing_zone"),
                     tab("logistics", "Logistics", "connected_inventories", "request_items",
                             "schedule"),
-                    tab("permissions", "Permissions", "refresh", "permissions_set"),
+                    tab("permissions", "Permissions", "refresh", "permissions_set",
+                            "permissions_access", "permissions_transfer"),
                     tab("manage", "Manage", "rename_dock", "remove_target")));
     private static final TabletAppDefinition BLOCK360 = definition("block360", "block360",
             "Private circles and mutual location sharing", 0xFF7AC943,

@@ -20,6 +20,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class FlightControlHostedMouseClientMixin{
     @Shadow private static MouseFlightControllerBlockEntity active;
 
+    // Native camera compensation also applies to a standing ACC pilot on a Sable body
+    @Redirect(method = "*", at = @At(value = "INVOKE", target =
+            "Lnet/minecraft/client/player/LocalPlayer;getVehicle()Lnet/minecraft/world/entity/Entity;"))
+    private static net.minecraft.world.entity.Entity createThrusters$cameraVehicle(net.minecraft.client.player.LocalPlayer player){
+        return FlightControlClient.cameraVehicle(player, active);
+    }
+
     // Scale only player mouse deltas, leaving Sable camera following and target rebasing intact
     @ModifyVariable(method = {"cameraAngles", "trackWorldSpaceUnlockedCamera", "trackFixedShoulderCamera"},
             at = @At("STORE"), name = "mouseYawDelta")

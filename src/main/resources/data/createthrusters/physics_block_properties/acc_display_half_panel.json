@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:acc_display_half_panel",
+  "properties": {
+    "sable:mass": 0.025
+  }
+}

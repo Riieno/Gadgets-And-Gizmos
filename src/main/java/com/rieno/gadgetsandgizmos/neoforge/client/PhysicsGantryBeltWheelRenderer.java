@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.content.PhysicsGantryBeltWheelBlockEntity;
+import com.rieno.gadgetsandgizmos.lib.client.render.TexturedQuadWriter;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.simibubi.create.AllPartialModels;
@@ -24,7 +25,6 @@ import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
-import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Direction.AxisDirection;
@@ -35,7 +35,6 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.NotNull;
-import org.joml.Matrix4f;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -360,35 +359,7 @@ public class PhysicsGantryBeltWheelRenderer extends KineticBlockEntityRenderer<P
                                    Vec3 a, Vec3 b, Vec3 c, Vec3 d,
                                    float minU, float maxU, float minV, float maxV,
                                    int lightFrom, int lightTo, int overlay) {
-        Matrix4f pose = ms.last().pose();
-        PoseStack.Pose normalPose = ms.last();
-        Vec3 edge1 = b.subtract(a);
-        Vec3 edge2 = d.subtract(a);
-        Vec3 normal = edge1.cross(edge2).normalize();
-        if (normal.lengthSqr() <= 1.0E-10D) {
-            normal = new Vec3(0.0D, 1.0D, 0.0D);
-        }
-        Vec3 backNormal = new Vec3(-normal.x, -normal.y, -normal.z);
-
-        addVertex(pose, normalPose, consumer, a, minU, minV, normal, lightFrom, overlay);
-        addVertex(pose, normalPose, consumer, b, maxU, minV, normal, lightFrom, overlay);
-        addVertex(pose, normalPose, consumer, c, maxU, maxV, normal, lightTo, overlay);
-        addVertex(pose, normalPose, consumer, d, minU, maxV, normal, lightTo, overlay);
-
-        addVertex(pose, normalPose, consumer, d, minU, maxV, backNormal, lightTo, overlay);
-        addVertex(pose, normalPose, consumer, c, maxU, maxV, backNormal, lightTo, overlay);
-        addVertex(pose, normalPose, consumer, b, maxU, minV, backNormal, lightFrom, overlay);
-        addVertex(pose, normalPose, consumer, a, minU, minV, backNormal, lightFrom, overlay);
-    }
-
-    // Add the vertex
-    private static void addVertex(Matrix4f pose, PoseStack.Pose normalPose, VertexConsumer consumer,
-                                  Vec3 pos, float u, float v, Vec3 normal, int light, int overlay) {
-        consumer.addVertex(pose, (float) pos.x, (float) pos.y, (float) pos.z)
-                .setColor(1.0f, 1.0f, 1.0f, 1.0f)
-                .setUv(u, v)
-                .setOverlay(overlay == OverlayTexture.NO_OVERLAY ? OverlayTexture.NO_OVERLAY : overlay)
-                .setLight(light)
-                .setNormal(normalPose, (float) normal.x, (float) normal.y, (float) normal.z);
+        TexturedQuadWriter.drawDoubleSided(ms.last(), consumer, a, b, c, d,
+                minU, maxU, minV, maxV, lightFrom, lightTo, overlay);
     }
 }

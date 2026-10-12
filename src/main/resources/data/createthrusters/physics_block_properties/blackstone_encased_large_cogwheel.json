@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:blackstone_encased_large_cogwheel",
+  "properties": {
+    "sable:mass": 1.0
+  }
+}

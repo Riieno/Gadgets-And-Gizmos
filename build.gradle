@@ -45,7 +45,6 @@ repositories {
 }
 
 def libsDir = file('libs')
-def casingGameTests = providers.gradleProperty('casing_game_tests').map { it.toBoolean() }.getOrElse(false)
 def flightControlJar = providers.gradleProperty('flight_control_jar')
         .orElse('G:/Minecraft/Instances/Addon Dev/mods/create_flight_control-neoforge-0.7.7.jar')
 def requiredSableJar = file("libs/sable-neoforge-${minecraft_version}-${sable_version}.jar")
@@ -53,11 +52,13 @@ def propulsionNightlyJar = file('libs/createpropulsion-nightly-1.1.5-c89a53e7.ja
 def propulsionReleaseJar = file('libs/createpropulsion-1.1.5.jar')
 def localJars = fileTree(libsDir) {
     include '*.jar'
+    exclude 'aeroclaims-*.jar', 'open-parties-and-claims-*.jar'
     exclude 'sable-neoforge-*.jar'
     exclude "${library_archive_name}-*.jar"
 }
 def localRuntimeJars = fileTree(libsDir) {
     include '*.jar'
+    exclude 'aeroclaims-*.jar', 'open-parties-and-claims-*.jar'
     exclude 'MixinSquared-*.jar'
     exclude 'veil-neoforge-*.jar'
     exclude 'sable-neoforge-*.jar'
@@ -67,7 +68,7 @@ def selectedLocalJars = propulsionNightlyJar.isFile()
         ? localJars.minus(files(propulsionReleaseJar)) : localJars
 def selectedLocalRuntimeJars = propulsionNightlyJar.isFile()
         ? localRuntimeJars.minus(files(propulsionReleaseJar)) : localRuntimeJars
-if(casingGameTests || providers.gradleProperty('flight_control_validation').map { it.toBoolean() }.getOrElse(false)) {
+if(providers.gradleProperty('flight_control_validation').map { it.toBoolean() }.getOrElse(false)) {
     selectedLocalRuntimeJars = selectedLocalRuntimeJars.filter { jar ->
         jar.name.startsWith('architectury-') || jar.name.startsWith('create-')
                 || jar.name.startsWith('dev.simulated_team.simulated.simulated-')
@@ -92,12 +93,6 @@ def fallbackLibraryJar = fallbackLibraryJars.find {
 def libraryJarFile = librarySourceAvailable
         ? siblingLibraryJarFile
         : fallbackLibraryJar ?: new File(libsDir, "${library_archive_name}-${artifact_version}.jar")
-sourceSets {
-    gameTest {
-        compileClasspath += sourceSets.main.output + configurations.compileClasspath
-        runtimeClasspath += sourceSets.main.output + configurations.runtimeClasspath
-    }
-}
 def addonReplaceProperties = [
     mod_group_id: mod_group_id,
     mod_id: mod_id,
@@ -148,7 +143,6 @@ neoForge {
     mods {
         "${mod_id}" {
             sourceSet(sourceSets.main)
-            if(casingGameTests) sourceSet(sourceSets.gameTest)
         }
     }
 
@@ -169,12 +163,6 @@ neoForge {
             gameDirectory = file(providers.gradleProperty('flight_control_validation').map {
                 it.toBoolean() ? 'run/flight-control-validation' : 'run/server'
             }.getOrElse('run/server'))
-        }
-        casingGameTest {
-            type = 'gameTestServer'
-            sourceSet = sourceSets.gameTest
-            gameDirectory = file('build/casing-gametest')
-            systemProperty 'neoforge.enabledGameTestNamespaces', mod_id
         }
     }
 }
@@ -265,20 +253,9 @@ def validateMixinConfig = tasks.register('validateMixinConfig') {
 }
 
 dependencies {
-    bundledSqlite 'org.xerial:sqlite-jdbc:3.46.1.3'
-    testRuntimeOnly 'org.xerial:sqlite-jdbc:3.46.1.3'
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
-    testImplementation 'org.mockito:mockito-core:5.14.2'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-    testRuntimeOnly files(selectedLocalJars.files.findAll { it.name.startsWith('synaxis-') }.collect { jar ->
-        zipTree(jar).matching { include 'META-INF/jarjar/joml-primitives-*.jar' }
-    })
-    testRuntimeOnly files(selectedLocalJars.files.findAll { it.name.startsWith('create-') }.collect { jar ->
-        zipTree(jar).matching {
-            include 'META-INF/jarjar/Registrate-*.jar'
-            include 'META-INF/jarjar/ponder-*.jar'
-        }
-    })
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
+    bundledSqlite 'org.xerial:sqlite-jdbc:3.46.1.3'
     compileOnly selectedLocalJars
     compileOnly files(selectedLocalJars.files.findAll { it.name.startsWith('create-') }.collect { jar ->
         zipTree(jar).matching { include 'META-INF/jarjar/Registrate-*.jar' }
@@ -308,18 +285,6 @@ sourceSets {
         java.srcDir 'src/docgen/java'
         compileClasspath += sourceSets.main.output + configurations.compileClasspath
         runtimeClasspath += output + compileClasspath
-    }
-}
-
-sourceSets.test {
-    compileClasspath += configurations.compileClasspath
-    runtimeClasspath += configurations.compileClasspath
-}
-
-tasks.named('test') {
-    useJUnitPlatform()
-    classpath += fileTree(layout.buildDirectory.dir('moddev/artifacts')) {
-        include '*minecraft-resources.jar'
     }
 }
 
@@ -407,4 +372,24 @@ processResources {
     filesMatching(['META-INF/neoforge.mods.toml']) {
         expand addonReplaceProperties
     }
+}
+
+// Run schedule and ship-control regressions against the same local dependencies
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+}
+
+sourceSets.test.compileClasspath += sourceSets.main.compileClasspath
+sourceSets.test.runtimeClasspath += sourceSets.main.runtimeClasspath
+
+// Expose Create's nested runtime libraries to the headless schedule tests
+def scheduleTestLibraries = layout.buildDirectory.dir('schedule-test-libraries')
+tasks.register('prepareScheduleTestLibraries', Copy) {
+    from zipTree(localJars.find { it.name.startsWith("create-${minecraft_version}-") })
+    include 'META-INF/jarjar/*.jar'
+    into scheduleTestLibraries
+}
+tasks.named('test') {
+    dependsOn tasks.named('prepareScheduleTestLibraries')
+    classpath += fileTree(scheduleTestLibraries) { include '**/*.jar' }
 }

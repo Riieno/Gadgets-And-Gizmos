@@ -12,6 +12,7 @@ import com.rieno.gadgetsandgizmos.registry.CTFeatureToggles;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.rieno.gadgetsandgizmos.lib.scm.ShipPermission;
 import com.rieno.gadgetsandgizmos.lib.scm.ShipPermissionManager;
+import com.rieno.gadgetsandgizmos.lib.util.PlayerNames;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.nbt.CompoundTag;
@@ -20,6 +21,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -37,13 +39,20 @@ public final class ShipPermissions {
 
     private ShipPermissions(){}
 
-    // Claim a loaded ship only when the same player placed its ACC and SCM
+    // Bind existing claims and claim unowned ships when the ACC and SCM share a placer
     public static void refresh(AdvancedContraptionControllerBlockEntity controller){
         if(controller.getLevel() == null || controller.getLevel().isClientSide
-                || controller.getLevel().getServer() == null || !controller.isMountedOnShipControlModule()) return;
+                || !ShipPermissionManager.isEnabled(controller.getLevel().getServer())
+                || !controller.isMountedOnShipControlModule()) return;
         UUID shipId = SableLevelApi.containingId(controller);
+        if(shipId == null) return;
+        ShipPermissionManager manager = ShipPermissionManager.get(controller.getLevel().getServer());
+        if(manager.isClaimed(shipId)){
+            if(shipId.equals(manager.root(shipId))) manager.syncBindings(shipId, controller.getMappedShipSubLevelIds());
+            return;
+        }
         UUID placerId = controller.shipPermissionPlacerId();
-        if(shipId == null || placerId == null) return;
+        if(placerId == null) return;
         UUID modulePlacerId = controller.shipPermissionModulePlacerId();
         for(Direction direction : Direction.values()){
             BlockPos modulePos = controller.getBlockPos().relative(direction);
@@ -56,7 +65,6 @@ public final class ShipPermissions {
             }
         }
         if(!placerId.equals(modulePlacerId)) return;
-        ShipPermissionManager manager = ShipPermissionManager.get(controller.getLevel().getServer());
         if(manager.claim(shipId, placerId)){
             manager.syncBindings(shipId, controller.getMappedShipSubLevelIds());
         }
@@ -70,6 +78,7 @@ public final class ShipPermissions {
 
     public static boolean allows(ServerPlayer player, Level level, BlockPos pos, ShipPermission permission){
         if(player == null || level == null || pos == null || level.getServer() == null) return false;
+        if(!ShipPermissionManager.isEnabled(level.getServer())) return true;
         UUID id = SableLevelApi.containingId(level, pos);
         return id == null || ShipPermissionManager.get(level.getServer()).allows(id, player.getUUID(), permission);
     }
@@ -88,7 +97,8 @@ public final class ShipPermissions {
 
     public static boolean set(ServerPlayer player, AdvancedContraptionControllerBlockEntity controller,
                               UUID targetId, ShipPermission permission, boolean enabled){
-        if(!isOwner(player, controller) || targetId == null || permission == null) return false;
+        if(player == null || controller == null || controller.getLevel() == null
+                || targetId == null || permission == null) return false;
         if(permission == ShipPermission.STORE && !storeEnabled()) return false;
         UUID id = SableLevelApi.containingId(controller);
         if(id == null) return false;
@@ -107,22 +117,49 @@ public final class ShipPermissions {
         return CTFeatureToggles.isBlockEnabled("diagnostic_tablet");
     }
 
-    // Send online players and saved members while keeping the owner out of the list
+    // Change access mode and bind newly claimed ships to their mapped bodies
+    public static boolean setOpen(ServerPlayer player, AdvancedContraptionControllerBlockEntity controller,
+                                  boolean open){
+        if(player == null || controller == null || controller.getLevel() == null) return false;
+        UUID shipId = SableLevelApi.containingId(controller);
+        ShipPermissionManager manager = ShipPermissionManager.get(player.server);
+        if(!manager.setOpen(shipId, player.getUUID(), open)) return false;
+        if(shipId.equals(manager.root(shipId))) manager.syncBindings(shipId, controller.getMappedShipSubLevelIds());
+        return true;
+    }
+
+    // Transfer ship ownership through the library's management check
+    public static boolean transferOwnership(ServerPlayer player, AdvancedContraptionControllerBlockEntity controller,
+                                            UUID ownerId){
+        if(player == null || controller == null || controller.getLevel() == null || ownerId == null) return false;
+        UUID shipId = SableLevelApi.containingId(controller);
+        if(shipId == null) return false;
+        ShipPermissionManager manager = ShipPermissionManager.get(player.server);
+        UUID prevOwnerId = manager.owner(shipId);
+        return prevOwnerId != null && manager.transferOwnership(shipId, player.getUUID(), ownerId,
+                PlayerNames.resolve(player.server, prevOwnerId));
+    }
+
+    // Send the owner, online players and saved members with the active access mode
     public static CompoundTag snapshot(ServerPlayer player, AdvancedContraptionControllerBlockEntity controller){
         CompoundTag tag = new CompoundTag();
+        boolean enabled = ShipPermissionManager.isEnabled(player.server);
+        tag.putBoolean("Enabled", enabled);
+        if(!enabled) return tag;
         UUID shipId = SableLevelApi.containingId(controller);
         if(shipId == null) return tag;
         ShipPermissionManager manager = ShipPermissionManager.get(player.server);
         UUID ownerId = manager.owner(shipId);
         tag.putBoolean("Claimed", ownerId != null);
-        tag.putBoolean("CanEdit", ownerId != null && ownerId.equals(player.getUUID()));
+        tag.putBoolean("Open", manager.isOpen(shipId));
+        tag.putBoolean("CanEdit", ownerId == null || manager.canManage(shipId, player.getUUID()));
         tag.putBoolean("StoreEnabled", storeEnabled());
         Map<UUID, Row> rows = new LinkedHashMap<>();
+        if(ownerId != null) rows.put(ownerId, new Row(PlayerNames.resolve(player.server, ownerId), EnumSet.allOf(ShipPermission.class)));
         for(ShipPermissionManager.MemberView member : manager.members(shipId)){
             rows.put(member.playerId(), new Row(member.name(), member.permissions()));
         }
         for(ServerPlayer online : player.server.getPlayerList().getPlayers()){
-            if(online.getUUID().equals(ownerId)) continue;
             Row existing = rows.get(online.getUUID());
             rows.put(online.getUUID(), new Row(online.getGameProfile().getName(),
                     existing == null ? Set.of() : existing.permissions()));
@@ -132,6 +169,7 @@ public final class ShipPermissions {
             CompoundTag entry = new CompoundTag();
             entry.putUUID("Id", id);
             entry.putString("Name", row.name());
+            entry.putBoolean("Owner", id.equals(ownerId));
             int mask = 0;
             for(ShipPermission permission : row.permissions()) mask |= 1 << permission.ordinal();
             entry.putInt("Mask", mask);

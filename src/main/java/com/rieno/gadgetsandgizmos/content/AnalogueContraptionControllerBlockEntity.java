@@ -129,9 +129,9 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     private static final double DEFAULT_SMOOTHING = 0.2D;
     private static final Direction[] OUTPUT_DIRECTIONS = Direction.values();
     private static final String ASSEMBLY_TRANSFER_TAG = "ControllerAssemblyTransfer";
-    private static final String EMBEDDED_SLAB_TAG = "EmbeddedSlab";
-    private static final String EMBEDDED_SLAB_MATERIAL_TAG = "EmbeddedSlabMaterial";
-    private static final String EMBEDDED_BLOCK_ENTITY_TAG = "EmbeddedBlockEntity";
+    private static final String EMBEDDED_SLAB_TAG = ControllerPhysicalState.EMBEDDED_BLOCK;
+    private static final String EMBEDDED_SLAB_MATERIAL_TAG = ControllerPhysicalState.EMBEDDED_MATERIAL;
+    private static final String EMBEDDED_BLOCK_ENTITY_TAG = ControllerPhysicalState.EMBEDDED_BLOCK_ENTITY;
     private static final double RUNTIME_SYNC_RANGE_SQR = 256.0D * 256.0D;
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -3039,6 +3039,9 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     @Override
     protected void write(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.write(tag, provider, clientPacket);
+        CompoundTag physical = new CompoundTag();
+        writeControllerPhysicalState(physical, provider);
+        tag.put(ControllerPhysicalState.TAG_KEY, physical);
         SubLevelSchematicSerializationContext schematicContext =
                 SubLevelSchematicSerializationContext.getCurrentContext();
         if (!clientPacket && schematicContext != null) {
@@ -3274,6 +3277,8 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         }
         applyControllerManifestSnapshot(snapshot);
         String manifestKind = snapshot.kind();
+        CompoundTag physical = new CompoundTag();
+        writeControllerPhysicalState(physical, provider);
         CompoundTag controllerData = snapshot.controllerData();
         if (!snapshot.draftGraph().isEmpty()) {
             controllerData.put("AdvancedDraftGraph", snapshot.draftGraph());
@@ -3284,6 +3289,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         CompoundTag remappedControllerData = SubLevelSchematicSerializationContext.getCurrentContext() == null
                 ? controllerData
                 : SchematicSubLevelReferenceRemapper.remappedCopy(controllerData);
+        remappedControllerData = ControllerPhysicalState.recoverProgram(remappedControllerData, physical);
         readControllerBody(remappedControllerData, provider);
         readAdditionalControllerManifestData(remappedControllerData, provider, manifestKind);
         invalidateControllerRuntimeProgram();
@@ -3453,15 +3459,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         }
         tag.put("StoredTargets", storedTargetsTag);
         tag.put("LinkerSlot", linkerSlot.serializeNBT(provider));
-        if (embeddedSlabState != null) {
-            tag.put(EMBEDDED_SLAB_TAG, NbtUtils.writeBlockState(embeddedSlabState));
-            if (embeddedSlabMaterial != null) {
-                tag.put(EMBEDDED_SLAB_MATERIAL_TAG, NbtUtils.writeBlockState(embeddedSlabMaterial));
-            }
-            if (embeddedBlockEntityData != null) {
-                tag.put(EMBEDDED_BLOCK_ENTITY_TAG, embeddedBlockEntityData.copy());
-            }
-        }
+        writeControllerPhysicalState(tag, provider);
         if (pendingAssemblyBindingRemap && assemblyOldPos != null && assemblyNewPos != null) {
             CompoundTag transferTag = new CompoundTag();
             transferTag.putBoolean("SourceWasWorld", assemblySourceWasWorld);
@@ -3542,6 +3540,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
             pendingControllerSchematicPayload = null;
             pendingControllerSchematicImport = false;
         }
+        if(schematicPayload == null) controllerData = ControllerPhysicalState.readSavedBlock(controllerData, tag);
         // ------------------------------------REFERENCE REMAP------------------------------------
         CompoundTag remappedControllerData = schematicPayload != null
                 || schematicContext == null
@@ -3572,6 +3571,19 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         invalidateControllerRuntimeProgram();
     }
 
+    // Serialize the backing currently held by this block instead of one retained with a program
+    protected void writeControllerPhysicalState(CompoundTag tag, HolderLookup.Provider provider){
+        if (embeddedSlabState != null) {
+            tag.put(EMBEDDED_SLAB_TAG, NbtUtils.writeBlockState(embeddedSlabState));
+            if (embeddedSlabMaterial != null) {
+                tag.put(EMBEDDED_SLAB_MATERIAL_TAG, NbtUtils.writeBlockState(embeddedSlabMaterial));
+            }
+            if (embeddedBlockEntityData != null) {
+                tag.put(EMBEDDED_BLOCK_ENTITY_TAG, embeddedBlockEntityData.copy());
+            }
+        }
+    }
+
     // Read the controller body
     protected void readControllerBody(CompoundTag tag, HolderLookup.Provider provider) {
         // ------------------------------------EMBEDDED BLOCK------------------------------------
@@ -3579,7 +3591,9 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         embeddedSlabMaterial = null;
         embeddedBlockEntityData = null;
         embeddedBlockEntityPreview = null;
-        if (tag.contains(EMBEDDED_SLAB_TAG, Tag.TAG_COMPOUND)) {
+        if(getBlockState().hasProperty(AnalogueContraptionControllerBlock.EMBEDDED_SLAB)
+                && getBlockState().getValue(AnalogueContraptionControllerBlock.EMBEDDED_SLAB)
+                && tag.contains(EMBEDDED_SLAB_TAG, Tag.TAG_COMPOUND)){
             BlockState embeddedState = NbtUtils.readBlockState(
                     provider.lookupOrThrow(Registries.BLOCK),
                     tag.getCompound(EMBEDDED_SLAB_TAG));

@@ -164,6 +164,19 @@ public final class DiagnosticTabletScmActions {
             ServerPlayer player, TabletActionContext ctx,
             TabletAction action, AdvancedContraptionControllerBlockEntity controller) {
         String val = value(action);
+        if("permissions_access".equals(action.actionId())){
+            if(!"true".equals(val) && !"false".equals(val)) return failure("Select Open or Closed access");
+            return ShipPermissions.setOpen(player, controller, Boolean.parseBoolean(val))
+                    ? success("Ship access updated") : failure("Ship access could not be updated");
+        }
+        if("permissions_transfer".equals(action.actionId())){
+            try{
+                return ShipPermissions.transferOwnership(player, controller, UUID.fromString(val))
+                        ? success("Ship ownership transferred") : failure("Ship ownership could not be transferred");
+            }catch(IllegalArgumentException err){
+                return failure("Invalid player");
+            }
+        }
         if("permissions_set".equals(action.actionId())){
             String[] parts = val.split("\\|", 3);
             if(parts.length != 3) return failure("Select a player and permission");

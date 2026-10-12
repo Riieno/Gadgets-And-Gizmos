@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityLookupApi;
 import com.simibubi.create.AllDataComponents;
 import com.simibubi.create.content.processing.burner.BlazeBurnerBlock;
 import com.simibubi.create.content.contraptions.actors.seat.SeatBlock;
@@ -35,8 +36,6 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.AABB;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -333,41 +332,42 @@ public final class ShippingSchedulePilot {
         finish(evt, InteractionResult.SUCCESS);
     }
 
-    // Find the controller
+    // Find the closest controller beside the seat without scanning the ship or loading chunks
     private static AdvancedContraptionControllerBlockEntity findController(LivingEntity pilot, SeatEntity seat) {
         Object subLevel = SimulatedHelper.getEntityTrackingSubLevel(pilot);
-        List<BlockEntity> candidates = new ArrayList<>();
-        if (subLevel != null) {
-            candidates.addAll(SubLevelBlockEntityCollector.getBlockEntities(subLevel));
-        } else {
-            BlockPos center = seat.blockPosition();
-            for (BlockPos pos : BlockPos.betweenClosed(center.offset(-4, -2, -4), center.offset(4, 2, 4))) {
-                BlockEntity blockEntity = pilot.level().getBlockEntity(pos);
-                if (blockEntity != null) {
-                    candidates.add(blockEntity);
-                }
-            }
-        }
+        UUID subLevelId = SimulatedHelper.getSubLevelId(subLevel);
         BlockPos seatPos = seat.blockPosition();
         AdvancedContraptionControllerBlockEntity closest = null;
         double closestDistance = Double.MAX_VALUE;
-        for (BlockEntity blockEntity : candidates) {
+        boolean tied = false;
+        for(BlockPos pos : BlockPos.betweenClosed(seatPos.offset(-2, -1, -2), seatPos.offset(2, 1, 2))){
+            BlockEntity blockEntity = BlockEntityLookupApi.findLoadedExact(pilot.level(), subLevelId, pos);
             if (!(blockEntity instanceof AdvancedContraptionControllerBlockEntity controller)) {
                 continue;
             }
-            Direction facing = controller.getBlockState().hasProperty(
-                    AnalogueContraptionControllerBlock.HORIZONTAL_FACING)
-                    ? controller.getBlockState().getValue(AnalogueContraptionControllerBlock.HORIZONTAL_FACING)
-                    : Direction.NORTH;
-            BlockPos frontSeat = controller.getBlockPos().relative(facing);
-            BlockPos oppositeSeat = controller.getBlockPos().relative(facing.getOpposite());
-            double distance = Math.min(frontSeat.distSqr(seatPos), oppositeSeat.distSqr(seatPos));
+            double distance = controllerSeatDistance(controller, seatPos);
             if (distance <= 2.0D && distance < closestDistance) {
                 closest = controller;
                 closestDistance = distance;
+                tied = false;
+            }else if(distance <= 2.0D && distance == closestDistance){
+                tied = true;
+            }
+        }
+        if(tied && subLevel != null){
+            for(var controller : SubLevelBlockEntityCollector.getBlockEntities(
+                    subLevel, AdvancedContraptionControllerBlockEntity.class)){
+                if(controllerSeatDistance(controller, seatPos) == closestDistance) return controller;
             }
         }
         return closest;
+    }
+
+    // Preserve front and back seat eligibility and the previous choice between tied controllers
+    private static double controllerSeatDistance(AdvancedContraptionControllerBlockEntity controller, BlockPos seatPos){
+        Direction facing = controllerFacing(controller);
+        return Math.min(controller.getBlockPos().relative(facing).distSqr(seatPos),
+                controller.getBlockPos().relative(facing.getOpposite()).distSqr(seatPos));
     }
 
     // Find the blaze burner controller

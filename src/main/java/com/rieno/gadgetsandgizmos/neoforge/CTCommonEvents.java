@@ -45,6 +45,7 @@ import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedHudInteractionPayload
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayTextInputOpenPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayTextInputPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayModePayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayTextScalePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayComputerInputPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayCameraControlPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AileronBearingConfigPayload;
@@ -84,6 +85,7 @@ import com.rieno.gadgetsandgizmos.neoforge.network.FunctionPlotterDataPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.PhysicsGogglesDataPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.TeleportFrameResetPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.PhysicsGogglesDataRequestPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.PhysicsGogglesHeightPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.PhysicsGantryBeltWheelSelectionPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.PhysicsGantryBeltWheelShearPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.PortableContraptionControllerKeyPayload;
@@ -195,6 +197,9 @@ public final class CTCommonEvents {
         // Register the payload handlers
         public static void registerPayloadHandlers(RegisterPayloadHandlersEvent event) {
                 PayloadRegistrar registrar = event.registrar("2");
+                registrar.playToServer(com.rieno.gadgetsandgizmos.neoforge.network.ServerboundPlayerActionInputPacket.TYPE,
+                        com.rieno.gadgetsandgizmos.neoforge.network.ServerboundPlayerActionInputPacket.STREAM_CODEC,
+                        com.rieno.gadgetsandgizmos.neoforge.network.ServerboundPlayerActionInputPacket::handle);
                 // ------------------------------------THRUSTERS / ANALOGUE CONTROLS------------------------------------
                 registrar.playToServer(ThrusterBearingRangePayload.TYPE, ThrusterBearingRangePayload.STREAM_CODEC,
                                 ThrusterBearingRangePayload::handle);
@@ -247,6 +252,8 @@ public final class CTCommonEvents {
                                 AccDisplayTextInputPayload::handle);
                 registrar.playToServer(AccDisplayModePayload.TYPE, AccDisplayModePayload.STREAM_CODEC,
                                 AccDisplayModePayload::handle);
+                registrar.playToServer(AccDisplayTextScalePayload.TYPE, AccDisplayTextScalePayload.STREAM_CODEC,
+                                AccDisplayTextScalePayload::handle);
                 registrar.playToServer(AccDisplayComputerInputPayload.TYPE,
                                 AccDisplayComputerInputPayload.STREAM_CODEC,
                                 AccDisplayComputerInputPayload::handle);
@@ -282,6 +289,8 @@ public final class CTCommonEvents {
                                 NavigationTableActionPayload::handle);
                 registrar.playToServer(PhysicsGogglesDataRequestPayload.TYPE, PhysicsGogglesDataRequestPayload.STREAM_CODEC,
                                 PhysicsGogglesDataRequestPayload::handle);
+                registrar.playToServer(PhysicsGogglesHeightPayload.TYPE, PhysicsGogglesHeightPayload.STREAM_CODEC,
+                                PhysicsGogglesHeightPayload::handle);
                 // ------------------------------------SHIPPING / TOOLS------------------------------------
                 registrar.playToServer(ShippingManifestRefreshPayload.TYPE, ShippingManifestRefreshPayload.STREAM_CODEC,
                                 ShippingManifestRefreshPayload::handle);

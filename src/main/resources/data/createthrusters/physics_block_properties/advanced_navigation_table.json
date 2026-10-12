@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:advanced_navigation_table",
+  "properties": {
+    "sable:mass": 0.25
+  }
+}

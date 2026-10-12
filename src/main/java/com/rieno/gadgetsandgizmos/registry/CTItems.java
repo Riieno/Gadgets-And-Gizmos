@@ -9,6 +9,8 @@ package com.rieno.gadgetsandgizmos.registry;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.CreateThrusters;
+import com.rieno.gadgetsandgizmos.lib.item.CreateDescriptionItem;
+import com.rieno.gadgetsandgizmos.content.ScorchingOxidizedSolidFuelItem;
 import com.rieno.gadgetsandgizmos.content.AnalogueJoystickBlockItem;
 import com.rieno.gadgetsandgizmos.content.AnalogueContraptionControllerBlockItem;
 import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockItem;
@@ -311,6 +313,13 @@ public final class CTItems {
     @Nullable
     public static final DeferredItem<Item> OXIDIZED_CREATIVE_BLAZE_CAKE = register("oxidized_creative_blaze_cake",
             () -> new Item(new Item.Properties().stacksTo(1).rarity(Rarity.EPIC).fireResistant()));
+    @Nullable
+    public static final DeferredItem<Item> OXIDIZED_SOLID_FUEL = register("oxidized_solid_fuel",
+            () -> new CreateDescriptionItem(new Item.Properties().fireResistant()));
+    @Nullable
+    public static final DeferredItem<ScorchingOxidizedSolidFuelItem> SCORCHING_OXIDIZED_SOLID_FUEL =
+            register("scorching_oxidized_solid_fuel",
+                    () -> new ScorchingOxidizedSolidFuelItem(new Item.Properties().fireResistant()));
     @Nullable
     public static final DeferredItem<Item> MUSIC_DISC_KINETIC_CURRENCY = register("music_disc_kinetic_currency",
             () -> musicDisc(CTJukeboxSongs.KINETIC_CURRENCY));

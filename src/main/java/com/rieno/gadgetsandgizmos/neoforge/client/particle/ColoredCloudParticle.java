@@ -221,7 +221,7 @@ public class ColoredCloudParticle extends TextureSheetParticle {
                                        double xd, double yd, double zd) {
             if (CTConfigs.CLIENT.useThrusterPlumeV2Renderer.get()) {
                 if (SoftThrusterPlumeParticle.isHiddenFromCamera(level, x, y, z)) return null;
-                return new SoftThrusterPlumeParticle(level, x, y, z, xd, yd, zd, opts, sprites);
+                return new SoftThrusterPlumeParticle(level, x, y, z, xd, yd, zd, opts);
             }
             return new ColoredCloudParticle(level, x, y, z, xd, yd, zd, opts, sprites);
         }

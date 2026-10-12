@@ -1,7 +1,7 @@
 Welcome to the Gadgets & Gizmos CC:Tweaked wiki!
 # Gadgets & Gizmos CC:Tweaked API
 
-The Gadgets & Gizmos CC:Tweaked integration exposes blocks as ordinary CC peripherals and supplies a high-level Lua bridge for reading, editing, validating, applying and exporting Advanced Contraption Controller graphs.
+The Gadgets & Gizmos CC:Tweaked integration exposes blocks as ordinary CC peripherals and supplies a high-level Lua bridge for reading, editing, validating, applying and exporting Advanced Control Computer graphs.
 
 This page specifies the supported CC:Tweaked surface for Gadgets & Gizmos `1.2.x`. Use the documented Lua methods and bundled modules instead of depending on Java implementation classes or CC:Tweaked internals.
 
@@ -12,7 +12,7 @@ This page specifies the supported CC:Tweaked surface for Gadgets & Gizmos `1.2.x
 - [Built-in documentation](#built-in-documentation)
 - [API rules](#api-rules)
 - [Peripheral types](#peripheral-types)
-- [Advanced Contraption Controller](#advanced-contraption-controller)
+- [Advanced Control Computer](#advanced-contraption-controller)
 - [SCM shipping schedule bridge](#scm-shipping-schedule-bridge)
 - [SCM navigation and brain data](#scm-navigation-and-brain-data)
 - [Graph snapshots](#graph-snapshots)
@@ -167,9 +167,9 @@ The complete method list is intentionally generated rather than duplicated by ha
 
 ACC Set Data accepts `stabilize_axis` as `X Axis`, `Y Axis`, `Z Axis`, `XZ Axis`, `XY Axis` or `ZY Axis`; `keep_stable` enables the selected world-space axis or plane. The `Max Tilt` setting limits the combined stabilization correction and manual head offset, so a bearing follows its parent once the required correction exceeds that angle. The `vector_bearing` peripheral exposes the same values through `getStabilizeAxis()` and `setStabilizeAxis(...)`. Existing saved single-axis selections continue to load as their matching single-axis option.
 
-## Advanced Contraption Controller
+## Advanced Control Computer
 
-The `advanced_contraption_controller` peripheral inherits the normal analogue controller surface and adds the graph bridge. Existing controller scripts can continue to use input, channel, alias, key, binding and direct-target methods.
+The `advanced_contraption_controller` (legacy name for compatibility) peripheral inherits the normal analogue controller surface and adds the graph bridge. Existing controller scripts can continue to use input, channel, alias, key, binding and direct-target methods.
 
 Find and wrap the ACC with the bundled module:
 
@@ -256,9 +256,9 @@ assert(acc:version() >= 4, "This program requires ACC graph API 4")
 
 ## SCM shipping schedule bridge
 
-The Advanced Contraption Controller also exposes its controller-owned Shipping Schedule Scratch graph.
+The Advanced Control Computer also exposes its controller-owned Shipping Schedule Scratch graph.
 This is a separate API from the normal ACC control graph and is available through `acc.raw` or a directly
-wrapped `advanced_contraption_controller` peripheral.
+wrapped `advanced_contraption_controller` (Legacy name for compatibility) peripheral.
 
 | Method | Contract |
 | --- | --- |
@@ -932,7 +932,7 @@ monitor.write("ACC ONLINE")
 
 Display interaction queues the normal monitor and mouse event families where the target supports them. Use the attachment field on monitor events to distinguish multiple display surfaces.
 
-The Diagnostic Tablet RDP app opens supported CC computer terminals through the addon compatibility backend. RDP mirrors the computer's existing terminal and input stream; it does not create a second computer, bypass the computer owner's program or provide graph authority by itself.
+The Smart Tablet RDP app opens supported CC computer terminals through the addon compatibility backend. RDP mirrors the computer's existing terminal and input stream; it does not create a second computer, bypass the computer owner's program or provide graph authority by itself.
 
 ## Other peripheral families
 

@@ -8,7 +8,6 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
-import com.mojang.blaze3d.platform.InputConstants;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletBlock;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletData;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletItem;
@@ -18,7 +17,6 @@ import com.rieno.gadgetsandgizmos.registry.CTFeatureToggles;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletInteractionMode;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.InteractionHand;
@@ -65,8 +63,7 @@ public final class DiagnosticTabletClientInteraction {
         if (player == null || minecraft.screen != null) return;
         InteractionHand hand = evt.getHand();
         ItemStack stack = player.getItemInHand(hand);
-        boolean altDown = isAltDown();
-        if (hand == InteractionHand.MAIN_HAND && !altDown
+        if (hand == InteractionHand.MAIN_HAND
                 && stack.getItem() instanceof DiagnosticTabletItem
                 && DiagnosticTabletData.read(stack).mode() == TabletInteractionMode.STANDARD
                 && minecraft.hitResult instanceof BlockHitResult
@@ -80,14 +77,10 @@ public final class DiagnosticTabletClientInteraction {
             hand = InteractionHand.OFF_HAND;
             stack = player.getOffhandItem();
         }
-        if (altDown) {
-            if (!tryCycleMode(hand, stack)) return;
-        } else {
-            if (player.isShiftKeyDown()
-                    || DiagnosticTabletData.read(stack).mode() != TabletInteractionMode.STANDARD
-                    || isPointingAtPlacedTabletScreen(minecraft)) return;
-            DiagnosticTabletScreen.openItem(hand, stack);
-        }
+        if (player.isShiftKeyDown()
+                || DiagnosticTabletData.read(stack).mode() != TabletInteractionMode.STANDARD
+                || isPointingAtPlacedTabletScreen(minecraft)) return;
+        DiagnosticTabletScreen.openItem(hand, stack);
         evt.setSwingHand(false);
         evt.setCanceled(true);
     }
@@ -104,7 +97,7 @@ public final class DiagnosticTabletClientInteraction {
     public static boolean tryCycleMode(InteractionHand hand, ItemStack stack) {
         Minecraft minecraft = Minecraft.getInstance();
         LocalPlayer player = minecraft.player;
-        if (player == null || stack == null || stack.isEmpty() || !isAltDown()
+        if (player == null || stack == null || stack.isEmpty()
                 || !CTFeatureToggles.isItemEnabled("diagnostic_tablet")) {
             return false;
         }
@@ -120,14 +113,34 @@ public final class DiagnosticTabletClientInteraction {
         return true;
     }
 
-    // Handle the key input event
-    public static void onKeyInput(InputEvent.Key evt) {
-        if (evt.getKey() != GLFW.GLFW_KEY_ESCAPE || evt.getAction() != GLFW.GLFW_PRESS) {
-            return;
-        }
+    // Sample mode changes without requiring vanilla Use
+    public static void tick() {
         Minecraft minecraft = Minecraft.getInstance();
         LocalPlayer player = minecraft.player;
-        if (player == null || minecraft.screen != null) return;
+        InteractionHand hand = null;
+        if (player != null) {
+            for (InteractionHand candidate : InteractionHand.values()) {
+                if (player.getItemInHand(candidate).getItem() instanceof DiagnosticTabletItem) {
+                    hand = candidate;
+                    break;
+                }
+            }
+        }
+        if (CTActionKeys.TABLET_MODE.sample(hand != null).wasPressed(1)) {
+            tryCycleMode(hand, player.getItemInHand(hand));
+        }
+    }
+
+    public static void onKeyInput(InputEvent.Key event) {
+        if (event.getAction() == GLFW.GLFW_PRESS
+                && CTActionKeys.TABLET_READER_EXIT.matchesKeyboard(event.getKey(), event.getScanCode())) exitReader();
+    }
+
+    // Leave reader mode through a configured keyboard or mouse action
+    public static boolean exitReader() {
+        Minecraft minecraft = Minecraft.getInstance();
+        LocalPlayer player = minecraft.player;
+        if (player == null || minecraft.screen != null) return false;
         for (InteractionHand hand : InteractionHand.values()) {
             ItemStack stack = player.getItemInHand(hand);
             if (!(stack.getItem() instanceof DiagnosticTabletItem)) continue;
@@ -137,17 +150,9 @@ public final class DiagnosticTabletClientInteraction {
             DiagnosticTabletData.write(stack, updated);
             PacketDistributor.sendToServer(new DiagnosticTabletActionPayload(false, hand,
                     BlockPos.ZERO, null, updated.app(), updated.tab(), "mode_cycle", updated.mode().id()));
-            return;
+            return true;
         }
-    }
-
-    // Check if the Alt key is held
-    private static boolean isAltDown() {
-        Minecraft minecraft = Minecraft.getInstance();
-        long window = minecraft.getWindow().getWindow();
-        return Screen.hasAltDown()
-                || InputConstants.isKeyDown(window, GLFW.GLFW_KEY_LEFT_ALT)
-                || InputConstants.isKeyDown(window, GLFW.GLFW_KEY_RIGHT_ALT);
+        return false;
     }
 
     // Check if the pointing is at the placed tablet screen

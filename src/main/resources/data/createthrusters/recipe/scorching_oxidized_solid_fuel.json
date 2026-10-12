@@ -1,0 +1,22 @@
+{
+  "type": "create:compacting",
+  "ingredients": [
+    {
+      "item": "minecraft:blackstone"
+    },
+    {
+      "type": "fluid_stack",
+      "fluid": "minecraft:lava",
+      "amount": 1000,
+      "components": {
+        "createthrusters:oxidized": true
+      }
+    }
+  ],
+  "results": [
+    {
+      "id": "createthrusters:scorching_oxidized_solid_fuel",
+      "count": 1
+    }
+  ]
+}

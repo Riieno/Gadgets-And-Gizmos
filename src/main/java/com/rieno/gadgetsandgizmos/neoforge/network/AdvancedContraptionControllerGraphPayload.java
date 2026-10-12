@@ -28,6 +28,7 @@ import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget;
 import com.rieno.gadgetsandgizmos.neoforge.PublicGraphShareService;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.nbt.NbtUtils;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -311,6 +312,24 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                         context.player() instanceof ServerPlayer player ? player.getUUID() : null);
                 // ------------------------------------SCM CONFIGURATION------------------------------------
                 case "scm_permissions_open" -> sendScmConfiguration(context, payload.target(), controller, false);
+                case "scm_permissions_access" -> {
+                    boolean changed = context.player() instanceof ServerPlayer player
+                            && payload.graph().contains("Open", Tag.TAG_BYTE)
+                            && ShipPermissions.setOpen(player, controller, payload.graph().getBoolean("Open"));
+                    sendScmConfiguration(context, payload.target(), controller, false);
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), changed,
+                            changed ? "Ship access updated" : "Ship access could not be updated",
+                            controller.getDraftGraph().revision(), false, false, List.of());
+                }
+                case "scm_permissions_transfer" -> {
+                    boolean changed = context.player() instanceof ServerPlayer player
+                            && payload.graph().hasUUID("Player")
+                            && ShipPermissions.transferOwnership(player, controller, payload.graph().getUUID("Player"));
+                    sendScmConfiguration(context, payload.target(), controller, false);
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), changed,
+                            changed ? "Ship ownership transferred" : "Ship ownership could not be transferred",
+                            controller.getDraftGraph().revision(), false, false, List.of());
+                }
                 case "scm_permissions_set" -> {
                     boolean changed = context.player() instanceof ServerPlayer player
                             && payload.graph().hasUUID("Player")
@@ -479,6 +498,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                 && !com.rieno.gadgetsandgizmos.lib.scm.ScmVehicleClassifier.isSelection(scm.getString("VehicleType")))) {
             return false;
         }
+        if(scm != null && !controller.canApplyScmConfigurationProfile(ScmConfigurationProfile.fromTag(scm))) return false;
         if (!controller.saveDraft(AdvancedGraphDocument.fromTag(payload.graph()), revision)) return false;
         return scm == null || controller.replaceScmConfigurationProfile(ScmConfigurationProfile.fromTag(scm));
     }
@@ -545,6 +565,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
         candidates.put("DefaultOrientation", controller.getScmDefaultOrientation().toTag());
         candidates.putString("DetectedVehicleType", controller.getScmDetectedVehicleType());
         candidates.putString("DetectedSteeringType", controller.getScmDetectedSteeringType());
+        candidates.putBoolean("HasThrusters", controller.hasScmConfigurationThrusters());
         ListTag entries = new ListTag();
         controller.getScmConfigurationCandidates().stream().limit(com.rieno.gadgetsandgizmos.lib.scm.ScmCapacity.MAX_CONTROL_UNITS).forEach(unit -> {
             entries.add(unit.toTag());

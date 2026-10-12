@@ -278,7 +278,7 @@
   "item.createthrusters.physics_staff.error.no_backtank": "Für den Physik-Stab muss ein Rückentank ausgerüstet sein.",
   "item.createthrusters.physics_staff.error.no_pressure": "Der ausgerüstete Rückentank hat nicht genug Druck.",
   "item.createthrusters.physics_staff.error.on_target_sublevel": "Die Konstruktion unter deinen Füßen kann nicht mit dem Physik-Stab bewegt werden.",
-  "item.createthrusters.physics_staff.error.claim_denied": "Du darfst diese Konstruktion in diesem Gebiet nicht bewegen.",
+  "item.createthrusters.physics_staff.error.permission_denied": "Du hast keine Berechtigung, den Physikstab auf diesem Schiff zu benutzen.",
   "item.createthrusters.physics_goggles": "Smart-Brille",
   "createthrusters.thruster.focused_air_pressure_rejection.on": "LUFTABWEISUNG: AN",
   "createthrusters.thruster.focused_air_pressure_rejection.off": "LUFTABWEISUNG: AUS",

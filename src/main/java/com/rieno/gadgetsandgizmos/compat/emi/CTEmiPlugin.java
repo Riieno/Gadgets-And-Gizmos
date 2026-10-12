@@ -9,6 +9,9 @@ package com.rieno.gadgetsandgizmos.compat.emi;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.CreateThrusters;
+import com.rieno.gadgetsandgizmos.compat.recipe.OxidizedSolidFuelRecipes;
+import com.rieno.gadgetsandgizmos.lib.compat.emi.MechanicalCraftingEmiRecipe;
+import com.rieno.gadgetsandgizmos.lib.compat.emi.ProcessingTransformationEmiRecipe;
 import com.rieno.gadgetsandgizmos.content.IonThrusterStacks;
 import com.rieno.gadgetsandgizmos.content.SupporterHeads;
 import com.rieno.gadgetsandgizmos.content.WorkerEnergyBatteryItem;
@@ -108,12 +111,31 @@ public class CTEmiPlugin implements EmiPlugin {
             });
             registerIonThruster(registry);
             registerMechanicalCrafting(registry);
+            registerOxidizedSolidFuel(registry);
             registerThrusterProcessing(registry);
             registry.removeEmiStacks(CTEmiPlugin::isDisabledModStack);
             registry.removeRecipes(CTEmiPlugin::hasDisabledOutput);
         } catch (Throwable throwable) {
 
             CT_LOGGER.warn("[CT][EMI] Disabled EMI drag-drop integration due to compatibility error", throwable);
+        }
+    }
+
+    private static void registerOxidizedSolidFuel(EmiRegistry registry){
+        if(!OxidizedSolidFuelRecipes.enabled()) return;
+        EmiRecipeCategory category = new EmiRecipeCategory(OxidizedSolidFuelRecipes.CATEGORY,
+                EmiStack.of(OxidizedSolidFuelRecipes.icon())){
+            @Override public net.minecraft.network.chat.Component getName(){
+                return OxidizedSolidFuelRecipes.title();
+            }
+        };
+        registry.addCategory(category);
+        for(var workstation : OxidizedSolidFuelRecipes.workstations()){
+            registry.addWorkstation(category, EmiStack.of(workstation));
+        }
+        for(var view : OxidizedSolidFuelRecipes.views(registry.getRecipeManager())){
+            registry.addRecipe(new ProcessingTransformationEmiRecipe(category, view,
+                    OxidizedSolidFuelRecipes.workstations()));
         }
     }
 
@@ -133,7 +155,7 @@ public class CTEmiPlugin implements EmiPlugin {
     // Add the addon's Create mechanical crafting recipes to EMI
     private static void registerMechanicalCrafting(EmiRegistry registry) {
         HolderLookup.Provider registries = recipeRegistries();
-        EmiRecipeCategory category = new EmiRecipeCategory(
+        EmiRecipeCategory category = MechanicalCraftingEmiRecipe.createCategory(
                 ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID, "mechanical_crafting"),
                 EmiStack.of(new ItemStack(BuiltInRegistries.ITEM.get(
                         ResourceLocation.parse("create:mechanical_crafter")))));

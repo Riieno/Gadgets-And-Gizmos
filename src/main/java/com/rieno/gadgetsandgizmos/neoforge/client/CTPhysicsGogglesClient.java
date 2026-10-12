@@ -23,6 +23,7 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphLiveValue;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementBinding;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementStyle;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudImageSource;
+import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudInteractions;
 import com.rieno.gadgetsandgizmos.content.ThrusterBearingBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget;
@@ -688,7 +689,7 @@ public final class CTPhysicsGogglesClient {
                         hudInputText(controller, node,
                                 elm.getString("Port").isBlank() ? "value" : elm.getString("Port")),
                         x, y, w, h, layoutScale);
-                case "button", "toggle", "slider" -> drawAdvHudInteractive(
+                case "button", "toggle", "slider", "text_input" -> drawAdvHudInteractive(
                         graphics, controller, node, elm, x, y, w, h, layoutScale);
                 default -> AdvancedHudElementRenderer.drawText(
                         graphics, Minecraft.getInstance().font, elm, elm.getString("Text"),
@@ -700,6 +701,7 @@ public final class CTPhysicsGogglesClient {
                 HUD_INTERACTION_TARGETS.add(new HudInteractionTarget(
                         binding.target(), binding.pairId(), node.id(),
                         elm.getString("InteractionId"), elm.getString("Type"),
+                        elm.getString("Text"), hudInteractionText(controller, node, elm),
                         new Rect(x, y, w, h),
                         elementScale, rotation,
                         elm.getDouble("Min"), elm.getDouble("Max"), elm.getDouble("Step")));
@@ -709,10 +711,7 @@ public final class CTPhysicsGogglesClient {
 
     // Check if this is interactive HUD element
     private static boolean isInteractiveHudElement(CompoundTag elm) {
-        return switch (elm.getString("Type")) {
-            case "button", "toggle", "slider" -> true;
-            default -> false;
-        };
+        return AdvancedHudInteractions.isInteractiveType(elm.getString("Type"));
     }
 
     // Draw the adv HUD interactive
@@ -724,6 +723,12 @@ public final class CTPhysicsGogglesClient {
         String valuePort = elm.getString("ValuePort");
         AdvancedGraphDocument.Value val = valuePort.isBlank()
                 ? null : hudOutputValue(controller, node, valuePort);
+        if("text_input".equals(type)){
+            String text = val == null ? elm.getString("Value") : val.asString();
+            elm = elm.copy();
+            elm.putString("Text", text.isBlank()
+                    ? (elm.getString("Text").isBlank() ? "Enter text" : elm.getString("Text")) : text);
+        }
         boolean toggleActive = "toggle".equals(type)
                 && (val == null ? elm.getBoolean("Value") : val.asBoolean());
         double current = val == null ? elm.getDouble("Value") : val.asNumber();
@@ -1092,6 +1097,24 @@ public final class CTPhysicsGogglesClient {
             case "direction" -> AdvancedGraphDocument.Value.direction(liveValue.textValue());
             default -> AdvancedGraphDocument.Value.string(liveValue.textValue());
         };
+    }
+
+    // Read the current text output without using the element prompt as its value
+    private static String hudInteractionText(AdvancedContraptionControllerBlockEntity controller,
+                                             AdvancedGraphDocument.Node node, CompoundTag elm){
+        if(!"text_input".equals(elm.getString("Type"))) return "";
+        AdvancedGraphDocument.Value val = hudOutputValue(controller, node, elm.getString("ValuePort"));
+        return val == null ? elm.getString("Value") : val.asString();
+    }
+
+    // Open a focused text field and submit through the paired goggles route
+    private static void openHudTextInput(Screen parent, HudInteractionTarget target){
+        String prompt = target.prompt().isBlank() ? "Enter text" : target.prompt();
+        Minecraft.getInstance().setScreen(new ControllerTextInputScreen(
+                parent, Component.literal("HUD Text Input"), Component.literal(prompt), target.text(),
+                val -> PacketDistributor.sendToServer(AdvancedHudInteractionPayload.text(
+                        target.target(), target.pairId(), target.nodeId(), target.interactionId(), val)),
+                AdvancedHudInteractions.MAX_TEXT_INPUT_LENGTH));
     }
 
     // Send the HUD boolean
@@ -1580,7 +1603,7 @@ public final class CTPhysicsGogglesClient {
 
     // Store the HUD interaction target
     private record HudInteractionTarget(MenuConfigTarget target, UUID pairId, String nodeId,
-                                         String interactionId, String type, Rect rect,
+                                         String interactionId, String type, String prompt, String text, Rect rect,
                                          double scale, double rotation,
                                          double minimum, double maximum, double step) {
         // Check if the HUD interaction contains the point
@@ -1740,6 +1763,7 @@ public final class CTPhysicsGogglesClient {
                             pressedHudInteraction = target;
                             sendHudSlider(target, mouseX, mouseY);
                         }
+                        case "text_input" -> openHudTextInput(this, target);
                         default -> {
                             continue;
                         }

@@ -54,9 +54,9 @@ public class AnalogueContraptionControllerBlockItem extends CTTooltipBlockItem {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     private static final String STORED_TARGETS_TAG = "StoredTargets";
-    private static final String EMBEDDED_SLAB_TAG = "EmbeddedSlab";
-    private static final String EMBEDDED_SLAB_MATERIAL_TAG = "EmbeddedSlabMaterial";
-    private static final String EMBEDDED_BLOCK_ENTITY_TAG = "EmbeddedBlockEntity";
+    private static final String EMBEDDED_SLAB_TAG = ControllerPhysicalState.EMBEDDED_BLOCK;
+    private static final String EMBEDDED_SLAB_MATERIAL_TAG = ControllerPhysicalState.EMBEDDED_MATERIAL;
+    private static final String EMBEDDED_BLOCK_ENTITY_TAG = ControllerPhysicalState.EMBEDDED_BLOCK_ENTITY;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -239,9 +239,15 @@ public class AnalogueContraptionControllerBlockItem extends CTTooltipBlockItem {
         boolean changed = blockEntityTag.contains(EMBEDDED_SLAB_TAG)
                 || blockEntityTag.contains(EMBEDDED_SLAB_MATERIAL_TAG)
                 || blockEntityTag.contains(EMBEDDED_BLOCK_ENTITY_TAG);
+        boolean physicalSnapshot = blockEntityTag.contains(ControllerPhysicalState.TAG_KEY)
+                || ControllerManifestStore.hasControllerMetadata(blockEntityTag);
         blockEntityTag.remove(EMBEDDED_SLAB_TAG);
         blockEntityTag.remove(EMBEDDED_SLAB_MATERIAL_TAG);
         blockEntityTag.remove(EMBEDDED_BLOCK_ENTITY_TAG);
+        if(physicalSnapshot){
+            blockEntityTag.put(ControllerPhysicalState.TAG_KEY, new CompoundTag());
+            changed = true;
+        }
         return changed;
     }
 

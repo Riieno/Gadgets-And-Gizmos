@@ -9,6 +9,8 @@ package com.rieno.gadgetsandgizmos.compat.jei;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.CreateThrusters;
+import com.rieno.gadgetsandgizmos.compat.recipe.OxidizedSolidFuelRecipes;
+import com.rieno.gadgetsandgizmos.lib.compat.jei.ProcessingTransformationJeiCategory;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinCrafting;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariant;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariants;
@@ -87,6 +89,7 @@ public class CTJeiPlugin implements IModPlugin {
 
     private static final ResourceLocation ID = ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID, "jei");
     private static final Logger CT_LOGGER = LogUtils.getLogger();
+    private static ProcessingTransformationJeiCategory fuelCategory;
     // Keep removed JEI entries ready for feature toggle changes
     private static final Map<ResourceLocation, List<ItemStack>> KNOWN_ITEM_STACKS = new LinkedHashMap<>();
     private static final Map<ResourceLocation, List<ItemStack>> REMOVED_ITEM_STACKS = new LinkedHashMap<>();
@@ -288,6 +291,10 @@ public class CTJeiPlugin implements IModPlugin {
         } catch (Throwable throwable) {
             CT_LOGGER.warn("[CT][JEI] Failed to register player mannequin recipe displays", throwable);
         }
+        if(fuelCategory != null && Minecraft.getInstance().level != null){
+            registration.addRecipes(fuelCategory.getRecipeType(),
+                    OxidizedSolidFuelRecipes.views(Minecraft.getInstance().level.getRecipeManager()));
+        }
         if(Minecraft.getInstance().level != null){
             for(var entry : THRUSTER_CATEGORIES.entrySet()){
                 registration.addRecipes(entry.getValue().getRecipeType(),
@@ -299,6 +306,13 @@ public class CTJeiPlugin implements IModPlugin {
     // Register a separate recipe tab for each thruster processing upgrade
     @Override
     public void registerCategories(IRecipeCategoryRegistration registration){
+        fuelCategory = null;
+        if(OxidizedSolidFuelRecipes.enabled()){
+            fuelCategory = new ProcessingTransformationJeiCategory(OxidizedSolidFuelRecipes.CATEGORY,
+                    OxidizedSolidFuelRecipes.title(), OxidizedSolidFuelRecipes.icon(),
+                    registration.getJeiHelpers().getGuiHelper());
+            registration.addRecipeCategories(fuelCategory);
+        }
         THRUSTER_CATEGORIES.clear();
         if(!CTFeatureToggles.isItemEnabled("thruster")) return;
         for(ThrusterProcessingDisplays.Mode mode : ThrusterProcessingDisplays.Mode.values()){
@@ -312,6 +326,11 @@ public class CTJeiPlugin implements IModPlugin {
     // Link the thruster and every upgrade tier to its processing tab
     @Override
     public void registerRecipeCatalysts(IRecipeCatalystRegistration registration){
+        if(fuelCategory != null){
+            for(var workstation : OxidizedSolidFuelRecipes.workstations()){
+                registration.addRecipeCatalyst(workstation, fuelCategory.getRecipeType());
+            }
+        }
         for(var entry : THRUSTER_CATEGORIES.entrySet()){
             for(ItemStack stack : entry.getKey().catalysts()){
                 registration.addRecipeCatalyst(stack, entry.getValue().getRecipeType());

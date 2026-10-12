@@ -526,7 +526,7 @@ public class AileronBearingBlockEntity extends KineticBlockEntity implements Men
             case SERVO -> clampToHeadRange(head, signedDeg(servoAngle));
             case COMPUTER -> state.computerOverrideActive
                     ? clampToHeadRange(head, state.computerTargetAngleDeg)
-                    : state.targetAngleDeg;
+                    : state.currentAngleDeg;
             case AUTO -> state.targetAngleDeg;
         };
     }
@@ -623,9 +623,12 @@ public class AileronBearingBlockEntity extends KineticBlockEntity implements Men
             return shaftAngleDegrees;
         }
 
-        shaftAngleDegrees = KineticAngleHelper.getAbsoluteRotationAngleDegrees(this, getShaftAxis());
-        shaftAngleInitialized = true;
-        lastShaftSampleTick = level.getGameTime();
+        long now = level.getGameTime();
+        if (!shaftAngleInitialized) shaftAngleDegrees = 0.0D;
+        long elapsed = lastShaftSampleTick == Long.MIN_VALUE ? 0L : now - lastShaftSampleTick;
+        shaftAngleDegrees = KineticAngleHelper.advanceRotationAngleDegrees(shaftAngleDegrees, getSpeed(), elapsed);
+        shaftAngleInitialized |= Math.abs(getSpeed()) > 1.0E-4F;
+        lastShaftSampleTick = now;
         return shaftAngleDegrees;
     }
 

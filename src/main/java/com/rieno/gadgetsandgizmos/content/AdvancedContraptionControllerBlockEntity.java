@@ -17,7 +17,12 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphProfilerMath;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDataProvider;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementBinding;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementStyle;
+import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudInteractions;
 import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
+import com.rieno.gadgetsandgizmos.config.CTConfigs;
+import com.rieno.gadgetsandgizmos.lib.chat.ServerChatApi;
+import com.rieno.gadgetsandgizmos.lib.chat.ServerTitleApi;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphValueMirrors;
 import com.rieno.gadgetsandgizmos.content.advanced.GraphSignalRange;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphTemplates;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphValidator;
@@ -189,6 +194,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private static final int GRAPH_OBSERVER_EDGE_BUDGET = 32;
     private static final int GRAPH_RUNTIME_SEND_INTERVAL = 5;
     private static final int ACC_DISPLAY_UPDATE_INTERVAL = 2;
+    private static final int ACC_DISPLAY_TARGET_RETRY_INTERVAL = 20;
     private static final int GRAPH_DATA_SCHEMA_REFRESH_INTERVAL = 4;
     private static final long CLIENT_PROFILER_SAMPLE_TIMEOUT_TICKS = 40L;
     private static final String GRAPH_DATA_SCHEMA_REVISION_TAG = "GraphDataSchemaRevision";
@@ -204,8 +210,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private static final String SHIP_FLIGHT_BEHAVIOR_TAG = "ShipFlightBehavior";
     private static final String SHIP_CONTROL_MODE_TAG = "ShipControlMode";
     private static final String SCM_CONFIGURATION_PROFILE_TAG = "ScmConfigurationProfile";
-    private static final String SHIP_PERMISSION_PLACER_TAG = "ShipPermissionPlacer";
-    private static final String SHIP_PERMISSION_MODULE_PLACER_TAG = "ShipPermissionModulePlacer";
+    private static final String SHIP_PERMISSION_PLACER_TAG = ControllerPhysicalState.PLACER;
+    private static final String SHIP_PERMISSION_MODULE_PLACER_TAG = ControllerPhysicalState.MODULE_PLACER;
     private static final String SCHEMATIC_SHIP_CONTROL_MAP_TAG = "ShipControlMap";
     private static final String SHIP_INITIALIZATION_VISIBLE_TAG = "ShipInitializationVisible";
     private static final String SHIP_INITIALIZATION_PERCENT_TAG = "ShipInitializationPercent";
@@ -245,6 +251,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private AdvancedGraphDocument shippingScheduleActiveGraph = new AdvancedGraphDocument();
     // Graph runtime
     private final GraphRuntime graphRuntime = new GraphRuntime(this);
+    private ServerChatApi.Subscription chatSubscription;
     private final com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline plotPoints =
             new com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline();
     private boolean legacyPlotCleanupPending;
@@ -365,6 +372,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             Collections.newSetFromMap(new IdentityHashMap<>());
     // Tracks whether ACC display targets are dirty
     private boolean accDisplayTargetsDirty = true;
+    // Retry selected displays that were unavailable during chunk loading
+    private boolean accDisplayTargetsUnavailable;
+    // Last attempt to resolve the selected display targets
+    private long lastAccDisplayTargetRetryTick = Long.MIN_VALUE;
     // Tracks whether ACC display frames are dirty
     private boolean accDisplayFramesDirty = true;
     // Last ACC display runtime revision
@@ -453,6 +464,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private boolean graphOwnedBindingChannelsVerified;
     // Tracks whether the current manifest read came from a client update packet
     private boolean readingClientUpdatePacket;
+    // Dock names synchronized for native schedule destination completions
+    private List<String> shippingScheduleDestinationNames = List.of();
     // Tracked mouse input values
     private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     // Active mouse inputs
@@ -2032,6 +2045,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             serverRuntimeInitialized = true;
             AccDisplayControllerRegistry.register(this);
             AdvancedControllerNamedEventBus.register(this);
+            ensureChatListener();
             refreshGraphRuntime(true);
             restoreShutdownSnapshot();
             shipControlRuntime.resumeAfterLoad(
@@ -2063,6 +2077,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         super.tick();
         Level currentLevel = getLevel();
+        ensureChatListener();
         if (legacyPlotCleanupPending && currentLevel != null && !currentLevel.isClientSide) {
             legacyPlotCleanupPending = false;
             saveControllerManifestNow();
@@ -2325,15 +2340,22 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return shipControlRuntime.initializationStatus();
     }
 
+    // Preserve disabled saved choices while rejecting new selections blocked by the server
+    public boolean canApplyScmConfigurationProfile(ScmConfigurationProfile requested){
+        if(requested == null) return false;
+        return (Objects.equals(requested.vehicleType(), scmConfigurationProfile.vehicleType())
+                || com.rieno.gadgetsandgizmos.lib.scm.ScmVehicleClassifier.isAvailableSelection(requested.vehicleType()))
+                && (Objects.equals(requested.steeringType(), scmConfigurationProfile.steeringType())
+                || com.rieno.gadgetsandgizmos.lib.scm.ScmSteeringMode.isAvailableSelection(requested.steeringType()));
+    }
+
     // Validate a player-authored profile against live Sable body membership.
     // The player may select every real block in the craft; whether an action
     // can control it is resolved through the safe SCM adaptor/probe API during
     // profile-driven initialization.
     public boolean replaceScmConfigurationProfile(ScmConfigurationProfile requested) {
         UUID targetMapId = getScmConfigurationMapId();
-        if (requested == null) {
-            return false;
-        }
+        if(!canApplyScmConfigurationProfile(requested)) return false;
         List<ScmConfigurationProfile.Group> groups = requested.groups().stream()
                 .map(group -> new ScmConfigurationProfile.Group(group.id(), group.label(),
                         group.units().stream().filter(shipControlRuntime::isConfigurationTarget)
@@ -2407,6 +2429,11 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     public String getScmDetectedSteeringType() {
         return shipControlRuntime.detectedSteeringType();
+    }
+
+    // Report live thruster presence independently of preview filters and authored bindings
+    public boolean hasScmConfigurationThrusters(){
+        return shipControlRuntime.configurationHasThrusters();
     }
 
     // Set the ship control mode
@@ -2937,16 +2964,17 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             graphObserverSampledDraft = sampleDraft;
         }
         long runtimeRevision = graphRuntime.liveValueRevision();
-        if (!observerSampleDue && runtimeRevision == lastGraphRuntimeMirrorRevision) {
+        boolean runtimeChanged = runtimeRevision != lastGraphRuntimeMirrorRevision;
+        if (!observerSampleDue && !runtimeChanged) {
             return;
         }
         Map<String, AdvancedGraphDocument.Value> liveInputs = new LinkedHashMap<>(graphRuntime.liveInputs());
-        Map<String, AdvancedGraphDocument.Value> liveOutputs = new LinkedHashMap<>(graphRuntime.liveOutputs());
+        Map<String, AdvancedGraphDocument.Value> liveOutputs = GraphValueMirrors.merge(
+                graphRuntime.liveOutputs(), graphObserverOutputs, graphRuntime::isInteractiveOutput);
         liveInputs.putAll(graphObserverInputs);
-        liveOutputs.putAll(graphObserverOutputs);
         Map<String, Long> executionPulses = graphRuntime.executionPulses();
         lastGraphRuntimeMirrorRevision = runtimeRevision;
-        if (!graphLiveInputs.equals(liveInputs) || !graphLiveOutputs.equals(liveOutputs)
+        if (runtimeChanged || !graphLiveInputs.equals(liveInputs) || !graphLiveOutputs.equals(liveOutputs)
                 || !graphExecutionPulses.equals(executionPulses)) {
             graphLiveInputs = liveInputs;
             graphLiveOutputs = liveOutputs;
@@ -3267,11 +3295,25 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return activeGraph.copy();
     }
 
+    // Reuse a caller-owned detached copy while the applied graph remains unchanged
+    public AdvancedGraphDocument activeGraphSnapshot(
+            com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache<AdvancedGraphDocument> cache){
+        return cache.get(activeGraph, activeGraph.revision(), activeGraph::copy);
+    }
+
     // Get the hidden Schedule Scratch graph draft. Callers must still pass the
     // Schedule-workspace check before displaying or editing this document.
     public AdvancedGraphDocument getShippingScheduleDraftGraph() {
         hydrateShippingScheduleGraphFromRuntime();
         return shippingScheduleDraftGraph.copy();
+    }
+
+    // Supply known ship docks to destination, parking and refuel input completions
+    public List<String> shippingScheduleDestinationNames(ResourceLocation inputId){
+        if(inputId == null || !Set.of("destination", "park_at", "refuel_if").contains(inputId.getPath())) return List.of();
+        if(level == null || level.isClientSide || level.getServer() == null) return shippingScheduleDestinationNames;
+        return ShipDockRegistry.get(level.getServer()).allIn(level.dimension().location()).stream()
+                .map(ShipDockRegistry.Dock::name).distinct().sorted().limit(4096).toList();
     }
 
     // Get the active Schedule Scratch graph.
@@ -3571,7 +3613,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         graphAliasSaveConflict = false;
         saveControllerManifestNow();
         if (graphAliasSaveConflict) return false;
-        storeGraphOnInsertedLinker(defaultStoredGraphName());
         setChanged();
         sendData();
         return true;
@@ -3802,6 +3843,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         releaseAccDisplays();
         AccDisplayControllerRegistry.unregister(this);
         AdvancedControllerNamedEventBus.unregister(this);
+        closeChatListener();
         shipControlRuntime.close();
         workerRecipeLookup.clear();
         super.remove();
@@ -3815,6 +3857,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         releaseAccDisplays();
         AccDisplayControllerRegistry.unregister(this);
         AdvancedControllerNamedEventBus.unregister(this);
+        closeChatListener();
         shippingScheduleRuntime.suspendForChunkUnload();
         shipControlRuntime.suspendForChunkUnload();
         super.onChunkUnloaded();
@@ -3960,28 +4003,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         graphOwnedBindingSyncQueued = false;
         setChanged();
         sendData();
-    }
-
-    // Store the graph on the inserted linker
-    private boolean storeGraphOnInsertedLinker(String name) {
-        ItemStack linker = getStoredLinker();
-        if (linker.isEmpty()) {
-            return false;
-        }
-        return ContraptionNetworkLinkerData.cloneControllerDraftGraph(
-                linker, controllerManifestId(), name);
-    }
-
-    // Create the default stored graph name
-    private String defaultStoredGraphName() {
-        String name = getCustomName() == null ? "" : getCustomName();
-        return name.isBlank() ? "Advanced Controller Graph" : name;
-    }
-
-    // ACC graph nodes own their selected targets instead of every sibling linker output
-    @Override
-    protected boolean usesLinkerFanout(){
-        return false;
     }
 
     // Apply the graph bindings
@@ -4547,6 +4568,43 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return SimulatedHelper.toGlobalWorldPosition(this, Vec3.atCenterOf(getBlockPos()));
     }
 
+    // Subscribe while this placed or portable controller is loaded
+    private void ensureChatListener(){
+        if(chatSubscription != null || getLevel() == null || getLevel().isClientSide
+                || getLevel().getServer() == null || serverShutdownPrepared || isRemoved()) return;
+        chatSubscription = ServerChatApi.intercept(getLevel().getServer(), message -> {
+            if(isRemoved() || serverShutdownPrepared || !isControllerRuntimeLoaded()) return false;
+            GraphRuntime.ChatCapture captured = graphRuntime.captureChatMessage(activeGraph, message);
+            if(captured.queued()) lastGraphObserverSample = Long.MIN_VALUE;
+            return captured.hidden();
+        });
+    }
+
+    private void closeChatListener(){
+        if(chatSubscription == null) return;
+        chatSubscription.close();
+        chatSubscription = null;
+    }
+
+    public boolean announceGraphTitle(List<String> players, @Nullable UUID playerId, ServerTitleApi.Action action,
+                                      ServerTitleApi.Text text, ServerTitleApi.Animation animation){
+        if(getLevel() == null || getLevel().isClientSide || getLevel().getServer() == null) return false;
+        return ServerTitleApi.send(getLevel().getServer(), players, playerId, action, text, animation);
+    }
+
+    // Apply the server gate and the controller's location before nearby delivery
+    public boolean sendGraphChatMessage(String message, boolean nearby, @Nullable UUID playerId){
+        return sendGraphChatMessage(message, nearby, playerId, List.of());
+    }
+
+    // Explicit player lists allow unattended logging; empty lists retain triggering-player delivery
+    public boolean sendGraphChatMessage(String message, boolean nearby, @Nullable UUID playerId, List<String> players){
+        if(getLevel() == null || getLevel().isClientSide || getLevel().getServer() == null) return false;
+        if(nearby) return ServerChatApi.sendNearby(this, message, CTConfigs.SERVER.allowNearbyChatBroadcast.get());
+        if(players != null && !players.isEmpty()) return ServerChatApi.sendToPlayers(getLevel().getServer(), players, message);
+        return ServerChatApi.send(getLevel().getServer(), playerId, message, false, false);
+    }
+
     // Receive the named controller event
     public void receiveNamedControllerEvent(String name, AdvancedGraphDocument.Value data) {
         graphRuntime.enqueueNamedControllerEvent(name,
@@ -5081,6 +5139,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Deactivate the portable outputs
     @Override
     public void deactivatePortableOutputs() {
+        closeChatListener();
         clearMouseInputs();
         super.deactivatePortableOutputs();
     }
@@ -5241,6 +5300,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 case "toggle" -> value != null && "boolean".equals(value.type()) && value.asBoolean()
                         && handleHudToggleInteraction(nodeId, interactionId);
                 case "slider" -> handleHudSliderInteraction(nodeId, interactionId, elm, value);
+                case "text_input" -> value != null && "string".equals(value.type())
+                        && value.asString().length() <= AdvancedHudInteractions.MAX_TEXT_INPUT_LENGTH
+                        && handleHudInteraction(nodeId, interactionId, value);
                 default -> false;
             };
         }
@@ -5446,6 +5508,16 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return graphRuntime.previewInput(graph, node, port);
     }
 
+    // Refresh native input sampling without replacing the applied graph's compiled program
+    public void beginActiveGraphPreview(){
+        graphRuntime.beginPreviewSample(activeGraph);
+    }
+
+    // Resolve detached node ids through the controller-owned compiled graph
+    public AdvancedGraphDocument.Value previewActiveGraphInput(AdvancedGraphDocument.Node node, String port){
+        return graphRuntime.previewInput(activeGraph, node, port);
+    }
+
     // Get the preview graph output
     public AdvancedGraphDocument.Value previewGraphOutput(AdvancedGraphDocument graph, AdvancedGraphDocument.Node node, String port) {
         return graphRuntime.previewOutput(graph, node, port);
@@ -5550,7 +5622,12 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             accDisplayStructureRevision = graphRevision;
         }
         boolean graphChanged = graphRevision != lastAccDisplayGraphRevision;
-        boolean refreshTargets = graphChanged || accDisplayTargetsDirty;
+        long gameTime = level.getGameTime();
+        boolean retryTargets = accDisplayTargetsUnavailable
+                && (lastAccDisplayTargetRetryTick == Long.MIN_VALUE
+                || gameTime < lastAccDisplayTargetRetryTick
+                || gameTime - lastAccDisplayTargetRetryTick >= ACC_DISPLAY_TARGET_RETRY_INTERVAL);
+        boolean refreshTargets = graphChanged || accDisplayTargetsDirty || retryTargets;
 
         if (refreshTargets) {
             Set<AccDisplayBlockEntity> currentTargets = directAccDisplayTargets();
@@ -5562,9 +5639,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             publishedAccDisplays.clear();
             publishedAccDisplays.addAll(currentTargets);
             accDisplayTargetsDirty = false;
+            lastAccDisplayTargetRetryTick = gameTime;
         }
 
-        long gameTime = level.getGameTime();
         boolean updateDue = lastAccDisplayUpdateTick == Long.MIN_VALUE
                 || gameTime < lastAccDisplayUpdateTick
                 || gameTime - lastAccDisplayUpdateTick >= ACC_DISPLAY_UPDATE_INTERVAL;
@@ -5594,6 +5671,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         for (AccDisplayBlockEntity display : List.copyOf(publishedAccDisplays)) {
             if (display == null || display.isRemoved()) {
                 publishedAccDisplays.remove(display);
+                accDisplayTargetsDirty = true;
                 continue;
             }
             display.receiveControllerUpdate(this, inputs, outputs);
@@ -5617,8 +5695,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                     || !AccDisplayBlockEntity.contentNodeVisible(node, inputs, outputs)) {
                 continue;
             }
-            UniversalDisplayAdapterBlockEntity adapter = displayAdapter(
-                    node.data().getCompound("TargetData"));
+            UniversalDisplayAdapterBlockEntity adapter = displayAdapter(node);
             if (adapter == null) {
                 continue;
             }
@@ -5669,13 +5746,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     }
 
     // Get the display adapter
-    private @Nullable UniversalDisplayAdapterBlockEntity displayAdapter(CompoundTag targetData) {
-        ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(targetData);
-        if (target == null || target.blockPos() == null) {
-            return null;
-        }
-        BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
-                level, target.subLevelId(), target.blockPos());
+    private @Nullable UniversalDisplayAdapterBlockEntity displayAdapter(AdvancedGraphDocument.Node node) {
+        TargetAccess target = cachedGraphTarget(node);
+        if(target == null) return null;
+        BlockEntity blockEntity = target.level().getBlockEntity(target.pos());
         return blockEntity instanceof UniversalDisplayAdapterBlockEntity adapter
                 ? adapter : null;
     }
@@ -5683,6 +5757,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Get the direct ACC display targets
     private Set<AccDisplayBlockEntity> directAccDisplayTargets() {
         Set<AccDisplayBlockEntity> targets = Collections.newSetFromMap(new IdentityHashMap<>());
+        accDisplayTargetsUnavailable = false;
         for (AdvancedGraphDocument.Node node : activeGraph.nodes()) {
             if (node == null || !node.type().startsWith("acc_display_")) {
                 continue;
@@ -5692,9 +5767,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             if (target == null || target.blockPos() == null) {
                 continue;
             }
-            BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
-                    level, target.subLevelId(), target.blockPos());
-            if (!(blockEntity instanceof AccDisplayBlockEntity display)) {
+            TargetAccess access = cachedGraphTarget(node);
+            BlockEntity blockEntity = access == null ? null : access.level().getBlockEntity(access.pos());
+            if (!(blockEntity instanceof AccDisplayBlockEntity display) || display.isRemoved()) {
+                if(blockEntity == null || blockEntity.isRemoved()) accDisplayTargetsUnavailable = true;
                 continue;
             }
             AccDisplayBlockEntity root = display.networkRoot();
@@ -6159,7 +6235,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             AdvancedGraphDocument.Value val = values.apply(port);
             if (GraphSignalRange.REDSTONE_SIGNAL_PORT.equals(port) && val != null
                     && !Double.isFinite(val.asNumber())) {
-                val = AdvancedGraphDocument.Value.number(GraphSignalRange.outputStrength(val.asNumber()));
+                val = AdvancedGraphDocument.Value.number(GraphSignalRange.outputStrength(node, val.asNumber()));
             }
             if (!isSafeGraphWriteValue(val)) {
                 return false;
@@ -6194,6 +6270,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 }
                 safeValues.put(GRAPH_RAW_DIRECT_SIGNAL_PORT, rawSignal);
             }
+        }
+        if("set_block_data".equals(node.type()) && safePorts.contains("direct_signal")){
+            safeValues.put("direct_signal", GraphSignalRange.targetValue(
+                    node, "direct_signal", safeValues.get("direct_signal")));
         }
         activePorts = safePorts;
         values = safeValues::get;
@@ -6303,7 +6383,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             if (redstoneTarget != null && redstoneTarget.isBound()) {
                 ControllerRedstoneCompat.writeRedstoneTarget(level, redstoneTarget, null,
                         graphDirectSignalSourceId(node),
-                        GraphSignalRange.outputStrength(values.apply(GraphSignalRange.REDSTONE_SIGNAL_PORT).asNumber()));
+                        GraphSignalRange.outputStrength(node, values.apply(GraphSignalRange.REDSTONE_SIGNAL_PORT).asNumber()));
                 changed = true;
             }
         }
@@ -8034,6 +8114,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                     node.data().remove("SourceData");
                     node.data().remove("Source");
                     node.data().remove("SourceLabel");
+                    node.data().remove("SourceFace");
                     node.data().getCompound("Defaults").remove("source");
                     changed = true;
                 }else if(!currentSource.equals(source)){
@@ -8157,6 +8238,13 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private static void remapGraphTargetSelection(AdvancedGraphDocument.Node node,
             ControllerDiscoveryNode stale, ControllerDiscoveryNode current){
         String prevId = stale.nodeId(), nextId = current.nodeId();
+        CompoundTag defaults = node.data().getCompound("Defaults");
+        for(String port : List.of("target", "source")){
+            CompoundTag entry = defaults.getCompound(port);
+            if(prevId.equals(entry.getCompound("Payload").getString("NodeId"))){
+                entry.put("Payload", current.toTag());
+            }
+        }
         if(prevId.equals(nextId)) return;
         if(!node.data().getList(AdvancedGraphCatalog.DATA_TARGETS_TAG, Tag.TAG_COMPOUND).isEmpty()){
             CompoundTag portIds = node.data().getCompound("DataTargetPortIds");
@@ -8178,7 +8266,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 if(prevId.equals(binding.getString("Target"))) binding.putString("Target", nextId);
             }
         }
-        CompoundTag defaults = node.data().getCompound("Defaults");
         for(String port : List.of("target", "source")){
             CompoundTag entry = defaults.getCompound(port);
             if(prevId.equals(entry.getCompound("Payload").getString("Value"))){
@@ -8195,6 +8282,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if(current == null) return null;
         Direction face = Direction.byName(node.data().getCompound(AdvancedGraphCatalog.DATA_TARGET_FACES_TAG)
                 .getString(stale.nodeId()));
+        if(face == null && stale.nodeId().equals(node.data().getString("Source"))){
+            face = Direction.byName(node.data().getString("SourceFace"));
+        }
         if(face == null && stale.nodeId().equals(node.data().getString("Target"))) face = configuredDirection(node, "face");
         List<ContraptionNetworkLinkerData.FaceOption> prevFaces = ContraptionNetworkLinkerData.faceOptionsForNode(stale);
         if(face == null && prevFaces.size() == 1) face = prevFaces.getFirst().face();
@@ -9330,7 +9420,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             }
         }
         UUID subLevelId = SimulatedHelper.getContainingSubLevelId(this);
-        if (snapshot == null || subLevelId == null || scmPersistenceId == null) {
+        if (snapshot == null || subLevelId == null || scmPersistenceId == null
+                || !isMountedOnShipControlModule()) {
             return;
         }
         if (ControllerSqliteStore.saveScmPersistence(
@@ -9345,10 +9436,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return SimulatedHelper.getContainingSubLevelId(this) != null;
     }
 
-    // Restore a replacement SCM only when the sublevel has exactly one retained SCM state.
+    // Restore settings only after a real module has been placed on the retained hull
     private void restoreScmPersistenceIfAvailable() {
         if (scmPersistenceRestoreAttempted || getLevel() == null || getLevel().isClientSide
-                || !controllerManifestId().isBlank()) {
+                || !controllerManifestId().isBlank() || !isMountedOnShipControlModule()) {
             return;
         }
         UUID subLevelId = SimulatedHelper.getContainingSubLevelId(this);
@@ -9371,7 +9462,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Persist a surviving SCM when only its Sable sublevel id has changed.
     private void syncScmPersistenceSubLevel() {
-        if (getLevel() == null || getLevel().isClientSide || controllerManifestId().isBlank()) {
+        if (getLevel() == null || getLevel().isClientSide || controllerManifestId().isBlank()
+                || !isMountedOnShipControlModule()) {
             return;
         }
         UUID subLevelId = SimulatedHelper.getContainingSubLevelId(this);
@@ -9387,6 +9479,14 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
+
+    // Keep the current placers with their physical mount when a retained program is recovered
+    @Override
+    protected void writeControllerPhysicalState(CompoundTag tag, HolderLookup.Provider provider){
+        super.writeControllerPhysicalState(tag, provider);
+        if(shipPermissionPlacerId != null) tag.putUUID(SHIP_PERMISSION_PLACER_TAG, shipPermissionPlacerId);
+        if(shipPermissionModulePlacerId != null) tag.putUUID(SHIP_PERMISSION_MODULE_PLACER_TAG, shipPermissionModulePlacerId);
+    }
 
     // Write the additional controller manifest data
     @Override
@@ -9416,8 +9516,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         tag.putString(SHIP_CONTROL_MODE_TAG,
                 ScmControlModeRegistry.serialize(shipControlMode.id()));
         tag.put(SCM_CONFIGURATION_PROFILE_TAG, scmConfigurationProfile.toTag());
-        if (shipPermissionPlacerId != null) tag.putUUID(SHIP_PERMISSION_PLACER_TAG, shipPermissionPlacerId);
-        if (shipPermissionModulePlacerId != null) tag.putUUID(SHIP_PERMISSION_MODULE_PLACER_TAG, shipPermissionModulePlacerId);
         shippingScheduleRuntime.write(tag, provider);
         shipControlRuntime.writePrecalculatedRouteCache(tag);
         if (pendingServerShutdownSnapshot != null) {
@@ -9623,6 +9721,11 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         tag.remove("ShipLogisticsRuns");
         tag.remove("WirelessStockEndpoints");
         if (clientPacket) {
+            ListTag destinations = new ListTag();
+            for(String name : shippingScheduleDestinationNames(ResourceLocation.fromNamespaceAndPath("create", "destination"))){
+                destinations.add(net.minecraft.nbt.StringTag.valueOf(name));
+            }
+            tag.put("ShippingScheduleDestinations", destinations);
             tag.remove("AdvancedDraftGraph");
             tag.remove("AdvancedActiveGraph");
             tag.remove(SHIPPING_SCHEDULE_DRAFT_GRAPH_TAG);
@@ -9670,6 +9773,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             shippingScheduleActiveGraph = retainedClientScheduleActive;
         }
         if (clientPacket) {
+            shippingScheduleDestinationNames = tag.getList("ShippingScheduleDestinations", Tag.TAG_STRING)
+                    .stream().map(Tag::getAsString).toList();
             shipInitializationProgressVisible = tag.getBoolean(SHIP_INITIALIZATION_VISIBLE_TAG);
             shipInitializationProgressPercent = Mth.clamp(
                     tag.getInt(SHIP_INITIALIZATION_PERCENT_TAG), 0, 100);

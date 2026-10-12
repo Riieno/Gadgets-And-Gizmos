@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:worker_pod",
+  "properties": {
+    "sable:mass": 1.0
+  }
+}

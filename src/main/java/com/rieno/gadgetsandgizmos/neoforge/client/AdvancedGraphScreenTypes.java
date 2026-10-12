@@ -243,18 +243,6 @@ enum InspectorDivider {
     SCHEDULE_PROPERTIES
 }
 
-// Define the HUD designer color control values
-enum HudDesignerColorControl {
-    HUE,
-    SATURATION,
-    VALUE,
-    ALPHA
-}
-
-// Store the HUD designer hsv
-record HudDesignerHsv(int rgb, float hue, float saturation, float value) {
-}
-
 // Store the UI rect
 record UiRect(int x, int y, int width, int height) {
     // Get the right

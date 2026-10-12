@@ -1213,6 +1213,47 @@ public final class ShippingScheduleGraph {
         return true;
     }
 
+    // Replace a native input while retaining the Scratch block identity and condition columns
+    public static boolean setScheduleInput(AdvancedGraphDocument graph, String nodeId, IScheduleInput input,
+                                          HolderLookup.Provider registries){
+        AdvancedGraphDocument.Node selected = node(graph, nodeId);
+        if(selected == null || input == null) return false;
+        if(isDetachedCondition(selected)){
+            if(!(input instanceof ScheduleWaitCondition condition)) return false;
+            selected.data().put(DETACHED_CONDITION_TAG, condition.write(registries));
+            replaceInputNode(graph, selected, conditionBlockType(input.getId()), title(input.getId()));
+            return true;
+        }
+        AdvancedGraphDocument.Node owner = instructionNode(graph, nodeId);
+        if(owner == null || !owner.data().contains(ENTRY_TAG)) return false;
+        ScheduleEntry entry = ScheduleEntry.fromTag(registries, owner.data().getCompound(ENTRY_TAG));
+        if(entry == null) return false;
+        if(isConditionBlock(selected.type())){
+            if(!(input instanceof ScheduleWaitCondition condition)) return false;
+            int group = selected.data().getInt(CONDITION_GROUP_TAG);
+            int idx = selected.data().getInt(CONDITION_INDEX_TAG);
+            if(group < 0 || group >= entry.conditions.size() || idx < 0 || idx >= entry.conditions.get(group).size()) return false;
+            entry.conditions.get(group).set(idx, condition);
+        }else{
+            if(!(input instanceof ScheduleInstruction instruction)) return false;
+            entry.instruction = instruction;
+            owner = replaceInputNode(graph, owner, instructionBlockType(input.getId()), title(input.getId()));
+        }
+        owner.data().put(ENTRY_TAG, entry.write(registries));
+        rebuildConditionBlocks(graph, owner, entry, registries);
+        reflowInstructionStack(graph, owner.id());
+        return true;
+    }
+
+    // Retain graph placement and wiring when a player changes an input's native type
+    private static AdvancedGraphDocument.Node replaceInputNode(AdvancedGraphDocument graph,
+            AdvancedGraphDocument.Node prev, String type, String label){
+        AdvancedGraphDocument.Node next = new AdvancedGraphDocument.Node(
+                prev.id(), type, label, prev.x(), prev.y(), prev.data());
+        graph.nodes().set(graph.nodes().indexOf(prev), next);
+        return next;
+    }
+
     // Resolve the selected entry member after its parent ScheduleEntry has been parsed.
     private static IScheduleInput scheduleInput(ScheduleEntry entry, AdvancedGraphDocument.Node node) {
         if (entry == null || entry.instruction == null || node == null) return null;
@@ -1250,7 +1291,7 @@ public final class ShippingScheduleGraph {
         }
         if (isConditionBlock(type) && type.endsWith("player_count")) {
             properties.putIfAbsent("Count", "1");
-            properties.putIfAbsent("Exact", "1");
+            properties.putIfAbsent("Exact", "0");
         }
     }
 
@@ -1261,7 +1302,7 @@ public final class ShippingScheduleGraph {
         }
         if (node != null && node.type().endsWith("player_count")) {
             if ("Count".equals(key)) data.putInt(key, 1);
-            if ("Exact".equals(key)) data.putInt(key, 1);
+            if ("Exact".equals(key)) data.putInt(key, 0);
         }
     }
 

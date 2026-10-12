@@ -71,6 +71,6 @@ public final class AccDisplayClientScreens {
         Minecraft.getInstance().setScreen(new AccDisplayModeScreen(
                 MenuConfigTarget.of(display.getBlockPos(),
                         SimulatedHelper.getContainingSubLevelId(display)),
-                display.displayMode(), display.displayFrame()));
+                display.displayMode(), display.displayFrame(), display.linkedTextScale()));
     }
 }

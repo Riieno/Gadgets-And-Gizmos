@@ -17,6 +17,9 @@ import com.rieno.gadgetsandgizmos.lib.view.ControlledViewSource;
 import com.rieno.gadgetsandgizmos.lib.view.ViewControlState;
 import com.rieno.gadgetsandgizmos.lib.view.ViewRayBudget;
 import com.rieno.gadgetsandgizmos.lib.view.ViewTransforms;
+import com.rieno.gadgetsandgizmos.lib.view.ViewTargetLock;
+import com.rieno.gadgetsandgizmos.lib.view.ViewTargetFraming;
+import com.rieno.gadgetsandgizmos.lib.view.ViewTrackingTargets;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
@@ -29,6 +32,7 @@ import net.minecraft.nbt.StringTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.joml.Quaterniond;
 
@@ -58,11 +62,20 @@ public final class CameraBlockEntity extends SmartBlockEntity implements Control
     private double graphPan;
     private double graphTilt;
     private boolean flashlight;
+    private boolean autoTracking;
+    private Boolean overrideTracking;
+    private boolean lockTarget;
+    private Boolean overrideTargetLock;
+    private final ViewTargetLock<ViewTrackingTargets.Reference> targetLock = new ViewTargetLock<>();
+    private boolean tracking;
+    private AABB trackingBounds;
+    private double patrolFov = 70;
     private ProjectedLightSource floodlight;
     // Synchronize exclusive mouse ownership without changing the configured mode
     private boolean controlled;
     // Cache all samples once per game tick
     private long sampledTick = Long.MIN_VALUE;
+    private long raySampleTick = Long.MIN_VALUE;
     private List<ViewRaycast.Result> rays = List.of();
     private ViewRaycast.Result nearest = ViewRaycast.Result.miss(Vec3.ZERO, 0);
     private Quaterniond shapeMount;
@@ -89,7 +102,10 @@ public final class CameraBlockEntity extends SmartBlockEntity implements Control
     @Override
     public void tick(){
         super.tick();
-        if(level != null && !level.isClientSide) sampleRays();
+        if(level != null && !level.isClientSide){
+            sampleRays();
+            updateTracking();
+        }
         updateViewEffects(1);
     }
     // Publish ordinary block lighting to every player and secondary camera renderer
@@ -108,12 +124,27 @@ public final class CameraBlockEntity extends SmartBlockEntity implements Control
     // Apply graph configuration while a remote viewer retains mouse ownership
     public void configure(double length, double count, ViewRaycast.Filter filter, ViewRig.Mode mode,
                           ViewRig.Orientation orientation, double pan, double tilt){
+        configure(length, count, filter, mode, orientation, pan, tilt, autoTracking);
+    }
+    // Retain an explicit display tracking choice until the graph changes its tracking default
+    public void configure(double length, double count, ViewRaycast.Filter filter, ViewRig.Mode mode,
+                          ViewRig.Orientation orientation, double pan, double tilt, boolean autoTracking){
+        configure(length, count, filter, mode, orientation, pan, tilt, autoTracking, lockTarget);
+    }
+    // Let graph defaults select dynamic acquisition without resetting an unchanged display override
+    public void configure(double length, double count, ViewRaycast.Filter filter, ViewRig.Mode mode,
+                          ViewRig.Orientation orientation, double pan, double tilt, boolean autoTracking, boolean lockTarget){
         double nextLength = Double.isFinite(length) ? Math.clamp(length, 0, ViewRaycast.MAX_LENGTH) : 0;
         double nextCount = Double.isFinite(count) ? Math.clamp(count, 0, ViewRayBudget.MAX_PER_SECOND) : 0;
         double nextPan = Double.isFinite(pan) ? Math.clamp(pan, -180, 180) : 0;
         double nextTilt = Double.isFinite(tilt) ? Math.clamp(tilt, -135, 135) : 0;
         boolean changed = maxRayLength != nextLength || raysPerSecond != nextCount || !this.filter.equals(filter)
-                || this.mode != mode || this.orientation != orientation;
+                || this.mode != mode || this.orientation != orientation || this.autoTracking != autoTracking
+                || this.lockTarget != lockTarget;
+        if(this.autoTracking != autoTracking) overrideTracking = null;
+        this.autoTracking = autoTracking;
+        if(this.lockTarget != lockTarget) overrideTargetLock = null;
+        this.lockTarget = lockTarget;
         maxRayLength = nextLength;
         raysPerSecond = nextCount;
         this.filter = filter;
@@ -155,25 +186,27 @@ public final class CameraBlockEntity extends SmartBlockEntity implements Control
     }
     // Resolve the visual stand and camera transformations
     public ViewRig.Joints joints(float partialTick){
+        ViewRig.Angles angles = viewAngles(partialTick);
+        if(orientation == ViewRig.Orientation.LOCAL) return ViewRig.joints(angles);
         Quaterniond mount = ViewTransforms.orientation(this, mountOrientation(), partialTick);
-        ViewRig.Angles angles = ViewRig.angles(controlled ? ViewRig.Mode.MANUAL : effectiveMode(),
-                level.getGameTime() + partialTick, rig.pan(), rig.tilt());
         Quaterniond world = ViewRig.worldOrientation(mount, orientation, angles);
-        if(orientation == ViewRig.Orientation.LOCAL){
-            return ViewRig.joints(angles);
-        }
         return ViewRig.joints(mount, world);
     }
     // Resolve the live lens using the same joint transform as the partial renderer
     @Override
     public ViewPose viewPose(float partialTick){
         Quaterniond mount = ViewTransforms.orientation(this, mountOrientation(), partialTick);
-        ViewRig.Angles angles = ViewRig.angles(controlled ? ViewRig.Mode.MANUAL : effectiveMode(),
-                level.getGameTime() + partialTick, rig.pan(), rig.tilt());
+        ViewRig.Angles angles = viewAngles(partialTick);
         Quaterniond world = ViewRig.worldOrientation(mount, orientation, angles);
         Vec3 pivot = ViewTransforms.position(this, getBlockPos().getCenter(), partialTick);
         var lens = world.transform(new org.joml.Vector3d(0, 0, -5.1D / 16.0D));
         return new ViewPose(pivot.add(lens.x, lens.y, lens.z), world, rig.fov());
+    }
+    // Fit the same tracked target when a display or tablet requests a portrait capture
+    @Override
+    public ViewPose viewPose(float partialTick, double aspect){
+        ViewPose pose = viewPose(partialTick);
+        return tracking && !controlled && trackingBounds != null ? ViewTargetFraming.fit(pose, trackingBounds, aspect) : pose;
     }
     // Forward remote mouse motion to Manual aiming
     @Override
@@ -191,8 +224,9 @@ public final class CameraBlockEntity extends SmartBlockEntity implements Control
     @Override
     public void setViewControlled(boolean controlled){
         if(controlled && !this.controlled){
-            ViewRig.Angles angles = ViewRig.angles(effectiveMode(), level.getGameTime(), rig.pan(), rig.tilt());
+            ViewRig.Angles angles = viewAngles(0);
             rig.aim(angles.pan(), angles.tilt());
+            stopTracking();
         }
         this.controlled = controlled;
         if(isViewAvailable()) sendData();
@@ -202,20 +236,37 @@ public final class CameraBlockEntity extends SmartBlockEntity implements Control
     public boolean isViewAvailable(){ return level != null && !isRemoved(); }
     // Retain tablet settings until the graph changes its configured mode
     private ViewRig.Mode effectiveMode(){ return overrideMode == null ? mode : overrideMode; }
+    // Apply explicit aim while tracking without changing the configured sentry mode
+    private ViewRig.Angles viewAngles(float partialTick){
+        if(tracking && !controlled) return new ViewRig.Angles(rig.pan(), rig.tilt());
+        return ViewRig.angles(controlled ? ViewRig.Mode.MANUAL : effectiveMode(),
+                level.getGameTime() + partialTick, rig.pan(), rig.tilt());
+    }
+    private boolean effectiveTracking(){ return overrideTracking == null ? autoTracking : overrideTracking; }
+    private boolean effectiveTargetLock(){ return overrideTargetLock == null ? lockTarget : overrideTargetLock; }
     // Expose the same settings to the tablet and projected display
     @Override
-    public ViewControlState viewControlState(){ return new ViewControlState(effectiveMode(), rig.fov(), flashlight); }
+    public ViewControlState viewControlState(){
+        return new ViewControlState(effectiveMode(), rig.fov(), flashlight, effectiveTracking(), effectiveTargetLock());
+    }
     // Keep explicit remote settings independent of unchanged graph defaults
     @Override
     public void applyViewSettings(ViewControlState state){
         if(state.equals(viewControlState()) && overrideMode == state.mode()) return;
         if(state.mode() == ViewRig.Mode.MANUAL && effectiveMode() != ViewRig.Mode.MANUAL){
-            ViewRig.Angles angles = ViewRig.angles(effectiveMode(), level.getGameTime(), rig.pan(), rig.tilt());
+            ViewRig.Angles angles = viewAngles(0);
             rig.aim(angles.pan(), angles.tilt());
         }
+        boolean changedFov = state.fov() != rig.fov();
+        if(state.mode() != ViewRig.Mode.SENTRY || !state.autoTracking()) stopTracking();
         overrideMode = state.mode();
-        rig.setFov(state.fov());
+        if(changedFov){
+            rig.setFov(state.fov());
+            if(tracking) patrolFov = rig.fov();
+        }
         flashlight = state.flashlight();
+        overrideTracking = state.autoTracking();
+        overrideTargetLock = state.lockTarget();
         setChanged();
         sendData();
     }
@@ -247,6 +298,7 @@ public final class CameraBlockEntity extends SmartBlockEntity implements Control
         sampledTick = level.getGameTime();
         int count = rayBudget.next(sampledTick, raysPerSecond);
         if(count == 0 && raysPerSecond > 0) return;
+        raySampleTick = sampledTick;
         ViewPose pose = viewPose(0);
         nearest = ViewRaycast.Result.miss(pose.position().add(pose.forward().scale(maxRayLength)), maxRayLength);
         List<ViewRaycast.Result> samples = new ArrayList<>();
@@ -258,6 +310,48 @@ public final class CameraBlockEntity extends SmartBlockEntity implements Control
         }
         rays = List.copyOf(samples);
     }
+    // Reconsider the nearest fresh hit unless the user has locked the current target
+    private void updateTracking(){
+        if(controlled || effectiveMode() != ViewRig.Mode.SENTRY || !effectiveTracking()){
+            if(stopTracking()) sendData();
+            return;
+        }
+        ViewReference self = ViewReference.of(this);
+        var excluded = self.subLevelId();
+        boolean fresh = raySampleTick == level.getGameTime() && !rays.isEmpty();
+        var target = targetLock.update(viewPose(0).position(), maxRayLength,
+                () -> fresh
+                        ? ViewTrackingTargets.acquire(level, viewPose(0), maxRayLength, filter, self, rays) : List.of(),
+                ref -> ViewTrackingTargets.resolve(level, ref, filter, excluded), effectiveTargetLock() || !fresh);
+        if(target == null){
+            if(stopTracking()) sendData();
+            return;
+        }
+        boolean changed = !tracking || !target.bounds().equals(trackingBounds);
+        if(!tracking) patrolFov = rig.fov();
+        double prevPan = rig.pan();
+        double prevTilt = rig.tilt();
+        double prevFov = rig.fov();
+        Vec3 pivot = ViewTransforms.position(this, getBlockPos().getCenter(), 0);
+        Quaterniond mount = ViewTransforms.orientation(this, mountOrientation(), 0);
+        ViewRig.Angles aim = ViewTargetFraming.aim(pivot, target.bounds().getCenter(), mount, orientation);
+        rig.track(aim);
+        tracking = true;
+        trackingBounds = target.bounds();
+        double fov = ViewTargetFraming.fieldOfView(viewPose(0), target.bounds(), 1);
+        rig.frameTarget(fov);
+        changed |= prevPan != rig.pan() || prevTilt != rig.tilt() || prevFov != rig.fov();
+        if(changed) sendData();
+    }
+    // Resume the patrol with the user's retained zoom after releasing a target
+    private boolean stopTracking(){
+        targetLock.clear();
+        if(!tracking) return false;
+        tracking = false;
+        trackingBounds = null;
+        rig.setFov(patrolFov);
+        return true;
+    }
     // Save controls and configuration without persisting transient ray results
     @Override
     protected void write(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket){
@@ -266,12 +360,20 @@ public final class CameraBlockEntity extends SmartBlockEntity implements Control
         tag.putString("CameraOrientation", orientation.name());
         if(overrideMode != null) tag.putString("CameraUiMode", overrideMode.name());
         tag.putBoolean("CameraFlashlight", flashlight);
-        if(clientPacket) tag.putBoolean("CameraControlled", controlled);
+        tag.putBoolean("CameraAutoTracking", autoTracking);
+        tag.putBoolean("CameraLockTarget", lockTarget);
+        if(overrideTracking != null) tag.putBoolean("CameraUiTracking", overrideTracking);
+        if(overrideTargetLock != null) tag.putBoolean("CameraUiTargetLock", overrideTargetLock);
+        if(clientPacket){
+            tag.putBoolean("CameraControlled", controlled);
+            tag.putBoolean("CameraTracking", tracking);
+            if(tracking && trackingBounds != null) tag.put("CameraTrackedBounds", ViewTargetFraming.boundsTag(trackingBounds));
+        }
         tag.putDouble("CameraPan", rig.pan());
         tag.putDouble("CameraTilt", rig.tilt());
         tag.putDouble("CameraGraphPan", graphPan);
         tag.putDouble("CameraGraphTilt", graphTilt);
-        tag.putDouble("CameraFov", rig.fov());
+        tag.putDouble("CameraFov", !clientPacket && tracking ? patrolFov : rig.fov());
         tag.putDouble("MaxRayLength", maxRayLength);
         tag.putDouble("RaysPerSecond", raysPerSecond);
         tag.putBoolean("FilterAllowlist", filter.allowlist());
@@ -284,6 +386,13 @@ public final class CameraBlockEntity extends SmartBlockEntity implements Control
     protected void read(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket){
         super.read(tag, provider, clientPacket);
         controlled = clientPacket && tag.getBoolean("CameraControlled");
+        tracking = clientPacket && tag.getBoolean("CameraTracking");
+        trackingBounds = tracking ? ViewTargetFraming.boundsFromTag(tag.getCompound("CameraTrackedBounds")) : null;
+        if(!clientPacket) targetLock.clear();
+        autoTracking = tag.getBoolean("CameraAutoTracking");
+        overrideTracking = tag.contains("CameraUiTracking") ? tag.getBoolean("CameraUiTracking") : null;
+        lockTarget = tag.getBoolean("CameraLockTarget");
+        overrideTargetLock = tag.contains("CameraUiTargetLock") ? tag.getBoolean("CameraUiTargetLock") : null;
         try{ mode = ViewRig.Mode.valueOf(tag.getString("CameraMode")); }
         catch(IllegalArgumentException err){ mode = ViewRig.Mode.LOCKED; }
         try{ orientation = ViewRig.Orientation.valueOf(tag.getString("CameraOrientation")); }
@@ -291,7 +400,8 @@ public final class CameraBlockEntity extends SmartBlockEntity implements Control
         try{ overrideMode = ViewRig.Mode.valueOf(tag.getString("CameraUiMode")); }
         catch(IllegalArgumentException err){ overrideMode = null; }
         flashlight = tag.getBoolean("CameraFlashlight");
-        rig.aim(tag.getDouble("CameraPan"), tag.getDouble("CameraTilt"));
+        if(tracking) rig.track(new ViewRig.Angles(tag.getDouble("CameraPan"), tag.getDouble("CameraTilt")));
+        else rig.aim(tag.getDouble("CameraPan"), tag.getDouble("CameraTilt"));
         graphPan = tag.contains("CameraGraphPan") ? tag.getDouble("CameraGraphPan") : rig.pan();
         graphTilt = tag.contains("CameraGraphTilt") ? tag.getDouble("CameraGraphTilt") : rig.tilt();
         rig.setFov(tag.contains("CameraFov") ? tag.getDouble("CameraFov") : 70);

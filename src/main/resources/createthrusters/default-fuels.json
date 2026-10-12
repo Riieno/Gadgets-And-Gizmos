@@ -355,6 +355,11 @@
             "propulsion": 1.5,
             "particle": "default"
         },
+        "createthrusters:oxidized_solid_fuel": {
+            "burn_time": 3200,
+            "propulsion": 1.5,
+            "particle": "default"
+        },
         "createthrusters:oxidized_creative_blaze_cake": {
             "infinite_burn": true,
             "propulsion": 1.5,

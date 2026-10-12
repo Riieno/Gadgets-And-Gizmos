@@ -12,6 +12,7 @@ import com.simibubi.create.content.equipment.wrench.WrenchItem;
 import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlock;
 import com.rieno.gadgetsandgizmos.content.PhysicsStaffItem;
 import com.rieno.gadgetsandgizmos.content.ShipPermissions;
+import com.rieno.gadgetsandgizmos.lib.access.ProtectionBypass;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.rieno.gadgetsandgizmos.lib.scm.ShipPermission;
 import com.rieno.gadgetsandgizmos.lib.scm.ShipPermissionManager;
@@ -42,8 +43,9 @@ public final class ShipPermissionEvents {
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void rightClick(PlayerInteractEvent.RightClickBlock evt){
         if(!(evt.getEntity() instanceof ServerPlayer player)) return;
+        if(!ShipPermissionManager.isEnabled(player.server)) return;
         var shipId = SableLevelApi.containingId(evt.getLevel(), evt.getPos());
-        if(!ShipPermissionManager.get(player.server).isClaimed(shipId)) return;
+        if(ShipPermissionManager.get(player.server).isOpen(shipId)) return;
         if(evt.getItemStack().getItem() instanceof WrenchItem){
             ShipPermission permission = player.isShiftKeyDown()
                     ? ShipPermission.DESTROY : ShipPermission.INTERACT;
@@ -73,7 +75,7 @@ public final class ShipPermissionEvents {
                 return;
             }
         }else if(ShipPermissions.allows(player, evt.getLevel(), evt.getPos(), ShipPermission.INTERACT)){
-            if(!evt.getItemStack().isEmpty()) evt.setUseItem(TriState.FALSE);
+            if(!evt.getItemStack().isEmpty() && !ProtectionBypass.isEnabled(player)) evt.setUseItem(TriState.FALSE);
             return;
         }
         evt.setCancellationResult(InteractionResult.FAIL);

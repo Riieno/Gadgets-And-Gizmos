@@ -702,6 +702,12 @@ public final class PhotomancyBlueprintCompat {
                 }
                 poses.add(portablePose);
             }
+            var geometryFrame = bearing.calibrationFrame();
+            if(geometryFrame != null){
+                Vec3 origin = captureShipPosition(ctx, map.rootSubLevelId(), geometryFrame.origin(), frames);
+                if(origin == null) return null;
+                geometryFrame = geometryFrame.withOrigin(origin);
+            }
             bearings.add(new ShipControlMap.BearingUnit(
                     bearing.index(),
                     reference.subLevelId(),
@@ -713,7 +719,7 @@ public final class PhotomancyBlueprintCompat {
                     bearing.maxX(),
                     bearing.minZ(),
                     bearing.maxZ(),
-                    poses));
+                    poses, geometryFrame));
         }
 
         List<ShipControlMap.Seat> seats = new ArrayList<>();
@@ -870,6 +876,12 @@ public final class PhotomancyBlueprintCompat {
                 }
                 poses.add(placedPose);
             }
+            var geometryFrame = bearing.calibrationFrame();
+            if(geometryFrame != null){
+                Vec3 origin = placeShipPosition(ctx, map.rootSubLevelId(), geometryFrame.origin(), frames);
+                if(origin == null) return null;
+                geometryFrame = geometryFrame.withOrigin(origin);
+            }
             bearings.add(new ShipControlMap.BearingUnit(
                     bearing.index(),
                     reference.subLevelId(),
@@ -881,7 +893,7 @@ public final class PhotomancyBlueprintCompat {
                     bearing.maxX(),
                     bearing.minZ(),
                     bearing.maxZ(),
-                    poses));
+                    poses, geometryFrame));
         }
 
         List<ShipControlMap.Seat> seats = new ArrayList<>();

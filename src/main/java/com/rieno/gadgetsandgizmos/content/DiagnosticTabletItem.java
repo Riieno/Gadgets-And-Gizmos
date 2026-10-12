@@ -69,10 +69,6 @@ public class DiagnosticTabletItem extends BlockItem {
         if (!CTFeatureToggles.isItemEnabled("diagnostic_tablet")) {
             return InteractionResultHolder.pass(stack);
         }
-        if (level.isClientSide && invokeClientBoolean("tryCycleMode",
-                new Class<?>[]{InteractionHand.class, ItemStack.class}, hand, stack)) {
-            return InteractionResultHolder.success(stack);
-        }
         DiagnosticTabletData.State state = DiagnosticTabletData.read(stack);
         if(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.MANIFEST.id().equals(state.app())
                 && state.mode() != TabletInteractionMode.STANDARD){
@@ -373,7 +369,8 @@ public class DiagnosticTabletItem extends BlockItem {
         tooltip.add(Component.literal("Mode: " + state.mode().id())
                 .withStyle(state.mode() == TabletInteractionMode.STANDARD
                         ? ChatFormatting.GRAY : ChatFormatting.AQUA));
-        tooltip.add(Component.literal("Alt + Use: switch Standard / Reader")
+        tooltip.add(com.rieno.gadgetsandgizmos.lib.control.ActionKeyLabels.hint(
+                "createthrusters.controls.tablet.mode", "key.createthrusters.diagnostic_tablet.cycle_mode").copy()
                 .withStyle(ChatFormatting.DARK_GRAY));
         if (state.tabletId() != null) tooltip.add(Component.literal(
                 "Tablet ID: " + state.tabletId().toString().substring(0, 8))

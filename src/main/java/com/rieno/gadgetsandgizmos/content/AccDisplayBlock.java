@@ -186,6 +186,7 @@ public class AccDisplayBlock extends HorizontalDirectionalBlock
             return InteractionResult.SUCCESS;
         }
         if (display.isComputerCraftDisplaySource()) {
+            display.selectDisplaySource(player, hit);
             return InteractionResult.CONSUME;
         }
         return display.interact(player, hit, 1) ? InteractionResult.CONSUME : InteractionResult.PASS;

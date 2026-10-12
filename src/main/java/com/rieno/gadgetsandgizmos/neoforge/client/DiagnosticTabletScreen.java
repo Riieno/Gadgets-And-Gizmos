@@ -374,7 +374,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         if (promptRight > promptLeft + 30) {
             String prompt = com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.DIGISABLE.id().equals(state.app())
                     ? "Browse nearby sublevels" : com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.MANIFEST.id().equals(state.app())
-                    ? "Use on a container to inspect it" : "Press Alt + Use to switch modes.";
+                    ? "Use on a container to inspect it" : CTActionKeys.TABLET_MODE.hint("createthrusters.controls.tablet.mode").getString();
             graphics.drawString(font, font.plainSubstrByWidth(prompt,
                     promptRight - promptLeft), promptLeft, top + 13, 0xFFB7C7DA, false);
         }
@@ -1207,8 +1207,19 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         CompoundTag permissions = data.getCompound("ShipPermissions");
         ListTag players = permissions.getList("Players", Tag.TAG_COMPOUND);
         graphics.drawString(font, "Ship Permissions", contentLeft, top + 73, 0xFFF4F7FB, false);
+        if(!permissions.getBoolean("Enabled")){
+            graphics.drawString(font, "Permissions are disabled in single player.", contentLeft, top + 101,
+                    0xFFF1B18D, false);
+            return;
+        }
+        boolean open = permissions.getBoolean("Open");
+        drawNativeCard(graphics, contentLeft + 195, top + 68, 130, 22,
+                open ? 0xFF5FB98A : 0xFF60798C,
+                permissions.getBoolean("CanEdit") && inside(mouseX, mouseY, contentLeft + 195, top + 68, 130, 22));
+        graphics.drawString(font, open ? "Access: Open" : "Access: Closed", contentLeft + 204, top + 75,
+                0xFFF4F7FB, false);
         if(!permissions.getBoolean("Claimed")){
-            graphics.drawString(font, "This ship has no owner yet.", contentLeft, top + 101,
+            graphics.drawString(font, "Open to everyone. Close access to claim ownership.", contentLeft, top + 101,
                     0xFFF1B18D, false);
             return;
         }
@@ -1219,7 +1230,8 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
             drawNativeCard(graphics, contentLeft, y, 178, 22,
                     active ? 0xFF52A5D8 : 0xFF60798C,
                     inside(mouseX, mouseY, contentLeft, y, 178, 22));
-            graphics.drawString(font, font.plainSubstrByWidth(player.getString("Name"), 156),
+            String name = (player.getBoolean("Owner") ? "(Owner) " : "") + player.getString("Name");
+            graphics.drawString(font, font.plainSubstrByWidth(name, 156),
                     contentLeft + 9, y + 7, 0xFFF4F7FB, false);
         }
         CompoundTag player = selectedScmPermissionPlayer(players);
@@ -1230,7 +1242,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         }
         ShipPermission[] options = {ShipPermission.INTERACT, ShipPermission.ACC_GRAPH,
                 ShipPermission.PLACE, ShipPermission.DESTROY, ShipPermission.PHYSICS_STAFF, ShipPermission.STORE};
-        String[] labels = {"Interract", "ACC Graph", "Place", "Destroy", "Physics Staff", "Store"};
+        String[] labels = {"Interact", "ACC Graph", "Place", "Destroy", "Physics Staff", "Store"};
         int visible = permissions.getBoolean("StoreEnabled") ? options.length : options.length - 1;
         for(int idx = 0; idx < visible; idx++){
             int y = top + 95 + idx * 25;
@@ -1241,10 +1253,13 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
             graphics.drawString(font, (enabled ? "[x] " : "[ ] ") + labels[idx],
                     contentLeft + 204, y + 7, 0xFFF4F7FB, false);
         }
-        if(!permissions.getBoolean("CanEdit")){
-            graphics.drawString(font, "Owner only", contentLeft + 195, top + 248,
-                    0xFFF1B18D, false);
-        }
+        drawNativeCard(graphics, contentLeft + 195, top + 248, contentWidth - 195, 22,
+                0xFF60798C, permissions.getBoolean("CanEdit") && !player.getBoolean("Owner")
+                        && inside(mouseX, mouseY, contentLeft + 195, top + 248, contentWidth - 195, 22));
+        graphics.drawString(font, player.getBoolean("Owner") ? "Current owner" : "Transfer ownership",
+                contentLeft + 204, top + 255, 0xFFF4F7FB, false);
+        graphics.drawString(font, open ? "Open: permissions are ignored." : "Closed: permissions are enforced.",
+                contentLeft, top + 279, 0xFFB7C7D6, false);
     }
 
     private CompoundTag selectedScmPermissionPlayer(ListTag players){
@@ -1256,10 +1271,16 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         return null;
     }
 
+    // Send access mode, ownership and member changes for the selected ship
     private boolean clickScmPermissions(double mouseX, double mouseY, CompoundTag data,
                                         CompoundTag selected, int contentLeft, int contentWidth){
         if(selected == null || !"ship".equals(selected.getString("Kind"))) return false;
         CompoundTag permissions = data.getCompound("ShipPermissions");
+        if(!permissions.getBoolean("Enabled")) return false;
+        if(permissions.getBoolean("CanEdit") && inside(mouseX, mouseY, contentLeft + 195, top + 68, 130, 22)){
+            send("permissions_access", Boolean.toString(!permissions.getBoolean("Open")));
+            return true;
+        }
         ListTag players = permissions.getList("Players", Tag.TAG_COMPOUND);
         for(int row = 0; row < 6 && row + scmPermissionsScroll < players.size(); row++){
             int y = top + 95 + row * 25;
@@ -1269,7 +1290,11 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
             return true;
         }
         CompoundTag player = selectedScmPermissionPlayer(players);
-        if(player == null || !permissions.getBoolean("CanEdit")) return false;
+        if(player == null || player.getBoolean("Owner") || !permissions.getBoolean("CanEdit")) return false;
+        if(inside(mouseX, mouseY, contentLeft + 195, top + 248, contentWidth - 195, 22)){
+            send("permissions_transfer", player.getUUID("Id").toString());
+            return true;
+        }
         ShipPermission[] options = {ShipPermission.INTERACT, ShipPermission.ACC_GRAPH,
                 ShipPermission.PLACE, ShipPermission.DESTROY, ShipPermission.PHYSICS_STAFF, ShipPermission.STORE};
         int visible = permissions.getBoolean("StoreEnabled") ? options.length : options.length - 1;

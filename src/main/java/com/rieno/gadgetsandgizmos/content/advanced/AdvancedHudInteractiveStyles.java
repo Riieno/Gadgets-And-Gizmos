@@ -35,7 +35,7 @@ public final class AdvancedHudInteractiveStyles {
     public static final String GYROSCOPE_RANGE = "gyroscope_range";
 
     public static final List<Option> BUTTON_OPTIONS = List.of(
-            new Option(CREATE_PAINTED, "Create Painted"),
+            new Option(CREATE_PAINTED, "Simple"),
             new Option(CREATE_ICON, "Create Icon"),
             new Option(TNT_BRASS, "Thruster Brass"),
             new Option(CONTROLLER_GRAPH, "Controller Graph"),
@@ -114,7 +114,7 @@ public final class AdvancedHudInteractiveStyles {
                 .filter(option -> option.id().equals(normalized))
                 .map(Option::label)
                 .findFirst()
-                .orElse("Create Painted");
+                .orElse("Simple");
     }
 
     // Normalize the advanced HUD interactive styles

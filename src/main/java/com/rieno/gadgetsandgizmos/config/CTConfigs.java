@@ -74,6 +74,8 @@ public final class CTConfigs {
         SERVER_SPEC = serverBuilder.build();
 
         featureToggleSnapshot = defaultFeatureToggleSnapshot();
+        ScmBuiltinControlModes.setGroundSeaEnabled(false);
+        ScmBuiltinControlModes.setPlaneEnabled(false);
     }
 
     // Initialize the CT configs
@@ -133,6 +135,8 @@ public final class CTConfigs {
     // Sync the server feature config
     private static synchronized void syncServerFeatureConfig(ModConfig config) {
         if (config.getSpec() == SERVER_SPEC) {
+            ScmBuiltinControlModes.setGroundSeaEnabled(Boolean.TRUE.equals(SERVER.enableScmGroundSea.get()));
+            ScmBuiltinControlModes.setPlaneEnabled(Boolean.TRUE.equals(SERVER.enableScmPlane.get()));
             Map<String, Boolean> blocks = new LinkedHashMap<>(
                     snapshotFeatureValues(SERVER.blockFeatures, CTFeatureToggles.blockDefaults()));
             Map<String, Boolean> items = new LinkedHashMap<>(
@@ -369,7 +373,7 @@ public final class CTConfigs {
         public final ModConfigSpec.BooleanValue enableScmIk;
         // Allow Flight Control graph nodes without their dedicated blocks
         public final ModConfigSpec.BooleanValue easyFlightControlIntegration;
-        // Enable diagnostic tablet
+        // Enable smart tablet
         public final ModConfigSpec.BooleanValue enableDiagnosticTablet;
         // App purchase Ownership Scope
         public final ModConfigSpec.EnumValue<TabletAppPurchaseScope> appPurchaseScope;
@@ -579,10 +583,19 @@ public final class CTConfigs {
         public final ModConfigSpec.DoubleValue controllerOrientationSourceMaxTiltDegrees;
         // Allow thruster manual toggle
         public final ModConfigSpec.BooleanValue allowThrusterManualToggle;
+        // Allow graphs to send chat to nearby players
+        public final ModConfigSpec.BooleanValue allowNearbyChatBroadcast;
+        // Retain the previous Java accessor for existing integrations
+        @Deprecated
+        public final ModConfigSpec.BooleanValue allowGlobalChatBroadcast;
         // Physics gantry belt wheel max distance
         public final ModConfigSpec.IntValue physicsGantryBeltWheelMaxDistance;
         // Shipping schedule work spread tick count
         public final ModConfigSpec.IntValue shippingScheduleWorkSpreadTicks;
+        // Allow incomplete ground/sea vehicle and steering modes
+        public final ModConfigSpec.BooleanValue enableScmGroundSea;
+        // Allow incomplete plane vehicle mode
+        public final ModConfigSpec.BooleanValue enableScmPlane;
         // Tracked block features
         public final Map<String, ModConfigSpec.ConfigValue<Boolean>> blockFeatures;
         // Tracked item features
@@ -597,6 +610,12 @@ public final class CTConfigs {
             blockFeatures = defineFeatureGroup(builder, "blocks", CTFeatureToggles.blockDefaults());
             itemFeatures = defineFeatureGroup(builder, "items", CTFeatureToggles.itemDefaults());
             entityFeatures = defineFeatureGroup(builder, "entities", CTFeatureToggles.entityDefaults());
+            builder.pop();
+            builder.comment("Advanced Contraption Controller chat delivery").push("advanced_controller");
+            allowNearbyChatBroadcast = builder
+                    .comment("Allow Send Chat Message nodes to broadcast nearby: the same sub-level, or a centered 3x3 chunk area in the main world. Private messages remain available when disabled. The legacy config key is retained so existing opt-outs keep working.")
+                    .define("allowGlobalChatBroadcast", true);
+            allowGlobalChatBroadcast = allowNearbyChatBroadcast;
             builder.pop();
             enableThrusterParticles = builder
                     .comment("Spawn thruster exhaust particles while active")
@@ -627,6 +646,12 @@ public final class CTConfigs {
                     .defineInRange("physicsGantryBeltWheelMaxDistance", 64, 1, 64);
             builder.comment("Advanced Contraption Controller and Ship Control Module tuning")
                     .push("ship_control");
+            enableScmGroundSea = builder
+                    .comment("Incomplete: enable SCM Ground/Sea vehicles and front-wheel, rear-wheel, four-wheel and tank steering. Disabled by default.")
+                    .define("enableScmGroundSea", false);
+            enableScmPlane = builder
+                    .comment("Incomplete: enable SCM Plane vehicles. Disabled by default. Rudder steering remains available for airships.")
+                    .define("enableScmPlane", false);
             shippingScheduleWorkSpreadTicks = builder
                     .comment("Spread shipping schedule maintenance and state updates over this many ticks. Ship physics control still runs every tick.")
                     .defineInRange("shippingScheduleWorkSpreadTicks", 2, 1, 4);

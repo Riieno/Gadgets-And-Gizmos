@@ -43,7 +43,8 @@ public final class AdvancedGraphNodeFactory {
 
     public record Context(String firstGogglesPairId,
                           String nextVariableName,
-                          String firstVariableName) {
+                          String firstVariableName,
+                          String creatorName) {
         public static final Context EMPTY =
                 new Context("", "variable", "variable");
 
@@ -51,6 +52,11 @@ public final class AdvancedGraphNodeFactory {
             firstGogglesPairId = normalize(firstGogglesPairId);
             nextVariableName = fallback(nextVariableName, "variable");
             firstVariableName = fallback(firstVariableName, "variable");
+            creatorName = normalize(creatorName);
+        }
+
+        public Context(String firstGogglesPairId, String nextVariableName, String firstVariableName){
+            this(firstGogglesPairId, nextVariableName, firstVariableName, "");
         }
 
         private static String normalize(String value) {
@@ -66,6 +72,10 @@ public final class AdvancedGraphNodeFactory {
     public static CompoundTag createDefaultData(String type, Context context) {
         Context safeContext = context == null ? Context.EMPTY : context;
         CompoundTag data = new CompoundTag();
+        if(GraphSignalRange.usesValueType(type)){
+            data.putString(GraphSignalRange.VALUE_TYPE_TAG,
+                    com.rieno.gadgetsandgizmos.lib.control.SignalValueType.REDSTONE.id());
+        }
         com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.initialize(type, data);
         if("camera".equals(type)){
             CompoundTag defaults = new CompoundTag();
@@ -75,6 +85,8 @@ public final class AdvancedGraphNodeFactory {
             defaults.put("filter_type", graphDefault("string", "blacklist"));
             defaults.put("mode", graphDefault("string", "Locked"));
             defaults.put("orientation_mode", graphDefault("string", "local"));
+            defaults.put("auto_tracking", graphDefault("boolean", false));
+            defaults.put("lock_target", graphDefault("boolean", false));
             defaults.put("pan", graphDefault("number", 0.0D));
             defaults.put("tilt", graphDefault("number", 0.0D));
             data.put("Defaults", defaults);
@@ -94,6 +106,8 @@ public final class AdvancedGraphNodeFactory {
             labels.putString("target", "acc_display_camera_source".equals(type) ? "Display Target" : "Camera Target");
             labels.putString("source", "Camera Source");
             labels.putString("exec", "Execution");
+            if("camera".equals(type)) labels.putString("auto_tracking", "AutoTracking");
+            if("camera".equals(type)) labels.putString("lock_target", "LockTarget");
             data.put(AdvancedGraphCatalog.INPUT_LABELS_TAG, labels);
             if("camera".equals(type)){
                 CompoundTag outputs = new CompoundTag();
@@ -111,6 +125,11 @@ public final class AdvancedGraphNodeFactory {
             data.put("Defaults", defaults);
         }
         if ("constant_color".equals(type)) data.putInt("Value", 0xFFFFFFFF);
+        if("createthrusters:length".equals(type) || "createthrusters:strip_json".equals(type)){
+            CompoundTag defaults = data.getCompound("Defaults");
+            defaults.put("value", graphDefault("string", ""));
+            data.put("Defaults", defaults);
+        }
         if ("desmos_plot_point".equals(type)) {
             CompoundTag defaults = new CompoundTag();
             defaults.put("x_functionality", graphDefault("string", "ignore"));
@@ -138,6 +157,49 @@ public final class AdvancedGraphNodeFactory {
             data.putInt("Height", 180);
         }
         if ("event_trigger".equals(type)) data.putString("Event", "custom");
+        if("watch_chat".equals(type) || "send_chat_message".equals(type) || "createthrusters:announce".equals(type)){
+            CompoundTag defaults = data.getCompound("Defaults");
+            defaults.put("watch_chat".equals(type) ? "start_word" : "message", graphDefault("string", ""));
+            if("watch_chat".equals(type)){
+                defaults.put("players", graphDefault("list", new CompoundTag()));
+                defaults.put("hide_message", graphDefault("boolean", false));
+            }else{
+                List<String> players = safeContext.creatorName().isBlank()
+                        ? List.of() : List.of(safeContext.creatorName());
+                defaults.put("players", GraphRuntime.fromLibraryValue(
+                        com.rieno.gadgetsandgizmos.lib.graph.GraphValue.list(players)).toTag());
+            }
+            data.put("Defaults", defaults);
+            if("send_chat_message".equals(type)) data.putBoolean(AdvancedGraphCatalog.CHAT_BROADCAST_TAG, false);
+        }
+        if("createthrusters:announce".equals(type)){
+            CompoundTag defaults = data.getCompound("Defaults");
+            defaults.put("action", graphDefault("string", "title"));
+            defaults.put("text_format", graphDefault("string", "plain"));
+            defaults.put("color_mode", graphDefault("string", "custom"));
+            defaults.put("color", graphDefault("number", -1));
+            defaults.put("fade_in", graphDefault("number", 10));
+            defaults.put("stay", graphDefault("number", 70));
+            defaults.put("fade_out", graphDefault("number", 20));
+            defaults.put("time_unit", graphDefault("string", "ticks"));
+            CompoundTag options = data.getCompound("InputOptions");
+            Map<String, List<String>> choices = new java.util.LinkedHashMap<>();
+            choices.put("action", com.rieno.gadgetsandgizmos.lib.chat.ServerTitleApi.Action.options());
+            choices.put("time_unit", com.rieno.gadgetsandgizmos.lib.chat.ServerTitleApi.TimeUnit.options());
+            choices.put("text_format", List.of("plain", "json"));
+            choices.put("color_mode", List.of("custom", "message"));
+            for(String port : List.of("bold", "italic", "underlined", "strikethrough", "obfuscated")){
+                defaults.put(port, graphDefault("string", "inherit"));
+                choices.put(port, com.rieno.gadgetsandgizmos.lib.chat.ServerTitleApi.Text.flagOptions());
+            }
+            choices.forEach((port, values) -> {
+                ListTag entries = new ListTag();
+                values.forEach(value -> entries.add(StringTag.valueOf(value)));
+                options.put(port, entries);
+            });
+            data.put("Defaults", defaults);
+            data.put("InputOptions", options);
+        }
         if ("gamepad_input".equals(type)) {
             HardwareControllerBindings.options().stream().findFirst().ifPresent(option -> {
                 data.putString("BindingId", option.id());
@@ -334,6 +396,20 @@ public final class AdvancedGraphNodeFactory {
             CompoundTag outputs = new CompoundTag();
             outputs.putString("value", "string");
             data.put("DynamicOutputs", outputs);
+        }
+        if("do_n".equals(type)){
+            CompoundTag defaults = data.getCompound("Defaults");
+            defaults.put("count", graphDefault("number", 1));
+            defaults.put("reset", graphDefault("boolean", false));
+            data.put("Defaults", defaults);
+        }
+        if("count".equals(type)){
+            data.putString(AdvancedGraphCatalog.COUNT_DIRECTION_TAG,
+                    com.rieno.gadgetsandgizmos.lib.graph.GraphCounters.Direction.INCREMENT.id());
+            CompoundTag defaults = data.getCompound("Defaults");
+            defaults.put("step", graphDefault("number", 1));
+            defaults.put("reset", graphDefault("boolean", false));
+            data.put("Defaults", defaults);
         }
         if ("compare".equals(type)) {
             CompoundTag defaults = new CompoundTag();

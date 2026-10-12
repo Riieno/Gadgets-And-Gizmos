@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.util;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.CreateThrusters;
+import com.rieno.gadgetsandgizmos.content.ScorchingOxidizedSolidFuelItem;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -174,6 +175,7 @@ public final class ThrusterFuelData {
             return null;
         }
         ResourceLocation id = stack.getItem().builtInRegistryHolder().key().location();
+        if(stack.getItem() instanceof ScorchingOxidizedSolidFuelItem) return null;
         return solidItemProfiles.get(id);
     }
 
@@ -188,6 +190,16 @@ public final class ThrusterFuelData {
         Map<ResourceLocation, FuelProfilePatch> liquidItemPatches = new LinkedHashMap<>();
         List<TaggedFluidFuelPatch> liquidTagPatches = new ArrayList<>();
         Map<ResourceLocation, ItemFuelProfilePatch> solidItemPatches = new LinkedHashMap<>();
+        // Supply the new fuel to existing configs while keeping server and datapack overrides.
+        JsonObject defaults = loadBundledDefaultRoot();
+        String solidFuelId = CreateThrusters.MOD_ID + ":oxidized_solid_fuel";
+        if(defaults != null && defaults.has("solid")){
+            JsonObject solid = defaults.getAsJsonObject("solid");
+            if(solid.has(solidFuelId)){
+                solidItemPatches.put(ResourceLocation.parse(solidFuelId),
+                        readItemFuelProfilePatch(solidFuelId, solid.getAsJsonObject(solidFuelId)));
+            }
+        }
         List<TaggedItemFuelPatch> solidTagPatches = new ArrayList<>();
         Set<ResourceLocation> configuredOxidizedItems = new LinkedHashSet<>();
         List<TagKey<Fluid>> configuredOxidizedTags = new ArrayList<>();

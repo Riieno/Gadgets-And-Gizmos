@@ -27,6 +27,7 @@ import ace.flight.platform.PlatformHooks;
 import com.rieno.gadgetsandgizmos.lib.client.render.WorldProjectionRenderTypes;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmAttitude;
 import com.rieno.gadgetsandgizmos.lib.client.render.SubLevelClientRenderApi;
+import com.rieno.gadgetsandgizmos.lib.client.render.SubLevelCameraFrameRegistry;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.rieno.gadgetsandgizmos.mixin.FlightControlHudRenderAccess;
 import net.minecraft.client.Minecraft;
@@ -46,6 +47,20 @@ public final class FlightControlClient{
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     private static final java.util.Map<BlockEntity, Long> TRAIL_TICKS = new java.util.WeakHashMap<>();
+    private static net.minecraft.world.entity.Entity cameraAnchor;
+
+    static{
+        SubLevelCameraFrameRegistry.register(net.minecraft.resources.ResourceLocation.parse("createthrusters:flight_control_mouse"),
+                (camera, partialTick) -> {
+                    var player = Minecraft.getInstance().player;
+                    if(camera != player || player == null || player.getVehicle() != null) return null;
+                    var mouse = activeMouse();
+                    var host = mouse == null ? null : FlightControlIntegration.componentHost(mouse);
+                    var body = host == null ? null : SableLevelApi.containing(host);
+                    // Native compensation expresses player angles in the physical body's frame
+                    return body instanceof ClientSubLevel client ? client.renderPose().orientation() : null;
+                });
+    }
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -61,7 +76,7 @@ public final class FlightControlClient{
     public static void onRenderWorld(RenderLevelStageEvent event){
         if(event.getStage() != RenderLevelStageEvent.Stage.AFTER_LEVEL) return;
         Minecraft minecraft = Minecraft.getInstance();
-        if(minecraft.level == null){ TRAIL_TICKS.clear(); return; }
+        if(minecraft.level == null){ TRAIL_TICKS.clear(); cameraAnchor = null; return; }
         var hosts = FlightControlIntegration.hosts(minecraft.level);
         if(hosts.isEmpty()) return;
         float partialTick = event.getPartialTick().getGameTimeDeltaPartialTick(false);
@@ -92,6 +107,8 @@ public final class FlightControlClient{
                                 FlightControlIntegration.orientation(host));
                         SubLevelProjectionContext.render(hud, pose, () -> {
                             var projection = FlightControlHudRenderAccess.createThrusters$projectorMatrix(matrix, hud);
+                            var scale = projection.getScale(new org.joml.Vector3f());
+                            projection = SubLevelClientRenderApi.billboardModelView(projection, scale.mul(-1F, 1F, 1F));
                             FlightControlHudRenderAccess.createThrusters$renderHud(projection,
                                     buffers.getBuffer(WorldProjectionRenderTypes.color()), attitude != null || hud.hasAttitudeData,
                                     attitude == null ? hud.displayedPitch : attitude.pitch(),
@@ -144,5 +161,20 @@ public final class FlightControlClient{
         FlightControlGraphRuntime runtime = FlightControlIntegration.runtime(host);
         if(runtime == null) return null;
         return runtime.pilotMouse();
+    }
+
+    // Let native view compensation follow the ACC body when its pilot is standing instead of seated
+    public static net.minecraft.world.entity.Entity cameraVehicle(net.minecraft.client.player.LocalPlayer player,
+            MouseFlightControllerBlockEntity mouse){
+        var vehicle = player.getVehicle();
+        var host = mouse == null ? null : FlightControlIntegration.componentHost(mouse);
+        if(vehicle != null || host == null || activeMouse() != mouse || SableLevelApi.containing(host) == null){
+            cameraAnchor = null;
+            return vehicle;
+        }
+        if(cameraAnchor == null || cameraAnchor.level() != player.level()){
+            cameraAnchor = SubLevelClientRenderApi.localCameraAnchor((net.minecraft.client.multiplayer.ClientLevel) player.level(), host.getBlockPos().getCenter());
+        }else cameraAnchor.setPos(host.getBlockPos().getCenter());
+        return cameraAnchor;
     }
 }

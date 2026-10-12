@@ -11,7 +11,6 @@ package com.rieno.gadgetsandgizmos.neoforge.client.particle;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
 import com.rieno.gadgetsandgizmos.content.PlumeRainbow;
 import com.rieno.gadgetsandgizmos.lib.color.ColorGradient;
-import com.rieno.gadgetsandgizmos.lib.client.render.ClientParticleBudget;
 import com.rieno.gadgetsandgizmos.lib.client.render.SoftBillboardParticle;
 import com.rieno.gadgetsandgizmos.lib.client.render.WorldParticleCollision;
 import com.rieno.gadgetsandgizmos.neoforge.client.ShaderPackClientCompat;
@@ -20,7 +19,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleProvider;
-import net.minecraft.client.particle.SpriteSet;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.core.particles.SimpleParticleType;
 import net.minecraft.util.Mth;
@@ -33,14 +31,6 @@ public final class SoftThrusterPlumeParticle extends SoftBillboardParticle {
     private static final int BURNT_SIENNA = 0xE97451;
     private static final float FLAME_PROGRESS = 0.25F;
     private static final float SMOKE_PROGRESS = 0.75F;
-    private static final ClientParticleBudget IMPACT_BUDGET = new ClientParticleBudget(12, 2);
-    private static final float[][] IMPACT_COLORS = {
-            {0.16F, 0.16F, 0.17F},
-            {0.28F, 0.27F, 0.26F},
-            {0.40F, 0.39F, 0.37F},
-            {0.43F, 0.16F, 0.045F},
-            {0.65F, 0.25F, 0.055F}
-    };
     private static boolean occlusionCullingEnabled = true;
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -64,7 +54,6 @@ public final class SoftThrusterPlumeParticle extends SoftBillboardParticle {
     private final boolean collidesWithBlocks;
     private final boolean metaball;
     private final int metaballFrameOffset;
-    private final SpriteSet impactSprites;
     private final PlumeRainbow.Mode rainbowMode;
     private final PlumeRainbow.Palette rainbowPalette;
     private final float plumeProgress;
@@ -91,10 +80,9 @@ public final class SoftThrusterPlumeParticle extends SoftBillboardParticle {
 
     // Initialize the colored soft plume particle
     public SoftThrusterPlumeParticle(ClientLevel level, double x, double y, double z,
-                                    double xd, double yd, double zd, ColoredCloudParticleOptions opts,
-                                    SpriteSet impactSprites) {
+                                    double xd, double yd, double zd, ColoredCloudParticleOptions opts) {
         this(level, x, y, z, xd, yd, zd, opts.red(), opts.green(), opts.blue(), true,
-                CTConfigs.CLIENT.usePlumeMetaballRendering.get(), impactSprites,
+                CTConfigs.CLIENT.usePlumeMetaballRendering.get(),
                 opts.rainbowMode(), opts.rainbowPalette(), opts.plumeProgress(),
                 opts.plumeTintColor(), opts.plumeTintBlend());
     }
@@ -102,7 +90,7 @@ public final class SoftThrusterPlumeParticle extends SoftBillboardParticle {
     // Reuse the soft plume for a neutral archive smoke burst
     private SoftThrusterPlumeParticle(ClientLevel level, double x, double y, double z,
                                      double xd, double yd, double zd, float red, float green, float blue,
-                                     boolean collidesWithBlocks, boolean metaball, SpriteSet impactSprites,
+                                     boolean collidesWithBlocks, boolean metaball,
                                      PlumeRainbow.Mode rainbowMode, PlumeRainbow.Palette rainbowPalette,
                                      float plumeProgress, int tintColor, float tintBlend) {
         super(level, x, y, z);
@@ -121,7 +109,6 @@ public final class SoftThrusterPlumeParticle extends SoftBillboardParticle {
         this.collidesWithBlocks = collidesWithBlocks;
         this.metaball = metaball;
         this.metaballFrameOffset = this.random.nextInt(16);
-        this.impactSprites = impactSprites;
         this.rainbowMode = rainbowMode;
         this.rainbowPalette = rainbowPalette;
         this.plumeProgress = plumeProgress;
@@ -190,7 +177,6 @@ public final class SoftThrusterPlumeParticle extends SoftBillboardParticle {
             Vec3 allowed = collision.motion();
             this.move(allowed.x, allowed.y, allowed.z);
             if (collision.collided()) {
-                spawnImpactCloud(collision.normal());
                 this.remove();
                 return;
             }
@@ -213,22 +199,6 @@ public final class SoftThrusterPlumeParticle extends SoftBillboardParticle {
         this.rCol = (color >> 16 & 0xFF) / 255.0F;
         this.gCol = (color >> 8 & 0xFF) / 255.0F;
         this.bCol = (color & 0xFF) / 255.0F;
-    }
-
-    // Send one larger cloud across the contact plane
-    private void spawnImpactCloud(Vec3 normal) {
-        if (this.impactSprites == null) return;
-        Vec3 origin = new Vec3(this.x, this.y, this.z).add(normal.scale(0.12D));
-        if (isHiddenFromCamera(this.level, origin.x, origin.y, origin.z)) return;
-        if (!IMPACT_BUDGET.tryAcquire(this.level)) return;
-        Vec3 tangent = WorldParticleCollision.tangentDirection(normal,
-                this.random.nextDouble() * Mth.TWO_PI);
-        Vec3 speed = tangent.scale(0.18D + this.random.nextDouble() * 0.09D)
-                .add(normal.scale(0.025D));
-        float[] color = IMPACT_COLORS[this.random.nextInt(IMPACT_COLORS.length)];
-        Minecraft.getInstance().particleEngine.add(new ThrusterImpactSmokeParticle(
-                this.level, origin, speed, color[0], color[1], color[2],
-                this.impactSprites, IMPACT_BUDGET));
     }
 
     // Use a long exhaust streak when metaball rendering is disabled
@@ -352,7 +322,7 @@ public final class SoftThrusterPlumeParticle extends SoftBillboardParticle {
         public Particle createParticle(SimpleParticleType type, ClientLevel level, double x, double y, double z,
                                        double xd, double yd, double zd){
             return new SoftThrusterPlumeParticle(level, x, y, z, xd, yd + 0.7D, zd,
-                    0.58F, 0.66F, 0.72F, false, false, null,
+                    0.58F, 0.66F, 0.72F, false, false,
                     PlumeRainbow.Mode.OFF, PlumeRainbow.Palette.NORMAL, 0.0F, 0xFFFFFF, 0.0F);
         }
     }

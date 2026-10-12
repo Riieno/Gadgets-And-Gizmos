@@ -140,6 +140,7 @@ final class ShipControlMapSchematicCodec {
             entry.putDouble("MaxX", bearing.maxX());
             entry.putDouble("MinZ", bearing.minZ());
             entry.putDouble("MaxZ", bearing.maxZ());
+            if(bearing.calibrationFrame() != null) entry.put("GeometryFrame", bearing.calibrationFrame().write());
             ListTag poses = new ListTag();
             for (ShipControlMap.BearingPose pose : bearing.poses()) {
                 poses.add(writePose(pose));
@@ -273,7 +274,7 @@ final class ShipControlMapSchematicCodec {
                     entry.getDouble("MaxX"),
                     entry.getDouble("MinZ"),
                     entry.getDouble("MaxZ"),
-                    poses));
+                    poses, com.rieno.gadgetsandgizmos.lib.scm.ScmGeometryFrame.read(entry.getCompound("GeometryFrame"))));
         }
 
         // ------------------------------------DOCKING CONNECTORS------------------------------------
@@ -403,10 +404,17 @@ final class ShipControlMapSchematicCodec {
                 }
                 poses.add(remappedPose);
             }
+            var geometryFrame = bearing.calibrationFrame();
+            if(geometryFrame != null){
+                Vec3 origin = remapRootPosition(ctx, map.rootSubLevelId(), geometryFrame.origin());
+                if(origin == null) return null;
+                geometryFrame = geometryFrame.withOrigin(origin);
+            }
             bearings.add(new ShipControlMap.BearingUnit(
                     bearing.index(), reference.subLevelId(), reference.blockPos(),
                     bearing.blockId(), bearing.adapter(), children,
-                    bearing.minX(), bearing.maxX(), bearing.minZ(), bearing.maxZ(), poses));
+                    bearing.minX(), bearing.maxX(), bearing.minZ(), bearing.maxZ(), poses,
+                    geometryFrame));
         }
 
         // ------------------------------------DOCKING / DISPLAYS------------------------------------

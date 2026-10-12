@@ -36,7 +36,8 @@ public final class CameraGraphNodes{
         camera.configure(input.apply("max_ray_length").asNumber(), input.apply("rays_per_second").asNumber(),
                 ViewRaycast.Filter.fromValue(GraphRuntime.toLibraryValue(input.apply("filter")),
                         "allowlist".equalsIgnoreCase(input.apply("filter_type").asString())),
-                mode, orientation, input.apply("pan").asNumber(), input.apply("tilt").asNumber());
+                mode, orientation, input.apply("pan").asNumber(), input.apply("tilt").asNumber(),
+                input.apply("auto_tracking").asBoolean(), input.apply("lock_target").asBoolean());
         return camera;
     }
     // Return stable output types when a camera is unloaded or a graph is simulated

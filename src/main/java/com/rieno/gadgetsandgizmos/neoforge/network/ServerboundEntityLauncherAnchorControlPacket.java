@@ -35,6 +35,8 @@ public record ServerboundEntityLauncherAnchorControlPacket(BlockPos pos, int act
     public static final int USE_PRESSED = 1;
     public static final int USE_RELEASED = 2;
     public static final int DISMOUNT = 3;
+    public static final int DETACH = 4;
+    public static final int CANCEL_USE = 5;
 
     public static final Type<ServerboundEntityLauncherAnchorControlPacket> TYPE = new Type<>(
             ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID, "entity_launcher_anchor_control"));

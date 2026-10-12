@@ -205,8 +205,17 @@ public record ShipControlMap(
             double maxX,
             double minZ,
             double maxZ,
-            List<BearingPose> poses
+            List<BearingPose> poses,
+            com.rieno.gadgetsandgizmos.lib.scm.ScmGeometryFrame calibrationFrame
     ) {
+        // Retain compatibility with maps authored before host frames were recorded
+        public BearingUnit(int index, UUID hostSubLevelId, BlockPos blockPosition, String blockId, String adapter,
+                           List<UUID> childSubLevelIds, double minX, double maxX, double minZ, double maxZ,
+                           List<BearingPose> poses){
+            this(index, hostSubLevelId, blockPosition, blockId, adapter, childSubLevelIds,
+                    minX, maxX, minZ, maxZ, poses, null);
+        }
+
         // Initialize the bearing unit
         public BearingUnit {
             blockPosition = blockPosition == null ? BlockPos.ZERO : blockPosition.immutable();

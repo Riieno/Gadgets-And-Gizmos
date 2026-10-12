@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:smart_vault",
+  "properties": {
+    "sable:mass": 1.0
+  }
+}

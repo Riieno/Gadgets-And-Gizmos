@@ -50,6 +50,12 @@ public final class OxidizedFuel {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+    // Both solid oxidized fuels keep thrust independent of ambient air pressure.
+    public static boolean isOxidizedSolidFuel(String id){
+        return "createthrusters:oxidized_creative_blaze_cake".equals(id)
+                || "createthrusters:oxidized_solid_fuel".equals(id);
+    }
+
     // Check if this is oxidized
     public static boolean isOxidized(FluidStack stack) {
         return !stack.isEmpty() && (stack.is(OXIDIZED_FUELS)

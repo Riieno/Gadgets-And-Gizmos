@@ -132,8 +132,8 @@ public final class ShippingScheduleRuntime {
     private static final long METRICS_FUEL_REFRESH_TICKS = 20L;
     private static final int MAX_MANIFEST_STOP_OUTPUTS = 64;
     private static final int MAX_MAPPED_SEAT_BLOCKS = 65_536;
-    private static final long SEAT_MAP_REFRESH_TICKS = 1_200L;
-    private static final long SEAT_OCCUPANCY_REFRESH_TICKS = 5L;
+    private static final long SEAT_MAP_REFRESH_TICKS = 100L;
+    private static final long SEAT_OCCUPANCY_REFRESH_TICKS = 1L;
     private static final Set<ShippingScheduleRuntime> LIVE_RUNTIMES =
             Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -4286,11 +4286,8 @@ public final class ShippingScheduleRuntime {
         }
         if (condition instanceof PlayerPassengerCondition passengers) {
             int count = shipSeatOccupancy().seatedPlayerCount();
-            CompoundTag data = passengers.getData();
-            int target = Math.max(1, passengers.getTarget());
-            boolean canOvershoot = data.contains("Exact", Tag.TAG_ANY_NUMERIC)
-                    ? passengers.canOvershoot() : true;
-            return canOvershoot ? count >= target : count == target;
+            int target = Math.max(0, passengers.getTarget());
+            return passengers.canOvershoot() ? count >= target : count == target;
         }
         if (condition instanceof StationUnloadedCondition) {
             ServerLevel level = dock == null ? null : dockLevel(dock);
@@ -4322,14 +4319,14 @@ public final class ShippingScheduleRuntime {
         return cachedSeatOccupancy;
     }
 
-    // Keep a newly added passenger wait from becoming an unconditional zero-player match
+    // Give legacy passenger waits a default without changing an authored zero-player wait
     private static void normalizePassengerConditions(@Nullable Schedule target) {
         if (target == null) return;
         for (ScheduleEntry entry : target.entries) {
             for (List<ScheduleWaitCondition> group : entry.conditions) {
                 for (ScheduleWaitCondition condition : group) {
                     if (!(condition instanceof PlayerPassengerCondition passengers)
-                            || passengers.getTarget() > 0) continue;
+                            || passengers.getData().contains("Count", Tag.TAG_ANY_NUMERIC)) continue;
                     passengers.getData().putInt("Count", 1);
                 }
             }
@@ -4346,11 +4343,10 @@ public final class ShippingScheduleRuntime {
         }
         boolean refresh = mappedSeatLevel != level
                 || !seatReferences.equals(mappedSeatReferences)
-                || seatReferences.isEmpty() && !subLevelIds.equals(mappedSeatSubLevelIds)
+                || !subLevelIds.equals(mappedSeatSubLevelIds)
                 || lastSeatMapRefreshTick == Long.MIN_VALUE
                 || now < lastSeatMapRefreshTick
-                || !seatReferences.isEmpty()
-                && now - lastSeatMapRefreshTick >= SEAT_MAP_REFRESH_TICKS;
+                || now - lastSeatMapRefreshTick >= SEAT_MAP_REFRESH_TICKS;
         if (!refresh) return;
         List<MountedSeatRegistry.MappedSeat> discovered = new ArrayList<>();
         for (ShipControlMap.Seat seat : seatReferences) {
@@ -4367,10 +4363,9 @@ public final class ShippingScheduleRuntime {
                         body.getLevel(), seat.blockPosition(), state, blockEntity));
             }
         }
-        if (seatReferences.isEmpty()) {
-            discoverLegacyMappedSeats(level, subLevelIds, discovered);
-        }
-        mappedSeats = List.copyOf(discovered);
+        // Include seats added since calibration and retry bodies that were previously unloaded
+        discoverLegacyMappedSeats(level, subLevelIds, discovered);
+        mappedSeats = discovered.stream().distinct().toList();
         mappedSeatReferences = List.copyOf(seatReferences);
         mappedSeatSubLevelIds = Set.copyOf(subLevelIds);
         mappedSeatLevel = level;
@@ -4378,33 +4373,16 @@ public final class ShippingScheduleRuntime {
         lastSeatOccupancyTick = Long.MIN_VALUE;
     }
 
-    // Discover seats once for maps saved before seat references became durable
+    // Discover current seats on only the bodies belonging to this SCM assembly
     private static void discoverLegacyMappedSeats(
             Level level,
             Set<UUID> subLevelIds,
             List<MountedSeatRegistry.MappedSeat> discovered
     ) {
-        int scannedBlocks = 0;
-        List<UUID> ordered = subLevelIds.stream()
-                .sorted(Comparator.comparing(UUID::toString)).toList();
-        for (UUID subLevelId : ordered) {
-            if (scannedBlocks >= MAX_MAPPED_SEAT_BLOCKS) break;
-            Object resolved = SubLevelBlockEntityCollector.getSubLevel(level, subLevelId);
-            if (!(resolved instanceof SubLevel body) || body.isRemoved()) continue;
-            int remaining = MAX_MAPPED_SEAT_BLOCKS - scannedBlocks;
-            for (SubLevelBlockEntityCollector.LoadedBlock block
-                    : SubLevelBlockEntityCollector.getLoadedBlocks(body, remaining)) {
-                scannedBlocks++;
-                BlockEntity blockEntity = block.state().hasBlockEntity()
-                        ? SubLevelBlockEntityCollector.getBlockEntity(
-                        body, block.position()) : null;
-                if (MountedSeatRegistry.isSeat(
-                        body.getLevel(), block.position(), block.state(), blockEntity)) {
-                    discovered.add(new MountedSeatRegistry.MappedSeat(
-                            body.getLevel(), block.position(), block.state(), blockEntity));
-                }
-            }
-        }
+        List<SubLevel> bodies = subLevelIds.stream().sorted(Comparator.comparing(UUID::toString))
+                .map(id -> SubLevelBlockEntityCollector.getSubLevel(level, id))
+                .filter(SubLevel.class::isInstance).map(SubLevel.class::cast).toList();
+        discovered.addAll(MountedSeatRegistry.discover(bodies, MAX_MAPPED_SEAT_BLOCKS));
     }
 
     // Get the dock level

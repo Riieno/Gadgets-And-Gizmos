@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:launcher_endpoint",
+  "properties": {
+    "sable:mass": 0.0
+  }
+}

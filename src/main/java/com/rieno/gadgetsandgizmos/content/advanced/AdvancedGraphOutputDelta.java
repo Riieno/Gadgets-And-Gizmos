@@ -81,10 +81,7 @@ final class AdvancedGraphOutputDelta {
                 }
             }
             AdvancedGraphDocument.Value lastApplied = outputState.lastAppliedValues.get(port);
-            boolean matchesCurrent = GraphSignalRange.REDSTONE_SIGNAL_PORT.equals(port)
-                    && current != null && desired != null
-                    ? current.asNumber() == GraphSignalRange.outputStrength(desired.asNumber())
-                    : sameValue(current, desired);
+            boolean matchesCurrent = sameValue(current, GraphSignalRange.targetValue(node, port, desired));
             if (GraphSignalRange.REDSTONE_SIGNAL_PORT.equals(port) && lastApplied == null
                     || !matchesCurrent
                     || lastApplied != null && !sameValue(lastApplied, desired)) {
@@ -125,8 +122,7 @@ final class AdvancedGraphOutputDelta {
             AdvancedGraphDocument.Value val = desiredValues.get(port);
             if (val != null) {
                 outputState.lastAppliedValues.put(port, val);
-                outputState.currentValues.put(port, GraphSignalRange.REDSTONE_SIGNAL_PORT.equals(port)
-                        ? AdvancedGraphDocument.Value.number(GraphSignalRange.outputStrength(val.asNumber())) : val);
+                outputState.currentValues.put(port, GraphSignalRange.targetValue(node, port, val));
             }
         }
     }
@@ -177,7 +173,8 @@ final class AdvancedGraphOutputDelta {
     // Write the target signature
     private static int writeTargetSignature(AdvancedGraphDocument.Node node) {
         return Objects.hash(node.data().getCompound("TargetData"),
-                node.data().getCompound("Defaults").getCompound("face"));
+                node.data().getCompound("Defaults").getCompound("face"),
+                GraphSignalRange.valueType(node));
     }
 
     // Store controller output state

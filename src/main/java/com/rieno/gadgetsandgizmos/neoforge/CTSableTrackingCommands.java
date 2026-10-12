@@ -22,6 +22,7 @@ import com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerData;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerTracker;
 import com.rieno.gadgetsandgizmos.content.SupporterMannequinPlacement;
+import com.rieno.gadgetsandgizmos.lib.access.ProtectionBypass;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.neoforge.network.GizmosLinkHighlightPayload;
 import dev.ryanhcode.sable.sublevel.storage.holding.GlobalSavedSubLevelPointer;
@@ -92,6 +93,14 @@ public final class CTSableTrackingCommands {
     // Register the commands
     static void registerCommands(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("gizmos")
+                .then(Commands.literal("bypass_protection")
+                        .requires(src -> src.hasPermission(ProtectionBypass.REQUIRED_PERMISSION_LEVEL))
+                        .executes(ctx -> setProtectionBypass(ctx.getSource(),
+                                !ProtectionBypass.isEnabled(ctx.getSource().getPlayerOrException())))
+                        .then(Commands.literal("on")
+                                .executes(ctx -> setProtectionBypass(ctx.getSource(), true)))
+                        .then(Commands.literal("off")
+                                .executes(ctx -> setProtectionBypass(ctx.getSource(), false))))
                 .then(Commands.literal("cleanup_tracking_points")
                         .requires(src -> src.hasPermission(OP_PERMISSION_LEVEL))
                         .executes(ctx -> cleanupTrackingPoints(ctx.getSource())))
@@ -222,6 +231,19 @@ public final class CTSableTrackingCommands {
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
+
+    // Set the current operator's protection bypass
+    private static int setProtectionBypass(CommandSourceStack src, boolean enabled) throws CommandSyntaxException{
+        ServerPlayer player = src.getPlayerOrException();
+        if(!player.hasPermissions(ProtectionBypass.REQUIRED_PERMISSION_LEVEL)){
+            src.sendFailure(Component.literal("Protection bypass requires operator level 2."));
+            return 0;
+        }
+        boolean active = ProtectionBypass.setEnabled(player, enabled);
+        src.sendSuccess(() -> Component.literal("Protection bypass "
+                + (active ? "enabled for this session." : "disabled.")), false);
+        return Command.SINGLE_SUCCESS;
+    }
 
     // Toggle the operator Sable pathfinder debug renderer.
     private static int togglePathfinderDebugRenderer(CommandSourceStack src) throws CommandSyntaxException {

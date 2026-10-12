@@ -11,6 +11,8 @@ package com.rieno.gadgetsandgizmos.compat.rei;
 import com.rieno.gadgetsandgizmos.compat.recipe.ThrusterProcessingDisplays;
 import com.rieno.gadgetsandgizmos.content.WorkerEnergyBatteryItem;
 import com.rieno.gadgetsandgizmos.neoforge.client.AdvancedContraptionControllerScreen;
+import com.rieno.gadgetsandgizmos.compat.recipe.OxidizedSolidFuelRecipes;
+import com.rieno.gadgetsandgizmos.lib.compat.rei.ProcessingTransformationReiCategory;
 import com.rieno.gadgetsandgizmos.registry.CTFeatureToggles;
 import me.shedaniel.math.Rectangle;
 import me.shedaniel.rei.api.client.plugins.REIClientPlugin;
@@ -52,6 +54,14 @@ public class CTReiPlugin implements REIClientPlugin {
 
     @Override
     public void registerCategories(CategoryRegistry registry){
+        if(OxidizedSolidFuelRecipes.enabled()){
+            var category = new ProcessingTransformationReiCategory(OxidizedSolidFuelRecipes.CATEGORY,
+                    OxidizedSolidFuelRecipes.title(), OxidizedSolidFuelRecipes.icon());
+            registry.add(category);
+            for(var workstation : OxidizedSolidFuelRecipes.workstations()){
+                registry.addWorkstations(category.getCategoryIdentifier(), EntryStacks.of(workstation));
+            }
+        }
         if(!CTFeatureToggles.isItemEnabled("thruster")) return;
         for(ThrusterProcessingDisplays.Mode mode : ThrusterProcessingDisplays.Mode.values()){
             ThrusterReiCategory category = new ThrusterReiCategory(mode);
@@ -64,6 +74,11 @@ public class CTReiPlugin implements REIClientPlugin {
 
     @Override
     public void registerDisplays(DisplayRegistry registry){
+        if(Minecraft.getInstance().level != null){
+            for(var view : OxidizedSolidFuelRecipes.views(Minecraft.getInstance().level.getRecipeManager())){
+                registry.add(new ProcessingTransformationReiCategory.Display(OxidizedSolidFuelRecipes.CATEGORY, view));
+            }
+        }
         if(!CTFeatureToggles.isItemEnabled("thruster") || Minecraft.getInstance().level == null) return;
         var level = Minecraft.getInstance().level;
         for(ThrusterProcessingDisplays.Mode mode : ThrusterProcessingDisplays.Mode.values()){

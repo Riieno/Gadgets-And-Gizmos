@@ -37,6 +37,7 @@ public final class FlightControlRequests{
     private static final ThreadLocal<Boolean> SUPPRESS_ACTUATORS = ThreadLocal.withInitial(() -> false);
     private static final ThreadLocal<dev.ryanhcode.sable.api.physics.handle.RigidBodyHandle> HANDLE = new ThreadLocal<>();
     private static final ThreadLocal<Vec3> COMPENSATION = ThreadLocal.withInitial(() -> Vec3.ZERO);
+    private static final ThreadLocal<AdvancedContraptionControllerBlockEntity> COORDINATOR = new ThreadLocal<>();
 
     private FlightControlRequests(){}
 
@@ -98,6 +99,21 @@ public final class FlightControlRequests{
 
     public static boolean computing(){ return SUPPRESS_ACTUATORS.get(); }
 
+    // Restrict native computer contributors to nodes in the currently running graph
+    public static Scope coordinating(BlockEntity computer){
+        var prev = COORDINATOR.get();
+        COORDINATOR.set(host(computer));
+        return () -> { if(prev == null) COORDINATOR.remove(); else COORDINATOR.set(prev); };
+    }
+
+    public static boolean allows(BlockEntity component){
+        var host = COORDINATOR.get();
+        if(host == null) host = host(component);
+        if(host == null) return true;
+        var runtime = FlightControlIntegration.runtime(host);
+        return runtime != null && runtime.contributes(component);
+    }
+
     public static Scope suppressActuators(){
         boolean prev = SUPPRESS_ACTUATORS.get();
         SUPPRESS_ACTUATORS.set(true);
@@ -112,12 +128,13 @@ public final class FlightControlRequests{
         var host = host(component);
         if(host == null || host.getLevel() == null || !host.hasShipControlModule()) return;
         if(!finite(force) || !finite(torque) || !finite(compensation)){ SAMPLES.remove(component); return; }
-        SAMPLES.put(component, new Sample(host, force, torque, compensation, rotationActions(component), active,
+        SAMPLES.put(component, new Sample(host, force, torque, compensation, rotationActions(component), translationActions(component), active,
                 host.getLevel().getGameTime(), System.nanoTime()));
     }
 
     // Declare authored attitude axes independently of damping and world-frame yaw torque
     public static Set<String> rotationActions(BlockEntity component){
+        if(!allows(component)) return Set.of();
         if(component instanceof ace.flight.api.WrenchContributor contributor && !contributor.isContributing()) return Set.of();
         if(component instanceof ace.flight.block.MouseFlightControllerBlockEntity mouse){
             var host = host(component);
@@ -146,6 +163,34 @@ public final class FlightControlRequests{
         return Set.of();
     }
 
+    // Hover yields only to authored vertical controls, never to native damping or gravity support
+    public static Set<String> translationActions(BlockEntity component){
+        if(!allows(component)) return Set.of();
+        if(component instanceof ace.flight.api.WrenchContributor contributor && !contributor.isContributing()) return Set.of();
+        if(component instanceof ace.flight.block.AltitudeHoldBlockEntity) return Set.of("ship_ascend", "ship_descend");
+        if(component instanceof ace.flight.block.VelocityCouplerBlockEntity){
+            var state = ace.flight.control.FlightControllerStore.get(component);
+            return state.enableVy && Math.abs(state.targetVy) > 1.0E-5D ? Set.of("ship_ascend", "ship_descend") : Set.of();
+        }
+        if(component instanceof ace.flight.block.DistanceCouplerBlockEntity distance){
+            var host = host(component);
+            if(host == null || distance.getRememberedDirection() == null) return Set.of();
+            var up = FlightControlIntegration.orientation(host).up();
+            return distance.getRememberedDirection().getAxis() == up.getAxis() ? Set.of("ship_ascend", "ship_descend") : Set.of();
+        }
+        if(component instanceof ace.flight.block.FlightControlComputerBlockEntity){
+            var host = host(component);
+            var runtime = host == null ? null : FlightControlIntegration.runtime(host);
+            return runtime == null ? Set.of() : runtime.translationActions(component);
+        }
+        if(component instanceof ace.flight.block.CreativeFlightControlComputerBlockEntity){
+            var state = ace.flight.control.FlightControllerStore.get(component);
+            return state.altitudeHold || state.enableVy && Math.abs(state.targetVy) > 1.0E-5D
+                    ? Set.of("ship_ascend", "ship_descend") : Set.of();
+        }
+        return Set.of();
+    }
+
     public static ScmWrenchSourceRegistry.Wrench sample(ScmWrenchSourceRegistry.Request request){
         if(!(request.host() instanceof AdvancedContraptionControllerBlockEntity host)) return ScmWrenchSourceRegistry.Wrench.NONE;
         var body = SableLevelApi.containing(host);
@@ -156,11 +201,14 @@ public final class FlightControlRequests{
         Vec3 compensation = Vec3.ZERO;
         boolean active = false;
         Set<String> rotationActions = new java.util.LinkedHashSet<>();
+        Set<String> translationActions = new java.util.LinkedHashSet<>();
+        var runtime = FlightControlIntegration.runtime(host);
         long now = System.nanoTime();
         for(var pair : SAMPLES.entrySet()){
             Sample val = pair.getValue();
             if(val.host != host) continue;
-            if(pair.getKey().isRemoved() || request.tick() - val.tick > 2 || now - val.time > 250_000_000L){
+            if(runtime == null || !runtime.contributes(pair.getKey()) || pair.getKey().isRemoved()
+                    || request.tick() - val.tick > 2 || now - val.time > 250_000_000L){
                 SAMPLES.remove(pair.getKey(), val);
                 continue;
             }
@@ -170,6 +218,7 @@ public final class FlightControlRequests{
             torque = torque.add(val.torque);
             compensation = compensation.add(val.compensation);
             rotationActions.addAll(val.rotationActions);
+            translationActions.addAll(val.translationActions);
         }
         Vector3d f = body.logicalPose().orientation().transform(new Vector3d(force.x, force.y, force.z));
         Vector3d t = body.logicalPose().orientation().transform(new Vector3d(torque.x, torque.y, torque.z));
@@ -186,7 +235,7 @@ public final class FlightControlRequests{
             torque = new Vec3(t.x, t.y, t.z).add(new Vec3(worldCenter.x, worldCenter.y, worldCenter.z)
                     .subtract(request.centerOfMass()).cross(resultForce));
         }else torque = new Vec3(t.x, t.y, t.z);
-        return new ScmWrenchSourceRegistry.Wrench(active, resultForce, torque, new Vec3(c.x, c.y, c.z), rotationActions);
+        return new ScmWrenchSourceRegistry.Wrench(active, resultForce, torque, new Vec3(c.x, c.y, c.z), rotationActions, translationActions);
     }
 
     public static void remove(AdvancedContraptionControllerBlockEntity host){ SAMPLES.entrySet().removeIf(pair -> pair.getValue().host == host); }
@@ -202,5 +251,5 @@ public final class FlightControlRequests{
 
     private static boolean finite(Vec3 val){ return val != null && Double.isFinite(val.x) && Double.isFinite(val.y) && Double.isFinite(val.z); }
     private record Sample(AdvancedContraptionControllerBlockEntity host, Vec3 force, Vec3 torque, Vec3 compensation,
-                          Set<String> rotationActions, boolean active, long tick, long time){}
+                          Set<String> rotationActions, Set<String> translationActions, boolean active, long tick, long time){}
 }

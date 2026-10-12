@@ -507,6 +507,15 @@ public class EntityLauncherAnchorBlockEntity extends KineticBlockEntity
             clearMountedController(player);
             return;
         }
+        if (action == ServerboundEntityLauncherAnchorControlPacket.DETACH) {
+            mountedUsePressedAt = -1L;
+            detachAndRetractMountedClaw(player);
+            return;
+        }
+        if (action == ServerboundEntityLauncherAnchorControlPacket.CANCEL_USE) {
+            mountedUsePressedAt = -1L;
+            return;
+        }
         if (action == ServerboundEntityLauncherAnchorControlPacket.USE_PRESSED) {
             mountedUsePressedAt = serverLevel.getGameTime();
             return;

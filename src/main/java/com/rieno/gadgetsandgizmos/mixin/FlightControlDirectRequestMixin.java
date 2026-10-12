@@ -24,6 +24,7 @@ public abstract class FlightControlDirectRequestMixin{
         BlockEntity component = (BlockEntity) (Object) this;
         var host = FlightControlRequests.host(component);
         if(host == null){ original.call(body, handle, dt); return; }
+        if(!FlightControlRequests.allows(component)){ FlightControlRequests.remove(component); return; }
         var center = ace.flight.physics.FlightPhysicsController.getMassCenter(body);
         var capture = new SableImpulseCapture(handle, center);
         var frameHandle = new SableBodyFrameHandle(FlightControlRequests.managed(component) ? capture : handle,

@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.display.ElementInspectorLayout;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphTextInputs;
 import com.rieno.gadgetsandgizmos.compat.aeroworks.AeroworksControllerCompat;
 import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerMenu;
@@ -32,6 +33,11 @@ import com.rieno.gadgetsandgizmos.lib.display.AccDisplaySourceRegistry;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphCatalog;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphCurve;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
+import com.rieno.gadgetsandgizmos.content.advanced.GraphSignalRange;
+import com.rieno.gadgetsandgizmos.lib.control.SignalValueType;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphComparison;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphCounters;
+import com.rieno.gadgetsandgizmos.lib.chat.ChatPlayers;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphFunctions;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphNodeFactory;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphPortNormalizer;
@@ -43,6 +49,8 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphTemplates;
 import com.rieno.gadgetsandgizmos.lib.graph.render.GraphWireGeometry;
 import com.rieno.gadgetsandgizmos.lib.graph.render.GraphViewport;
 import com.rieno.gadgetsandgizmos.lib.client.ui.ColorPickerModal;
+import com.rieno.gadgetsandgizmos.lib.client.ui.PlayerSelectModal;
+import com.rieno.gadgetsandgizmos.lib.color.ColorOpacity;
 import com.rieno.gadgetsandgizmos.lib.client.render.GuiLineRenderer;
 import com.rieno.gadgetsandgizmos.lib.graph.render.GraphTextLayout;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphNodeLayout;
@@ -50,6 +58,7 @@ import com.rieno.gadgetsandgizmos.lib.graph.GraphTargetPortLayout;
 import com.rieno.gadgetsandgizmos.lib.graph.edit.GraphNodeAlias;
 import com.rieno.gadgetsandgizmos.lib.client.scratch.ScratchBlockSurface;
 import com.rieno.gadgetsandgizmos.lib.client.schedule.CreateScheduleInputScreen;
+import com.rieno.gadgetsandgizmos.lib.client.schedule.CreateScheduleInputFields;
 import com.rieno.gadgetsandgizmos.lib.client.ui.ItemSearchQuery;
 import com.rieno.gadgetsandgizmos.lib.scratch.ScratchBlockDefinition;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmBuiltinControlModes;
@@ -482,6 +491,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Draft simulation runtime
     private GraphRuntime draftSimulationRuntime;
     private ColorPickerModal graphColorPicker;
+    private PlayerSelectModal playerSelectModal;
     private final Map<String, Long> previewInputPulses = new LinkedHashMap<>();
     // Draft simulation controller
     private AdvancedContraptionControllerBlockEntity draftSimulationController;
@@ -990,12 +1000,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private boolean hudPortDropdownOpen;
     // Current HUD port dropdown scroll
     private int hudPortDropdownScroll;
-    // Current dragging HUD color key
-    private String draggingHudColorKey;
-    // Current dragging HUD color control
-    private HudDesignerColorControl draggingHudColorControl;
-    // Tracked HUD hsv memory
-    private final Map<String, HudDesignerHsv> hudHsvMemory = new LinkedHashMap<>();
+    // Current HUD color picker
+    private ColorPickerModal hudColorPicker;
+    // Current dragging HUD opacity key
+    private String draggingHudOpacityKey;
     // Current dragging HUD prop slider
     private String draggingHudPropSlider;
     // Tracks whether HUD font style dropdown is open
@@ -1609,7 +1617,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             long requestId = beginGraphActionToast("Applying graph...");
             saveAndApplyDraft("apply_save", requestId);
         });
-        if(menu.getContentSubLevelId() != null && hasScmWorkspace()){
+        if(menu.getContentSubLevelId() != null && hasScmWorkspace() && !Minecraft.getInstance().isSingleplayer()){
             addToolbarButton(layoutLeft() + 108, "Ship Permissions", btn -> {
                 shipPermissionsOpen = true;
                 shipPermissionsSelected = null;
@@ -1819,7 +1827,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (themeColorPicker != null && themeColorPicker.isOpen()) {
             graphics.pose().pushPose();
             graphics.pose().translate(0.0F, 0.0F, 25.0F);
-            themeColorPicker.render(graphics, font, width, height, themePickerChrome(), mouseX, mouseY);
+            themeColorPicker.renderStyled(graphics, font, width, height, colorPickerAppearance(), mouseX, mouseY);
             graphics.pose().popPose();
         }
         drawGraphActionToast(graphics);
@@ -2108,6 +2116,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     private void beginScmConfigurationWorkspace() {
         scmConfigurationOpen = false;
+        scmConfigurationHasThrusters = null;
         scmConfigurationSelection.clear();
         scmConfigurationListScroll = 0;
         scmConfigurationSidebarScroll = 0;
@@ -3213,22 +3222,42 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     private UiRect scmConfigurationPreviewBounds(UiRect bounds) {
         UiRect viewBounds = scmConfigurationViewBounds(bounds);
-        return new UiRect(viewBounds.x(), viewBounds.y() + SCM_CONFIGURATION_FILTER_HEIGHT + SCM_ORIENTATION_HEIGHT,
-                viewBounds.width(), viewBounds.height() - SCM_CONFIGURATION_FILTER_HEIGHT - SCM_ORIENTATION_HEIGHT);
+        int toolbarHeight = scmConfigurationToolbarHeight(viewBounds.width());
+        return new UiRect(viewBounds.x(), viewBounds.y() + toolbarHeight + SCM_ORIENTATION_HEIGHT,
+                viewBounds.width(), viewBounds.height() - toolbarHeight - SCM_ORIENTATION_HEIGHT);
     }
 
     private String scmDetectedVehicleType = "airship";
     private String scmDetectedSteeringType = ScmSteeringMode.CUSTOM.id();
+    private Boolean scmConfigurationHasThrusters;
+
+    // Resolve the effective vehicle mode using the same availability registry as the server
+    private boolean scmAirshipVehicle(){
+        String selected = scmConfigurationProfile.vehicleType();
+        return ScmBuiltinControlModes.AIRSHIP_ID.equals(ScmControlModeRegistry.resolve(
+                "auto".equals(selected) ? scmDetectedVehicleType : selected).id());
+    }
+
+    // Keep the propulsion notice below the buttons when the preview is narrow
+    private int scmConfigurationToolbarHeight(int viewWidth){
+        if(!scmAirshipVehicle()) return SCM_CONFIGURATION_FILTER_HEIGHT;
+        int noticeX = scmConfigurationWireframe ? 389 : 237;
+        int noticeWidth = Math.max(font.width(Component.translatable(
+                "createthrusters.controller.scm.no_thrusters")), font.width(Component.translatable(
+                "createthrusters.controller.scm.propellers_incomplete")));
+        return viewWidth - noticeX - 7 >= noticeWidth ? SCM_CONFIGURATION_FILTER_HEIGHT
+                : SCM_CONFIGURATION_FILTER_HEIGHT + 24;
+    }
 
     private UiRect scmOrientationButton(UiRect view, int index){
         if(index >= 3){
             int buttonWidth = (view.width() - 12) / 2;
             return new UiRect(view.x() + 4 + (index - 3) * (buttonWidth + 4),
-                    view.y() + SCM_CONFIGURATION_FILTER_HEIGHT + 27, buttonWidth, 18);
+                    view.y() + scmConfigurationToolbarHeight(view.width()) + 27, buttonWidth, 18);
         }
         int buttonWidth = (view.width() - 16) / 3;
         return new UiRect(view.x() + 4 + index * (buttonWidth + 4),
-                view.y() + SCM_CONFIGURATION_FILTER_HEIGHT + 3, buttonWidth, 18);
+                view.y() + scmConfigurationToolbarHeight(view.width()) + 3, buttonWidth, 18);
     }
 
     private void drawScmOrientationControls(GuiGraphics graphics, UiRect view, int mouseX, int mouseY){
@@ -3245,9 +3274,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                         scmConfigurationProfile.ikGait()).displayName()
                         : "Steering: " + (ScmSteeringMode.AUTO.id().equals(
                         scmConfigurationProfile.steeringType())
-                        ? "Auto (" + ScmSteeringMode.fromId(scmDetectedSteeringType).displayName() + ")"
+                        ? "Auto (" + ScmSteeringMode.fromId(scmDetectedSteeringType)
+                        .availableOrFallback(ScmSteeringMode.CUSTOM).displayName() + ")"
                         : ScmSteeringMode.fromId(
-                        scmConfigurationProfile.steeringType()).displayName())};
+                        scmConfigurationProfile.steeringType())
+                        .availableOrFallback(ScmSteeringMode.CUSTOM).displayName())};
         for(int index = 0; index < labels.length; index++){
             UiRect button = scmOrientationButton(view, index);
             drawScmButton(graphics, button.x(), button.y(), button.width(), labels[index], mouseX, mouseY);
@@ -3276,7 +3307,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                             scmConfigurationProfile.ikGait())) + 1) % modes.size();
                     scmConfigurationProfile.setIkGait(modes.get(next).id());
                 } else {
-                    List<ScmSteeringMode> modes = ScmSteeringMode.selections();
+                    List<ScmSteeringMode> modes = ScmSteeringMode.availableSelections();
                     int next = (modes.indexOf(ScmSteeringMode.fromId(
                             scmConfigurationProfile.steeringType())) + 1) % modes.size();
                     scmConfigurationProfile.setSteeringType(modes.get(next).id());
@@ -3336,7 +3367,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private boolean drawCompactScmPreviewFilters(GuiGraphics graphics, int x, int y, int viewWidth,
                                                  int mouseX, int mouseY) {
         graphics.fill(x + 1, y + 1, x + viewWidth - 1,
-                y + SCM_CONFIGURATION_FILTER_HEIGHT, v2Ui
+                y + scmConfigurationToolbarHeight(viewWidth), v2Ui
                         ? AdvancedControllerV2Theme.PANEL_RAISED : 0xFF101B25);
         UiRect filters = scmConfigurationFiltersButtonBounds(x, y);
         UiRect wireframe = scmConfigurationWireframeButtonBounds(x, y);
@@ -3352,7 +3383,23 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     "Solid filters (" + scmConfigurationWireframeExcludedFilters.size() + ") v",
                     mouseX, mouseY);
         }
+        drawScmPropulsionNotice(graphics, x, y, viewWidth);
         return true;
+    }
+
+    // Show propulsion limitations beside the live preview controls
+    private void drawScmPropulsionNotice(GuiGraphics graphics, int x, int y, int viewWidth){
+        if(!scmAirshipVehicle()) return;
+        boolean below = scmConfigurationToolbarHeight(viewWidth) > SCM_CONFIGURATION_FILTER_HEIGHT;
+        int noticeX = x + (below ? 8 : scmConfigurationWireframe ? 389 : 237);
+        int noticeY = y + (below ? SCM_CONFIGURATION_FILTER_HEIGHT + 3 : 3);
+        Component presence = Component.translatable(scmConfigurationHasThrusters == null
+                ? "createthrusters.controller.scm.checking_thrusters" : scmConfigurationHasThrusters
+                ? "createthrusters.controller.scm.thrusters_detected" : "createthrusters.controller.scm.no_thrusters");
+        graphics.drawString(font, presence, noticeX, noticeY,
+                Boolean.TRUE.equals(scmConfigurationHasThrusters) ? SCM_FORWARD_COLOR : 0xFFFFC66D, false);
+        graphics.drawString(font, Component.translatable("createthrusters.controller.scm.propellers_incomplete"),
+                noticeX, noticeY + 10, 0xFFFFC66D, false);
     }
 
     private UiRect scmConfigurationFiltersButtonBounds(int x, int y) {
@@ -5860,7 +5907,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Check if the blocking overlay is open
     private boolean blockingOverlayOpen() {
-        return linkerOpen || shareModalOpen || templatePicker || optionDropdown != null || contextMenu != null
+        return playerSelectOpen() || linkerOpen || shareModalOpen || templatePicker || optionDropdown != null || contextMenu != null
                 || miniBrowser != null || hudOpen || graphHistoryOpen || toolsMenuOpen || themeEditorOpen
                 || themeColorPicker != null || scmConfigurationOpen
                 || scmBlockPickerOpen;
@@ -6312,8 +6359,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                         bounds.x() + 6, bounds.y() + 5, interfacePrimaryColor(), false);
                 UiRect field = schedulePropertyValueBounds(bounds);
                 List<SchedulePropertyChoice> choices = schedulePropertyChoices(selected, property);
-                String value = ShippingScheduleGraph.editableProperties(scheduleDraft, selected.id(),
-                        minecraft.level.registryAccess()).getOrDefault(property, "");
+                String value = scheduleProperties(selected).getOrDefault(property, "");
                 if (!choices.isEmpty()) {
                     String label = choices.stream().filter(choice -> choice.value().equals(value))
                             .map(SchedulePropertyChoice::label).findFirst().orElse(value);
@@ -6506,26 +6552,71 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     private List<String> schedulePropertyKeys(AdvancedGraphDocument.Node node) {
         if (node == null || minecraft == null || minecraft.level == null || scheduleDraft == null) return List.of();
-        return ShippingScheduleGraph.editableProperties(scheduleDraft, node.id(), minecraft.level.registryAccess())
+        return scheduleProperties(node)
                 .keySet().stream().sorted(String.CASE_INSENSITIVE_ORDER).toList();
+    }
+
+    // Reuse the native widgets while the inspected input's data and font remain unchanged
+    private CreateScheduleInputFields scheduleFields;
+    private ResourceLocation scheduleFieldsId;
+    private CompoundTag scheduleFieldsData;
+    private net.minecraft.client.gui.Font scheduleFieldsFont;
+
+    private CreateScheduleInputFields scheduleFields(com.simibubi.create.content.trains.schedule.IScheduleInput input){
+        if(scheduleFields == null || !input.getId().equals(scheduleFieldsId)
+                || !input.getData().equals(scheduleFieldsData) || scheduleFieldsFont != font){
+            scheduleFields = new CreateScheduleInputFields(input, font);
+            scheduleFieldsId = input.getId();
+            scheduleFieldsData = input.getData().copy();
+            scheduleFieldsFont = font;
+        }
+        return scheduleFields;
+    }
+
+    // Include every native field, including selectors omitted from the default NBT
+    private Map<String, String> scheduleProperties(AdvancedGraphDocument.Node node){
+        Map<String, String> res = new LinkedHashMap<>(ShippingScheduleGraph.editableProperties(
+                scheduleDraft, node.id(), minecraft.level.registryAccess()));
+        var input = ShippingScheduleGraph.scheduleInput(scheduleDraft, node.id(), minecraft.level.registryAccess());
+        if(input != null){
+            var data = scheduleFields(input).data(input);
+            for(String key : data.getAllKeys()){
+                var val = data.get(key);
+                if(val instanceof net.minecraft.nbt.NumericTag || val instanceof net.minecraft.nbt.StringTag){
+                    res.put(key, val.getAsString());
+                }
+            }
+        }
+        return res;
+    }
+
+    // Apply the native text filter, integer bounds and serialized selector type
+    private boolean setScheduleProperty(String nodeId, String key, String val){
+        var input = ShippingScheduleGraph.scheduleInput(scheduleDraft, nodeId, minecraft.level.registryAccess());
+        if(input == null || "WaitLogic".equals(key)){
+            return ShippingScheduleGraph.setProperty(scheduleDraft, nodeId, key, val, minecraft.level.registryAccess());
+        }
+        var data = new CreateScheduleInputFields(input, font).edit(input, key, val);
+        return data != null && ShippingScheduleGraph.setInputData(scheduleDraft, nodeId, data, minecraft.level.registryAccess());
     }
 
     // Provide selectors for Create's enum-style schedule settings instead of forcing raw integer entry.
     private List<SchedulePropertyChoice> schedulePropertyChoices(AdvancedGraphDocument.Node node, String property) {
         if (property == null) return List.of();
+        if(node != null && minecraft != null && minecraft.level != null && scheduleDraft != null){
+            var input = ShippingScheduleGraph.scheduleInput(scheduleDraft, node.id(), minecraft.level.registryAccess());
+            if(input != null){
+                var opts = scheduleFields(input).choices(property);
+                List<SchedulePropertyChoice> choices = new ArrayList<>();
+                for(int idx = 0; idx < opts.size(); idx++){
+                    choices.add(new SchedulePropertyChoice(Integer.toString(idx), opts.get(idx).getString()));
+                }
+                if(!choices.isEmpty()) return List.copyOf(choices);
+            }
+        }
         return switch (property) {
             case "WaitLogic" -> List.of(new SchedulePropertyChoice("AND", "AND previous"),
                     new SchedulePropertyChoice("OR", "OR branch"));
-            case "Exact" -> List.of(new SchedulePropertyChoice("0", "At least"),
-                    new SchedulePropertyChoice("1", "Exactly"));
-            case "TimeUnit" -> List.of(new SchedulePropertyChoice("0", "Ticks"),
-                    new SchedulePropertyChoice("1", "Seconds"), new SchedulePropertyChoice("2", "Minutes"));
-            case "Operator" -> List.of(new SchedulePropertyChoice("0", "Greater than"),
-                    new SchedulePropertyChoice("1", "Less than"), new SchedulePropertyChoice("2", "Equal to"));
-            case "Measure" -> List.of(new SchedulePropertyChoice("0", "Items"),
-                    new SchedulePropertyChoice("1", "Stacks"));
-            case "Inverted" -> List.of(new SchedulePropertyChoice("0", "Powered"),
-                    new SchedulePropertyChoice("1", "Unpowered"));
             case ShippingScheduleGraph.FLOW_TARGET_TAG -> scheduleDraft == null ? List.of()
                     : ShippingScheduleGraph.orderedNodes(scheduleDraft).stream()
                     .map(step -> new SchedulePropertyChoice(step.id(), scheduleBlockLabel(step)))
@@ -6589,8 +6680,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 closeSchedulePropertyDropdown();
                 return true;
             }
-            if (ShippingScheduleGraph.setProperty(scheduleDraft, schedulePropertyDropdownNode,
-                    schedulePropertyDropdownKey, choice.value(), minecraft.level.registryAccess())) {
+            if (setScheduleProperty(schedulePropertyDropdownNode, schedulePropertyDropdownKey, choice.value())) {
                 saveShippingScheduleDraft();
             }
         }
@@ -6630,8 +6720,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         schedulePropertyValue.setWidth(field.width());
         String editorKey = selected.id() + "\u0000" + selectedScheduleProperty;
         if (!editorKey.equals(schedulePropertyEditorNode + "\u0000" + schedulePropertyEditorKey)) {
-            String value = ShippingScheduleGraph.editableProperties(scheduleDraft, selected.id(), minecraft.level.registryAccess())
-                    .getOrDefault(selectedScheduleProperty, "");
+            String value = scheduleProperties(selected).getOrDefault(selectedScheduleProperty, "");
             syncingScheduleProperty = true;
             schedulePropertyValue.setValue(value);
             syncingScheduleProperty = false;
@@ -6671,8 +6760,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         scheduleInlinePropertyValue.setWidth(Math.max(20, fieldWidth - 8));
         String editorKey = selected.id() + "\u0000" + selectedScheduleProperty;
         if (!editorKey.equals(scheduleInlinePropertyEditorNode + "\u0000" + scheduleInlinePropertyEditorKey)) {
-            String value = ShippingScheduleGraph.editableProperties(scheduleDraft, selected.id(), minecraft.level.registryAccess())
-                    .getOrDefault(selectedScheduleProperty, "");
+            String value = scheduleProperties(selected).getOrDefault(selectedScheduleProperty, "");
             syncingScheduleProperty = true;
             scheduleInlinePropertyValue.setValue(value);
             syncingScheduleProperty = false;
@@ -6707,21 +6795,24 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private void updateScheduleProperty(String value) {
         if (syncingScheduleProperty || !scheduleGraphOverview || selectedScheduleBlock == null
                 || selectedScheduleProperty == null || minecraft == null || minecraft.level == null) return;
-        if (ShippingScheduleGraph.setProperty(scheduleDraft, selectedScheduleBlock, selectedScheduleProperty, value,
-                minecraft.level.registryAccess())) {
+        if (setScheduleProperty(selectedScheduleBlock, selectedScheduleProperty, value)) {
             saveShippingScheduleDraft();
         }
     }
 
+    // Edit the complete registered input through the shared native schedule editor
     private void openScheduleBlockConfiguration(AdvancedGraphDocument.Node selected){
         if(selected == null || minecraft == null || minecraft.level == null || scheduleDraft == null) return;
         var input = ShippingScheduleGraph.scheduleInput(scheduleDraft, selected.id(), minecraft.level.registryAccess());
         if(input != null) minecraft.setScreen(new CreateScheduleInputScreen(this, input,
-                minecraft.level.registryAccess(), data -> {
-            if(ShippingScheduleGraph.setInputData(scheduleDraft, selected.id(), data, minecraft.level.registryAccess())){
+                minecraft.level.registryAccess(), edited -> {
+            if(ShippingScheduleGraph.setScheduleInput(scheduleDraft, selected.id(), edited, minecraft.level.registryAccess())){
                 saveShippingScheduleDraft();
             }
-        }));
+        }, edited -> {
+            var controller = menu.getMenuConfigTargetBlockEntity();
+            return controller == null ? List.of() : controller.shippingScheduleDestinationNames(edited.getId());
+        }, edited -> true));
     }
 
     // Finish a freeform Scratch drag. Dropping on a statement connector
@@ -7477,9 +7568,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // the underlying pass an off-screen pointer so hidden buttons, nodes, and
     // slots cannot light up through a popup or modal.
     private boolean masksUnderlyingHover() {
-        return shipPermissionsOpen || scmConfigurationOpen || scmBlockPickerOpen || graphTargetPickerOpen
+        return playerSelectOpen() || shipPermissionsOpen || scmConfigurationOpen || scmBlockPickerOpen || graphTargetPickerOpen
                 || toolsMenuOpen || themeEditorOpen
-                || themeColorPicker != null || optionDropdown != null
+                || themeColorPicker != null || hudColorPicker != null || optionDropdown != null
                 || scmWorkspaceDropdownOpen();
     }
 
@@ -7636,10 +7727,22 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 }
             }
         }
+        if(playerSelectOpen()){
+            graphics.pose().pushPose();
+            graphics.pose().translate(0.0F, 0.0F, 600.0F);
+            playerSelectModal.renderStyled(graphics, font, width, height, playerSelectAppearance(), mouseX, mouseY);
+            graphics.pose().popPose();
+        }
         if (graphColorPicker != null && graphColorPicker.isOpen()) {
             graphics.pose().pushPose();
             graphics.pose().translate(0.0F, 0.0F, 500.0F);
-            graphColorPicker.render(graphics, font, width, height, themePickerChrome(), mouseX, mouseY);
+            graphColorPicker.renderStyled(graphics, font, width, height, colorPickerAppearance(), mouseX, mouseY);
+            graphics.pose().popPose();
+        }
+        if(hudColorPicker != null && hudColorPicker.isOpen()){
+            graphics.pose().pushPose();
+            graphics.pose().translate(0.0F, 0.0F, 500.0F);
+            hudColorPicker.renderStyled(graphics, font, width, height, colorPickerAppearance(), mouseX, mouseY);
             graphics.pose().popPose();
         }
     }
@@ -8898,7 +9001,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         } else {
             String dataKey = "source".equals(graphTargetPickerPort) ? "SourceData" : "TargetData";
             ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(node.data().getCompound(dataKey));
-            if (target != null) graphTargetPickerSelections.put(target.nodeId(), target);
+            if(target != null){
+                graphTargetPickerSelections.put(target.nodeId(), target);
+                Direction face = "source".equals(graphTargetPickerPort)
+                        ? Direction.byName(node.data().getString("SourceFace"))
+                        : AdvancedContraptionControllerBlockEntity.selectedDataTargetFace(node, target);
+                if(face != null) graphTargetPickerSelectionFaces.put(target.nodeId(), face);
+            }
         }
         graphTargetPickerPreviewTarget = graphTargetPickerSelections.keySet().stream().findFirst().orElse("");
         graphTargetPickerBlockTab = false;
@@ -9261,11 +9370,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 node.data().remove("Source");
                 node.data().remove("SourceLabel");
                 node.data().remove("SourceData");
+                node.data().remove("SourceFace");
                 putInputDefault(node, "source", "target", new CompoundTag());
             } else {
                 node.data().putString("Source", source.nodeId());
                 node.data().putString("SourceLabel", source.label().isBlank() ? source.nodeId() : source.label());
                 node.data().put("SourceData", source.toTag());
+                Direction face = graphTargetPickerSelectionFaces.get(source.nodeId());
+                if(face == null) node.data().remove("SourceFace");
+                else node.data().putString("SourceFace", face.getSerializedName());
                 putInputDefault(node, "source", "target", source.toTag());
             }
         } else if ("get_block_data".equals(node.type()) || "set_block_data".equals(node.type())) {
@@ -10440,11 +10553,18 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     ? "Add data case input"
                     : "Add exec output"
                     : "InputCount".equals(property) ? "Add Exec Input +"
+                    : AdvancedGraphCatalog.CHAT_BROADCAST_TAG.equals(property) ? "Broadcast Nearby"
+                    : GraphSignalRange.VALUE_TYPE_TAG.equals(property) ? "Value Type"
                     : "PulseBehavior".equals(property) ? "Pulse Behavior"
                     : "constant_color".equals(node.type()) ? "Pick Color" : property;
-            drawBodyControl(graphics, x, bodyY, width, propertyLabel, propertyValueLabel(node, property),
-                    AdvancedGraphCatalog.categoryColor(AdvancedGraphCatalog.get(node.type()).category()),
-                    "constant_boolean".equals(node.type()) && node.data().getBoolean(property));
+            if(GraphSignalRange.VALUE_TYPE_TAG.equals(property)){
+                drawBodyControl(graphics, x, bodyY, width, propertyLabel, propertyValueLabel(node, property) + " v",
+                        AdvancedGraphCatalog.categoryColor(AdvancedGraphCatalog.get(node.type()).category()), false);
+            }else{
+                drawBodyControl(graphics, x, bodyY, width, propertyLabel, propertyValueLabel(node, property),
+                        AdvancedGraphCatalog.categoryColor(AdvancedGraphCatalog.get(node.type()).category()),
+                        "constant_boolean".equals(node.type()) && node.data().getBoolean(property));
+            }
             if ("constant_color".equals(node.type())) {
                 drawGraphColorSwatch(graphics, x + width - Math.max(21, (int) (21 * zoom)), bodyY,
                         node.data().getInt("Value"));
@@ -10929,7 +11049,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 PortPosition pos = portPosition(node, port.getKey(), false);
                 if (!portWithinViewport(pos)) continue;
                 drawExecDiamond(graphics, pos);
-                if (isExecutionCombinerNode(node) || isFunctionOutputNode(node)) {
+                if (isExecutionCombinerNode(node) || isFunctionOutputNode(node)
+                        || ("play_sound".equals(node.type()) && "stop".equals(port.getKey()))) {
                     String label = isFunctionOutputNode(node) ? inputDisplayLabel(node, port.getKey())
                             : humanPort(port.getKey());
                     drawNodeString(graphics, label,
@@ -11278,6 +11399,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if ("branch".equals(node.type())) outputHeight = Math.max(outputHeight, 2 * 13);
         if (isExecutionSplitterNode(node)) outputHeight = Math.max(outputHeight, executionOutputCount(node) * 13);
         if (isExecutionCombinerNode(node)) outputHeight = Math.max(outputHeight, executionInputCount(node) * 13);
+        if ("play_sound".equals(node.type())) outputHeight = Math.max(outputHeight, 13);
         if (AdvancedGraphCatalog.isShipControlCompletionType(node.type())) outputHeight += 13;
         int portStart = nodeBodyTopUnits(node) + 6 + bodyControls * 15
                 + ("curve".equals(node.type()) ? CURVE_BODY_HEIGHT : 0);
@@ -13626,7 +13748,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
             if (hasPropertyControl(selectedNode)) {
                 drawInspectorControl(graphics, x, y,
-                        "PulseBehavior".equals(property) ? "Pulse Behavior" : property,
+                        AdvancedGraphCatalog.CHAT_BROADCAST_TAG.equals(property) ? "Broadcast Nearby"
+                                : GraphSignalRange.VALUE_TYPE_TAG.equals(property) ? "Value Type"
+                                : "PulseBehavior".equals(property) ? "Pulse Behavior" : property,
                         propertyValueLabel(selectedNode, property),
                         AdvancedGraphCatalog.categoryColor(AdvancedGraphCatalog.get(selectedNode.type()).category()),
                         property.equals(selectedInputPort));
@@ -14727,6 +14851,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the property option value
     private String propertyOptionValue(AdvancedGraphDocument.Node node, String property) {
+        if(GraphSignalRange.VALUE_TYPE_TAG.equals(property)) return GraphSignalRange.valueType(node).id();
+        if(AdvancedGraphCatalog.COUNT_DIRECTION_TAG.equals(property)) return AdvancedGraphCatalog.countDirection(node).id();
         if ("switch".equals(node.type())
                 && AdvancedGraphCatalog.SWITCH_TYPE_TAG.equals(property)) {
             return AdvancedGraphCatalog.switchType(node);
@@ -14930,6 +15056,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle mouse clicked
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if(playerSelectOpen()) return playerSelectModal.mouseClicked(mouseX, mouseY, button);
+        if(hudColorPicker != null && hudColorPicker.isOpen())
+            return hudColorPicker.mouseClicked(mouseX, mouseY, button);
         if (graphColorPicker != null && graphColorPicker.isOpen())
             return graphColorPicker.mouseClicked(mouseX, mouseY, button);
         if(shipPermissionsOpen) return clickShipPermissions(mouseX, mouseY, button);
@@ -15342,6 +15471,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle mouse dragged
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if(playerSelectOpen()) return true;
+        if(hudColorPicker != null && hudColorPicker.isOpen())
+            return hudColorPicker.mouseDragged(mouseX, mouseY, button);
         if (graphColorPicker != null && graphColorPicker.isOpen())
             return graphColorPicker.mouseDragged(mouseX, mouseY, button);
         wireMouseX = mouseX;
@@ -15454,8 +15586,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return true;
         }
         if (hudOpen) {
-            if (draggingHudColorControl != null) {
-                updateHudColorSlider(mouseX);
+            if(draggingHudOpacityKey != null){
+                updateHudOpacitySlider(mouseX);
                 return true;
             }
             if (draggingHudPropSlider != null) {
@@ -15543,6 +15675,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle mouse released
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if(playerSelectOpen()) return true;
+        if(hudColorPicker != null && hudColorPicker.isOpen())
+            return hudColorPicker.mouseReleased(mouseX, mouseY, button);
         if (graphColorPicker != null && graphColorPicker.isOpen())
             return graphColorPicker.mouseReleased(mouseX, mouseY, button);
         if (themeEditorOpen) {
@@ -15641,8 +15776,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (hudOpen) {
             draggingHudElement = false;
             resizingHudElement = false;
-            draggingHudColorKey = null;
-            draggingHudColorControl = null;
+            draggingHudOpacityKey = null;
             draggingHudPropSlider = null;
             return true;
         }
@@ -15799,6 +15933,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle mouse scrolled
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if(playerSelectOpen()) return playerSelectModal.mouseScrolled(scrollY);
+        if(hudColorPicker != null && hudColorPicker.isOpen()) return true;
         if(shipPermissionsOpen){
             int maximum = Math.max(0, shipPermissionsSnapshot.getList("Players", Tag.TAG_COMPOUND).size() - 8);
             shipPermissionsScroll = Mth.clamp(shipPermissionsScroll - (int)Math.signum(scrollY), 0, maximum);
@@ -16056,8 +16192,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle key pressed
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if(playerSelectOpen()) return playerSelectModal.keyPressed(keyCode, scanCode, modifiers);
         boolean controlDown = (modifiers & (Minecraft.ON_OSX ? GLFW.GLFW_MOD_SUPER : GLFW.GLFW_MOD_CONTROL)) != 0 || hasControlDown();
         boolean shiftDown = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0 || hasShiftDown();
+        if(hudColorPicker != null && hudColorPicker.isOpen())
+            return hudColorPicker.keyPressed(keyCode, scanCode, modifiers);
         if (graphColorPicker != null && graphColorPicker.isOpen())
             return graphColorPicker.keyPressed(keyCode, scanCode, modifiers);
         if (controllerAliasEditor != null && controllerAliasEditor.visible) {
@@ -16363,6 +16502,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle typed characters
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
+        if(playerSelectOpen()) return playerSelectModal.charTyped(codePoint, modifiers);
+        if(hudColorPicker != null && hudColorPicker.isOpen())
+            return hudColorPicker.charTyped(codePoint, modifiers);
         if (graphColorPicker != null && graphColorPicker.isOpen())
             return graphColorPicker.charTyped(codePoint, modifiers);
         if (controllerAliasEditor != null && controllerAliasEditor.visible) {
@@ -16555,6 +16697,20 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     syncInspector();
                     return true;
                 }
+                if(AdvancedGraphCatalog.COUNT_DIRECTION_TAG.equals(editableProperty(node))){
+                    selectedInputPort = AdvancedGraphCatalog.COUNT_DIRECTION_TAG;
+                    openPropertyDropdown(node, selectedInputPort, x + 5, mouseY + 8,
+                            nodeWidth(node) * zoom - 10, GraphCounters.Direction.optionIds());
+                    syncInspector();
+                    return true;
+                }
+                if(GraphSignalRange.VALUE_TYPE_TAG.equals(editableProperty(node))){
+                    selectedInputPort = GraphSignalRange.VALUE_TYPE_TAG;
+                    openPropertyDropdown(node, selectedInputPort, x + 5, mouseY + 8,
+                            nodeWidth(node) * zoom - 10, SignalValueType.optionIds());
+                    syncInspector();
+                    return true;
+                }
                 if ("PulseBehavior".equals(editableProperty(node))) {
                     selectedInputPort = "PulseBehavior";
                     openPropertyDropdown(node, "PulseBehavior", x + 5, mouseY + 8,
@@ -16590,7 +16746,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 }
                 applyPropertyControl(node);
                 syncInspector();
-                if (!List.of("constant_boolean", "convert_type", "curve").contains(node.type())) {
+                if (!List.of("constant_boolean", "convert_type", "curve", "send_chat_message").contains(node.type())) {
                     openBodyEditor(node, editableProperty(node), bodyTop, rowHeight);
                 }
                 return true;
@@ -16620,7 +16776,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             int portRow = (int) ((mouseY - bodyTop) / rowHeight);
             if ("number".equals(port.getValue()) && bodySliderTrack(node, port.getKey()).containsX(mouseX, 6)) {
                 startSliderDrag(node, port.getKey(), false, mouseX);
-            } else if (!inputOptions(node, port.getKey()).isEmpty()
+            } else if (isChatRecipientsInput(node, port.getKey()) || !inputOptions(node, port.getKey()).isEmpty()
                     || List.of("boolean", "direction", "frequency", "target").contains(port.getValue())
                     || isWorkerModalInput(node, port.getKey(), port.getValue())) {
                 int controlInset = inputControlInset(node, port.getKey());
@@ -16977,6 +17133,20 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     syncInspector();
                     return true;
                 }
+                if(AdvancedGraphCatalog.COUNT_DIRECTION_TAG.equals(editableProperty(node))){
+                    selectedInputPort = AdvancedGraphCatalog.COUNT_DIRECTION_TAG;
+                    openPropertyDropdown(node, selectedInputPort, graphRight() + 7, mouseY + 8,
+                            RIGHT_WIDTH - 14, GraphCounters.Direction.optionIds());
+                    syncInspector();
+                    return true;
+                }
+                if(GraphSignalRange.VALUE_TYPE_TAG.equals(editableProperty(node))){
+                    selectedInputPort = GraphSignalRange.VALUE_TYPE_TAG;
+                    openPropertyDropdown(node, selectedInputPort, graphRight() + 7, mouseY + 8,
+                            RIGHT_WIDTH - 14, SignalValueType.optionIds());
+                    syncInspector();
+                    return true;
+                }
                 if ("PulseBehavior".equals(editableProperty(node))) {
                     selectedInputPort = "PulseBehavior";
                     openPropertyDropdown(node, "PulseBehavior", graphRight() + 7, mouseY + 8,
@@ -17133,6 +17303,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             for (ControllerDiscoveryNode src : graphDisplaySourceOptions(node)) {
                 if (inTargets && mouseY >= y - 2 && mouseY < y + 12) {
                     checkpoint();
+                    if(!src.nodeId().equals(node.data().getString("Source"))) node.data().remove("SourceFace");
                     node.data().putString("Source", src.nodeId());
                     node.data().putString("SourceLabel",
                             src.label().isBlank() ? src.nodeId() : src.label());
@@ -18135,7 +18306,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         String firstVariable = draft.variables().keySet().stream()
                 .findFirst().orElse("variable");
         return new AdvancedGraphNodeFactory.Context(
-                pairId, nextVariableName(), firstVariable);
+                pairId, nextVariableName(), firstVariable,
+                minecraft == null || minecraft.player == null ? "" : minecraft.player.getGameProfile().getName());
     }
 
     // Get the next variable name
@@ -19015,6 +19187,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                         .filter(name -> "exec".equals(portMap.get(name))).toList();
                 int idx = Math.max(0, execPorts.indexOf(port));
                 y = screenY(node.y()) + (int) ((portStart(node) + idx * 13) * zoom);
+            } else if (!output && "play_sound".equals(node.type()) && "stop".equals(port)) {
+                y = screenY(node.y()) + (int) (portStart(node) * zoom);
             } else {
                 y = screenY(node.y()) + (int) ((NODE_HEADER / 2.0) * zoom) - 2;
             }
@@ -19608,6 +19782,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Get the editable property
     private String editableProperty(AdvancedGraphDocument.Node node) {
         if (node == null) return null;
+        if(GraphSignalRange.usesValueType(node.type())) return GraphSignalRange.VALUE_TYPE_TAG;
         return switch (node.type()) {
             case "event_trigger", "event_named_controller", "send_named_controller_event" -> "Event";
             case "mouse_input" -> "MouseInput";
@@ -19620,6 +19795,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             case "parallel_execution", "sequenced_execution", "switch" -> "OutputCount";
             case "exec_combine" -> "InputCount";
             case "convert_type" -> "OutputType";
+            case "count" -> AdvancedGraphCatalog.COUNT_DIRECTION_TAG;
+            case "send_chat_message" -> AdvancedGraphCatalog.CHAT_BROADCAST_TAG;
             case "curve" -> "CurveType";
             case "pid" -> AdvancedGraphCatalog.PID_PREVENT_INTEGRAL_WINDUP_TAG;
             case "portable_tracker" -> gogglesTrackerPairs().size() > 1 ? "GogglesPair" : null;
@@ -19700,11 +19877,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the property value label
     private String propertyValueLabel(AdvancedGraphDocument.Node node, String property) {
+        if(GraphSignalRange.VALUE_TYPE_TAG.equals(property)) return humanPort(GraphSignalRange.valueType(node).id());
+        if(AdvancedGraphCatalog.COUNT_DIRECTION_TAG.equals(property)) return humanPort(AdvancedGraphCatalog.countDirection(node).id());
         if ("constant_color".equals(node.type())) {
             return String.format("#%08X", node.data().getInt("Value"));
         }
         if ("constant_boolean".equals(node.type())) return node.data().getBoolean(property) ? "[x]" : "[ ]";
         if ("pid".equals(node.type())) return node.data().getBoolean(property) ? "[x]" : "[ ]";
+        if ("send_chat_message".equals(node.type())) return AdvancedGraphCatalog.chatBroadcastNearby(node) ? "[x]" : "[ ]";
         if ("constant_number".equals(node.type())) return compactNumber(node.data().getDouble(property));
         if ("convert_type".equals(node.type())) return humanPort(node.data().getString(property));
         if ("mouse_input".equals(node.type())) return humanPort(propertyOptionValue(node, property));
@@ -19736,6 +19916,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if ("constant_boolean".equals(node.type())) {
             checkpoint();
             node.data().putBoolean("Value", !node.data().getBoolean("Value"));
+        } else if("send_chat_message".equals(node.type())){
+            checkpoint();
+            node.data().putBoolean(AdvancedGraphCatalog.CHAT_BROADCAST_TAG,
+                    !AdvancedGraphCatalog.chatBroadcastNearby(node));
+            node.data().remove("BroadcastGlobally");
         } else if ("pid".equals(node.type())) {
             checkpoint();
             configPidWindup(node,
@@ -20132,8 +20317,65 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         return null;
     }
 
+    private static boolean isChatRecipientsInput(AdvancedGraphDocument.Node node, String port){
+        return node != null && List.of("watch_chat", "send_chat_message", "createthrusters:announce").contains(node.type())
+                && "players".equals(port);
+    }
+
+    private String chatRecipientsText(AdvancedGraphDocument.Node node){
+        List<String> players = ChatPlayers.identifiers(GraphRuntime.toLibraryValue(
+                AdvancedGraphPortState.inputDefault(node, "players", "list")));
+        String empty = "watch_chat".equals(node.type()) ? "All players" : "Triggering player";
+        return PlayerSelectModal.selectionLabel(players, empty) + " v";
+    }
+
+    private PlayerSelectModal.Appearance playerSelectAppearance(){
+        return new PlayerSelectModal.Appearance(this::renderAdvancedPanel,
+                (graphics, font, x, y, width, height, label, hovered) ->
+                        renderAdvancedButton(graphics, font, x, y, width, height, Component.literal(label), hovered, true),
+                (graphics, x, y, width, height, focused) ->
+                        renderControllerOption(graphics, x, y, width, height, interfaceAccentTextColor(), focused, false),
+                interfaceAccentTextColor(), interfaceSecondaryColor(), interfaceMutedColor(), interfaceAccentTextColor(),
+                0xFF18232D, 0xFF314657);
+    }
+
+    private ColorPickerModal.Appearance colorPickerAppearance(){
+        return new ColorPickerModal.Appearance(this::renderAdvancedPanel,
+                (graphics, font, x, y, width, height, label, hovered) ->
+                        renderAdvancedButton(graphics, font, x, y, width, height, Component.literal(label), hovered, true),
+                (graphics, x, y, width, height, focused) ->
+                        renderControllerOption(graphics, x, y, width, height, interfaceAccentTextColor(), focused, false),
+                0xA8000000, interfaceAccentTextColor(), nodeValueTextColor(), interfaceSecondaryColor(),
+                v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF4F3828, 0xFFFFFFFF);
+    }
+
+    private boolean playerSelectOpen(){ return playerSelectModal != null && playerSelectModal.isOpen(); }
+
+    private void openPlayerSelect(AdvancedGraphDocument.Node node){
+        if(node == null || isInputConnected(node, "players")) return;
+        editingBodyValue = false;
+        if(inspectorValue != null){ inspectorValue.setVisible(false); inspectorValue.setFocused(false); }
+        setFocused(null);
+        List<String> players = ChatPlayers.identifiers(GraphRuntime.toLibraryValue(
+                AdvancedGraphPortState.inputDefault(node, "players", "list")));
+        String empty = "watch_chat".equals(node.type()) ? "Empty selection watches all players"
+                : "Empty selection uses the triggering player";
+        playerSelectModal = new PlayerSelectModal(players, empty, selected -> {
+            AdvancedGraphDocument.Node target = findNode(node.id());
+            if(target == null) return;
+            checkpoint();
+            putInputDefault(target, "players", "list", GraphRuntime.fromLibraryValue(
+                    com.rieno.gadgetsandgizmos.lib.graph.GraphValue.list(selected)).payload());
+            clearGraphRenderCache();
+        }, () -> {
+            playerSelectModal = null;
+            syncInspector();
+        });
+    }
+
     // Get the input value label
     private String inputValueLabel(AdvancedGraphDocument.Node node, String port, String type) {
+        if(isChatRecipientsInput(node, port)) return valueOrUnset(chatRecipientsText(node));
         if(isCameraFilterInput(node, port)){
             Set<String> entries = cameraFilterEntries(node);
             String selected = com.rieno.gadgetsandgizmos.lib.view.ViewRaycast.Category.optionIds().stream()
@@ -20354,21 +20596,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Normalize the compare operator
     private static String normalizeCompareOperator(String operator) {
-        String normalized = operator == null ? "" : operator.trim().toLowerCase(Locale.ROOT);
-        if (!List.of("==", "===", "!=", "!==", "~=", "<", "<=", ">", ">=").contains(normalized)) {
-            normalized = normalized.replace('-', ' ').replace('_', ' ').replaceAll("\\s+", " ");
-        }
-        return switch (normalized) {
-            case "equal", "equals", "equal to", "eq", "is", "==", "===" -> "==";
-            case "greater", "gt", "greater than", ">" -> ">";
-            case "less", "lt", "less than", "<" -> "<";
-            case "greater equal", "greater or equal", "greater than or equal",
-                 "greater than or equal to", "greater than or equals", "gte", ">=" -> ">=";
-            case "less equal", "less or equal", "less than or equal",
-                 "less than or equal to", "less than or equals", "lte", "<=" -> "<=";
-            case "not equal", "not equals", "not equal to", "ne", "is not", "!=", "!==", "~=" -> "!=";
-            default -> "==";
-        };
+        String normalized = GraphComparison.normalizeOperator(operator);
+        return normalized.isEmpty() ? "==" : normalized;
     }
 
     // Migrate the smoothing nodes
@@ -20400,6 +20629,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Apply the input control
     private void applyInputControl(AdvancedGraphDocument.Node node, String port, String type, double mouseX, double mouseY, double x, double width) {
+        if(isChatRecipientsInput(node, port)){
+            openPlayerSelect(node);
+            return;
+        }
+        if("color".equals(type)){
+            openGraphColorPicker(node, port);
+            return;
+        }
         if ("frequency".equals(type)) {
             openFrequencyEditor(node);
             return;
@@ -21420,6 +21657,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         scmConfigurationRootSubLevelId = rootSubLevelId;
         scmConfigurationScanning = scanning;
         scmConfigurationStatus = status == null ? "" : status;
+        scmConfigurationHasThrusters = candidates == null || !candidates.contains("HasThrusters", Tag.TAG_BYTE)
+                ? null : candidates.getBoolean("HasThrusters");
         scmDetectedVehicleType = candidates == null ? "airship" : candidates.getString("DetectedVehicleType");
         scmDetectedSteeringType = candidates == null
                 || !candidates.contains("DetectedSteeringType", Tag.TAG_STRING)
@@ -21784,6 +22023,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
         }
         for (int idx = 0; idx < values.size(); idx++) opts.add(values.getString(idx));
+        if(opts.isEmpty()) opts.addAll(com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.inputOptions(node.type(), port));
         return opts;
     }
 
@@ -21853,6 +22093,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the numeric range
     private double[] numberRange(AdvancedGraphDocument.Node node, String port) {
+        if("createthrusters:announce".equals(node.type()) && List.of("fade_in", "stay", "fade_out").contains(port)){
+            return new double[]{0, Math.max(200, inputNumber(node, port))};
+        }
+        if("do_n".equals(node.type()) && "count".equals(port)) return new double[]{0, 256};
+        if("count".equals(node.type()) && "step".equals(port)) return new double[]{0, 16};
         if("camera".equals(node.type())){
             return switch(port){
                 case "pan" -> new double[]{-180, 180};
@@ -21962,7 +22207,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 || "random_int".equals(node.type()) && "max".equals(port)
                 || "random_int_in_range".equals(node.type())
                 && ("min".equals(port) || "max".equals(port))
-                || "mouse_input".equals(node.type()) && "timeout".equals(port);
+                || "mouse_input".equals(node.type()) && "timeout".equals(port)
+                || "do_n".equals(node.type()) && "count".equals(port);
     }
 
     // Get the list input size
@@ -22070,6 +22316,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Put the input default
     private void putInputDefault(AdvancedGraphDocument.Node node, String port, String type, Object val) {
+        if("do_n".equals(node.type()) && "count".equals(port) && val instanceof Number num){
+            val = GraphCounters.wholeCount(num.doubleValue());
+        }
         CompoundTag defaults = node.data().getCompound("Defaults");
         defaults.put(port, graphDefault(type, val));
         node.data().put("Defaults", defaults);
@@ -23220,13 +23469,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Open the HUD
     private void openHud(AdvancedGraphDocument.Node node) {
         if (!isAdvancedHudNode(node)) return;
+        if(hudColorPicker != null) hudColorPicker.cancel();
         clearTextFocus();
         hudOpen = true;
         hudNodeId = node.id();
         hudPortDropdownOpen = false;
         hudPortDropdownScroll = 0;
-        draggingHudColorKey = null;
-        draggingHudColorControl = null;
+        draggingHudOpacityKey = null;
         draggingHudPropSlider = null;
         hudFontStyleDropdownOpen = false;
         hudStyleDropdownOpen = false;
@@ -23246,6 +23495,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Close the HUD
     private void closeHud() {
+        if(hudColorPicker != null) hudColorPicker.cancel();
         clearHudFieldFocus();
         hudOpen = false;
         hudNodeId = null;
@@ -23254,8 +23504,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         resizingHudElement = false;
         hudPortDropdownOpen = false;
         hudPortDropdownScroll = 0;
-        draggingHudColorKey = null;
-        draggingHudColorControl = null;
+        draggingHudOpacityKey = null;
         draggingHudPropSlider = null;
         hudFontStyleDropdownOpen = false;
         hudStyleDropdownOpen = false;
@@ -23449,6 +23698,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         int previewHeight = (int) Math.round(Math.max(1, node.data().getInt("WidgetHeight")) * scale);
         int previewX = canvas.x() + (canvas.width() - previewWidth) / 2;
         int previewY = canvas.y() + (canvas.height() - previewHeight) / 2;
+        graphics.enableScissor(canvas.x(), canvas.y(), canvas.right(), canvas.bottom());
         graphics.fill(previewX, previewY, previewX + previewWidth, previewY + previewHeight, 0xFF0E151D);
         graphics.renderOutline(previewX, previewY, previewWidth, previewHeight, 0xFF64879D);
 
@@ -23502,6 +23752,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
         }
 
+        graphics.disableScissor();
+
         // -----------------------------------------------------SELECTED WIDGET---------------------------------------------------
 
         CompoundTag selected = hudElement();
@@ -23510,6 +23762,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return;
         }
         String type = selected.getString("Type");
+        ElementInspectorLayout inspector = ElementInspectorLayout.forType(type);
         graphics.drawString(font, "Type: " + humanPort(type), sidebar.x() + 8, sidebar.y() + 30,
                 0xFFFFFFFF, false);
         graphics.drawString(font, "Drag to move; corner to resize.", sidebar.x() + 8, sidebar.y() + 46,
@@ -23546,23 +23799,20 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                                 node, selected.getString("Port"))),
                         sidebar.x() + 8, propertyTop + 38, 0xFF91A9B8, false);
                 graphics.drawString(font, "Font size: " + AdvancedHudElementStyle.fontSize(selected),
-                        sidebar.x() + 8, propertyTop + 54, 0xFFC8D7E3, false);
+                        sidebar.x() + 8, propertyTop + inspector.fontSizeOffset() - 11, 0xFFC8D7E3, false);
                 drawHudPropSlider(graphics, hudFontSizeSliderBounds(),
                         AdvancedHudElementStyle.fontSize(selected), AdvancedHudElementStyle.MIN_FONT_SIZE,
                         AdvancedHudElementStyle.MAX_FONT_SIZE, "FontSize", mouseX, mouseY);
-                drawHudColorSliders(graphics, selected, "Color", "Text color",
-                        propertyTop + 84, mouseX, mouseY);
-                graphics.drawString(font, "Font style", sidebar.x() + 8, propertyTop + 132,
+                drawHudColorControl(graphics, selected, "Color", "Text color", mouseX, mouseY);
+                graphics.drawString(font, "Font style", sidebar.x() + 8, propertyTop + inspector.fontStyleOffset() - 12,
                         0xFFC8D7E3, false);
                 drawHudFontStyleBtn(graphics, selected, mouseX, mouseY);
                 graphics.drawString(font, "W / H / Rotation / Scale",
                         sidebar.x() + 8, propertyTop + 176, 0xFFC8D7E3, false);
             }
             case "box" -> {
-                drawHudColorSliders(graphics, selected, "Color", "Background color",
-                        propertyTop, mouseX, mouseY);
-                drawHudColorSliders(graphics, selected, "BorderColor", "Border color",
-                        propertyTop + 46, mouseX, mouseY);
+                drawHudColorControl(graphics, selected, "Color", "Background color", mouseX, mouseY);
+                drawHudColorControl(graphics, selected, "BorderColor", "Border color", mouseX, mouseY);
                 graphics.drawString(font, "Border width", sidebar.x() + 8, propertyTop + 96,
                         0xFFC8D7E3, false);
                 graphics.drawString(font, "Border radius: " + AdvancedHudElementStyle.borderRadius(selected),
@@ -23618,20 +23868,19 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             default -> {
                 graphics.drawString(font, "Text", sidebar.x() + 8, propertyTop, 0xFFC8D7E3, false);
                 graphics.drawString(font, "Font size: " + AdvancedHudElementStyle.fontSize(selected),
-                        sidebar.x() + 8, propertyTop + 38,
+                        sidebar.x() + 8, propertyTop + inspector.fontSizeOffset() - 11,
                         0xFFC8D7E3, false);
                 drawHudPropSlider(graphics, hudFontSizeSliderBounds(),
                         AdvancedHudElementStyle.fontSize(selected), AdvancedHudElementStyle.MIN_FONT_SIZE,
                         AdvancedHudElementStyle.MAX_FONT_SIZE, "FontSize", mouseX, mouseY);
-                drawHudColorSliders(graphics, selected, "Color", "Text color",
-                        propertyTop + 68, mouseX, mouseY);
-                boolean interactive = "button".equals(type) || "toggle".equals(type)
-                        || "text_input".equals(type);
-                graphics.drawString(font, "Font style", sidebar.x() + 8, propertyTop + 116,
+                drawHudColorControl(graphics, selected, "Color", "Text color", mouseX, mouseY);
+                boolean interactive = inspector.pairedStyles();
+                graphics.drawString(font, "Font style", sidebar.x() + 8, propertyTop + inspector.fontStyleOffset() - 12,
                         0xFFC8D7E3, false);
                 if (interactive) {
-                    int styleLabelX = sidebar.x() + 16 + (sidebar.width() - 24) / 2;
-                    graphics.drawString(font, "Style", styleLabelX, propertyTop + 116,
+                    int styleLabelX = hudStyleBtnBounds().x();
+                    graphics.drawString(font, "Style", styleLabelX,
+                            propertyTop + inspector.fontStyleOffset() - 12,
                             0xFFC8D7E3, false);
                 }
                 drawHudFontStyleBtn(graphics, selected, mouseX, mouseY);
@@ -23646,8 +23895,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 || "progress".equals(type))) {
             drawHudPortDropdown(graphics, node, selected, mouseX, mouseY);
         }
-        if (hudFontStyleDropdownOpen && ("text".equals(type) || "value".equals(type)
-                || "button".equals(type) || "toggle".equals(type))) {
+        if (hudFontStyleDropdownOpen && inspector.hasFontControls()) {
             drawHudFontStyleDropdown(graphics, selected, mouseX, mouseY);
         }
         if (hudStyleDropdownOpen && isInteractiveHudType(type)) {
@@ -23934,42 +24182,27 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 active || bounds.contains(mouseX, mouseY));
     }
 
-    // Draw the HUD color sliders
-    private void drawHudColorSliders(GuiGraphics graphics, CompoundTag elm, String key,
-                                             String label, int labelY, int mouseX, int mouseY) {
+    // Draw the HUD color preview and opacity slider
+    private void drawHudColorControl(GuiGraphics graphics, CompoundTag elm, String key,
+                                     String label, int mouseX, int mouseY){
         UiRect sidebar = hudSidebarBounds();
         int col = hudColorVal(elm, key);
-        HudDesignerHsv hsv = hudHsv(elm, key, col);
-        graphics.drawString(font, label, sidebar.x() + 8, labelY, 0xFFC8D7E3, false);
-        UiRect swatch = new UiRect(sidebar.right() - 22, labelY, 14, 9);
+        UiRect swatch = hudColorPreviewBounds(key);
+        graphics.drawString(font, label, sidebar.x() + 8, swatch.y(), 0xFFC8D7E3, false);
         drawHudCheckerboard(graphics, swatch);
         graphics.fill(swatch.x(), swatch.y(), swatch.right(), swatch.bottom(), col);
-        graphics.renderOutline(swatch.x(), swatch.y(), swatch.width(), swatch.height(), 0xFFB9CFDC);
-        for (HudDesignerColorControl control : HudDesignerColorControl.values()) {
-            UiRect row = hudColorSliderBounds(key, control);
-            UiRect track = hudColorSliderTrackBounds(key, control);
-            float pct = switch (control) {
-                case HUE -> hsv.hue();
-                case SATURATION -> hsv.saturation();
-                case VALUE -> hsv.value();
-                case ALPHA -> ((col >>> 24) & 0xFF) / 255.0F;
-            };
-            String controlLabel = switch (control) {
-                case HUE -> "H";
-                case SATURATION -> "S";
-                case VALUE -> "V";
-                case ALPHA -> "Op";
-            };
-            graphics.drawString(font, controlLabel, row.x(), row.y() + 3, 0xFF91A9B8, false);
-            boolean active = key.equals(draggingHudColorKey)
-                    && control == draggingHudColorControl;
-            renderControllerSlider(graphics, track.x(), track.y() + track.height() / 2,
-                    track.width(), pct, portColor("number"),
-                    active || track.contains(mouseX, mouseY));
-            String pctLabel = Math.round(pct * 100.0F) + "%";
-            graphics.drawString(font, pctLabel, row.right() - font.width(pctLabel), row.y() + 3,
-                    0xFF91A9B8, false);
-        }
+        graphics.renderOutline(swatch.x(), swatch.y(), swatch.width(), swatch.height(),
+                swatch.contains(mouseX, mouseY) ? 0xFFFFFFFF : 0xFFB9CFDC);
+        UiRect row = hudOpacitySliderBounds(key);
+        UiRect track = hudOpacitySliderTrackBounds(key);
+        float pct = ColorOpacity.opacity(col);
+        graphics.drawString(font, "Opacity", row.x(), row.y() + 3, 0xFF91A9B8, false);
+        renderControllerSlider(graphics, track.x(), track.y() + track.height() / 2,
+                track.width(), pct, portColor("number"),
+                key.equals(draggingHudOpacityKey) || track.contains(mouseX, mouseY));
+        String pctLabel = Math.round(pct * 100.0F) + "%";
+        graphics.drawString(font, pctLabel, row.right() - font.width(pctLabel), row.y() + 3,
+                0xFF91A9B8, false);
     }
 
     // Draw the HUD checkerboard
@@ -23990,7 +24223,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         UiRect btn = hudFontStyleBtnBounds();
         String label = AdvancedHudElementStyle.fontStyleLabel(AdvancedHudElementStyle.fontStyle(elm));
         renderAdvancedButton(graphics, font, btn.x(), btn.y(), btn.width(), btn.height(),
-                Component.literal(label + (hudFontStyleDropdownOpen ? " ^" : " v")),
+                Component.literal(GraphTextLayout.ellipsize(label, font::width, btn.width() - 20)
+                        + (hudFontStyleDropdownOpen ? " ^" : " v")),
                 btn.contains(mouseX, mouseY), true);
     }
 
@@ -24022,7 +24256,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         String label = AdvancedHudInteractiveStyles.label(
                 type, AdvancedHudInteractiveStyles.style(elm));
         renderAdvancedButton(graphics, font, btn.x(), btn.y(), btn.width(), btn.height(),
-                Component.literal(label + (hudStyleDropdownOpen ? " ^" : " v")),
+                Component.literal(GraphTextLayout.ellipsize(label, font::width, btn.width() - 20)
+                        + (hudStyleDropdownOpen ? " ^" : " v")),
                 btn.contains(mouseX, mouseY), true);
     }
 
@@ -24075,39 +24310,72 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
     }
 
-    // Handle the HUD color slider click
-    private boolean clickHudColorSlider(double mouseX, double mouseY) {
+    // Open the HUD color picker or drag opacity
+    private boolean clickHudColorControl(double mouseX, double mouseY){
         CompoundTag elm = hudElement();
-        if (elm == null) {
-            draggingHudColorKey = null;
-            draggingHudColorControl = null;
+        if(elm == null){
+            draggingHudOpacityKey = null;
             return false;
         }
-        for (String key : hudColorKeys(elm)) {
-            for (HudDesignerColorControl control : HudDesignerColorControl.values()) {
-                if (hudColorSliderTrackBounds(key, control).contains(mouseX, mouseY)) {
-                    checkpoint();
-                    draggingHudColorKey = key;
-                    draggingHudColorControl = control;
-                    hudFontStyleDropdownOpen = false;
-                    hudStyleDropdownOpen = false;
-                    hudPortDropdownOpen = false;
-                    hudImageDropdownOpen = false;
-                    updateHudColorSlider(mouseX);
-                    return true;
-                }
+        for(String key : hudColorKeys(elm)){
+            if(hudColorPreviewBounds(key).contains(mouseX, mouseY)){
+                openHudColorPicker(elm, key);
+                return true;
+            }
+            if(hudOpacitySliderTrackBounds(key).contains(mouseX, mouseY)){
+                checkpoint();
+                draggingHudOpacityKey = key;
+                hudFontStyleDropdownOpen = false;
+                hudStyleDropdownOpen = false;
+                hudPortDropdownOpen = false;
+                hudImageDropdownOpen = false;
+                updateHudOpacitySlider(mouseX);
+                return true;
             }
         }
         return false;
     }
 
+    // Use the library picker for one HUD property and restore cancelled edits
+    private void openHudColorPicker(CompoundTag elm, String key){
+        AdvancedGraphDocument.Node node = hudNode();
+        if(node == null || elm == null) return;
+        clearHudFieldFocus();
+        draggingHudOpacityKey = null;
+        draggingHudPropSlider = null;
+        draggingHudElement = false;
+        resizingHudElement = false;
+        hudFontStyleDropdownOpen = false;
+        hudStyleDropdownOpen = false;
+        hudPortDropdownOpen = false;
+        hudImageDropdownOpen = false;
+        CompoundTag prevData = node.data().copy();
+        boolean wasDirty = draftDirty;
+        ArrayDeque<AdvancedGraphDocument> prevUndo = new ArrayDeque<>(undo);
+        ArrayDeque<AdvancedGraphDocument> prevRedo = new ArrayDeque<>(redo);
+        checkpoint();
+        hudColorPicker = new ColorPickerModal(hudColorVal(elm, key),
+                col -> setHudColor(elm, key, col), () -> {
+            hudColorPicker = null;
+            syncHudFields();
+        }, () -> {
+            hudColorPicker = null;
+            for(String dataKey : new ArrayList<>(node.data().getAllKeys())) node.data().remove(dataKey);
+            node.data().merge(prevData);
+            undo.clear();
+            undo.addAll(prevUndo);
+            redo.clear();
+            redo.addAll(prevRedo);
+            draftDirty = wasDirty;
+            clearGraphRenderCache();
+            syncHudFields();
+        });
+    }
+
     // Handle the HUD font style click
     private boolean clickHudFontStyle(double mouseX, double mouseY) {
         CompoundTag elm = hudElement();
-        if (elm == null || !("text".equals(elm.getString("Type"))
-                || "value".equals(elm.getString("Type"))
-                || "button".equals(elm.getString("Type"))
-                || "toggle".equals(elm.getString("Type")))) {
+        if (elm == null || !ElementInspectorLayout.forType(elm.getString("Type")).hasFontControls()) {
             hudFontStyleDropdownOpen = false;
             return false;
         }
@@ -24186,8 +24454,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return false;
         }
         String type = elm.getString("Type");
-        if (("text".equals(type) || "value".equals(type)
-                || "button".equals(type) || "toggle".equals(type))
+        if (ElementInspectorLayout.forType(type).hasFontControls()
                 && hudFontSizeSliderBounds().contains(mouseX, mouseY)) {
             checkpoint();
             draggingHudPropSlider = "FontSize";
@@ -24206,7 +24473,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Get the HUD color keys
     private List<String> hudColorKeys(CompoundTag elm) {
         return switch (elm.getString("Type")) {
-            case "text", "value", "button", "toggle", "slider" -> List.of("Color");
+            case "text", "value", "button", "toggle", "text_input" -> List.of("Color");
             case "box" -> List.of("Color", "BorderColor");
             default -> List.of();
         };
@@ -24222,55 +24489,22 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         return AdvancedHudElementStyle.color(elm, key, fallback);
     }
 
-    // Get the HUD hsv
-    private HudDesignerHsv hudHsv(CompoundTag elm, String key, int col) {
-        String memoryKey = hudColorMemoryKey(elm, key);
-        int rgb = col & 0x00FFFFFF;
-        HudDesignerHsv remembered = hudHsvMemory.get(memoryKey);
-        if (remembered != null && remembered.rgb() == rgb) {
-            return remembered;
-        }
-        float[] converted = java.awt.Color.RGBtoHSB(
-                (col >> 16) & 0xFF, (col >> 8) & 0xFF, col & 0xFF, null);
-        HudDesignerHsv state = new HudDesignerHsv(rgb, converted[0], converted[1], converted[2]);
-        hudHsvMemory.put(memoryKey, state);
-        return state;
+    // Update the HUD color and its managed widget default
+    private void setHudColor(CompoundTag elm, String key, int col){
+        elm.putInt(key, col);
+        updateManagedAccWidgetDefault(elm, key, graphDefault("number", col));
+        simulatedDraft = null;
     }
 
-    // Get the HUD color memory key
-    private String hudColorMemoryKey(CompoundTag elm, String key) {
-        return hudNodeId + ":" + System.identityHashCode(elm) + ":" + key;
-    }
-
-    // Update the HUD color slider
-    private void updateHudColorSlider(double mouseX) {
+    // Update opacity without changing the selected color
+    private void updateHudOpacitySlider(double mouseX){
         CompoundTag elm = hudElement();
-        if (elm == null || draggingHudColorKey == null || draggingHudColorControl == null) {
-            return;
-        }
-        int current = hudColorVal(elm, draggingHudColorKey);
-        HudDesignerHsv currentHsv = hudHsv(elm, draggingHudColorKey, current);
-        float hue = currentHsv.hue();
-        float saturation = currentHsv.saturation();
-        float val = currentHsv.value();
-        int alpha = (current >>> 24) & 0xFF;
-        UiRect track = hudColorSliderTrackBounds(
-                draggingHudColorKey, draggingHudColorControl);
+        if(elm == null || draggingHudOpacityKey == null) return;
+        UiRect track = hudOpacitySliderTrackBounds(draggingHudOpacityKey);
         float amount = (float) Mth.clamp((mouseX - track.x() - 4.5D)
                 / Math.max(1.0D, track.width() - 9.0D), 0.0D, 1.0D);
-        switch (draggingHudColorControl) {
-            case HUE -> hue = amount;
-            case SATURATION -> saturation = amount;
-            case VALUE -> val = amount;
-            case ALPHA -> alpha = Math.round(amount * 255.0F);
-        }
-        int rgb = java.awt.Color.HSBtoRGB(hue, saturation, val) & 0x00FFFFFF;
-        hudHsvMemory.put(hudColorMemoryKey(elm, draggingHudColorKey),
-                new HudDesignerHsv(rgb, hue, saturation, val));
-        int col = (alpha << 24) | (rgb & 0x00FFFFFF);
-        elm.putInt(draggingHudColorKey, col);
-        updateManagedAccWidgetDefault(elm, draggingHudColorKey,
-                graphDefault("number", col));
+        int col = ColorOpacity.withOpacity(hudColorVal(elm, draggingHudOpacityKey), amount);
+        setHudColor(elm, draggingHudOpacityKey, col);
     }
 
     // Update the HUD prop slider
@@ -24355,7 +24589,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     return true;
                 }
             }
-            if (clickHudColorSlider(mouseX, mouseY)) {
+            if (clickHudColorControl(mouseX, mouseY)) {
                 return true;
             }
             if (clickHudFontStyle(mouseX, mouseY)) {
@@ -24409,8 +24643,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     hudSelectedIdx = elements.size() - 1;
                     hudPortDropdownOpen = false;
                     hudImageDropdownOpen = false;
-                    draggingHudColorKey = null;
-                    draggingHudColorControl = null;
+                    draggingHudOpacityKey = null;
                     hudFontStyleDropdownOpen = false;
                     hudStyleDropdownOpen = false;
                     hudBindingDropdownKey = null;
@@ -24428,7 +24661,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
             // ------------------------------------CANVAS SELECTION------------------------------------
             AdvancedGraphDocument.Node node = hudNode();
-            if (isAdvancedHudNode(node)) {
+            if (isAdvancedHudNode(node) && hudCanvasBounds().contains(mouseX, mouseY)) {
                 ListTag elements = node.data().getList(WIDGET_ELEMENTS, Tag.TAG_COMPOUND);
                 for (int i = elements.size() - 1; i >= 0; i--) {
                     CompoundTag elm = AdvancedHudElementBinding.resolvedCopy(
@@ -24438,8 +24671,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                         hudSelectedIdx = i;
                         hudPortDropdownOpen = false;
                         hudImageDropdownOpen = false;
-                        draggingHudColorKey = null;
-                        draggingHudColorControl = null;
+                        draggingHudOpacityKey = null;
                         hudFontStyleDropdownOpen = false;
                         hudStyleDropdownOpen = false;
                         hudBindingDropdownKey = null;
@@ -24459,8 +24691,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     hudSelectedIdx = -1;
                     hudPortDropdownOpen = false;
                     hudImageDropdownOpen = false;
-                    draggingHudColorKey = null;
-                    draggingHudColorControl = null;
+                    draggingHudOpacityKey = null;
                     hudFontStyleDropdownOpen = false;
                     hudStyleDropdownOpen = false;
                     hudBindingDropdownKey = null;
@@ -24532,8 +24763,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         hudSelectedIdx = Math.min(hudSelectedIdx, elements.size() - 1);
         hudPortDropdownOpen = false;
         hudImageDropdownOpen = false;
-        draggingHudColorKey = null;
-        draggingHudColorControl = null;
+        draggingHudOpacityKey = null;
         hudFontStyleDropdownOpen = false;
         hudStyleDropdownOpen = false;
         syncHudFields();
@@ -24562,7 +24792,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private UiRect hudFontSizeSliderBounds() {
         UiRect sidebar = hudSidebarBounds();
         CompoundTag elm = hudElement();
-        int offset = elm != null && "value".equals(elm.getString("Type")) ? 65 : 49;
+        int offset = ElementInspectorLayout.forType(elm == null ? "" : elm.getString("Type")).fontSizeOffset();
         return new UiRect(sidebar.x() + 8, hudPropTop(sidebar) + offset,
                 sidebar.width() - 16, 14);
     }
@@ -24578,11 +24808,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private UiRect hudFontStyleBtnBounds() {
         UiRect sidebar = hudSidebarBounds();
         CompoundTag elm = hudElement();
-        int offset = elm != null && "value".equals(elm.getString("Type")) ? 144 : 128;
-        boolean interactive = elm != null && ("button".equals(elm.getString("Type"))
-                || "toggle".equals(elm.getString("Type")));
-        int width = interactive ? (sidebar.width() - 24) / 2 : sidebar.width() - 16;
-        return new UiRect(sidebar.x() + 8, hudPropTop(sidebar) + offset, width, 20);
+        ElementInspectorLayout inspector = ElementInspectorLayout.forType(elm == null ? "" : elm.getString("Type"));
+        return new UiRect(sidebar.x() + 8, hudPropTop(sidebar) + inspector.fontStyleOffset(),
+                inspector.fontStyleWidth(sidebar.width() - 16), 20);
     }
 
     // Get the HUD font style dropdown bounds
@@ -24605,9 +24833,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return new UiRect(sidebar.x() + 8, hudPropTop(sidebar) + 14,
                     sidebar.width() - 16, 20);
         }
-        int width = (sidebar.width() - 24) / 2;
-        return new UiRect(sidebar.x() + 16 + width, hudPropTop(sidebar) + 128,
-                width, 20);
+        UiRect fontStyle = hudFontStyleBtnBounds();
+        return new UiRect(fontStyle.right() + 8, fontStyle.y(), fontStyle.width(), 20);
     }
 
     // Get the HUD style dropdown bounds
@@ -24621,30 +24848,31 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         return new UiRect(x, y, width, height);
     }
 
-    // Get the HUD color slider bounds
-    private UiRect hudColorSliderBounds(String key, HudDesignerColorControl control) {
-        UiRect sidebar = hudSidebarBounds();
-        int propertyTop = hudPropTop(sidebar);
+    // Get the shared color label position
+    private int hudColorLabelY(String key){
         CompoundTag elm = hudElement();
         String type = elm == null ? "" : elm.getString("Type");
-        int labelY = "value".equals(type) ? propertyTop + 84
-                : "text".equals(type) || "button".equals(type) || "toggle".equals(type)
-                ? propertyTop + 68
-                : propertyTop + ("BorderColor".equals(key) ? 46 : 0);
-        int row = control == HudDesignerColorControl.HUE
-                || control == HudDesignerColorControl.SATURATION ? 0 : 1;
-        int column = control == HudDesignerColorControl.HUE
-                || control == HudDesignerColorControl.VALUE ? 0 : 1;
-        int contentWidth = sidebar.width() - 16;
-        int columnWidth = (contentWidth - 8) / 2;
-        return new UiRect(sidebar.x() + 8 + column * (columnWidth + 8),
-                labelY + 14 + row * 15, columnWidth, 14);
+        return hudPropTop(hudSidebarBounds()) + ElementInspectorLayout.forType(type).colorLabelOffset(key);
     }
 
-    // Get the HUD color slider track bounds
-    private UiRect hudColorSliderTrackBounds(String key, HudDesignerColorControl control) {
-        UiRect row = hudColorSliderBounds(key, control);
-        return new UiRect(row.x() + 14, row.y(), row.width() - 42, row.height());
+    // Get the color preview square used for rendering and input
+    private UiRect hudColorPreviewBounds(String key){
+        UiRect sidebar = hudSidebarBounds();
+        return new UiRect(sidebar.right() - 22, hudColorLabelY(key), 14, 14);
+    }
+
+    // Get the full opacity row beneath the color preview
+    private UiRect hudOpacitySliderBounds(String key){
+        UiRect sidebar = hudSidebarBounds();
+        return new UiRect(sidebar.x() + 8, hudColorLabelY(key) + 18, sidebar.width() - 16, 14);
+    }
+
+    // Keep the opacity track clear of its label and percentage
+    private UiRect hudOpacitySliderTrackBounds(String key){
+        UiRect row = hudOpacitySliderBounds(key);
+        int labelWidth = font.width("Opacity") + 6;
+        int valWidth = font.width("100%") + 6;
+        return new UiRect(row.x() + labelWidth, row.y(), row.width() - labelWidth - valWidth, row.height());
     }
 
     // Get the HUD layer btn
@@ -25105,8 +25333,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         hudSelectedIdx = elements.size() - 1;
         hudPortDropdownOpen = false;
         hudImageDropdownOpen = false;
-        draggingHudColorKey = null;
-        draggingHudColorControl = null;
+        draggingHudOpacityKey = null;
         hudFontStyleDropdownOpen = false;
         hudStyleDropdownOpen = false;
         syncHudFields();
@@ -25262,9 +25489,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         String inputType = node == null || selectedInputPort == null ? null : AdvancedGraphCatalog.inputs(node).get(selectedInputPort);
         boolean inputHasOptions = node != null && selectedInputPort != null && !inputOptions(node, selectedInputPort).isEmpty();
         boolean inputEditable = inputType != null && !isInputConnected(node, selectedInputPort)
-                && !inputHasOptions && !List.of("exec", "boolean", "direction", "frequency", "target").contains(inputType);
+                && !isChatRecipientsInput(node, selectedInputPort)
+                && !("createthrusters:announce".equals(node.type()) && "color".equals(inputType)) && !inputHasOptions && !List.of("exec", "boolean", "direction", "frequency", "target").contains(inputType);
         boolean propertyEditable = property != null
-                && !List.of("OutputType", "CurveType", "MouseInput", "GogglesPair").contains(property)
+                && !List.of("OutputType", "CurveType", "MouseInput", "GogglesPair",
+                        GraphSignalRange.VALUE_TYPE_TAG).contains(property)
                 && !("event_variable_change".equals(node.type())
                 && "Variable".equals(property))
                 && (selectedInputPort == null || property.equals(selectedInputPort));
@@ -25286,7 +25515,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return;
         }
         if (inputEditable) {
-            setInspectorValue("number".equals(inputType) ? compactNumber(inputNumber(node, selectedInputPort))
+            setInspectorValue(isChatRecipientsInput(node, selectedInputPort) ? chatRecipientsText(node)
+                    : "number".equals(inputType) ? compactNumber(inputNumber(node, selectedInputPort))
                     : inputString(node, selectedInputPort, ""));
             return;
         }
@@ -25391,6 +25621,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         // -----------------------------------------------------INPUT DEFAULT-----------------------------------------------------
         if (inputType != null && !isInputConnected(node, selectedInputPort)
                 && inputOptions(node, selectedInputPort).isEmpty()) {
+            if(isChatRecipientsInput(node, selectedInputPort)) return;
             try {
                 if ("number".equals(inputType)) {
                     double num = Double.parseDouble(val);
@@ -25572,38 +25803,52 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         graphics.drawString(font, "Ship Permissions", bounds.x() + 16, bounds.y() + 15, 0xFFF4F7FB, false);
         renderAdvancedButton(graphics, font, bounds.right() - 33, bounds.y() + 9, 22, 20,
                 Component.literal("X"), inside(mouseX, mouseY, bounds.right() - 33, bounds.y() + 9, 22, 20), true);
-        if(!shipPermissionsSnapshot.getBoolean("Claimed")){
-            graphics.drawString(font, "This ship has no owner yet.", bounds.x() + 16, bounds.y() + 54,
+        if(!shipPermissionsSnapshot.contains("Enabled", Tag.TAG_BYTE)){
+            graphics.drawString(font, "Loading permissions...", bounds.x() + 16, bounds.y() + 54,
+                    0xFFB9C8D9, false);
+            return;
+        }
+        if(!shipPermissionsSnapshot.getBoolean("Enabled")){
+            graphics.drawString(font, "Permissions are disabled in single player.", bounds.x() + 16, bounds.y() + 54,
                     0xFFE4B982, false);
             return;
         }
-        graphics.drawString(font, "Players", bounds.x() + 16, bounds.y() + 45, 0xFFB9C8D9, false);
+        boolean open = shipPermissionsSnapshot.getBoolean("Open");
+        boolean canEdit = shipPermissionsSnapshot.getBoolean("CanEdit");
+        boolean claimed = shipPermissionsSnapshot.getBoolean("Claimed");
+        renderAdvancedButton(graphics, font, bounds.x() + 16, bounds.y() + 42, 130, 22,
+                Component.literal(open ? "Access: Open" : "Access: Closed"),
+                inside(mouseX, mouseY, bounds.x() + 16, bounds.y() + 42, 130, 22), canEdit);
+        graphics.drawString(font, open ? "Open: the permissions list is ignored." : "Closed: the permissions list is enforced.",
+                bounds.x() + 16, bounds.y() + 73, 0xFFB9C8D9, false);
+        graphics.drawString(font, "Players", bounds.x() + 16, bounds.y() + 92, 0xFFB9C8D9, false);
         ListTag players = shipPermissionsSnapshot.getList("Players", Tag.TAG_COMPOUND);
         for(int row = 0; row < 8 && row + shipPermissionsScroll < players.size(); row++){
             CompoundTag player = players.getCompound(row + shipPermissionsScroll);
-            int y = bounds.y() + 65 + row * 27;
+            int y = bounds.y() + 110 + row * 27;
             boolean selected = player.hasUUID("Id") && player.getUUID("Id").equals(shipPermissionsSelected);
             graphics.fill(bounds.x() + 13, y, bounds.x() + 192, y + 24,
                     selected ? 0xFF45617C : inside(mouseX, mouseY, bounds.x() + 13, y, 179, 24)
                             ? 0xFF34485B : 0xFF253543);
-            graphics.drawString(font, font.plainSubstrByWidth(player.getString("Name"), 155),
+            String name = (player.getBoolean("Owner") ? "(Owner) " : "") + player.getString("Name");
+            graphics.drawString(font, font.plainSubstrByWidth(name, 155),
                     bounds.x() + 22, y + 8, 0xFFF4F7FB, false);
         }
         CompoundTag selected = selectedShipPermissionPlayer();
         if(selected == null){
-            graphics.drawString(font, "Select a player", bounds.x() + 215, bounds.y() + 76,
+            graphics.drawString(font, "Select a player", bounds.x() + 215, bounds.y() + 110,
                     0xFFB9C8D9, false);
             return;
         }
         graphics.drawString(font, font.plainSubstrByWidth(selected.getString("Name"), 190),
-                bounds.x() + 215, bounds.y() + 46, 0xFFF4F7FB, false);
+                bounds.x() + 215, bounds.y() + 92, 0xFFF4F7FB, false);
         ShipPermission[] permissions = {ShipPermission.INTERACT, ShipPermission.ACC_GRAPH,
                 ShipPermission.PLACE, ShipPermission.DESTROY, ShipPermission.PHYSICS_STAFF, ShipPermission.STORE};
-        String[] labels = {"Interract", "ACC Graph", "Place", "Destroy", "Physics Staff", "Store"};
+        String[] labels = {"Interact", "ACC Graph", "Place", "Destroy", "Physics Staff", "Store"};
         int mask = selected.getInt("Mask");
         int visible = shipPermissionsSnapshot.getBoolean("StoreEnabled") ? permissions.length : permissions.length - 1;
         for(int idx = 0; idx < visible; idx++){
-            int y = bounds.y() + 72 + idx * 31;
+            int y = bounds.y() + 110 + idx * 31;
             boolean enabled = (mask & (1 << permissions[idx].ordinal())) != 0;
             graphics.fill(bounds.x() + 215, y, bounds.right() - 15, y + 25,
                     inside(mouseX, mouseY, bounds.x() + 215, y, bounds.width() - 230, 25)
@@ -25612,16 +25857,26 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     enabled ? 0xFF85DBA8 : 0xFFB9C8D9, false);
             graphics.drawString(font, labels[idx], bounds.x() + 254, y + 8, 0xFFF4F7FB, false);
         }
-        if(!shipPermissionsSnapshot.getBoolean("CanEdit")){
+        boolean owner = selected.getBoolean("Owner");
+        renderAdvancedButton(graphics, font, bounds.x() + 215, bounds.y() + 303, bounds.width() - 230, 22,
+                Component.literal(owner ? "Current owner" : "Transfer ownership"),
+                inside(mouseX, mouseY, bounds.x() + 215, bounds.y() + 303, bounds.width() - 230, 22),
+                canEdit && claimed && !owner);
+        if(!claimed){
+            graphics.drawString(font, "Close access to claim ownership.", bounds.x() + 16, bounds.bottom() - 22,
+                    0xFFE4B982, false);
+        }else if(!canEdit){
             graphics.drawString(font, "Only the owner can change permissions.",
                     bounds.x() + 215, bounds.bottom() - 22, 0xFFE4B982, false);
         }
     }
 
+    // Size the permission modal for the access mode and ownership controls
     private UiRect shipPermissionsBounds(){
-        return new UiRect((width - 450) / 2, (height - 310) / 2, 450, 310);
+        return new UiRect((width - 450) / 2, (height - 370) / 2, 450, 370);
     }
 
+    // Resolve the selected row from the latest server snapshot
     private CompoundTag selectedShipPermissionPlayer(){
         if(shipPermissionsSelected == null) return null;
         ListTag players = shipPermissionsSnapshot.getList("Players", Tag.TAG_COMPOUND);
@@ -25632,6 +25887,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         return null;
     }
 
+    // Send access mode, ownership and member changes to the server
     private boolean clickShipPermissions(double mouseX, double mouseY, int button){
         if(button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
         UiRect bounds = shipPermissionsBounds();
@@ -25640,21 +25896,36 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             shipPermissionsOpen = false;
             return true;
         }
+        if(!shipPermissionsSnapshot.getBoolean("Enabled")) return true;
+        if(shipPermissionsSnapshot.getBoolean("CanEdit")
+                && inside(mouseX, mouseY, bounds.x() + 16, bounds.y() + 42, 130, 22)){
+            CompoundTag change = new CompoundTag();
+            change.putBoolean("Open", !shipPermissionsSnapshot.getBoolean("Open"));
+            sendScmConfiguration("scm_permissions_access", change);
+            return true;
+        }
         ListTag players = shipPermissionsSnapshot.getList("Players", Tag.TAG_COMPOUND);
         for(int row = 0; row < 8 && row + shipPermissionsScroll < players.size(); row++){
-            int y = bounds.y() + 65 + row * 27;
+            int y = bounds.y() + 110 + row * 27;
             if(!inside(mouseX, mouseY, bounds.x() + 13, y, 179, 24)) continue;
             CompoundTag player = players.getCompound(row + shipPermissionsScroll);
             shipPermissionsSelected = player.hasUUID("Id") ? player.getUUID("Id") : null;
             return true;
         }
         CompoundTag selected = selectedShipPermissionPlayer();
-        if(selected == null || !shipPermissionsSnapshot.getBoolean("CanEdit")) return true;
+        if(selected == null || selected.getBoolean("Owner") || !shipPermissionsSnapshot.getBoolean("CanEdit")
+                || !shipPermissionsSnapshot.getBoolean("Claimed")) return true;
+        if(inside(mouseX, mouseY, bounds.x() + 215, bounds.y() + 303, bounds.width() - 230, 22)){
+            CompoundTag change = new CompoundTag();
+            change.putUUID("Player", selected.getUUID("Id"));
+            sendScmConfiguration("scm_permissions_transfer", change);
+            return true;
+        }
         ShipPermission[] permissions = {ShipPermission.INTERACT, ShipPermission.ACC_GRAPH,
                 ShipPermission.PLACE, ShipPermission.DESTROY, ShipPermission.PHYSICS_STAFF, ShipPermission.STORE};
         int visible = shipPermissionsSnapshot.getBoolean("StoreEnabled") ? permissions.length : permissions.length - 1;
         for(int idx = 0; idx < visible; idx++){
-            int y = bounds.y() + 72 + idx * 31;
+            int y = bounds.y() + 110 + idx * 31;
             if(!inside(mouseX, mouseY, bounds.x() + 215, y, bounds.width() - 230, 25)) continue;
             CompoundTag change = new CompoundTag();
             change.putUUID("Player", selected.getUUID("Id"));
@@ -25708,6 +25979,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle the close event
     @Override
     public void onClose() {
+        if(hudColorPicker != null) hudColorPicker.cancel();
         if (frequencyModalOpen) closeFrequencyEditor(false);
         restoreAccGuiScale();
         scmLivePreviewRenderer.close();
@@ -25718,6 +25990,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle screen removal
     @Override
     public void removed() {
+        if(playerSelectModal != null) playerSelectModal.cancel();
+        if(hudColorPicker != null) hudColorPicker.cancel();
         AnalogueContraptionControllerClientHandler.clearOpenMenuHardwareControllerInput(menu);
         ControllerGraphWebServer.clearOpenGraph();
         for (Set<String> bindings : activeGraphKeyBindings.values()) {

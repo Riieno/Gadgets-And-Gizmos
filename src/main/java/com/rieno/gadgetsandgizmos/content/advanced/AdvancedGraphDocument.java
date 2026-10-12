@@ -477,10 +477,12 @@ public final class AdvancedGraphDocument
         for(FunctionGraph function : graph.functions) migrateFlightControlBindings(function.nodes, function.edges);
         migrateCameraRayPorts(graph.nodes, graph.edges);
         for(FunctionGraph function : graph.functions) migrateCameraRayPorts(function.nodes, function.edges);
+        ensureSignalValueTypes(graph.nodes);
         ensureAccDisplayDefaults(graph.nodes);
         removeInactiveCrnTextEdges(graph.nodes, graph.edges);
         syncAccDisplayWidgets(graph.nodes, graph.edges);
         for (FunctionGraph function : graph.functions) {
+            ensureSignalValueTypes(function.nodes);
             ensureAccDisplayDefaults(function.nodes);
             removeInactiveCrnTextEdges(function.nodes, function.edges);
             syncAccDisplayWidgets(function.nodes, function.edges);
@@ -503,6 +505,15 @@ public final class AdvancedGraphDocument
         edges.removeIf(edge -> edge != null
                 && (retiredNodeIds.contains(edge.fromNode())
                 || retiredNodeIds.contains(edge.toNode())));
+    }
+
+    // Give loaded graphs and nested functions an explicit output range
+    private static void ensureSignalValueTypes(List<Node> nodes){
+        for(Node node : nodes){
+            if(GraphSignalRange.usesValueType(node.type())){
+                node.data().putString(GraphSignalRange.VALUE_TYPE_TAG, GraphSignalRange.valueType(node).id());
+            }
+        }
     }
 
     // Ensure the ACC display defaults
@@ -907,6 +918,7 @@ public final class AdvancedGraphDocument
             if(!node.type().startsWith(com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlNodes.PREFIX)) continue;
             ids.add(node.id());
             com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.removeInputs(node.data(), ports);
+            com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.synchronize(node.type(), node.data());
             for(String key : List.of(AdvancedGraphPortState.PERSISTENT_PORTS_TAG, AdvancedGraphPortState.PERSISTENT_VALUES_TAG)){
                 CompoundTag vals = node.data().getCompound(key);
                 ports.forEach(port -> vals.remove("input:" + port));
@@ -915,12 +927,20 @@ public final class AdvancedGraphDocument
         edges.removeIf(edge -> ids.contains(edge.toNode()) && ports.contains(edge.toPort()));
     }
 
-    // Preserve camera wires and convert saved fixed rates from ticks to seconds
+    // Preserve camera wires, convert old ray rates and keep tracking opt-in for older nodes
     private static void migrateCameraRayPorts(List<Node> nodes, List<Edge> edges){
         Set<String> cameras = new java.util.HashSet<>();
         for(Node node : nodes){
             if(!"camera".equals(node.type())) continue;
             cameras.add(node.id());
+            CompoundTag defaults = node.data().getCompound("Defaults");
+            if(!defaults.contains("auto_tracking")) defaults.put("auto_tracking", Value.bool(false).toTag());
+            if(!defaults.contains("lock_target")) defaults.put("lock_target", Value.bool(false).toTag());
+            node.data().put("Defaults", defaults);
+            CompoundTag labels = node.data().getCompound(AdvancedGraphCatalog.INPUT_LABELS_TAG);
+            if(!labels.contains("auto_tracking")) labels.putString("auto_tracking", "AutoTracking");
+            if(!labels.contains("lock_target")) labels.putString("lock_target", "LockTarget");
+            node.data().put(AdvancedGraphCatalog.INPUT_LABELS_TAG, labels);
             for(String name : List.of("Defaults", AdvancedGraphPortState.PERSISTENT_VALUES_TAG)){
                 CompoundTag values = node.data().getCompound(name);
                 String prefix = "Defaults".equals(name) ? "" : "input:";

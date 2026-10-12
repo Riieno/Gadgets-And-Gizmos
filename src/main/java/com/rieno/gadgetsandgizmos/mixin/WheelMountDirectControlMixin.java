@@ -11,6 +11,7 @@ package com.rieno.gadgetsandgizmos.mixin;
 import com.rieno.gadgetsandgizmos.compat.computercraft.WheelMountControlBridge;
 import com.rieno.gadgetsandgizmos.compat.offroad.WheelMountTerrainRaycastCompatibility;
 import com.rieno.gadgetsandgizmos.lib.control.IDirectControlReceiver;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmControlAxes;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyTopologyCache;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import dev.ryanhcode.sable.api.physics.handle.RigidBodyHandle;
@@ -157,8 +158,8 @@ public abstract class WheelMountDirectControlMixin extends SmartBlockEntity
             return;
         }
 
-        int left = Math.max(lastServerSteeringSignalLeft, ct$toRedstone(ct$leftOverride));
-        int right = Math.max(lastServerSteeringSignalRight, ct$toRedstone(ct$rightOverride));
+        int left = Math.max(lastServerSteeringSignalLeft, ScmControlAxes.steeringSignal(ct$leftOverride, 15));
+        int right = Math.max(lastServerSteeringSignalRight, ScmControlAxes.steeringSignal(ct$rightOverride, 15));
         int blended = left - right;
 
         boolean changed = blended != lastServerSteeringSignal
