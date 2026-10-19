@@ -78,7 +78,24 @@ final class CctvApp{
                 }
                 return "";
             }
+            case "interact_hit" -> {
+                var entry = requireBinding(bindings, val);
+                var src = entry.source().resolve(ctx.player().level());
+                if(!(src instanceof CameraBlockEntity camera)) throw new IllegalArgumentException("The camera is unloaded or in another dimension");
+                TabletAppTargets.requireAccess(ctx, camera);
+                com.rieno.gadgetsandgizmos.lib.view.ViewBlockInteractions.interact(ctx.player(), entry.source());
+                return "";
+            }
             case "refresh" -> {}
+            case "take_control" -> {
+                var entry = requireBinding(bindings, val);
+                var src = entry.source().resolve(ctx.player().level());
+                if(!(src instanceof CameraBlockEntity camera)) throw new IllegalArgumentException("The camera is unloaded or in another dimension");
+                TabletAppTargets.requireAccess(ctx, camera);
+                if(!com.rieno.gadgetsandgizmos.lib.view.RemoteViewSessions.open(ctx.player(), entry.source()))
+                    throw new IllegalArgumentException("The camera is being controlled by another player");
+                return "";
+            }
             default -> throw new IllegalArgumentException("Unknown CCTV action");
         }
         boolean found = false;

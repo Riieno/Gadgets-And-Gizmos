@@ -57,7 +57,7 @@ side="BOTH"
 [[dependencies.${mod_id}]]
 modId="${library_mod_id}"
 type="required"
-versionRange="[${mod_version},)"
+versionRange="[${library_mod_version},)"
 ordering="AFTER"
 side="BOTH"
 

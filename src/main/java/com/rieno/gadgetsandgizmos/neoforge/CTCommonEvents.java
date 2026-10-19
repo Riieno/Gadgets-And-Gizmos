@@ -44,10 +44,13 @@ import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedHudImageUploadPayload
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedHudInteractionPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayTextInputOpenPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayTextInputPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayWidgetInputPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayModePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayTextScalePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayComputerInputPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayCameraControlPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayCameraTakeoverPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayCameraInteractPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AileronBearingConfigPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AnalogueJoystickConfigPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AnalogueJoystickDragPayload;
@@ -101,7 +104,6 @@ import com.rieno.gadgetsandgizmos.neoforge.network.ServerboundZiplineFollowChain
 import com.rieno.gadgetsandgizmos.neoforge.network.ServerboundZiplineInputPacket;
 import com.rieno.gadgetsandgizmos.neoforge.network.ServerboundZiplineMountPacket;
 import com.rieno.gadgetsandgizmos.neoforge.network.ShippingManifestOpenPayload;
-import com.rieno.gadgetsandgizmos.neoforge.network.ShippingManifestLockPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ShippingManifestRefreshPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ShippingManifestUsesPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ShippingAutoRefuelPayload;
@@ -248,6 +250,8 @@ public final class CTCommonEvents {
                 registrar.playToServer(AdvancedHudInteractionPayload.TYPE, AdvancedHudInteractionPayload.STREAM_CODEC,
                                 AdvancedHudInteractionPayload::handle);
                 // ------------------------------------DISPLAYS / PORTABLE CONTROLS------------------------------------
+                registrar.playToServer(AccDisplayWidgetInputPayload.TYPE, AccDisplayWidgetInputPayload.STREAM_CODEC,
+                                AccDisplayWidgetInputPayload::handle);
                 registrar.playToServer(AccDisplayTextInputPayload.TYPE, AccDisplayTextInputPayload.STREAM_CODEC,
                                 AccDisplayTextInputPayload::handle);
                 registrar.playToServer(AccDisplayModePayload.TYPE, AccDisplayModePayload.STREAM_CODEC,
@@ -260,6 +264,10 @@ public final class CTCommonEvents {
                 registrar.playToServer(AccDisplayCameraControlPayload.TYPE,
                                 AccDisplayCameraControlPayload.STREAM_CODEC,
                                 AccDisplayCameraControlPayload::handle);
+                registrar.playToServer(AccDisplayCameraTakeoverPayload.TYPE,
+                                AccDisplayCameraTakeoverPayload.STREAM_CODEC, AccDisplayCameraTakeoverPayload::handle);
+                registrar.playToServer(AccDisplayCameraInteractPayload.TYPE,
+                                AccDisplayCameraInteractPayload.STREAM_CODEC, AccDisplayCameraInteractPayload::handle);
                 registrar.playToServer(PortableContraptionControllerKeyPayload.TYPE, PortableContraptionControllerKeyPayload.STREAM_CODEC,
                                 PortableContraptionControllerKeyPayload::handle);
                 registrar.playToServer(PortableContraptionControllerModePayload.TYPE, PortableContraptionControllerModePayload.STREAM_CODEC,
@@ -310,8 +318,6 @@ public final class CTCommonEvents {
                                 WorkerPodConfigPayload::handle);
                 registrar.playToServer(WorkerSkinChangePayload.TYPE, WorkerSkinChangePayload.STREAM_CODEC,
                                 WorkerSkinChangePayload::handle);
-                registrar.playToServer(ShippingManifestLockPayload.TYPE, ShippingManifestLockPayload.STREAM_CODEC,
-                                ShippingManifestLockPayload::handle);
                 registrar.playToServer(DiagnosticTabletActionPayload.TYPE, DiagnosticTabletActionPayload.STREAM_CODEC,
                                 DiagnosticTabletActionPayload::handle);
                 registrar.playToServer(com.rieno.gadgetsandgizmos.neoforge.network.DigisableSchematicUploadPayload.TYPE,

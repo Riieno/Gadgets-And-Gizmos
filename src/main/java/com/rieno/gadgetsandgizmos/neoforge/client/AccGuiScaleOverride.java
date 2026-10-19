@@ -21,17 +21,21 @@ final class AccGuiScaleOverride {
     private AccGuiScaleOverride() {
     }
 
-    static boolean apply() {
+    static boolean apply(){ return apply(0); }
+
+    static boolean apply(int minimumWidth) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft == null) {
             return false;
         }
+        int scale = com.rieno.gadgetsandgizmos.lib.client.GuiViewportScale.forWidth(
+                ACC_GUI_SCALE, minecraft.getWindow().getWidth(), minimumWidth);
         restoreQueued = false;
         if (playerGuiScale == null) {
             playerGuiScale = minecraft.options.guiScale().get();
         }
-        if (minecraft.options.guiScale().get() != ACC_GUI_SCALE) {
-            minecraft.options.guiScale().set(ACC_GUI_SCALE);
+        if (minecraft.options.guiScale().get() != scale) {
+            minecraft.options.guiScale().set(scale);
             minecraft.resizeDisplay();
             return true;
         }

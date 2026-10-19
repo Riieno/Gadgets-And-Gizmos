@@ -18,7 +18,6 @@ import com.rieno.gadgetsandgizmos.lib.control.IDirectControlReceiver;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuOpenHeader;
 import com.rieno.gadgetsandgizmos.lib.physics.SablePointImpulseApi;
 import com.rieno.gadgetsandgizmos.lib.physics.PropulsionLight;
-import com.rieno.gadgetsandgizmos.lib.physics.ColoredLightBridge;
 import com.rieno.gadgetsandgizmos.lib.physics.RcsNozzlePower;
 import com.rieno.gadgetsandgizmos.lib.physics.NozzleParticleDirection;
 import com.rieno.gadgetsandgizmos.particle.RcsSteamParticleOptions;
@@ -129,8 +128,7 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
     private final EnumMap<Direction, Float> clientThrottles = new EnumMap<>(Direction.class);
     // Tracked particle emission debt
     private final EnumMap<Direction, Float> particleEmissionDebt = new EnumMap<>(Direction.class);
-    // Colored light at each active nozzle
-    private final EnumMap<Direction, ColoredLightBridge.Light> nozzleLights = new EnumMap<>(Direction.class);
+
     // Effective throttle bits
     private final AtomicIntegerArray effectiveThrottleBits =
             new AtomicIntegerArray(Direction.values().length);
@@ -216,7 +214,6 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
         }
         if (level.isClientSide) {
             tickNozzleParticles();
-            updateNozzleLights();
         } else {
             if (pendingComputerSync.getAndSet(false)) throttleChanged();
             tickBacktankPressure();
@@ -230,7 +227,6 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
     // Remove the RCS thruster
     @Override
     public void remove() {
-        clearNozzleLights();
         unregisterReceivers();
         super.remove();
     }
@@ -238,7 +234,6 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
     // Invalidate the RCS thruster
     @Override
     public void invalidate() {
-        clearNozzleLights();
         unregisterReceivers();
         super.invalidate();
     }
@@ -548,38 +543,6 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
             }
             particleEmissionDebt.put(nozzle, debt);
         }
-    }
-
-    // Keep colored light at every active RCS exhaust outlet
-    private void updateNozzleLights() {
-        if (level == null || !CTConfigs.CLIENT.thrustersEmitLight.get()
-                || getMaxNozzleThrust() <= 1.0E-6D) {
-            clearNozzleLights();
-            return;
-        }
-        SeasonalPlumeEffects.Selection colors = SeasonalPlumeEffects.current(
-                PlumeRainbow.Mode.OFF, PlumeRainbow.Palette.NORMAL);
-        int color = colors.mode() == PlumeRainbow.Mode.OFF ? 0xE8F5FF
-                : PlumeRainbow.color(colors.mode(), colors.palette(), level.getGameTime(), 0.0F, 0);
-        for (Direction nozzle : NOZZLES) {
-            float throttle = getThrottle(nozzle);
-            if (throttle <= 1.0E-4F) {
-                ColoredLightBridge.Light light = nozzleLights.remove(nozzle);
-                if (light != null) light.close();
-                continue;
-            }
-            Vec3 position = SimulatedHelper.toGlobalWorldPosition(this, getLocalParticleEmitterPosition(nozzle));
-            if (position == null) continue;
-            ColoredLightBridge.Light light = nozzleLights.computeIfAbsent(nozzle,
-                    ignored -> ColoredLightBridge.create());
-            light.update(position, color, 3.5F, 0.6F + throttle * 0.6F);
-        }
-    }
-
-    // Release all nozzle lights when the emitter goes away
-    private void clearNozzleLights() {
-        for (ColoredLightBridge.Light light : nozzleLights.values()) light.close();
-        nozzleLights.clear();
     }
 
     // Spawn the nozzle particle

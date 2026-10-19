@@ -223,6 +223,24 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
                 BlockPos.ZERO, null, DiagnosticTabletData.read(stack)));
     }
 
+    // Ask for a schematic name after Reader mode selects the source ship
+    public static void openSchematicSave(InteractionHand hand, ItemStack stack, UUID tabletId, UUID sourceId){
+        if(!(stack.getItem() instanceof DiagnosticTabletItem) || sourceId == null) return;
+        DiagnosticTabletData.State state = DiagnosticTabletData.read(stack);
+        if(tabletId != null && !tabletId.equals(state.tabletId())) return;
+        DiagnosticTabletApps.register();
+        state = state.withApp(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.DIGISABLE.id(), "schematics")
+                .withMode(TabletInteractionMode.STANDARD, "");
+        DiagnosticTabletData.write(stack, state);
+        DiagnosticTabletScreen screen = new DiagnosticTabletScreen(false, false, hand, BlockPos.ZERO, null, state);
+        Minecraft minecraft = Minecraft.getInstance();
+        minecraft.setScreen(screen);
+        screen.appDialogOpen = true;
+        minecraft.setScreen(new ControllerTextInputScreen(screen, Component.literal("Smart Tablet"),
+                Component.literal("Schematic filename"), "assembly",
+                name -> screen.sendClientAppAction("export", sourceId + "|" + name), 64));
+    }
+
     // Open the block
     public static void openBlock(DiagnosticTabletBlockEntity tablet) {
         DiagnosticTabletApps.register();
@@ -1866,12 +1884,13 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     // Draw the tabs
     private void renderTabs(GuiGraphics graphics, int mouseX, int mouseY, TabletAppDefinition app,
                             int contentLeft, int contentWidth) {
-        if (app.tabs().isEmpty()) return;
+        List<TabletTabDefinition> tabs = visibleTabs(app);
+        if(tabs.isEmpty()) return;
         int gap = 3;
-        int tabWidth = Math.max(44, (contentWidth - gap * (app.tabs().size() - 1)) / app.tabs().size());
+        int tabWidth = Math.max(44, (contentWidth - gap * (tabs.size() - 1)) / tabs.size());
         int x = contentLeft;
         TabletTabDefinition active = activeTab(app);
-        for (TabletTabDefinition tab : app.tabs()) {
+        for (TabletTabDefinition tab : tabs) {
             boolean selected = tab.id().equals(active.id());
             int col = selected ? (0xEE000000 | app.accentColor() & 0x00FFFFFF)
                     : 0x99152538;
@@ -1914,6 +1933,16 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     // Handle mouse clicked
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int btn) {
+        if(btn == 0 && "redstone_editor".equals(editingAction) && !redstoneFrequencyModal
+                && inside(mouseX, mouseY, contentLeft() + 320, top + 190, 126, 25)){
+            saveRedstoneEditor();
+            return true;
+        }
+        if(btn == 0 && "redstone_editor".equals(editingAction) && actionInput.visible
+                && actionInput.mouseClicked(mouseX, mouseY, btn)){
+            setFocused(actionInput);
+            return true;
+        }
         if (btn == 1 && "redstone_editor".equals(editingAction) && redstoneFrequencyModal) {
             if (inside(mouseX, mouseY, contentLeft() + REDSTONE_MODAL_FIRST_SLOT_X,
                     top + REDSTONE_MODAL_FIRST_SLOT_Y, 20, 20)) {
@@ -2015,10 +2044,11 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
                 return true;
             }
             int gap = 3;
-            int tabWidth = app.tabs().isEmpty() ? contentWidth
-                    : Math.max(44, (contentWidth - gap * (app.tabs().size() - 1)) / app.tabs().size());
+            List<TabletTabDefinition> tabs = visibleTabs(app);
+            int tabWidth = tabs.isEmpty() ? contentWidth
+                    : Math.max(44, (contentWidth - gap * (tabs.size() - 1)) / tabs.size());
             int tabX = contentLeft;
-            for (TabletTabDefinition tab : app.tabs()) {
+            for (TabletTabDefinition tab : tabs) {
                 if (inside(mouseX, mouseY, tabX, top + PANEL_HEIGHT - 43, tabWidth, 26)) {
                     select(app.id(), tab.id());
                     return true;
@@ -2355,18 +2385,8 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
                         (mouseX - contentLeft) / 300.0D)) * 15.0D);
                 return true;
             }
-            if (inside(mouseX, mouseY, contentLeft + 320, top + 190, 126, 25)
-                    && !redstoneFirstGhost.isEmpty() && !redstoneSecondGhost.isEmpty()) {
-                String name = actionInput.getValue().isBlank() ? "Redstone control" : actionInput.getValue().strip();
-                String encoded = BuiltInRegistries.ITEM.getKey(redstoneFirstGhost.getItem()) + "|"
-                        + redstoneColor(redstoneFirstGhost) + "|"
-                        + BuiltInRegistries.ITEM.getKey(redstoneSecondGhost.getItem()) + "|"
-                        + redstoneColor(redstoneSecondGhost) + "|"
-                        + redstoneMode + "|" + redstoneStrength + "|" + name;
-                if (redstoneEditingId.isBlank()) send("channel_create", encoded);
-                else send("channel_update", redstoneEditingId + "|" + encoded);
-                stopEditing();
-                redstoneEditingId = "";
+            if (inside(mouseX, mouseY, contentLeft + 320, top + 190, 126, 25)) {
+                saveRedstoneEditor();
                 return true;
             }
             return false;
@@ -2781,6 +2801,28 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         setInitialFocus(actionInput);
     }
 
+    // Use the same save path for the editor button and keyboard submission
+    private void saveRedstoneEditor(){
+        if(redstoneFrequencyModal) return;
+        if(redstoneFirstGhost.isEmpty() || redstoneSecondGhost.isEmpty()){
+            if(minecraft != null && minecraft.player != null) minecraft.player.displayClientMessage(
+                    Component.literal("Choose both frequency items before saving the control"), true);
+            return;
+        }
+        String name = actionInput.getValue().isBlank() ? "Redstone control" : actionInput.getValue().strip();
+        String encoded = BuiltInRegistries.ITEM.getKey(redstoneFirstGhost.getItem()) + "|"
+                + redstoneColor(redstoneFirstGhost) + "|"
+                + BuiltInRegistries.ITEM.getKey(redstoneSecondGhost.getItem()) + "|"
+                + redstoneColor(redstoneSecondGhost) + "|"
+                + redstoneMode + "|" + redstoneStrength + "|" + name;
+        PacketDistributor.sendToServer(new DiagnosticTabletActionPayload(placed, hand,
+                tabletPos, tabletSubLevelId, sourceTabletId, DiagnosticTabletData.appId("redstone_link"),
+                "devices", redstoneEditingId.isBlank() ? "channel_create" : "channel_update",
+                redstoneEditingId.isBlank() ? encoded : redstoneEditingId + "|" + encoded));
+        stopEditing();
+        redstoneEditingId = "";
+    }
+
     // Begin the redstone editor
     private void beginRedstoneEditor(CompoundTag channel, CompoundTag data) {
         if (surfaceProjection()) return;
@@ -2931,8 +2973,10 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
 
     // Send the diagnostic tablet
     private void send(String action, String val) {
+        TabletAppDefinition app = selectedApp();
+        String tab = app == null ? state.tab() : activeTab(app).id();
         PacketDistributor.sendToServer(new DiagnosticTabletActionPayload(placed, hand,
-                tabletPos, tabletSubLevelId, sourceTabletId, state.app(), state.tab(), action,
+                tabletPos, tabletSubLevelId, sourceTabletId, state.app(), tab, action,
                 val == null ? "" : val));
     }
 
@@ -3031,7 +3075,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         if("begin_reader".equals(action)){
             if(placed){
                 if(minecraft != null && minecraft.player != null) minecraft.player.displayClientMessage(
-                        Component.literal("Hold a tablet to store a sublevel in Reader mode"), true);
+                        Component.literal("Hold a tablet to select a world target in Reader mode"), true);
             }else beginReaderMode(val);
             return;
         }
@@ -3204,11 +3248,19 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
                 .findFirst().orElse(null);
     }
 
+    // Use the server snapshot for both tab layout and click targets
+    private List<TabletTabDefinition> visibleTabs(TabletAppDefinition app){
+        if(!com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.DIGISABLE.id().equals(app.id())
+                || appData(app.id()).getBoolean("SublevelsAllowed")) return app.tabs();
+        return app.tabs().stream().filter(tab -> !"sublevels".equals(tab.id())).toList();
+    }
+
     // Get the active tab
     private TabletTabDefinition activeTab(TabletAppDefinition app) {
-        return app.tabs().stream().filter(tab -> tab.id().equals(state.tab())).findFirst()
-                .orElse(app.tabs().isEmpty()
-                        ? new TabletTabDefinition("", Component.empty(), List.of()) : app.tabs().getFirst());
+        List<TabletTabDefinition> tabs = visibleTabs(app);
+        return tabs.stream().filter(tab -> tab.id().equals(state.tab())).findFirst()
+                .orElse(tabs.isEmpty()
+                        ? new TabletTabDefinition("", Component.empty(), List.of()) : tabs.getFirst());
     }
 
     // Get the app data
@@ -3306,6 +3358,10 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     // Begin the reader mode
     private void beginReaderMode(String action) {
         state = state.withMode(TabletInteractionMode.READER, action);
+        if(!placed && minecraft != null && minecraft.player != null){
+            ItemStack stack = minecraft.player.getItemInHand(hand);
+            if(stack.getItem() instanceof DiagnosticTabletItem) DiagnosticTabletData.write(stack, state);
+        }
         send("begin_reader", action);
         onClose();
     }
@@ -3520,6 +3576,10 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         TabletAppClientRenderer renderer = app == null ? null : TabletAppClientRegistry.renderer(app.id());
         if(renderer != null && renderer.keyPressed(clientAppContext(app, null, 0, 0), appClientSession.stateFor(app.id(), renderer), keyCode, scanCode, modifiers)){
             appClientSession.saveDrafts();
+            return true;
+        }
+        if ("redstone_editor".equals(editingAction) && (keyCode == 257 || keyCode == 335)) {
+            saveRedstoneEditor();
             return true;
         }
         if (!editingAction.isBlank() && (keyCode == 257 || keyCode == 335)) {

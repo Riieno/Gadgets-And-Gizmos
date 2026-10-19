@@ -3,6 +3,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 import com.mojang.authlib.GameProfile;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinEntity;
 import com.rieno.gadgetsandgizmos.lib.client.render.HeadwearRenderSource;
+import com.rieno.gadgetsandgizmos.lib.client.render.NameplateVisibility;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.RemotePlayer;
@@ -73,7 +74,7 @@ public class PlayerMannequinRenderer extends EntityRenderer<PlayerMannequinEntit
     }
 
     // This client-only player is a rendering proxy. It never enters the world or replaces the saved mannequin.
-    public static final class MannequinRenderPlayer extends RemotePlayer implements HeadwearRenderSource {
+    public static final class MannequinRenderPlayer extends RemotePlayer implements HeadwearRenderSource, NameplateVisibility {
         private final PlayerMannequinEntity mannequin;
 
         private MannequinRenderPlayer(ClientLevel level, PlayerMannequinEntity mannequin) {
@@ -112,6 +113,11 @@ public class PlayerMannequinRenderer extends EntityRenderer<PlayerMannequinEntit
 
         @Override
         public boolean shouldShowName() {
+            return isNameplateVisible();
+        }
+
+        @Override
+        public boolean isNameplateVisible() {
             return mannequin.isCustomNameVisible();
         }
 

@@ -152,7 +152,7 @@
   // Create an empty graph
   function blankGraph() {
     return {
-      Version: 9,
+      Version: 12,
       Revision: 0,
       Template: "",
       ViewportX: 150,
@@ -344,6 +344,7 @@
   // Update old graph data
   function normalizeGraph(graph) {
     const storedVersion = Math.max(1, Number(graph.Version || 1));
+    // Leave later migrations to the game when importing an older graph
     graph.Version = Math.max(9, storedVersion);
     graph.Revision = Math.max(0, Number(graph.Revision || 0));
     graph.Template ||= "";
@@ -473,28 +474,7 @@
 
   // Translate typed defaults between Minecraft graph data and the browser studio
   function defaultToStudio(entry) {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return undefined;
-    const type = String(entry.Type || "").trim().toLowerCase();
-    const payload = entry.Payload;
-    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return undefined;
-    if (type === "list") {
-      const values = hasOwn(payload, "Value") ? payload.Value : payload;
-      if (Array.isArray(values)) {
-        return values.map((value) => defaultToStudio(value) ?? deepCopy(value));
-      }
-      if (!values || typeof values !== "object") return [];
-      return Object.keys(values)
-        .sort((first, second) => Number(first) - Number(second))
-        .map((key) => defaultToStudio(values[key]) ?? deepCopy(values[key]));
-    }
-    if (type === "map") {
-      const values = hasOwn(payload, "Value") ? payload.Value : payload;
-      if (!values || typeof values !== "object" || Array.isArray(values)) return {};
-      return Object.fromEntries(Object.entries(values)
-        .map(([key, value]) => [key, defaultToStudio(value) ?? deepCopy(value)]));
-    }
-    if (hasOwn(payload, "Value")) return deepCopy(payload.Value);
-    return deepCopy(payload);
+    return globalThis.GadgetsGraphNodes.decode(entry);
   }
 
   // Convert studio defaults for the graph
@@ -530,6 +510,7 @@
         ? previous.Payload : {};
       return {
         Type: "map",
+        EntryOrder: Object.keys(values),
         Payload: Object.fromEntries(Object.entries(values)
           .map(([key, child]) => [key,
             defaultToGraph(child, "any", prevPayload[key])]))
@@ -805,54 +786,31 @@
     return ports;
   }
 
-  // Merge fixed catalog ports with the dynamic ports stored on each node.
-  // This is the complete runtime contract, including ports hidden by MAP collapsing.
+  // Upgrade the old ACC Count selector before the shared editor adds new input defaults
+  function graphNodeData(node, def) {
+    const supplied = node.Data || {};
+    if (node.Type !== "count" || hasOwn(supplied.Defaults || {}, "decrement")
+        || hasOwn(supplied, "decrement") || !hasOwn(supplied, "Direction")) {
+      return globalThis.GadgetsGraphNodes.defaults(def, supplied);
+    }
+    return globalThis.GadgetsGraphNodes.defaults(def, {
+      ...supplied,
+      Defaults: {
+        ...supplied.Defaults,
+        decrement: { Type: "boolean", Payload: { Value: String(supplied.Direction).toLowerCase() === "decrement" ? 1 : 0 } }
+      }
+    });
+  }
+
+  // Resolve ports through the library API shared with the packaged studio
   function graphNodePorts(def, data, direction) {
-    if (def?.id === "switch" && data?.SwitchType === "data") {
-      if (direction === "outputs") return withCollapsedMap({ value: "any" }, data, direction);
-      const caseTypes = data.SwitchCaseTypes && typeof data.SwitchCaseTypes === "object"
-        ? data.SwitchCaseTypes : {};
-      const dynamicInputs = dynamicPorts(data, "DynamicInputs");
-      const inputs = {
-        selector: "number",
-        default: caseTypes.default || "any"
-      };
-      for (const [port, type] of Object.entries(dynamicInputs)) {
-        if (/^case_\d+$/.test(port)) inputs[port] = caseTypes[port] || type || "any";
-      }
-      return withCollapsedMap(inputs, data, direction);
-    }
-    const dynamicConstructorInputs = direction === "inputs"
-      && Boolean(data?.DynamicConstructor)
-      && (def?.id === "list_create" || def?.id === "map_create");
-    const ports = {
-      ...(dynamicConstructorInputs ? {} : (def?.[direction] || {})),
-      ...dynamicPorts(data, direction === "inputs" ? "DynamicInputs" : "DynamicOutputs")
-    };
-    if (def?.id === "pid" && direction === "inputs") {
-      if (Boolean(data?.PreventIntegralWindup)) {
-        ports.integral_min = "number";
-        ports.integral_max = "number";
-      } else {
-        delete ports.integral_min;
-        delete ports.integral_max;
-      }
-    }
-    return withCollapsedMap(ports, data, direction);
+    return globalThis.GadgetsGraphNodes.ports(def, data, direction);
   }
 
   // Get the ports rendered in the node body. Collapsed fields retain their runtime ports,
   // but are represented by one MAP handle in the editor.
   function nodePorts(def, data, direction) {
-    const ports = graphNodePorts(def, data, direction);
-    const collapseKey = direction === "inputs" ? "CollapseInputsToMap" : "CollapseOutputsToMap";
-    const mapPort = direction === "inputs" ? "input_map" : "output_map";
-    if (!Boolean(data?.[collapseKey])) return ports;
-    const visible = {};
-    for (const [port, type] of Object.entries(ports)) {
-      if (type === "exec" || port === mapPort) visible[port] = type;
-    }
-    return visible;
+    return globalThis.GadgetsGraphNodes.ports(def, data, direction, true);
   }
 
   // Convert complete graphs in both directions while preserving data the studio does not understand
@@ -876,7 +834,7 @@
         return varNodeToStudio(node, graph);
       }
       const def = state.definitions.get(node.Type);
-      const data = node.Data && typeof node.Data === "object" ? deepCopy(node.Data) : {};
+      const data = graphNodeData(node, def);
       data.isCollapsed = Boolean(data.EditorCollapsed);
       const inputs = graphNodePorts(def, data, "inputs");
       const outputs = nodePorts(def, data, "outputs");
@@ -960,14 +918,17 @@
       delete data.__ctImagePreview;
       if (isCollapsed) data.EditorCollapsed = true;
       else delete data.EditorCollapsed;
-      const inputs = nodePorts(def, data, "inputs");
+      const inputs = graphNodePorts(def, data, "inputs");
       const defaults = data.Defaults && typeof data.Defaults === "object" && !Array.isArray(data.Defaults)
         ? data.Defaults : {};
-      for (const [port, type] of Object.entries(inputs)) {
+      for (const port of new Set([...Object.keys(inputs), ...Object.keys(defaults)])) {
+        const type = inputs[port] || defaults[port]?.Type || "any";
         if (type === "exec" || !hasOwn(data, port)) continue;
         defaults[port] = defaultToGraph(data[port], type, defaults[port]);
         delete data[port];
       }
+      data.InputOrder = Object.keys(inputs);
+      data.OutputOrder = Object.keys(graphNodePorts(def, data, "outputs"));
       if (Object.keys(defaults).length) data.Defaults = defaults;
       else delete data.Defaults;
       return {
@@ -1113,6 +1074,19 @@
   function loadActiveGraph() {
     const graph = activeGraph();
     if (!state.studio || !graph) return;
+    globalThis.GadgetsGraphFunctions = rootGraph()?.Functions || [];
+    for (const scope of [rootGraph(), ...(rootGraph()?.Functions || [])]) {
+      for (const node of scope?.Nodes || []) {
+        if (node.Type !== "function_call") continue;
+        const fn = globalThis.GadgetsGraphFunctions.find((fn) => fn.Id === node.Data?.FunctionId);
+        if (!fn) continue;
+        node.Data.DynamicInputs = Object.assign({}, ...(fn.Nodes || []).filter((node) => node.Type === "function_input").map((node) => node.Data?.DynamicOutputs || {}));
+        node.Data.DynamicOutputs = Object.assign({}, ...(fn.Nodes || []).filter((node) => node.Type === "function_output").map((node) => node.Data?.DynamicInputs || {}));
+        node.Data.FunctionInputLabels = Object.assign({}, ...(fn.Nodes || []).filter((node) => node.Type === "function_input").map((node) => node.Data?.FunctionPortLabels || {}));
+        node.Data.FunctionOutputLabels = Object.assign({}, ...(fn.Nodes || []).filter((node) => node.Type === "function_output").map((node) => node.Data?.FunctionPortLabels || {}));
+        node.Data.InputOrder = Object.keys(node.Data.DynamicInputs);node.Data.OutputOrder = Object.keys(node.Data.DynamicOutputs);
+      }
+    }
     state.isLoadingPlugin = true;
     const plugin = graphToPlugin(graph);
     state.latestPlugin = plugin;
@@ -1195,8 +1169,8 @@
   function isStandaloneExecSource(node) {
     const def = state.definitions.get(node?.Type);
     if (!def) return false;
-    return !Object.values(def.inputs || {}).includes("exec")
-      && Object.values(def.outputs || {}).includes("exec");
+    return !Object.values(graphNodePorts(def, node.Data || def.defaultData, "inputs")).includes("exec")
+      && Object.values(graphNodePorts(def, node.Data || def.defaultData, "outputs")).includes("exec");
   }
 
   // Get a graph port type
@@ -1790,13 +1764,19 @@
   async function start() {
     bindUI();
     try {
-      const [status, catalog] = await Promise.all([
-        requestJSON(endpoints.status),
-        requestJSON(endpoints.nodes)
+      const [status, liveCatalog, packagedCatalog] = await Promise.all([
+        requestJSON(endpoints.status).catch(() => ({ offline: true })),
+        requestJSON(endpoints.nodes).catch(() => ({ nodes: [] })),
+        requestJSON("./nodes.json").catch(() => ({ nodes: [] }))
       ]);
-      state.catalog = Array.isArray(catalog.nodes) ? catalog.nodes : [];
+      // The packaged experimental catalog also supports static website deployments
+      const catalog = { nodes: [...new Map([...(liveCatalog.nodes || []), ...(packagedCatalog.nodes || [])]
+        .map((definition) => [definition.id, definition])).values()] };
+      if (!catalog.nodes.length) throw new Error("The graph node catalog is missing");
+      state.catalog = catalog.nodes;
       state.definitions = new Map(state.catalog.map((def) => [def.id, def]));
-      setServerState(true, isPublicSite ? "PUBLIC SHARE" : `PORT ${status.port}`);
+      setServerState(!status.offline, status.offline ? "OFFLINE EDITOR" : isPublicSite ? "PUBLIC SHARE" : `PORT ${status.port}`);
+      if (status.offline) { el.saveServer.hidden = true; el.upload.hidden = true; }
       setupStudio();
       if (isPublicSite && /^[a-f0-9]{16}$/.test(initialGraphId)) {
         const manifest = await requestJSON(endpoints.manifest(initialGraphId));
@@ -1805,7 +1785,7 @@
       } else {
         newManifest();
       }
-      if (!isPublicSite) {
+      if (!isPublicSite && !status.offline) {
         await refreshManifests(true);
         await requestGameGraph(false);
         window.setInterval(() => void requestGameGraph(false), 500);

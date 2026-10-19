@@ -18,8 +18,11 @@ import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget;
 import com.rieno.gadgetsandgizmos.lib.view.ControlledViewSource;
 import com.rieno.gadgetsandgizmos.lib.view.ViewReference;
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayCameraControlPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayCameraTakeoverPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayCameraInteractPayload;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
+import com.rieno.gadgetsandgizmos.lib.client.render.ClientViewOwnership;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.resources.ResourceLocation;
@@ -59,7 +62,7 @@ public final class AccDisplayCameraProjection{
 
     public static void render(AccDisplayBlockEntity display, ViewReference ref, int width, int height,
                               Font font, PoseStack stack, MultiBufferSource buffers, float z){
-        if(ViewSceneRenderer.isCapturing() || display == null || ref == null || width < 32 || height < 12) return;
+        if(ClientViewOwnership.isReserved() || ViewSceneRenderer.isCapturing() || display == null || ref == null || width < 32 || height < 12) return;
         var src = ref.resolve(Minecraft.getInstance().level);
         if(!(src instanceof ControlledViewSource camera)) return;
         long now = Util.getMillis();
@@ -75,16 +78,24 @@ public final class AccDisplayCameraProjection{
         session.width = Math.max(1, Math.round(width / scale));
         session.height = Math.max(1, Math.round(height / scale));
         session.lastUse = now;
+        session.controls.setTakeControlAction(() -> {
+            release();
+            PacketDistributor.sendToServer(new AccDisplayCameraTakeoverPayload(
+                    new MenuConfigTarget(display.getBlockPos(), SimulatedHelper.getContainingSubLevelId(display)), ref.toTag()));
+        });
+        session.controls.setInteractAction(() -> PacketDistributor.sendToServer(new AccDisplayCameraInteractPayload(
+                new MenuConfigTarget(display.getBlockPos(), SimulatedHelper.getContainingSubLevelId(display)), ref.toTag())));
         stack.pushPose();
         stack.scale(scale, scale, 1);
         session.controls.renderOverlay(new ProjectedViewControlCanvas(stack, buffers,
-                        ResourceLocation.withDefaultNamespace("textures/misc/white.png"), z - 0.02F),
+                        ResourceLocation.withDefaultNamespace("textures/misc/white.png"), z - 0.2F),
                 font, 0, 0, session.width, session.height, camera.viewControlState(), input -> PacketDistributor.sendToServer(
                         new AccDisplayCameraControlPayload(new MenuConfigTarget(display.getBlockPos(),
                                 SimulatedHelper.getContainingSubLevelId(display)), ref.toTag(), input.toTag())));
         stack.popPose();
     }
     public static boolean interact(AccDisplayBlockEntity display, double x, double y, int mouseButton){
+        if(ClientViewOwnership.isReserved()){ release(); return false; }
         Session session = SESSIONS.get(display);
         if(session == null || !session.source.equals(display.displayedCamera())) return false;
         if(!session.controls.mouseClicked(x * session.width, y * session.height, mouseButton)) return false;
@@ -94,11 +105,13 @@ public final class AccDisplayCameraProjection{
         return true;
     }
     public static void updatePointer(AccDisplayBlockEntity display, double x, double y){
+        if(ClientViewOwnership.isReserved()){ release(); return; }
         if(active == null) return;
         var mc = Minecraft.getInstance();
         if(display != active.display || mc.level == null || mc.screen != null
                 || !active.source.equals(display.displayedCamera())
-                || GLFW.glfwGetMouseButton(mc.getWindow().getWindow(), button) != GLFW.GLFW_PRESS){
+                || !com.rieno.gadgetsandgizmos.lib.client.view.ViewInteractionClient.held()
+                && GLFW.glfwGetMouseButton(mc.getWindow().getWindow(), button) != GLFW.GLFW_PRESS){
             release();
             return;
         }

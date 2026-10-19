@@ -75,7 +75,7 @@ public final class DiagnosticTabletApps {
     private static final TabletAppDefinition REDSTONE_LINK = definition("redstone_link", "Redstone Link",
             "Smart-home controls for wireless redstone", 0xFF7C4DFF,
             List.of(tab("home", "Home", "refresh", "channel_button", "channel_toggle", "channel_slider"),
-                    tab("devices", "Devices", "channel_create", "bind_channel", "channel_mode",
+                    tab("devices", "Devices", "channel_create", "channel_update", "bind_channel", "channel_mode",
                             "channel_strength", "channel_rename", "channel_remove")));
     private static final TabletAppDefinition APP_STORE = definition("app_store", "App Store",
             "Purchase and install tablet applications", 0xFF66BB6A,

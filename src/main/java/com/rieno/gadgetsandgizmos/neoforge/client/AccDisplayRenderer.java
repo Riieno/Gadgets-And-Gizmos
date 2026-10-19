@@ -12,10 +12,13 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.rieno.gadgetsandgizmos.content.AccDisplayBlock;
 import com.rieno.gadgetsandgizmos.content.AccDisplayBlockEntity;
+import com.rieno.gadgetsandgizmos.content.AccDisplayWidgetGeometry;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphCatalog;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementBinding;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementStyle;
+import com.rieno.gadgetsandgizmos.lib.client.ui.HudControlRenderer;
+import com.rieno.gadgetsandgizmos.lib.display.HudStyleCatalog;
 import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
 import com.rieno.gadgetsandgizmos.lib.display.DisplayWidgetProjection;
 import com.rieno.gadgetsandgizmos.lib.display.DisplayTextScale;
@@ -115,6 +118,7 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
         if (!blockEntity.isNetworkRoot()) {
             return;
         }
+        AccHologramWidgetClient.record(blockEntity);
         CompoundTag frame = blockEntity.displayFrame();
         String state = frame.getString("State");
         if (state.isBlank() || "unbound".equals(state)) {
@@ -788,34 +792,13 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
     // Get the vertical center
     private static double verticalCenter(AccDisplayBlock.DisplayType type,
                                          AccDisplayBlock.Alignment alignment) {
-        if (type != AccDisplayBlock.DisplayType.HALF_PANEL
-                && type != AccDisplayBlock.DisplayType.SLAB) {
-            return 0.5D;
-        }
-        return switch (alignment) {
-            case NEGATIVE -> 0.25D;
-            case CENTER -> 0.5D;
-            case POSITIVE -> 0.75D;
-        };
+        return AccDisplayWidgetGeometry.verticalCenter(type, alignment);
     }
 
     // Draw the plane
     private static double renderPlane(AccDisplayBlock.DisplayType type,
                                       AccDisplayBlock.Alignment alignment) {
-        double outward = switch (type) {
-            case BLOCK, SLAB -> -0.502D;
-            case BOARD -> switch (alignment) {
-                case NEGATIVE -> -0.502D;
-                case CENTER -> -0.3145D;
-                case POSITIVE -> -0.002D;
-            };
-            case PANEL, HALF_PANEL -> switch (alignment) {
-                case NEGATIVE -> -0.502D;
-                case CENTER -> -0.09575D;
-                case POSITIVE -> 0.3105D;
-            };
-        };
-        return outward - DISPLAY_SURFACE_OFFSET;
+        return AccDisplayWidgetGeometry.renderPlane(type, alignment);
     }
 
     // Draw the init
@@ -872,8 +855,13 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
             int canvasHeight = Math.max(1, node.data().getInt("WidgetHeight"));
             if (canvasWidth == 1) canvasWidth = 320;
             if (canvasHeight == 1) canvasHeight = 180;
-            double scaleX = width / (double) canvasWidth;
-            double scaleY = height / (double) canvasHeight;
+            var canvas = AccDisplayWidgetGeometry.layout(blockEntity, node, width, height);
+            double scaleX = canvas.scaleX();
+            double scaleY = canvas.scaleY();
+            poseStack.pushPose();
+            poseStack.translate(canvas.x() + canvas.width() / 2, canvas.y() + canvas.height() / 2, canvas.z());
+            poseStack.mulPose(com.mojang.math.Axis.ZP.rotationDegrees((float)canvas.rotation()));
+            poseStack.translate(-canvas.width() / 2, -canvas.height() / 2, 0);
             ListTag elements = node.data().getList("WidgetElements", Tag.TAG_COMPOUND);
             for (int idx = 0; idx < elements.size(); idx++) {
                 CompoundTag elm = AdvancedHudElementBinding.resolvedCopy(
@@ -932,6 +920,7 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
                 poseStack.popPose();
                 rendered = true;
             }
+            poseStack.popPose();
         }
         if (!rendered) {
             drawCentered("Add an ACC Display Widget node to the active graph",
@@ -986,74 +975,30 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
             case "box" -> drawPanel(width, height,
                     AdvancedHudElementStyle.color(elm, "Color", 0xAA1A2732),
                     border, borderWidth, radius, poseStack, buffer);
-            case "button" -> {
-                drawPanel(width, height, interactionPulse ? accent : background,
-                        border, borderWidth, radius, poseStack, buffer);
-                drawScaledText(fittedText(text.isBlank() ? "Button" : text,
-                                Math.max(1, width - 4), fontScale), width * 0.5F, height * 0.5F,
-                        textColor, fontScale, true, poseStack, buffer);
-            }
-            case "toggle" -> {
-                int toggleWidth = Math.min(width, Math.max(12, height * 2));
-                int toggleX = Math.max(0, width - toggleWidth);
-                int toggleSurface = current.asBoolean() || interactionPulse
-                        ? accent : track;
-                int labelColor = readableTextColor(textColor, toggleSurface);
-                roundedFillAtZ(toggleX, 0, width, height, CONTENT_Z, toggleSurface,
-                        Math.min(radius, height / 2),
-                        poseStack, buffer);
-                int knobSize = Math.max(2, height - Math.max(2, height / 5));
-                int knobX = current.asBoolean()
-                        ? width - knobSize - Math.max(1, height / 10)
-                        : toggleX + Math.max(1, height / 10);
-                roundedFillAtZ(knobX, (height - knobSize) / 2,
-                        knobX + knobSize, (height + knobSize) / 2,
-                        OVERLAY_Z, readableTextColor(0xFFFFFFFF, toggleSurface),
-                        knobSize / 2, poseStack, buffer);
-                if (!text.isBlank() && toggleX > 4) {
-                    int labelWidth = Math.max(1, toggleX - 4);
-                    String fitted = font.plainSubstrByWidth(text,
-                            Math.max(1, (int) Math.floor(labelWidth / fontScale)));
-                    drawScaledText(fitted, 0, height * 0.5F - font.lineHeight * fontScale * 0.5F, labelColor,
-                            fontScale, false, poseStack, buffer);
+            case "button", "toggle", "slider", "progress" -> {
+                HudControlRenderer.Canvas canvas = HudControlRenderer.textured(
+                        buffer.getBuffer(RenderType.text(WHITE_TEXTURE)), poseStack.last().pose(),
+                        CONTENT_Z, -0.004F, LightTexture.FULL_BRIGHT);
+                int labelSpace = "slider".equals(type) && !text.isBlank()
+                        ? Math.min(height / 2, font.lineHeight + 2) : 0;
+                HudControlRenderer.Rect label = AdvancedHudInteractiveStyleRenderer.paint(canvas, elm,
+                        0, labelSpace, width, height - labelSpace, canvasScale, current.asNumber(),
+                        "toggle".equals(type) ? current.asBoolean() : interactionPulse, interactionPulse);
+                if("slider".equals(type)) {
+                    if(!text.isBlank()) drawScaledText(fittedText(text, width, fontScale), 0, 0,
+                            textColor, fontScale, false, poseStack, buffer);
+                } else if(label.width() > 0 && label.height() > 0) {
+                    String shown = "progress".equals(type) && text.isBlank()
+                            ? Math.round(widgetAmount(elm, current.asNumber()) * 100) + "%"
+                            : text.isBlank() ? "toggle".equals(type) ? "Toggle" : "Button" : text;
+                    float labelScale = Math.min(fontScale, (float)label.height() / font.lineHeight);
+                    boolean centered = !"toggle".equals(type);
+                    float labelX = (float)(label.x() + (centered ? label.width() / 2 : 0));
+                    float labelY = (float)(label.y() + label.height() / 2
+                            - (centered ? 0 : font.lineHeight * labelScale / 2));
+                    drawScaledText(fittedText(shown, Math.max(1, (int)label.width()), labelScale),
+                            labelX, labelY, textColor, labelScale, centered, poseStack, buffer);
                 }
-            }
-            case "slider" -> {
-                double amount = widgetAmount(elm, current.asNumber());
-                int labelSpace = text.isBlank() ? 0 : Math.min(height / 2, font.lineHeight + 2);
-                int trackHeight = Math.max(2, Math.min(6, height - labelSpace));
-                int trackY = labelSpace + Math.max(0, (height - labelSpace - trackHeight) / 2);
-                roundedFillAtZ(0, trackY, width, trackY + trackHeight,
-                        CONTENT_Z, track, trackHeight / 2, poseStack, buffer);
-                int fillWidth = (int) Math.round(width * amount);
-                roundedFillAtZ(0, trackY, fillWidth, trackY + trackHeight,
-                        OVERLAY_Z, interactionPulse ? 0xFFFFFFFF : accent,
-                        trackHeight / 2, poseStack, buffer);
-                int handle = Math.max(trackHeight + 2, Math.min(height - labelSpace, 10));
-                int handleX = Mth.clamp(fillWidth - handle / 2, 0, Math.max(0, width - handle));
-                roundedFillAtZ(handleX, trackY + trackHeight / 2 - handle / 2,
-                        handleX + handle, trackY + trackHeight / 2 + (handle + 1) / 2,
-                        FOREGROUND_Z, interactionPulse ? 0xFFFFFFFF : accent,
-                        handle / 2, poseStack, buffer);
-                if (!text.isBlank()) {
-                    drawScaledText(fittedText(text, width, fontScale), 0, 0, textColor, fontScale,
-                            false, poseStack, buffer);
-                }
-            }
-            case "progress" -> {
-                double amount = widgetAmount(elm, current.asNumber());
-                drawPanel(width, height, track, border, borderWidth, radius, poseStack, buffer);
-                int inset = Math.max(1, borderWidth);
-                int available = Math.max(0, width - inset * 2);
-                int fillWidth = (int) Math.round(available * amount);
-                roundedFillAtZ(inset, inset, inset + fillWidth,
-                        Math.max(inset, height - inset), FOREGROUND_Z,
-                        accent, Math.max(0, radius - inset), poseStack, buffer);
-                String label = text.isBlank()
-                        ? Math.round(amount * 100.0D) + "%" : text;
-                drawScaledText(fittedText(label, Math.max(1, width - inset * 2), fontScale),
-                        width * 0.5F, height * 0.5F,
-                        textColor, fontScale, true, poseStack, buffer);
             }
             case "text_input" -> {
                 drawPanel(width, height, background, border, borderWidth, radius, poseStack, buffer);
@@ -1069,12 +1014,8 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
 
     // Get the widget amount
     private static double widgetAmount(CompoundTag elm, double val) {
-        double minimum = elm.contains("Min") ? elm.getDouble("Min") : 0.0D;
-        double maximum = elm.contains("Max") ? elm.getDouble("Max") : 1.0D;
-        if (!(maximum > minimum)) {
-            maximum = minimum + 1.0D;
-        }
-        return Mth.clamp((val - minimum) / (maximum - minimum), 0.0D, 1.0D);
+        return HudStyleCatalog.amount(val, elm.contains("Min") ? elm.getDouble("Min") : 0,
+                elm.contains("Max") ? elm.getDouble("Max") : 1);
     }
 
     // Get the readable text color
@@ -1441,6 +1382,11 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
                     || !blockEntity.targetsThisDisplay(node)) {
                 continue;
             }
+            var canvas = AccDisplayWidgetGeometry.layout(blockEntity, node,
+                    blockEntity.surfacePixelWidth(), blockEntity.surfacePixelHeight());
+            extent = Math.max(extent, Math.min(256, (Math.abs(canvas.x()) + Math.abs(canvas.y())
+                    + Math.abs(canvas.z()) + Math.hypot(canvas.width(), canvas.height()))
+                    / AccDisplayBlockEntity.PIXELS_PER_BLOCK + 1));
             ListTag elements = node.data().getList("WidgetElements", Tag.TAG_COMPOUND);
             for (int idx = 0; idx < elements.size(); idx++) {
                 CompoundTag elm = AdvancedHudElementBinding.resolvedCopy(

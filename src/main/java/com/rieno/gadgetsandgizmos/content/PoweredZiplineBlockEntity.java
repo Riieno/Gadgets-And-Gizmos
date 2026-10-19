@@ -10,7 +10,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedRopeCompat;
-import com.rieno.gadgetsandgizmos.lib.physics.SableConstraintApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SableFrameConstraint;
 import com.rieno.gadgetsandgizmos.compat.simulated.SchematicSubLevelReferenceRemapper;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
 import com.rieno.gadgetsandgizmos.lib.control.FrequencyBinding;
@@ -30,11 +30,9 @@ import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
 import dev.ryanhcode.sable.api.block.BlockSubLevelLiftProvider;
 import dev.ryanhcode.sable.api.block.BlockEntitySubLevelActor;
-import dev.ryanhcode.sable.api.physics.constraint.PhysicsConstraintHandle;
 import dev.ryanhcode.sable.api.physics.mass.MassTracker;
 import dev.ryanhcode.sable.api.schematic.SubLevelSchematicSerializationContext;
 import dev.ryanhcode.sable.api.sublevel.KinematicContraption;
-import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.companion.math.BoundingBox3i;
 import dev.ryanhcode.sable.companion.math.BoundingBox3ic;
@@ -222,11 +220,8 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
     private boolean destroyingExtraHangingRope;
     // Tracks whether powered zipline is creating zipline rope
     private boolean creatingZiplineRope;
-    // Current path constraint handle
-    private PhysicsConstraintHandle pathConstraintHandle;
-    // Current path constraint world anchor
-    @Nullable
-    private Vec3 pathConstraintWorldAnchor;
+    // Retain one adjustable solver joint for the assembled body
+    private final SableFrameConstraint pathConstraint = new SableFrameConstraint();
 
     // Local bounds
     private BoundingBox3i localBounds;
@@ -289,6 +284,7 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
     // Invalidate the powered zipline
     @Override
     public void invalidate() {
+        clearPathConstraint();
         unloadExtraHangingRopeHolders();
         super.invalidate();
     }
@@ -304,6 +300,7 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
     // Handle the chunk unloaded event
     @Override
     public void onChunkUnloaded() {
+        clearPathConstraint();
         unloadExtraHangingRopeHolders();
         super.onChunkUnloaded();
     }
@@ -2248,7 +2245,7 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
         return SableLevelApi.subLevel(level, attachedSubLevelId);
     }
 
-    // Update the assembled sublevel pose
+    // Move the attachment frame while Sable keeps the assembled body constrained
     private void tickAssembledSubLevelPose() {
         Object subLevel = resolveAttachedSubLevel();
         if (subLevel == null) {
@@ -2257,107 +2254,47 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
         }
         Quaterniond orientation = sable$getOrientation(1.0D);
         Vector3dc rotationPoint = getSubLevelRotationPoint(subLevel);
-        if (rotationPoint == null) {
-            rotationPoint = getKinematicRotationPoint();
-        }
+        if (rotationPoint == null) rotationPoint = getKinematicRotationPoint();
         Vector3d posePosition = getPosePosForZiplineCenter(getDesiredZiplineCenter(1.0D), rotationPoint, orientation);
-        boolean constrained = ensurePathConstraint(subLevel, posePosition, rotationPoint, orientation);
-        if (!constrained || needsPoseCorrection(subLevel, posePosition)) {
-            teleportSubLevel(subLevel, posePosition, orientation);
-        }
-        resetSubLevelVelocity(subLevel);
+        ensurePathConstraint(subLevel, posePosition, rotationPoint, orientation);
     }
 
-    // Hold the assembled sublevel pose
+    // Retain the last target while its path carrier is temporarily unavailable
     private void holdAssembledSubLevelPose() {
         Object subLevel = resolveAttachedSubLevel();
         if (subLevel == null) {
             clearPathConstraint();
             return;
         }
-        if (pathConstraintHandle != null && pathConstraintHandle.isValid()) {
-            resetSubLevelVelocity(subLevel);
-            return;
-        }
-        Vector3d posePosition = getSubLevelPosition(subLevel);
+        if (pathConstraint.isValid()) return;
         Vector3dc rotationPoint = getSubLevelRotationPoint(subLevel);
         Quaterniond orientation = getSubLevelOrientation(subLevel);
-        if (posePosition != null && rotationPoint != null && orientation != null) {
-            ensurePathConstraint(subLevel, posePosition, rotationPoint, orientation);
+        if (subLevel instanceof SubLevel body && rotationPoint != null && orientation != null) {
+            ensurePathConstraint(subLevel, body.logicalPose().position(), rotationPoint, orientation);
         }
-        resetSubLevelVelocity(subLevel);
     }
 
-    // Ensure the path constraint
+    // Keep the same joint as its world anchor, local centre of mass or orientation changes
     private boolean ensurePathConstraint(Object subLevel, Vector3dc posePosition, Vector3dc rotationPoint, Quaterniond orientation) {
         ServerLevel serverLevel = resolveServerLevel(level);
-        if (serverLevel == null || subLevel == null || posePosition == null || rotationPoint == null || orientation == null
+        if (serverLevel == null || !(subLevel instanceof ServerSubLevel body) || body.isRemoved()
+                || posePosition == null || rotationPoint == null || orientation == null
                 || !isFiniteAndSafe(posePosition.x()) || !isFiniteAndSafe(posePosition.y()) || !isFiniteAndSafe(posePosition.z())
                 || !isFiniteQuaternion(orientation)) {
             clearPathConstraint();
             return false;
         }
-
-        Vec3 worldAnchor = new Vec3(posePosition.x(), posePosition.y(), posePosition.z());
-        boolean hasValidConstraint = pathConstraintHandle != null && pathConstraintHandle.isValid();
-        boolean anchorMoved = pathConstraintWorldAnchor == null
-                || pathConstraintWorldAnchor.distanceToSqr(worldAnchor) > 1.0E-6D;
-        if (hasValidConstraint && !anchorMoved) {
-            return true;
-        }
-
-        clearPathConstraint();
-        try {
-            Vector3d anchorPosition = new Vector3d(posePosition);
-            Vector3d anchorRotation = new Vector3d(rotationPoint);
-            Object fixedConstraint = SableConstraintApi.fixedConfiguration(
-                    anchorPosition, anchorRotation, orientation);
-
-            ServerSubLevelContainer container = SubLevelContainer.getContainer(serverLevel);
-            if (container == null) {
-                pathConstraintWorldAnchor = null;
-                return false;
-            }
-            pathConstraintHandle = (PhysicsConstraintHandle) SableConstraintApi.addConstraint(
-                    container.physicsSystem().getPipeline(), null, subLevel, fixedConstraint);
-            if (pathConstraintHandle == null) {
-                pathConstraintWorldAnchor = null;
-                return false;
-            }
-            pathConstraintWorldAnchor = worldAnchor;
-            return true;
-        } catch (Exception ignored) {
+        SubLevelPhysicsSystem physics = SubLevelPhysicsSystem.get(serverLevel);
+        if (physics == null) {
             clearPathConstraint();
             return false;
         }
+        return pathConstraint.update(physics.getPipeline(), null, body, posePosition, rotationPoint, orientation);
     }
 
-    // Check if this needs pose correction
-    private boolean needsPoseCorrection(Object subLevel, Vector3dc targetPosition) {
-        Vector3d currentPosition = getSubLevelPosition(subLevel);
-        return currentPosition == null
-                || !isFiniteAndSafe(currentPosition.x)
-                || !isFiniteAndSafe(currentPosition.y)
-                || !isFiniteAndSafe(currentPosition.z)
-                || currentPosition.distanceSquared(targetPosition.x(), targetPosition.y(), targetPosition.z()) > 16.0D;
-    }
-
-    // Get the sublevel position
-    private @Nullable Vector3d getSubLevelPosition(Object subLevel) {
-        return subLevel instanceof SubLevel sableSubLevel
-                ? new Vector3d(sableSubLevel.logicalPose().position())
-                : null;
-    }
-
-    // Clear the path constraint
+    // Release the attachment before the assembled body leaves this level
     private void clearPathConstraint() {
-        if (pathConstraintHandle == null) {
-            pathConstraintWorldAnchor = null;
-            return;
-        }
-        SableConstraintApi.remove(pathConstraintHandle);
-        pathConstraintHandle = null;
-        pathConstraintWorldAnchor = null;
+        pathConstraint.close();
     }
 
     // Get the pose pos for zipline center
@@ -2397,29 +2334,6 @@ public class PoweredZiplineBlockEntity extends SmartBlockEntity implements RopeS
                 && Double.isFinite(orientation.y)
                 && Double.isFinite(orientation.z)
                 && Double.isFinite(orientation.w);
-    }
-
-    // Teleport the sublevel
-    private void teleportSubLevel(Object subLevel, Vector3dc pos, Quaterniond orientation) {
-        if (level == null || !(subLevel instanceof ServerSubLevel serverSubLevel)
-                || pos == null || orientation == null) {
-            return;
-        }
-        SubLevelPhysicsSystem physics = SubLevelPhysicsSystem.get(level);
-        if (physics != null) {
-            physics.getPipeline().teleport(serverSubLevel, pos, orientation);
-        }
-    }
-
-    // Reset the sublevel velocity
-    private void resetSubLevelVelocity(Object subLevel) {
-        if (level == null || !(subLevel instanceof ServerSubLevel serverSubLevel)) {
-            return;
-        }
-        SubLevelPhysicsSystem physics = SubLevelPhysicsSystem.get(level);
-        if (physics != null) {
-            physics.getPipeline().resetVelocity(serverSubLevel);
-        }
     }
 
     // Register the kinematic if possible

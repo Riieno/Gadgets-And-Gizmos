@@ -31,6 +31,7 @@ import com.rieno.gadgetsandgizmos.lib.client.render.SubLevelCameraFrameRegistry;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.rieno.gadgetsandgizmos.mixin.FlightControlHudRenderAccess;
 import net.minecraft.client.Minecraft;
+import com.rieno.gadgetsandgizmos.lib.client.render.ClientViewOwnership;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.fml.ModList;
@@ -145,19 +146,20 @@ public final class FlightControlClient{
     // Register detached controllers with native mouse steering during physical ACC interaction
     public static void steer(AdvancedContraptionControllerBlockEntity host){
         Minecraft minecraft = Minecraft.getInstance();
-        if(host == null || minecraft.player == null || minecraft.screen != null
+        if(ClientViewOwnership.isReserved() || host == null || minecraft.player == null || minecraft.screen != null
                 || !ModList.get().isLoaded("create_flight_control")) return;
         FlightControlGraphRuntime runtime = FlightControlIntegration.runtime(host);
         if(runtime == null || !runtime.hasMouseSteering()) return;
         FlightControlIntegration.clientInteraction((controller, player) -> controller ==
-                AnalogueContraptionControllerClientHandler.physicalAdvancedController() && Minecraft.getInstance().screen == null);
+                AnalogueContraptionControllerClientHandler.physicalAdvancedController()
+                && !ClientViewOwnership.isReserved() && Minecraft.getInstance().screen == null);
         for(MouseFlightControllerBlockEntity component : runtime.mouseControllers()) PlatformHooks.tickMouseFlightControllerClient(component);
     }
 
     // Hand selection, camera alignment and network rebasing to the native client
     public static MouseFlightControllerBlockEntity activeMouse(){
         AdvancedContraptionControllerBlockEntity host = AnalogueContraptionControllerClientHandler.physicalAdvancedController();
-        if(host == null || Minecraft.getInstance().screen != null) return null;
+        if(ClientViewOwnership.isReserved() || host == null || Minecraft.getInstance().screen != null) return null;
         FlightControlGraphRuntime runtime = FlightControlIntegration.runtime(host);
         if(runtime == null) return null;
         return runtime.pilotMouse();

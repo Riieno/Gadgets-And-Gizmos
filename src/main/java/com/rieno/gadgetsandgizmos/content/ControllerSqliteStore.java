@@ -961,6 +961,7 @@ final class ControllerSqliteStore {
         Set<String> linkerIds = new LinkedHashSet<>();
         Set<String> controllerIds = new LinkedHashSet<>();
         for (IndexedOwner owner : owners) {
+            if(ContraptionNetworkLinkerData.isFaceProxyId(owner.nodeId())) continue;
             if (!owner.nodeId().isBlank()) {
                 removedNodeIds.add(ContraptionNetworkLinkerData.baseNodeIdFromTargetId(owner.nodeId()));
             }

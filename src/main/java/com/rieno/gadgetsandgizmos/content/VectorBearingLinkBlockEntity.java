@@ -10,6 +10,10 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyTopologyInvalidation;
+import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SableSubLevelLifecycleApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SubLevelAttachmentApi;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
@@ -19,13 +23,16 @@ import dev.ryanhcode.sable.api.block.propeller.BlockEntitySubLevelPropellerActor
 import dev.ryanhcode.sable.api.schematic.SubLevelSchematicSerializationContext;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.sublevel.SubLevel;
+import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtUtils;
 import net.minecraft.util.RandomSource;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import org.joml.Vector3d;
 import org.jetbrains.annotations.Nullable;
@@ -143,8 +150,23 @@ public class VectorBearingLinkBlockEntity extends SmartBlockEntity
         if (lastVisualSyncTick == Long.MIN_VALUE
                 || gameTime - lastVisualSyncTick >= VISUAL_SYNC_INTERVAL_TICKS) {
             lastVisualSyncTick = gameTime;
+            if(removeOrphanedHead()) return;
             refreshVisualState();
         }
+    }
+
+    // Remove an old head only after its saved parent's position is loaded and no longer a bearing
+    private boolean removeOrphanedHead(){
+        if(!(level instanceof ServerLevel server) || parentPos == null
+                || SubLevelAttachmentApi.isMoving(level, worldPosition)
+                || SubLevelAttachmentApi.isMoving(level, parentPos)
+                || !SubLevelBlockEntityCollector.isTargetLoaded(level, parentSubLevelId, parentPos)) return false;
+        Level parentLevel = SubLevelBlockEntityCollector.resolveTargetLevel(level, parentSubLevelId);
+        if(parentLevel == null || parentLevel.getBlockState(parentPos).getBlock() instanceof VectorBearingBlock) return false;
+        SubLevel body = SableLevelApi.containing(this);
+        level.removeBlock(worldPosition, false);
+        if(body instanceof ServerSubLevel child) SableSubLevelLifecycleApi.removeEmpty(server, child);
+        return true;
     }
 
     // Update the particle direction

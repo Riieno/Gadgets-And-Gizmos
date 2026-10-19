@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.compat.simulated.SimulatedDockingApi;
 import com.rieno.gadgetsandgizmos.compat.createrailwaysnavigator.RailwayNavigatorGraphCompat;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
@@ -377,7 +378,7 @@ public final class ShippingScheduleRuntime {
             return;
         }
         tickSchedulePhase();
-        controller.releaseShipControlAfterLoad();
+        if(!requiresControlAfterLoad()) controller.releaseShipControlAfterLoad();
     }
 
     // Resume the schedule after loading
@@ -434,37 +435,13 @@ public final class ShippingScheduleRuntime {
         invalidPilotSinceTick = Long.MIN_VALUE;
         lastTargetRefreshTick = Long.MIN_VALUE;
         lastDockingProgressTick = Long.MIN_VALUE;
-        resetRouteProgress();
         lastRuntimeValidationTick = Long.MIN_VALUE;
         lastDockHeartbeatTick = Long.MIN_VALUE;
-        boolean preserveParkingState = currentParkInstruction() != null
-                && currentDockId != null && currentParkingZoneId != null
-                && parkingTarget != null;
-        if (schedule != null && phase != Phase.IDLE && phase != Phase.PAUSED
-                && phase != Phase.COUPLING && phase != Phase.DONE) {
-            clearDockTelemetry();
-            if (!preserveParkingState) {
-                stopDockingForShutdown();
-            }
-            releaseAllReservations();
-            if (!preserveParkingState) {
-                currentDockId = null;
-                clearParkingState();
-            }
-            attachedDockId = null;
-            currentShipConnectorIndex = -1;
-            connectorlessHoverTarget = null;
-            queueAfterUndocking = false;
-            routeTerminalTransitPending = false;
-            magneticCaptureActive = false;
-            restoredDockOwnership = null;
-            pendingDockCandidates = List.of();
-            if (phase != Phase.PARKED) {
-                phase = Phase.PRE_TRANSIT;
-            }
-            status = "Resuming shipping schedule after chunk reload";
-        }
+        resetRouteProgress();
+        clearDockTelemetry();
+        releaseAllReservations();
         invalidateRouteCache();
+        LIVE_RUNTIMES.remove(this);
     }
 
     // Validate and refresh the runtime
@@ -681,14 +658,7 @@ public final class ShippingScheduleRuntime {
 
     // Prepare the server shutdown
     public void prepareForServerShutdown() {
-        if (shutdownSnapshotPending) {
-            return;
-        }
-        boolean preserveParkingState = currentParkInstruction() != null
-                && currentDockId != null && currentParkingZoneId != null
-                && parkingTarget != null;
-        boolean preserveParkedPhase = preserveParkingState
-                && (phase == Phase.PARKED || phase == Phase.DONE);
+        if(shutdownSnapshotPending) return;
         shutdownSnapshotPending = true;
         runtimeValidated = false;
         lastRuntimeValidationTick = Long.MIN_VALUE;
@@ -696,58 +666,9 @@ public final class ShippingScheduleRuntime {
         cachedPilot = null;
         runShutdownCleanup("clear dock telemetry", this::clearDockTelemetry);
         runShutdownCleanup("release the dock reservation", this::releaseAllReservations);
-        runShutdownCleanup("disengage docking connectors", this::stopDockingForShutdown);
-        if (schedule != null && phase != Phase.COUPLING && !preserveParkedPhase) {
-            phase = Phase.PRE_TRANSIT;
-        }
-        if (!preserveParkingState) {
-            currentDockId = null;
-            clearParkingState();
-        }
-        attachedDockId = null;
-        currentShipConnectorIndex = -1;
-        connectorlessHoverTarget = null;
-        clearHoldingState();
-        queueAfterUndocking = false;
-        routeTerminalTransitPending = false;
-        dockingRetryCount = 0;
-        lastDockingProgressTick = Long.MIN_VALUE;
-        bestDockingDistance = Double.POSITIVE_INFINITY;
-        magneticCaptureActive = false;
         resetRouteProgress();
-        restoredDockOwnership = null;
-        pendingDockCandidates = List.of();
         invalidateRouteCache();
         LIVE_RUNTIMES.remove(this);
-    }
-
-    // Stop the docking for shutdown
-    private void stopDockingForShutdown() {
-        if (currentParkInstruction() != null && currentParkingZoneId != null) {
-            controller.activateShipDockingConnector(-1);
-            return;
-        }
-        UUID activeDockId = attachedDockId == null ? currentDockId : attachedDockId;
-        ShipDockRegistry.Dock activeDock = routeDockCache.get(activeDockId);
-        if (activeDock == null && activeDockId != null && controller.getLevel() != null
-                && controller.getLevel().getServer() != null) {
-            activeDock = ShipDockRegistry.get(controller.getLevel().getServer()).get(activeDockId);
-        }
-        if (activeDock != null) {
-            ShipDockRegistry.Dock dock = activeDock;
-            activeDock = dock.connectorTargets().stream()
-                    .filter(target -> DockingConnectorAutomation.hasConnectionState(
-                            DockingConnectorAutomation.resolve(
-                                    controller.getLevel(), target.subLevelId(), target.pos())))
-                    .findFirst()
-                    .map(dock::withConnector)
-                    .orElse(dock);
-        }
-        if (activeDock != null) {
-            BlockEntityPair pair = connectorPair(activeDock);
-            DockingConnectorAutomation.disengage(pair.ship(), pair.dock());
-        }
-        controller.activateShipDockingConnector(-1);
     }
 
     // Run the shutdown cleanup
@@ -898,8 +819,9 @@ public final class ShippingScheduleRuntime {
     // Check if this requires control after load
     boolean requiresControlAfterLoad() {
         return schedule != null && !schedule.entries.isEmpty() && pilotId != null
+                && phase != Phase.IDLE && phase != Phase.PAUSED
                 && (phase != Phase.DONE || connectorlessHoverTarget != null
-                || parkingTarget != null);
+                || parkingTarget != null || attachedDockId != null);
     }
 
     // Sanitize the schematic payload
@@ -2470,15 +2392,15 @@ public final class ShippingScheduleRuntime {
                 .mapToDouble(target -> origin.distanceTo(
                         landingZoneTarget(target.zone())))
                 .min().orElse(Double.POSITIVE_INFINITY);
-        long now = controller.getLevel().getServer().getTickCount();
         ShipDockScheduler.Lease lease = ShipDockScheduler.get(
                 controller.getLevel().getServer()).request(
+                controller.getLevel().getServer(),
                 new ShipDockScheduler.RequestKey(pilotId, channel),
                 targets.stream().map(LandingZoneLeaseTarget::slot).toList(),
                 occupied, owned,
                 new ShipDockScheduler.RequestPriority(
                         distance, committed ? 0L : estimatedDockEtaTicks(distance), committed),
-                envelope, now);
+                envelope);
         return new LandingZoneRequest(lease, List.copyOf(targets));
     }
 
@@ -2705,13 +2627,13 @@ public final class ShippingScheduleRuntime {
                         || !failedDockingSlots.containsKey(slot))
                 .toList();
         return ShipDockScheduler.get(controller.getLevel().getServer()).request(
+                controller.getLevel().getServer(),
                 new ShipDockScheduler.RequestKey(pilotId, "dock"),
                 availableSlots,
                 physicallyOccupied,
                 ownedDock,
                 dockRequestPriority(candidates, ownedDock != null),
-                vesselEnvelope(),
-                now);
+                vesselEnvelope());
     }
 
     // Get the conservative vessel envelope
@@ -2769,8 +2691,7 @@ public final class ShippingScheduleRuntime {
                 .filter(Double::isFinite)
                 .min()
                 .orElse(Double.POSITIVE_INFINITY);
-        boolean committed = ownsCandidateDock && (phase == Phase.DOCKING
-                || phase == Phase.DOCKED
+        boolean committed = phase == Phase.DOCKING || ownsCandidateDock && (phase == Phase.DOCKED
                 || phase == Phase.WAITING
                 || attachedDockId != null);
         long etaTicks = committed ? 0L : estimatedDockEtaTicks(distance);
@@ -2848,7 +2769,7 @@ public final class ShippingScheduleRuntime {
                     return schedulerSlot(candidate);
                 }
             }
-            return schedulerSlot(selected);
+            return null;
         }
         BlockEntityPair pair = connectorPair(selected);
         return DockingConnectorAutomation.isMagneticCapturePair(pair.ship(), pair.dock())
@@ -3116,7 +3037,7 @@ public final class ShippingScheduleRuntime {
         }
         if (!candidates.isEmpty()) {
             ShipDockScheduler.Lease lease = requestDockLease(candidates);
-            if (phase != Phase.NAVIGATING && phase != Phase.WAITING_FOR_DOCK) {
+            if (phase != Phase.NAVIGATING && phase != Phase.WAITING_FOR_DOCK && phase != Phase.DOCKING) {
                 return;
             }
             if (!lease.granted()) {
@@ -3896,6 +3817,15 @@ public final class ShippingScheduleRuntime {
             }
             return;
         }
+        if(attachedDockId != null){
+            ShipDockRegistry.Dock dock = cachedDock(attachedDockId);
+            if(dock != null){
+                BlockEntityPair pair = connectorPair(dock);
+                SimulatedDockingApi.restoreConnection(pair.ship());
+                if(SimulatedDockingApi.hasPhysicalConnection(pair.ship()))
+                    controller.releaseShipControlAfterLoad();
+            }
+        }
         maintainConnectorlessHover();
     }
 
@@ -3981,6 +3911,19 @@ public final class ShippingScheduleRuntime {
             retryOrSkipUnavailableDock(currentDockId);
             return;
         }
+        if(dock.hasDockingConnector()){
+            BlockEntityPair pair = connectorPair(dock);
+            ShipControlModuleRuntime.MappedDockingConnector connector =
+                    controller.getShipDockingConnector(currentShipConnectorIndex);
+            if(!SimulatedDockingApi.isEndpointLoaded(controller.getLevel(),
+                    dock.connectorSubLevelId(), dock.connectorPos())
+                    || connector != null && !SimulatedDockingApi.isEndpointLoaded(controller.getLevel(),
+                    connector.subLevelId(), connector.blockPosition())){
+                status = "Waiting for saved docking connectors to load";
+                return;
+            }
+            SimulatedDockingApi.restoreConnection(pair.ship());
+        }
         if (refreshShipDockingConnector(dock) < 0) {
             cancelDockingAttempt(dock);
             attachedDockId = null;
@@ -4029,6 +3972,14 @@ public final class ShippingScheduleRuntime {
                 status = "Re-engaging docking connectors at " + dock.name();
                 return;
             }
+        }
+        if(connected){
+            BlockEntityPair pair = connectorPair(dock);
+            if(!SimulatedDockingApi.hasPhysicalConnection(pair.ship())){
+                status = "Restoring saved docking constraint";
+                return;
+            }
+            controller.releaseShipControlAfterLoad();
         }
         if (autoRefuelActive && autoRefuelReturning) {
             resumeInterruptedSchedule();

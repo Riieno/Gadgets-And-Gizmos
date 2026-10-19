@@ -1,5 +1,8 @@
 package com.rieno.gadgetsandgizmos.content;
 
+import com.rieno.gadgetsandgizmos.lib.power.EnergyStorageProbe;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerContainerAccess;
+
 /*--------------------------------------------------------##---------------------------------------------------------
 
 =======================================================================================================================
@@ -135,7 +138,7 @@ public class ShippingManifestBlock extends FaceAttachedHorizontalDirectionalBloc
         if (itemHandler == null && fluidHandler == null && energyHandler == null && longEnergyHandler == null) {
             return null;
         }
-        return state.setValue(SHOW_BLANK, fluidHandler != null || energyHandler != null);
+        return state.setValue(SHOW_BLANK, fluidHandler != null || energyHandler != null || longEnergyHandler != null);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -172,8 +175,7 @@ public class ShippingManifestBlock extends FaceAttachedHorizontalDirectionalBloc
             PacketDistributor.sendToPlayer(serverPlayer,
                     new ShippingManifestOpenPayload(pos, manifest == null ? 0 : manifest.resourceUses(),
                             manifest == null ? 0 : manifest.availableResourceUses(),
-                            manifest != null && manifest.isContainerLocked(),
-                            manifest == null ? java.util.List.of() : manifest.containerLockFilters(), createClipboardContent(
+                            createClipboardContent(
                             itemHandler, fluidHandler, energyHandler, longEnergyHandler)));
         }
         return InteractionResult.CONSUME;
@@ -256,10 +258,9 @@ public class ShippingManifestBlock extends FaceAttachedHorizontalDirectionalBloc
             pages = createItemPages(items);
         }
         if (energyHandler != null || longEnergyHandler != null) {
-            long stored = longEnergyHandler == null ? energyHandler.getEnergyStored()
-                    : longEnergyHandler.getEnergyStored();
-            long capacity = longEnergyHandler == null ? energyHandler.getMaxEnergyStored()
-                    : longEnergyHandler.getMaxEnergyStored();
+            EnergyStorageProbe.Reading energy = EnergyStorageProbe.read(energyHandler, longEnergyHandler);
+            long stored = energy.stored();
+            long capacity = energy.capacity();
             pages = new ArrayList<>(pages);
             pages.add(List.of(new ClipboardEntry(false, Component.translatable(
                     "gui.createthrusters.shipping_manifest.energy",
@@ -459,15 +460,14 @@ public class ShippingManifestBlock extends FaceAttachedHorizontalDirectionalBloc
     public static @Nullable IEnergyStorage findEnergyHandler(
             Level level, BlockPos pos, Direction side
     ) {
-        return level == null ? null : level.getCapability(
+        if(!WorkerContainerAccess.isLoaded(level, pos)) return null;
+        return level.getCapability(
                 Capabilities.EnergyStorage.BLOCK, pos, side);
     }
 
     // Find exact FE storage exposed by the target block entity
     public static @Nullable LongEnergyStorage findLongEnergyHandler(Level level, BlockPos pos) {
-        if (level == null || pos == null || !level.isLoaded(pos)) return null;
-        BlockEntity blockEntity = level.getBlockEntity(pos);
-        return blockEntity instanceof LongEnergyStorage storage ? storage : null;
+        return EnergyStorageProbe.findExact(level, pos);
     }
 
     // Collect the items
@@ -584,6 +584,7 @@ public class ShippingManifestBlock extends FaceAttachedHorizontalDirectionalBloc
     // Find the item handler
     @Nullable
     public static IItemHandler findItemHandler(Level level, BlockPos targetPos, Direction targetSide) {
+        if(!WorkerContainerAccess.isLoaded(level, targetPos)) return null;
         BlockState targetState = level.getBlockState(targetPos);
         BlockEntity targetBlockEntity = level.getBlockEntity(targetPos);
         IItemHandler handler = level.getCapability(Capabilities.ItemHandler.BLOCK, targetPos, targetState,
@@ -598,6 +599,7 @@ public class ShippingManifestBlock extends FaceAttachedHorizontalDirectionalBloc
     // Find the fluid handler
     @Nullable
     public static IFluidHandler findFluidHandler(Level level, BlockPos targetPos, Direction targetSide) {
+        if(!WorkerContainerAccess.isLoaded(level, targetPos)) return null;
         BlockState targetState = level.getBlockState(targetPos);
         BlockEntity targetBlockEntity = level.getBlockEntity(targetPos);
         IFluidHandler handler = level.getCapability(Capabilities.FluidHandler.BLOCK, targetPos, targetState,
@@ -613,6 +615,7 @@ public class ShippingManifestBlock extends FaceAttachedHorizontalDirectionalBloc
     @Nullable
     public static IFluidHandler resolveFluidHandler(Level level, BlockPos targetPos, Direction targetSide,
             boolean combinedManifest) {
+        if(!WorkerContainerAccess.isLoaded(level, targetPos)) return null;
         if (combinedManifest) {
             IFluidHandler combinedHandler =
                     CreateDieselGeneratorsManifestCompat.findCombinedHandler(level, targetPos);

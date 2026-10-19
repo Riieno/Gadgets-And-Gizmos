@@ -14,6 +14,7 @@ import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientState;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppPanel;
 import com.rieno.gadgetsandgizmos.lib.client.view.ViewControlPanel;
 import com.rieno.gadgetsandgizmos.lib.client.view.ViewFeedGrid;
+import com.rieno.gadgetsandgizmos.lib.client.view.RemoteViewHud;
 import com.rieno.gadgetsandgizmos.lib.view.ControlledViewSource;
 import com.rieno.gadgetsandgizmos.lib.view.ViewControlState;
 import com.rieno.gadgetsandgizmos.lib.view.ViewReference;
@@ -85,7 +86,9 @@ public final class Cctv implements TabletAppClientRenderer{
         int viewLeft = listWidth + 6;
         int viewWidth = Math.max(1, ctx.width() - viewLeft - 4);
         int viewTop = 32;
-        int viewHeight = Math.max(1, ctx.height() - viewTop - 4);
+        int chinHeight = 76;
+        int viewHeight = Math.max(1, ctx.height() - viewTop - chinHeight - 8);
+        int controlsTop = viewTop + viewHeight + 4;
         state.panel.button(ctx, 4, 5, listWidth - 8, 20, "Bind camera", true,
                 () -> ctx.actions().send("begin_reader", "pair"));
         state.panel.button(ctx, viewLeft, 5, 62, 20, state.grid ? "Single" : "Grid 2x2", !cameras.isEmpty(),
@@ -126,7 +129,7 @@ public final class Cctv implements TabletAppClientRenderer{
                     tag.getBoolean("Available") && ref.resolve(Minecraft.getInstance().level) != null));
         }
         state.feeds.render(ctx.graphics(), ctx.font(), ctx.left() + viewLeft, ctx.top() + viewTop,
-                viewWidth, Math.max(1, viewHeight - 76), visible, state.selected);
+                viewWidth, viewHeight, visible, state.selected);
         state.controllable = selected != null && selected.getBoolean("Available");
         if(state.controllable){
             ViewReference ref = ViewReference.fromTag(selected);
@@ -134,8 +137,10 @@ public final class Cctv implements TabletAppClientRenderer{
             ViewControlState controls = src instanceof ControlledViewSource camera ? camera.viewControlState()
                     : ViewControlState.fromTag(selected.getCompound("Controls"));
             String key = state.selected;
-            state.controls.render(ctx.graphics(), ctx.font(), ctx.left() + viewLeft, ctx.top() + viewTop,
-                    viewWidth, viewHeight, controls, input -> ctx.actions().send("control", key + "|" + input.toTag()));
+            state.controls.setTakeControlAction(() -> ctx.actions().send("take_control", key));
+            state.controls.setInteractAction(() -> ctx.actions().send("interact_hit", key));
+            state.controls.renderChin(RemoteViewHud.canvas(ctx.graphics()), ctx.font(), ctx.left() + viewLeft, ctx.top() + controlsTop,
+                    viewWidth, chinHeight, controls, input -> ctx.actions().send("control", key + "|" + input.toTag()));
         }else{
             state.controls.mouseReleased();
             if(cameras.isEmpty()) state.panel.wrap(ctx, ctx.data().getString("Help"), viewLeft + 8, 45, viewWidth - 16, 60);

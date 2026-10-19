@@ -11,34 +11,22 @@ package com.rieno.gadgetsandgizmos.compat.simulated;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerData;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode;
+import com.rieno.gadgetsandgizmos.lib.physics.SablePhysicsTelemetry;
+import com.rieno.gadgetsandgizmos.lib.physics.SablePhysicsTelemetry.Snapshot;
+import com.rieno.gadgetsandgizmos.lib.physics.SablePhysicsTelemetry.ForceSample;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
-import dev.ryanhcode.sable.api.physics.force.ForceGroup;
-import dev.ryanhcode.sable.api.physics.force.ForceGroups;
-import dev.ryanhcode.sable.api.physics.force.QueuedForceGroup;
-import dev.ryanhcode.sable.api.physics.handle.RigidBodyHandle;
-import dev.ryanhcode.sable.api.physics.mass.MassData;
-import dev.ryanhcode.sable.companion.math.Pose3dc;
-import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
-import dev.ryanhcode.sable.sublevel.system.SubLevelPhysicsSystem;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
-import org.joml.Quaterniond;
 import org.joml.Quaterniondc;
-import org.joml.Matrix3d;
 import org.joml.Matrix3dc;
-import org.joml.Vector3d;
 import org.joml.Vector3dc;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
-import java.util.WeakHashMap;
 
 // Read optional Contraption Diagram controls without making that addon a required dependency
 public final class ContraptionDiagramControllerCompat {
@@ -51,8 +39,6 @@ public final class ContraptionDiagramControllerCompat {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     private static final Map<String, String> READABLE_PORTS = readablePortTypes();
-    private static final Map<ServerSubLevel, CachedSnapshot> SNAPSHOT_CACHE =
-            Collections.synchronizedMap(new WeakHashMap<>());
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -113,154 +99,8 @@ public final class ContraptionDiagramControllerCompat {
         if (!isTarget(target)) {
             return null;
         }
-        Snapshot snapshot = snapshot(level, target.subLevelId());
+        Snapshot snapshot = SablePhysicsTelemetry.sample(level, target.subLevelId());
         return value(snapshot, port);
-    }
-
-    // Get the snapshot
-    private static Snapshot snapshot(Level level, @Nullable UUID subLevelId) {
-        if (level == null || subLevelId == null) {
-            return Snapshot.unavailable(subLevelId);
-        }
-        Object resolved = SubLevelBlockEntityCollector.ensureSubLevelLoaded(level, subLevelId);
-        if (!(resolved instanceof ServerSubLevel subLevel) || subLevel.isRemoved()) {
-            return Snapshot.unavailable(subLevelId);
-        }
-
-        long gameTime = subLevel.getLevel().getGameTime();
-        CachedSnapshot cached = SNAPSHOT_CACHE.get(subLevel);
-        if (cached != null && cached.gameTime() == gameTime) {
-            return cached.snapshot();
-        }
-
-        Snapshot collected;
-        try {
-            collected = collect(subLevel);
-        } catch (RuntimeException ignored) {
-            collected = Snapshot.unavailable(subLevelId);
-        }
-        SNAPSHOT_CACHE.put(subLevel, new CachedSnapshot(gameTime, collected));
-        return collected;
-    }
-
-    // Collect the contraption diagram controller compat
-    private static Snapshot collect(ServerSubLevel subLevel) {
-        subLevel.enableIndividualQueuedForcesTracking(true);
-        MassData massData = subLevel.getMassTracker();
-        double mass = massData == null ? 0.0D : finite(massData.getMass());
-        double inverseMass = massData == null ? 0.0D : finite(massData.getInverseMass());
-        Matrix3d inertiaTensor = copy(massData == null ? null : massData.getInertiaTensor());
-        Vector3d centerOfMass = copy(massData == null ? null : massData.getCenterOfMass());
-        Pose3dc pose = subLevel.logicalPose();
-        Vector3d pos = copy(pose == null ? null : pose.position());
-        Quaterniond orientation = copy(pose == null ? null : pose.orientation());
-        Vector3d worldCenterOfMass = pose == null
-                ? new Vector3d(centerOfMass)
-                : pose.transformPosition(centerOfMass, new Vector3d());
-
-        Vector3d linearVelocity = new Vector3d();
-        Vector3d angularVelocity = new Vector3d();
-        RigidBodyHandle handle = RigidBodyHandle.of(subLevel);
-        if (handle != null && handle.isValid()) {
-            handle.getLinearVelocity(linearVelocity);
-            handle.getAngularVelocity(angularVelocity);
-        }
-
-        List<ForceSample> forces = diagramForces(subLevel, pose);
-        Vector3d totalForce = new Vector3d();
-        Vector3d totalTorque = new Vector3d();
-        for (ForceSample force : forces) {
-            totalForce.add(force.force());
-            Vector3d torque = new Vector3d(force.point())
-                    .sub(centerOfMass)
-                    .cross(force.force());
-            totalTorque.add(torque);
-        }
-        Vector3d worldTotalForce = pose == null
-                ? new Vector3d(totalForce)
-                : pose.transformNormal(totalForce, new Vector3d());
-        Vector3d worldTotalTorque = pose == null
-                ? new Vector3d(totalTorque)
-                : pose.transformNormal(totalTorque, new Vector3d());
-
-        String name = subLevel.getName();
-        return new Snapshot(
-                true,
-                subLevel.getUniqueId(),
-                name == null ? "" : name,
-                mass,
-                inverseMass,
-                inertiaTensor,
-                centerOfMass,
-                worldCenterOfMass,
-                pos,
-                orientation,
-                linearVelocity,
-                angularVelocity,
-                totalForce,
-                worldTotalForce,
-                totalTorque,
-                worldTotalTorque,
-                List.copyOf(forces));
-    }
-
-    // Get the diagram forces
-    private static List<ForceSample> diagramForces(ServerSubLevel subLevel, @Nullable Pose3dc pose) {
-        Map<ForceGroup, QueuedForceGroup> queued = subLevel.getQueuedForceGroups();
-        if (queued == null || queued.isEmpty()) {
-            return List.of();
-        }
-        SubLevelPhysicsSystem physicsSystem = SubLevelPhysicsSystem.get(subLevel.getLevel());
-        if (physicsSystem == null) {
-            return List.of();
-        }
-        double timeStep = 0.05D / Math.max(1, physicsSystem.getConfig().substepsPerTick);
-        Map<ForceGroup, List<QueuedForceGroup.PointForce>> recorded = new LinkedHashMap<>();
-        queued.forEach((group, forceGroup) ->
-                recorded.put(group, forceGroup.getRecordedPointForces()));
-        return convertForces(recorded, pose, 1.0D / timeStep);
-    }
-
-    // Convert the forces
-    private static List<ForceSample> convertForces(
-            Map<ForceGroup, List<QueuedForceGroup.PointForce>> groupedForces,
-            @Nullable Pose3dc pose,
-            double scale) {
-        if (groupedForces == null || groupedForces.isEmpty()) {
-            return List.of();
-        }
-        List<ForceSample> samples = new ArrayList<>();
-        for (Map.Entry<ForceGroup, List<QueuedForceGroup.PointForce>> entry : groupedForces.entrySet()) {
-            ForceGroup group = entry.getKey();
-            if (group == null || entry.getValue() == null) {
-                continue;
-            }
-            ResourceLocation groupKey = ForceGroups.REGISTRY.getKey(group);
-            String groupId = groupKey == null ? "" : groupKey.toString();
-            String groupName = group.name() == null ? groupId : group.name().getString();
-            for (QueuedForceGroup.PointForce pointForce : entry.getValue()) {
-                if (pointForce == null || pointForce.point() == null || pointForce.force() == null) {
-                    continue;
-                }
-                Vector3d point = copy(pointForce.point());
-                Vector3d force = copy(pointForce.force()).mul(scale);
-                Vector3d worldPoint = pose == null
-                        ? new Vector3d(point)
-                        : pose.transformPosition(point, new Vector3d());
-                Vector3d worldForce = pose == null
-                        ? new Vector3d(force)
-                        : pose.transformNormal(force, new Vector3d());
-                samples.add(new ForceSample(
-                        groupId,
-                        groupName,
-                        group.color(),
-                        point,
-                        force,
-                        worldPoint,
-                        worldForce));
-            }
-        }
-        return samples;
     }
 
     // Get the value
@@ -413,10 +253,6 @@ public final class ContraptionDiagramControllerCompat {
         addVectorPorts(ports, "world_center_of_mass");
         addVectorPorts(ports, "position");
         ports.put("orientation", "map");
-        ports.put("orientation_x", "number");
-        ports.put("orientation_y", "number");
-        ports.put("orientation_z", "number");
-        ports.put("orientation_w", "number");
         addVectorPorts(ports, "linear_velocity");
         ports.put("speed", "number");
         addVectorPorts(ports, "angular_velocity");
@@ -434,82 +270,9 @@ public final class ContraptionDiagramControllerCompat {
         return Collections.unmodifiableMap(ports);
     }
 
-    // Add the vector ports
+    // Expose vector components through their map
     private static void addVectorPorts(Map<String, String> ports, String name) {
         ports.put(name, "map");
-        ports.put(name + "_x", "number");
-        ports.put(name + "_y", "number");
-        ports.put(name + "_z", "number");
     }
 
-    // Copy the contraption diagram controller compat
-    private static Vector3d copy(@Nullable Vector3dc vector) {
-        return vector == null ? new Vector3d() : new Vector3d(vector);
-    }
-
-    // Copy the contraption diagram controller compat
-    private static Quaterniond copy(@Nullable Quaterniondc quaternion) {
-        return quaternion == null ? new Quaterniond() : new Quaterniond(quaternion);
-    }
-
-    // Copy the contraption diagram controller compat
-    private static Matrix3d copy(@Nullable Matrix3dc matrix) {
-        return matrix == null ? new Matrix3d() : new Matrix3d(matrix);
-    }
-
-    // Normalize the value to a finite result
-    private static double finite(double val) {
-        return Double.isFinite(val) ? val : 0.0D;
-    }
-
-    // Store the cached snapshot
-    private record CachedSnapshot(long gameTime, Snapshot snapshot) {
-    }
-
-    // Store the force sample
-    private record ForceSample(String groupId, String groupName, int color,
-                               Vector3d point, Vector3d force,
-                               Vector3d worldPoint, Vector3d worldForce) {
-    }
-
-    // Store the snapshot
-    private record Snapshot(boolean available,
-                            @Nullable UUID subLevelId,
-                            String subLevelName,
-                            double mass,
-                            double inverseMass,
-                            Matrix3d inertiaTensor,
-                            Vector3d centerOfMass,
-                            Vector3d worldCenterOfMass,
-                            Vector3d position,
-                            Quaterniond orientation,
-                            Vector3d linearVelocity,
-                            Vector3d angularVelocity,
-                            Vector3d totalForce,
-                            Vector3d worldTotalForce,
-                            Vector3d totalTorque,
-                            Vector3d worldTotalTorque,
-                            List<ForceSample> forces) {
-        // Create an unavailable snapshot
-        private static Snapshot unavailable(@Nullable UUID subLevelId) {
-            return new Snapshot(
-                    false,
-                    subLevelId,
-                    "",
-                    0.0D,
-                    0.0D,
-                    new Matrix3d(),
-                    new Vector3d(),
-                    new Vector3d(),
-                    new Vector3d(),
-                    new Quaterniond(),
-                    new Vector3d(),
-                    new Vector3d(),
-                    new Vector3d(),
-                    new Vector3d(),
-                    new Vector3d(),
-                    new Vector3d(),
-                    List.of());
-        }
-    }
 }

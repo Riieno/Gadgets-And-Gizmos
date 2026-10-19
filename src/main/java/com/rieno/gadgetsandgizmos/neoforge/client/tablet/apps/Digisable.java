@@ -16,6 +16,10 @@ import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientRenderer;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientState;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppPanel;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletLayout;
+import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletMultiSelectDropdown;
+import com.rieno.gadgetsandgizmos.lib.physics.archive.SubLevelSchematicFiles;
+import com.rieno.gadgetsandgizmos.lib.physics.archive.SchematicProvenance;
+import com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps;
 import net.minecraft.client.Minecraft;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -26,6 +30,8 @@ import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 // Browse sublevels and archived assemblies in a dedicated interactive 3D view
@@ -34,12 +40,19 @@ public final class Digisable implements TabletAppClientRenderer{
 
     private static final class State implements TabletAppClientState, AutoCloseable{
         private final TabletAppPanel panel = new TabletAppPanel();
+        private final TabletMultiSelectDropdown filters = new TabletMultiSelectDropdown(List.of(
+                new TabletMultiSelectDropdown.Option("PHOTOMANCY", "Photomancy"),
+                new TabletMultiSelectDropdown.Option("TOOLGUN", "Toolgun"),
+                new TabletMultiSelectDropdown.Option("NATIVE", "G&G"),
+                new TabletMultiSelectDropdown.Option("UNKNOWN", "Unknown")));
         private final SubLevelPreviewRenderer preview = new SubLevelPreviewRenderer(ResourceLocation.fromNamespaceAndPath("createthrusters", "digisable_preview"), 2048, null);
         private UUID selected;
         private String tab = "";
         private UUID confirmDelete;
         private long confirmUntil;
         private int scroll;
+        private String query = "";
+        private Set<String> formats = Set.of("PHOTOMANCY", "TOOLGUN", "NATIVE", "UNKNOWN");
         private boolean dragging;
         // Keep the material list scroll separate from the assembly browser
         private boolean materials;
@@ -64,22 +77,28 @@ public final class Digisable implements TabletAppClientRenderer{
         State state = (State) raw;
         boolean archives = "archives".equals(ctx.tab().id());
         boolean schematics = "schematics".equals(ctx.tab().id());
-        ListTag rows = schematics ? schematicRows(ctx) : ctx.data().getList(archives ? "Archives" : "Sublevels", Tag.TAG_COMPOUND);
+        ListTag rows = schematics ? visibleSchematics(ctx, state) : ctx.data().getList(archives ? "Archives" : "Sublevels", Tag.TAG_COMPOUND);
         if(!state.tab.equals(ctx.tab().id())){
             state.tab = ctx.tab().id(); state.selected = null; state.scroll = 0; state.confirmDelete = null;
             state.materials = false;
+            state.filters.close();
         }
         boolean present = false;
         for(int idx = 0; idx < rows.size(); idx++) if(rows.getCompound(idx).getUUID("Id").equals(state.selected)) present = true;
-        if(state.selected != null && !present){ state.selected = null; state.lastPreview = new ListTag(); state.preview.setBodies(null, List.of()); }
+        if(state.selected != null && !present){
+            state.selected = null; state.lastPreview = new ListTag();
+            state.preview.setBodies(null, List.of()); state.preview.setSnapshotBlocks(List.of());
+        }
         state.panel.begin(ctx);
         if(schematics && state.materials){ renderMaterials(ctx, state); return; }
+        int listTop = archives ? 0 : 26;
+        int visibleRows = Math.max(1, Math.min(ROWS, (ctx.height() - 54 - listTop) / 20));
         int listWidth = Math.max(120, ctx.width() / 3);
         int viewX = listWidth + 7;
         int viewWidth = ctx.width() - viewX - 4;
-        int viewHeight = Math.max(60, ctx.height() - 54);
-        state.view = new TabletLayout.Rect(ctx.left() + viewX, ctx.top(), viewWidth, viewHeight);
-        state.scroll = Mth.clamp(state.scroll, 0, Math.max(0, rows.size() - ROWS));
+        int viewHeight = Math.max(60, ctx.height() - 54 - listTop);
+        state.view = new TabletLayout.Rect(ctx.left() + viewX, ctx.top() + listTop, viewWidth, viewHeight);
+        state.scroll = Mth.clamp(state.scroll, 0, Math.max(0, rows.size() - visibleRows));
         if(state.selected == null && !rows.isEmpty()){
             // Keep the validated selection when reopening placement or returning from a cancelled preview
             if(schematics && ctx.data().hasUUID("SchematicSelected")){
@@ -87,26 +106,27 @@ public final class Digisable implements TabletAppClientRenderer{
                 for(int idx = 0; idx < rows.size(); idx++)
                     if(rows.getCompound(idx).getUUID("Id").equals(selected)) state.selected = selected;
             }
-            if(state.selected == null) select(ctx, state, rows.getCompound(0).getUUID("Id"));
+            if(state.selected == null && (!schematics || state.query.isBlank())) select(ctx, state, rows.getCompound(0).getUUID("Id"));
         }
-        for(int idx = 0; idx < ROWS && state.scroll + idx < rows.size(); idx++){
+        for(int idx = 0; idx < visibleRows && state.scroll + idx < rows.size(); idx++){
             CompoundTag row = rows.getCompound(state.scroll + idx);
             UUID id = row.getUUID("Id");
-            int y = idx * 20;
-            String name = row.getString("Name");
+            int y = listTop + idx * 20;
+            String name = schematics
+                    ? SubLevelSchematicFiles.displayName(row.getString("Name"))
+                    : row.getString("Name");
             if(name.isBlank()) name = id.toString().substring(0, 8);
-            if(schematics) name = (row.getBoolean("Client") ? "Client: " : "Server: ") + name;
             if(!archives && !schematics && !row.getBoolean("Loaded")) name += " (unloaded)";
             state.panel.button(ctx, 3, y, listWidth - 6, 18, (id.equals(state.selected) ? "> " : "") + name, true, () -> select(ctx, state, id));
         }
         if(rows.isEmpty()) state.panel.wrap(ctx, schematics ? ClientSchematicFiles.status().isBlank()
-                ? "No .nbt or .excraft files. Client: game/schematics. Shared: " + ctx.data().getString("SharedSchematicFolder")
+                ? "No compatible schematics match the selected filters and search"
                 : ClientSchematicFiles.status()
-                : archives ? "No stored assemblies" : ctx.data().getBoolean("LocateAllowed") ? "No known accessible sublevels within range" : "Locating is disabled by the server", 5, 25, listWidth - 10, 64);
+                : archives ? "No stored assemblies" : ctx.data().getBoolean("LocateAllowed") ? "No known accessible sublevels within range" : "Locating is disabled by the server", 5, listTop + 25, listWidth - 10, 64);
         state.panel.text(ctx, rows.size() + (schematics ? " schematics" : archives ? " stored / " + ctx.data().getInt("ArchiveLimit") : " located"), 4, ctx.height() - 48, listWidth - 8, 0xFF9DB4CC);
         updatePreview(ctx, state);
         if(!state.preview.render(ctx.graphics(), state.view.left(), state.view.top(), state.view.width(), state.view.height(), 1, List.of())){
-            state.panel.wrap(ctx, "Select an assembly to view its blocks in 3D", viewX + 16, 28, viewWidth - 32, 46);
+            state.panel.wrap(ctx, "Select an assembly to view its blocks in 3D", viewX + 16, listTop + 28, viewWidth - 32, 46);
         }
         state.panel.text(ctx, "Drag to rotate / scroll to zoom", viewX + 4, ctx.height() - 48, viewWidth - 8, 0xFF9DB4CC);
         CompoundTag selected = new CompoundTag();
@@ -137,14 +157,27 @@ public final class Digisable implements TabletAppClientRenderer{
                     state.materials = true; state.materialScroll = 0;
                     if(state.selected != null) ctx.actions().send("materials", state.selected.toString());
                 });
-        if(archives) state.panel.button(ctx, width * 3 + 12, y, width, 20, "Save schematic", picked && ctx.data().getBoolean("SchematicsAllowed"),
-                () -> ctx.ui().editText("Schematic filename", "assembly", 64,
-                        name -> ctx.actions().send("export", state.selected + "|" + name)));
         boolean confirm = state.selected != null && state.selected.equals(state.confirmDelete) && System.currentTimeMillis() < state.confirmUntil;
         if(!archives && !schematics) state.panel.button(ctx, width * 3 + 12, y, width, 20, confirm ? "Confirm delete" : "Delete", picked && selected.getBoolean("Loaded") && selected.getBoolean("Unclaimed") && ctx.data().getBoolean("DeleteAllowed"), () -> {
             if(state.selected.equals(state.confirmDelete) && System.currentTimeMillis() < state.confirmUntil){ ctx.actions().send("delete", state.selected.toString()); state.confirmDelete = null; }
             else{ state.confirmDelete = state.selected; state.confirmUntil = System.currentTimeMillis() + 5000; }
         });
+        if(!archives && !schematics){
+            state.panel.button(ctx, 3, 0, 142, 20, "Delete from world",
+                    ctx.data().getBoolean("DeleteAllowed"), () -> ctx.actions().send("begin_reader", "delete"));
+            if(ctx.data().getBoolean("SublevelsAllowed")) state.panel.button(ctx, 151, 0, 142, 20, "Store Selected",
+                    picked && selected.getBoolean("Loaded") && ctx.data().getBoolean("RemoteStoreAllowed"),
+                    () -> ctx.actions().send("store_selected", state.selected.toString()));
+        }
+        if(schematics){
+            int searchWidth = Math.max(70, ctx.width() - 344);
+            state.panel.input(ctx, "schematic_search", 3, 0, searchWidth, "Search schematics");
+            state.panel.button(ctx, searchWidth + 109, 0, 112, 20, "Save schematic",
+                    ctx.data().getBoolean("SchematicsAllowed"), () -> ctx.actions().send("begin_reader", "save_schematic"));
+            state.panel.button(ctx, searchWidth + 228, 0, ctx.width() - searchWidth - 231, 20, "Open Directory",
+                    true, ClientSchematicFiles::openDirectory);
+            state.filters.render(ctx, searchWidth + 7, 0, 95, "Filter");
+        }
         state.panel.error(ctx);
     }
 
@@ -207,12 +240,34 @@ public final class Digisable implements TabletAppClientRenderer{
     private static ListTag schematicRows(TabletAppClientContext ctx){
         ListTag rows = ctx.data().getList("Schematics", Tag.TAG_COMPOUND).copy();
         if(!ctx.data().getBoolean("SchematicsAllowed")) return rows;
-        for(var file : ClientSchematicFiles.catalogue()){
+        for(var file : ClientSchematicFiles.catalogue(ctx.data().getInt("SchematicMaximumBodies"), ctx.data().getInt("SchematicMaximumBlocks"))){
             CompoundTag row = new CompoundTag();
             row.putUUID("Id", file.id()); row.putString("Name", file.name()); row.putBoolean("Client", true);
+            row.putString("Format", file.format().name());
+            row.putString("Source", file.source().toString());
             rows.add(row);
         }
         return rows;
+    }
+
+    // Filter compatible shared and private entries before selection, pagination and preview
+    private static ListTag visibleSchematics(TabletAppClientContext ctx, State state){
+        String query = state.panel.value("schematic_search").strip().toLowerCase(Locale.ROOT);
+        Set<String> formats = state.filters.selectedIds();
+        if(!query.equals(state.query) || !formats.equals(state.formats)){
+            state.query = query; state.formats = formats; state.scroll = 0;
+        }
+        ListTag res = new ListTag();
+        for(Tag raw : schematicRows(ctx)){
+            CompoundTag row = (CompoundTag)raw;
+            String source = row.getString("Source");
+            String format = PaidTabletApps.DIGISABLE.id().toString().equals(source) ? "NATIVE"
+                    : SchematicProvenance.PHOTOMANCY.toString().equals(source) ? "PHOTOMANCY"
+                    : SchematicProvenance.TOOLGUN.toString().equals(source) ? "TOOLGUN" : "UNKNOWN";
+            if(formats.contains(format) && SubLevelSchematicFiles.displayName(row.getString("Name"))
+                    .toLowerCase(Locale.ROOT).contains(query)) res.add(row);
+        }
+        return res;
     }
 
     // Enable building only when the server has validated the file selected on this screen
@@ -246,6 +301,7 @@ public final class Digisable implements TabletAppClientRenderer{
 
     @Override public boolean mouseClicked(TabletAppClientContext ctx, TabletAppClientState raw, double x, double y, int button){
         State state = (State) raw;
+        if("schematics".equals(ctx.tab().id()) && !state.materials && state.filters.mouseClicked(x, y, button)) return true;
         if(state.panel.click(x, y, button)) return true;
         if(state.materials) return false;
         if(state.view.contains(x, y)){
@@ -274,5 +330,17 @@ public final class Digisable implements TabletAppClientRenderer{
         else if(state.view.contains(x, y)) state.preview.mouseScrolled(sy);
         else state.scroll = Math.max(0, state.scroll - (int) Math.signum(sy));
         return true;
+    }
+
+    // Route inline search editing and dropdown dismissal through the reusable tablet controls
+    @Override public boolean keyPressed(TabletAppClientContext ctx, TabletAppClientState raw, int key, int scan, int modifiers){
+        State state = (State)raw;
+        return "schematics".equals(ctx.tab().id()) && !state.materials && state.filters.keyPressed(key)
+                || state.panel.keyPressed(key, modifiers);
+    }
+
+    // Apply typed search characters without opening the filename editor
+    @Override public boolean chatTyped(TabletAppClientContext ctx, TabletAppClientState raw, char ch, int modifiers){
+        return ((State)raw).panel.charTyped(ch);
     }
 }

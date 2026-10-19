@@ -126,6 +126,7 @@ public final class AdvancedHudInteractions {
                     && previousPorts.contains(edge.fromPort()) && !valid.contains(edge.fromPort()));
         }
         node.data().put(ELEMENTS, elements);
+        com.rieno.gadgetsandgizmos.lib.graph.HudInteractionPorts.synchronize(node.data());
     }
 
     // Add the advanced HUD interactions if present

@@ -74,8 +74,6 @@ public final class FlightControlGraphRuntime implements AutoCloseable{
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     private final AdvancedContraptionControllerBlockEntity host;
-    private final com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache<AdvancedGraphDocument> graphCache =
-            new com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache<>();
     private final Map<String, Entry> entries = new LinkedHashMap<>();
     private final Map<String, CompoundTag> restored = new HashMap<>();
     private final Map<FlightControlComputerBlockEntity, EngineLinks> engineLinks = new LinkedHashMap<>();
@@ -140,7 +138,7 @@ public final class FlightControlGraphRuntime implements AutoCloseable{
             removeEntry(entries.remove(pair.getKey()));
             entries.put(pair.getKey(), create(pair.getKey(), entry.spec));
         }
-        AdvancedGraphDocument graph = host.activeGraphSnapshot(graphCache);
+        var graph = host.activeGraphReadView();
         host.beginActiveGraphPreview();
         Set<String> retained = new LinkedHashSet<>();
         for(AdvancedGraphDocument.Node node : graph.nodes()){
@@ -518,7 +516,6 @@ public final class FlightControlGraphRuntime implements AutoCloseable{
     public void close(){
         if(closed) return;
         closed = true;
-        graphCache.invalidate();
         physicsEntries = List.of();
         releaseEngines();
         try{

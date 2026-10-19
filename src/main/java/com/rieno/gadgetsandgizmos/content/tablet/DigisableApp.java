@@ -42,6 +42,10 @@ final class DigisableApp{
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     static String execute(TabletActionContext ctx, TabletAction action) throws Exception{
+        if(("sublevels".equals(action.tabId()) || "store_selected".equals(action.actionId()) || "delete".equals(action.actionId()))
+                && !SubLevelArchiveApi.canStoreRemotely(ctx.player())){
+            throw new IllegalArgumentException("Sublevel management requires creative mode or operator permissions");
+        }
         if(DigisableSchematics.handles(action.actionId())) return DigisableSchematics.execute(ctx, action);
         String val = action.arguments().getOrDefault("value", "").strip();
         UUID selected = val.isBlank() || "refresh".equals(action.actionId()) ? null
@@ -56,11 +60,14 @@ final class DigisableApp{
                 var archive = accessibleArchive(ctx, selected);
                 if(archive.getList("Preview", Tag.TAG_COMPOUND).isEmpty()) throw new IllegalArgumentException("This archive has no blocks to preview");
             }
-            case "store" -> {
+            case "store", "store_selected" -> {
                 if(!TabletAppsServerConfig.STORE.get()) throw new IllegalArgumentException("Sublevel storage is disabled by the server");
+                boolean remote = "store_selected".equals(action.actionId());
+                if(remote) locate(ctx, selected);
                 cooldown(ctx);
                 var smokeBounds = DigisableStorageEffects.capture(ctx.player().serverLevel(), selected);
-                SubLevelArchiveApi.store(ctx.player(), ctx.player().serverLevel(), selected, TabletAppsServerConfig.archiveLimits());
+                if(remote) SubLevelArchiveApi.storeRemote(ctx.player(), ctx.player().serverLevel(), selected, TabletAppsServerConfig.archiveLimits());
+                else SubLevelArchiveApi.store(ctx.player(), ctx.player().serverLevel(), selected, TabletAppsServerConfig.archiveLimits());
                 DigisableStorageEffects.emit(ctx.player().serverLevel(), smokeBounds);
                 message = "Assembly stored";
                 selected = null;
@@ -117,6 +124,7 @@ final class DigisableApp{
                 if("prepare_extract".equals(action.actionId())) data.putUUID("PlacementId", selected);
             }else{
                 if("prepare_extract".equals(action.actionId())) throw new IllegalArgumentException("Stored sublevel is unavailable");
+                if(!SubLevelArchiveApi.canStoreRemotely(ctx.player())) throw new IllegalArgumentException("Sublevel management requires creative mode or operator permissions");
                 var body = locate(ctx, selected);
                 data.put("Preview", SubLevelSnapshots.preview(SableAssemblyTopologyApi.discover(body).loadedBodies(), 2048));
                 data.putUUID("PreviewRoot", body.getUniqueId());
@@ -155,12 +163,15 @@ final class DigisableApp{
 
     static CompoundTag snapshot(TabletActionContext ctx) throws Exception{
         CompoundTag data = new CompoundTag();
+        boolean manage = SubLevelArchiveApi.canStoreRemotely(ctx.player());
+        data.putBoolean("SublevelsAllowed", manage);
+        data.putBoolean("RemoteStoreAllowed", manage && TabletAppsServerConfig.STORE.get() && TabletAppsServerConfig.LOCATE.get());
         data.putBoolean("StoreAllowed", TabletAppsServerConfig.STORE.get());
-        data.putBoolean("LocateAllowed", TabletAppsServerConfig.LOCATE.get());
+        data.putBoolean("LocateAllowed", manage && TabletAppsServerConfig.LOCATE.get());
         data.putBoolean("TeleportAllowed", TabletAppsServerConfig.LOCATE.get() && TabletAppsServerConfig.TELEPORT.get() && (ctx.player().isCreative() || ctx.player().hasPermissions(2)));
-        data.putBoolean("DeleteAllowed", TabletAppsServerConfig.DELETE.get() && (ctx.player().server.isSingleplayerOwner(ctx.player().getGameProfile()) || ctx.player().hasPermissions(2)));
+        data.putBoolean("DeleteAllowed", manage && TabletAppsServerConfig.DELETE.get() && (ctx.player().server.isSingleplayerOwner(ctx.player().getGameProfile()) || ctx.player().hasPermissions(2)));
         ListTag live = new ListTag();
-        if(TabletAppsServerConfig.LOCATE.get()){
+        if(manage && TabletAppsServerConfig.LOCATE.get()){
             var locator = SubLevelLocator.get(ctx.player().serverLevel());
             locator.refresh(ctx.player().serverLevel());
             var locations = locator.locations().stream()

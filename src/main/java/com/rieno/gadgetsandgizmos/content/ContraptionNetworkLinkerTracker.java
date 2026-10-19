@@ -861,7 +861,7 @@ public final class ContraptionNetworkLinkerTracker extends SavedData {
     static boolean matchesBrokenTarget(ContraptionNetworkLinkerData.LinkedTarget target,
                                        BlockPos brokenPos,
                                        @Nullable UUID brokenSubLevelId) {
-        return target != null && brokenPos != null
+        return target != null && !target.scope().usesFaces() && brokenPos != null
                 && Objects.equals(target.blockPos(), brokenPos)
                 && Objects.equals(target.subLevelId(), brokenSubLevelId);
     }

@@ -474,6 +474,8 @@ public final class AdvancedGraphFunctions {
     private static void putPorts(CompoundTag data, String key, Map<String, String> ports) {
         CompoundTag tag = new CompoundTag();
         ports.forEach(tag::putString);
+        com.rieno.gadgetsandgizmos.lib.graph.GraphPortOrder.write(data,
+                "DynamicOutputs".equals(key) ? "OutputOrder" : "InputOrder", ports.keySet());
         if (tag.isEmpty()) {
             data.remove(key);
         } else {

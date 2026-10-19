@@ -105,6 +105,7 @@ final class DiagnosticTabletRdpApp {
         }
         if ("remote_control".equals(action.actionId())) {
             DiagnosticTabletRemoteSessions.authorize(ctx.player(), controller);
+            ctx.player().openMenu(controller, controller::sendToMenu);
             PacketDistributor.sendToPlayer(ctx.player(), new DiagnosticTabletRemoteOpenPayload(
                     "interact", controller.getBlockPos(),
                     SimulatedHelper.getContainingSubLevelId(controller)));
@@ -127,7 +128,7 @@ final class DiagnosticTabletRdpApp {
         if (parts.length < 2 || parts[1].isBlank()) {
             return failure("Invalid RDP widget");
         }
-        AdvancedGraphDocument.Node node = controller.getActiveGraph().nodes().stream()
+        AdvancedGraphDocument.Node node = controller.activeGraphReadView().nodes().stream()
                 .filter(candidate -> parts[1].equals(candidate.id()) && isWidget(candidate))
                 .findFirst().orElse(null);
         if (node == null) {
@@ -268,7 +269,7 @@ final class DiagnosticTabletRdpApp {
         Map<String, AdvancedGraphDocument.Value> inputs = controller.getAccDisplayRuntimeInputsSnapshot();
         Map<String, AdvancedGraphDocument.Value> outputs = controller.getAccDisplayRuntimeOutputsSnapshot();
         ListTag widgets = new ListTag();
-        for (AdvancedGraphDocument.Node node : controller.getActiveGraph().nodes()) {
+        for (AdvancedGraphDocument.Node node : controller.activeGraphReadView().nodes()) {
             if (!isWidget(node)) continue;
             if (widgets.size() >= 64) break;
             CompoundTag widget = new CompoundTag();

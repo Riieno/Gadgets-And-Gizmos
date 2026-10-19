@@ -170,6 +170,8 @@ public final class AccDisplayGuiProjection {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Handle the ACC display GUI projection
+    public static boolean isDragging(){ return activeInteraction != null || computerInteraction != null; }
+
     public static boolean interact(AccDisplayBlockEntity clicked, BlockHitResult hit,
                                    int mouseButton) {
         AccDisplayBlockEntity root = clicked == null ? null : clicked.networkRoot();
@@ -290,7 +292,7 @@ public final class AccDisplayGuiProjection {
             return;
         }
         Minecraft minecraft = Minecraft.getInstance();
-        boolean held = GLFW.glfwGetMouseButton(minecraft.getWindow().getWindow(),
+        boolean held = com.rieno.gadgetsandgizmos.lib.client.view.ViewInteractionClient.held() || GLFW.glfwGetMouseButton(minecraft.getWindow().getWindow(),
                 interaction.mouseButton) == GLFW.GLFW_PRESS;
         DisplayHit hit = currentDisplayHit();
         if (!held || hit == null || hit.root != interaction.display) {

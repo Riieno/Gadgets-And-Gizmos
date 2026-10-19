@@ -85,6 +85,9 @@ public final class AnalogueContraptionControllerClientHandler {
     private static final Set<String> pressedChannelIds = new HashSet<>();
     // Active controller
     private static AnalogueContraptionControllerBlockEntity activeController;
+    // Retain synchronized controller models outside the client's loaded craft range
+    private static final com.rieno.gadgetsandgizmos.lib.client.render.ClientBlockEntitySnapshots<AdvancedContraptionControllerBlockEntity>
+            remoteControllers = new com.rieno.gadgetsandgizmos.lib.client.render.ClientBlockEntitySnapshots<>();
     // Active portable controller
     private static AnalogueContraptionControllerBlockEntity activePortableController;
     // Active lectern controller
@@ -135,6 +138,7 @@ public final class AnalogueContraptionControllerClientHandler {
                 payload.subLevelId(),
                 payload.pos(),
                 AnalogueContraptionControllerBlockEntity.class);
+        if(controller == null) controller = resolveAdvancedController(payload.pos(), payload.subLevelId());
         if (controller != null) {
             controller.applyClientRuntimeSignal(payload.outputSignal());
             if (controller instanceof AdvancedContraptionControllerBlockEntity advanced
@@ -158,11 +162,7 @@ public final class AnalogueContraptionControllerClientHandler {
             }
             controller = menu.getMenuConfigTargetBlockEntity();
         } else {
-            controller = SimulatedHelper.findBlockEntity(
-                    minecraft.level,
-                    payload.subLevelId(),
-                    payload.pos(),
-                    AdvancedContraptionControllerBlockEntity.class);
+            controller = resolveAdvancedController(payload.pos(), payload.subLevelId());
             if (controller == null) {
                 controller = CTPhysicsGogglesClient.resolvePortableBoundController(
                         minecraft, payload.gogglesTrackerPairs().keySet());
@@ -173,7 +173,8 @@ public final class AnalogueContraptionControllerClientHandler {
                     controller, payload.pos(), payload.subLevelId());
             controller.applyClientGraphRuntime(
                     payload.gogglesTrackerPairs(),
-                    payload.liveInputs(), payload.liveOutputs(), payload.executionPulses());
+                    payload.liveInputs(), payload.liveOutputs(), payload.executionPulses(), payload.variables());
+            controller.applyClientGogglesTrackerItems(payload.gogglesTrackerItems());
         }
     }
 
@@ -187,9 +188,7 @@ public final class AnalogueContraptionControllerClientHandler {
         if (snapshot == null || minecraft.level == null || minecraft.player == null) {
             return;
         }
-        AdvancedContraptionControllerBlockEntity controller = SimulatedHelper.findBlockEntity(
-                minecraft.level, subLevelId, pos,
-                AdvancedContraptionControllerBlockEntity.class);
+        AdvancedContraptionControllerBlockEntity controller = resolveAdvancedController(pos, subLevelId);
         if (controller == null) {
             controller = CTPhysicsGogglesClient.resolvePortableBoundController(
                     minecraft, null);
@@ -247,10 +246,15 @@ public final class AnalogueContraptionControllerClientHandler {
     // Start the block interact mode
     private static void startBlockInteractMode(AnalogueContraptionControllerBlockEntity controller,
                                                boolean remote) {
-        BlockPos controllerPos = controller.getBlockPos();
+        startBlockInteractMode(controller, remote, controller.getBlockPos(), SimulatedHelper.getContainingSubLevelId(controller));
+    }
+
+    // Retain the server target identity when the client controller is detached
+    private static void startBlockInteractMode(AnalogueContraptionControllerBlockEntity controller,
+                                               boolean remote, BlockPos controllerPos, UUID subLevelId){
         stopInteractMode(false);
         activeControllerPos = controllerPos.immutable();
-        activeControllerSubLevelId = SimulatedHelper.getContainingSubLevelId(controller);
+        activeControllerSubLevelId = subLevelId;
         activeController = controller;
         activeControllerRemote = remote;
         resetMouseSendState();
@@ -348,6 +352,7 @@ public final class AnalogueContraptionControllerClientHandler {
     // Update the analogue contraption controller client handler
     public static void tick() {
         PortableContraptionControllerItemRenderer.tick();
+        if(Minecraft.getInstance().level == null) remoteControllers.clear();
         if (activeControllerPos == null && !activePortable && activeLecternPos == null) {
             return;
         }
@@ -391,6 +396,7 @@ public final class AnalogueContraptionControllerClientHandler {
 
         AnalogueContraptionControllerBlockEntity controller = SimulatedHelper.findBlockEntity(
             minecraft.level, activeControllerSubLevelId, activeControllerPos, AnalogueContraptionControllerBlockEntity.class);
+        if(controller == null && activeControllerRemote) controller = activeController;
         if (controller == null) {
             stopInteractMode(false);
             return;
@@ -402,6 +408,10 @@ public final class AnalogueContraptionControllerClientHandler {
         }
         releaseSuppressedMappings();
 
+        if(activeControllerRemote && minecraft.level.getGameTime() % 20L == 0L
+                && controller instanceof AdvancedContraptionControllerBlockEntity)
+            PacketDistributor.sendToServer(new AdvancedControllerPhysicalInteractionPayload(
+                    activeControllerPos, activeControllerSubLevelId, true, true, ""));
         double range = player.blockInteractionRange();
         if (!activeControllerRemote && SimulatedHelper.distanceSquaredWithSubLevels(
                 minecraft.level, player.getEyePosition(), activeControllerPos.getCenter()) > range * range) {
@@ -431,6 +441,7 @@ public final class AnalogueContraptionControllerClientHandler {
         } else {
             controller = SimulatedHelper.findBlockEntity(
                     minecraft.level, activeControllerSubLevelId, activeControllerPos, AnalogueContraptionControllerBlockEntity.class);
+            if(controller == null && activeControllerRemote) controller = activeController;
         }
         if (controller == null) {
             stopInteractMode(false);
@@ -493,6 +504,10 @@ public final class AnalogueContraptionControllerClientHandler {
         if (minecraft.level == null || minecraft.player == null || pos == null) return;
         AnalogueContraptionControllerBlockEntity controller = SimulatedHelper.findBlockEntity(
                 minecraft.level, subLevelId, pos, AnalogueContraptionControllerBlockEntity.class);
+        if(controller == null && minecraft.player.containerMenu instanceof AdvancedContraptionControllerMenu menu
+                && pos.equals(menu.getContentPos()) && java.util.Objects.equals(subLevelId, menu.getContentSubLevelId()))
+            controller = menu.getMenuConfigTargetBlockEntity();
+        if(controller == null) controller = resolveAdvancedController(pos, subLevelId);
         if (controller == null) {
             minecraft.player.displayClientMessage(Component.literal(
                     "The remote controller is no longer loaded"), true);
@@ -501,7 +516,28 @@ public final class AnalogueContraptionControllerClientHandler {
         minecraft.setScreen(null);
         if (activeControllerPos != null && activeControllerPos.equals(pos)
                 && java.util.Objects.equals(activeControllerSubLevelId, subLevelId)) return;
-        startBlockInteractMode(controller, true);
+        startBlockInteractMode(controller, true, pos, subLevelId);
+    }
+
+    // Resolve a live ACC or a detached model backed by an authorized server graph snapshot
+    public static AdvancedContraptionControllerBlockEntity resolveAdvancedController(BlockPos pos, UUID subLevelId){
+        Minecraft minecraft = Minecraft.getInstance();
+        if(minecraft.level == null || pos == null) return null;
+        AdvancedContraptionControllerBlockEntity live = SimulatedHelper.findBlockEntity(
+                minecraft.level, subLevelId, pos, AdvancedContraptionControllerBlockEntity.class);
+        if(live != null) return live;
+        if(activeControllerRemote && pos.equals(activeControllerPos)
+                && java.util.Objects.equals(subLevelId, activeControllerSubLevelId)
+                && activeController instanceof AdvancedContraptionControllerBlockEntity advanced) return advanced;
+        if(AdvancedControllerGraphSnapshotPayload.latestClientSnapshot(pos, subLevelId) == null) return null;
+        AdvancedContraptionControllerBlockEntity snapshot = remoteControllers.resolve(minecraft.level, subLevelId, pos, () -> {
+            var be = new AdvancedContraptionControllerBlockEntity(pos,
+                    com.rieno.gadgetsandgizmos.registry.CTBlocks.ADVANCED_CONTRAPTION_CONTROLLER.get().defaultBlockState());
+            be.markVirtual();
+            return be;
+        });
+        applyCachedAdvancedGraphSnapshot(snapshot, pos, subLevelId);
+        return snapshot;
     }
 
     // Handle the hardware controller input event

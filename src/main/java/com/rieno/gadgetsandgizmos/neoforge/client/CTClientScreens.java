@@ -88,8 +88,7 @@ public final class CTClientScreens {
 
     // Open the shipping manifest
     public static void openShippingManifest(
-            BlockPos pos, ClipboardContent content, int resourceUses, int availableResourceUses,
-            boolean containerLocked, java.util.List<net.minecraft.world.item.ItemStack> containerLockFilters
+            BlockPos pos, ClipboardContent content, int resourceUses, int availableResourceUses
     ) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.player == null) {
@@ -99,7 +98,7 @@ public final class CTClientScreens {
                 .set(AllDataComponents.CLIPBOARD_CONTENT, content)
                 .build();
         ScreenOpener.open(new ShippingManifestClipboardScreen(minecraft.player.getInventory().selected,
-                components, pos, resourceUses, availableResourceUses, containerLocked, containerLockFilters));
+                components, pos, resourceUses, availableResourceUses));
     }
 
     // Open the ship dock

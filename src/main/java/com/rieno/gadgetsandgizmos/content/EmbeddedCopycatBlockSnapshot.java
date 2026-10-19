@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.simibubi.create.content.decoration.copycat.CopycatBlockEntity;
+import com.rieno.gadgetsandgizmos.lib.nbt.BlockEntitySnapshots;
 import com.simibubi.create.foundation.blockEntity.SyncedBlockEntity;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
@@ -142,13 +143,7 @@ final class EmbeddedCopycatBlockSnapshot {
     // Create the preview
     static @Nullable BlockEntity createPreview(Level level, BlockPos pos, BlockState state,
                                                 CompoundTag blockEntityData) {
-        BlockEntity preview = BlockEntity.loadStatic(pos, state, blockEntityData.copy(), level.registryAccess());
-        if (preview == null) {
-            return null;
-        }
-        preview.setLevel(level);
-        preview.clearRemoved();
-        return preview;
+        return BlockEntitySnapshots.create(level, pos, state, blockEntityData);
     }
 
     // Get the consumed items

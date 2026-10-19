@@ -108,6 +108,7 @@ public final class AdvancedGraphNodeFactory {
             labels.putString("exec", "Execution");
             if("camera".equals(type)) labels.putString("auto_tracking", "AutoTracking");
             if("camera".equals(type)) labels.putString("lock_target", "LockTarget");
+            if("camera".equals(type)) labels.putString("interact_with_hit", "Interact with Hit");
             data.put(AdvancedGraphCatalog.INPUT_LABELS_TAG, labels);
             if("camera".equals(type)){
                 CompoundTag outputs = new CompoundTag();
@@ -266,7 +267,16 @@ public final class AdvancedGraphNodeFactory {
         }
         // -----------------------------------------------------SHIP DEFAULTS-----------------------------------------------------
 
-        if ("ship_dock".equals(type) || "ship_navigate".equals(type)) {
+        if("ship_dock".equals(type)){
+            CompoundTag defaults = data.getCompound("Defaults");
+            defaults.put("dock", graphDefault("string", ""));
+            data.put("Defaults", defaults);
+            CompoundTag labels = data.getCompound("InputLabels");
+            labels.putString("dock", "Ship Dock");
+            data.put("InputLabels", labels);
+        }
+
+        if ("ship_navigate".equals(type)) {
             CompoundTag defaults = data.getCompound("Defaults");
             defaults.put("target_point", graphDefault("string", "center_of_mass"));
             data.put("Defaults", defaults);
@@ -307,6 +317,10 @@ public final class AdvancedGraphNodeFactory {
         if ("ship_follow".equals(type)) {
             CompoundTag defaults = data.getCompound("Defaults");
             defaults.put("follow_distance", graphDefault("number", 8.0D));
+            data.put("Defaults", defaults);
+        }
+        if("ship_follow".equals(type) || "ship_climb".equals(type) || "ship_navigate".equals(type)){
+            CompoundTag defaults = data.getCompound("Defaults");
             defaults.put("avoid_collisions", graphDefault("boolean", false));
             data.put("Defaults", defaults);
         }
@@ -404,14 +418,30 @@ public final class AdvancedGraphNodeFactory {
             data.put("Defaults", defaults);
         }
         if("count".equals(type)){
-            data.putString(AdvancedGraphCatalog.COUNT_DIRECTION_TAG,
-                    com.rieno.gadgetsandgizmos.lib.graph.GraphCounters.Direction.INCREMENT.id());
             CompoundTag defaults = data.getCompound("Defaults");
             defaults.put("step", graphDefault("number", 1));
+            defaults.put("decrement", graphDefault("boolean", false));
             defaults.put("reset", graphDefault("boolean", false));
+            defaults.put("remember_count", graphDefault("boolean", false));
             data.put("Defaults", defaults);
         }
-        if ("compare".equals(type)) {
+        if("bounded_loop".equals(type)){
+            CompoundTag defaults = data.getCompound("Defaults");
+            defaults.put("iterations", graphDefault("number", 1));
+            data.put("Defaults", defaults);
+        }
+        if("flip_flop".equals(type)){
+            CompoundTag defaults = data.getCompound("Defaults");
+            defaults.put("flip_on", graphDefault("string", "Every Pulse"));
+            defaults.put("skip_pulses", graphDefault("number", 0));
+            data.put("Defaults", defaults);
+            CompoundTag options = data.getCompound("InputOptions");
+            ListTag modes = new ListTag();
+            com.rieno.gadgetsandgizmos.lib.graph.GraphCounters.FlipMode.optionLabels().forEach(mode -> modes.add(StringTag.valueOf(mode)));
+            options.put("flip_on", modes);
+            data.put("InputOptions", options);
+        }
+        if ("compare".equals(type) || "pulse_if".equals(type)) {
             CompoundTag defaults = new CompoundTag();
             defaults.put("operator", graphDefault("string", "=="));
             data.put("Defaults", defaults);
@@ -482,6 +512,7 @@ public final class AdvancedGraphNodeFactory {
                 data.put(WIDGET_ELEMENTS, elements);
             }
         }
+        if(isAccDisplayWidgetType(type)) AdvancedDisplayWidgets.initialize(type, data);
         if ("acc_display_graph".equals(type) || "acc_display_plotter".equals(type)
                 || "acc_display_external".equals(type)
                 || "acc_display_crn".equals(type)
@@ -585,6 +616,12 @@ public final class AdvancedGraphNodeFactory {
                 || "cancel_worker_task".equals(type)) {
             putWorkerDefaults(type, data);
         }
+        var collection = AdvancedGraphCatalog.collectionNode(type);
+        if(collection != null){
+            CompoundTag defaults = data.getCompound("Defaults");
+            collection.defaults().forEach((port, value) -> defaults.put(port, GraphRuntime.fromLibraryValue(value).toTag()));
+            data.put("Defaults", defaults);
+        }
         var math = AdvancedGraphCatalog.mathNode(type);
         if(math != null){
             CompoundTag defaults = data.getCompound("Defaults");
@@ -593,6 +630,7 @@ public final class AdvancedGraphNodeFactory {
             });
             data.put("Defaults", defaults);
         }
+        putScmInputDefaults(type, data);
         return data;
     }
 
@@ -752,6 +790,22 @@ public final class AdvancedGraphNodeFactory {
         }
         inputOptions.put("type", values);
         data.put("InputOptions", inputOptions);
+    }
+
+    // Keep legacy SCM nodes armed when no explicit input value was saved
+    public static void putScmInputDefaults(String type, CompoundTag data){
+        if(type == null || !type.startsWith("ship_") || !AdvancedGraphCatalog.isShipControlType(type)) return;
+        CompoundTag defaults = data.getCompound("Defaults");
+        if(AdvancedGraphCatalog.get(type).inputs().containsKey("strength")
+                && !defaults.contains("strength") && !data.contains("Strength")){
+            defaults.put("strength", graphDefault("number", 1.0D));
+        }
+        if("ship_hold_yaw".equals(type)){
+            defaults.remove("hold");
+            data.remove("Hold");
+            data.getCompound("DynamicInputs").remove("hold");
+        }
+        data.put("Defaults", defaults);
     }
 
     public static void putCompareOperatorOptions(CompoundTag data) {

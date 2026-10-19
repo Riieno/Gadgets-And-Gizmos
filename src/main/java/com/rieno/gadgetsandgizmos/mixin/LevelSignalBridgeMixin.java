@@ -9,6 +9,9 @@ package com.rieno.gadgetsandgizmos.mixin;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerSignalBus;
+import com.rieno.gadgetsandgizmos.lib.control.ReceiverSignalScope;
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.Level;
@@ -146,5 +149,13 @@ public interface LevelSignalBridgeMixin {
         if (injected > current) {
             cir.setReturnValue(injected);
         }
+    }
+
+    // An input-only plate must not turn its solid support into a redstone source
+    @WrapOperation(method = "getSignal(Lnet/minecraft/core/BlockPos;Lnet/minecraft/core/Direction;)I",
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/SignalGetter;getDirectSignalTo(Lnet/minecraft/core/BlockPos;)I"), require = 0)
+    private int ct$samplePhysicalStrongPower(SignalGetter getter, BlockPos pos, Operation<Integer> original){
+        if(!ContraptionNetworkLinkerSignalBus.hasPlaneSignals()) return original.call(getter, pos);
+        return ReceiverSignalScope.sampleSources(() -> original.call(getter, pos));
     }
 }

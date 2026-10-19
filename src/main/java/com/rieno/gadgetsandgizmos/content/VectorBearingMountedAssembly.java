@@ -18,14 +18,13 @@ import com.simibubi.create.content.contraptions.AssemblyException;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import dev.ryanhcode.sable.api.physics.PhysicsPipeline;
-import dev.ryanhcode.sable.api.physics.constraint.PhysicsConstraintHandle;
+import dev.ryanhcode.sable.api.physics.constraint.GenericConstraintHandle;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.companion.math.Pose3d;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import dev.ryanhcode.sable.sublevel.plot.ServerLevelPlot;
-import dev.ryanhcode.sable.sublevel.storage.SubLevelRemovalReason;
 import dev.ryanhcode.sable.sublevel.system.SubLevelPhysicsSystem;
 import dev.simulated_team.simulated.util.SimAssemblyHelper;
 import dev.simulated_team.simulated.util.assembly.SimAssemblyContraption;
@@ -75,7 +74,7 @@ final class VectorBearingMountedAssembly {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Current joint
-    private PhysicsConstraintHandle joint;
+    private GenericConstraintHandle joint;
     // Current joint parent
     private ServerSubLevel jointParent;
     // Current joint child
@@ -338,7 +337,7 @@ final class VectorBearingMountedAssembly {
             if (child != containing && link != null && link.isOwnedBy(bearing)) {
                 ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
                 if (container != null) {
-                    container.removeSubLevel(child, SubLevelRemovalReason.REMOVED);
+                    com.rieno.gadgetsandgizmos.lib.physics.SableSubLevelLifecycleApi.remove(level, List.of(child));
                 }
             }
         }
@@ -407,9 +406,9 @@ final class VectorBearingMountedAssembly {
                 }
             }
 
-            for (VectorBearingLinkBlockEntity link : links) {
-                removeLinkBlock(child, link.getBlockPos());
-            }
+            com.rieno.gadgetsandgizmos.lib.physics.SableSubLevelLifecycleApi.transfer(level, child, () -> {
+                for(VectorBearingLinkBlockEntity link : links) removeLinkBlock(child, link.getBlockPos());
+            });
             for (VectorBearingBlockEntity parent : parents) {
                 if (parent != anchor) {
                     parent.clearMountedAssemblyForHeadConflict();
@@ -429,6 +428,7 @@ final class VectorBearingMountedAssembly {
                 LOGGER.warn("Cleared a Vector Bearing head conflict without a safe external disassembly anchor in sub-level {}",
                         childId);
             }
+            com.rieno.gadgetsandgizmos.lib.physics.SableSubLevelLifecycleApi.removeEmpty(level, child);
             return true;
         } finally {
             RECOVERING_CHILDREN.remove(childId);
@@ -440,7 +440,7 @@ final class VectorBearingMountedAssembly {
         BlockPos relativePos = linkLocalPos.subtract(child.getPlot().getCenterBlock());
         if (child.getPlot().getEmbeddedLevelAccessor().getBlockState(relativePos).getBlock()
                 instanceof VectorBearingLinkBlock) {
-            child.getPlot().getEmbeddedLevelAccessor().setBlock(relativePos, Blocks.AIR.defaultBlockState(), 2);
+            child.getPlot().getEmbeddedLevelAccessor().setBlock(relativePos, Blocks.AIR.defaultBlockState(), 3);
         }
     }
 
@@ -485,7 +485,7 @@ final class VectorBearingMountedAssembly {
         TiltCandidate accepted = createTiltCandidate(bearing, facing, relativeOrientation);
 
         if (!ensureJoint(mountedPos, facing, accepted.baseAnchor(), accepted.baseFrameOrientation(),
-                parent, child)) {
+                pipeline, parent, child)) {
             return false;
         }
         if (!hasJointTargetOrientation(accepted.baseFrameOrientation())) {
@@ -508,7 +508,7 @@ final class VectorBearingMountedAssembly {
 
     // Ensure the joint
     private boolean ensureJoint(BlockPos mountedPos, Direction facing, Vector3d baseAnchor, Quaterniond baseFrameOrientation,
-                                ServerSubLevel parent, ServerSubLevel child) {
+                                PhysicsPipeline pipeline, ServerSubLevel parent, ServerSubLevel child) {
         if (parent == child) {
             releaseJoint();
             return false;
@@ -518,9 +518,9 @@ final class VectorBearingMountedAssembly {
         }
         releaseJoint();
         try {
-            joint = SableConstraintApi.rigidFixedConstraint(child.getLevel(), parent, child,
+            joint = SableConstraintApi.fixedFrameConstraint(pipeline, parent, child,
                     baseAnchor, getChildAnchor(mountedPos, facing), baseFrameOrientation);
-        } catch (ReflectiveOperationException | LinkageError | ClassCastException error) {
+        } catch (RuntimeException | LinkageError error) {
             LOGGER.warn("Vector Bearing constraint creation failed at {}: {}", mountedPos, error.toString());
             joint = null;
         }
@@ -538,12 +538,12 @@ final class VectorBearingMountedAssembly {
             return;
         }
         try {
-            SableConstraintApi.setFrame(joint, 1, baseAnchor, baseFrameOrientation);
-            SableConstraintApi.setFrame(joint, 2, getChildAnchor(mountedPos, facing), new Quaterniond());
+            joint.setFrame1(baseAnchor, baseFrameOrientation);
+            joint.setFrame2(getChildAnchor(mountedPos, facing), new Quaterniond());
             joint.setContactsEnabled(false);
             jointTargetOrientation.set(baseFrameOrientation);
             jointTargetOrientationInitialized = true;
-        } catch (ReflectiveOperationException | LinkageError error) {
+        } catch (RuntimeException | LinkageError error) {
             LOGGER.warn("Vector Bearing constraint retarget failed at {}: {}", mountedPos, error.toString());
             releaseJoint();
         }
@@ -619,8 +619,11 @@ final class VectorBearingMountedAssembly {
                 container.physicsSystem().getPipeline().teleport(child, child.logicalPose().position(), orientation);
                 child.updateLastPose();
             }
-            destroyLinkBlock(level, child, localPos);
-            SimAssemblyHelper.disassembleSubLevel(level, child, localPos, bearing.getBlockPos(), Rotation.NONE, true);
+            com.rieno.gadgetsandgizmos.lib.physics.SableSubLevelLifecycleApi.transfer(level, child, () -> {
+                destroyLinkBlock(level, child, localPos);
+                SimAssemblyHelper.disassembleSubLevel(level, child, localPos, bearing.getBlockPos(), Rotation.NONE, true);
+            });
+            com.rieno.gadgetsandgizmos.lib.physics.SableSubLevelLifecycleApi.removeEmpty(level, child);
         }
         bearing.setMountedAssembly(null, null);
     }
@@ -628,12 +631,14 @@ final class VectorBearingMountedAssembly {
     // Remove the head after failed disassembly
     void removeHeadAfterFailedDisassembly(VectorBearingBlockEntity bearing, ServerLevel level) {
         releaseJoint();
-        ServerSubLevel child = resolveChild(bearing, level);
+        ServerSubLevel child = findChild(bearing, level);
         BlockPos localPos = bearing.getMountedLocalPos();
         if (child != null && localPos != null) {
             try {
                 destroyLinkBlock(level, child, localPos);
-            } catch (RuntimeException | LinkageError ignored) {
+                com.rieno.gadgetsandgizmos.lib.physics.SableSubLevelLifecycleApi.removeEmpty(level, child);
+            } catch (RuntimeException | LinkageError err) {
+                LOGGER.warn("Cannot remove Vector Bearing head at {}", localPos, err);
             }
         }
         bearing.setMountedAssembly(null, null);
@@ -642,12 +647,12 @@ final class VectorBearingMountedAssembly {
     // Destroy the link block
     private void destroyLinkBlock(ServerLevel level, ServerSubLevel child, BlockPos linkLocalPos) {
         if (level.getBlockState(linkLocalPos).getBlock() instanceof VectorBearingLinkBlock) {
-            level.setBlock(linkLocalPos, Blocks.AIR.defaultBlockState(), 2);
+            level.setBlock(linkLocalPos, Blocks.AIR.defaultBlockState(), 3);
             return;
         }
         BlockPos relativePos = linkLocalPos.subtract(child.getPlot().getCenterBlock());
         if (child.getPlot().getEmbeddedLevelAccessor().getBlockState(relativePos).getBlock() instanceof VectorBearingLinkBlock) {
-            child.getPlot().getEmbeddedLevelAccessor().setBlock(relativePos, Blocks.AIR.defaultBlockState(), 2);
+            child.getPlot().getEmbeddedLevelAccessor().setBlock(relativePos, Blocks.AIR.defaultBlockState(), 3);
         }
     }
 
@@ -672,7 +677,7 @@ final class VectorBearingMountedAssembly {
     private void clearChildSubLevel(ServerLevel level, ServerSubLevel child) {
         ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
         if (container != null && child != null && !child.isRemoved()) {
-            container.removeSubLevel(child, SubLevelRemovalReason.REMOVED);
+            com.rieno.gadgetsandgizmos.lib.physics.SableSubLevelLifecycleApi.remove(level, List.of(child));
         }
     }
 

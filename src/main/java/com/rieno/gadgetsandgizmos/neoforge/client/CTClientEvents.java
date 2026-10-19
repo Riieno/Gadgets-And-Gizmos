@@ -74,6 +74,7 @@ public final class CTClientEvents {
         ContraptionNetworkLinkerSnapshotPayload.clearClientState();
         AdvancedHudImageClient.clearServerImages();
         AccDisplayGuiProjection.clear();
+        AccHologramWidgetClient.clear();
         DiagnosticTabletGuiProjection.clear();
         DiagnosticTabletClientAppData.clear();
         com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps.DigisablePlacementClient.clear();

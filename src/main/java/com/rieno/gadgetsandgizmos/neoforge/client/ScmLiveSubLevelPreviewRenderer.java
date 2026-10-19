@@ -2,6 +2,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerData;
+import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerPlaneBlock;
 import com.rieno.gadgetsandgizmos.content.ThrusterBearingLinkBlockEntity;
 import com.rieno.gadgetsandgizmos.lib.client.render.SubLevelPreviewRenderer;
 import com.simibubi.create.content.kinetics.base.IRotate;
@@ -84,11 +85,18 @@ final class ScmLiveSubLevelPreviewRenderer {
     }
 
     /** A server-synchronised fallback block for clients outside craft tracking range. */
-    record SnapshotBlock(UUID subLevelId, BlockPos position, BlockState state, Vec3 rootPosition) {
+    record SnapshotBlock(UUID subLevelId, BlockPos position, BlockState state, Vec3 rootPosition, org.joml.Quaternionf orientation) {
+        // Preserve callers which supply an unrotated detached scene
+        SnapshotBlock(UUID subLevelId, BlockPos position, BlockState state, Vec3 rootPosition){
+            this(subLevelId, position, state, rootPosition, new org.joml.Quaternionf());
+        }
         SnapshotBlock {
             position = position == null ? BlockPos.ZERO : position.immutable();
             rootPosition = rootPosition == null ? Vec3.atLowerCornerOf(position) : rootPosition;
+            orientation = orientation == null ? new org.joml.Quaternionf() : new org.joml.Quaternionf(orientation);
         }
+        // Return an independent detached orientation
+        @Override public org.joml.Quaternionf orientation(){ return new org.joml.Quaternionf(orientation); }
     }
 
     private final SubLevelPreviewRenderer preview = new SubLevelPreviewRenderer(
@@ -100,17 +108,18 @@ final class ScmLiveSubLevelPreviewRenderer {
 
     ScmLiveSubLevelPreviewRenderer() {
         preview.setFullBright(true);
+        preview.setVisibilityPredicate(this::matchesVisibleFilter);
     }
 
     void setBodies(UUID rootSubLevelId, Collection<UUID> subLevelIds) {
-        preview.setBodies(rootSubLevelId, subLevelIds);
+        preview.setConnectedBodies(rootSubLevelId, subLevelIds);
     }
 
     void setSnapshotBlocks(Collection<SnapshotBlock> snapshot) {
         List<SubLevelPreviewRenderer.SnapshotBlock> shared = snapshot == null ? List.of() : snapshot.stream()
                 .filter(Objects::nonNull)
                 .map(block -> new SubLevelPreviewRenderer.SnapshotBlock(block.subLevelId(),
-                        block.position(), block.state(), block.rootPosition()))
+                        block.position(), block.state(), block.rootPosition(), block.orientation()))
                 .toList();
         preview.setSnapshotBlocks(shared);
     }
@@ -237,11 +246,18 @@ final class ScmLiveSubLevelPreviewRenderer {
         return preview.blockName(subLevelId, position);
     }
 
+    // Retain the selected block type for data adapters and target validation
+    String blockId(UUID subLevelId, BlockPos pos){
+        return preview.block(subLevelId, pos).map(block -> BuiltInRegistries.BLOCK.getKey(block.state().getBlock()).toString())
+                .orElse("");
+    }
+
     BlockPos relativePosition(UUID subLevelId, BlockPos position, float partialTick) {
         return preview.relativePosition(subLevelId, position, partialTick);
     }
 
     private boolean matchesVisibleFilter(SubLevelPreviewRenderer.PreviewBlock block) {
+        if(block.state().getBlock() instanceof ContraptionNetworkLinkerPlaneBlock) return false;
         if (visibleFilters.contains(Filter.ALL)) return true;
         return matchesAny(block, visibleFilters);
     }

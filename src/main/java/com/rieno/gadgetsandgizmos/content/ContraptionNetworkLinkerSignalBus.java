@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.control.FaceBoundSignalRoute;
+import com.rieno.gadgetsandgizmos.lib.control.ReceiverSignalScope;
 import com.rieno.gadgetsandgizmos.lib.control.SourceSignalBatch;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
@@ -551,7 +552,8 @@ public final class ContraptionNetworkLinkerSignalBus {
         }
         Level signalLevel = resolveSignalLevel(level);
         InjectedSignalSnapshot snapshot = hasInjectedTargets ? injectedSnapshot(signalLevel) : null;
-        PlaneSignalSnapshot planeSnapshot = hasPlaneSignalTargets ? planeSignalSnapshot(signalLevel) : null;
+        PlaneSignalSnapshot planeSnapshot = hasPlaneSignalTargets && ReceiverSignalScope.allowsReceiverSignals()
+                ? planeSignalSnapshot(signalLevel) : null;
         if (snapshot == null && planeSnapshot == null) {
             return 0;
         }
@@ -592,7 +594,8 @@ public final class ContraptionNetworkLinkerSignalBus {
         }
         Level signalLevel = resolveSignalLevel(level);
         InjectedSignalSnapshot snapshot = hasInjectedTargets ? injectedSnapshot(signalLevel) : null;
-        PlaneSignalSnapshot planeSnapshot = hasPlaneSignalTargets ? planeSignalSnapshot(signalLevel) : null;
+        PlaneSignalSnapshot planeSnapshot = hasPlaneSignalTargets && ReceiverSignalScope.allowsReceiverSignals()
+                ? planeSignalSnapshot(signalLevel) : null;
         if (snapshot == null && planeSnapshot == null) {
             return 0;
         }
@@ -710,9 +713,15 @@ public final class ContraptionNetworkLinkerSignalBus {
         return lookupPlaneSignal(snapshot, queriedPos, towardTarget, queriedSubLevelId);
     }
 
+    // Skip the propagation guard entirely when no virtual face plates are active
+    public static boolean hasPlaneSignals(){
+        return hasPlaneSignalTargets;
+    }
+
     // Get the plane block signal
     public static int getPlaneBlockSignal(Level level, BlockPos planePos, Direction side) {
-        if (level == null || planePos == null || side == null || !hasPlaneSignalTargets) {
+        if (level == null || planePos == null || side == null || !hasPlaneSignalTargets
+                || !ReceiverSignalScope.allowsReceiverSignals()) {
             return 0;
         }
         Level signalLevel = resolveSignalLevel(level);

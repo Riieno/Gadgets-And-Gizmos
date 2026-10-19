@@ -181,8 +181,10 @@ public final class CTConfigs {
 
     // Keep visual and input settings on the client
     public static final class Client {
-        // Minimum refresh rate for each visible camera feed
+        // Refresh rate for each visible camera feed
         public final ModConfigSpec.IntValue cameraMinimumRefreshRate;
+        // Pixel resolution of the longest edge of each camera feed
+        public final ModConfigSpec.IntValue cameraFeedResolution;
         // Show detailed goggle tooltips
         public final ModConfigSpec.BooleanValue showDetailedGoggleTooltips;
         // Show shipping manifest goggle tooltip
@@ -220,8 +222,11 @@ public final class CTConfigs {
         private Client(ModConfigSpec.Builder builder) {
             builder.comment("Client-side visuals and UX").push("client");
             cameraMinimumRefreshRate = builder
-                    .comment("Minimum updates per second for each visible ACC Display or CCTV camera feed. Actual FPS is limited by your computer's frame rate.")
+                    .comment("Target frames per second for each visible ACC Display or CCTV tablet camera feed. Actual FPS is limited by your computer's frame rate. Changes apply to active feeds.")
                     .defineInRange("cameraMinimumRefreshRate", 10, 1, 60);
+            cameraFeedResolution = builder
+                    .comment("Pixel resolution of the longest edge of ACC Display and CCTV tablet camera feeds. Aspect ratio is preserved. Higher values improve detail and use more GPU resources. Changes apply to active feeds.")
+                    .defineInRange("cameraFeedResolution", 320, 64, 2048);
             showDetailedGoggleTooltips = builder
                     .comment("Legacy option; addon goggle tooltip details now follow Create's Sneak detail behavior")
                     .define("showDetailedGoggleTooltips", false);
@@ -453,7 +458,7 @@ public final class CTConfigs {
 
             builder.comment("Gyroscope and gearbox controls").push("gearbox");
             gearboxMaxStaticAngleDeg = builder
-                    .comment("Maximum static per-face angle reported by the bi-directional gearbox from gyro input")
+                    .comment("Default per-face angle limit for gyro input; explicit Smart Gearbox face limits override this value")
                     .defineInRange("gearboxMaxStaticAngleDeg", 90.0D, 1.0D, 180.0D);
             gearboxReverseWithRedstone = builder
                     .comment("Invert gearbox gyro-derived face angles and redstone outputs when the gearbox is powered")

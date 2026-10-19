@@ -16,6 +16,7 @@ import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariants;
 import com.rieno.gadgetsandgizmos.neoforge.CTPlayerEvents;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
@@ -108,7 +109,7 @@ public record MannequinSkinChangePayload(int entityId, String playerName) implem
                     sendResult(player, payload.entityId(), status);
                     return;
                 }
-                if (!applyRemoteSkin(current, result.skinUrl(), result.slim())) {
+                if (!applyRemoteSkin(current, result.playerName(), result.skinUrl(), result.slim())) {
                     sendResult(player, payload.entityId(), MannequinSkinChangeResultPayload.Result.UNABLE_TO_SET_SKIN);
                     return;
                 }
@@ -132,21 +133,24 @@ public record MannequinSkinChangePayload(int entityId, String playerName) implem
         return mannequin;
     }
 
-    // Replace only the visible skin with one bundled supporter variant
+    // Apply the bundled skin and its matching nameplate without changing visibility
     private static void applySupporterSkin(PlayerMannequinEntity mannequin, PlayerMannequinVariant variant) {
         mannequin.setVariant(variant);
         mannequin.setRemoteSkinUrl("");
         mannequin.setSteveSkin(false);
         mannequin.setSlimSkin(variant.slim());
+        mannequin.setCustomName(variant.displayName());
     }
 
-    // Replace only the visible skin with a URL validated by both lookup and entity storage
-    private static boolean applyRemoteSkin(PlayerMannequinEntity mannequin, String skinUrl, boolean slim) {
+    // Apply a validated skin and the resolved profile name without changing visibility
+    private static boolean applyRemoteSkin(PlayerMannequinEntity mannequin, String playerName, String skinUrl, boolean slim) {
         mannequin.setVariant(PlayerMannequinVariants.DEFAULT_ID);
         mannequin.setRemoteSkinUrl(skinUrl);
         mannequin.setSteveSkin(false);
         mannequin.setSlimSkin(slim);
-        return !mannequin.remoteSkinUrl().isBlank();
+        if (mannequin.remoteSkinUrl().isBlank()) return false;
+        mannequin.setCustomName(Component.literal(playerName));
+        return true;
     }
 
     // Return one outcome to the player who requested the change

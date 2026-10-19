@@ -175,7 +175,13 @@ final class ControllerRuntimeObserver {
                         player, player.containerMenu.containerId, null));
             }
             BoundTarget target = new BoundTarget(subLevelId, pos);
+            for(ServerPlayer player : server.getPlayerList().getPlayers()){
+                if(player.level().dimension().equals(controller.getLevel().dimension())
+                        && DiagnosticTabletRemoteSessions.isObserver(player, pos, subLevelId))
+                    observers.putIfAbsent(player.getUUID(), new GraphObserver(player, -1, null));
+            }
             for (EquippedPlayer equipped : cache.boundPlayers.getOrDefault(target, List.of())) {
+                if(equipped.pairId() != null && (pairIds == null || !pairIds.contains(equipped.pairId()))) continue;
                 observers.putIfAbsent(equipped.player().getUUID(),
                         new GraphObserver(equipped.player(), -1, equipped.pairId()));
             }
@@ -212,7 +218,7 @@ final class ControllerRuntimeObserver {
     }
 
     // Get the worn goggles
-    private static ItemStack wornGoggles(LivingEntity wearer) {
+    static ItemStack wornGoggles(LivingEntity wearer) {
         ItemStack head = wearer.getItemBySlot(EquipmentSlot.HEAD);
         if (PhysicsGogglesItem.isFunctionalGoggles(head)) {
             return head;

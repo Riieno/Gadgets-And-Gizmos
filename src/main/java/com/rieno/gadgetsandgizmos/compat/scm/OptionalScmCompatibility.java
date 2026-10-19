@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.compat.scm;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.lib.compat.OptionalTypeMatcher;
+import com.rieno.gadgetsandgizmos.lib.compat.aeronautics.AeronauticsHotAirApi;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlProbe;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmControlProbeRegistry;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmRotaryAngles;
@@ -70,6 +71,11 @@ public final class OptionalScmCompatibility {
 
     // Register compatibility only for loaded optional mods
     public static void register() {
+        if(ModList.get().isLoaded("aeronautics")){
+            ScmControlProbeRegistry.register(ResourceLocation.fromNamespaceAndPath(
+                    "createthrusters", "aeronautics_buoyancy_control"), 100,
+                    (blockEntity, ctx) -> AeronauticsHotAirApi.createProbes(blockEntity, "redstone_block_control"));
+        }
         if (ModList.get().isLoaded("synaxis")) {
             ScmSubLevelRelationRegistry.register(SYNAXIS_RELATIONS, 100,
                     SYNAXIS_COMPANION::test,

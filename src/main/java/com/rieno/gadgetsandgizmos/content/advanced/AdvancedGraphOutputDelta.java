@@ -82,7 +82,7 @@ final class AdvancedGraphOutputDelta {
             }
             AdvancedGraphDocument.Value lastApplied = outputState.lastAppliedValues.get(port);
             boolean matchesCurrent = sameValue(current, GraphSignalRange.targetValue(node, port, desired));
-            if (GraphSignalRange.REDSTONE_SIGNAL_PORT.equals(port) && lastApplied == null
+            if (GraphSignalRange.isRedstonePort(node, port) && lastApplied == null
                     || !matchesCurrent
                     || lastApplied != null && !sameValue(lastApplied, desired)) {
                 changed.add(port);
@@ -173,6 +173,8 @@ final class AdvancedGraphOutputDelta {
     // Write the target signature
     private static int writeTargetSignature(AdvancedGraphDocument.Node node) {
         return Objects.hash(node.data().getCompound("TargetData"),
+                node.data().get(AdvancedGraphCatalog.DATA_TARGETS_TAG),
+                node.data().get(AdvancedGraphCatalog.DATA_TARGET_BINDINGS_TAG),
                 node.data().getCompound("Defaults").getCompound("face"),
                 GraphSignalRange.valueType(node));
     }

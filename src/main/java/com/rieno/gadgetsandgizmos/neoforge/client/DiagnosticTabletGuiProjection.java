@@ -34,6 +34,7 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.IdentityHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
@@ -139,9 +140,10 @@ public final class DiagnosticTabletGuiProjection {
         Minecraft minecraft = Minecraft.getInstance();
         if (hand == null || stack == null || stack.isEmpty() || minecraft.player == null) return false;
         Session session = ITEM_SESSIONS.computeIfAbsent(hand, ignored -> new Session());
-        int fingerprint = DiagnosticTabletData.toTag(DiagnosticTabletData.read(stack)).toString().hashCode();
+        DiagnosticTabletData.State state = DiagnosticTabletData.read(stack);
+        int fingerprint = DiagnosticTabletData.toTag(state).toString().hashCode();
         if (!session.prepare(() -> DiagnosticTabletScreen.projectionItem(hand, stack),
-                fingerprint, stack)) return false;
+                fingerprint, state.tabletId() == null ? stack : state.tabletId())) return false;
         return draw(session, DiagnosticTabletSurface.screen(Direction.UP), true, poseStack, buffers);
     }
 
@@ -294,7 +296,7 @@ public final class DiagnosticTabletGuiProjection {
                                 int nextFingerprint, Object nextSource) {
             Minecraft minecraft = Minecraft.getInstance();
             if (minecraft.player == null) return false;
-            if (screen == null || fingerprint != nextFingerprint || source != nextSource) {
+            if (screen == null || fingerprint != nextFingerprint || !Objects.equals(source, nextSource)) {
                 if (screen != null) screen.removed();
                 screen = screenFactory.get();
                 fingerprint = nextFingerprint;

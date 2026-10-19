@@ -705,7 +705,7 @@ public class AnalogueContraptionControllerMenu extends GhostItemMenu<AnalogueCon
         AdvancedContraptionControllerBlockEntity advanced =
                 contentHolder instanceof AdvancedContraptionControllerBlockEntity controller ? controller : null;
         UUID pairId = advanced == null ? null : UUID.randomUUID();
-        String pairLabel = advanced == null ? null : advanced.nextGogglesTrackerPairLabel();
+        String pairLabel = advanced == null ? null : advanced.nextGogglesTrackerPairLabel(linked);
         boolean linkedToController = advanced == null
                 ? bindGogglesToController(linked, getContentPos(), getContentSubLevelId())
                 : bindGogglesToController(
@@ -715,7 +715,7 @@ public class AnalogueContraptionControllerMenu extends GhostItemMenu<AnalogueCon
             return;
         }
         if (advanced != null) {
-            advanced.registerGogglesTrackerPair(pairId, pairLabel);
+            advanced.registerGogglesTrackerPair(pairId, pairLabel, linked);
         }
         linked = renameLinkedGoggles(linked, previousPairLabel, pairLabel);
         gogglesContainer().setItem(0, ItemStack.EMPTY);

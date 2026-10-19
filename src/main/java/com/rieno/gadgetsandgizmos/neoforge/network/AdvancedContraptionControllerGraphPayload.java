@@ -121,6 +121,12 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
             }
             // ------------------------------------DRAFTS / VALIDATION------------------------------------
             switch (payload.action()) {
+                case "unbind_glasses" -> {
+                    java.util.UUID pair = null;
+                    try{ pair = java.util.UUID.fromString(payload.argument()); }
+                    catch(IllegalArgumentException ignored){}
+                    persistPortable = controller.unregisterGogglesTrackerPair(pair);
+                }
                 case "controller_alias" -> {
                     boolean renamed = controller.renameGraphAlias(payload.argument());
                     sendGraphActionResult(context, payload.target(), payload.requestId(), renamed,
@@ -341,6 +347,13 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                             changed ? "Ship permission updated" : "Ship permission could not be updated",
                             controller.getDraftGraph().revision(), false, false, List.of());
                 }
+                case "scm_chunk_loading" -> {
+                    boolean changed = controller.setScmChunkLoading(payload.graph().getBoolean("Enabled"));
+                    sendScmConfiguration(context, payload.target(), controller, false);
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), changed,
+                            changed ? "Chunk loading: " + controller.isScmChunkLoading() : "Ship Control Module is unavailable",
+                            controller.getDraftGraph().revision(), false, false, List.of());
+                }
                 case "scm_configuration_open" -> {
                     // The modal renders the loaded Sable bodies directly. Opening it must
                     // not crawl, probe, or otherwise initialize the craft merely to make
@@ -436,8 +449,10 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                     sendSharedGraphs(context, payload.target(), res.message(), "", new CompoundTag());
                     persistPortable = res.saved();
                 }
-                case "load_shared_graph" -> {
-                    String msg = controller.loadSharedGraphIntoInsertedLinker(payload.argument());
+                case "load_shared_graph", "load_client_shared_graph" -> {
+                    String msg = "load_client_shared_graph".equals(payload.action())
+                            ? controller.loadClientSharedGraph(AdvancedGraphDocument.fromTag(payload.graph()), payload.argument())
+                            : controller.loadSharedGraphIntoInsertedLinker(payload.argument());
                     CompoundTag loadedGraph = msg.startsWith("Loaded shared graph")
                             ? controller.getDraftGraph().toTag() : new CompoundTag();
                     sendSharedGraphs(context, payload.target(), msg, "", loadedGraph);
@@ -477,6 +492,13 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                 default -> {
                 }
             }
+            // Refresh the active source used by the open editor's retained-value preview
+            if(persistPortable && (isSaveAction(payload.action()) || "apply".equals(payload.action()))
+                    && context.player() instanceof ServerPlayer player){
+                AdvancedControllerGraphSnapshotPayload.send(player, payload.target().pos(), payload.target().subLevelId(),
+                        controller.getDraftGraph(), controller.getActiveGraph(),
+                        controller.getShippingScheduleDraftGraph(), controller.getShippingScheduleActiveGraph());
+            }
             // ------------------------------------PORTABLE STATE------------------------------------
             if (persistPortable && isSaveAction(payload.action()) && payload.graph().contains("ScmConfiguration")) {
                 sendScmConfiguration(context, payload.target(), controller, false);
@@ -512,7 +534,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
         PacketDistributor.sendToPlayer(player, new AdvancedControllerSharedGraphsPayload(
                 target.pos(),
                 target.subLevelId(),
-                ControllerManifestStore.listSharedGraphs(),
+                player.getServer().isDedicatedServer() ? ControllerManifestStore.listSharedGraphs() : List.of(),
                 msg,
                 conflictingName,
                 graph));
@@ -562,6 +584,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
             profile.putUUID("MapId", controller.getScmConfigurationMapId());
         }
         CompoundTag candidates = new CompoundTag();
+        candidates.putBoolean("ChunkLoading", controller.isScmChunkLoading());
         candidates.put("DefaultOrientation", controller.getScmDefaultOrientation().toTag());
         candidates.putString("DetectedVehicleType", controller.getScmDetectedVehicleType());
         candidates.putString("DetectedSteeringType", controller.getScmDetectedSteeringType());
@@ -597,6 +620,9 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                 entry.putDouble("RootX", block.rootPosition().x);
                 entry.putDouble("RootY", block.rootPosition().y);
                 entry.putDouble("RootZ", block.rootPosition().z);
+                var turn = block.orientation();
+                entry.putFloat("Qx", turn.x); entry.putFloat("Qy", turn.y);
+                entry.putFloat("Qz", turn.z); entry.putFloat("Qw", turn.w);
                 previewBlocks.add(entry);
             });
             candidates.put("PreviewBlocks", previewBlocks);

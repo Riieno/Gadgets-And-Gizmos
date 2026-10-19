@@ -245,7 +245,7 @@ public class AccDisplayBlock extends HorizontalDirectionalBlock
         return switch (displayType) {
             case BLOCK -> Block.box(0, 0, 0, 16, 16, 16);
             case SLAB -> verticalShape(state.getValue(Y_ALIGNMENT), 8.0D, 16.0D);
-            case HALF_PANEL -> panelShape(state, 8.0D);
+            case HALF_PANEL -> panelShape(state, 3.0D);
             case BOARD -> panelShape(state,
                     state.getValue(Z_ALIGNMENT) == Alignment.CENTER ? 10.0D : 8.0D);
             case PANEL -> panelShape(state, 3.0D);
@@ -296,6 +296,13 @@ public class AccDisplayBlock extends HorizontalDirectionalBlock
     @Override
     public @Nullable BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
         return new AccDisplayBlockEntity(pos, state);
+    }
+
+    // Invalidate panel dimensions when block updates arrive on either side
+    @Override
+    protected void onPlace(BlockState state, Level level, BlockPos pos, BlockState oldState, boolean isMoving){
+        super.onPlace(state, level, pos, oldState, isMoving);
+        if(state != oldState) AccDisplayBlockEntity.displayTopologyChanged(level, pos);
     }
 
     // Handle block placement

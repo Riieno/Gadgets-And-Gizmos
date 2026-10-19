@@ -10,6 +10,8 @@ package com.rieno.gadgetsandgizmos.neoforge.network;
 
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphLiveValue;
+import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -26,7 +28,9 @@ public record AdvancedControllerRuntimePayload(BlockPos pos, UUID subLevelId, in
                                                Map<UUID, String> gogglesTrackerPairs,
                                                Map<String, AdvancedGraphLiveValue> liveInputs,
                                                Map<String, AdvancedGraphLiveValue> liveOutputs,
-                                               Map<String, Long> executionPulses)
+                                               Map<String, Long> executionPulses,
+                                               Map<String, AdvancedGraphDocument.Value> variables,
+                                               Map<UUID, String> gogglesTrackerItems)
         implements CustomPacketPayload {
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -58,6 +62,25 @@ public record AdvancedControllerRuntimePayload(BlockPos pos, UUID subLevelId, in
         liveInputs = liveInputs == null ? Map.of() : Map.copyOf(liveInputs);
         liveOutputs = liveOutputs == null ? Map.of() : Map.copyOf(liveOutputs);
         executionPulses = executionPulses == null ? Map.of() : Map.copyOf(executionPulses);
+        variables = variables == null ? Map.of() : Map.copyOf(variables);
+        gogglesTrackerItems = gogglesTrackerItems == null ? Map.of() : Map.copyOf(gogglesTrackerItems);
+    }
+
+    public AdvancedControllerRuntimePayload(BlockPos pos, UUID subLevelId, int containerId,
+                                           Map<UUID, String> gogglesTrackerPairs,
+                                           Map<String, AdvancedGraphLiveValue> liveInputs,
+                                           Map<String, AdvancedGraphLiveValue> liveOutputs,
+                                           Map<String, Long> executionPulses,
+                                           Map<String, AdvancedGraphDocument.Value> variables){
+        this(pos, subLevelId, containerId, gogglesTrackerPairs, liveInputs, liveOutputs, executionPulses, variables, Map.of());
+    }
+
+    public AdvancedControllerRuntimePayload(BlockPos pos, UUID subLevelId, int containerId,
+                                           Map<UUID, String> gogglesTrackerPairs,
+                                           Map<String, AdvancedGraphLiveValue> liveInputs,
+                                           Map<String, AdvancedGraphLiveValue> liveOutputs,
+                                           Map<String, Long> executionPulses){
+        this(pos, subLevelId, containerId, gogglesTrackerPairs, liveInputs, liveOutputs, executionPulses, Map.of());
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -116,6 +139,20 @@ public record AdvancedControllerRuntimePayload(BlockPos pos, UUID subLevelId, in
             buffer.writeUtf(entry.getKey());
             buffer.writeLong(entry.getValue());
         }
+        CompoundTag snapshot = new CompoundTag();
+        CompoundTag inputs = new CompoundTag();
+        payload.liveInputs().forEach((key, val) -> { if(val.value() != null) inputs.put(key, val.value().toTag()); });
+        CompoundTag outputs = new CompoundTag();
+        payload.liveOutputs().forEach((key, val) -> { if(val.value() != null) outputs.put(key, val.value().toTag()); });
+        CompoundTag variables = new CompoundTag();
+        payload.variables().forEach((key, val) -> variables.put(key, val.toTag()));
+        snapshot.put("Inputs", inputs);
+        snapshot.put("Outputs", outputs);
+        snapshot.put("Variables", variables);
+        CompoundTag items = new CompoundTag();
+        payload.gogglesTrackerItems().forEach((id, item) -> items.putString(id.toString(), item));
+        snapshot.put("BoundItems", items);
+        GraphNbtPayloadCodec.write(buffer, snapshot);
     }
 
     // Decode the advanced controller runtime
@@ -135,9 +172,28 @@ public record AdvancedControllerRuntimePayload(BlockPos pos, UUID subLevelId, in
         for (int idx = 0; idx < pulseCount; idx++) {
             executionPulses.put(buffer.readUtf(), buffer.readLong());
         }
+        CompoundTag snapshot = GraphNbtPayloadCodec.read(buffer);
+        restoreValues(liveInputs, snapshot.getCompound("Inputs"));
+        restoreValues(liveOutputs, snapshot.getCompound("Outputs"));
+        Map<String, AdvancedGraphDocument.Value> variables = new LinkedHashMap<>();
+        CompoundTag variableTags = snapshot.getCompound("Variables");
+        for(String key : variableTags.getAllKeys()){
+            variables.put(key, AdvancedGraphDocument.Value.fromTag(variableTags.getCompound(key)));
+        }
+        Map<UUID, String> items = new LinkedHashMap<>();
+        CompoundTag itemTags = snapshot.getCompound("BoundItems");
+        for(String key : itemTags.getAllKeys()) items.put(UUID.fromString(key), itemTags.getString(key));
         return new AdvancedControllerRuntimePayload(
                 pos, subLevelId, containerId, gogglesTrackerPairs,
-                liveInputs, liveOutputs, executionPulses);
+                liveInputs, liveOutputs, executionPulses, variables, items);
+    }
+
+    private static void restoreValues(Map<String, AdvancedGraphLiveValue> values, CompoundTag tags){
+        for(String key : tags.getAllKeys()){
+            AdvancedGraphLiveValue display = values.get(key);
+            if(display != null) values.put(key, display.withValue(
+                    AdvancedGraphDocument.Value.fromTag(tags.getCompound(key))));
+        }
     }
 
     // Write the values

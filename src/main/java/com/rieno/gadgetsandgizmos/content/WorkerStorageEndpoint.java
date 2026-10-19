@@ -639,29 +639,9 @@ public final class WorkerStorageEndpoint implements WorkerEndpoint {
         return isProcessingMachine() && !isCraftingStation();
     }
 
-    // Prefer a matching manifest filter even when its container is currently empty
+    // Prefer storage which already contains the requested resource
     @Override
     public int insertionPriority(WorkerResourceKey resource){
-        if(resource.type() != WorkerResourceType.ITEM) return available(resource) > 0L ? 1 : 2;
-        Item item = BuiltInRegistries.ITEM.get(resource.id());
-        ItemStack sample = item == null ? ItemStack.EMPTY : new ItemStack(item);
-        if(sample.isEmpty()) return 2;
-        for(Direction dir : Direction.values()){
-            BlockPos manifestPos = pos.relative(dir);
-            if(level.getBlockEntity(manifestPos) instanceof ShippingManifestBlockEntity manifest
-                    && manifest.isContainerLocked()
-                    && ShippingManifestBlock.attachedTargetPos(manifestPos, manifest.getBlockState()).equals(pos)
-                    && manifest.containerLockFilters().stream().anyMatch(filter ->
-                    com.simibubi.create.content.logistics.filter.FilterItemStack.of(filter).test(level, sample)))
-                return 0;
-        }
-        if(ManifestTabletStorage.attached(level, pos)){
-            var root = com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi.serverLevel(level);
-            var key = com.rieno.gadgetsandgizmos.lib.inventory.ContainerStorageIdentity.position(level, pos);
-            var config = root == null ? null : com.rieno.gadgetsandgizmos.lib.inventory.ContainerAutomationStore
-                    .get(root).find(subLevelId, key);
-            if(config != null && !config.filter().isEmpty() && config.accepts(level, sample)) return 0;
-        }
         return available(resource) > 0L ? 1 : 2;
     }
 
@@ -776,7 +756,6 @@ public final class WorkerStorageEndpoint implements WorkerEndpoint {
     public boolean canInsert(ItemStack stack) {
         if(isCreativeCrate()) return false;
         if (stack == null || stack.isEmpty() || !insertionAllowed || !allowsItems()) return false;
-        if (!ShippingManifestBlockEntity.allowsAttachedContainerItem(level, pos, stack)) return false;
         for (IItemHandler items : itemHandlers()) {
             for (int slot = 0; slot < items.getSlots(); slot++) {
                 if (items.insertItem(slot, stack, true).getCount() < stack.getCount()) return true;
@@ -843,8 +822,7 @@ public final class WorkerStorageEndpoint implements WorkerEndpoint {
         if (resource.type() == WorkerResourceType.ITEM && isCraftingStation()) return true;
         if (resource.type() == WorkerResourceType.ITEM) {
             Item item = BuiltInRegistries.ITEM.get(resource.id());
-            if (item == null || !ShippingManifestBlockEntity.allowsAttachedContainerItem(level, pos,
-                    new ItemStack(item))) return false;
+            if (item == null) return false;
         }
         return switch (resource.type()) {
             case ITEM -> !itemHandlers().isEmpty();
@@ -916,8 +894,7 @@ public final class WorkerStorageEndpoint implements WorkerEndpoint {
         if(blockEntity instanceof ItemVaultBlockEntity vault){
             return connectedVaultBlocks(vault).stream().map(level::getBlockEntity)
                     .filter(ItemVaultBlockEntity.class::isInstance).map(ItemVaultBlockEntity.class::cast)
-                    .map(member -> com.rieno.gadgetsandgizmos.lib.inventory.ContainerAccessRegistry.wrap(
-                            level, member.getBlockPos(), member.getInventoryOfBlock())).toList();
+                    .<IItemHandler>map(ItemVaultBlockEntity::getInventoryOfBlock).toList();
         }
         if (blockEntity instanceof MechanicalCrafterBlockEntity crafter) {
             return List.of(crafter.getInput().getItemHandler(level, pos));
@@ -1207,7 +1184,6 @@ public final class WorkerStorageEndpoint implements WorkerEndpoint {
     private long itemSpace(ResourceLocation itemId) {
         Item item = BuiltInRegistries.ITEM.get(itemId);
         if (item == null) return 0L;
-        if (!ShippingManifestBlockEntity.allowsAttachedContainerItem(level, pos, new ItemStack(item))) return 0L;
         long amount = 0L;
         for (IItemHandler handler : itemHandlers()) {
             for (int slot = 0; slot < handler.getSlots(); slot++) {
@@ -1296,7 +1272,6 @@ public final class WorkerStorageEndpoint implements WorkerEndpoint {
                 ? ItemStack.parseOptional(level.registryAccess(), packet.payload().getCompound("Stack"))
                 : new ItemStack(item);
         if (template.isEmpty()) template = new ItemStack(item);
-        if (!ShippingManifestBlockEntity.allowsAttachedContainerItem(level, pos, template)) return 0L;
         long remaining = packet.amount();
         for (IItemHandler handler : itemHandlers()) {
             for (int slot = 0; slot < handler.getSlots() && remaining > 0L; slot++) {

@@ -216,7 +216,7 @@ public final class AdvancedGraphSelection {
             AdvancedGraphDocument.Value val = src.variables().get(variable);
             if (val != null) {
                 destination.variables().putIfAbsent(variable,
-                        new AdvancedGraphDocument.Value(val.type(), val.payload()));
+                        new AdvancedGraphDocument.Value(val.type(), val.payload(), val.entryOrder()));
             }
         }
     }
@@ -238,7 +238,7 @@ public final class AdvancedGraphSelection {
             }
             remappedVariables.put(variable, destinationVariable);
             destination.variables().putIfAbsent(destinationVariable,
-                    new AdvancedGraphDocument.Value(sourceValue.type(), sourceValue.payload()));
+                    new AdvancedGraphDocument.Value(sourceValue.type(), sourceValue.payload(), sourceValue.entryOrder()));
         }
         return remappedVariables;
     }

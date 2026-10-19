@@ -11,11 +11,14 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 import com.rieno.gadgetsandgizmos.content.ScmConfigurationProfile;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphCatalog;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphNodeLayout;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphPortIndex;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.item.ItemStack;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -72,12 +75,20 @@ final class NodePortLayout {
     private final Map<String, Integer> outputOffsets;
     // Output labels
     private final Map<String, List<FormattedCharSequence>> outputLabels;
+    // Cached section membership includes expanded MAP children
+    private List<GraphPortSection> inputSections;
+    private List<GraphPortSection> outputSections;
+    private GraphPortIndex<GraphPortSection> inputSectionIndex;
+    private GraphPortIndex<GraphPortSection> outputSectionIndex;
+    private GraphNodeLayout.PortRows inputRows;
+    private final Map<String, Integer> outputSectionOffsets = new LinkedHashMap<>();
     // Tracks whether collapsible is set
     private final boolean collapsible;
     // Tracks whether collapsed is set
     private final boolean collapsed;
     // Output data height
     private int outputDataHeight;
+    private GraphNodeLayout.PortRows executionInputs;
     // Cached node body-control count
     private int bodyControlCount;
     // Cached node width
@@ -134,6 +145,9 @@ final class NodePortLayout {
         return connectedOutputs;
     }
 
+    GraphNodeLayout.PortRows executionInputs(){ return executionInputs; }
+    void setExecutionInputs(GraphNodeLayout.PortRows rows){ executionInputs = rows; }
+
     // Get the output offsets
     Map<String, Integer> outputOffsets() {
         return outputOffsets;
@@ -143,6 +157,30 @@ final class NodePortLayout {
     Map<String, List<FormattedCharSequence>> outputLabels() {
         return outputLabels;
     }
+
+    List<GraphPortSection> portSections(boolean output){
+        return output ? outputSections : inputSections;
+    }
+
+    void setPortSections(boolean output, List<GraphPortSection> sections){
+        GraphPortIndex<GraphPortSection> index = GraphPortIndex.of(
+                (output ? outputs : inputs).keySet(), sections, GraphPortSection::ports);
+        if(output){
+            outputSections = List.copyOf(sections);
+            outputSectionIndex = index;
+        }else{
+            inputSections = List.copyOf(sections);
+            inputSectionIndex = index;
+        }
+    }
+
+    GraphPortIndex<GraphPortSection> sectionIndex(boolean output){
+        return output ? outputSectionIndex : inputSectionIndex;
+    }
+
+    GraphNodeLayout.PortRows inputRows(){ return inputRows; }
+    void setInputRows(GraphNodeLayout.PortRows rows){ inputRows = rows; }
+    Map<String, Integer> outputSectionOffsets(){ return outputSectionOffsets; }
 
     // Check if the node can be collapsed
     boolean collapsible() {

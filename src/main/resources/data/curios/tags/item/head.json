@@ -1,6 +1,7 @@
 {
   "replace": false,
   "values": [
-    "createthrusters:physics_goggles"
+    "createthrusters:physics_goggles",
+    "createthrusters:pilot_cap"
   ]
 }

@@ -142,7 +142,7 @@ final class AdvancedGraphProgram {
                 continue;
             }
             switch (node.type()) {
-                case "event_tick" -> tickNodes.add(node);
+                case "event_tick", "pulse_if" -> tickNodes.add(node);
                 case "event_periodic" -> periodicNodes.add(node);
                 case "event_trigger" -> add(triggerNodes, node.data().getString("Event"), node);
                 case "event_key" -> add(keyNodes, bindingId(node), node);

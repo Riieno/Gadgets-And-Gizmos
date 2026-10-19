@@ -222,12 +222,10 @@ public class ContraptionNetworkLinkerItemRenderer extends CustomRenderedItemMode
         };
     }
 
-    // Draw centered text above the scanner screen without depth conflicts
+    // Draw screen text with world depth so blocks occlude the item display
     private static void drawCenteredScreenText(Font font, String text, float x, float y, int color, Matrix4f pose,
                                                MultiBufferSource buffer) {
         float left = x - font.width(text) / 2.0f;
-        font.drawInBatch(text, left, y, color, false, pose, buffer,
-                Font.DisplayMode.SEE_THROUGH, 0x80000000, LightTexture.FULL_BRIGHT);
         font.drawInBatch(text, left, y, color, false, pose, buffer,
                 Font.DisplayMode.NORMAL, 0, LightTexture.FULL_BRIGHT);
     }

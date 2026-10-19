@@ -15,19 +15,14 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
-import java.util.ArrayList;
-import java.util.List;
 
 // Open Shipping Manifest
 public record ShippingManifestOpenPayload(
         BlockPos pos,
         int resourceUses,
         int availableResourceUses,
-        boolean containerLocked,
-        List<ItemStack> containerLockFilters,
         ClipboardContent content
 ) implements CustomPacketPayload {
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -45,9 +40,6 @@ public record ShippingManifestOpenPayload(
                     BlockPos.STREAM_CODEC, ShippingManifestOpenPayload::pos,
                     ByteBufCodecs.VAR_INT, ShippingManifestOpenPayload::resourceUses,
                     ByteBufCodecs.VAR_INT, ShippingManifestOpenPayload::availableResourceUses,
-                    ByteBufCodecs.BOOL, ShippingManifestOpenPayload::containerLocked,
-                    ByteBufCodecs.collection(ArrayList::new, ItemStack.OPTIONAL_STREAM_CODEC),
-                    ShippingManifestOpenPayload::containerLockFilters,
                     ClipboardContent.STREAM_CODEC, ShippingManifestOpenPayload::content,
                     ShippingManifestOpenPayload::new);
 
@@ -79,9 +71,8 @@ public record ShippingManifestOpenPayload(
             try {
                 Class<?> clientScreens = Class.forName("com.rieno.gadgetsandgizmos.neoforge.client.CTClientScreens");
                 clientScreens.getMethod("openShippingManifest", BlockPos.class, ClipboardContent.class,
-                        int.class, int.class, boolean.class, List.class).invoke(null, payload.pos(), payload.content(),
-                        payload.resourceUses(), payload.availableResourceUses(), payload.containerLocked(),
-                        payload.containerLockFilters());
+                        int.class, int.class).invoke(null, payload.pos(), payload.content(),
+                        payload.resourceUses(), payload.availableResourceUses());
             } catch (ReflectiveOperationException ignored) {
             }
         });

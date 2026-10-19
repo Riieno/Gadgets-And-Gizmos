@@ -46,6 +46,44 @@ class ScmObstacleDetourIntegrationTest{
         assertTrue(bounds.getXsize() > 16.0D);
     }
 
+    // Give local avoidance its own plan when a destination search is already queued
+    @Test void liveBypassTakesOverAQueuedDestinationSearch() throws Exception{
+        Object state = state();
+        Vec3 target = new Vec3(0, 0, 12);
+        var plan = SablePathfinder.queue(new SablePathfinder.Request(null,
+                SablePathfinder.Location.world(Vec3.ZERO), SablePathfinder.Location.world(target),
+                null, null, 1, 32, 128, 0.25D, query -> SablePathfinder.Traversal.blocked()));
+        set(state, "queuedSableRoute", plan);
+        set(state, "plannedTarget", target);
+        Class<?>[] types = {Vec3.class, int.class, Vec3.class, double.class};
+        assertTrue((boolean) invoke(state, "obstaclePlanInvalid", types, target, -1, null, 1.0D));
+        set(state, "obstacleDetourQueued", true);
+        assertFalse((boolean) invoke(state, "obstaclePlanInvalid", types, target, -1, null, 1.0D));
+    }
+
+    // Preserve a short vertical bypass even when the stationary hull already overlaps its first bend
+    @Test void liveAirshipCompletesItsClimbBeforeAdvancingTheRoute() throws Exception{
+        Object state = state();
+        Vec3 climb = new Vec3(0, 0.375D, 0);
+        Vec3 target = new Vec3(0, 0.375D, 4);
+        invoke(state, "setSableRoute", new Class<?>[]{List.class, Vec3.class, Vec3.class, long.class},
+                List.of(climb, target), target, Vec3.ZERO, 0L);
+        Class<?> hullType = nested("HullBounds");
+        var ctor = hullType.getDeclaredConstructor(List.class, double.class, double.class,
+                double.class, double.class, double.class, double.class);
+        ctor.setAccessible(true);
+        Object hull = ctor.newInstance(List.of(new AABB(-1, -1, -1, 1, 1, 1)),
+                -1.0D, -1.0D, -1.0D, 1.0D, 1.0D, 1.0D);
+        Class<?>[] types = {Vec3.class, hullType, boolean.class, double.class, boolean.class};
+        invoke(state, "advanceOverlappedRoute", types, Vec3.ZERO, hull, false, 0.1D, true);
+        assertEquals(0, get(state, "waypointIndex"));
+        assertTrue((boolean) invoke(state, "hasSpatialBend", new Class<?>[]{boolean.class}, true));
+        assertEquals(0.0625D, (double) invoke(state, "waypointCaptureRadius",
+                new Class<?>[]{boolean.class, double.class}, true, 2.0D));
+        invoke(state, "advanceOverlappedRoute", types, climb, hull, false, 0.1D, true);
+        assertEquals(1, get(state, "waypointIndex"));
+    }
+
     @Test void successiveBypassesKeepTheScheduleAndReturnToTrafficPriorityAfterRejoining() throws Exception{
         Object state = state();
         Vec3 target = new Vec3(0, 0, 40);

@@ -6,7 +6,6 @@ import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionContext;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerItemRequest;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerOrchestrator;
 import com.rieno.gadgetsandgizmos.lib.inventory.ContainerNetworkSnapshot;
-import com.rieno.gadgetsandgizmos.lib.inventory.ContainerAccessRegistry;
 import com.rieno.gadgetsandgizmos.lib.access.WorldAccessPolicy;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -148,8 +147,7 @@ final class BlockmatesApp{
             int offset = "refresh".equals(action.actionId()) && !val.isBlank() ? Math.max(0, Integer.parseInt(val)) : 0;
             var containers = controller.linkedStorage().stream()
                     .filter(be -> WorldAccessPolicy.canAccessLocal(ctx.player(), ctx.player().serverLevel(),
-                            SimulatedHelper.getContainingSubLevelId(be), be.getBlockPos()))
-                    .filter(be -> ContainerAccessRegistry.canOpen(ctx.player(), be.getLevel(), be.getBlockPos())).toList();
+                            SimulatedHelper.getContainingSubLevelId(be), be.getBlockPos())).toList();
             data.put("Inventory", ContainerNetworkSnapshot.capture(containers, offset, 32));
         }
         data.putString("Message", message);

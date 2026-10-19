@@ -41,6 +41,7 @@ import com.mojang.math.Axis;
 import dev.ryanhcode.sable.api.block.propeller.BlockEntityPropeller;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import com.rieno.gadgetsandgizmos.lib.client.render.ClientViewOwnership;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -220,6 +221,15 @@ public final class CTPhysicsGogglesClient {
             return;
         }
 
+        if(ClientViewOwnership.isReserved()){
+            closeInteractionScreen(minecraft);
+            for(var key : java.util.List.of(TOGGLE_FORCE_GIZMO, TOGGLE_DIAGRAM, TOGGLE_PROPULSION,
+                    DIAGRAM_INTERACTIVE_MODE, EDIT_OVERLAYS_MODE)){
+                while(key.consumeClick()){}
+            }
+            return;
+        }
+
         while (TOGGLE_FORCE_GIZMO.consumeClick()) {
             boolean visible = toggleOverlayVisibility(OverlayId.FORCE_GIZMO);
             player.displayClientMessage(Component.translatable(visible
@@ -305,6 +315,7 @@ public final class CTPhysicsGogglesClient {
 
     // Handle the render gui event
     public static void onRenderGui(RenderGuiEvent.Post evt) {
+        if(ClientViewOwnership.isReserved()) return;
         Minecraft minecraft = Minecraft.getInstance();
         LocalPlayer player = minecraft.player;
         if (player == null || !isWearingPhysicsGoggles(player)) {
@@ -333,6 +344,7 @@ public final class CTPhysicsGogglesClient {
 
     // Open the interaction screen
     private static void openInteractionScreen(OverlayMode mode) {
+        if(ClientViewOwnership.isReserved()) return;
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.player == null || !isWearingPhysicsGoggles(minecraft.player)) {
             return;
@@ -597,8 +609,9 @@ public final class CTPhysicsGogglesClient {
     private static void renderCustomHudElements(GuiGraphics graphics, BoundControllerBinding binding,
                                                 List<Rect> occupied, OverlayMode mode, int mouseX, int mouseY) {
         AdvancedContraptionControllerBlockEntity controller = binding.controller();
+        var graph = controller.activeGraphReadView();
         int idx = 0;
-        for (AdvancedGraphDocument.Node node : controller.getActiveGraph().nodes()) {
+        for (AdvancedGraphDocument.Node node : graph.nodes()) {
             if (!isCustomHudNode(node)) {
                 continue;
             }
@@ -629,8 +642,7 @@ public final class CTPhysicsGogglesClient {
                     runtimeVisible && box != null && box.visible);
             occupied.add(rect.padded(4));
         }
-        CUSTOM_HUD_BOXES.keySet().removeIf(id -> controller.getActiveGraph().nodes().stream()
-                .noneMatch(node -> isCustomHudNode(node) && node.id().equals(id)));
+        CUSTOM_HUD_BOXES.keySet().removeIf(id -> !isCustomHudNode(graph.node(id)));
     }
 
     // Check if this is a custom HUD node
@@ -690,7 +702,13 @@ public final class CTPhysicsGogglesClient {
                                 elm.getString("Port").isBlank() ? "value" : elm.getString("Port")),
                         x, y, w, h, layoutScale);
                 case "button", "toggle", "slider", "text_input" -> drawAdvHudInteractive(
-                        graphics, controller, node, elm, x, y, w, h, layoutScale);
+                        graphics, binding, node, elm, x, y, w, h, layoutScale);
+                case "progress" -> {
+                    String port = elm.getString("Port");
+                    AdvancedGraphDocument.Value value = hudInputValue(controller, node, port.isBlank() ? "value" : port);
+                    AdvancedHudInteractiveStyleRenderer.drawProgress(graphics, Minecraft.getInstance().font,
+                            elm, x, y, w, h, layoutScale, value == null ? elm.getDouble("Value") : value.asNumber());
+                }
                 default -> AdvancedHudElementRenderer.drawText(
                         graphics, Minecraft.getInstance().font, elm, elm.getString("Text"),
                         x, y, w, h, layoutScale);
@@ -716,9 +734,10 @@ public final class CTPhysicsGogglesClient {
 
     // Draw the adv HUD interactive
     private static void drawAdvHudInteractive(
-            GuiGraphics graphics, AdvancedContraptionControllerBlockEntity controller,
+            GuiGraphics graphics, BoundControllerBinding binding,
             AdvancedGraphDocument.Node node, CompoundTag elm,
             int x, int y, int width, int height, double layoutScale) {
+        AdvancedContraptionControllerBlockEntity controller = binding.controller();
         String type = elm.getString("Type");
         String valuePort = elm.getString("ValuePort");
         AdvancedGraphDocument.Value val = valuePort.isBlank()
@@ -730,7 +749,9 @@ public final class CTPhysicsGogglesClient {
                     ? (elm.getString("Text").isBlank() ? "Enter text" : elm.getString("Text")) : text);
         }
         boolean toggleActive = "toggle".equals(type)
-                && (val == null ? elm.getBoolean("Value") : val.asBoolean());
+                ? (val == null ? elm.getBoolean("Value") : val.asBoolean())
+                : "button".equals(type) && Minecraft.getInstance().screen instanceof OverlayInteractionScreen screen
+                && screen.isHudButtonPressed(binding, node.id(), elm.getString("InteractionId"));
         double current = val == null ? elm.getDouble("Value") : val.asNumber();
         AdvancedHudInteractiveStyleRenderer.draw(
                 graphics, Minecraft.getInstance().font, elm,
@@ -819,7 +840,7 @@ public final class CTPhysicsGogglesClient {
         }
         profilerReportCooldown = PROFILER_REPORT_INTERVAL_TICKS - 1;
         BoundControllerBinding binding = boundControllerBinding(minecraft);
-        if (binding == null || binding.controller().getActiveGraph().nodes().stream()
+        if (binding == null || binding.controller().activeGraphReadView().nodes().stream()
                 .noneMatch(node -> node != null && node.type().startsWith("profiler_"))) {
             return;
         }
@@ -858,15 +879,15 @@ public final class CTPhysicsGogglesClient {
                 root.getInt(AnalogueContraptionControllerMenu.GOGGLES_BIND_X),
                 root.getInt(AnalogueContraptionControllerMenu.GOGGLES_BIND_Y),
                 root.getInt(AnalogueContraptionControllerMenu.GOGGLES_BIND_Z));
-        AdvancedContraptionControllerBlockEntity controller = SimulatedHelper.findBlockEntity(
-                minecraft.level, subLevelId, pos,
-                AdvancedContraptionControllerBlockEntity.class);
+        AdvancedContraptionControllerBlockEntity controller =
+                AnalogueContraptionControllerClientHandler.resolveAdvancedController(pos, subLevelId);
         if (controller != null) {
             AnalogueContraptionControllerClientHandler.applyCachedAdvancedGraphSnapshot(
                     controller, pos, subLevelId);
         } else {
             controller = resolvePortableBoundController(minecraft, null);
         }
+        if(controller != null && pairId != null && !controller.getGogglesTrackerPairLabels().containsKey(pairId)) return null;
         return controller == null ? null : new BoundControllerBinding(
                 controller, MenuConfigTarget.of(pos, subLevelId), pairId);
     }
@@ -1066,7 +1087,7 @@ public final class CTPhysicsGogglesClient {
         if (liveValue != null) {
             return graphValueText(liveValue);
         }
-        return graphValueText(controller.previewGraphInput(controller.getActiveGraph(), node, port));
+        return graphValueText(controller.previewActiveGraphInput(node, port));
     }
 
     // Get the HUD input value
@@ -1075,7 +1096,7 @@ public final class CTPhysicsGogglesClient {
             AdvancedGraphDocument.Node node, String port) {
         AdvancedGraphLiveValue liveValue = controller.getGraphLiveInput(node.id(), port);
         return liveValue == null
-                ? controller.previewGraphInput(controller.getActiveGraph(), node, port)
+                ? controller.previewActiveGraphInput(node, port)
                 : graphValue(liveValue);
     }
 
@@ -1148,7 +1169,7 @@ public final class CTPhysicsGogglesClient {
             return AdvancedHudImageSource.fromPort(liveValue);
         }
         return AdvancedHudImageSource.fromPort(
-                controller.previewGraphInput(controller.getActiveGraph(), node, port));
+                controller.previewActiveGraphInput(node, port));
     }
 
     // Check if the HUD is visible
@@ -1164,8 +1185,7 @@ public final class CTPhysicsGogglesClient {
                 default -> true;
             };
         }
-        AdvancedGraphDocument.Value preview = controller.previewGraphInput(
-                controller.getActiveGraph(), node, "visible");
+        AdvancedGraphDocument.Value preview = controller.previewActiveGraphInput(node, "visible");
         if (preview == null) return true;
         return switch (preview.type()) {
             case "boolean" -> preview.asBoolean();
@@ -1757,7 +1777,11 @@ public final class CTPhysicsGogglesClient {
                         continue;
                     }
                     switch (target.type()) {
-                        case "button" -> sendHudBoolean(target, true);
+                        case "button" -> {
+                            releaseHudButton();
+                            pressedHudInteraction = target;
+                            sendHudBoolean(target, true);
+                        }
                         case "toggle" -> sendHudBoolean(target, true);
                         case "slider" -> {
                             pressedHudInteraction = target;
@@ -1905,9 +1929,11 @@ public final class CTPhysicsGogglesClient {
         @Override
         public boolean mouseReleased(double mouseX, double mouseY, int btn) {
             if (mode == OverlayMode.DIAGRAM) {
-                if (pressedHudInteraction != null) {
+                if (btn == GLFW.GLFW_MOUSE_BUTTON_LEFT && pressedHudInteraction != null) {
                     if ("slider".equals(pressedHudInteraction.type())) {
                         sendHudSlider(pressedHudInteraction, mouseX, mouseY);
+                    } else {
+                        releaseHudButton();
                     }
                     pressedHudInteraction = null;
                     return true;
@@ -2106,8 +2132,23 @@ public final class CTPhysicsGogglesClient {
         // Handle screen removal
         @Override
         public void removed() {
+            releaseHudButton();
             super.removed();
             saveOverlayLayout();
+        }
+
+        private boolean isHudButtonPressed(BoundControllerBinding binding, String nodeId, String interactionId){
+            return pressedHudInteraction != null && "button".equals(pressedHudInteraction.type())
+                    && java.util.Objects.equals(binding.target(), pressedHudInteraction.target())
+                    && java.util.Objects.equals(binding.pairId(), pressedHudInteraction.pairId())
+                    && nodeId.equals(pressedHudInteraction.nodeId())
+                    && interactionId.equals(pressedHudInteraction.interactionId());
+        }
+
+        private void releaseHudButton(){
+            if(pressedHudInteraction == null || !"button".equals(pressedHudInteraction.type())) return;
+            if(Minecraft.getInstance().getConnection() != null) sendHudBoolean(pressedHudInteraction, false);
+            pressedHudInteraction = null;
         }
     }
 

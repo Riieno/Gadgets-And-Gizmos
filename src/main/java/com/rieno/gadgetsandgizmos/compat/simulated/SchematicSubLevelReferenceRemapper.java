@@ -54,9 +54,28 @@ public final class SchematicSubLevelReferenceRemapper {
         SubLevelSchematicSerializationContext ctx =
                 SubLevelSchematicSerializationContext.getCurrentContext();
         if (root == null || ctx == null) return;
+        retainDataTargetPortIds(root);
         List<IdentifierReplacement> replacements = new ArrayList<>();
         remapCompound(root, ctx, replacements);
         rewriteIdStrings(root, replacements);
+    }
+
+    // Generated graph port IDs keep their original seed while target references move
+    private static void retainDataTargetPortIds(Tag tag){
+        if(tag instanceof CompoundTag compound){
+            if(compound.contains("DataTargets", Tag.TAG_LIST)){
+                CompoundTag ids = compound.getCompound("DataTargetPortIds");
+                for(Tag raw : compound.getList("DataTargets", Tag.TAG_COMPOUND)){
+                    if(!(raw instanceof CompoundTag target)) continue;
+                    String id = target.getString("NodeId");
+                    if(!id.isBlank() && !ids.contains(id)) ids.putString(id, id);
+                }
+                if(!ids.isEmpty()) compound.put("DataTargetPortIds", ids);
+            }
+            for(String key : List.copyOf(compound.getAllKeys())) retainDataTargetPortIds(compound.get(key));
+        }else if(tag instanceof ListTag list){
+            for(Tag entry : list) retainDataTargetPortIds(entry);
+        }
     }
 
     // Remap the compound
@@ -158,11 +177,20 @@ public final class SchematicSubLevelReferenceRemapper {
         if (tag instanceof CompoundTag compound) {
             for (String key : List.copyOf(compound.getAllKeys())) {
                 Tag child = compound.get(key);
-                if (child instanceof StringTag) {
-                    compound.putString(key, rewriteIdString(compound.getString(key), replacements));
-                } else {
+                String nextKey = rewriteIdString(key, replacements);
+                if("DataTargetPortIds".equals(key) && child instanceof CompoundTag ids){
+                    CompoundTag retained = new CompoundTag();
+                    for(String id : List.copyOf(ids.getAllKeys())){
+                        retained.put(rewriteIdString(id, replacements), ids.get(id).copy());
+                    }
+                    compound.put(nextKey, retained);
+                }else if(child instanceof StringTag){
+                    compound.putString(nextKey, rewriteIdString(compound.getString(key), replacements));
+                }else if(child != null){
                     rewriteIdStrings(child, replacements);
+                    compound.put(nextKey, child);
                 }
+                if(!nextKey.equals(key)) compound.remove(key);
             }
             return;
         }
@@ -186,6 +214,9 @@ public final class SchematicSubLevelReferenceRemapper {
             rewritten = rewritten
                     .replace(replacement.oldLocator(), replacement.newLocator())
                     .replace(replacement.oldGroupId(), replacement.newGroupId());
+            if(rewritten.equals("scm_picker:" + replacement.oldId() + ":" + replacement.oldPos().asLong())){
+                rewritten = "scm_picker:" + replacement.newId() + ":" + replacement.newPos().asLong();
+            }
         }
         return rewritten;
     }

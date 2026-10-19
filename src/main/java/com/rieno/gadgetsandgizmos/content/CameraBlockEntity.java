@@ -14,6 +14,7 @@ import com.rieno.gadgetsandgizmos.lib.view.ViewReference;
 import com.rieno.gadgetsandgizmos.lib.view.ViewRig;
 import com.rieno.gadgetsandgizmos.lib.physics.ProjectedLightSource;
 import com.rieno.gadgetsandgizmos.lib.view.ControlledViewSource;
+import com.rieno.gadgetsandgizmos.lib.view.RaycastViewSource;
 import com.rieno.gadgetsandgizmos.lib.view.ViewControlState;
 import com.rieno.gadgetsandgizmos.lib.view.ViewRayBudget;
 import com.rieno.gadgetsandgizmos.lib.view.ViewTransforms;
@@ -41,7 +42,8 @@ import java.util.List;
 import java.util.Set;
 
 // Own the Camera block's saved configuration and ray samples
-public final class CameraBlockEntity extends SmartBlockEntity implements ControlledViewSource{
+public final class CameraBlockEntity extends SmartBlockEntity implements ControlledViewSource, RaycastViewSource,
+        com.rieno.gadgetsandgizmos.lib.view.PredictedViewSource{
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -136,7 +138,7 @@ public final class CameraBlockEntity extends SmartBlockEntity implements Control
                           ViewRig.Orientation orientation, double pan, double tilt, boolean autoTracking, boolean lockTarget){
         double nextLength = Double.isFinite(length) ? Math.clamp(length, 0, ViewRaycast.MAX_LENGTH) : 0;
         double nextCount = Double.isFinite(count) ? Math.clamp(count, 0, ViewRayBudget.MAX_PER_SECOND) : 0;
-        double nextPan = Double.isFinite(pan) ? Math.clamp(pan, -180, 180) : 0;
+        double nextPan = ViewRig.wrapPan(pan);
         double nextTilt = Double.isFinite(tilt) ? Math.clamp(tilt, -135, 135) : 0;
         boolean changed = maxRayLength != nextLength || raysPerSecond != nextCount || !this.filter.equals(filter)
                 || this.mode != mode || this.orientation != orientation || this.autoTracking != autoTracking
@@ -195,12 +197,23 @@ public final class CameraBlockEntity extends SmartBlockEntity implements Control
     // Resolve the live lens using the same joint transform as the partial renderer
     @Override
     public ViewPose viewPose(float partialTick){
-        Quaterniond mount = ViewTransforms.orientation(this, mountOrientation(), partialTick);
         ViewRig.Angles angles = viewAngles(partialTick);
+        return viewPose(partialTick, new ViewRig.State(angles.pan(), angles.tilt(), rig.fov()));
+    }
+    // Supply authoritative joint values while the library previews unacknowledged mouse motion
+    @Override
+    public ViewRig.State viewAim(){
+        ViewRig.Angles angles = viewAngles(0);
+        return new ViewRig.State(angles.pan(), angles.tilt(), rig.fov());
+    }
+    @Override
+    public ViewPose viewPose(float partialTick, ViewRig.State aim){
+        Quaterniond mount = ViewTransforms.orientation(this, mountOrientation(), partialTick);
+        ViewRig.Angles angles = new ViewRig.Angles(aim.pan(), aim.tilt());
         Quaterniond world = ViewRig.worldOrientation(mount, orientation, angles);
         Vec3 pivot = ViewTransforms.position(this, getBlockPos().getCenter(), partialTick);
         var lens = world.transform(new org.joml.Vector3d(0, 0, -5.1D / 16.0D));
-        return new ViewPose(pivot.add(lens.x, lens.y, lens.z), world, rig.fov());
+        return new ViewPose(pivot.add(lens.x, lens.y, lens.z), world, aim.fov());
     }
     // Fit the same tracked target when a display or tablet requests a portrait capture
     @Override
@@ -291,6 +304,19 @@ public final class CameraBlockEntity extends SmartBlockEntity implements Control
             case "is_sub_level" -> GraphValue.bool(nearest.subLevelId() != null);
             default -> GraphValue.number(0);
         };
+    }
+    // Fire one explicit centre ray using the lens range and filters, then publish it to graph outputs
+    @Override
+    public double interactionRange(){ return maxRayLength; }
+    @Override
+    public ViewRaycast.Filter interactionFilter(){ return filter; }
+    @Override
+    public ViewRaycast.Result castViewRay(){
+        if(level == null || level.isClientSide) return ViewRaycast.Result.miss(Vec3.ZERO, 0);
+        nearest = ViewRaycast.trace(level, viewPose(0), maxRayLength, filter, ViewReference.of(this), 0, 1);
+        rays = List.of(nearest);
+        sampledTick = raySampleTick = level.getGameTime();
+        return nearest;
     }
     // Perform at most the configured ray budget once per tick
     private void sampleRays(){

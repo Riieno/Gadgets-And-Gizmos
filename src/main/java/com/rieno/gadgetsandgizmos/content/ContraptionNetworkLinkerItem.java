@@ -12,6 +12,8 @@ import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityLookupApi;
 import com.rieno.gadgetsandgizmos.neoforge.network.ContraptionNetworkLinkerSnapshotPayload;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
+import com.rieno.gadgetsandgizmos.registry.CTItems;
+import com.rieno.gadgetsandgizmos.lib.item.ItemFoilRenderScope;
 import com.rieno.gadgetsandgizmos.util.CTInteractionGestures;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.ChatFormatting;
@@ -46,7 +48,7 @@ public class ContraptionNetworkLinkerItem extends Item {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    private static final ThreadLocal<Boolean> RENDER_FOIL_OVERRIDE = new ThreadLocal<>();
+    
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -86,7 +88,7 @@ public class ContraptionNetworkLinkerItem extends Item {
     // Check if this is foil
     @Override
     public boolean isFoil(ItemStack stack) {
-        Boolean renderFoil = RENDER_FOIL_OVERRIDE.get();
+        Boolean renderFoil = ItemFoilRenderScope.overrideFor(this);
         if (renderFoil != null) {
             return renderFoil;
         }
@@ -97,17 +99,7 @@ public class ContraptionNetworkLinkerItem extends Item {
 
     // Render the linker without a foil effect
     public static void renderWithoutFoil(Runnable render) {
-        Boolean previous = RENDER_FOIL_OVERRIDE.get();
-        RENDER_FOIL_OVERRIDE.set(false);
-        try {
-            render.run();
-        } finally {
-            if (previous == null) {
-                RENDER_FOIL_OVERRIDE.remove();
-            } else {
-                RENDER_FOIL_OVERRIDE.set(previous);
-            }
-        }
+        ItemFoilRenderScope.withoutFoil(CTItems.CONTRAPTION_NETWORK_LINKER.get(), render);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------

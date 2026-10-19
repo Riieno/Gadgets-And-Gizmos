@@ -66,11 +66,16 @@ public final class GraphSignalRange {
         return valueType(node).toScalar(val);
     }
 
+    // Identify both legacy and generated per-target redstone inputs
+    public static boolean isRedstonePort(AdvancedGraphDocument.Node node, String port){
+        return REDSTONE_SIGNAL_PORT.equals(port) || AdvancedGraphTargetSignals.isTargetSignal(node, port);
+    }
+
     // Compare and cache the same signal value that the target receives
     public static AdvancedGraphDocument.Value targetValue(AdvancedGraphDocument.Node node, String port,
                                                    AdvancedGraphDocument.Value val){
         if(val == null || !"number".equals(val.type())) return val;
-        if(REDSTONE_SIGNAL_PORT.equals(port)){
+        if(isRedstonePort(node, port)){
             return AdvancedGraphDocument.Value.number(outputStrength(node, val.asNumber()));
         }
         if("set_block_data".equals(node.type()) && "direct_signal".equals(port)){

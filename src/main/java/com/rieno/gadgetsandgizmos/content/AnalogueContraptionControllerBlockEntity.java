@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
+import com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache;
 import com.rieno.gadgetsandgizmos.compat.simulated.SchematicSubLevelReferenceRemapper;
 import com.rieno.gadgetsandgizmos.compat.controller.ExternalBlockEntityDirectControlCompat;
 import com.rieno.gadgetsandgizmos.lib.control.AnalogueAxis;
@@ -37,11 +38,14 @@ import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.simibubi.create.Create;
 import com.simibubi.create.api.equipment.goggles.IHaveGoggleInformation;
+import com.simibubi.create.api.schematic.requirement.SpecialBlockEntityItemRequirement;
+import com.simibubi.create.content.schematics.requirement.ItemRequirement;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import com.simibubi.create.content.redstone.link.IRedstoneLinkable;
 import com.simibubi.create.content.redstone.link.RedstoneLinkNetworkHandler;
 import com.simibubi.create.infrastructure.config.AllConfigs;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
+import com.rieno.gadgetsandgizmos.lib.physics.archive.SchematicMaterialData;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
 import com.simibubi.create.foundation.blockEntity.behaviour.CenteredSideValueBoxTransform;
 import com.simibubi.create.foundation.blockEntity.behaviour.ValueBoxTransform;
@@ -108,7 +112,8 @@ import java.util.UUID;
 
 // Handle controller inputs, layout and linked outputs
 public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity implements IHaveGoggleInformation,
-        MenuProvider, com.rieno.gadgetsandgizmos.lib.discovery.INamedBlockEntity, BlockEntitySubLevelActor {
+        MenuProvider, com.rieno.gadgetsandgizmos.lib.discovery.INamedBlockEntity, BlockEntitySubLevelActor,
+        SchematicMaterialData, SpecialBlockEntityItemRequirement {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -281,7 +286,8 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     // Current embedded block entity data
     private @Nullable CompoundTag embeddedBlockEntityData;
     // Current embedded block entity preview
-    private @Nullable BlockEntity embeddedBlockEntityPreview;
+    private final RevisionSnapshotCache<BlockEntity> embeddedBlockEntityPreview = new RevisionSnapshotCache<>();
+    private @Nullable CompoundTag unavailableEmbeddedBlockState;
     // Tracks whether embedded block is being restored
     private boolean restoringEmbeddedBlock;
     // Current custom name
@@ -366,13 +372,15 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
                 : blockEntityData.copy();
         if (Objects.equals(embeddedSlabState, normalized)
                 && Objects.equals(embeddedSlabMaterial, normalizedMaterial)
-                && Objects.equals(embeddedBlockEntityData, normalizedBlockEntityData)) {
+                && Objects.equals(embeddedBlockEntityData, normalizedBlockEntityData)
+                && unavailableEmbeddedBlockState == null) {
             return;
         }
         embeddedSlabState = normalized;
         embeddedSlabMaterial = normalizedMaterial;
         embeddedBlockEntityData = normalizedBlockEntityData;
-        embeddedBlockEntityPreview = null;
+        unavailableEmbeddedBlockState = null;
+        embeddedBlockEntityPreview.invalidate();
         setChanged();
         if (level != null) {
             level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
@@ -384,18 +392,11 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
 
     // Get the embedded block entity preview
     public @Nullable BlockEntity getEmbeddedBlockEntityPreview() {
-        if (embeddedBlockEntityPreview != null) {
-            return embeddedBlockEntityPreview;
-        }
         if (level == null || embeddedSlabState == null || embeddedBlockEntityData == null) {
             return null;
         }
-        embeddedBlockEntityPreview = EmbeddedCopycatBlockSnapshot.createPreview(
-                level,
-                worldPosition,
-                embeddedSlabState,
-                embeddedBlockEntityData);
-        return embeddedBlockEntityPreview;
+        return embeddedBlockEntityPreview.get(level, 0, () -> EmbeddedCopycatBlockSnapshot.createPreview(
+                level, worldPosition, embeddedSlabState, embeddedBlockEntityData));
     }
 
     // Get the embedded consumed items
@@ -576,7 +577,9 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
                 continue;
             }
             if (SimulatedHelper.distanceSquaredWithSubLevels(
-                    player.level(), player.position(), worldPosition) <= RUNTIME_SYNC_RANGE_SQR) {
+                    player.level(), player.position(), worldPosition) <= RUNTIME_SYNC_RANGE_SQR
+                    || ControllerRuntimeObserver.hasBoundGoggles(player, getBlockPos(), subLevelId)
+                    || DiagnosticTabletRemoteSessions.isObserver(player, getBlockPos(), subLevelId)) {
                 PacketDistributor.sendToPlayer(player, payload);
             }
         }
@@ -875,8 +878,6 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         if (network == null || network.isEmpty()) {
             return 0;
         }
-        int linkRange = AllConfigs.server().logistics.linkRange.get();
-        double linkRangeSq = linkRange * (double) linkRange;
         int maxSignal = 0;
         for (IRedstoneLinkable candidate : network) {
             if (candidate == null || candidate == receiver || !candidate.isAlive()) {
@@ -889,11 +890,6 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
             BlockPos candidateLocation = candidate.getLocation();
             BlockPos receiverLocation = receiver.getLocation();
             if (candidateLocation == null || receiverLocation == null) {
-                continue;
-            }
-            double distanceSq = SimulatedHelper.distanceSquaredWithSubLevels(linkLevel,
-                    Vec3.atCenterOf(candidateLocation), Vec3.atCenterOf(receiverLocation));
-            if (distanceSq >= linkRangeSq) {
                 continue;
             }
             maxSignal = Math.max(maxSignal, transmittedStrength);
@@ -3032,6 +3028,9 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     @Override
     public void writeSafe(CompoundTag tag, HolderLookup.Provider provider){
         super.writeSafe(tag, provider);
+        CompoundTag physical = new CompoundTag();
+        writeControllerPhysicalState(physical, provider);
+        tag.put(ControllerPhysicalState.TAG_KEY, physical);
         writeSchematicPayload(tag, provider, SubLevelSchematicSerializationContext.getCurrentContext());
     }
 
@@ -3079,6 +3078,29 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         }
         if(!ControllerSchematicPayload.write(tag, payload))
             throw new IllegalArgumentException("Controller graph exceeds the schematic payload limit");
+    }
+
+    // Include the flush-mounted backing and its paint in Create and Digisable material bills
+    @Override
+    public ItemRequirement getRequiredItems(BlockState state){
+        if(unavailableEmbeddedBlockState != null) return ItemRequirement.INVALID;
+        if(embeddedSlabState == null) return ItemRequirement.NONE;
+        if(embeddedSlabState.isAir()) return ItemRequirement.INVALID;
+        BlockEntity preview = getEmbeddedBlockEntityPreview();
+        if(embeddedBlockEntityData != null && preview == null) return ItemRequirement.INVALID;
+        return ItemRequirement.of(embeddedSlabState, preview);
+    }
+
+    // Avoid decoding graphs or opening their backing store during material requirement scans
+    @Override
+    public CompoundTag schematicMaterialData(CompoundTag saved){
+        CompoundTag physical = ControllerPhysicalState.materialData(saved);
+        if(level != null && physical.contains(EMBEDDED_SLAB_TAG, Tag.TAG_COMPOUND)){
+            BlockState backing = ControllerPhysicalState.backingState(level.registryAccess(), physical.getCompound(EMBEDDED_SLAB_TAG));
+            if(backing == null || backing.isAir()) throw new IllegalArgumentException(
+                    "Controller schematic requires unavailable backing block: " + physical.getCompound(EMBEDDED_SLAB_TAG).getString("Name"));
+        }
+        return physical;
     }
 
     // Create the schematic data
@@ -3165,10 +3187,11 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         return !clientPacket && level != null && !level.isClientSide;
     }
 
-    // Get the loading dependencies
+    // Include control references in schematic saves without tying their runtime lifetime to the controller
     @Override
     public Iterable<SubLevel> sable$getLoadingDependencies() {
-        if (level == null) return List.of();
+        SubLevelSchematicSerializationContext ctx = SubLevelSchematicSerializationContext.getCurrentContext();
+        if (level == null || ctx == null || ctx.getType() != SubLevelSchematicSerializationContext.Type.SAVE) return List.of();
         Set<UUID> subLevelIds = new LinkedHashSet<>();
         collectTargetSubLevelIds(directTargets.values(), subLevelIds);
         collectTargetSubLevelIds(inputTargets.values(), subLevelIds);
@@ -3540,7 +3563,14 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
             pendingControllerSchematicPayload = null;
             pendingControllerSchematicImport = false;
         }
-        if(schematicPayload == null) controllerData = ControllerPhysicalState.readSavedBlock(controllerData, tag);
+        controllerData = schematicPayload == null
+                ? ControllerPhysicalState.readSavedBlock(controllerData, tag)
+                : ControllerPhysicalState.readSchematicBlock(controllerData, tag);
+        // Detached safe-NBT conversion retains the portable payload without constructing its graph runtime.
+        if(isVirtual() && schematicPayload != null){
+            readControllerBody(ControllerPhysicalState.materialData(controllerData), provider);
+            return;
+        }
         // ------------------------------------REFERENCE REMAP------------------------------------
         CompoundTag remappedControllerData = schematicPayload != null
                 || schematicContext == null
@@ -3573,8 +3603,9 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
 
     // Serialize the backing currently held by this block instead of one retained with a program
     protected void writeControllerPhysicalState(CompoundTag tag, HolderLookup.Provider provider){
-        if (embeddedSlabState != null) {
-            tag.put(EMBEDDED_SLAB_TAG, NbtUtils.writeBlockState(embeddedSlabState));
+        if (embeddedSlabState != null || unavailableEmbeddedBlockState != null) {
+            tag.put(EMBEDDED_SLAB_TAG, unavailableEmbeddedBlockState != null
+                    ? unavailableEmbeddedBlockState.copy() : NbtUtils.writeBlockState(embeddedSlabState));
             if (embeddedSlabMaterial != null) {
                 tag.put(EMBEDDED_SLAB_MATERIAL_TAG, NbtUtils.writeBlockState(embeddedSlabMaterial));
             }
@@ -3587,17 +3618,20 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     // Read the controller body
     protected void readControllerBody(CompoundTag tag, HolderLookup.Provider provider) {
         // ------------------------------------EMBEDDED BLOCK------------------------------------
+        BlockState previousState = embeddedSlabState;
+        BlockState previousMaterial = embeddedSlabMaterial;
+        CompoundTag previousData = embeddedBlockEntityData;
+        CompoundTag previousUnavailable = unavailableEmbeddedBlockState;
         embeddedSlabState = null;
         embeddedSlabMaterial = null;
         embeddedBlockEntityData = null;
-        embeddedBlockEntityPreview = null;
+        unavailableEmbeddedBlockState = null;
         if(getBlockState().hasProperty(AnalogueContraptionControllerBlock.EMBEDDED_SLAB)
                 && getBlockState().getValue(AnalogueContraptionControllerBlock.EMBEDDED_SLAB)
                 && tag.contains(EMBEDDED_SLAB_TAG, Tag.TAG_COMPOUND)){
-            BlockState embeddedState = NbtUtils.readBlockState(
-                    provider.lookupOrThrow(Registries.BLOCK),
-                    tag.getCompound(EMBEDDED_SLAB_TAG));
+            BlockState embeddedState = ControllerPhysicalState.backingState(provider, tag.getCompound(EMBEDDED_SLAB_TAG));
             embeddedSlabState = embeddedState;
+            if(embeddedState == null) unavailableEmbeddedBlockState = tag.getCompound(EMBEDDED_SLAB_TAG).copy();
             if (tag.contains(EMBEDDED_SLAB_MATERIAL_TAG, Tag.TAG_COMPOUND)) {
                 embeddedSlabMaterial = NbtUtils.readBlockState(
                         provider.lookupOrThrow(Registries.BLOCK),
@@ -3607,6 +3641,10 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
                 embeddedBlockEntityData = tag.getCompound(EMBEDDED_BLOCK_ENTITY_TAG).copy();
             }
         }
+
+        if(!Objects.equals(previousState, embeddedSlabState) || !Objects.equals(previousMaterial, embeddedSlabMaterial)
+                || !Objects.equals(previousData, embeddedBlockEntityData)
+                || !Objects.equals(previousUnavailable, unavailableEmbeddedBlockState)) embeddedBlockEntityPreview.invalidate();
 
         // ------------------------------------CHANNELS AND AXES------------------------------------
         CompoundTag channelsTag = tag.getCompound("Channels");
@@ -3798,8 +3836,9 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     public boolean canPlayerUse(Player player) {
         return level != null
                 && level.getBlockEntity(worldPosition) == this
-                && SimulatedHelper.distanceSquaredWithSubLevels(
-                        level, player.position(), Vec3.atCenterOf(worldPosition)) <= 64.0D;
+                && (com.rieno.gadgetsandgizmos.lib.view.ViewInteractionContext.canUse(player, this)
+                || SimulatedHelper.distanceSquaredWithSubLevels(
+                        level, player.position(), Vec3.atCenterOf(worldPosition)) <= 64.0D);
     }
 
     // Send the menu data
@@ -6247,7 +6286,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     }
 
     // Handle the controller link target
-    private class ControllerLinkTarget implements AnalogueTransmissionTarget, IRedstoneLinkable {
+    private class ControllerLinkTarget implements AnalogueTransmissionTarget, com.rieno.gadgetsandgizmos.lib.control.DistanceIndependentLink {
         // Channel id
         private final String channelId;
         // Binding
@@ -6377,7 +6416,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     }
 
     // Handle the controller link input target
-    private class ControllerLinkInputTarget implements IRedstoneLinkable {
+    private class ControllerLinkInputTarget implements com.rieno.gadgetsandgizmos.lib.control.DistanceIndependentLink {
         // Entry id
         private final String entryId;
         // Binding

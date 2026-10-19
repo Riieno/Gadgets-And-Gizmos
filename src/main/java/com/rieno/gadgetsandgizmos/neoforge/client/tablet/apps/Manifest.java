@@ -15,7 +15,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.material.Fluids;
 import net.neoforged.neoforge.fluids.FluidStack;
 
-// Show exact cargo components and configure filters, transfers and desired stock
+// Show exact cargo components and configure desired stock
 public final class Manifest implements TabletAppClientRenderer{
     private static final class State implements TabletAppClientState{
         private final TabletAppPanel panel = new TabletAppPanel();
@@ -40,20 +40,12 @@ public final class Manifest implements TabletAppClientRenderer{
         boolean configure = ctx.data().getBoolean("CanConfigure");
         if("stock".equals(ctx.tab().id())){ stock(ctx, state, configure); stop(ctx, state); state.panel.error(ctx); return; }
         if("resources".equals(ctx.tab().id())){ resources(ctx, state); stop(ctx, state); state.panel.error(ctx); return; }
-        int width = (ctx.width() - 20) / 5;
-        String[] labels = {ctx.data().getBoolean("Locked") ? "Unlock" : "Lock", ctx.data().getBoolean("Push") ? "Push: On" : "Push: Off", ctx.data().getBoolean("Pull") ? "Pull: On" : "Pull: Off", "Set filter", "Clear filter"};
-        String[] actions = {"lock", "push", "pull", "filter", "filter"};
-        for(int idx = 0; idx < labels.length; idx++){
-            String action = actions[idx];
-            String val = idx == 4 ? "clear" : "";
-            state.panel.button(ctx, 4 + idx * (width + 3), 1, width, 21, labels[idx], configure, () -> ctx.actions().send(action, val));
-        }
         var rows = ctx.data().getList("Items", Tag.TAG_COMPOUND);
         state.scroll = Mth.clamp(state.scroll, 0, Math.max(0, rows.size() - 4));
         int listWidth = ctx.width() * 2 / 3;
         for(int idx = 0; idx < 4 && state.scroll + idx < rows.size(); idx++){
             var row = rows.getCompound(state.scroll + idx);
-            int y = 29 + idx * 25;
+            int y = 4 + idx * 25;
             String key = row.getString("Id") + row.getString("Components");
             ItemStack item = item(row);
             ctx.graphics().renderItem(item, ctx.left() + 5, ctx.top() + y);
@@ -68,9 +60,9 @@ public final class Manifest implements TabletAppClientRenderer{
         int detailX = listWidth + 3;
         int detailWidth = ctx.width() - detailX - 6;
         if(!selected.isEmpty()){
-            state.panel.wrap(ctx, selected.getString("Id"), detailX, 30, detailWidth, 28);
-            state.panel.text(ctx, "Slots: " + selected.getInt("Slots") + " / stack " + selected.getInt("MaxStack"), detailX, 60, detailWidth, 0xFFEAD19A);
-            state.panel.wrap(ctx, selected.getString("Components").equals("{}") ? "Standard item components" : selected.getString("Components"), detailX, 77, detailWidth, 48);
+            state.panel.wrap(ctx, selected.getString("Id"), detailX, 5, detailWidth, 28);
+            state.panel.text(ctx, "Slots: " + selected.getInt("Slots") + " / stack " + selected.getInt("MaxStack"), detailX, 35, detailWidth, 0xFFEAD19A);
+            state.panel.wrap(ctx, selected.getString("Components").equals("{}") ? "Standard item components" : selected.getString("Components"), detailX, 52, detailWidth, 48);
         }else state.panel.wrap(ctx, "No item cargo", 8, 38, listWidth - 16, 35);
         state.panel.text(ctx, ctx.data().getLong("ItemCount") + " items / " + ctx.data().getInt("Occupied") + "/" + ctx.data().getInt("Slots") + " slots / capacity " + ctx.data().getLong("Capacity"), 6, ctx.height() - 39, ctx.width() - 12, 0xFFB8CBE0);
         if(ctx.data().getInt("OmittedSlots") > 0) state.panel.text(ctx, ctx.data().getInt("OmittedSlots") + " occupied slots omitted by snapshot limits", detailX, ctx.height() - 51, detailWidth, 0xFFFFB884);

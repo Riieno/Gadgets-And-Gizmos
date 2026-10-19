@@ -1,9 +1,9 @@
 package com.rieno.gadgetsandgizmos.content;
 
+import com.rieno.gadgetsandgizmos.lib.create.ConnectedVaultBlockEntity;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.lib.power.LongEnergyStorage;
 import com.simibubi.create.content.logistics.vault.ItemVaultBlock;
-import com.simibubi.create.content.logistics.vault.ItemVaultBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.HolderLookup;
@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Set;
 
 // Store FE across a vault-shaped multiblock without exposing an item inventory
-public class SmartBatteryBlockEntity extends ItemVaultBlockEntity implements LongEnergyStorage {
+public class SmartBatteryBlockEntity extends ConnectedVaultBlockEntity implements LongEnergyStorage {
     private static final String ENERGY_TAG = "Energy";
     private static final long SINGLE_CAPACITY = 10_000_000L;
     private static final long FULL_CAPACITY = 5_000_000_000L;

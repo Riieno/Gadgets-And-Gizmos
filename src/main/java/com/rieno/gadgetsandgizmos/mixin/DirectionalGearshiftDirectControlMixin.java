@@ -10,6 +10,11 @@ package com.rieno.gadgetsandgizmos.mixin;
 
 import dev.simulated_team.simulated.content.blocks.directional_gearshift.DirectionalGearshiftBlock;
 import com.rieno.gadgetsandgizmos.lib.control.IDirectControlReceiver;
+import com.rieno.gadgetsandgizmos.lib.control.BlockStateControlReceiver;
+import com.rieno.gadgetsandgizmos.lib.kinetics.KineticBlockStateControl;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
+import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataProvider;
+import java.util.Map;
 import com.simibubi.create.content.kinetics.transmission.SplitShaftBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
@@ -22,7 +27,7 @@ import java.util.Locale;
 // Route Directional Gearshift Direct Control through the addon's direct-control API
 @Mixin(targets = "dev.simulated_team.simulated.content.blocks.directional_gearshift.DirectionalGearshiftBlockEntity")
 public abstract class DirectionalGearshiftDirectControlMixin extends SplitShaftBlockEntity
-    implements IDirectControlReceiver {
+    implements IDirectControlReceiver, BlockEntityDataProvider, BlockStateControlReceiver {
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -70,18 +75,7 @@ public abstract class DirectionalGearshiftDirectControlMixin extends SplitShaftB
             return;
         }
 
-        if (changed) {
-            // A scheduled block tick is not reliable while this block is in a moving
-            // Sable sub-level. Rebuild the kinetic network synchronously instead,
-            // matching Create's normal kinetic state-transition pattern.
-            detachKinetics();
-            level.setBlock(worldPosition, state, 2);
-            if (!isRemoved()) {
-                attachKinetics();
-                setChanged();
-                sendData();
-            }
-        }
+        if(changed) applyControlledBlockState(state);
     }
 
     // Select one gearshift input and clear its opposite in one block-state and
@@ -107,13 +101,7 @@ public abstract class DirectionalGearshiftDirectControlMixin extends SplitShaftB
         if (updated.equals(state)) {
             return;
         }
-        detachKinetics();
-        level.setBlock(worldPosition, updated, 2);
-        if (!isRemoved()) {
-            attachKinetics();
-            setChanged();
-            sendData();
-        }
+        applyControlledBlockState(updated);
     }
 
     // Set one named directional input without publishing an intermediate state.
@@ -132,4 +120,44 @@ public abstract class DirectionalGearshiftDirectControlMixin extends SplitShaftB
         }
         return state;
     }
+
+    // Expose each redstone input independently, including the stopped state with both inputs powered
+    @Override
+    public Map<String, String> graphReadableData(){
+        return Map.of("left_powered", "boolean", "right_powered", "boolean");
+    }
+
+    @Override
+    public Map<String, String> graphWritableData(){ return graphReadableData(); }
+
+    @Override
+    public GraphValue readGraphValue(String port){
+        return switch(port){
+            case "left_powered" -> GraphValue.bool(getBlockState().getValue(DirectionalGearshiftBlock.LEFT_POWERED));
+            case "right_powered" -> GraphValue.bool(getBlockState().getValue(DirectionalGearshiftBlock.RIGHT_POWERED));
+            default -> null;
+        };
+    }
+
+    @Override
+    public boolean writeGraphValue(String port, GraphValue value){
+        return value != null && port != null && writeGraphValues(Map.of(port, value));
+    }
+
+    @Override
+    public boolean writeGraphValues(Map<String, GraphValue> values){
+        if(values == null || values.isEmpty()) return false;
+        BlockState state = getBlockState();
+        GraphValue left = values.get("left_powered");
+        GraphValue right = values.get("right_powered");
+        if(left != null) state = state.setValue(DirectionalGearshiftBlock.LEFT_POWERED, left.asBoolean());
+        if(right != null) state = state.setValue(DirectionalGearshiftBlock.RIGHT_POWERED, right.asBoolean());
+        return applyControlledBlockState(state);
+    }
+
+    @Override
+    public boolean applyControlledBlockState(BlockState state){
+        return KineticBlockStateControl.apply(this, state);
+    }
+
 }

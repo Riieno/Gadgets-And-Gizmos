@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos;
 
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
 import com.rieno.gadgetsandgizmos.compat.scm.OptionalScmCompatibility;
+import com.rieno.gadgetsandgizmos.compat.schematic.SchematicLinkCompatibility;
 import com.rieno.gadgetsandgizmos.compat.recipe.PortableToolRecipeAdapter;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerRecipeCatalog;
 import com.rieno.gadgetsandgizmos.content.EntityLauncherItem;
@@ -52,6 +53,7 @@ public final class CreateThrustersNeoForge {
     // Initialize the create thrusters neo forge
     public CreateThrustersNeoForge(IEventBus modEventBus, ModContainer modContainer) {
         CTConfigs.register(modContainer);
+        com.rieno.gadgetsandgizmos.compat.aeroclaims.PhysicsStaffAeroClaimsCompat.register();
         CTFeatureToggles.prepareDedicatedServerRegistration();
         CTMountedSeats.register();
         OptionalScmCompatibility.register();
@@ -98,6 +100,7 @@ public final class CreateThrustersNeoForge {
         }
         CreateThrusters.init(modEventBus);
         modEventBus.addListener(PhotomancyBlueprintCompat::onCommonSetup);
+        modEventBus.addListener(SchematicLinkCompatibility::onCommonSetup);
         modEventBus.addListener(CTCommonEvents::registerCapabilities);
         modEventBus.addListener(CTCommonEvents::registerEntityAttributes);
         modEventBus.addListener(CTCommonEvents::registerPayloadHandlers);

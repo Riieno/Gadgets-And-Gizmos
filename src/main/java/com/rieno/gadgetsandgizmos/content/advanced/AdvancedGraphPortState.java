@@ -238,6 +238,7 @@ public final class AdvancedGraphPortState {
                 ? defaultValue(normalizedType)
                 : "any".equals(normalizedType)
                 ? val : GraphRuntime.convertValue(val, normalizedType);
+        com.rieno.gadgetsandgizmos.lib.graph.GraphPortValueEdits.mark(node.data(), INPUT_PREFIX + port);
         CompoundTag defaults = node.data().getCompound("Defaults");
         defaults.put(port, converted.toTag());
         node.data().put("Defaults", defaults);
@@ -291,6 +292,14 @@ public final class AdvancedGraphPortState {
                         ? stored : GraphRuntime.convertValue(stored, normalizedType);
             }
         }
+        if(node != null && "value".equals(port)){
+            return switch(node.type()){
+                case "constant_number" -> AdvancedGraphDocument.Value.number(node.data().getDouble("Value"));
+                case "constant_boolean" -> AdvancedGraphDocument.Value.bool(node.data().getBoolean("Value"));
+                case "constant_string" -> AdvancedGraphDocument.Value.string(node.data().getString("Value"));
+                default -> defaultValue(normalizedType);
+            };
+        }
         return defaultValue(normalizedType);
     }
 
@@ -309,6 +318,14 @@ public final class AdvancedGraphPortState {
                 ? defaultValue(normalizedType)
                 : "any".equals(normalizedType)
                 ? val : GraphRuntime.convertValue(val, normalizedType);
+        if("value".equals(port)){
+            switch(node.type()){
+                case "constant_number" -> node.data().putDouble("Value", converted.asNumber());
+                case "constant_boolean" -> node.data().putBoolean("Value", converted.asBoolean());
+                case "constant_string" -> node.data().putString("Value", converted.asString());
+            }
+        }
+        com.rieno.gadgetsandgizmos.lib.graph.GraphPortValueEdits.mark(node.data(), OUTPUT_PREFIX + port);
         CompoundTag defaults = node.data().getCompound(OUTPUT_DEFAULTS_TAG);
         defaults.put(port, converted.toTag());
         node.data().put(OUTPUT_DEFAULTS_TAG, defaults);
@@ -336,6 +353,13 @@ public final class AdvancedGraphPortState {
             normalized = "number";
         }
         return SWITCH_DATA_TYPES.contains(normalized) ? normalized : "any";
+    }
+
+    // Consume authored edits after both the draft and active live values have been merged
+    public static void clearAuthoredEdits(AdvancedGraphDocument graph){
+        graph.nodes().forEach(node -> com.rieno.gadgetsandgizmos.lib.graph.GraphPortValueEdits.clear(node.data()));
+        graph.functions().forEach(function -> function.nodes().forEach(
+                node -> com.rieno.gadgetsandgizmos.lib.graph.GraphPortValueEdits.clear(node.data())));
     }
 
     // Merge the persistent values
@@ -377,7 +401,8 @@ public final class AdvancedGraphPortState {
                     destinationNode.data().getCompound(PERSISTENT_PORTS_TAG);
             CompoundTag sourceValues = sourceNode.data().getCompound(PERSISTENT_VALUES_TAG);
             for (String key : destinationPorts.getAllKeys()) {
-                if (!destinationPorts.getBoolean(key) || !sourceValues.contains(key)) {
+                if (!destinationPorts.getBoolean(key) || !sourceValues.contains(key)
+                        || com.rieno.gadgetsandgizmos.lib.graph.GraphPortValueEdits.contains(destinationNode.data(), key)) {
                     continue;
                 }
                 CompoundTag val = sourceValues.getCompound(key).copy();

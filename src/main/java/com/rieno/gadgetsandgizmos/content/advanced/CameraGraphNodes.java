@@ -17,6 +17,9 @@ public final class CameraGraphNodes{
     public static AdvancedGraphDocument.Value value(AdvancedContraptionControllerBlockEntity controller,
             AdvancedGraphDocument.Node node, String port, Function<String, AdvancedGraphDocument.Value> input,
             boolean simulation){
+        if(!simulation && com.rieno.gadgetsandgizmos.content.BoundGlassesCamera.pairId(
+                com.rieno.gadgetsandgizmos.content.BoundGlassesCamera.selection(node, input.apply("target"))) != null)
+            return com.rieno.gadgetsandgizmos.content.BoundGlassesCamera.value(controller, node, port, input);
         CameraBlockEntity camera = configure(controller, node, input, simulation);
         return camera == null ? unavailable(port) : GraphRuntime.fromLibraryValue(camera.graphValue(port));
     }

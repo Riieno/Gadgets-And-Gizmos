@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityLookupApi;
+import com.rieno.gadgetsandgizmos.neoforge.network.DiagnosticTabletReopenPayload;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -30,6 +31,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.BlockHitResult;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.lang.reflect.Method;
 import java.util.List;
@@ -52,6 +54,12 @@ public class DiagnosticTabletItem extends BlockItem {
     // Initialize the diagnostic tablet item
     public DiagnosticTabletItem(Block block, Item.Properties properties) {
         super(block, properties);
+    }
+
+    // Keep the held tablet steady when its app or interaction mode changes
+    @Override
+    public boolean shouldCauseReequipAnimation(ItemStack prev, ItemStack next, boolean slotChanged){
+        return slotChanged || prev.getItem() != next.getItem();
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -161,8 +169,20 @@ public class DiagnosticTabletItem extends BlockItem {
                     serverPlayer.displayClientMessage(Component.literal("Point Reader mode at a sublevel block"), true);
                     return InteractionResult.FAIL;
                 }
+                boolean save = "save_schematic".equals(current.pendingAction()) || current.pendingAction().startsWith("save_schematic|");
+                if(!save && "schematics".equals(current.tab())){
+                    serverPlayer.displayClientMessage(Component.literal("Choose Save schematic before selecting a world assembly"), true);
+                    return InteractionResult.FAIL;
+                }
+                if(save){
+                    DiagnosticTabletData.write(ctx.getItemInHand(), current.withApp(current.app(), "schematics")
+                            .withMode(TabletInteractionMode.STANDARD, ""));
+                    PacketDistributor.sendToPlayer(serverPlayer, new DiagnosticTabletReopenPayload(
+                            ctx.getHand(), current.tabletId(), selected.subLevelId()));
+                    return InteractionResult.SUCCESS;
+                }
                 var res = DiagnosticTabletApps.dispatch(serverPlayer, ctx.getItemInHand(), current,
-                        new TabletAction(current.app(), current.tab(), "store",
+                        new TabletAction(current.app(), current.tab(), "delete".equals(current.pendingAction()) ? "delete" : "store",
                                 Map.of("value", selected.subLevelId().toString())));
                 if(res.success()) DiagnosticTabletData.write(ctx.getItemInHand(), current.withMode(TabletInteractionMode.STANDARD, ""));
             }

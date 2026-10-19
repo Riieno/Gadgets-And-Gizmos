@@ -28,11 +28,11 @@ public final class PaidTabletApps{
     public static final TabletAppDefinition CCTV = app("cctv", "CCTV", "Watch and control bound cameras", 0xFF5BAAA3,
             tab("live", "Live", "refresh", "pair", "select_camera", "control", "forget", "rename"));
     public static final TabletAppDefinition DIGISABLE = app("digisable", "Digisable", "View, locate, store and extract sublevels", 0xFF5EBAF2,
-            tab("archives", "Stored", "refresh", "preview", "prepare_extract", "extract", "store", "export"),
-            tab("sublevels", "Sublevels", "refresh", "preview", "store", "teleport", "delete"),
-            tab("schematics", "Schematics", "refresh", "schematic_preview", "materials", "prepare_build", "build", "pair_network", "cancel_build"));
-    public static final TabletAppDefinition MANIFEST = app("manifest", "Manifest", "Detailed cargo, Create filters and automatic stocking", 0xFFDCB75F,
-            tab("cargo", "Cargo", "refresh", "inspect", "detach", "filter", "lock", "push", "pull"),
+            tab("archives", "Stored", "refresh", "preview", "prepare_extract", "extract", "store"),
+            tab("sublevels", "Sublevels", "refresh", "preview", "store", "store_selected", "teleport", "delete"),
+            tab("schematics", "Schematics", "refresh", "export", "schematic_preview", "materials", "prepare_build", "build", "pair_network", "cancel_build"));
+    public static final TabletAppDefinition MANIFEST = app("manifest", "Manifest", "Detailed cargo and automatic stocking", 0xFFDCB75F,
+            tab("cargo", "Cargo", "refresh", "inspect", "detach"),
             tab("resources", "Resources", "refresh", "inspect", "detach"),
             tab("stock", "Stock", "refresh", "inspect", "detach", "stock"));
     public static final TabletAppDefinition BLOCKMATES = app("blockmates", "Blockmates", "Manage ACC workers and request deliveries or crafting", 0xFF80C978,
@@ -48,7 +48,8 @@ public final class PaidTabletApps{
         TabletAppRegistry.register(MANIFEST, (ctx, action) -> execute(ctx, action, ManifestApp::execute));
         TabletAppRegistry.register(BLOCKMATES, (ctx, action) -> execute(ctx, action, BlockmatesApp::execute));
         TabletAppRegistry.register(CCTV, (ctx, action) -> execute(ctx, action, CctvApp::execute));
-        ManifestContainerPolicies.register();
+        com.rieno.gadgetsandgizmos.lib.inventory.ContainerAutomationRuntime.setTransferLimit(
+                () -> com.rieno.gadgetsandgizmos.config.TabletAppsServerConfig.TRANSFER.get());
     }
 
     public static boolean canonical(TabletAppDefinition app){

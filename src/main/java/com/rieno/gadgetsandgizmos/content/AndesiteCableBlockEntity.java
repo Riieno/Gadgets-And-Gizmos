@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.power.EnergyTransfer;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -39,8 +40,6 @@ public class AndesiteCableBlockEntity extends BlockEntity {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    private static final int PASSIVE_TRANSFER_PER_TICK = 256;
-    private static final int PASSIVE_TRANSFER_INTERVAL_TICKS = 2;
     private static final ThreadLocal<Set<AndesiteCableBlockEntity>> ROUTING_GUARD = ThreadLocal.withInitial(
             () -> Collections.newSetFromMap(new IdentityHashMap<>()));
     private static final Map<Level, PassiveTransferFrame> PASSIVE_TRANSFER_FRAMES = new WeakHashMap<>();
@@ -105,9 +104,6 @@ public class AndesiteCableBlockEntity extends BlockEntity {
         if (level == null || level.isClientSide) {
             return;
         }
-        if (level.getGameTime() % PASSIVE_TRANSFER_INTERVAL_TICKS != 0L) {
-            return;
-        }
         PassiveTransferFrame frame = getPassiveTransferFrame(level);
         if (frame.processedCablePositions.contains(pos)) {
             return;
@@ -132,35 +128,14 @@ public class AndesiteCableBlockEntity extends BlockEntity {
             return;
         }
 
-        int budget = PASSIVE_TRANSFER_PER_TICK;
         boolean movedAny = false;
         try {
             Set<BlockPos> network = collectCableNetwork();
             processedCablePositions.addAll(network);
             List<EnergyEndpoint> sources = collectExternalEndpoints(network, null, EndpointMode.EXTRACT);
             List<EnergyEndpoint> targets = collectExternalEndpoints(network, null, EndpointMode.RECEIVE);
-            for (EnergyEndpoint src : sources) {
-                if (budget <= 0) {
-                    break;
-                }
-                int offered = src.storage.extractEnergy(budget, true);
-                if (offered <= 0) {
-                    continue;
-                }
-                int accepted = offerToEndpoints(targets, src.key, offered, true);
-                if (accepted <= 0) {
-                    continue;
-                }
-                int extracted = src.storage.extractEnergy(accepted, false);
-                if (extracted <= 0) {
-                    continue;
-                }
-                int delivered = offerToEndpoints(targets, src.key, extracted, false);
-                if (delivered > 0) {
-                    movedAny = true;
-                    budget -= delivered;
-                }
-            }
+            movedAny = EnergyTransfer.transfer(sources.stream().map(endpoint -> endpoint.storage).toList(),
+                    targets.stream().map(endpoint -> endpoint.storage).toList()) > 0L;
         } finally {
             exitRoutingGuard();
         }
@@ -229,7 +204,7 @@ public class AndesiteCableBlockEntity extends BlockEntity {
             return 0;
         }
 
-        int total = 0;
+        long total = 0L;
         try {
             Set<BlockPos> network = collectCableNetwork();
             List<EnergyEndpoint> endpoints = collectExternalEndpoints(network, null, EndpointMode.ANY);
@@ -239,7 +214,7 @@ public class AndesiteCableBlockEntity extends BlockEntity {
         } finally {
             exitRoutingGuard();
         }
-        return total;
+        return (int) Math.min(Integer.MAX_VALUE, total);
     }
 
     // Combine the energy capacity
@@ -248,7 +223,7 @@ public class AndesiteCableBlockEntity extends BlockEntity {
             return 0;
         }
 
-        int total = 0;
+        long total = 0L;
         try {
             Set<BlockPos> network = collectCableNetwork();
             List<EnergyEndpoint> endpoints = collectExternalEndpoints(network, null, EndpointMode.ANY);
@@ -258,7 +233,7 @@ public class AndesiteCableBlockEntity extends BlockEntity {
         } finally {
             exitRoutingGuard();
         }
-        return total;
+        return (int) Math.min(Integer.MAX_VALUE, total);
     }
 
     // Collect the cable network
@@ -303,6 +278,7 @@ public class AndesiteCableBlockEntity extends BlockEntity {
                                                           EndpointMode mode) {
         List<EnergyEndpoint> endpoints = new ArrayList<>();
         Set<EndpointKey> seen = new HashSet<>();
+        Set<IEnergyStorage> seenStorages = Collections.newSetFromMap(new IdentityHashMap<>());
 
         for (BlockPos cablePos : network) {
             if (level == null || !level.isLoaded(cablePos)) {
@@ -333,7 +309,7 @@ public class AndesiteCableBlockEntity extends BlockEntity {
                 }
 
                 IEnergyStorage storage = level.getCapability(Capabilities.EnergyStorage.BLOCK, endpointPos, endpointSide);
-                if (storage == null || !mode.accepts(storage)) {
+                if (storage == null || !mode.accepts(storage) || !seenStorages.add(storage)) {
                     continue;
                 }
                 endpoints.add(new EnergyEndpoint(key, storage));

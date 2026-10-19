@@ -92,6 +92,8 @@ public final class CTClientBootstrap {
             evt.enqueueWork(() -> {
                 com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer.setMinimumRefreshRate(
                         () -> com.rieno.gadgetsandgizmos.config.CTConfigs.CLIENT.cameraMinimumRefreshRate.get());
+                com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer.setResolution(
+                        () -> com.rieno.gadgetsandgizmos.config.CTConfigs.CLIENT.cameraFeedResolution.get());
                 if (ModList.get().isLoaded("veil")) VeilColoredLightBackend.install();
                 SoftParticleRenderTypes.setShaderPackActiveSupplier(ShaderPackClientCompat::isActive);
                 if (ShaderPackClientCompat.canBindWorldTarget()) {
@@ -104,6 +106,8 @@ public final class CTClientBootstrap {
                 SmartStorageConnectedTextures.register();
                 registerAccDisplayRenderLayers();
                 registerIonThrusterItemModel();
+                if(net.neoforged.fml.ModList.get().isLoaded("curios"))
+                    com.rieno.gadgetsandgizmos.compat.curios.client.CuriosHeadwearCompat.register();
                 CTClientRenderers.registerVisualizers();
             });
         });
@@ -224,6 +228,8 @@ public final class CTClientBootstrap {
         NeoForge.EVENT_BUS.addListener(ShippingManifestClientHandler::onMouseScrolling);
         NeoForge.EVENT_BUS.addListener(AccDisplayGuiProjection::onMouseScrolling);
         NeoForge.EVENT_BUS.addListener(AccDisplayGuiProjection::onClientTick);
+        NeoForge.EVENT_BUS.addListener(AccHologramWidgetClient::onInteraction);
+        NeoForge.EVENT_BUS.addListener(AccHologramWidgetClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(ShippingRouteSplineClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletGuiProjection::onClientTick);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletGuiProjection::onRenderFrame);

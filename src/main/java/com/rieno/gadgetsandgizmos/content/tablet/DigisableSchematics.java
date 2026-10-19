@@ -16,17 +16,18 @@ import com.rieno.gadgetsandgizmos.content.PlayerMannequinEntity;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinVariants;
 import com.rieno.gadgetsandgizmos.content.WorkerStorageEndpoint;
 import com.rieno.gadgetsandgizmos.lib.access.WorldAccessPolicy;
-import com.rieno.gadgetsandgizmos.lib.inventory.ContainerAccessRegistry;
 import com.rieno.gadgetsandgizmos.lib.physics.archive.SchematicMaterials;
 import com.rieno.gadgetsandgizmos.lib.physics.archive.SchematicClientFiles;
 import com.rieno.gadgetsandgizmos.lib.physics.archive.SubLevelSchematic;
-import com.rieno.gadgetsandgizmos.lib.physics.archive.SubLevelSchematicArchive;
+import com.rieno.gadgetsandgizmos.lib.physics.archive.SubLevelSchematicCapture;
+import com.rieno.gadgetsandgizmos.lib.physics.archive.SchematicCatalogue;
 import com.rieno.gadgetsandgizmos.lib.physics.archive.SubLevelSchematicBuild;
 import com.rieno.gadgetsandgizmos.lib.physics.archive.SubLevelSchematicFiles;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAction;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionContext;
 import com.rieno.gadgetsandgizmos.registry.CTEntityTypes;
 import net.minecraft.Util;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.network.chat.Component;
@@ -87,9 +88,9 @@ public final class DigisableSchematics{
                 String[] args = val.split("\\|", 2);
                 if(args.length != 2) throw new IllegalArgumentException("Enter a schematic name");
                 throttle(ctx, session);
-                var schematic = SubLevelSchematicArchive.capture(ctx.player(), UUID.fromString(args[0]),
-                        TabletAppsServerConfig.BODIES.get(), TabletAppsServerConfig.BLOCKS.get());
-                String name = SubLevelSchematicFiles.save(ctx.player().server, args[1], schematic);
+                var schematic = SubLevelSchematicCapture.capture(ctx.player(), UUID.fromString(args[0]),
+                        TabletAppsServerConfig.STORE_RANGE.get(), TabletAppsServerConfig.BODIES.get(), TabletAppsServerConfig.BLOCKS.get());
+                String name = SubLevelSchematicFiles.save(ctx.player().server, args[1], schematic, PaidTabletApps.DIGISABLE.id());
                 message = "Saved schematics/" + name;
             }
             case "pair_network" -> {
@@ -122,7 +123,7 @@ public final class DigisableSchematics{
                 SchematicMaterials.Reservation materials = ctx.player().isCreative() ? null
                         : SchematicMaterials.reserve(ctx.player(), target, session.requirements, endpoints(ctx));
                 try{
-                    session.build = new SubLevelSchematicBuild(ctx.player(), session.schematic, target, turn, 4);
+                    session.build = SubLevelSchematicBuild.prepare(ctx.player(), session.schematic, target, turn, 4);
                     session.materials = materials;
                     session.ctx = ctx;
                     session.origin = target;
@@ -156,10 +157,16 @@ public final class DigisableSchematics{
     static void append(TabletActionContext ctx, CompoundTag data) throws IOException{
         data.putBoolean("SchematicsAllowed", TabletAppsServerConfig.SCHEMATICS.get());
         data.putBoolean("Creative", ctx.player().isCreative());
+        data.putInt("SchematicMaximumBodies", TabletAppsServerConfig.BODIES.get());
+        data.putInt("SchematicMaximumBlocks", TabletAppsServerConfig.BLOCKS.get());
         if(!TabletAppsServerConfig.SCHEMATICS.get()) return;
         ListTag files = new ListTag();
-        for(var file : SubLevelSchematicFiles.catalogue(ctx.player().server)){
-            CompoundTag row = new CompoundTag(); row.putUUID("Id", file.id()); row.putString("Name", file.name()); files.add(row);
+        for(var inspected : SchematicCatalogue.catalogue(SubLevelSchematicFiles.directory(ctx.player().server), "",
+                ctx.player().registryAccess().lookupOrThrow(Registries.BLOCK),
+                TabletAppsServerConfig.BODIES.get(), TabletAppsServerConfig.BLOCKS.get())){
+            var file = inspected.file();
+            CompoundTag row = new CompoundTag(); row.putUUID("Id", file.id()); row.putString("Name", file.name());
+            row.putString("Format", inspected.format().name()); row.putString("Source", inspected.source().toString()); files.add(row);
         }
         data.put("Schematics", files);
         data.putString("SharedSchematicFolder", ctx.player().server.isDedicatedServer() ? "server/schematics" : "world/schematics");
@@ -285,8 +292,7 @@ public final class DigisableSchematics{
         Map<UUID, WorkerStorageEndpoint> res = new LinkedHashMap<>();
         for(WorkerStorageEndpoint endpoint : WorkerStorageEndpoint.linked(acc, false)){
             if(!endpoint.acceptsDelivery() || !endpoint.isAvailable() || endpoint.level() != ctx.player().serverLevel()) continue;
-            if(!WorldAccessPolicy.canAccessLocal(ctx.player(), ctx.player().serverLevel(), endpoint.subLevelId(), endpoint.position())
-                    || !ContainerAccessRegistry.canOpen(ctx.player(), endpoint.level(), endpoint.position())) continue;
+            if(!WorldAccessPolicy.canAccessLocal(ctx.player(), ctx.player().serverLevel(), endpoint.subLevelId(), endpoint.position())) continue;
             res.putIfAbsent(endpoint.storageId(), endpoint);
         }
         if(res.isEmpty()) throw new IllegalArgumentException("The paired ACC has no accessible loaded Worker item storage");

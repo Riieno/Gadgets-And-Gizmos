@@ -33,7 +33,7 @@ import net.minecraft.world.phys.BlockHitResult;
 
 import java.util.UUID;
 
-// Configure attached cargo through the persistent container automation API
+// Inspect attached cargo and configure desired stock through the library API
 final class ManifestApp{
     private ManifestApp(){}
 
@@ -55,6 +55,8 @@ final class ManifestApp{
             PaidTabletApps.snapshot(ctx, action.appId(), data);
             return "Stopped inspecting container";
         }
+        if(!"refresh".equals(action.actionId()) && !"inspect".equals(action.actionId())
+                && !"stock".equals(action.actionId())) throw new IllegalArgumentException("Unknown Manifest action");
         if("inspect".equals(action.actionId())) inspectLookedAt(ctx);
         BlockEntity target = target(ctx);
         if(target == null && "refresh".equals(action.actionId())){
@@ -69,7 +71,6 @@ final class ManifestApp{
         }
         TabletAppTargets.requireAccess(ctx, target);
         if(!ctx.placedSource()) requireNearby(ctx.player(), target);
-        if(!com.rieno.gadgetsandgizmos.lib.inventory.ContainerAccessRegistry.canOpen(ctx.player(), target.getLevel(), target.getBlockPos())) throw new IllegalArgumentException("This container is locked by its owner");
         var id = SimulatedHelper.getContainingSubLevelId(target);
         var store = ContainerAutomationStore.get(ctx.player().serverLevel());
         ContainerAutomation config = store.find(id, target.getBlockPos());
@@ -79,17 +80,6 @@ final class ManifestApp{
         if(!"refresh".equals(action.actionId()) && !"inspect".equals(action.actionId())){
             if(!config.claim(ctx.player().getUUID()) && !ctx.player().hasPermissions(2)) throw new IllegalArgumentException("Only the container owner or an operator can change its settings");
             switch(action.actionId()){
-                case "filter" -> {
-                    if("clear".equals(val)) config.setFilter(ItemStack.EMPTY);
-                    else{
-                        ItemStack filter = ctx.player().getOffhandItem();
-                        if(filter.isEmpty()) throw new IllegalArgumentException("Hold a Create filter or an item in your offhand");
-                        config.setFilter(filter);
-                    }
-                }
-                case "lock" -> config.setLocked(!config.locked());
-                case "push" -> config.setPush(!config.push());
-                case "pull" -> config.setPull(!config.pull());
                 case "stock" -> {
                     String[] args = val.split("\\|", 3);
                     if(args.length < 2) throw new IllegalArgumentException("Enter an item and desired stock amount");
@@ -102,7 +92,6 @@ final class ManifestApp{
                 default -> throw new IllegalArgumentException("Unknown Manifest action");
             }
             store.setDirty();
-            target.getLevel().invalidateCapabilities(target.getBlockPos());
         }
         CompoundTag data = config.toTag(target.getLevel().registryAccess());
         data.merge(ContainerContentsSnapshot.capture(target));
@@ -131,7 +120,6 @@ final class ManifestApp{
         if(!readable(be)) return false;
         requireNearby(player, be);
         if(!com.rieno.gadgetsandgizmos.lib.access.WorldAccessPolicy.canAccessLocal(player, player.serverLevel(), SimulatedHelper.getContainingSubLevelId(be), be.getBlockPos())) return false;
-        if(!com.rieno.gadgetsandgizmos.lib.inventory.ContainerAccessRegistry.canOpen(player, be.getLevel(), be.getBlockPos())) throw new IllegalArgumentException("This container is locked by its owner");
         DiagnosticTabletAppStorage.addBinding(player.server, tabletId, PaidTabletApps.MANIFEST.id(), binding, true);
         return true;
     }

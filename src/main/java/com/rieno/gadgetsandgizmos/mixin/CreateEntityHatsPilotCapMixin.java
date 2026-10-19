@@ -11,6 +11,7 @@ package com.rieno.gadgetsandgizmos.mixin;
 import com.rieno.gadgetsandgizmos.content.ShippingSchedulePilot;
 import com.rieno.gadgetsandgizmos.lib.client.render.EntityRenderRoleCache;
 import com.rieno.gadgetsandgizmos.lib.client.render.HeadwearRenderSource;
+import com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer;
 import com.rieno.gadgetsandgizmos.neoforge.client.CTPartialModels;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
 import com.simibubi.create.content.equipment.hats.EntityHats;
@@ -36,6 +37,10 @@ public class CreateEntityHatsPilotCapMixin {
                                                  CallbackInfoReturnable<PartialModel> callback) {
         if (wearer == null) return;
         LivingEntity source = HeadwearRenderSource.resolve(wearer);
+        if (ViewSceneRenderer.hidesHead(wearer) || ViewSceneRenderer.hidesHead(source)) {
+            callback.setReturnValue(null);
+            return;
+        }
         var head = source.getItemBySlot(EquipmentSlot.HEAD);
         if(CTItems.PILOT_CAP != null && head.is(CTItems.PILOT_CAP.get())){
             callback.setReturnValue(CTPartialModels.PILOT_CAP);

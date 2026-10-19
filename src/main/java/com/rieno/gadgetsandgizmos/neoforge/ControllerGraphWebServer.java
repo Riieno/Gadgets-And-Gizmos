@@ -74,6 +74,8 @@ public final class ControllerGraphWebServer {
             "/index.html", new StaticResource("index.html", "text/html; charset=utf-8"),
             "/app.css", new StaticResource("app.css", "text/css; charset=utf-8"),
             "/app.js", new StaticResource("app.js", "text/javascript; charset=utf-8"),
+            "/nodes.json", new StaticResource("nodes.json", "application/json; charset=utf-8"),
+            "/graph-nodes.js", new StaticResource("graph-nodes.js", "text/javascript; charset=utf-8"),
             "/gag_logo.png", new StaticResource("gag_logo.png", "image/png"),
             "/fonts/PixelifySans-Variable.ttf",
             new StaticResource("fonts/PixelifySans-Variable.ttf", "font/ttf"),
@@ -480,38 +482,53 @@ public final class ControllerGraphWebServer {
         }
     }
 
-    // Get the node catalog JSON
-    static JsonObject nodeCatalogJson() {
+    // Export default data and resolved ports through the shared library schema
+    static JsonObject nodeCatalogJson(){
         JsonObject root = new JsonObject();
+        root.addProperty("schemaVersion", 2);
+        root.addProperty("graphVersion", AdvancedGraphDocument.CURRENT_VERSION);
         JsonArray definitions = new JsonArray();
-        for (AdvancedGraphCatalog.Definition definition : AdvancedGraphCatalog.all()) {
-            JsonObject node = new JsonObject();
-            node.addProperty("id", definition.id());
-            node.addProperty("name", AdvancedGraphCatalog.displayName(definition.id()));
-            node.addProperty("category", definition.category());
-            node.addProperty("categoryName", AdvancedGraphCatalog.categoryName(definition.category()));
-            node.addProperty("color", String.format(Locale.ROOT, "#%06X",
-                    AdvancedGraphCatalog.categoryColor(definition.category()) & 0xFFFFFF));
-            node.addProperty("stateful", definition.stateful());
-            node.add("inputs", GSON.toJsonTree(orderedPorts(definition.inputs())));
-            node.add("outputs", GSON.toJsonTree(orderedPorts(definition.outputs())));
+        for(AdvancedGraphCatalog.Definition definition : AdvancedGraphCatalog.all()){
+            var data = com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphNodeFactory.createDefaultData(definition.id(), null);
+            var sample = new AdvancedGraphDocument.Node("", definition.id(), "", 0, 0, data);
+            JsonObject node = com.rieno.gadgetsandgizmos.lib.graph.GraphWebCatalog.node(
+                    AdvancedGraphCatalog.registry().get(definition.id()), AdvancedGraphCatalog.displayName(definition.id()),
+                    AdvancedGraphCatalog.categoryName(definition.category()), AdvancedGraphCatalog.categoryColor(definition.category()),
+                    data, AdvancedGraphCatalog.inputs(sample), AdvancedGraphCatalog.outputs(sample));
+            if("pulse_if".equals(definition.id())){
+                JsonObject matching = new JsonObject();matching.addProperty("b", "a");node.add("matchingInputs", matching);
+            }
+            if(com.rieno.gadgetsandgizmos.content.advanced.GraphSignalRange.usesValueType(definition.id())){
+                JsonArray values = new JsonArray();
+                com.rieno.gadgetsandgizmos.lib.control.SignalValueType.optionIds().forEach(values::add);
+                node.getAsJsonObject("properties").getAsJsonObject("SignalValueType").add("options", values);
+            }
+            JsonArray variants = new JsonArray();
+            var options = data.getCompound("InputOptions");
+            for(String selector : options.getAllKeys()){
+                JsonArray choices = new JsonArray();
+                boolean changesPorts = false;
+                for(var raw : options.getList(selector, 8)){
+                    var configured = data.copy();
+                    var value = new net.minecraft.nbt.CompoundTag();
+                    value.putString("Type", "string");
+                    var payload = new net.minecraft.nbt.CompoundTag();
+                    payload.putString("Value", raw.getAsString());value.put("Payload", payload);
+                    var fields = configured.getCompound("Defaults");fields.put(selector, value);configured.put("Defaults", fields);
+                    var variant = new AdvancedGraphDocument.Node("", definition.id(), "", 0, 0, configured);
+                    var inputs = AdvancedGraphCatalog.inputs(variant);var outputs = AdvancedGraphCatalog.outputs(variant);
+                    changesPorts |= !inputs.equals(AdvancedGraphCatalog.inputs(sample)) || !outputs.equals(AdvancedGraphCatalog.outputs(sample));
+                    JsonObject choice = new JsonObject();choice.addProperty("selector", selector);choice.addProperty("value", raw.getAsString());
+                    choice.add("inputs", com.rieno.gadgetsandgizmos.lib.graph.GraphWebCatalog.ports(inputs));
+                    choice.add("outputs", com.rieno.gadgetsandgizmos.lib.graph.GraphWebCatalog.ports(outputs));choices.add(choice);
+                }
+                if(changesPorts) choices.forEach(variants::add);
+            }
+            node.add("variants", variants);
             definitions.add(node);
         }
         root.add("nodes", definitions);
         return root;
-    }
-
-    // Get the ordered ports
-    private static Map<String, String> orderedPorts(Map<String, String> ports) {
-        Map<String, String> ordered = new LinkedHashMap<>();
-        ports.entrySet().stream()
-                .sorted((left, right) -> {
-                    int execution = Boolean.compare(!"exec".equals(left.getValue()),
-                            !"exec".equals(right.getValue()));
-                    return execution != 0 ? execution : left.getKey().compareToIgnoreCase(right.getKey());
-                })
-                .forEach(entry -> ordered.put(entry.getKey(), entry.getValue()));
-        return ordered;
     }
 
     // Get the current graph JSON

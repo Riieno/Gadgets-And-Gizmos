@@ -1,5 +1,6 @@
 package com.rieno.gadgetsandgizmos.content;
 
+import com.rieno.gadgetsandgizmos.lib.create.ConnectedVaultBlockEntity;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.simibubi.create.api.packager.InventoryIdentifier;
 import com.simibubi.create.content.logistics.vault.ItemVaultBlockEntity;
@@ -19,7 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 // Store twenty-five percent more item slots while retaining Create vault multiblocks
-public class SmartVaultBlockEntity extends ItemVaultBlockEntity {
+public class SmartVaultBlockEntity extends ConnectedVaultBlockEntity {
     // Initialize the smart vault block entity
     public SmartVaultBlockEntity(BlockPos pos, BlockState state) {
         super(CTBlockEntities.SMART_VAULT.get(), pos, state);

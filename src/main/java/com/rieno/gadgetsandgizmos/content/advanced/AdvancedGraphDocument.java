@@ -21,6 +21,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.HashSet;
 
 // Store one graph document and keep its node, wire and nested function data safe to copy
 public final class AdvancedGraphDocument
@@ -203,6 +204,7 @@ public final class AdvancedGraphDocument
             if (val != null) {
                 hash = 31 * hash + val.type().hashCode();
                 hash = 31 * hash + tagFingerprint(val.payload());
+                hash = 31 * hash + val.entryOrder().hashCode();
             }
         }
         return hash;
@@ -219,7 +221,8 @@ public final class AdvancedGraphDocument
             Collections.sort(keys);
             for (String key : keys) {
                 if (AdvancedGraphImageAssets.BASE64_CHUNKS.equals(key)
-                        || EDITOR_COLLAPSED_KEY.equals(key)) {
+                        || EDITOR_COLLAPSED_KEY.equals(key)
+                        || com.rieno.gadgetsandgizmos.lib.graph.GraphNumberDisplay.PRECISE_VALUES_TAG.equals(key)) {
                     continue;
                 }
                 hash = 31 * hash + key.hashCode();
@@ -469,6 +472,10 @@ public final class AdvancedGraphDocument
             }
         }
         // ------------------------------------PORT NORMALIZATION------------------------------------
+        migrateNamedDockInputs(graph.nodes, graph.edges);
+        for(FunctionGraph function : graph.functions) migrateNamedDockInputs(function.nodes, function.edges);
+        removeYawHoldBooleanEdges(graph.nodes, graph.edges);
+        for(FunctionGraph function : graph.functions) removeYawHoldBooleanEdges(function.nodes, function.edges);
         if(storedVersion < 11){
             migrateShipSpeedFractions(graph.nodes);
             for(FunctionGraph function : graph.functions) migrateShipSpeedFractions(function.nodes);
@@ -477,6 +484,12 @@ public final class AdvancedGraphDocument
         for(FunctionGraph function : graph.functions) migrateFlightControlBindings(function.nodes, function.edges);
         migrateCameraRayPorts(graph.nodes, graph.edges);
         for(FunctionGraph function : graph.functions) migrateCameraRayPorts(function.nodes, function.edges);
+        for(Node node : graph.nodes) AdvancedGraphTargetSignals.upgrade(node, graph.edges);
+        for(FunctionGraph function : graph.functions){
+            for(Node node : function.nodes) AdvancedGraphTargetSignals.upgrade(node, function.edges);
+        }
+        migrateCounterDefaults(graph.nodes);
+        for(FunctionGraph function : graph.functions) migrateCounterDefaults(function.nodes);
         ensureSignalValueTypes(graph.nodes);
         ensureAccDisplayDefaults(graph.nodes);
         removeInactiveCrnTextEdges(graph.nodes, graph.edges);
@@ -488,6 +501,22 @@ public final class AdvancedGraphDocument
             syncAccDisplayWidgets(function.nodes, function.edges);
         }
         return graph;
+    }
+
+    // Preserve legacy counter direction when replacing the selector with a boolean input
+    private static void migrateCounterDefaults(List<Node> nodes){
+        for(Node node : nodes){
+            if(!"count".equals(node.type())) continue;
+            CompoundTag defaults = node.data().getCompound("Defaults");
+            if(!defaults.contains("decrement")){
+                defaults.put("decrement", Value.bool(com.rieno.gadgetsandgizmos.lib.graph.GraphCounters.Direction
+                        .fromId(node.data().getString(AdvancedGraphCatalog.COUNT_DIRECTION_TAG))
+                        == com.rieno.gadgetsandgizmos.lib.graph.GraphCounters.Direction.DECREMENT).toTag());
+            }
+            if(!defaults.contains("remember_count")) defaults.put("remember_count", Value.bool(false).toTag());
+            node.data().put("Defaults", defaults);
+            node.data().remove(AdvancedGraphCatalog.COUNT_DIRECTION_TAG);
+        }
     }
 
     // Remove retired node types and every edge which referenced them during graph load.
@@ -505,6 +534,36 @@ public final class AdvancedGraphDocument
         edges.removeIf(edge -> edge != null
                 && (retiredNodeIds.contains(edge.fromNode())
                 || retiredNodeIds.contains(edge.toNode())));
+    }
+
+    // Coordinate-based graph docking nodes require an explicit dock name after loading
+    private static void migrateNamedDockInputs(List<Node> nodes, List<Edge> edges){
+        Set<String> docks = new HashSet<>();
+        Set<String> ports = Set.of("exec", "dock", "speed");
+        for(Node node : nodes){
+            if(!"ship_dock".equals(node.type())) continue;
+            docks.add(node.id());
+            for(String key : List.of("Defaults", "DynamicInputs", "InputLabels", "InputOptions",
+                    "InputTooltips", "PersistentPorts", "PersistentPortValues")){
+                CompoundTag data = node.data().getCompound(key);
+                if("PersistentPorts".equals(key) || "PersistentPortValues".equals(key)){
+                    data.getAllKeys().removeIf(port -> port.startsWith("input:") && !ports.contains(port.substring(6)));
+                }else{
+                    data.getAllKeys().removeIf(port -> !ports.contains(port));
+                }
+            }
+            CompoundTag defaults = node.data().getCompound("Defaults");
+            if(!defaults.contains("dock")) defaults.put("dock", Value.string("").toTag());
+            node.data().put("Defaults", defaults);
+        }
+        edges.removeIf(edge -> docks.contains(edge.toNode()) && !ports.contains(edge.toPort()));
+    }
+
+    // Remove wires to the retired Hold input without disturbing other SCM connections
+    private static void removeYawHoldBooleanEdges(List<Node> nodes, List<Edge> edges){
+        Set<String> holds = new HashSet<>();
+        for(Node node : nodes) if("ship_hold_yaw".equals(node.type())) holds.add(node.id());
+        edges.removeIf(edge -> holds.contains(edge.toNode()) && "hold".equals(edge.toPort()));
     }
 
     // Give loaded graphs and nested functions an explicit output range
@@ -530,7 +589,7 @@ public final class AdvancedGraphDocument
                 defaults.put("visible", Value.bool(true).toTag());
             }
             // ------------------------------------WIDGET DEFAULTS------------------------------------
-            if (isAccDisplayWidget(node.type())) {
+            if (isAccDisplayWidget(node.type()) && !data.getBoolean("DesignerWidget")) {
                 if (!defaults.contains("label")) {
                     defaults.put("label", Value.string("Widget").toTag());
                 }
@@ -673,9 +732,8 @@ public final class AdvancedGraphDocument
     // Sync the ACC display widgets
     private static void syncAccDisplayWidgets(List<Node> nodes, List<Edge> edges) {
         for (Node node : nodes) {
-            if (isAccDisplayWidget(node.type())) {
-                AdvancedHudInteractions.synchronize(node, edges);
-            }
+            if (isAccDisplayWidget(node.type())) AdvancedDisplayWidgets.migrate(node, edges);
+            AdvancedHudInteractions.synchronize(node, edges);
         }
     }
 
@@ -940,6 +998,7 @@ public final class AdvancedGraphDocument
             CompoundTag labels = node.data().getCompound(AdvancedGraphCatalog.INPUT_LABELS_TAG);
             if(!labels.contains("auto_tracking")) labels.putString("auto_tracking", "AutoTracking");
             if(!labels.contains("lock_target")) labels.putString("lock_target", "LockTarget");
+            if(!labels.contains("interact_with_hit")) labels.putString("interact_with_hit", "Interact with Hit");
             node.data().put(AdvancedGraphCatalog.INPUT_LABELS_TAG, labels);
             for(String name : List.of("Defaults", AdvancedGraphPortState.PERSISTENT_VALUES_TAG)){
                 CompoundTag values = node.data().getCompound(name);
@@ -985,6 +1044,7 @@ public final class AdvancedGraphDocument
             type = normalize(type);
             label = label == null ? "" : label;
             data = data == null ? new CompoundTag() : data.copy();
+            AdvancedGraphNodeFactory.putScmInputDefaults(type, data);
         }
 
         // Write the node data
@@ -1037,11 +1097,16 @@ public final class AdvancedGraphDocument
     }
 
     // Store the value
-    public record Value(String type, CompoundTag payload) {
+    public record Value(String type, CompoundTag payload, List<String> entryOrder) {
+        public Value(String type, CompoundTag payload){
+            this(type, payload, List.of());
+        }
         // Initialize the value
         public Value {
             type = normalize(type);
             payload = payload == null ? new CompoundTag() : payload.copy();
+            entryOrder = "map".equals(type) || "list".equals(type)
+                    ? com.rieno.gadgetsandgizmos.lib.graph.GraphPortOrder.keys(payload.getAllKeys(), entryOrder) : List.of();
         }
 
         // Read the numeric value
@@ -1092,6 +1157,10 @@ public final class AdvancedGraphDocument
             return new Value("map", values);
         }
 
+        public static Value map(CompoundTag values, List<String> order){
+            return new Value("map", values, order);
+        }
+
         // Get the value as number
         public double asNumber() {
             return payload.getDouble("Value");
@@ -1112,12 +1181,16 @@ public final class AdvancedGraphDocument
             CompoundTag tag = new CompoundTag();
             tag.putString("Type", type);
             tag.put("Payload", payload.copy());
+            if(!entryOrder.isEmpty()) com.rieno.gadgetsandgizmos.lib.graph.GraphPortOrder.write(
+                    tag, com.rieno.gadgetsandgizmos.lib.graph.GraphPortOrder.ENTRY_ORDER, entryOrder);
             return tag;
         }
 
         // Read the value data
-        static Value fromTag(CompoundTag tag) {
-            return new Value(tag.getString("Type"), tag.getCompound("Payload"));
+        public static Value fromTag(CompoundTag tag) {
+            return new Value(tag.getString("Type"), tag.getCompound("Payload"),
+                    com.rieno.gadgetsandgizmos.lib.graph.GraphPortOrder.read(tag,
+                            com.rieno.gadgetsandgizmos.lib.graph.GraphPortOrder.ENTRY_ORDER));
         }
     }
 

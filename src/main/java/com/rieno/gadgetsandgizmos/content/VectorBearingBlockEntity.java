@@ -850,6 +850,16 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         return resolveHeadDirection(command.direction());
     }
 
+    // Resolve a control angle without moving the mounted head.
+    Vec3 scmHeadDirection(double x, double z){
+        return resolveHeadDirection(TiltCommand.fromDegrees(x, z, maxTiltDegrees, ControlMode.COMPUTER, true).direction());
+    }
+
+    @Override public double maximumPropellerThrust(){
+        return Math.abs(propellerThrust(mountedSailPower, AllConfigs.server().kinetics.maxRotationSpeed.get(),
+                getPropellerThrustScale()) * getCurrentAirPressure());
+    }
+
     // Get the control mode
     public ControlMode getControlMode() {
         return controlMode;
@@ -1007,6 +1017,8 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         data.put("control_mode", "string");
         data.put("active_control_mode", "string");
         data.put("propulsion_direction", "string");
+        data.put("stabilize_axis", "string");
+        data.put("keep_stable", "boolean");
         data.put("mounted", "boolean");
         data.put("mounted_sublevel", "string");
         return data;
@@ -1020,6 +1032,8 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         data.put("tilt_z", "number");
         data.put("stabilize_axis", "string");
         data.put("keep_stable", "boolean");
+        data.put("max_tilt", "number");
+        data.put("control_mode", "string");
         data.put("propulsion_direction", "string");
         return data;
     }

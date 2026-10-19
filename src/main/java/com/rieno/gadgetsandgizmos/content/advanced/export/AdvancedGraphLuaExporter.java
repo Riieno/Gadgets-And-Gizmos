@@ -252,6 +252,7 @@ public final class AdvancedGraphLuaExporter {
                     .append("local __evaluating = {}\n")
                     .append("local __valueFns = {}\n")
                     .append("local __execFns = {}\n")
+                    .append("local __latches = {}\n")
                     .append("local __pending = {}\n\n")
                     .append("local function __divide(a, b)\n")
                     .append("    if b == 0 then return 0 end\n")
@@ -598,6 +599,14 @@ public final class AdvancedGraphLuaExporter {
                             node.id());
                 };
             }
+            if(port != null && !port.isEmpty()){
+                String property = Character.toUpperCase(port.charAt(0)) + port.substring(1);
+                CompoundTag data = node.data();
+                if(data.contains(property, Tag.TAG_DOUBLE) || data.contains(property, Tag.TAG_INT)
+                        || data.contains(property, Tag.TAG_FLOAT)) return luaNumber(data.getDouble(property));
+                if(data.contains(property, Tag.TAG_BYTE)) return Boolean.toString(data.getBoolean(property));
+                if(data.contains(property, Tag.TAG_STRING)) return luaString(data.getString(property));
+            }
             return switch (declaredType) {
                 case "boolean" -> "false";
                 case "string" -> "\"\"";
@@ -673,6 +682,23 @@ public final class AdvancedGraphLuaExporter {
                 + ", " + context.input("b") + ")");
         registerData("average", context -> "((" + context.input("a") + " + "
                 + context.input("b") + ") / 2)");
+        registerBinary("xor", "~=");
+        registerBinary("xnor", "==");
+        registerData("nor", context -> "(not ((" + context.input("a") + ") or (" + context.input("b") + ")))");
+        registerData("nand", context -> "(not ((" + context.input("a") + ") and (" + context.input("b") + ")))");
+        registerEmitter("sr_latch", context -> {
+            String key = context.luaString(context.node().id());
+            if(context.phase() == Phase.DATA){
+                requirePort(context, "state");
+                context.result("(__latches[" + key + "] == true)");
+                return;
+            }
+            String incoming = context.incomingPort();
+            context.line("if " + incoming + " ~= \"set\" and " + incoming + " ~= \"reset\" then return end");
+            context.line("__latches[" + key + "] = (" + incoming + " == \"set\")");
+            context.line("__cache = {}");
+            context.follow("exec");
+        });
         registerUnary("absolute", "value", "math.abs");
         registerUnary("sin", "value", "math.sin");
         registerUnary("cos", "value", "math.cos");
@@ -716,8 +742,9 @@ public final class AdvancedGraphLuaExporter {
             context.result("__variables[" + variable + "]");
             return;
         }
-        String value = context.connected("value")
-                ? context.input("value") : context.input("default");
+        String input = com.rieno.gadgetsandgizmos.lib.graph.GraphInputDefaults.selectPort(
+                context.node().data(), "value", "default", context.connected("value"));
+        String value = context.input(input);
         context.line("local __newValue = " + value);
         context.line("__variables[" + variable + "] = __newValue");
         context.line("__cache = {}");
