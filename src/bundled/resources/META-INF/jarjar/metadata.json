@@ -18,8 +18,8 @@
         "artifact": "${library_mod_id}"
       },
       "version": {
-        "range": "[${mod_version},)",
-        "artifactVersion": "${mod_version}"
+        "range": "[${library_mod_version},)",
+        "artifactVersion": "${library_mod_version}"
       },
       "path": "${library_nested_jar_path}",
       "isObfuscated": false

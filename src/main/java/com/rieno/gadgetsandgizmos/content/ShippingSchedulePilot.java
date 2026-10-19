@@ -37,6 +37,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityLookupApi;
+import com.simibubi.create.AllDataComponents;
+import net.minecraft.server.level.ServerLevel;
 
 // Resolve the seated pilot assigned to a shipping schedule without scanning unrelated entities
 public final class ShippingSchedulePilot {
@@ -205,6 +208,7 @@ public final class ShippingSchedulePilot {
             return;
         }
         ItemStack displayCopy = held.copyWithCount(1);
+        ShippingScheduleRouteData.bind(displayCopy, controller.getScmPersistenceId());
         pilot.setItemSlot(EquipmentSlot.MAINHAND, displayCopy);
         pilot.getPersistentData().putBoolean(SHIPPING_PILOT_TAG, true);
         prepareTrainHat(player, pilot);
@@ -333,35 +337,29 @@ public final class ShippingSchedulePilot {
     // Find the controller
     private static AdvancedContraptionControllerBlockEntity findController(LivingEntity pilot, SeatEntity seat) {
         Object subLevel = SimulatedHelper.getEntityTrackingSubLevel(pilot);
-        List<BlockEntity> candidates = new ArrayList<>();
-        if (subLevel != null) {
-            candidates.addAll(SubLevelBlockEntityCollector.getBlockEntities(subLevel));
-        } else {
-            BlockPos center = seat.blockPosition();
-            for (BlockPos pos : BlockPos.betweenClosed(center.offset(-4, -2, -4), center.offset(4, 2, 4))) {
-                BlockEntity blockEntity = pilot.level().getBlockEntity(pos);
-                if (blockEntity != null) {
-                    candidates.add(blockEntity);
-                }
-            }
-        }
+        UUID subLevelId = SimulatedHelper.getSubLevelId(subLevel);
         BlockPos seatPos = seat.blockPosition();
         AdvancedContraptionControllerBlockEntity closest = null;
         double closestDistance = Double.MAX_VALUE;
-        for (BlockEntity blockEntity : candidates) {
+        boolean tied = false;
+        for(BlockPos pos : BlockPos.betweenClosed(seatPos.offset(-2, -1, -2), seatPos.offset(2, 1, 2))){
+            BlockEntity blockEntity = BlockEntityLookupApi.findLoadedExact(pilot.level(), subLevelId, pos);
             if (!(blockEntity instanceof AdvancedContraptionControllerBlockEntity controller)) {
                 continue;
             }
-            Direction facing = controller.getBlockState().hasProperty(
-                    AnalogueContraptionControllerBlock.HORIZONTAL_FACING)
-                    ? controller.getBlockState().getValue(AnalogueContraptionControllerBlock.HORIZONTAL_FACING)
-                    : Direction.NORTH;
-            BlockPos frontSeat = controller.getBlockPos().relative(facing);
-            BlockPos oppositeSeat = controller.getBlockPos().relative(facing.getOpposite());
-            double distance = Math.min(frontSeat.distSqr(seatPos), oppositeSeat.distSqr(seatPos));
+            double distance = controllerSeatDistance(controller, seatPos);
             if (distance <= 2.0D && distance < closestDistance) {
                 closest = controller;
                 closestDistance = distance;
+                tied = false;
+            }else if(distance <= 2.0D && distance == closestDistance){
+                tied = true;
+            }
+        }
+        if(tied && subLevel != null){
+            for(var controller : SubLevelBlockEntityCollector.getBlockEntities(
+                    subLevel, AdvancedContraptionControllerBlockEntity.class)){
+                if(controllerSeatDistance(controller, seatPos) == closestDistance) return controller;
             }
         }
         return closest;
@@ -430,8 +428,7 @@ public final class ShippingSchedulePilot {
             AdvancedContraptionControllerBlockEntity controller
     ) {
         if (pilot == null || controller == null || !pilot.isAlive()
-                || !(pilot.getVehicle() instanceof SeatEntity seat)
-                || !(pilot.getMainHandItem().getItem() instanceof ShippingScheduleItem)) {
+                || !(pilot.getVehicle() instanceof SeatEntity seat)) {
             return false;
         }
         Object pilotSubLevel = SimulatedHelper.getEntityTrackingSubLevel(pilot);
@@ -527,5 +524,106 @@ public final class ShippingSchedulePilot {
             block.setCancellationResult(res);
             block.setCanceled(true);
         }
+    }
+
+
+    // Preserve front and back seat eligibility and the previous choice between tied controllers
+    private static double controllerSeatDistance(AdvancedContraptionControllerBlockEntity controller, BlockPos seatPos){
+        Direction facing = controllerFacing(controller);
+        return Math.min(controller.getBlockPos().relative(facing).distSqr(seatPos),
+                controller.getBlockPos().relative(facing.getOpposite()).distSqr(seatPos));
+    }
+
+
+    // Resolve an adjacent seated pilot for the ACC Schedule workspace. This deliberately does not require a held item:
+    // new schedule graphs are allowed to start a shipping route without creating a shipping schedule item.
+    public static @org.jetbrains.annotations.Nullable LivingEntity findAdjacentSeatedPilot(
+            AdvancedContraptionControllerBlockEntity controller
+    ) {
+        if (controller == null || controller.getLevel() == null) {
+            return null;
+        }
+        AABB bounds = new AABB(controller.getBlockPos()).inflate(2.0D);
+        for (SeatEntity seat : controller.getLevel().getEntitiesOfClass(SeatEntity.class, bounds)) {
+            for (Entity passenger : seat.getPassengers()) {
+                if (passenger instanceof LivingEntity pilot && isSeatedAtController(pilot, controller)) {
+                    return pilot;
+                }
+            }
+        }
+        return null;
+    }
+
+
+    // Check whether the controller has a currently valid Schedule workspace pilot.
+    public static boolean hasScheduleWorkspacePilot(AdvancedContraptionControllerBlockEntity controller) {
+        return isBlazeBurnerPilot(controller) || findAdjacentSeatedPilot(controller) != null;
+    }
+
+
+    // Read the legacy item held by the adjacent seated pilot. This fallback is
+    // deliberately read-only: it lets an ACC surface an already-running old
+    // schedule even when its runtime graph cache predates the Scratch feature.
+    public static @org.jetbrains.annotations.Nullable Schedule adjacentPilotSchedule(
+            AdvancedContraptionControllerBlockEntity controller
+    ) {
+        if (controller == null || controller.getLevel() == null) return null;
+        LivingEntity pilot = findAdjacentSeatedPilot(controller);
+        if (pilot == null) return null;
+        ItemStack stack = pilot.getMainHandItem();
+        return stack.getItem() instanceof ShippingScheduleItem
+                ? ScheduleItem.getSchedule(controller.getLevel().registryAccess(), stack) : null;
+    }
+
+
+    // Write an SCM-owned schedule to the adjacent pilot's already-held item.
+    // This is intentionally an explicit item operation: it does not create an
+    // item, install a runtime, or alter a controller-owned schedule.
+    public static boolean writeAdjacentPilotSchedule(AdvancedContraptionControllerBlockEntity controller,
+                                                     Schedule schedule) {
+        if (controller == null || schedule == null || controller.getLevel() == null) return false;
+        LivingEntity pilot = findAdjacentSeatedPilot(controller);
+        if (pilot == null) return false;
+        ItemStack held = pilot.getMainHandItem();
+        if (!(held.getItem() instanceof ShippingScheduleItem)) return false;
+        held.set(AllDataComponents.TRAIN_SCHEDULE, schedule.write(controller.getLevel().registryAccess()));
+        ShippingAutoRefuelSettings.write(held, ShippingAutoRefuelSettings.fromSchedule(schedule));
+        pilot.setItemSlot(EquipmentSlot.MAINHAND, held);
+        return true;
+    }
+
+
+    // Update the legacy physical schedule item when a paired ACC Scratch graph changes.
+    public static void syncPairedScheduleItem(AdvancedContraptionControllerBlockEntity controller,
+                                              Schedule schedule) {
+        if (controller == null || schedule == null || controller.getLevel() == null
+                || controller.getLevel().getServer() == null) {
+            return;
+        }
+        UUID pilotId = controller.getShippingSchedulePilotId();
+        if (pilotId == null || controller.hasBlazeBurnerShippingPilot()) {
+            return;
+        }
+        for (ServerLevel level : controller.getLevel().getServer().getAllLevels()) {
+            Entity entity = level.getEntity(pilotId);
+            if (!(entity instanceof LivingEntity pilot)) continue;
+            ItemStack paired = pilot.getMainHandItem();
+            if (!(paired.getItem() instanceof ShippingScheduleItem)) {
+                return;
+            }
+            paired.set(AllDataComponents.TRAIN_SCHEDULE, schedule.write(level.registryAccess()));
+            ShippingAutoRefuelSettings.write(paired, ShippingAutoRefuelSettings.fromSchedule(schedule));
+            pilot.setItemSlot(EquipmentSlot.MAINHAND, paired);
+            return;
+        }
+    }
+
+
+    // Check whether this seated entity has access to the ACC Schedule workspace
+    public static boolean isScheduleWorkspacePilot(LivingEntity pilot, SeatEntity seat) {
+        if (pilot == null || seat == null || !pilot.isAlive()) return false;
+        AdvancedContraptionControllerBlockEntity controller = findController(pilot, seat);
+        return controller != null && controller.isMountedOnShipControlModule()
+                && controller.hasShipControlModule() && isSeatedAtController(pilot, controller);
     }
 }

@@ -42249,6 +42249,10 @@ var RieStatCdnPluginStudio = (() => {
       getPortTypeForDef = (node, port, isInput) => {
         const def = NODE_DEFS[node.type];
         if (!def) return "any";
+        if (def.createThrustersSchema && globalThis.GadgetsGraphNodes) {
+          const type = globalThis.GadgetsGraphNodes.ports(def.createThrustersSchema, node.data || {}, isInput ? "inputs" : "outputs")[port];
+          if (type) return type === "exec" ? "pulse" : type;
+        }
         if (node.type === "switch" && node.data?.SwitchType === "data") {
           if (isInput && (port === "default" || /^case_\d+$/.test(port))) {
             return node.data?.SwitchCaseTypes?.[port]
@@ -42564,14 +42568,15 @@ var RieStatCdnPluginStudio = (() => {
       import_react3 = __toESM(require_react());
       init_lucide_react();
       import_jsx_runtime4 = __toESM(require_jsx_runtime());
-      NumericInput = ({ value, onChange, step = 1, disabled, className: className2 = "", inputClassName = "", onKeyDown }) => {
-        const [draft, setDraft] = (0, import_react3.useState)(String(value ?? 0));
+      NumericInput = ({ value, onChange, step = 1, disabled, className: className2 = "", inputClassName = "", onKeyDown, precise }) => {
+        const displayNumber = () => precise === undefined ? String(value ?? 0) : globalThis.GadgetsGraphNodes.format(Number(value ?? 0), precise);
+        const [draft, setDraft] = (0, import_react3.useState)(displayNumber());
         const [isFocused, setIsFocused] = (0, import_react3.useState)(false);
         (0, import_react3.useEffect)(() => {
           if (!isFocused) {
-            setDraft(String(value ?? 0));
+            setDraft(displayNumber());
           }
-        }, [value, isFocused]);
+        }, [value, isFocused, precise]);
         const commitValue = (nextRaw) => {
           const normalized = String(nextRaw ?? "");
           if (normalized.trim() === "") {
@@ -42591,7 +42596,7 @@ var RieStatCdnPluginStudio = (() => {
               inputMode: "decimal",
               value: draft,
               disabled,
-              onFocus: () => setIsFocused(true),
+              onFocus: () => { setDraft(String(value ?? 0)); setIsFocused(true); },
               onBlur: () => {
                 setIsFocused(false);
                 if (String(draft).trim() === "") {
@@ -42605,7 +42610,7 @@ var RieStatCdnPluginStudio = (() => {
                   onChange(parsed);
                   setDraft(normalized);
                 } else {
-                  setDraft(String(value ?? 0));
+                  setDraft(displayNumber());
                 }
               },
               onKeyDown,
@@ -45030,6 +45035,17 @@ var RieStatCdnPluginStudio = (() => {
       ManualPortInput = ({ node, portName, value, resolvedAccent, onChange, disabled, onOpenContextPicker }) => {
         const type = getPortTypeForDef(node, portName, true);
         const typeColor = getTypeColor(type);
+        const options = node.data?.InputOptions?.[portName];
+        if (Array.isArray(options) && options.length) return (0, import_jsx_runtime17.jsx)("select", {
+          value: value ?? options[0], disabled, title: portName,
+          className: "w-full input-bg border border-theme h-7 px-1 rounded text-xs mono",
+          onMouseDown: (event) => event.stopPropagation(), onChange: (event) => onChange(event.target.value),
+          children: options.map((option) => (0, import_jsx_runtime17.jsx)("option", { value: option, children: option }, option))
+        });
+        if (node.type === "flip_flop" && portName === "skip_pulses" || node.type === "bounded_loop" && portName === "iterations") {
+          return (0, import_jsx_runtime17.jsx)("input", { type: "number", min: 0, step: 1, value: value ?? 0,
+            className: "w-full input-bg border border-theme h-7 px-1 rounded text-xs mono", onChange: (event) => onChange(Math.max(0, Math.trunc(Number(event.target.value)))) });
+        }
         const isHANode = String(node.type || "").startsWith("ha_");
         const normalizedPort = String(portName || "").trim().toLowerCase();
         const pickerType = !isHANode ? null : normalizedPort === "entity id" || normalizedPort === "scene entity id" ? "ha-entity" : normalizedPort === "domain" ? "ha-domain" : normalizedPort === "service" ? "ha-service" : null;
@@ -45045,13 +45061,28 @@ var RieStatCdnPluginStudio = (() => {
             }
           ) });
         }
-        if (type === "color") return /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(ColorInput, { label: portName, value, resolvedValue: value?.includes("var(--accent-color)") ? resolvedAccent : value, onChange, hideLabel: true, disabled });
+        if (type === "color") {
+          const colorValue = typeof value === "number" ? `#${(value & 0xFFFFFF).toString(16).padStart(6,"0")}` : String(value || "#FFFFFF");
+          return (0, import_jsx_runtime17.jsx)(ColorInput, { label: portName, value:colorValue,
+            resolvedValue: colorValue.includes("var(--accent-color)") ? resolvedAccent : colorValue,
+            onChange: (color) => onChange(typeof value === "number" ? (value & 0xFF000000) | parseInt(color.replace("#",""),16) : color), hideLabel:true, disabled });
+        }
+        if (value && typeof value === "object" || ["list","map","vector","quaternion","frequency","target"].includes(type)) {
+          const text = JSON.stringify(value ?? (type === "list" ? [] : {}));
+          return (0, import_jsx_runtime17.jsx)("input", { type:"text", key:text, defaultValue:text, disabled,
+            title:`Edit ${portName} as JSON`, className:"w-full input-bg border border-theme h-7 px-1 rounded text-xs mono",
+            onMouseDown:(event)=>event.stopPropagation(), onBlur:(event)=>{
+              try { const parsed=JSON.parse(event.target.value);event.target.setCustomValidity("");onChange(parsed); }
+              catch { event.target.setCustomValidity("Enter valid JSON");event.target.reportValidity(); }
+            } });
+        }
         if (type === "number") {
           const numericVal = parseFloat(value);
           return /* @__PURE__ */ (0, import_jsx_runtime17.jsx)(
             NumericInput,
             {
               value: isNaN(numericVal) ? 0 : numericVal,
+              precise: Nodes.get(node.type)?.createThrustersSchema ? Boolean(node.data.EditorShowPreciseValues) : undefined,
               onChange: (v2) => onChange(v2),
               disabled,
               className: "flex-1 h-6 input-bg border rounded-[var(--ui-radius-sm)]",
@@ -358849,7 +358880,12 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
         isDynamic: nodeDef.isDynamic,
         EditorUI: nodeDef.EditorUI,
         bridgeHostRendererId: nodeDef.bridgeHostRendererId,
-        bridgeUi: nodeDef.bridgeUi
+        bridgeUi: nodeDef.bridgeUi,
+        createThrustersSchema: nodeDef.createThrustersSchema,
+        dynamicPortKind: nodeDef.dynamicPortKind,
+        dynamicPortDirection: nodeDef.dynamicPortDirection,
+        dynamicPortMinimum: nodeDef.dynamicPortMinimum,
+        dynamicPortMaximum: nodeDef.dynamicPortMaximum
       };
     }
     registerNodeFromCode(content) {
@@ -359160,7 +359196,8 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
     const graphType = createThrustersGraphType(type);
     if (graphType === "boolean") return false;
     if (graphType === "number") return 0;
-    if (["list", "map", "frequency", "target"].includes(graphType)) return {};
+    if (graphType === "list") return [];
+    if (["map", "frequency", "target"].includes(graphType)) return {};
     return "";
   }
   function createThrustersDefaultEntry(type, value) {
@@ -359350,6 +359387,16 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
           children: options.map((option) => /* @__PURE__ */ (0, import_jsx_runtime73.jsx)("option", { value: option, children: option.replace("_", " ") }, option))
         })
       ] });
+    }
+    if (property.type === "number") {
+      return (0, import_jsx_runtime73.jsxs)("label", {className:"block px-4 pb-2", children:[
+        (0, import_jsx_runtime73.jsx)("span", {className:"text-[9px] uppercase text-secondary", children:property.label}),
+        (0, import_jsx_runtime73.jsx)(NumericInput, {value:current ?? property.fallback ?? 0,
+          precise:Boolean(data.EditorShowPreciseValues), className:commonClass, onChange:(raw)=>{
+            let value=property.integer ? Math.round(raw) : raw;
+            if(property.min !== undefined)value=Math.max(property.min,value);
+            updateData({[property.key]:value});
+          }})]});
     }
     if (property.type === "boolean") {
       const enabled = Boolean(current);
@@ -359727,6 +359774,9 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
     const output = (value) => {
       outputs.value = value;
     };
+    if (id.startsWith("createthrusters:collection_")) {
+      Object.assign(outputs, globalThis.GadgetsGraphNodes.collection(id.slice("createthrusters:collection_".length), inputs.collection, inputs.value, inputs.key, inputs.index));return;
+    }
     switch (id) {
       case "constant_number":
         output(number("Value"));
@@ -359895,7 +359945,7 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
         output(inputs.value);
         return;
       case "string_concat":
-        output(text2("a") + text2("b"));
+        output(Object.keys(globalThis.GadgetsGraphNodes.ports(definition,inputs,"inputs")).map((port)=>text2(port)).join(""));
         return;
       case "str_prepend":
         outputs.Result = text2("Text") + text2("Separator") + text2("Source");
@@ -360052,6 +360102,9 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
     }
   }
   function createThrustersDynamicPortSpec(type) {
+    if (type === "string_concat") return {
+      kind:"text", direction:"inputs", minimum:1, maximum:32, replaceBase:false, inputs:{a:"string",b:"string"}, outputs:{}, data:{}
+    };
     if (type === "list_create" || type === "map_create") {
       const port = type === "list_create" ? "value_1" : "field_1";
       const label = type === "list_create" ? "Value 1" : "Field 1";
@@ -360072,7 +360125,7 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
         }
       };
     }
-    if (type === "hud_element" || type === "advanced_hud_element" || type === "acc_display_widget") {
+    if (type === "hud_element" || type === "advanced_hud_element" || type === "acc_display_widget" || type === "acc_hologram_widget") {
       return {
         kind: "hud-fields",
         direction: "inputs",
@@ -360129,6 +360182,84 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
     }
     return null;
   }
+
+  function syncCreateThrustersNode(node, connections = [], nodes = []) {
+    const definition = Nodes.get(node.type)?.createThrustersSchema;
+    if (!definition) return node;
+    let data = node.data || {};
+    if (definition.matchingInputs) {
+      data = { ...data, DynamicInputs: { ...data.DynamicInputs } };
+      for (const source of Object.values(definition.matchingInputs)) {
+        const edge = connections.find((edge) => edge.toNode === node.id && edge.toPort === source);
+        const from = edge && nodes.find((candidate) => candidate.id === edge.fromNode);
+        const type = from ? getPortTypeForDef(from, edge.fromPort, false)
+          : data.DynamicInputs[source] || globalThis.GadgetsGraphNodes.typeOf(globalThis.GadgetsGraphNodes.value(data, source));
+        if (type !== "pulse") data.DynamicInputs[source] = type;
+      }
+      for (const [port, source] of Object.entries(definition.matchingInputs)) data.DynamicInputs[port] = data.DynamicInputs[source];
+    }
+    return { ...node, data, inputs: Object.keys(globalThis.GadgetsGraphNodes.ports(definition, data, "inputs", true)),
+      outputs: Object.keys(globalThis.GadgetsGraphNodes.ports(definition, data, "outputs", true)) };
+  }
+
+  var CreateThrustersSettingsEditor = ({ node, data, updateData }) => {
+    const definition = Nodes.get(node.type)?.createThrustersSchema;
+    if (!definition) return null;
+    const jsx = import_jsx_runtime73.jsx, jsxs = import_jsx_runtime73.jsxs;
+    const cls = "w-full input-bg border border-theme h-7 px-2 rounded text-xs mono";
+    const label = (key) => key.replace(/([a-z])([A-Z])/g, "$1 $2").replaceAll("_", " ");
+    const children = [];
+    if (node.type === "function_input" || node.type === "function_output") {
+      const output = node.type === "function_input";
+      const field = output ? "DynamicOutputs" : "DynamicInputs";
+      const side = output ? "outputs" : "inputs";
+      const ports = data[field] || {};
+      const change = (next) => updateData({ [field]: next, [side]: Object.keys(next),
+        [output ? "OutputOrder" : "InputOrder"]: Object.keys(next) });
+      for (const [port, type] of Object.entries(ports)) children.push(jsxs("div", { className: "flex gap-1", children: [
+        jsx("input", { className: cls, defaultValue: data.FunctionPortLabels?.[port] || port, title: "Port name", onBlur: (event) => {
+          const name = event.target.value.trim();
+          if (name) updateData({ FunctionPortLabels:{...data.FunctionPortLabels,[port]:name} });
+        } }),
+        jsx("select", { className: cls, value: type, title: "Port type", onChange: (event) => change({ ...ports, [port]: event.target.value }),
+          children: [...new Set(["exec", "any", "number", "boolean", "string", "list", "map", ...[...Nodes.registry.values()].flatMap((def) => [...Object.values(def.createThrustersSchema?.inputs || {}), ...Object.values(def.createThrustersSchema?.outputs || {})])])].map((type) => jsx("option", { value: type, children: type }, type)) }),
+        jsx("button", { title: "Remove port", children: "?", onClick: () => change(Object.fromEntries(Object.entries(ports).filter(([key]) => key !== port))) })
+      ] }, port));
+      children.push(jsx("button", { className: cls, children: "Add port", onClick: () => {
+        const name = window.prompt("Port name", `port_${Object.keys(ports).length + 1}`)?.trim();
+        if (name && !Object.hasOwn(ports, name)) change({ ...ports, [name]: "any" });
+      } }, "add"));
+    }
+    if (node.type === "function_call") children.push(jsx("select", { className: cls, value: data.FunctionId || "", title: "Function", onChange: (event) => {
+      const fn = (globalThis.GadgetsGraphFunctions || []).find((fn) => fn.Id === event.target.value);
+      if (!fn) return;
+      const inputs = Object.assign({}, ...(fn.Nodes || []).filter((n) => n.Type === "function_input").map((n) => n.Data?.DynamicOutputs || {}));
+      const outputs = Object.assign({}, ...(fn.Nodes || []).filter((n) => n.Type === "function_output").map((n) => n.Data?.DynamicInputs || {}));
+      updateData({ FunctionId: fn.Id, FunctionName: fn.Name, DynamicInputs: inputs, DynamicOutputs: outputs,
+        inputs: Object.keys(inputs), outputs: Object.keys(outputs), InputOrder: Object.keys(inputs), OutputOrder: Object.keys(outputs) });
+    }, children: [jsx("option", { value: "", children: "Select function" }, ""), ...(globalThis.GadgetsGraphFunctions || []).map((fn) => jsx("option", { value: fn.Id, children: fn.Name }, fn.Id))] }, "function"));
+    if (definition.matchingInputs) children.push(jsx("select", { className: cls, value: data.DynamicInputs?.a || "any", title: "A type", onChange: (event) => {
+      const type = event.target.value;
+      updateData({ DynamicInputs: { ...data.DynamicInputs, a: type, b: type }, a: createThrustersDefaultValue(type), b: createThrustersDefaultValue(type) });
+    }, children: ["any", "number", "boolean", "string", "list", "map", "target"].map((type) => jsx("option", { value: type, children: `A type: ${type}` }, type)) }, "operand-type"));
+    const hidden = new Set(["EditorCollapsed", "EditorShowPreciseValues", "DynamicConstructor", "InputCount", "OutputCount", "FunctionId", "FunctionName", "CollapseInputsToMap", "CollapseOutputsToMap"]);
+    const property = createThrustersPropertyFor(node.type);
+    for (const [key, initial] of Object.entries(definition.defaultData || {})) {
+      if (hidden.has(key) || key === property?.key || !["string", "number", "boolean"].includes(typeof initial)) continue;
+      const current = data[key] ?? initial;
+      const fieldProperty = definition.properties?.[key] || {type: typeof initial};
+      children.push(jsxs("label", { className: "block space-y-1", children: [jsx("span", { className: "text-[9px] uppercase text-secondary", children: label(key) }),
+        fieldProperty.options ? jsx("select", { className: cls, value: current, onChange: (event) => updateData({[key]:event.target.value}),
+          children: fieldProperty.options.map((value) => jsx("option", {value,children:label(value)},value)) })
+        : fieldProperty.type === "boolean"
+          ? jsx("input", { type: "checkbox", checked: Boolean(current), onChange: (event) => updateData({ [key]: event.target.checked }) })
+          : jsx("input", { className: cls, type: fieldProperty.type === "number" ? "number" : "text", step: "any", value: current,
+            onChange: (event) => updateData({ [key]: fieldProperty.type === "number" ? Number(event.target.value) : event.target.value }) })
+      ] }, key));
+    }
+    return children.length ? jsx("div", { className: "px-4 pb-2 space-y-2", children }) : null;
+  };
+
   function configureCreateThrustersNodes(definitions) {
     const source = Array.isArray(definitions) ? definitions : [];
     const nativeImageDefinition = Nodes.get("conv_parse_image");
@@ -360261,6 +360392,13 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
             ? nativeDefinition.execute(inputs2, outputs2, context)
             : executeCreateThrustersNode(definition, inputs2, outputs2, context)
       };
+      nodeDefinition.createThrustersSchema = definition;
+      if (globalThis.GadgetsGraphNodes && definition.defaultData) {
+        nodeDefinition.defaultData = globalThis.GadgetsGraphNodes.defaults(definition, { ...nodeDefinition.defaultData, ...definition.defaultData });
+        for (const [key, entry] of Object.entries(nodeDefinition.defaultData.Defaults || {})) {
+          nodeDefinition.defaultData[key] = globalThis.GadgetsGraphNodes.decode(entry);
+        }
+      }
       Nodes.registry.set(nodeDefinition.id, nodeDefinition);
       Nodes.mapToLegacy(nodeDefinition);
     });
@@ -371358,7 +371496,9 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
     deleteNode,
     onContextMenu
   }) {
-    const isExec = node.type === "core_flow_route";
+    const inputPort = node.inputs[0] || (node.type === "core_flow_route" ? EXEC_IN_PORT : "In");
+    const outputPort = node.outputs[0] || "Out";
+    const isExec = getPortTypeForDef(node, inputPort, true) === "pulse";
     let inColor = isExec ? "#fff" : "var(--accent-color)";
     let outColor = inColor;
     if (node.type.startsWith("conv_")) {
@@ -371380,12 +371520,12 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
             /* @__PURE__ */ (0, import_jsx_runtime88.jsx)(
               "div",
               {
-                "data-port-handle": `${node.id}-${isExec ? EXEC_IN_PORT : "In"}-in`,
+                "data-port-handle": `${node.id}-${inputPort}-in`,
                 className: `w-3 h-3 rounded-full transition-all cursor-crosshair ${isExec ? "rotate-45" : ""}`,
                 style: { backgroundColor: inColor, border: isExec ? "1px solid #fff" : "none" },
-                onMouseDown: (e) => handlePortMouseDown(e, node, isExec ? EXEC_IN_PORT : "In", true, isExec),
-                onMouseUp: (e) => handlePortMouseUp(e, node, isExec ? EXEC_IN_PORT : "In", true, isExec),
-                onMouseEnter: () => setHoveredContext({ nodeId: node.id, portName: isExec ? EXEC_IN_PORT : "In", isInput: true }),
+                onMouseDown: (e) => handlePortMouseDown(e, node, inputPort, true, isExec),
+                onMouseUp: (e) => handlePortMouseUp(e, node, inputPort, true, isExec),
+                onMouseEnter: () => setHoveredContext({ nodeId: node.id, portName: inputPort, isInput: true }),
                 onMouseLeave: () => setHoveredContext({ nodeId: node.id })
               }
             ),
@@ -371393,12 +371533,12 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
             /* @__PURE__ */ (0, import_jsx_runtime88.jsx)(
               "div",
               {
-                "data-port-handle": `${node.id}-Out-out`,
+                "data-port-handle": `${node.id}-${outputPort}-out`,
                 className: `w-3 h-3 rounded-full transition-all cursor-crosshair ${isExec ? "rotate-45" : ""}`,
                 style: { backgroundColor: outColor, border: isExec ? "1px solid #fff" : "none" },
-                onMouseDown: (e) => handlePortMouseDown(e, node, "Out", false, isExec),
-                onMouseUp: (e) => handlePortMouseUp(e, node, "Out", false, isExec),
-                onMouseEnter: () => setHoveredContext({ nodeId: node.id, portName: "Out", isInput: false }),
+                onMouseDown: (e) => handlePortMouseDown(e, node, outputPort, false, isExec),
+                onMouseUp: (e) => handlePortMouseUp(e, node, outputPort, false, isExec),
+                onMouseEnter: () => setHoveredContext({ nodeId: node.id, portName: outputPort, isInput: false }),
                 onMouseLeave: () => setHoveredContext({ nodeId: node.id })
               }
             )
@@ -371490,6 +371630,11 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
     const actualPulsePorts = node.outputs.filter((port) => getPortType(node, port, false) === "pulse");
     const nodeHeaderColor = node.type === "core_var" ? getTypeColor(node.data.dataType || "number") : node.color || nodeBaseDef?.color || "#3f3f46";
     const liveNodeState = liveResults[node.id] || {};
+    const formatNodeValue = (value) => typeof value === "number" && globalThis.GadgetsGraphNodes
+      ? globalThis.GadgetsGraphNodes.format(value, node.data.EditorShowPreciseValues) : formatVal(value);
+    const hasNumericPorts = node.type !== "reroute" && ([...node.inputs.map((port) => getPortType(node, port, true)), ...node.outputs.map((port) => getPortType(node, port, false))]
+      .some((type) => globalThis.GadgetsGraphNodes?.numeric(type)) || Object.values({...results,...liveNodeState}).some((value) => typeof value === "number")
+      || node.inputs.some((port) => typeof node.data[port] === "number"));
     const toggleIntel = (e) => {
       e.stopPropagation();
       updateNodeData({ showIntel: !node.data.showIntel }, node.id);
@@ -371584,6 +371729,9 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
           /* @__PURE__ */ (0, import_jsx_runtime90.jsxs)("header", { className: "h-[44px] px-4 pr-10 flex items-center justify-between cursor-grab active:cursor-grabbing border-b border-[var(--border-color)] relative rounded-t-[22px]", style: { backgroundColor: `${nodeHeaderColor}15` }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime90.jsxs)("div", { className: "flex items-center gap-3", children: [
               /* @__PURE__ */ (0, import_jsx_runtime90.jsx)("div", { className: `w-2 h-2 rounded-full shadow-[0_0_8px_currentColor] transition-transform ${isPulsed ? "node-active-blink" : ""}`, style: { backgroundColor: nodeHeaderColor, color: nodeHeaderColor } }),
+              hasNumericPorts && (0, import_jsx_runtime90.jsx)("button", { title: "Show precise values", "aria-pressed": Boolean(node.data.EditorShowPreciseValues),
+                className: "shrink-0 px-1 text-xs mono border border-theme rounded", onMouseDown: (event) => event.stopPropagation(),
+                onClick: (event) => { event.stopPropagation(); updateNodeData({ EditorShowPreciseValues: !node.data.EditorShowPreciseValues }, node.id); }, children: ".0" }),
               /* @__PURE__ */ (0, import_jsx_runtime90.jsx)("span", { className: "text-xs font-black uppercase text-primary tracking-[0.1em] truncate max-w-[150px]", children: displayTitle }),
               collabMode && /* @__PURE__ */ (0, import_jsx_runtime90.jsx)("span", { className: `px-1.5 py-0.5 rounded border text-[9px] font-black uppercase tracking-[0.1em] ${collabRuntime === "Host" ? "border-amber-500/40 text-amber-300" : "border-sky-500/40 text-sky-300"}`, children: collabRuntime }),
               isGuestReadOnlyHostRuntime && /* @__PURE__ */ (0, import_jsx_runtime90.jsx)("span", { className: "px-1.5 py-0.5 rounded border border-rose-500/40 text-[9px] font-black uppercase tracking-[0.1em] text-rose-200", children: "Read Only" })
@@ -371683,13 +371831,13 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
             ),
             typeConflicts[`${node.id}-${EXEC_IN_PORT}`] && /* @__PURE__ */ (0, import_jsx_runtime90.jsx)("div", { className: "absolute -left-6 top-1/2 -translate-y-1/2 text-rose-500 animate-pulse", children: /* @__PURE__ */ (0, import_jsx_runtime90.jsx)(CircleAlert, { size: 16 }) })
           ] }),
-          actualPulsePorts.length === 1 && /* @__PURE__ */ (0, import_jsx_runtime90.jsx)("div", { className: "absolute -right-[12px] top-[22px] -translate-y-1/2 z-40", children: /* @__PURE__ */ (0, import_jsx_runtime90.jsx)(
+          (actualPulsePorts.length === 1 || node.outputs.includes("exec")) && /* @__PURE__ */ (0, import_jsx_runtime90.jsx)("div", { className: "absolute -right-[12px] top-[22px] -translate-y-1/2 z-40", children: /* @__PURE__ */ (0, import_jsx_runtime90.jsx)(
             "div",
             {
-              "data-port-handle": `${node.id}-${actualPulsePorts[0]}-out`,
+              "data-port-handle": `${node.id}-${node.outputs.includes("exec") ? "exec" : actualPulsePorts[0]}-out`,
               className: "w-6 h-6 bg-[var(--bg-primary)] border-2 border-[var(--text-primary)] rounded-sm rotate-45 flex items-center justify-center hover:bg-[var(--text-primary)] transition-all cursor-crosshair group/exec",
-              onMouseDown: (e) => handlePortMouseDown(e, node, actualPulsePorts[0], false, true),
-              onMouseUp: (e) => handlePortMouseUp(e, node, actualPulsePorts[0], false, true),
+              onMouseDown: (e) => handlePortMouseDown(e, node, node.outputs.includes("exec") ? "exec" : actualPulsePorts[0], false, true),
+              onMouseUp: (e) => handlePortMouseUp(e, node, node.outputs.includes("exec") ? "exec" : actualPulsePorts[0], false, true),
               children: /* @__PURE__ */ (0, import_jsx_runtime90.jsx)("div", { className: "w-2.5 h-2.5 bg-[var(--text-primary)] group-hover/exec:bg-[var(--bg-primary)]" })
             }
           ) }),
@@ -371753,7 +371901,8 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
                 )
               ] }) })
             ] }),
-            actualPulsePorts.length > 1 && actualPulsePorts.map((port) => /* @__PURE__ */ (0, import_jsx_runtime90.jsxs)("div", { className: "h-6 flex items-center justify-end px-4 relative", children: [
+            nodeDef?.createThrustersSchema && (0, import_jsx_runtime90.jsx)(CreateThrustersSettingsEditor, { node, data: node.data, updateData: (updates) => updateNodeData(updates, node.id) }),
+            actualPulsePorts.length > 1 && actualPulsePorts.filter((port) => port !== "exec").map((port) => /* @__PURE__ */ (0, import_jsx_runtime90.jsxs)("div", { className: "h-6 flex items-center justify-end px-4 relative", children: [
               /* @__PURE__ */ (0, import_jsx_runtime90.jsx)("span", { className: "text-[10px] font-black text-secondary uppercase tracking-widest mr-4 opacity-40", children: safeRender(port) }),
               /* @__PURE__ */ (0, import_jsx_runtime90.jsx)("div", { className: "absolute -right-[12px] top-1/2 -translate-y-1/2 z-40", children: /* @__PURE__ */ (0, import_jsx_runtime90.jsx)(
                 "div",
@@ -371776,10 +371925,10 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
               const valueToShow = liveNodeState[inputName] ?? results[inputName] ?? node.data[inputName];
               const displayLabel = node.type === "arr_create_json"
                 ? node.data.keyMap?.[inputName] || inputName
-                : node.data.InputLabels?.[inputName]
+                : node.data.InputLabels?.[inputName] || node.data.FunctionInputLabels?.[inputName] || node.data.FunctionPortLabels?.[inputName]
                   || node.data.HudFieldLabels?.[inputName] || inputName;
               const conflictMsg = typeConflicts[`${node.id}-${inputName}`];
-              return /* @__PURE__ */ (0, import_jsx_runtime90.jsxs)("div", { className: "h-7 py-1 flex items-center px-4 relative group/port transition-all", children: [
+              const inputRow = /* @__PURE__ */ (0, import_jsx_runtime90.jsxs)("div", { className: "h-7 py-1 flex items-center px-4 relative group/port transition-all", children: [
                 /* @__PURE__ */ (0, import_jsx_runtime90.jsx)(
                   "div",
                   {
@@ -371828,7 +371977,7 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
                           showDataTypeBanner: false,
                           dataType: portType
                         }
-                      ) }) : /* @__PURE__ */ (0, import_jsx_runtime90.jsx)("span", { className: `text-xs font-black mono tracking-tighter truncate block w-full ${isConnected ? "text-[var(--accent-color)]" : "text-amber-500/80"}`, children: formatVal(valueToShow) }),
+                      ) }) : /* @__PURE__ */ (0, import_jsx_runtime90.jsx)("span", { className: `text-xs font-black mono tracking-tighter truncate block w-full ${isConnected ? "text-[var(--accent-color)]" : "text-amber-500/80"}`, children: formatNodeValue(valueToShow) }),
                       /* @__PURE__ */ (0, import_jsx_runtime90.jsx)("div", { className: `absolute top-1/2 -right-[6px] -translate-y-1/2 w-3 h-3 bg-black/90 rotate-45 border-r-2 border-t-2 border-[var(--border-strong)] ${!isVisualMode ? "w-2 h-2 -right-[5px]" : ""}` })
                     ]
                   }
@@ -371850,6 +371999,11 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
                   !isConnected && !isPulseInput && /* @__PURE__ */ (0, import_jsx_runtime90.jsx)("div", { className: "flex-1 min-w-0 pr-2", children: /* @__PURE__ */ (0, import_jsx_runtime90.jsx)(ManualPortInput, { node, portName: inputName, value: node.data[inputName], resolvedAccent: accentColor, onChange: (v2) => updateNodeData({ [inputName]: v2 }, node.id), onOpenContextPicker }) })
                 ] })
               ] }, inputName);
+              if (node.type === "pulse_if" && inputName === "b") return (0, import_jsx_runtime90.jsxs)(import_jsx_runtime90.Fragment, { children: [
+                (0, import_jsx_runtime90.jsx)("div", { className: "px-4 py-1", children: (0, import_jsx_runtime90.jsx)(ManualPortInput, {
+                  node, portName: "operator", value: node.data.operator ?? "==", onChange: (value) => updateNodeData({ operator: value }, node.id) }) }), inputRow
+              ] }, inputName);
+              return inputRow;
             }),
             nodeBaseDef?.isDynamic && node.type !== "arr_json_split" && node.type !== "util_break_struct" && node.type !== "core_trigger_in" && /* @__PURE__ */ (0, import_jsx_runtime90.jsxs)("div", { className: "px-4 py-1 flex items-center gap-2", children: [
               /* @__PURE__ */ (0, import_jsx_runtime90.jsxs)(
@@ -371908,13 +372062,13 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
                           showDataTypeBanner: false,
                           dataType: portType
                         }
-                      ) }) : /* @__PURE__ */ (0, import_jsx_runtime90.jsx)("span", { className: `text-xs font-black mono text-[var(--accent-color)] tracking-tighter truncate block w-full`, children: formatVal(valueToShow) }),
+                      ) }) : /* @__PURE__ */ (0, import_jsx_runtime90.jsx)("span", { className: `text-xs font-black mono text-[var(--accent-color)] tracking-tighter truncate block w-full`, children: formatNodeValue(valueToShow) }),
                       /* @__PURE__ */ (0, import_jsx_runtime90.jsx)("div", { className: `absolute top-1/2 -left-[5px] -translate-y-1/2 w-2 h-2 bg-black/90 rotate-45 border-l-2 border-b-2 border-[var(--border-strong)] ${isVisualMode ? "w-3 h-3 -left-[6px]" : ""}` })
                     ]
                   }
                 ),
                 /* @__PURE__ */ (0, import_jsx_runtime90.jsxs)("div", { className: "flex items-center gap-2 mr-1.5 min-w-0", children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime90.jsx)("span", { className: "text-[10px] font-black text-secondary uppercase tracking-widest truncate", children: safeRender(port) }),
+                  /* @__PURE__ */ (0, import_jsx_runtime90.jsx)("span", { className: "text-[10px] font-black text-secondary uppercase tracking-widest truncate", children: safeRender(node.data.OutputLabels?.[port] || node.data.FunctionOutputLabels?.[port] || node.data.FunctionPortLabels?.[port] || port) }),
                   /* @__PURE__ */ (0, import_jsx_runtime90.jsx)(
                     "button",
                     {
@@ -378604,7 +378758,7 @@ lastTemp;`
             }
           });
         }
-        Object.keys(outputs).forEach((key) => {
+        if (!createThrustersCatalogMode) Object.keys(outputs).forEach((key) => {
           outputs[key] = ((val) => Array.isArray(val) && val.length === 1 && typeof val[0] === "object" && val[0] !== null ? val[0] : val)(outputs[key]);
         });
         results[nodeId] = { ...inputValues, ...outputs, ...liveNodeState };
@@ -378734,11 +378888,17 @@ lastTemp;`
             }
           }
         }
+        if (Nodes.get(n.type)?.createThrustersSchema && n.type !== "split_list" && n.type !== "break_out") {
+          const resolved = syncCreateThrustersNode(n, localConnections, localNodes);
+          if (JSON.stringify([n.inputs, n.outputs, n.data.DynamicInputs]) !== JSON.stringify([resolved.inputs, resolved.outputs, resolved.data.DynamicInputs])) {
+            anyNodeChanged = true;return resolved;
+          }
+        }
         if (n.type === "split_list" || n.type === "break_out") {
           const currentValue = pluginState[editingId]?.[n.id]?.value
             ?? graphResults[n.id]?.value ?? n.data.value;
           const structuredEntries = createThrustersStructuredEntries(currentValue);
-          const outputPorts = Object.keys(structuredEntries).sort((a, b) => a.localeCompare(b));
+          const outputPorts = Object.keys(structuredEntries);
           const dynamicOutputs = Object.fromEntries(
             outputPorts.map((key) => [key, createThrustersValueType(structuredEntries[key])])
           );
@@ -379381,6 +379541,7 @@ lastTemp;`
                 }
               }
             }
+            if (Nodes.get(n.type)?.createThrustersSchema) nodeCopy = syncCreateThrustersNode(nodeCopy, localConnections, prev);
             return nodeCopy;
           }
           return n;
@@ -379402,6 +379563,14 @@ lastTemp;`
       const node = localNodes.find((n) => n.id === nodeId);
       if (!node) return;
       const nodeDef = nodeDefinitions[node.type];
+      if (nodeDef?.dynamicPortKind === "text") {
+        if(node.inputs.length >= 32)return;
+        const ports = Object.fromEntries(node.inputs.map((port)=>[port,"string"]));
+        let ordinal=Math.max(3,node.inputs.length+1);while(Object.hasOwn(ports,`text_${ordinal}`))ordinal++;
+        ports[`text_${ordinal}`]="string";
+        updateNodeData({TextInputsConfigured:true,DynamicInputs:ports,InputOrder:Object.keys(ports),inputs:Object.keys(ports),[`text_${ordinal}`]:""},node.id);
+        return;
+      }
       if (nodeDef?.dynamicPortKind === "constructor") {
         const nextData = { ...node.data };
         let dynamicInputs = { ...nextData.DynamicInputs || {} };
@@ -379567,6 +379736,14 @@ lastTemp;`
       const node = localNodes.find((n) => n.id === nodeId);
       if (!node) return;
       const nodeDef = nodeDefinitions[node.type];
+      if (nodeDef?.dynamicPortKind === "text") {
+        if(node.inputs.length <= 1)return;
+        const port=node.inputs.at(-1);
+        const ports=Object.fromEntries(node.inputs.slice(0,-1).map((port)=>[port,"string"]));
+        const defaults={...node.data.Defaults};delete defaults[port];
+        updateNodeData({TextInputsConfigured:true,DynamicInputs:ports,Defaults:defaults,InputOrder:Object.keys(ports),inputs:Object.keys(ports)},node.id);
+        return;
+      }
       if (nodeDef?.dynamicPortKind === "constructor") {
         const dynamicInputs = { ...node.data.DynamicInputs || {} };
         if (Object.keys(dynamicInputs).length <= (nodeDef.dynamicPortMinimum ?? 1)) return;

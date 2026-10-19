@@ -16,6 +16,7 @@ import com.rieno.gadgetsandgizmos.content.AccDisplayBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerData;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerItem;
 import com.rieno.gadgetsandgizmos.content.ControllerManifestStore;
+import com.rieno.gadgetsandgizmos.lib.graph.SourcedGraphCatalog;
 import com.rieno.gadgetsandgizmos.compat.create.CreateRotationSpeedControllerGraphCompat;
 import com.rieno.gadgetsandgizmos.compat.simulated.ContraptionDiagramControllerCompat;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
@@ -28,6 +29,9 @@ import com.rieno.gadgetsandgizmos.content.advanced.GraphSignalRange;
 import com.rieno.gadgetsandgizmos.lib.control.SignalValueType;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphComparison;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphCounters;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphNumberDisplay;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphPortOrder;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphNodeBrowser;
 import com.rieno.gadgetsandgizmos.lib.chat.ChatPlayers;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphFunctions;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphNodeFactory;
@@ -40,6 +44,11 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphTemplates;
 import com.rieno.gadgetsandgizmos.lib.graph.render.GraphWireGeometry;
 import com.rieno.gadgetsandgizmos.lib.graph.render.GraphViewport;
 import com.rieno.gadgetsandgizmos.lib.client.ui.ColorPickerModal;
+import com.rieno.gadgetsandgizmos.lib.client.ui.GuiControlPreviews;
+import com.rieno.gadgetsandgizmos.lib.client.ui.HudControlRenderer;
+import com.rieno.gadgetsandgizmos.lib.display.HudStyleCatalog;
+import com.rieno.gadgetsandgizmos.lib.client.ui.GraphGroupHeader;
+import com.rieno.gadgetsandgizmos.lib.client.ui.InlineTextEditor;
 import com.rieno.gadgetsandgizmos.lib.client.ui.PlayerSelectModal;
 import com.rieno.gadgetsandgizmos.lib.client.render.GuiLineRenderer;
 import com.rieno.gadgetsandgizmos.lib.graph.edit.GraphNodeAlias;
@@ -50,6 +59,7 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementBinding;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudImageStore;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudInteractiveStyles;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudInteractions;
+import com.rieno.gadgetsandgizmos.content.advanced.AdvancedDisplayWidgets;
 import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget;
 import com.rieno.gadgetsandgizmos.lib.display.DisplayWidgetProjection;
@@ -62,6 +72,8 @@ import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedHudImageUploadPayload
 import com.rieno.gadgetsandgizmos.neoforge.network.AnalogueContraptionControllerDiscoveryRequestPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AnalogueContraptionControllerKeyPayload;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.rieno.gadgetsandgizmos.lib.client.ui.GuiRenderLayer;
+import com.rieno.gadgetsandgizmos.lib.client.render.WorldRenderControl;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.BufferUploader;
@@ -121,12 +133,73 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.HashSet;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
+import com.rieno.gadgetsandgizmos.lib.display.ElementInspectorLayout;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphTextInputs;
+import com.rieno.gadgetsandgizmos.content.UniversalDisplayAdapterBlockEntity;
+import com.rieno.gadgetsandgizmos.content.ScmConfigurationProfile;
+import com.rieno.gadgetsandgizmos.content.ShippingScheduleGraph;
+import com.rieno.gadgetsandgizmos.content.ShippingScheduleScratchBlocks;
+import com.rieno.gadgetsandgizmos.content.PlayerMannequinEntity;
+import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.display.AccDisplaySourceRegistry;
+import com.rieno.gadgetsandgizmos.lib.color.ColorOpacity;
+import com.rieno.gadgetsandgizmos.lib.graph.render.GraphTextLayout;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphNodeLayout;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphPortIndex;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphTargetPortLayout;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphTargetSelection;
+import com.rieno.gadgetsandgizmos.lib.client.scratch.ScratchBlockSurface;
+import com.rieno.gadgetsandgizmos.lib.client.schedule.CreateScheduleInputScreen;
+import com.rieno.gadgetsandgizmos.lib.client.schedule.CreateScheduleInputFields;
+import com.rieno.gadgetsandgizmos.lib.client.ui.ItemSearchQuery;
+import com.rieno.gadgetsandgizmos.lib.scratch.ScratchBlockDefinition;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmBuiltinControlModes;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmControlModeRegistry;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmOrientation;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmSteeringMode;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmLeggedGait;
+import com.rieno.gadgetsandgizmos.lib.scm.ShipPermission;
+import com.rieno.gadgetsandgizmos.neoforge.GraphV2ThemeData;
+import com.rieno.gadgetsandgizmos.neoforge.network.ShippingRouteVisibilityPayload;
+import com.rieno.gadgetsandgizmos.registry.CTEntityTypes;
+import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
+import net.minecraft.core.Direction;
+import net.minecraft.nbt.NbtUtils;
+import net.minecraft.world.inventory.InventoryMenu;
+import net.minecraft.world.level.material.Fluids;
+import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.client.extensions.common.IClientFluidTypeExtensions;
+import net.neoforged.neoforge.fluids.FluidStack;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
+import java.util.Collection;
+import java.util.EnumSet;
 
 // Edit ACC graphs and manifests without normal menu sync
-public class AdvancedContraptionControllerScreen extends AbstractContainerScreen<AdvancedContraptionControllerMenu> {
+public class AdvancedContraptionControllerScreen extends AbstractContainerScreen<AdvancedContraptionControllerMenu>
+        implements WorldRenderControl {
+    private static final float CONTAINER_FOREGROUND_DEPTH = 400;
+    private boolean renderingContainerForeground;
+    private String scmDetectedVehicleType = "airship";
+
+    private String scmDetectedSteeringType = ScmSteeringMode.CUSTOM.id();
+
+    private Boolean scmConfigurationHasThrusters;
+
+    // Reuse the native widgets while the inspected input's data and font remain unchanged
+    private CreateScheduleInputFields scheduleFields;
+
+    private ResourceLocation scheduleFieldsId;
+
+    private CompoundTag scheduleFieldsData;
+
+    private net.minecraft.client.gui.Font scheduleFieldsFont;
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -150,13 +223,21 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private static final int MIN_GRAPH_WIDTH = 180;
     private static final int TOOLBAR_HEIGHT = 28;
     private static final int GRAPH_TAB_HEIGHT = 23;
-    private static final int V2_GRID_SPACING = 24;
+    
+    private static final int GRID_SNAP_MINIMUM = 4;
+
+    private static final int GRID_SNAP_MAXIMUM = 64;
+private static final int V2_GRID_SPACING = 24;
     private static final int INSPECTOR_SECTION_HEADER_HEIGHT = 16;
     private static final int INSPECTOR_SECTION_DIVIDER_HEIGHT = 5;
     private static final int INSPECTOR_SECTION_MIN_CONTENT_HEIGHT = 24;
     private static final int VARIABLE_BROWSER_ROW_HEIGHT = 19;
     private static final int VARIABLE_BROWSER_BUTTON_WIDTH = 34;
-    private static final int NODE_WIDTH = 166;
+    
+    private static final int VARIABLE_BROWSER_MIN_HEIGHT = 36;
+
+    private static final int NODE_PORT_SECTION_HEIGHT = 15;
+private static final int NODE_WIDTH = 166;
     private static final int NODE_HEADER = 20;
     private static final int INLINE_MAP_PORT_INDENT = 8;
     /** First body row in graph units when there is no collapse control. */
@@ -181,8 +262,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private static final DateTimeFormatter GRAPH_VERSION_TIME =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault());
     private static final int CURVE_BODY_HEIGHT = 92;
-    private static final int HUD_WIDTH = 720;
-    private static final int HUD_HEIGHT = 420;
+    private static final int HUD_WIDTH = 880;
+    private static final int HUD_HEIGHT = 560;
     private static final int HUD_PORT_VISIBLE_ROWS = 5;
     private static final int HUD_IMAGE_VISIBLE_ROWS = 7;
     private static final int OPTION_DROPDOWN_VISIBLE_ROWS = 12;
@@ -197,8 +278,84 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private static final int SHARE_MODAL_HEIGHT = 238;
     private static final int TOOLS_MENU_WIDTH = 148;
     private static final int TOOLS_MENU_ROW_HEIGHT = 20;
-    private static final int TOOLS_MENU_ROWS = 8;
-    private static final int FREQUENCY_MODAL_WIDTH = 228;
+    private static final int TOOLS_MENU_ROWS = 9;
+    
+    private static final int THEME_EDITOR_WIDTH = 560;
+
+    private static final int THEME_EDITOR_HEIGHT = 430;
+
+    private static final int THEME_COLOR_ROW_HEIGHT = 24;
+
+    private static final List<ThemeColorEntry> THEME_COLOR_ENTRIES = List.of(
+            new ThemeColorEntry("canvas_background", "Canvas"),
+            new ThemeColorEntry("canvas_dot", "Canvas Dots"),
+            new ThemeColorEntry("title_background", "Title Bar"),
+            new ThemeColorEntry("panel_background", "Panel Background"),
+            new ThemeColorEntry("panel_raised", "Raised Panel"),
+            new ThemeColorEntry("panel_hovered", "Panel Hover"),
+            new ThemeColorEntry("panel_selected", "Panel Selected"),
+            new ThemeColorEntry("border", "Border"),
+            new ThemeColorEntry("border_strong", "Strong Border"),
+            new ThemeColorEntry("border_soft", "Soft Border"),
+            new ThemeColorEntry("primary", "Primary Text"),
+            new ThemeColorEntry("secondary", "Secondary Text"),
+            new ThemeColorEntry("muted", "Muted Text"),
+            new ThemeColorEntry("accent", "Accent"),
+            new ThemeColorEntry("accent_light", "Accent Light"),
+            new ThemeColorEntry("accent_dark", "Accent Dark"),
+            new ThemeColorEntry("accent_overlay", "Accent Overlay"),
+            new ThemeColorEntry("primary_action_text", "Action Text"),
+            new ThemeColorEntry("danger", "Danger"));
+
+    private static final int SCM_CONFIGURATION_MODAL_WIDTH = 920;
+
+    private static final int SCM_CONFIGURATION_MODAL_HEIGHT = 536;
+
+    private static final int SCM_CONFIGURATION_VIEW_WIDTH = 560;
+
+    private static final int SCM_CONFIGURATION_VIEW_HEIGHT = 404;
+
+    private static final int SCM_CONFIGURATION_FILTER_HEIGHT = 24;
+
+    private static final int SCM_CONFIGURATION_DROPDOWN_VISIBLE_ROWS = 8;
+
+    private static final int SCM_SIMULATION_SIDEBAR_WIDTH = 286;
+
+    private static final int SCHEDULE_PALETTE_ROW_HEIGHT = 23;
+    // ACC screens use a deliberately readable working scale. This only
+    // changes the in-memory option and is restored when the ACC UI closes.
+    // This is intentionally independent of the current Main Graph contents.
+    // Configuration must expose every physical command channel even before the
+    // matching graph node has been authored. Auto is an explicit group whose
+    // members remain eligible for automatic allocation on every SCM action.
+    private static final List<String> SCM_CALIBRATION_ACTIONS = List.of(
+            ScmConfigurationProfile.AUTO_ACTION,
+            ScmConfigurationProfile.ACCELERATION_ACTION,
+            "ship_forward", "ship_backward",
+            "ship_strafe", "ship_strafe_left", "ship_strafe_right",
+            "ship_ascend", "ship_descend",
+            "ship_yaw", "ship_yaw_right", "ship_yaw_left",
+            "ship_pitch", "ship_pitch_up", "ship_pitch_down",
+            "ship_roll", "ship_roll_right", "ship_roll_left",
+            "ship_decelerate", "ship_brake",
+            ScmConfigurationProfile.dockingConnectorAction(
+                    ScmConfigurationProfile.DockingConnectorGroup.FUEL),
+            ScmConfigurationProfile.dockingConnectorAction(
+                    ScmConfigurationProfile.DockingConnectorGroup.ITEMS),
+            ScmConfigurationProfile.dockingConnectorAction(
+                    ScmConfigurationProfile.DockingConnectorGroup.FE),
+            ScmConfigurationProfile.dockingConnectorAction(
+                    ScmConfigurationProfile.DockingConnectorGroup.FLUIDS),
+            ScmConfigurationProfile.dockingConnectorAction(
+                    ScmConfigurationProfile.DockingConnectorGroup.ANY),
+            ScmConfigurationProfile.dockingConnectorAction(
+                    ScmConfigurationProfile.DockingConnectorGroup.UNASSIGNED));
+
+    private static final List<String> SCM_AUTO_DETECT_CATEGORIES = List.of(
+            "thrusters", "bearings", "actuators", "propulsion");
+
+    private static final String SCM_BLACKLISTED_GROUP_ID = "__scm_blacklisted";
+private static final int FREQUENCY_MODAL_WIDTH = 228;
     private static final int FREQUENCY_MODAL_HEIGHT = 336;
     private static final int FREQUENCY_MODAL_BASE_X = 34;
     private static final int FREQUENCY_MODAL_BASE_Y = -18;
@@ -207,9 +364,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private static final int MIN_EXECUTION_INPUTS = 2;
     private static final int MAX_EXECUTION_INPUTS = 16;
     private static final List<String> CATEGORY_ORDER = List.of("functions", "events", "profiler", "core", "variables", "logic",
-            "flow", "math", "response", "data", "controller", "ship_control", "shipping_schedule", "hud");
+            "flow", "math", "response", "data", "controller", "ship_control", "flight_control", "shipping_schedule", "hud");
     private static final List<String> V2_CATEGORY_ORDER = List.of(
-            "core", "functions", "controller", "logic", "math", "data", "ship_control", "shipping_schedule",
+            "core", "functions", "controller", "logic", "math", "data", "ship_control", "flight_control", "shipping_schedule",
             "variables", "events", "profiler", "flow", "response", "hud");
     private static final List<GraphTemplateOption> GRAPH_TEMPLATES = List.of(
             new GraphTemplateOption("blank", "Blank"),
@@ -357,7 +514,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private static AdvancedGraphDocument sessionClipboard;
 
     // Tracks whether V2 UI is set
-    private boolean v2Ui;
+    private boolean v2Ui = true;
     // Current draft
     private AdvancedGraphDocument draft;
     // Current saved draft
@@ -369,6 +526,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private AdvancedGraphDocument previewActiveGraph;
     private int previewActiveGraphRevision = Integer.MIN_VALUE;
     private ColorPickerModal graphColorPicker;
+    private InlineTextEditor commentGroupLabelEditor;
+    private InlineTextEditor bodyValueEditor;
+    private String bodyValuePort;
+    private String bodyValueNode;
+    private double bodyValueOffsetY;
+    private EditBox graphSearch;
+    private String graphSearchQuery = "";
+    private String graphSearchCurrent;
+    private String editingCommentGroupId;
     private PlayerSelectModal playerSelectModal;
     private final Map<String, Long> previewInputPulses = new LinkedHashMap<>();
     // Draft simulation controller
@@ -419,13 +585,17 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Current inspector value
     private EditBox inspectorValue;
     // Current pan x
-    private double panX = 150;
+        // Inline SCM workspace vehicle-name editor
+    private EditBox scmVehicleName;
+private double panX = 150;
     // Current pan y
     private double panY = 80;
     // Current zoom
     private double zoom = 1.0;
     // Current browser scroll
-    private int browserScroll;
+        // The graph-unit step used while Shift-dragging nodes
+    private int gridSnapStep = 16;
+private int browserScroll;
     // Current block browser scroll
     private int blockBrowserScroll;
     // Current mini browser scroll
@@ -435,9 +605,132 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Current inspector targets scroll
     private int inspectorTargetsScroll;
     // Active function id
-    private String activeFunctionId;
+        // Current variable browser scroll
+    private int inspectorVariablesScroll;
+private String activeFunctionId;
     // Current function tab scroll
-    private int functionTabScroll;
+        // Dedicated SCM graph overview. It is a separate authoring surface which
+    // exposes the action-function bindings invoked by SCM nodes in Main Graph.
+    private boolean scmGraphOverview;
+    // The Schedule tab is a host-only Scratch presentation over a separate
+    // AdvancedGraphDocument. It never becomes a global graph-editor mode.
+    private boolean scheduleGraphOverview;
+
+    private boolean graphTargetPickerOpen;
+
+    private String graphTargetPickerNode = "";
+
+    private String graphTargetPickerPort = "";
+
+    private int graphTargetPickerScroll;
+
+    private final Map<String, ControllerDiscoveryNode> graphTargetPickerSelections = new LinkedHashMap<>();
+
+    private final Map<String, Direction> graphTargetPickerSelectionFaces = new LinkedHashMap<>();
+    private final Map<String, String> graphTargetPickerSelectionAliases = new LinkedHashMap<>();
+    private EditBox graphTargetAliasEditor;
+    private int graphTargetAliasScroll;
+
+    private String graphTargetPickerPreviewTarget = "";
+
+    private boolean graphTargetPickerBlockTab;
+
+    private boolean graphTargetPickerMergeLikePorts;
+
+    private AdvancedGraphDocument scheduleDraft;
+
+    private AdvancedGraphDocument savedScheduleDraft;
+
+    private String selectedScheduleBlock;
+    // The Schedule workspace keeps its own complete selection set. The
+    // ordinary graph selection belongs to Main Graph and must not leak into
+    // this host-only Scratch presentation.
+    private final Set<String> selectedScheduleBlocks = new LinkedHashSet<>();
+
+    private final List<AdvancedGraphDocument.Node> scheduleClipboard = new ArrayList<>();
+
+    private final List<AdvancedGraphDocument.Edge> scheduleClipboardEdges = new ArrayList<>();
+
+    private int schedulePaletteScroll;
+
+    private ScratchBlockSurface.Layout scheduleLayout;
+
+    private EditBox schedulePropertyValue;
+
+    private EditBox scheduleInlinePropertyValue;
+
+    private String selectedScheduleProperty;
+
+    private boolean syncingScheduleProperty;
+
+    private String schedulePropertyEditorNode = "";
+
+    private String schedulePropertyEditorKey = "";
+
+    private String scheduleInlinePropertyEditorNode = "";
+
+    private String scheduleInlinePropertyEditorKey = "";
+
+    private boolean editingScheduleInlineProperty;
+
+    private boolean scheduleParameterEditor;
+
+    private UiRect schedulePropertyDropdownBounds;
+
+    private List<SchedulePropertyChoice> schedulePropertyDropdownChoices = List.of();
+
+    private String schedulePropertyDropdownNode = "";
+
+    private String schedulePropertyDropdownKey = "";
+
+    private int schedulePropertyScroll;
+    // Height of the Schedule property section; this uses the same draggable
+    // divider treatment as the main graph inspector.
+    private int scheduleInspectorPropertiesHeight;
+
+    private double schedulePanX = 24.0D;
+
+    private double schedulePanY = 12.0D;
+
+    private double scheduleZoom = 1.0D;
+
+    private boolean schedulePanning;
+
+    private String draggingScheduleBlock;
+
+    private boolean draggingScheduleBlockMoved;
+
+    private boolean scheduleMarquee;
+
+    private boolean scheduleMarqueeAdditive;
+
+    private double scheduleMarqueeStartX;
+
+    private double scheduleMarqueeStartY;
+
+    private double scheduleMarqueeCurrentX;
+
+    private double scheduleMarqueeCurrentY;
+
+    private boolean draggingScheduleMinimapViewport;
+
+    private double scheduleMinimapDragOffsetX;
+
+    private double scheduleMinimapDragOffsetY;
+
+    private AdvancedControllerMinimapGeometry.Transform scheduleMinimapDragTransform;
+    // SCM owns its two workspace sidebars. These are intentionally separate
+    // from the Main Graph node-library and inspector collapse preferences.
+    private boolean scmSimulationSidebarCollapsed;
+
+    private boolean scmConfigurationSidebarCollapsed;
+    // Full simulation readout scroll position and live-preview marker toggles.
+    private int scmSimulationSidebarScroll;
+
+    private boolean scmShowCenterOfMass;
+
+    private boolean scmShowCenterOfLift;
+private int functionTabScroll;
     // Current editing function id
     private String editingFunctionId;
     // Current function name before edit
@@ -475,15 +768,163 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Current inspector targets height
     private int inspectorTargetsHeight;
     // Current dragging inspector divider
-    private InspectorDivider draggingInspectorDivider;
+        // Current left variable browser height
+    private int leftVariableBrowserHeight;
+private InspectorDivider draggingInspectorDivider;
     // Tracks whether linker is open
-    private boolean linkerOpen;
+        // Tracks whether the left variable browser divider is dragging
+    private boolean draggingLeftVariableBrowserDivider;
+private boolean linkerOpen;
+    private boolean boundGlassesOpen;
+    private int boundGlassesScroll;
     // Tracks whether share modal is open
     private boolean shareModalOpen;
     // Tracks whether tools menu is open
     private boolean toolsMenuOpen;
     // Current linker x
-    private int linkerX;
+        // Tracks whether the client-local ACC theme editor is open.
+    private boolean themeEditorOpen;
+    // Current selectable client-local theme presets.
+    private List<AdvancedControllerThemePresets.Preset> themePresets = List.of();
+    // Selected theme preset id retained while this ACC screen is open.
+    private String themePresetId = AdvancedControllerThemePresets.DEFAULT_ID;
+    // Current selected preset, which may be unsaved.
+    private AdvancedControllerThemePresets.Preset selectedThemePreset;
+    // Mutable live-preview palette for the theme editor.
+    private GraphV2ThemeData.Palette themeDraft = GraphV2ThemeData.DEFAULT;
+    // Name editor for a custom theme preset.
+    private EditBox themeNameEditor;
+    // Shared library color picker opened for a single palette field.
+    private ColorPickerModal themeColorPicker;
+    // Palette key being edited by the active color picker.
+    private String themeColorPickerKey;
+    // Tracks whether the SCM calibration/configuration modal is open.
+    private boolean scmConfigurationOpen;
+    private Button chunkLoadingButton;
+    private boolean scmChunkLoading;
+
+    private boolean shipPermissionsOpen;
+
+    private CompoundTag shipPermissionsSnapshot = new CompoundTag();
+
+    private UUID shipPermissionsSelected;
+
+    private int shipPermissionsScroll;
+
+    private int shipPermissionsSnapshotTicks;
+    // A focused live-assembly picker for the two data nodes. Its result is
+    // stored as ordinary TargetData on the node, so it persists with the ACC
+    // graph and remaps with schematics/sub-level moves.
+    private boolean scmBlockPickerOpen;
+
+    private String scmBlockPickerNodeId = "";
+
+    private ScmLiveSubLevelPreviewRenderer.PickTarget scmBlockPickerSelected;
+
+    private final Set<ScmLiveSubLevelPreviewRenderer.Filter> scmBlockPickerFilters =
+            EnumSet.of(ScmLiveSubLevelPreviewRenderer.Filter.ALL);
+
+    private final Set<ScmLiveSubLevelPreviewRenderer.Filter> scmBlockPickerWireframeExcludedFilters =
+            EnumSet.noneOf(ScmLiveSubLevelPreviewRenderer.Filter.class);
+
+    private boolean scmBlockPickerFiltersDropdownOpen;
+
+    private boolean scmBlockPickerWireframeFiltersDropdownOpen;
+
+    private boolean scmBlockPickerWireframe;
+    // Whether the server is currently performing a discovery-only SCM scan.
+    private boolean scmConfigurationScanning;
+    // Server supplied status for the SCM configuration workflow.
+    private String scmConfigurationStatus = "";
+    // Server-authoritative live simulation values displayed on the SCM tab.
+    // Each entry uses the same { Type, Payload } shape as a graph value.
+    private final Map<String, CompoundTag> scmSimulationTelemetry = new LinkedHashMap<>();
+    // Working copy of the persistent configuration profile.
+    private ScmConfigurationProfile scmConfigurationProfile = ScmConfigurationProfile.empty();
+
+    private ScmOrientation scmDefaultOrientation = ScmOrientation.fromMount(Direction.NORTH, Direction.UP);
+
+    private static final int SCM_ORIENTATION_HEIGHT = 48;
+
+    private static final int SCM_FORWARD_COLOR = 0xFF529BFF;
+
+    private static final int SCM_UP_COLOR = 0xFF65EB91;
+    // Local profile edits wait for the explicit Save calibration action. Polling
+    // snapshots must not replace that working copy with the older server copy.
+    private boolean scmConfigurationDirty;
+    // A save is acknowledged by the next matching authoritative snapshot.
+    private boolean scmConfigurationSavePending;
+    // Known SCM bindings. The live preview supplies all other selectable
+    // blocks, which are added here as the player selects them.
+    private final List<ScmConfigurationProfile.UnitReference> scmConfigurationCandidates = new ArrayList<>();
+    // Server-authoritative live docking connector identities. These remain
+    // usable when the configuration preview is a detached block snapshot.
+    private final Set<ScmConfigurationProfile.DockingConnectorReference>
+            scmConfigurationDockingConnectors = new LinkedHashSet<>();
+    // Temporary visual selection used to form one action group or blacklist.
+    private final Set<ScmConfigurationProfile.UnitReference> scmConfigurationSelection = new LinkedHashSet<>();
+    // Current action to receive the selected unit group.
+    private int scmConfigurationActionIndex;
+    // Current SCM control binding mode
+    private ScmControlBindingMode scmConfigurationControlBindingMode = ScmControlBindingMode.BLOCK;
+
+    private Direction scmConfigurationInputFace;
+
+    private boolean scmConfigurationControlModeDropdownOpen;
+
+    private boolean scmConfigurationFaceDropdownOpen;
+    // Root plus every connected body that makes up the live calibration craft.
+    private UUID scmConfigurationRootSubLevelId;
+
+    private final List<UUID> scmConfigurationViewSubLevelIds = new ArrayList<>();
+    // Raw block-model preview of the actual loaded Sable bodies. This is not a
+    // schematic or a contraption diagram.
+    private final ScmLiveSubLevelPreviewRenderer scmLivePreviewRenderer =
+            new ScmLiveSubLevelPreviewRenderer();
+    // Calibration selection browser state.
+    private boolean scmConfigurationTargetDropdownOpen;
+
+    private int scmConfigurationTargetDropdownScroll;
+
+    private int scmConfigurationListScroll;
+    // The SCM assignment sidebar becomes a vertically scrollable document on
+    // small GUI resolutions. Its actuator-group list retains its own row
+    // scroll for large craft once the surrounding controls fit.
+    private int scmConfigurationSidebarScroll;
+    // Specific preview filters compose as a union. All is the default complete
+    // view and is mutually exclusive with the specific filters.
+    private final Set<ScmLiveSubLevelPreviewRenderer.Filter> scmConfigurationFilters =
+            EnumSet.of(ScmLiveSubLevelPreviewRenderer.Filter.ALL);
+    // The compact filter menu owns its own raised layer above the 3D preview.
+    private boolean scmConfigurationFiltersDropdownOpen;
+
+    private boolean scmConfigurationWireframe;
+
+    private final Set<ScmLiveSubLevelPreviewRenderer.Filter> scmConfigurationWireframeExcludedFilters =
+            EnumSet.noneOf(ScmLiveSubLevelPreviewRenderer.Filter.class);
+
+    private boolean scmConfigurationWireframeFiltersDropdownOpen;
+    // Group summaries start collapsed so a large calibrated craft remains
+    // readable; expanding one reveals its actual assigned blocks.
+    private final Set<String> scmConfigurationCollapsedGroups = new LinkedHashSet<>();
+
+    private boolean scmConfigurationGroupStateInitialized;
+
+    private List<ScmConfigurationGroupRow> scmCachedGroupRows = List.of();
+
+    private List<ScmConfigurationProfile.Group> scmCachedGroups = List.of();
+
+    private Map<String, String> scmCachedActions = Map.of();
+
+    private Set<ScmConfigurationProfile.UnitReference> scmCachedExcludedUnits = Set.of();
+
+    private Set<String> scmCachedCollapsedGroups = Set.of();
+
+    private int scmConfigurationLastSelectionIndex = -1;
+    // Snapshot polling makes initial automatic discovery appear in-place without
+    // a player-facing scan or refresh button.
+    private int scmConfigurationSnapshotTicks;
+private int linkerX;
     // Current linker y
     private int linkerY;
     // Tracks whether linker is being dragged
@@ -517,7 +958,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Tracks whether node moved is being dragged
     private boolean draggingNodeMoved;
     // Current connecting node
-    private String connectingNode;
+        // Tracks whether the toolbar grid-snap slider is being dragged
+    private boolean draggingGridSnapSlider;
+private String connectingNode;
     // Current connecting port
     private String connectingPort;
     // Tracks whether advanced contraption is connecting output
@@ -631,11 +1074,16 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Tracked HUD hsv memory
     private final Map<String, HudDesignerHsv> hudHsvMemory = new LinkedHashMap<>();
     // Current dragging HUD prop slider
-    private String draggingHudPropSlider;
+        // Current HUD color picker
+    private ColorPickerModal hudColorPicker;
+    // Current dragging HUD opacity key
+    private String draggingHudOpacityKey;
+private String draggingHudPropSlider;
     // Tracks whether HUD font style dropdown is open
     private boolean hudFontStyleDropdownOpen;
     // Tracks whether HUD style dropdown is open
     private boolean hudStyleDropdownOpen;
+    private int hudStyleDropdownScroll;
     // Tracks whether HUD image dropdown is open
     private boolean hudImageDropdownOpen;
     // Current HUD image dropdown scroll
@@ -675,7 +1123,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Last observed goggles output
     private ItemStack lastObservedGogglesOutput = ItemStack.EMPTY;
     // Tracked shared graph entries
-    private final List<ControllerManifestStore.SharedGraphEntry> sharedGraphEntries = new ArrayList<>();
+    private final List<SourcedGraphCatalog.Entry> sharedGraphEntries = new ArrayList<>();
+    private final List<ControllerManifestStore.SharedGraphEntry> serverSharedGraphEntries = new ArrayList<>();
     // Current shared graph scroll
     private int sharedGraphScroll;
     // Selected shared graph index
@@ -745,7 +1194,6 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (namedController != null && namedController.getCustomName() != null) {
             controllerAlias = namedController.getCustomName();
         }
-        v2Ui = advCtrlV2Enabled();
         AdvancedControllerUiPreferences.State preferences = AdvancedControllerUiPreferences.load();
         leftSidebarCollapsed = preferences.leftSidebarCollapsed();
         rightSidebarCollapsed = preferences.rightSidebarCollapsed();
@@ -754,13 +1202,18 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         inspectorVariablesCollapsed = preferences.variablesCollapsed();
         inspectorOptionsHeight = preferences.optionsHeight();
         inspectorTargetsHeight = preferences.targetsHeight();
+        leftVariableBrowserHeight = preferences.variablesHeight();
         saveOnClose = preferences.saveOnClose();
+        gridSnapStep = preferences.gridSnapStep();
         collapsedNodes.addAll(preferences.collapsedNodeIds());
         if (v2Ui) {
             collapsedCategories.addAll(V2_CATEGORY_ORDER);
             collapsedCategories.remove("core");
         }
         draft = menu.getInitialDraft();
+        scheduleDraft = menu.getInitialShippingScheduleDraft();
+        ShippingScheduleGraph.ensureTemplate(scheduleDraft);
+        savedScheduleDraft = scheduleDraft.copy();
         restoreViewport();
         migrateSplitListNodes(draft);
         migrateHudNodes(draft);
@@ -859,7 +1312,25 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     @Override
     protected void containerTick() {
         super.containerTick();
-        if (!projectionScreen) AccGuiScaleOverride.apply();
+        applyAccGuiScale();
+        refreshShippingScheduleSnapshot();
+        if (scmGraphOverview && !hasScmWorkspace()) {
+            selectGraphTab(null);
+        }
+        if (scheduleGraphOverview && !hasShippingScheduleWorkspace()) {
+            selectGraphTab(null);
+        }
+        
+        if ((scmConfigurationOpen || scmGraphOverview)
+                && (++scmConfigurationSnapshotTicks >= 10)) {
+            scmConfigurationSnapshotTicks = 0;
+            sendScmConfiguration(scmConfigurationRootSubLevelId == null
+                    ? "scm_configuration_open" : "scm_configuration_refresh", new CompoundTag());
+        }
+        if(shipPermissionsOpen && ++shipPermissionsSnapshotTicks >= 20){
+            shipPermissionsSnapshotTicks = 0;
+            sendScmConfiguration("scm_permissions_open", new CompoundTag());
+        }
         detectLinkerSlotChanges();
         reportProfilerSample();
         syncFrequencyNode();
@@ -982,7 +1453,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Initialize the advanced contraption controller
     @Override
     protected void init() {
-        if (!projectionScreen && AccGuiScaleOverride.apply()) {
+        finishCommentGroupLabelEdit();
+        if (!projectionScreen && AccGuiScaleOverride.apply(hasScmWorkspace() ? 800 : 0)) {
             return;
         }
         // -----------------------------------------------------LAYOUT STATE-----------------------------------------------------
@@ -1004,15 +1476,25 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         setLinkerOpen(false, false);
 
         // -----------------------------------------------------SEARCH FIELDS-----------------------------------------------------
+        graphSearch = new EditBox(font, 0, 0, 120, 18,
+                Component.translatable("createthrusters.advanced_controller.search.hint"));
+        graphSearch.setHint(Component.translatable("createthrusters.advanced_controller.search.hint"));
+        graphSearch.setValue(graphSearchQuery);
+        graphSearch.setResponder(value -> { graphSearchQuery = value; graphSearchCurrent = null; });
+        addRenderableWidget(graphSearch);
         nodeSearch = new EditBox(font, layoutLeft() + 8, 36, Math.max(48, activeLeftWidth() - 16), 18, Component.literal("Search nodes"));
-        nodeSearch.setHint(Component.literal(v2Ui ? "Search nodes..." : "Search nodes"));
+        nodeSearch.setHint(Component.literal("Search nodes..."));
         if (v2Ui) {
             nodeSearch.setBordered(false);
             nodeSearch.setTextColor(AdvancedControllerV2Theme.PRIMARY);
             nodeSearch.setTextColorUneditable(AdvancedControllerV2Theme.MUTED);
         }
-        nodeSearch.setVisible(!leftSidebarCollapsed && !blockBrowserOpen);
-        nodeSearch.setResponder(val -> browserScroll = 0);
+        
+        nodeSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview
+                && !leftSidebarCollapsed && !blockBrowserOpen);
+        nodeSearch.setResponder(val -> {
+            browserScroll = 0;
+        });
         addRenderableWidget(nodeSearch);
 
         blockSearch = new EditBox(font, layoutLeft() + 8, 36, Math.max(48, activeLeftWidth() - 16), 18, Component.literal("Search blocks and items"));
@@ -1022,7 +1504,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             blockSearch.setTextColor(AdvancedControllerV2Theme.PRIMARY);
             blockSearch.setTextColorUneditable(AdvancedControllerV2Theme.MUTED);
         }
-        blockSearch.setVisible(!leftSidebarCollapsed && blockBrowserOpen);
+        
+        blockSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview
+                && !leftSidebarCollapsed && blockBrowserOpen);
         blockSearch.setResponder(val -> blockBrowserScroll = 0);
         addRenderableWidget(blockSearch);
 
@@ -1060,6 +1544,76 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         inspectorValue.setVisible(false);
         inspectorValue.setResponder(this::updateNodeProperty);
         addRenderableWidget(inspectorValue);
+
+        scmVehicleName = new EditBox(font, 0, 0, 120, 18, Component.literal("Vehicle name"));
+        scmVehicleName.setMaxLength(64);
+        scmVehicleName.setVisible(false);
+        addRenderableWidget(scmVehicleName);
+
+        
+        
+        
+        
+        
+
+        
+        
+        
+        
+        
+        
+
+        
+        
+        
+        
+        
+
+        
+        
+        
+        
+        
+        
+
+        
+        
+        
+        
+        
+
+        
+        
+        
+        
+        
+        
+
+        
+        
+        
+        
+        
+        
+
+        // The Schedule tab uses the same ACC inspector shell. Its value editor
+        // writes the selected block's real ScheduleDataEntry data, rather than
+        // maintaining a separate Scratch-only property store.
+        schedulePropertyValue = new EditBox(font, graphRight() + 8, 118,
+                Math.max(48, RIGHT_WIDTH - 16), 18, Component.literal("Schedule property"));
+        schedulePropertyValue.setMaxLength(256);
+        schedulePropertyValue.setVisible(false);
+        schedulePropertyValue.setResponder(this::updateScheduleProperty);
+        addRenderableWidget(schedulePropertyValue);
+
+        scheduleInlinePropertyValue = new EditBox(font, 0, 0, 70, 16,
+                Component.literal("Block property"));
+        scheduleInlinePropertyValue.setMaxLength(128);
+        scheduleInlinePropertyValue.setBordered(false);
+        scheduleInlinePropertyValue.setTextColor(0xFF263545);
+        scheduleInlinePropertyValue.setVisible(false);
+        scheduleInlinePropertyValue.setResponder(this::updateScheduleProperty);
+        addRenderableWidget(scheduleInlinePropertyValue);
 
         hudText = new EditBox(font, 0, 0, 160, 18, Component.literal("Widget text"));
         hudText.setVisible(false);
@@ -1112,6 +1666,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         linkerShareName.setVisible(false);
         addRenderableWidget(linkerShareName);
 
+        themeNameEditor = new EditBox(font, 0, 0, 180, 18, Component.literal("Theme name"));
+        themeNameEditor.setMaxLength(48);
+        themeNameEditor.setHint(Component.literal("Theme name"));
+        themeNameEditor.setBordered(false);
+        themeNameEditor.setVisible(false);
+        addRenderableWidget(themeNameEditor);
+
         // ------------------------------------TOOLBAR / WINDOWS------------------------------------
         addToolbarButton(layoutLeft() + 4, "Save", btn -> {
             long requestId = beginGraphActionToast("Saving and applying graph...");
@@ -1121,6 +1682,28 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             long requestId = beginGraphActionToast("Applying graph...");
             saveAndApplyDraft("apply_save", requestId);
         });
+        if(menu.getContentSubLevelId() != null && hasScmWorkspace() && !Minecraft.getInstance().isSingleplayer()){
+            addToolbarButton(layoutLeft() + 108, "Ship Permissions", btn -> {
+                shipPermissionsOpen = true;
+                shipPermissionsSelected = null;
+                shipPermissionsScroll = 0;
+                shipPermissionsSnapshotTicks = 0;
+                sendScmConfiguration("scm_permissions_open", new CompoundTag());
+            });
+        }
+        Button.OnPress toggleChunkLoading = btn -> {
+            AdvancedContraptionControllerBlockEntity controller = menu.getMenuConfigTargetBlockEntity();
+            CompoundTag change = new CompoundTag();
+            change.putBoolean("Enabled", !(controller == null ? scmChunkLoading : controller.isScmChunkLoading()));
+            sendScmConfiguration("scm_chunk_loading", change);
+        };
+        chunkLoadingButton = v2Ui
+                ? new V2ToolbarButton(layoutRight() - 522, 5, 126, 18,
+                        Component.literal("Chunk loading: false"), toggleChunkLoading)
+                : Button.builder(Component.literal("Chunk loading: false"), toggleChunkLoading)
+                        .bounds(layoutRight() - 522, 5, 126, 18).build();
+        chunkLoadingButton.visible = hasScmWorkspace();
+        addRenderableWidget(chunkLoadingButton);
         addToolbarButton(layoutRight() - 304, blockBrowserOpen ? "EMI/JEI: On" : "EMI/JEI: Off", btn -> setBlockBrowserOpen(!blockBrowserOpen));
         addToolbarButton(layoutRight() - 220, "Linker", btn -> setLinkerOpen(!linkerOpen));
         addToolbarButton(layoutRight() - 154, "Share", btn -> setShareModalOpen(!shareModalOpen));
@@ -1135,6 +1718,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             miniBrowserSearch.setVisible(true);
             posMiniSearch();
         }
+        if (themeEditorOpen) syncThemeNameEditor();
         requestDiscoveryRefresh();
     }
 
@@ -1163,7 +1747,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Check if this uses V2 UI
     boolean usesV2Ui() {
-        return v2Ui;
+        return true;
     }
 
     // Set the graph V2 enabled
@@ -1203,8 +1787,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         UiRect bounds = toolsMenuBounds();
         renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
         List<String> labels = List.of(
-                "Validate", "Revert", "Reset Graph", saveOnCloseLabel(), graphV2Label(),
-                "Function Plotter", "Templates", "Versions");
+                "Validate", "Revert", "Reset Graph", saveOnCloseLabel(),
+                "Function Plotter", "SCM Workspace", "Templates", "Versions", "Theme Editor");
         for (int row = 0; row < labels.size(); row++) {
             UiRect item = toolsMenuRowBounds(row);
             renderAdvancedButton(graphics, font, item.x(), item.y(), item.width(), item.height(),
@@ -1232,10 +1816,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     }
                     saveUiPreferences();
                 }
-                case 4 -> setGraphV2Enabled(!v2Ui);
-                case 5 -> openFunctionPlotter();
+                case 4 -> openFunctionPlotter();
+                case 5 -> openScmConfiguration();
                 case 6 -> templatePicker = true;
                 case 7 -> toggleGraphHistory();
+                case 8 -> openThemeEditor();
                 default -> {
                 }
             }
@@ -1433,7 +2018,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the node frame index
     private static int nodeFrameIndex(String category) {
-        return switch (category) {
+        return switch(category){
             case "controller" -> 0;
             case "core" -> 1;
             case "response" -> 2;
@@ -1530,12 +2115,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                                  String category, boolean selected, int clipTop, int clipBottom) {
         int[] src = nodeFrameSource(category);
         int frameWidth = width + NODE_FRAME_BODY_WIDTH_PAD;
-        double frameScale = Math.max(0.1D, width / (double) NODE_FRAME_SRC_W);
-        int titleHeight = Math.min(height, Math.max(1, (int) Math.round(NODE_FRAME_TITLE_SRC_H * frameScale)));
-        int extraHeight = height > titleHeight
-                ? Math.min(Math.max(1, (int) Math.round(NODE_FRAME_EXTRA_SRC_H * frameScale)), height - titleHeight)
-                : 0;
-        int bodyHeight = Math.max(0, height - titleHeight - extraHeight);
+        double frameScale = Math.max(0.1D, NODE_WIDTH * zoom / NODE_FRAME_SRC_W);
+        GraphNodeLayout.Frame frame = nodeFrameLayout(height);
+        int titleHeight = frame.titleHeight();
+        int extraHeight = frame.footerHeight();
+        int bodyHeight = frame.bodyHeight();
         boolean titleVisible = y + titleHeight >= clipTop && y <= clipBottom;
         boolean bodyVisible = bodyHeight > 0
                 && y + titleHeight + bodyHeight >= clipTop && y + titleHeight <= clipBottom;
@@ -1568,6 +2152,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (selected) {
             graphics.renderOutline(x - 1, y - 1, frameWidth + 2, height + 2, 0xFFFFFFFF);
         }
+    }
+
+    private GraphNodeLayout.Frame nodeFrameLayout(int height){
+        return GraphNodeLayout.frame(height, NODE_WIDTH * zoom / NODE_FRAME_SRC_W,
+                NODE_FRAME_TITLE_SRC_H, NODE_FRAME_EXTRA_SRC_H);
     }
 
     // Add the node frame section
@@ -1780,6 +2369,16 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         finishAdvSpriteBatch(buffer);
     }
 
+    // Keep canvas and modal backgrounds below the container's shallow foreground layer
+    @Override
+    public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick){
+        if(renderingContainerForeground){
+            try(var layer = GuiRenderLayer.restoreBackground(graphics, CONTAINER_FOREGROUND_DEPTH)){
+                super.renderBackground(graphics, mouseX, mouseY, partialTick);
+            }
+        }else super.renderBackground(graphics, mouseX, mouseY, partialTick);
+    }
+
     // Draw the bg
     @Override
     protected void renderBg(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
@@ -1789,37 +2388,73 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         prepareGraphRenderCache();
         layoutHudWidgets();
         ensureSidebarFit();
+        if (scmVehicleName != null && !scmGraphOverview && !scmConfigurationOpen) {
+            scmVehicleName.setVisible(false);
+        }
+        
+        
         graphics.fill(layoutLeft(), 0, layoutRight(), height,
                 v2Ui ? AdvancedControllerV2Theme.CANVAS_BACKGROUND : 0xFF10141C);
-        if (graphRight() > graphLeft()) {
+        if (scmGraphOverview) {
+            drawScmGraphWorkspace(graphics, mouseX, mouseY);
+        } else if (scheduleGraphOverview) {
+            graphics.enableScissor(graphLeft(), graphTop(), graphRight(), graphBottom());
+            drawScheduleGrid(graphics);
+            drawShippingScheduleWorkspace(graphics, mouseX, mouseY);
+            graphics.disableScissor();
+            drawScheduleCanvasOverlay(graphics);
+        } else if (graphRight() > graphLeft()) {
             graphics.enableScissor(graphLeft(), graphTop(), graphRight(), graphBottom());
             drawGrid(graphics);
-            drawGroups(graphics);
+            drawGroups(graphics, mouseX, mouseY);
             drawEdges(graphics, mouseX, mouseY);
             drawNodes(graphics, mouseX, mouseY);
+            drawCommentGroupLabelEditor(graphics, partialTick, mouseX, mouseY);
+            drawBodyValueEditor(graphics, partialTick, mouseX, mouseY);
+            drawGraphSearch(graphics, mouseX, mouseY);
             if (connectingNode != null) drawActiveWire(graphics);
             if (marquee) drawMarquee(graphics, mouseX, mouseY);
             drawGraphFps(graphics);
             graphics.disableScissor();
         }
-        if (v2Ui) {
+        // The minimap, zoom/NODES readout and canvas reset controls belong to
+        // the editable graph canvas only. SCM is a live 3D workspace.
+        
+
+        if (!scmGraphOverview && !scheduleGraphOverview && v2Ui) {
             drawV2CanvasOverlay(graphics);
         }
 
         drawToolbar(graphics);
         drawGraphTabs(graphics, mouseX, mouseY);
-        drawLeftBrowser(graphics, mouseX, mouseY);
-        drawInspector(graphics);
-        drawSidebarHandles(graphics);
-        if (toolsMenuOpen) drawToolsMenu(graphics, mouseX, mouseY);
-        if (linkerOpen) drawLinkerWindow(graphics, mouseX, mouseY);
-        if (shareModalOpen) drawShareWindow(graphics, mouseX, mouseY);
-        if (templatePicker) drawTemplatePicker(graphics, mouseX, mouseY);
-        if (graphHistoryOpen) drawGraphHistory(graphics, mouseX, mouseY);
-        if (contextMenu != null) drawContextMenu(graphics);
-        if (miniBrowser != null) drawMiniBrowser(graphics, mouseX, mouseY);
-        if (hudOpen) drawHud(graphics, mouseX, mouseY);
-        if (frequencyModalOpen) drawFrequencyModal(graphics, mouseX, mouseY);
+        if (scmGraphOverview) {
+            drawScmSimulationSidebar(graphics);
+        } else if (scheduleGraphOverview) {
+            drawScheduleLibrary(graphics, mouseX, mouseY);
+            drawScheduleInspector(graphics, mouseX, mouseY);
+            drawSidebarHandles(graphics);
+            drawSidebarHandles(graphics);
+        } else {
+            drawLeftBrowser(graphics, mouseX, mouseY);
+            if (!graphConfigSidebarRetired()) drawInspector(graphics);
+            drawSidebarHandles(graphics);
+        }
+        if(linkerOpen || shareModalOpen || templatePicker || graphHistoryOpen || contextMenu != null
+                || miniBrowser != null || hudOpen || frequencyModalOpen){
+            try(var layer = GuiRenderLayer.push(graphics, 400)){
+                if (linkerOpen) drawLinkerWindow(graphics, mouseX, mouseY);
+                if (shareModalOpen) drawShareWindow(graphics, mouseX, mouseY);
+                if (templatePicker) drawTemplatePicker(graphics, mouseX, mouseY);
+                if (graphHistoryOpen) drawGraphHistory(graphics, mouseX, mouseY);
+                if (contextMenu != null) drawContextMenu(graphics);
+                if (miniBrowser != null) drawMiniBrowser(graphics, mouseX, mouseY);
+                if (hudOpen) drawHud(graphics, mouseX, mouseY);
+                if (frequencyModalOpen) drawFrequencyModal(graphics, mouseX, mouseY);
+            }
+        }
+        
+        
+        
     }
 
     // Draw the graph fps
@@ -1839,34 +2474,41 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Prepare the graph render cache
     private void prepareGraphRenderCache() {
-        //if (draft == null || graphRenderCacheDocument == draft) return;
-        if (draft == null){
+        if (draft == null) {
             clearGraphRenderCache();
             return;
         }
-        int signature = graphPortLayoutSignature();
-        if(graphRenderCacheDocument == draft && graphRenderCacheSignature == signature) return;
+        // Graph structure changes explicitly invalidate this cache. Rebuilding it
+        // every frame re-measured every dynamic port and was the primary V2 cost.
+        if (graphRenderCacheDocument == draft) return;
         graphRenderNodes.clear();
         graphRenderPortLayouts.clear();
         graphRenderCacheDocument = draft;
-        graphRenderCacheSignature = signature;
         for (AdvancedGraphDocument.Node node : activeNodes()) {
             graphRenderNodes.put(node.id(), node);
             Map<String, String> inputs = editorPorts(node, false);
             Map<String, String> outputs = editorPorts(node, true);
             boolean collapsed = collapsedNodes.contains(node.id()) || isPersistedNodeCollapsed(node);
-            graphRenderPortLayouts.put(node.id(), new NodePortLayout(
+            NodePortLayout layout = new NodePortLayout(
                     inputs, outputs, new LinkedHashSet<>(), new LinkedHashSet<>(),
-                    new LinkedHashSet<>(), new LinkedHashMap<>(), new LinkedHashMap<>(),
-                    nonExecPortCount(inputs) + nonExecPortCount(outputs) > 3, collapsed));
+                    new LinkedHashSet<>(), new LinkedHashSet<>(), new LinkedHashMap<>(), new LinkedHashMap<>(),
+                    nonExecPortCount(inputs) + nonExecPortCount(outputs) > 3, collapsed);
+            layout.setNodeWidth(measureNodeWidth(node, inputs, outputs));
+            if(isFunctionNode(node)) layout.setExecutionInputs(GraphNodeLayout.portRows(inputs.entrySet().stream()
+                    .filter(port -> "exec".equals(port.getValue())).map(Map.Entry::getKey).toList(), 13));
+            graphRenderPortLayouts.put(node.id(), layout);
         }
         for (AdvancedGraphDocument.Edge edge : activeEdges()) {
             NodePortLayout from = graphRenderPortLayouts.get(edge.fromNode());
             NodePortLayout to = graphRenderPortLayouts.get(edge.toNode());
             if (from == null || to == null) continue;
             to.connectedInputs().add(edge.toPort());
+            from.connectedOutputs().add(edge.fromPort());
             String fromType = from.outputs().get(edge.fromPort());
             String toType = to.inputs().get(edge.toPort());
+            if("exec".equals(fromType) && portSection(graphRenderNodes.get(edge.fromNode()), edge.fromPort(), true) != null){
+                from.visibleOutputs().add(edge.fromPort());
+            }
             if (fromType == null || toType == null || "exec".equals(fromType) || "exec".equals(toType)) {
                 continue;
             }
@@ -1893,10 +2535,17 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             boolean collapsed = layout.collapsed() && layout.collapsible();
             int offset = 0;
             for (var port : layout.outputs().entrySet()) {
-                if ("exec".equals(port.getValue())
-                        || collapsed && !layout.visibleOutputs().contains(port.getKey())) {
+                if ("exec".equals(port.getValue()) && !isFunctionNode(node) && !isLoopBodyOutput(node, port.getKey()) && portSection(node, port.getKey(), true) == null) {
                     continue;
                 }
+                GraphPortSection section = portSectionStartingAt(node, port.getKey(), true);
+                if (section != null){
+                    layout.outputSectionOffsets().put(section.id(), offset);
+                    offset += NODE_PORT_SECTION_HEIGHT;
+                }
+                if (isPortSectionCollapsed(node, port.getKey(), true)
+                        || collapsed && !layout.visibleOutputs().contains(port.getKey())
+                        && !(isFunctionNode(node) && "exec".equals(port.getValue())) && !isLoopBodyOutput(node, port.getKey())) continue;
                 List<FormattedCharSequence> lines = wrappedOutputPortLabel(node, port.getKey());
                 int rowHeight = Math.max(13, lines.size() * font.lineHeight);
                 layout.outputLabels().put(port.getKey(), lines);
@@ -1905,6 +2554,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 offset += rowHeight;
             }
             layout.setOutputDataHeight(offset);
+        }
+        for (AdvancedGraphDocument.Node node : activeNodes()) {
+            NodePortLayout layout = graphRenderPortLayouts.get(node.id());
+            if (layout == null) continue;
+            int bodyControls = measureBodyControlCount(node);
+            layout.setBodyControlCount(bodyControls);
+            layout.setNodeHeight(measureNodeHeight(node, bodyControls));
         }
     }
 
@@ -1929,6 +2585,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             signature = 31 * signature + (functionInputLabels == null ? 0 : functionInputLabels.hashCode());
             signature = 31 * signature + (functionOutputLabels == null ? 0 : functionOutputLabels.hashCode());
             signature = 31 * signature + (dataPortGroups == null ? 0 : dataPortGroups.hashCode());
+            signature = 31 * signature + Objects.hashCode(node.data().get(AdvancedGraphCatalog.PORT_SECTIONS_TAG));
+            signature = 31 * signature + Objects.hashCode(node.data().get(AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG));
+            signature = 31 * signature + Objects.hashCode(node.data().get(AdvancedGraphCatalog.INLINE_MAP_OUTPUTS_TAG));
+            signature = 31 * signature + GraphPortOrder.read(node.data(), GraphPortOrder.INPUT_ORDER).hashCode();
+            signature = 31 * signature + GraphPortOrder.read(node.data(), GraphPortOrder.OUTPUT_ORDER).hashCode();
             signature = 31 * signature + Boolean.hashCode(node.data().getBoolean(
                     AdvancedGraphCatalog.COLLAPSE_INPUTS_TO_MAP_TAG));
             signature = 31 * signature + Boolean.hashCode(node.data().getBoolean(
@@ -1944,7 +2605,6 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Clear the graph render cache
     private void clearGraphRenderCache() {
         graphRenderCacheDocument = null;
-        graphRenderCacheSignature = 0;
         graphRenderNodes.clear();
         graphRenderPortLayouts.clear();
     }
@@ -1953,7 +2613,26 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private Map<String, String> nodeInputs(AdvancedGraphDocument.Node node) {
         NodePortLayout layout = graphRenderCacheDocument == draft && node != null
                 ? graphRenderPortLayouts.get(node.id()) : null;
-        return layout == null ? AdvancedGraphCatalog.inputs(node) : layout.inputs();
+        return layout == null ? sectionedPorts(node, withNodeSettings(node, AdvancedGraphCatalog.inputs(node)), false)
+                : layout.inputs();
+    }
+
+    // Use the same section order for body rows, wire sockets, and hit targets
+    private Map<String, String> sectionedPorts(AdvancedGraphDocument.Node node,
+                                               Map<String, String> ports, boolean output){
+        return GraphPortOrder.ordered(ports, GraphPortOrder.grouped(ports.keySet(),
+                portSections(node, output).stream().map(GraphPortSection::ports).toList()));
+    }
+
+    private static Map<String, String> withNodeSettings(AdvancedGraphDocument.Node node, Map<String, String> ports){
+        if(node == null || !"pulse_if".equals(node.type())) return ports;
+        Map<String, String> ordered = new LinkedHashMap<>();
+        for(String port : List.of("a", "operator", "b")){
+            if("operator".equals(port)) ordered.put(port, "string");
+            else if(ports.containsKey(port)) ordered.put(port, ports.get(port));
+        }
+        ports.forEach(ordered::putIfAbsent);
+        return ordered;
     }
 
     // Get the ports displayed by the editor. The graph runtime retains the individual ports
@@ -1961,6 +2640,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private Map<String, String> editorPorts(AdvancedGraphDocument.Node node, boolean output) {
         Map<String, String> ports = output ? AdvancedGraphCatalog.outputs(node)
                 : AdvancedGraphCatalog.inputs(node);
+        if(!output) ports = withNodeSettings(node, ports);
+        ports = sectionedPorts(node, ports, output);
         boolean collapsed = node != null && node.data().getBoolean(output
                 ? AdvancedGraphCatalog.COLLAPSE_OUTPUTS_TO_MAP_TAG
                 : AdvancedGraphCatalog.COLLAPSE_INPUTS_TO_MAP_TAG);
@@ -2027,43 +2708,51 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private Map<String, String> nodeOutputs(AdvancedGraphDocument.Node node) {
         NodePortLayout layout = graphRenderCacheDocument == draft && node != null
                 ? graphRenderPortLayouts.get(node.id()) : null;
-        return layout == null ? AdvancedGraphCatalog.outputs(node) : layout.outputs();
+        return layout == null ? sectionedPorts(node, AdvancedGraphCatalog.outputs(node), true) : layout.outputs();
     }
 
     // Draw the toolbar
     private void drawToolbar(GuiGraphics graphics) {
+        if(chunkLoadingButton != null){
+            AdvancedContraptionControllerBlockEntity controller = menu.getMenuConfigTargetBlockEntity();
+            chunkLoadingButton.visible = hasScmWorkspace();
+            boolean enabled = controller == null ? scmChunkLoading : controller.isScmChunkLoading();
+            chunkLoadingButton.setMessage(Component.literal("Chunk loading: " + enabled));
+        }
         renderTitleBar(graphics, layoutLeft(), 0, layoutRight() - layoutLeft(), TOOLBAR_HEIGHT);
         graphics.fill(layoutLeft(), TOOLBAR_HEIGHT - 1, layoutRight(), TOOLBAR_HEIGHT,
                 v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF314657);
+        drawGridSnapToolbarControl(graphics);
         String title = controllerTitleText();
         int titleLeft = layoutLeft() + 276;
-        int titleRight = layoutRight() - 434;
+        int titleRight = (layoutRight() - (hasScmWorkspace() ? 536 : 526));
         if (titleRight - titleLeft >= font.width(title) + 28) {
             if (controllerAliasEditor == null || !controllerAliasEditor.visible) {
                 graphics.drawCenteredString(font, title, (titleLeft + titleRight) / 2, 10,
-                        v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFFE7F4FF);
+                    v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFFE7F4FF);
             }
             UiRect pen = controllerAliasPenBounds();
-            graphics.drawString(font, "✎", pen.x() + 3, pen.y() + 3,
-                    v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFFE7F4FF, false);
+            int color = v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFFE7F4FF;
+            graphics.drawString(font, "✎", pen.x() + 3, pen.y() + 3, color, false);
         }
     }
 
     private String controllerTitleText() {
         String title = controllerAlias.isBlank() ? "Advanced Contraption Controller" : controllerAlias;
-        int available = Math.max(0, layoutRight() - 434 - (layoutLeft() + 276) - 28);
+        int available = Math.max(0, (layoutRight() - (hasScmWorkspace() ? 536 : 526)) - (layoutLeft() + 276) - 28);
         if (font.width(title) <= available) return title;
         return font.plainSubstrByWidth(title, Math.max(0, available - font.width("…"))) + "…";
     }
 
     private UiRect controllerAliasPenBounds() {
-        int center = (layoutLeft() + 276 + layoutRight() - 434) / 2;
-        return new UiRect(center + font.width(controllerTitleText()) / 2 + 6, 5, 16, 18);
+        String title = controllerTitleText();
+        int center = (layoutLeft() + 276 + (layoutRight() - (hasScmWorkspace() ? 536 : 526))) / 2;
+        return new UiRect(center + font.width(title) / 2 + 6, 5, 16, 18);
     }
 
     private void beginControllerAliasRename() {
         if (controllerAliasEditor == null) return;
-        int center = (layoutLeft() + 276 + layoutRight() - 434) / 2;
+        int center = (layoutLeft() + 276 + (layoutRight() - (hasScmWorkspace() ? 536 : 526))) / 2;
         controllerAliasEditor.setX(center - 80);
         controllerAliasEditor.setY(6);
         controllerAliasEditor.setValue(controllerAlias);
@@ -2104,8 +2793,20 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         graphics.enableScissor(left, top, right, top + GRAPH_TAB_HEIGHT);
         int x = left + 5 - functionTabScroll;
         x = drawGraphTab(graphics, x, top + 3, "Main Graph",
-                activeFunctionId == null, mouseX, mouseY, false, false);
+                !scmGraphOverview && !scheduleGraphOverview && activeFunctionId == null,
+                mouseX, mouseY, false, false);
+        
+        if (hasScmWorkspace()) {
+            x = drawGraphTab(graphics, x, top + 3, "SCM Graph",
+                    scmGraphOverview, mouseX, mouseY, false, false);
+        }
+        if (hasShippingScheduleWorkspace()) {
+            x = drawGraphTab(graphics, x, top + 3, "Schedule",
+                    scheduleGraphOverview, mouseX, mouseY, false, false);
+        }
+        
         for (AdvancedGraphDocument.FunctionGraph function : draft.functions()) {
+            
             x = drawGraphTab(graphics, x, top + 3, function.name(),
                     function.id().equals(activeFunctionId), mouseX, mouseY, true,
                     function.id().equals(editingFunctionId));
@@ -2164,7 +2865,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Get the graph tabs content width
     private int graphTabsContentWidth() {
         int width = graphTabWidth("Main Graph", false) + 3;
+        if (hasScmWorkspace()) {
+            width += graphTabWidth("SCM Graph", false) + 3;
+        }
+        if (hasShippingScheduleWorkspace()) {
+            width += graphTabWidth("Schedule", false) + 3;
+        }
+        
         for (AdvancedGraphDocument.FunctionGraph function : draft.functions()) {
+            
             width += graphTabWidth(function.name(), true) + 3;
         }
         return width + 7;
@@ -2184,7 +2893,25 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return true;
         }
         x += width + 3;
+        if (hasScmWorkspace()) {
+            width = graphTabWidth("SCM Graph", false);
+            if (mouseX >= x && mouseX < x + width) {
+                selectScmGraphTab();
+                return true;
+            }
+            x += width + 3;
+        }
+        if (hasShippingScheduleWorkspace()) {
+            width = graphTabWidth("Schedule", false);
+            if (mouseX >= x && mouseX < x + width) {
+                selectShippingScheduleTab();
+                return true;
+            }
+            x += width + 3;
+        }
+        
         for (AdvancedGraphDocument.FunctionGraph function : draft.functions()) {
+            
             width = graphTabWidth(function.name(), true);
             if (mouseX >= x && mouseX < x + width) {
                 if (mouseX >= x + width - 28) {
@@ -2406,22 +3133,24 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Draw the tooltip
     @Override
     protected void renderTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
-        if (!hudOpen) super.renderTooltip(graphics, mouseX, mouseY);
+        if (!hudOpen && !scmConfigurationOpen && !scmGraphOverview && !scheduleGraphOverview) {
+            super.renderTooltip(graphics, mouseX, mouseY);
+        }
     }
 
     // Draw the slot
     @Override
     protected void renderSlot(GuiGraphics graphics, Slot slot) {
-        if (shouldHideGhostSlot(slot)) return;
-        if (!ContraptionNetworkLinkerSlotRenderer.renderControllerSlot(graphics, slot)) {
-            super.renderSlot(graphics, slot);
-        }
+        if (scmConfigurationOpen || scmGraphOverview || scheduleGraphOverview
+                || shouldHideGhostSlot(slot)) return;
+        super.renderSlot(graphics, slot);
     }
 
     // Draw the slot highlight
     @Override
     protected void renderSlotHighlight(GuiGraphics graphics, Slot slot, int mouseX, int mouseY, float partialTick) {
-        if (shouldHideGhostSlot(slot)) return;
+        if (scmConfigurationOpen || scmGraphOverview || scheduleGraphOverview
+                || shouldHideGhostSlot(slot)) return;
         super.renderSlotHighlight(graphics, slot, mouseX, mouseY, partialTick);
     }
 
@@ -2433,8 +3162,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Check if the blocking overlay is open
     private boolean blockingOverlayOpen() {
-        return playerSelectOpen() || linkerOpen || shareModalOpen || templatePicker || optionDropdown != null || contextMenu != null
-                || miniBrowser != null || hudOpen || graphHistoryOpen || toolsMenuOpen;
+        return playerSelectOpen() || boundGlassesOpen || linkerOpen || shareModalOpen || templatePicker || optionDropdown != null || contextMenu != null
+                || miniBrowser != null || hudOpen || graphHistoryOpen || toolsMenuOpen || themeEditorOpen
+                || themeColorPicker != null || graphTargetPickerOpen || scmConfigurationOpen
+                || scmBlockPickerOpen || (graphColorPicker != null && graphColorPicker.isOpen());
     }
 
     // Check if the node item overlay is open
@@ -2459,19 +3190,86 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (!projectionRendering) {
             RecipeViewerVisibility.setEmiVisible(blockBrowserOpen && !linkerOpen);
         }
-        if (!blockBrowserOpen) renderBackground(graphics, mouseX, mouseY, partialTick);
-        super.render(graphics, mouseX, mouseY, partialTick);
+        boolean maskUnderlyingHover = masksUnderlyingHover();
+        int baseMouseX = maskUnderlyingHover ? Integer.MIN_VALUE : mouseX;
+        int baseMouseY = maskUnderlyingHover ? Integer.MIN_VALUE : mouseY;
+        UiRect searchBounds = graphSearchBounds();
+        graphSearch.setX(searchBounds.x());
+        graphSearch.setY(searchBounds.y());
+        graphSearch.setWidth(searchBounds.width());
+        graphSearch.setVisible(graphSearchVisible());
+        if(!graphSearch.visible) graphSearch.setFocused(false);
+        try(var layer = GuiRenderLayer.pushFlattened(graphics, CONTAINER_FOREGROUND_DEPTH)){
+            renderingContainerForeground = true;
+            try{ super.render(graphics, baseMouseX, baseMouseY, partialTick); }
+            finally{ renderingContainerForeground = false; }
+        }
+        if(boundGlassesOpen){
+            try(var layer = GuiRenderLayer.push(graphics, 500)){
+                drawBoundGlasses(graphics, mouseX, mouseY);
+            }
+            return;
+        }
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         RenderSystem.enableDepthTest();
+        if(shipPermissionsOpen){
+            try(var layer = GuiRenderLayer.push(graphics, 500)){
+                drawShipPermissions(graphics, mouseX, mouseY);
+            }
+            return;
+        }
+        // The SCM calibration dialog is a true modal. It must render after
+        // vanilla/container widgets, graph overlays, and their tooltips; drawing
+        // it in renderBg left later UI passes (chevrons and hover tooltips) on top.
+        if (scmConfigurationOpen) {
+            try(var layer = GuiRenderLayer.push(graphics, 500)){
+                // Container/sidebar controls may have already emitted GUI vertices
+                // with a positive depth. Give the entire calibration dialog its own
+                // high layer so no graph chevron or tooltip can win the depth test.
+                drawScmConfiguration(graphics, mouseX, mouseY);
+            }
+            return;
+        }
+        if (scmBlockPickerOpen) {
+            try(var layer = GuiRenderLayer.push(graphics, 500)){
+                drawScmBlockPicker(graphics, mouseX, mouseY);
+            }
+            return;
+        }
+        if(graphTargetPickerOpen){
+            try(var layer = GuiRenderLayer.push(graphics, 500)){
+                drawGraphTargetPicker(graphics, mouseX, mouseY);
+            }
+            return;
+        }
+        if (themeEditorOpen) {
+            try(var layer = GuiRenderLayer.push(graphics, 500)){
+                drawThemeEditor(graphics, mouseX, mouseY, partialTick);
+            }
+            return;
+        }
         if (optionDropdown != null) {
             drawOptionDropdown(graphics);
             if (optionDropdown.searchable() && optionDropdownSearch != null) {
                 optionDropdownSearch.render(graphics, mouseX, mouseY, partialTick);
             }
         }
+        drawSchedulePropertyDropdown(graphics, mouseX, mouseY);
         drawGraphActionToast(graphics);
-        if (!hudOpen && !blockingOverlayOpen() && !frequencyModalOpen) {
+        if (toolsMenuOpen) {
+            try(var layer = GuiRenderLayer.push(graphics, 500)){
+                // Tool choices are an interaction overlay, so render them after
+                // all container widgets, graph text, and other transient UI.
+                drawToolsMenu(graphics, mouseX, mouseY);
+            }
+        }
+        if (scmWorkspaceDropdownOpen()) {
+            drawScmWorkspaceDropdowns(graphics, mouseX, mouseY);
+        }
+        
+        if (!scmGraphOverview && !scheduleGraphOverview
+                && !hudOpen && !blockingOverlayOpen() && !frequencyModalOpen) {
             List<Component> nodeBrowserTooltip = nodeBrowserTooltip(mouseX, mouseY);
             if (nodeBrowserTooltip != null) {
                 if (!nodeBrowserTooltip.isEmpty()) {
@@ -2485,16 +3283,19 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
         }
         if(playerSelectOpen()){
-            graphics.pose().pushPose();
-            graphics.pose().translate(0.0F, 0.0F, 600.0F);
-            playerSelectModal.renderStyled(graphics, font, width, height, playerSelectAppearance(), mouseX, mouseY);
-            graphics.pose().popPose();
+            try(var layer = GuiRenderLayer.push(graphics, 600)){
+                playerSelectModal.renderStyled(graphics, font, width, height, playerSelectAppearance(), mouseX, mouseY);
+            }
         }
         if (graphColorPicker != null && graphColorPicker.isOpen()) {
-            graphics.pose().pushPose();
-            graphics.pose().translate(0.0F, 0.0F, 500.0F);
-            graphColorPicker.renderStyled(graphics, font, width, height, colorPickerAppearance(), mouseX, mouseY);
-            graphics.pose().popPose();
+            try(var layer = GuiRenderLayer.push(graphics, 500)){
+                graphColorPicker.renderStyled(graphics, font, width, height, colorPickerAppearance(), mouseX, mouseY);
+            }
+        }
+        if(hudColorPicker != null && hudColorPicker.isOpen()){
+            try(var layer = GuiRenderLayer.push(graphics, 500)){
+                hudColorPicker.renderStyled(graphics, font, width, height, colorPickerAppearance(), mouseX, mouseY);
+            }
         }
     }
 
@@ -2563,23 +3364,42 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Select the graph tab
     private void selectGraphTab(String functionId) {
-        if (Objects.equals(activeFunctionId, functionId)) {
+        if (!scmGraphOverview && !scheduleGraphOverview && Objects.equals(activeFunctionId, functionId)) {
             return;
         }
+        
+        boolean leavingScmWorkspace = scmGraphOverview;
         storeViewport();
+        scmGraphOverview = false;
+        scheduleGraphOverview = false;
+        
+        
+        
+        if (schedulePropertyValue != null) schedulePropertyValue.setVisible(false);
+        editingScheduleInlineProperty = false;
+        if (scheduleInlinePropertyValue != null) scheduleInlinePropertyValue.setVisible(false);
         activeFunctionId = functionId;
         restoreViewport();
         clearSelection();
         clearGraphRenderCache();
+        if (leavingScmWorkspace) {
+            scmLivePreviewRenderer.close();
+        }
     }
 
     // Get the graph left
     private int graphLeft() {
+        if (scmGraphOverview) {
+            return layoutLeft() + scmSimulationSidebarWidth();
+        }
         return layoutLeft() + activeLeftWidth();
     }
 
     // Get the graph right
     private int graphRight() {
+        if (scmGraphOverview) {
+            return layoutRight();
+        }
         return Math.max(graphLeft(), layoutRight() - activeRightWidth());
     }
 
@@ -2620,29 +3440,43 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the active right width
     private int activeRightWidth() {
+        if (graphConfigSidebarRetired()) return 0;
         return rightSidebarCollapsed ? SIDEBAR_HANDLE_WIDTH : RIGHT_WIDTH;
     }
 
     // Ensure the sidebar fit
     private void ensureSidebarFit() {
         int available = layoutRight() - layoutLeft();
-        if (!rightSidebarCollapsed && available < LEFT_WIDTH + RIGHT_WIDTH + MIN_GRAPH_WIDTH) {
+        if (!graphConfigSidebarRetired()
+                && !rightSidebarCollapsed && available < LEFT_WIDTH + RIGHT_WIDTH + MIN_GRAPH_WIDTH) {
             rightSidebarCollapsed = true;
         }
         if (!leftSidebarCollapsed && available < LEFT_WIDTH + SIDEBAR_HANDLE_WIDTH + MIN_GRAPH_WIDTH) {
             leftSidebarCollapsed = true;
         }
         if (nodeSearch != null) {
-            nodeSearch.setVisible(!leftSidebarCollapsed && !blockBrowserOpen);
+            nodeSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview
+                    && !leftSidebarCollapsed && !blockBrowserOpen);
+            
             nodeSearch.setWidth(Math.max(48, activeLeftWidth() - 16));
         }
         if (blockSearch != null) {
-            blockSearch.setVisible(!leftSidebarCollapsed && blockBrowserOpen);
+            blockSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview
+                    && !leftSidebarCollapsed && blockBrowserOpen);
+            
             blockSearch.setWidth(Math.max(48, activeLeftWidth() - 16));
         }
-        if (inspectorValue != null && rightSidebarCollapsed) {
+        if (inspectorValue != null && !editingBodyValue
+                && (graphConfigSidebarRetired() || rightSidebarCollapsed)) {
             inspectorValue.setVisible(false);
         }
+        if (schedulePropertyValue != null && (!scheduleGraphOverview || rightSidebarCollapsed)) {
+            schedulePropertyValue.setVisible(false);
+        }
+        if (scheduleInlinePropertyValue != null && !scheduleGraphOverview) {
+            scheduleInlinePropertyValue.setVisible(false);
+        }
+        
     }
 
     // Get the stable recipe viewer gui area
@@ -2664,7 +3498,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (!leftSidebarCollapsed) {
             areas.add(new Rect2i(layoutLeft(), TOOLBAR_HEIGHT, LEFT_WIDTH, Math.max(0, height - TOOLBAR_HEIGHT)));
         }
-        if (!rightSidebarCollapsed) {
+        if (!graphConfigSidebarRetired() && !rightSidebarCollapsed) {
             areas.add(new Rect2i(layoutRight() - RIGHT_WIDTH, TOOLBAR_HEIGHT, RIGHT_WIDTH, Math.max(0, height - TOOLBAR_HEIGHT)));
         }
         if (templatePicker) {
@@ -2947,7 +3781,108 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     // Draw the groups
-    private void drawGroups(GuiGraphics graphics) {
+    private String commentGroupTitle(CompoundTag group) {
+        String title = group.getString("Title");
+        return title.isBlank() ? "Comment" : title;
+    }
+
+    private GraphGroupHeader.Layout commentGroupHeader(CompoundTag group) {
+        return GraphGroupHeader.layout(screenX(group.getDouble("X")), screenY(group.getDouble("Y")),
+                (int)(group.getDouble("Width") * zoom), zoom, font.width(commentGroupTitle(group)));
+    }
+
+    private boolean commentGroupLabelEditing() {
+        return commentGroupLabelEditor != null && commentGroupLabelEditor.isOpen();
+    }
+
+    private boolean clickCommentGroupHeader(double mouseX, double mouseY, int button) {
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT || nodeAt(mouseX, mouseY) != null) return false;
+        CompoundTag group = groupAt(mouseX, mouseY);
+        if (group == null) return false;
+        GraphGroupHeader.Layout bounds = commentGroupHeader(group);
+        if (bounds.colorContains(mouseX, mouseY)) {
+            selectGroup(group);
+            syncInspector();
+            openCommentGroupColorPicker(group);
+            return true;
+        }
+        if (!bounds.titleContains(mouseX, mouseY)) return false;
+        selectGroup(group);
+        syncInspector();
+        String id = group.getString("Id");
+        editingCommentGroupId = id;
+        commentGroupLabelEditor = new InlineTextEditor(font, Component.literal("Comment group label"),
+                commentGroupTitle(group), 256, value -> {
+            commentGroupLabelEditor = null;
+            editingCommentGroupId = null;
+            CompoundTag target = findGroup(id);
+            String title = value.isBlank() ? "Comment" : value;
+            if (target != null && !title.equals(commentGroupTitle(target))) {
+                checkpoint();
+                target.putString("Title", title);
+                syncInspector();
+            }
+        }, () -> {
+            commentGroupLabelEditor = null;
+            editingCommentGroupId = null;
+        });
+        commentGroupLabelEditor.setBounds(bounds.titleX(), bounds.titleY(), bounds.titleWidth(), bounds.scale());
+        return true;
+    }
+
+    private void drawCommentGroupLabelEditor(GuiGraphics graphics, float partialTick, int mouseX, int mouseY) {
+        if (!commentGroupLabelEditing()) return;
+        CompoundTag group = findGroup(editingCommentGroupId);
+        if (group == null) {
+            commentGroupLabelEditor.cancel();
+            return;
+        }
+        GraphGroupHeader.Layout bounds = commentGroupHeader(group);
+        commentGroupLabelEditor.setBounds(bounds.titleX(), bounds.titleY(), bounds.titleWidth(), bounds.scale());
+        commentGroupLabelEditor.render(graphics, mouseX, mouseY, partialTick);
+    }
+
+    private void finishCommentGroupLabelEdit() {
+        if (commentGroupLabelEditing()) commentGroupLabelEditor.accept();
+    }
+
+    private void openCommentGroupColorPicker(CompoundTag group) {
+        String id = group.getString("Id");
+        int initial = group.contains("Color") ? group.getInt("Color") : 0xFF5D9FE3;
+        Tag previousColor = group.get("Color");
+        boolean wasDirty = draftDirty;
+        ArrayDeque<AdvancedGraphDocument> previousUndo = new ArrayDeque<>(undo);
+        ArrayDeque<AdvancedGraphDocument> previousRedo = new ArrayDeque<>(redo);
+        Runnable restore = () -> {
+            CompoundTag target = findGroup(id);
+            if (target != null) {
+                if (previousColor == null) target.remove("Color");
+                else target.put("Color", previousColor.copy());
+            }
+            undo.clear();
+            undo.addAll(previousUndo);
+            redo.clear();
+            redo.addAll(previousRedo);
+            draftDirty = wasDirty;
+            clearGraphRenderCache();
+        };
+        checkpoint();
+        graphColorPicker = new ColorPickerModal(initial, color -> {
+            CompoundTag target = findGroup(id);
+            if (target != null) target.putInt("Color", color);
+        }, () -> {
+            graphColorPicker = null;
+            CompoundTag target = findGroup(id);
+            if (target == null || target.getInt("Color") == initial) restore.run();
+            syncInspector();
+        }, () -> {
+            graphColorPicker = null;
+            restore.run();
+            syncInspector();
+        });
+    }
+
+    private void drawGroups(GuiGraphics graphics, int mouseX, int mouseY) {
         for (CompoundTag group : activeGroups()) {
             int x = screenX(group.getDouble("X"));
             int y = screenY(group.getDouble("Y"));
@@ -2960,11 +3895,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             int col = group.contains("Color") ? group.getInt("Color") : 0xFF5D9FE3;
             graphics.fill(x, y, x + w, y + h, (col & 0x00FFFFFF) | 0x26000000);
             int titleHeight = Math.max(1, (int) Math.round(18 * zoom));
-            int titleOffset = Math.max(1, (int) Math.round(5 * zoom));
             graphics.fill(x, y, x + w, y + titleHeight, (col & 0x00FFFFFF) | 0x77000000);
             graphics.renderOutline(x, y, w, h, group.getString("Id").equals(selectedGroup) ? 0xFFFFFFFF : col);
-            String title = group.getString("Title").isBlank() ? "Comment" : group.getString("Title");
-            drawNodeString(graphics, title, x + titleOffset, y + titleOffset, 0xFFFFFFFF);
+            GraphGroupHeader.render(graphics, font, commentGroupHeader(group), commentGroupTitle(group),
+                    commentGroupLabelEditing() && group.getString("Id").equals(editingCommentGroupId), mouseX, mouseY);
             if (group.getString("Id").equals(selectedGroup)) {
                 int handleSize = Math.max(1, (int) Math.round(8 * zoom));
                 graphics.fill(x + w - handleSize, y + h - handleSize, x + w, y + h, 0xFFFFFFFF);
@@ -3071,7 +4005,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private void drawNodes(GuiGraphics graphics, double mouseX, double mouseY) {
         AdvancedGraphDocument.Node hoveredNode = Screen.hasControlDown() ? nodeAt(mouseX, mouseY) : null;
         String hoveredVariable = variableNodeName(hoveredNode);
-        for (AdvancedGraphDocument.Node node : activeNodes()) {
+        for (AdvancedGraphDocument.Node node : activeNodesInRenderOrder()) {
             int x = screenX(node.x());
             int y = screenY(node.y());
             int w = (int) (nodeWidth(node) * zoom);
@@ -3084,7 +4018,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             if (definition == null) {
                 if (failedNodes.contains(node.id())) {
                     graphics.renderOutline(x - 2, y - 2,
-                            (int) (NODE_WIDTH * zoom) + 4,
+                            (int) (nodeWidth(node) * zoom) + 4,
                             (int) (NODE_HEADER * zoom) + 4, GRAPH_FAILURE_COLOR);
                 }
                 continue;
@@ -3093,6 +4027,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     || !hoveredVariable.isBlank() && hoveredVariable.equals(variableNodeName(node));
             if (isReroute(node)) {
                 drawRerouteNode(graphics, node, selected);
+                drawPreciseValuesButton(graphics, node, mouseX, mouseY);
                 if (failedNodes.contains(node.id())) {
                     graphics.renderOutline(x - 2, y - 2, w + 4, h + 4, GRAPH_FAILURE_COLOR);
                 }
@@ -3119,11 +4054,12 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                         w + NODE_FRAME_BODY_WIDTH_PAD + 4, h + 4, GRAPH_FAILURE_COLOR);
             }
             if (zoom >= 0.55) {
-                drawNodeString(graphics, nodeTitle(node), x + (v2Ui ? 22 : 7), y + 7,
+                drawNodeString(graphics, nodeTitle(node), nodeTitleLeft(node, x), y + (int)Math.round(7 * zoom),
                         nodeTitleTextColor(definition.category()));
                 drawRichNodeBody(graphics, node, x, y, w);
                 drawPorts(graphics, node, x, y, w);
                 drawCollapseHandle(graphics, node, x, y, w, h);
+                drawPreciseValuesButton(graphics, node, mouseX, mouseY);
             }
         }
     }
@@ -3206,21 +4142,26 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     : "PulseBehavior".equals(property) ? "Pulse Behavior"
                     : "constant_color".equals(node.type()) ? "Pick Color" : property;
             if(GraphSignalRange.VALUE_TYPE_TAG.equals(property)){
-                drawBodyDropdown(graphics, x, bodyY, width, propertyLabel, propertyValueLabel(node, property),
-                        AdvancedGraphCatalog.categoryColor(AdvancedGraphCatalog.get(node.type()).category()));
+                drawBodyControl(graphics, x, bodyY, width, propertyLabel, (bodyValueEditing(node, property) ? "" : propertyValueLabel(node, property)) + " v",
+                        AdvancedGraphCatalog.categoryColor(AdvancedGraphCatalog.get(node.type()).category()), false);
             }else{
-                drawBodyControl(graphics, x, bodyY, width, propertyLabel, propertyValueLabel(node, property),
+                drawBodyControl(graphics, x, bodyY, width, propertyLabel, (bodyValueEditing(node, property) ? "" : propertyValueLabel(node, property)),
                         AdvancedGraphCatalog.categoryColor(AdvancedGraphCatalog.get(node.type()).category()),
                         "constant_boolean".equals(node.type()) && node.data().getBoolean(property));
             }
             if ("constant_color".equals(node.type())) {
-                drawGraphColorSwatch(graphics, x + width - Math.max(21, (int) (21 * zoom)), bodyY,
+                drawGraphColorSwatch(graphics, x + width - (int) Math.round(21 * zoom), bodyY,
                         node.data().getInt("Value"));
             }
             bodyY += (int) (15 * zoom);
         }
         for (var port : nodeInputs(node).entrySet()) {
             if ("exec".equals(port.getValue()) || ("curve".equals(node.type()) && "value".equals(port.getKey()))) continue;
+            GraphPortSection section = portSectionStartingAt(node, port.getKey(), false);
+            if (section != null) {
+                drawNodePortSection(graphics, node, section, false, x, bodyY, width);
+                bodyY += (int) (NODE_PORT_SECTION_HEIGHT * zoom);
+            }
             if (!isDataPortVisible(node, port.getKey(), false)) continue;
             if (bodyY + 22 >= graphTop() && bodyY <= graphBottom()) {
                 boolean inputConnected = isInputConnected(node, port.getKey());
@@ -3230,22 +4171,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     drawBodySlider(graphics, node, port.getKey(), x, bodyY, width);
                 } else if ("frequency".equals(port.getValue())) {
                     drawBodyFrequency(graphics, node, port.getKey(), x, bodyY, width);
-                } else if ("desmos_plot_point".equals(node.type())
-                        && "x_functionality".equals(port.getKey())) {
-                    drawBodyDropdown(graphics, x, bodyY, width,
-                            inputDisplayLabel(node, port.getKey()),
-                            inputValueLabel(node, port.getKey(), port.getValue()),
-                            portColor(port.getValue()));
                 } else {
-                    drawBodyControl(graphics, x, bodyY, width,
-                            inputDisplayLabel(node, port.getKey()),
-                            inputValueLabel(node, port.getKey(), port.getValue()),
-                            portColor(port.getValue()), "boolean".equals(port.getValue()) && inputBoolean(node, port.getKey()),
-                            inputControlInset(node, port.getKey()));
-                    if ("color".equals(port.getValue())) {
-                        drawGraphColorSwatch(graphics, x + width - Math.max(21, (int) (21 * zoom)), bodyY,
-                                graphInputColor(node, port.getKey()));
-                    }
+                    drawNodeInputField(graphics, node, port.getKey(), port.getValue(), x, bodyY, width);
                 }
                 if (!inputConnected && isSetDataForceWriteInput(node, port.getKey())) {
                     drawSetDataForceWriteCheckbox(graphics, node, port.getKey(), x, bodyY);
@@ -3253,8 +4180,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
             bodyY += (int) (15 * zoom);
         }
-        if (isHudNode(node) && bodyY + 18 >= graphTop() && bodyY <= graphBottom()) {
-            drawBodyControl(graphics, x, bodyY, width, "Add Field", "[+]", AdvancedGraphCatalog.categoryColor("hud"), false);
+        if(isHudNode(node)){
+            if(bodyY + 18 >= graphTop() && bodyY <= graphBottom()){
+                drawBodyControl(graphics, x, bodyY, width, "Add Field", "[+]", AdvancedGraphCatalog.categoryColor("hud"), false);
+            }
+            bodyY += (int) (15 * zoom);
+            if(isAdvancedHudNode(node) && bodyY + 18 >= graphTop() && bodyY <= graphBottom()){
+                drawBodyControl(graphics, x, bodyY, width, "Open Editor", "",
+                        AdvancedGraphCatalog.categoryColor("hud"), false);
+            }
         } else if (isConstructorNode(node) && bodyY + 18 >= graphTop() && bodyY <= graphBottom()) {
             drawBodyControl(graphics, x, bodyY, width, "Add Input", "[+]",
                     AdvancedGraphCatalog.categoryColor("data"), false);
@@ -3270,45 +4204,43 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                                        int x, int y, int width) {
         int right = x + width - 5;
         int rowHeight = Math.max(12, (int) (13 * zoom));
-        int controlLeft = x + 5 + inputControlInset(node, port);
+        int labelLeft = x + 5 + inputControlInset(node, port);
+        int controlLeft = nodeInputControlLeft(node, port, x, width);
+        String label = bodyLabelEditing(node, port) ? "" : inputDisplayLabel(node, port);
+        drawClippedNodeInputLabel(graphics, label, labelLeft, controlLeft, y, rowHeight);
         renderControllerOption(graphics, controlLeft, y, right - controlLeft + 1, rowHeight, portColor(type), false);
-        String label = inputDisplayLabel(node, port);
-        drawNodeString(graphics, trim(label, 11), controlLeft + 6, y + 3, nodeMutedTextColor());
-        String shown = trim(wiredInputValueLabel(node, port, type), 11);
-        drawNodeStringRight(graphics, shown, right - 3, y + 3, nodeValueTextColor());
+        String shown = wiredInputValueLabel(node, port, type);
+        int valueLeft = controlLeft + Math.max(3, (int) Math.round(5 * zoom));
+        drawNodeInputValue(graphics, shown, valueLeft, right - 3, y + 3);
     }
 
     // Draw the body frequency
     private void drawBodyFrequency(GuiGraphics graphics, AdvancedGraphDocument.Node node, String port,
                                    int x, int y, int width) {
-        int right = x + width - 5;
-        int leadingInset = inputControlInset(node, port);
-        int controlLeft = x + 5 + leadingInset;
+        int right = x + width - (int) Math.round(5 * zoom);
+        int labelLeft = x + (int) Math.round(5 * zoom) + inputControlInset(node, port);
+        int controlLeft = nodeInputControlLeft(node, port, x, width);
+        drawNodeString(graphics, inputDisplayLabel(node, port), labelLeft,
+                y + (int) Math.round(5 * zoom), nodeMutedTextColor());
         renderControllerOption(graphics, controlLeft, y, right - controlLeft + 1,
-                Math.max(18, (int) (20 * zoom)),
+                Math.max(1, (int) Math.round(20 * zoom)),
                 portColor("frequency"), false);
-        drawNodeString(graphics, "Frequency", controlLeft + 6,
-                y + 5, nodeMutedTextColor());
-        int firstX = right - 43;
-        int secondX = right - 22;
-        drawFrequencyGhostSlot(graphics, frequencyStack(node, "FrequencyFirst"), firstX, y, 0xFFE45B67,
-                showNodeFreqItem(node, firstX + 1, y + 1));
-        drawFrequencyGhostSlot(graphics, frequencyStack(node, "FrequencySecond"), secondX, y, 0xFF5D9FE3,
-                showNodeFreqItem(node, secondX + 1, y + 1));
+        double firstX = right - 43 * zoom;
+        double secondX = right - 22 * zoom;
+        GuiControlPreviews.drawItemSlot(graphics, frequencyStack(node, "FrequencyFirst"), firstX, y, 0xFFE45B67,
+                showNodeFreqItem(node, firstX + zoom, y + zoom), zoom);
+        GuiControlPreviews.drawItemSlot(graphics, frequencyStack(node, "FrequencySecond"), secondX, y, 0xFF5D9FE3,
+                showNodeFreqItem(node, secondX + zoom, y + zoom), zoom);
     }
 
     // Draw the frequency ghost slot
     private void drawFrequencyGhostSlot(GuiGraphics graphics, ItemStack stack, int x, int y, int col,
                                         boolean renderStack) {
-        graphics.fill(x, y, x + 18, y + 18, (col & 0x00FFFFFF) | 0x55000000);
-        if (renderStack) {
-            graphics.renderItem(stack, x + 1, y + 1);
-        }
-        graphics.renderOutline(x, y, 18, 18, col);
+        GuiControlPreviews.drawItemSlot(graphics, stack, x, y, col, renderStack, 1);
     }
 
     // Show the node freq item
-    private boolean showNodeFreqItem(AdvancedGraphDocument.Node node, int x, int y) {
+    private boolean showNodeFreqItem(AdvancedGraphDocument.Node node, double x, double y) {
         if (nodeItemOverlayOpen()) {
             return false;
         }
@@ -3325,8 +4257,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             int candidateY = screenY(candidate.y());
             int candidateWidth = (int) Math.round(nodeWidth(candidate) * zoom);
             int candidateHeight = (int) Math.round(nodeHeight(candidate) * zoom);
-            if (x < candidateX + candidateWidth && x + 16 > candidateX
-                    && y < candidateY + candidateHeight && y + 16 > candidateY) {
+            if (x < candidateX + candidateWidth && x + 16 * zoom > candidateX
+                    && y < candidateY + candidateHeight && y + 16 * zoom > candidateY) {
                 return false;
             }
         }
@@ -3350,15 +4282,26 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         UiRect bounds = frequencyModalBounds();
         graphics.fill(layoutLeft(), 0, layoutRight(), height, 0x99000000);
         renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
-        graphics.drawCenteredString(font, "Redstone Link Frequency", bounds.x() + bounds.width() / 2, bounds.y() + 12, 0xFFFFFFFF);
+        graphics.drawCenteredString(font, scheduleParameterEditor ? "Schedule Parameters" : "Redstone Link Frequency",
+                bounds.x() + bounds.width() / 2, bounds.y() + 12, 0xFFFFFFFF);
 
         int firstX = leftPos + AdvancedContraptionControllerMenu.GHOST_SLOT_OUTPUT_FIRST_X;
         int secondX = leftPos + AdvancedContraptionControllerMenu.GHOST_SLOT_OUTPUT_SECOND_X;
         int slotY = topPos + AdvancedContraptionControllerMenu.GHOST_SLOTS_Y;
         drawPlayerInv(graphics);
         drawFreqSlotBgs(graphics);
-        graphics.drawString(font, "A", firstX + 6, slotY - 11, 0xFFE45B67, false);
-        graphics.drawString(font, "B", secondX + 6, slotY - 11, 0xFF5D9FE3, false);
+        if (scheduleParameterEditor) {
+            AdvancedGraphDocument.Node node = scheduleNode(frequencyNode);
+            graphics.drawString(font, ShippingScheduleGraph.inputSlotLabel(node, 0), firstX - 7, slotY - 11,
+                    0xFFE45B67, false);
+            if (scheduleParameterSlotCount() > 1) {
+                graphics.drawString(font, ShippingScheduleGraph.inputSlotLabel(node, 1), secondX - 7, slotY - 11,
+                        0xFF5D9FE3, false);
+            }
+        } else {
+            graphics.drawString(font, "A", firstX + 6, slotY - 11, 0xFFE45B67, false);
+            graphics.drawString(font, "B", secondX + 6, slotY - 11, 0xFF5D9FE3, false);
+        }
 
         UiRect clear = freqClearBtnBounds();
         renderAdvancedButton(graphics, font, clear.x(), clear.y(), clear.width(), clear.height(),
@@ -3385,33 +4328,32 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Draw the body slider
     private void drawBodySlider(GuiGraphics graphics, AdvancedGraphDocument.Node node, String port, int x, int y, int width) {
-        int left = x + 8;
         int right = x + width - 7;
-        String val = compactNumber(inputNumber(node, port));
+        String val = nodeNumber(node, inputNumber(node, port));
         SliderTrack track = bodySliderTrack(node, port);
         int trackY = y + Math.max(5, (int) (7 * zoom));
         double[] range = numberRange(node, port);
         double amount = sliderAmount(inputNumber(node, port), range);
-        int leadingInset = inputControlInset(node, port);
-        int controlLeft = leadingInset == 0 ? left : x + 5 + leadingInset;
+        int labelLeft = x + 5 + inputControlInset(node, port);
+        int controlLeft = nodeInputControlLeft(node, port, x, width);
         renderControllerOption(graphics, controlLeft, y, right - controlLeft + 1,
                 Math.max(12, (int) (13 * zoom)),
                 portColor("number"), port.equals(selectedInputPort));
-        drawNodeString(graphics, trim(inputDisplayLabel(node, port), 8),
-                controlLeft + 5, y + 3,
+        drawNodeString(graphics, bodyLabelEditing(node, port) ? "" : inputDisplayLabel(node, port),
+                labelLeft, y + 3,
                 nodeMutedTextColor());
         renderControllerSlider(graphics, track.left(), trackY, track.width(), amount, portColor("number"),
                 node.id().equals(draggingSliderNode) && port.equals(draggingSliderPort));
-        drawNodeStringRight(graphics, val, right - 2, y + 3, nodeValueTextColor());
+        if(!bodyValueEditing(node, port)) drawNodeStringRight(graphics, val, right - 2, y + 3, nodeValueTextColor());
     }
 
     // Get the body slider track
     private SliderTrack bodySliderTrack(AdvancedGraphDocument.Node node, String port) {
         int x = screenX(node.x());
-        int width = (int) (NODE_WIDTH * zoom);
+        int width = (int) (nodeWidth(node) * zoom);
         int right = x + width - 7;
         int valueWidth = sliderValueWidth(node, port, 28, 6);
-        int left = x + Math.max(58, width / 2);
+        int left = nodeInputControlLeft(node, port, x, width) + Math.max(3, (int) Math.round(5 * zoom));
         int trackRight = right - valueWidth - 4;
         return new SliderTrack(left, Math.max(left + 1, trackRight));
     }
@@ -3437,7 +4379,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 amount, portColor("number"),
                 draggingOutputSlider && node.id().equals(draggingSliderNode)
                         && port.equals(draggingSliderPort));
-        drawNodeStringRight(graphics, compactNumber(val), right - 2, y + 3,
+        drawNodeStringRight(graphics, nodeNumber(node, val), right - 2, y + 3,
                 nodeValueTextColor());
     }
 
@@ -3446,7 +4388,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             AdvancedGraphDocument.Node node, String port
     ) {
         int x = screenX(node.x());
-        int width = (int) (NODE_WIDTH * zoom);
+        int width = (int) (nodeWidth(node) * zoom);
         int right = x + width - 7;
         int valueWidth = outputSliderValueWidth(node, port, 28, 6);
         int left = x + Math.max(58, width / 2);
@@ -3479,9 +4421,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Get the slider value width
     private int sliderValueWidth(AdvancedGraphDocument.Node node, String port, int minimum, int padding) {
         double[] range = numberRange(node, port);
-        int width = font.width(compactNumber(inputNumber(node, port)));
-        width = Math.max(width, font.width(compactNumber(range[0])));
-        width = Math.max(width, font.width(compactNumber(range[1])));
+        int width = font.width(nodeNumber(node, inputNumber(node, port)));
+        width = Math.max(width, font.width(nodeNumber(node, range[0])));
+        width = Math.max(width, font.width(nodeNumber(node, range[1])));
         return Math.max(minimum, width + padding);
     }
 
@@ -3490,9 +4432,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             AdvancedGraphDocument.Node node, String port, int minimum, int padding
     ) {
         double[] range = numberRange(node, port);
-        int width = font.width(compactNumber(outputNumber(node, port)));
-        width = Math.max(width, font.width(compactNumber(range[0])));
-        width = Math.max(width, font.width(compactNumber(range[1])));
+        int width = font.width(nodeNumber(node, outputNumber(node, port)));
+        width = Math.max(width, font.width(nodeNumber(node, range[0])));
+        width = Math.max(width, font.width(nodeNumber(node, range[1])));
         return Math.max(minimum, width + padding);
     }
 
@@ -3510,10 +4452,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         renderControllerOption(graphics, controlLeft, y, right - controlLeft + 1,
                 Math.max(12, (int) (13 * zoom)),
                 col, false);
-        drawNodeString(graphics, trim(label, 11), controlLeft + 6, y + 3,
+        drawNodeString(graphics, label, controlLeft + 6, y + 3,
                 nodeMutedTextColor());
         String shown = checked ? "[x]" : val;
-        drawNodeStringRight(graphics, trim(shown, 11), right - 3, y + 3, nodeValueTextColor());
+        drawNodeStringRight(graphics, shown, right - 3, y + 3, nodeValueTextColor());
     }
 
     private void drawBodyDropdown(GuiGraphics graphics, int x, int y, int width,
@@ -3533,30 +4475,42 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 PortPosition pos = portPosition(node, port.getKey(), false);
                 if (!portWithinViewport(pos)) continue;
                 drawExecDiamond(graphics, pos);
-                if (isExecutionCombinerNode(node) || isFunctionOutputNode(node)
+                if (isExecutionCombinerNode(node) || isSetResetLatch(node) || isFunctionNode(node)
                         || ("play_sound".equals(node.type()) && "stop".equals(port.getKey()))) {
-                    String label = isFunctionOutputNode(node) ? inputDisplayLabel(node, port.getKey())
+                    String label = isFunctionNode(node) ? font.plainSubstrByWidth(inputDisplayLabel(node, port.getKey()), nodeWidth(node) - 18)
                             : humanPort(port.getKey());
+                    if(bodyLabelEditing(node, port.getKey())) label = "";
                     drawNodeString(graphics, label,
-                            pos.x() + 9, pos.y() - 4, 0xFFC8D7E3);
+                            pos.x() + 9, pos.y() - (isFunctionNode(node) ? (int)Math.round(font.lineHeight * zoom / 2.0D) : 4), 0xFFC8D7E3);
                 }
                 continue;
             }
-            if (!isDataPortVisible(node, port.getKey(), false)) continue;
+            if (isNodeSettingInput(node, port.getKey()) || !isDataPortVisible(node, port.getKey(), false)) continue;
             PortPosition pos = portPosition(node, port.getKey(), false);
             if (!portWithinViewport(pos)) continue;
             renderDataPort(graphics, pos.x(), pos.y(), port.getValue(), false);
         }
         for (var port : nodeOutputs(node).entrySet()) {
+            GraphPortSection section = portSectionStartingAt(node, port.getKey(), true);
+            if (section != null) {
+                int sectionY = screenY(node.y()) + (int) Math.round(outputSectionHeaderOffset(node, section) * zoom);
+                drawNodePortSection(graphics, node, section, true, x, sectionY, width);
+            }
+            if (portSection(node, port.getKey(), true) != null
+                    && !isDataPortVisible(node, port.getKey(), true)) continue;
             if ("exec".equals(port.getValue())) {
                 PortPosition pos = portPosition(node, port.getKey(), true);
                 if (!portWithinViewport(pos)) continue;
                 drawExecDiamond(graphics, pos);
                 if ("branch".equals(node.type()) || isExecutionSplitterNode(node)
-                        || isShipCompletionPort(node, port.getKey()) || isFunctionInputNode(node)) {
-                    String label = isFunctionInputNode(node) ? outputDisplayLabel(node, port.getKey())
+                        || isShipCompletionPort(node, port.getKey()) || isFunctionNode(node) || isLoopBodyOutput(node, port.getKey())
+                        || portSection(node, port.getKey(), true) != null) {
+                    String label = isFunctionNode(node) || isLoopBodyOutput(node, port.getKey()) || portSection(node, port.getKey(), true) != null
+                            ? outputDisplayLabel(node, port.getKey())
                             : humanPort(port.getKey());
-                    drawNodeStringRight(graphics, label, x + width - 9, pos.y() - 4, 0xFFC8D7E3);
+                    if(bodyLabelEditing(node, port.getKey())) label = "";
+                    if(isFunctionNode(node)) drawWrappedOutputPortLabel(graphics, node, port.getKey(), x + width - 9, pos.y());
+                    else drawNodeStringRight(graphics, label, x + width - 9, pos.y() - 4, 0xFFC8D7E3);
                 }
                 continue;
             }
@@ -3663,7 +4617,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         renderNodeFrame(graphics, x, y, width, height, "core", selected);
         int titleHeight = Math.max(16, (int) Math.round(22 * zoom));
         if (zoom >= 0.55D) {
-            drawNodeString(graphics, nodeTitle(node), x + (v2Ui ? 22 : 7), y + 7,
+            drawNodeString(graphics, nodeTitle(node), nodeTitleLeft(node, x), y + (int)Math.round(7 * zoom),
                     nodeTitleTextColor("core"));
         }
         int inset = Math.max(5, (int) Math.round(6 * zoom));
@@ -3737,6 +4691,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Draw the wrapped output port label
     private void drawWrappedOutputPortLabel(GuiGraphics graphics, AdvancedGraphDocument.Node node,
                                             String port, int right, int centerY) {
+        if(bodyLabelEditing(node, port)) return;
         NodePortLayout layout = graphRenderPortLayouts.get(node.id());
         List<FormattedCharSequence> lines = graphRenderCacheDocument == draft && layout != null
                 ? layout.outputLabels().get(port) : null;
@@ -3756,14 +4711,16 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the wrapped output port label
     private List<FormattedCharSequence> wrappedOutputPortLabel(AdvancedGraphDocument.Node node, String port) {
-        int availableWidth = NODE_WIDTH - 18 - inspectorInlineMapPortIndent(node, port, true);
+        int availableWidth = nodeWidth(node) - 18 - inspectorInlineMapPortIndent(node, port, true);
         return font.split(Component.literal(outputDisplayLabel(node, port)), availableWidth);
     }
 
     // Get the output data port row height
     private int outputDataPortRowHeight(AdvancedGraphDocument.Node node, String port) {
         int normalHeight = 13;
-        return Math.max(normalHeight, wrappedOutputPortLabel(node, port).size() * font.lineHeight);
+        NodePortLayout layout = graphRenderCacheDocument == draft ? graphRenderPortLayouts.get(node.id()) : null;
+        List<FormattedCharSequence> labels = layout == null ? null : layout.outputLabels().get(port);
+        return Math.max(normalHeight, (labels == null ? wrappedOutputPortLabel(node, port) : labels).size() * font.lineHeight);
     }
 
     // Get the output data port offset
@@ -3774,9 +4731,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         int offset = 0;
         for (var entry : nodeOutputs(node).entrySet()) {
-            if ("exec".equals(entry.getValue()) || !isDataPortVisible(node, entry.getKey(), true)) {
-                continue;
-            }
+            if ("exec".equals(entry.getValue()) && !isFunctionNode(node) && !isLoopBodyOutput(node, entry.getKey()) && portSection(node, entry.getKey(), true) == null) continue;
+            if (portSectionStartingAt(node, entry.getKey(), true) != null) offset += NODE_PORT_SECTION_HEIGHT;
+            if (!isDataPortVisible(node, entry.getKey(), true)) continue;
             int rowHeight = outputDataPortRowHeight(node, entry.getKey());
             if (entry.getKey().equals(port)) {
                 return offset + Math.max(0, (rowHeight - font.lineHeight) / 2);
@@ -3794,9 +4751,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         int height = 0;
         for (var entry : nodeOutputs(node).entrySet()) {
-            if (!"exec".equals(entry.getValue()) && isDataPortVisible(node, entry.getKey(), true)) {
-                height += outputDataPortRowHeight(node, entry.getKey());
-            }
+            if ("exec".equals(entry.getValue()) && !isFunctionNode(node) && !isLoopBodyOutput(node, entry.getKey()) && portSection(node, entry.getKey(), true) == null) continue;
+            if (portSectionStartingAt(node, entry.getKey(), true) != null) height += NODE_PORT_SECTION_HEIGHT;
+            if (isDataPortVisible(node, entry.getKey(), true)) height += outputDataPortRowHeight(node, entry.getKey());
         }
         return height;
     }
@@ -3810,7 +4767,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         int x = screenX(node.x());
         int y = screenY(node.y());
         int width = Math.max(10, (int) Math.round(REROUTE_WIDTH * zoom));
-        int height = Math.max(8, (int) Math.round(REROUTE_HEIGHT * zoom));
+        int height = Math.max(8, (int) Math.round(nodeHeight(node) * zoom));
         renderControllerOption(graphics, x + 2, y, Math.max(6, width - 4), height,
                 AdvancedGraphCatalog.categoryColor("core"), selected, false);
         if ("exec".equals(inputType) || "exec".equals(outputType)) {
@@ -3866,13 +4823,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             int height = node.data().contains("Height") ? node.data().getInt("Height") : 180;
             return Mth.clamp(height, IMAGE_REFERENCE_MIN_HEIGHT, 800);
         }
-        int outputHeight = outputDataPortsHeight(node);
-        if ("branch".equals(node.type())) outputHeight = Math.max(outputHeight, 2 * 13);
-        if (isExecutionSplitterNode(node)) outputHeight = Math.max(outputHeight, executionOutputCount(node) * 13);
-        if (isExecutionCombinerNode(node)) outputHeight = Math.max(outputHeight, executionInputCount(node) * 13);
-        if ("play_sound".equals(node.type())) outputHeight = Math.max(outputHeight, 13);
-        if (AdvancedGraphCatalog.isShipControlCompletionType(node.type())) outputHeight += 13;
-        return Math.max(54, portStart(node) + outputHeight + NODE_EXTRA_HEIGHT + NODE_FRAME_BODY_HEIGHT_PAD);
+        NodePortLayout layout = graphRenderCacheDocument == draft ? graphRenderPortLayouts.get(node.id()) : null;
+        if (layout != null && layout.nodeHeight() > 0) return layout.nodeHeight();
+        return measureNodeHeight(node, measureBodyControlCount(node));
     }
 
     // Get the node width
@@ -3886,7 +4839,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             int width = node.data().contains("Width") ? node.data().getInt("Width") : 240;
             return Mth.clamp(width, IMAGE_REFERENCE_MIN_WIDTH, 1000);
         }
-        return NODE_WIDTH;
+        NodePortLayout layout = graphRenderCacheDocument == draft ? graphRenderPortLayouts.get(node.id()) : null;
+        if (layout != null && layout.nodeWidth() > 0) return layout.nodeWidth();
+        return measureNodeWidth(node, nodeInputs(node), nodeOutputs(node));
     }
 
     // Check if this is reroute
@@ -3919,16 +4874,31 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         return isFunctionInputNode(node) || isFunctionOutputNode(node);
     }
 
+    private static boolean isSetResetLatch(AdvancedGraphDocument.Node node){
+        return node != null && "sr_latch".equals(node.type());
+    }
+
+    // Function interfaces and calls keep execution ports on separate body rows
+    private static boolean isFunctionNode(AdvancedGraphDocument.Node node){
+        return isFunctionInterfaceNode(node) || node != null && AdvancedGraphFunctions.CALL_TYPE.equals(node.type());
+    }
+
+    private GraphNodeLayout.PortRows functionExecutionInputs(AdvancedGraphDocument.Node node){
+        NodePortLayout layout = graphRenderCacheDocument == draft ? graphRenderPortLayouts.get(node.id()) : null;
+        if(layout != null && layout.executionInputs() != null) return layout.executionInputs();
+        return GraphNodeLayout.portRows(nodeInputs(node).entrySet().stream()
+                .filter(port -> "exec".equals(port.getValue())).map(Map.Entry::getKey).toList(), 13);
+    }
+
+    private int functionExecutionInputHeight(AdvancedGraphDocument.Node node){
+        return isFunctionNode(node) ? functionExecutionInputs(node).height() : 0;
+    }
+
     // Get the body control count
     private int bodyControlCount(AdvancedGraphDocument.Node node) {
-        int count = (usesBinding(node) ? 1 : 0) + propertyControlCount(node);
-        for (var port : nodeInputs(node).entrySet()) {
-            if (!"exec".equals(port.getValue())
-                    && !("curve".equals(node.type()) && "value".equals(port.getKey()))
-                    && isDataPortVisible(node, port.getKey(), false)) count++;
-        }
-        if (isHudNode(node) || isConstructorNode(node) || isFunctionInterfaceNode(node)) count++;
-        return count;
+        NodePortLayout layout = graphRenderCacheDocument == draft ? graphRenderPortLayouts.get(node.id()) : null;
+        if (layout != null && layout.nodeHeight() > 0) return layout.bodyControlCount();
+        return measureBodyControlCount(node);
     }
 
     // Check if this can collapse
@@ -3961,6 +4931,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             collapsedNodes.remove(node.id());
         }
         setPersistedNodeCollapsed(node, collapsed);
+        clearGraphRenderCache();
     }
 
     // Check if this is persisted node collapsed
@@ -3978,8 +4949,23 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
     }
 
+    // Selectors occupy body rows without exposing extra wire sockets
+    private static boolean isNodeSettingInput(AdvancedGraphDocument.Node node, String port){
+        return "pulse_if".equals(node.type()) && "operator".equals(port)
+                || "flip_flop".equals(node.type()) && "flip_on".equals(port);
+    }
+
+    private static boolean isLoopBodyOutput(AdvancedGraphDocument.Node node, String port){
+        return "bounded_loop".equals(node.type()) && ("body".equals(port) || "complete".equals(port));
+    }
+
     // Check if the data port is visible
     private boolean isDataPortVisible(AdvancedGraphDocument.Node node, String port, boolean output) {
+        if(output && isLoopBodyOutput(node, port)) return true;
+        if(isFunctionNode(node) && "exec".equals((output ? nodeOutputs(node) : nodeInputs(node)).get(port))) return true;
+        
+        if(output && isAdvancedHudNode(node) && isPortSectionCollapsed(node, port, true)) return false;
+        if (isPortSectionCollapsed(node, port, output) && !isPortConnected(node, port, output)) return false;
         if (graphRenderCacheDocument != draft) {
             prepareGraphRenderCache();
         }
@@ -4028,6 +5014,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return;
         }
         renderSidebarPanel(graphics, left, TOOLBAR_HEIGHT, activeLeftWidth(), height - TOOLBAR_HEIGHT);
+        if (nodeSearch != null) {
+            nodeSearch.setX(left + 8);
+            nodeSearch.setY(36);
+            nodeSearch.setWidth(Math.max(48, activeLeftWidth() - 16));
+        }
         graphics.fill(left + activeLeftWidth() - 1, TOOLBAR_HEIGHT, left + activeLeftWidth(), height,
                 v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF344A5C);
         graphics.drawString(font, blockBrowserOpen ? "Block Browser" : v2Ui ? "NODE LIBRARY" : "Node Browser",
@@ -4047,6 +5038,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         if (blockBrowserOpen) drawBlockBrowser(graphics, mouseX, mouseY);
         else drawNodeBrowser(graphics, mouseX, mouseY);
+        drawLeftVariableBrowser(graphics, mouseX, mouseY);
     }
 
     // Draw the node browser
@@ -4058,10 +5050,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         int left = layoutLeft();
         String query = nodeSearch == null ? "" : nodeSearch.getValue().trim().toLowerCase(Locale.ROOT);
         List<BrowserEntry> entries = nodeBrowserEntries(query);
+        int bottom = nodeBrowserBottom();
+        int viewportHeight = Math.max(1, bottom - 82);
+        int contentHeight = browserContentHeight(entries);
+        browserScroll = Mth.clamp(browserScroll, 0,
+                Math.max(0, contentHeight - viewportHeight));
         int y = 86 - browserScroll;
-        graphics.enableScissor(left, 82, left + activeLeftWidth(), height);
+        graphics.enableScissor(left, 82, left + activeLeftWidth(), bottom);
         for (BrowserEntry entry : entries) {
-            if (y >= 78 && y < height) {
+            if (y >= 78 && y < bottom) {
                 if (entry.category()) {
                     renderControllerOption(graphics, left + 5, y - 2, activeLeftWidth() - 10, 16,
                             nodeTitlebarColor(entry.id()), false, false);
@@ -4088,6 +5085,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             y += entry.category() ? 19 : 15;
         }
         graphics.disableScissor();
+        drawSidebarScrollTrack(graphics, left + activeLeftWidth() - 5, 84, 3,
+                Math.max(1, bottom - 88), contentHeight, viewportHeight, browserScroll);
     }
 
     // Draw the V2 node browser
@@ -4095,11 +5094,16 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         int left = layoutLeft();
         String query = nodeSearch == null ? "" : nodeSearch.getValue().trim().toLowerCase(Locale.ROOT);
         List<BrowserEntry> entries = nodeBrowserEntries(query);
+        int bottom = nodeBrowserBottom();
+        int viewportHeight = Math.max(1, bottom - 82);
+        int contentHeight = browserContentHeight(entries);
+        browserScroll = Mth.clamp(browserScroll, 0,
+                Math.max(0, contentHeight - viewportHeight));
         int y = 86 - browserScroll;
-        graphics.enableScissor(left, 82, left + activeLeftWidth(), height);
+        graphics.enableScissor(left, 82, left + activeLeftWidth(), bottom);
         for (BrowserEntry entry : entries) {
             int rowHeight = browserEntryRowHeight(entry);
-            if (y + rowHeight >= 82 && y < height) {
+            if (y + rowHeight >= 82 && y < bottom) {
                 if (entry.category()) {
                     int col = DOCUMENTATION_CATEGORY.equals(entry.id())
                             ? AdvancedControllerV2Theme.ACCENT
@@ -4144,6 +5148,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             y += rowHeight;
         }
         graphics.disableScissor();
+        drawSidebarScrollTrack(graphics, left + activeLeftWidth() - 5, 84, 3,
+                Math.max(1, bottom - 88), contentHeight, viewportHeight, browserScroll);
     }
 
     // Get the browser entry row height
@@ -4188,11 +5194,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
             categories.computeIfAbsent(definition.category(), ignored -> new ArrayList<>()).add(definition);
         }
-        for (AdvancedGraphDocument.FunctionGraph function : draft.functions()) {
-            AdvancedGraphCatalog.Definition definition = functionDefinition(function);
-            String searchable = function.name() + " function";
-            if (!query.isBlank() && !searchable.toLowerCase(Locale.ROOT).contains(query)) continue;
-            categories.computeIfAbsent("functions", ignored -> new ArrayList<>()).add(definition);
+        {
+            for (AdvancedGraphDocument.FunctionGraph function : draft.functions()) {
+                
+                AdvancedGraphCatalog.Definition definition = functionDefinition(function);
+                String searchable = function.name() + " function";
+                if (!query.isBlank() && !searchable.toLowerCase(Locale.ROOT).contains(query)) continue;
+                categories.computeIfAbsent("functions", ignored -> new ArrayList<>()).add(definition);
+            }
         }
         if (v2Ui && showDocumentation) {
             res.add(new BrowserEntry(DOCUMENTATION_CATEGORY, true));
@@ -4200,7 +5209,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 res.add(new BrowserEntry("sticky_note", false));
             }
         }
-        for (String category : v2Ui ? V2_CATEGORY_ORDER : CATEGORY_ORDER) {
+        
+        List<String> categoryOrder = v2Ui ? V2_CATEGORY_ORDER : CATEGORY_ORDER;
+        for (String category : GraphNodeBrowser.categories(categoryOrder, categories.keySet(), AdvancedGraphCatalog::categoryName)) {
             List<AdvancedGraphCatalog.Definition> definitions = categories.get(category);
             if (definitions == null || definitions.isEmpty()) continue;
             res.add(new BrowserEntry(category, true));
@@ -4215,11 +5226,16 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Draw the block browser
     private void drawBlockBrowser(GuiGraphics graphics, int mouseX, int mouseY) {
         List<RegistryEntry> entries = registryEntries();
+        int bottom = nodeBrowserBottom();
+        int viewportHeight = Math.max(1, bottom - 82);
+        int contentHeight = blockBrowserContentHeight(entries);
+        blockBrowserScroll = Mth.clamp(blockBrowserScroll, 0,
+                Math.max(0, contentHeight - viewportHeight));
         int y = 86 - blockBrowserScroll;
         int left = layoutLeft();
-        graphics.enableScissor(left, 82, left + activeLeftWidth(), height);
+        graphics.enableScissor(left, 82, left + activeLeftWidth(), bottom);
         for (RegistryEntry entry : entries) {
-            if (y >= 78 && y < height) {
+            if (y >= 78 && y < bottom) {
                 if (entry.header()) {
                     renderControllerOption(graphics, left + 5, y - 2, activeLeftWidth() - 10, 16, 0xFF5D9FE3, false);
                     graphics.drawString(font, (collapsedBlockNamespaces.contains(entry.id()) ? "> " : "v ") + entry.id(),
@@ -4234,6 +5250,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             y += entry.header() ? 19 : 20;
         }
         graphics.disableScissor();
+        drawSidebarScrollTrack(graphics, left + activeLeftWidth() - 5, 84, 3,
+                Math.max(1, bottom - 88), contentHeight, viewportHeight, blockBrowserScroll);
     }
 
     // Get the registry entries
@@ -4250,6 +5268,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         BuiltInRegistries.ITEM.stream().forEach(item -> {
             ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
             if (id == null || (!query.isBlank() && !id.toString().contains(query))) return;
+            
             groups.computeIfAbsent(id.getNamespace() + " items", ignored -> new ArrayList<>())
                     .add(new RegistryEntry(id.toString(), new ItemStack(item), false));
         });
@@ -4273,7 +5292,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Draw the inspector
     private void drawInspector(GuiGraphics graphics) {
-        if (rightSidebarCollapsed) return;
+        if (graphConfigSidebarRetired() || rightSidebarCollapsed) return;
         int x = graphRight();
         renderSidebarPanel(graphics, x, TOOLBAR_HEIGHT, layoutRight() - x, height - TOOLBAR_HEIGHT);
         graphics.fill(x, TOOLBAR_HEIGHT, x + 1, height,
@@ -4302,40 +5321,29 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         } else if (selectedNode != null) {
             AdvancedGraphDocument.Node node = selectedNode;
             if (node != null) {
-                int col = AdvancedGraphCatalog.categoryColor(AdvancedGraphCatalog.get(node.type()).category());
-                if (v2Ui) {
-                    AdvancedControllerV2Theme.drawOption(
-                            graphics, x + 8, 56, layoutRight() - x - 16, 20, col, true, true);
-                } else {
-                    graphics.fill(x + 8, 56, layoutRight() - 8, 76, col);
-                }
-                graphics.drawString(font, nodeTitle(node), x + 14, 62,
-                        v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFFFFFFFF, false);
-                graphics.drawString(font, node.type(), x + 10, 84,
-                        v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF91A9B8, false);
-                graphics.drawString(font, "node_id: " + trim(node.id(), 24), x + 10, 96,
-                        v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF91A9B8, false);
+                drawGraphConfigCard(graphics, x, layoutRight() - x, node,
+                        graphInspectorDescription(node), -1, -1);
                 String property = editableProperty(node);
                 String editableInputLabelPort = editableInputLabelPort(node, selectedInputPort);
                 String selectedOutputPort = selectedOutputPort(node, selectedInputPort);
                 if (NODE_ALIAS_PROPERTY.equals(selectedInputPort)) {
-                    graphics.drawString(font, "Alias", x + 10, 108,
+                    graphics.drawString(font, "Alias", x + 10, 112,
                             interfaceSecondaryColor(), false);
                 } else if (editableInputLabelPort != null) {
                     String nameType = isFunctionInterfaceNode(node) ? "Port" : "Input";
-                    graphics.drawString(font, nameType + " name: " + humanPort(editableInputLabelPort), x + 10, 108,
+                    graphics.drawString(font, nameType + " name: " + humanPort(editableInputLabelPort), x + 10, 112,
                             interfaceSecondaryColor(), false);
                 } else if (selectedOutputPort != null) {
-                    graphics.drawString(font, "Output value: " + humanPort(selectedOutputPort), x + 10, 108,
+                    graphics.drawString(font, "Output value: " + humanPort(selectedOutputPort), x + 10, 112,
                             interfaceSecondaryColor(), false);
                 } else if (property != null) {
-                    graphics.drawString(font, property, x + 10, 108, interfaceSecondaryColor(), false);
+                    graphics.drawString(font, property, x + 10, 112, interfaceSecondaryColor(), false);
                 } else if (isFunctionInterfaceNode(node)) {
-                    graphics.drawString(font, "Right-click a port name to rename.", x + 10, 108,
+                    graphics.drawString(font, "Right-click a port name to rename.", x + 10, 112,
                             interfaceMutedColor(), false);
                 } else if (isHudNode(node) || isConstructorNode(node)) {
                     graphics.drawString(font, "Right-click an input to rename; Shift-right-click removes it.",
-                            x + 10, 108,
+                            x + 10, 112,
                             interfaceMutedColor(), false);
                 }
                 int y = 148;
@@ -4379,10 +5387,12 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         // -----------------------------------------------------INSPECTOR SECTIONS------------------------------------------------
 
         InspectorSections sections = inspectorSections(selectedNode);
-        drawInspectorSectionHeader(graphics, x, sections.optionsHeaderTop(), "Node Options",
+        drawInspectorSectionHeader(graphics, x, sections.optionsHeaderTop(), "Input Ports",
                 inspectorOptionsCollapsed);
         if (selectedNode != null && !inspectorOptionsCollapsed
                 && sections.optionsBottom() > sections.optionsTop()) {
+            inspectorOptionsScroll = Mth.clamp(inspectorOptionsScroll, 0,
+                    inspectorOptionsMaximumScroll(selectedNode, sections));
             int y = sections.optionsTop() - inspectorOptionsScroll;
             graphics.enableScissor(x, sections.optionsTop(), layoutRight(), sections.optionsBottom());
             String property = editableProperty(selectedNode);
@@ -4418,11 +5428,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 } else if ("number".equals(port.getValue())) {
                     drawInspectorSlider(graphics, selectedNode, port.getKey(), x, y);
                 } else {
-                    drawInspectorControl(graphics, x, y,
-                            inputDisplayLabel(selectedNode, port.getKey()),
-                            inputValueLabel(selectedNode, port.getKey(), port.getValue()),
-                            portColor(port.getValue()), port.getKey().equals(selectedInputPort),
-                            inspectorInlineMapPortIndent(selectedNode, port.getKey(), false));
+                    drawGraphInputField(graphics, selectedNode, port.getKey(), port.getValue(),
+                            new UiRect(x + 8 + inspectorInlineMapPortIndent(selectedNode, port.getKey(), false),
+                                    y - 3, layoutRight() - x - 16
+                                    - inspectorInlineMapPortIndent(selectedNode, port.getKey(), false), 17),
+                            inputValueLabel(selectedNode, port.getKey(), port.getValue()), -1, -1);
                 }
                 y += "frequency".equals(port.getValue()) ? 22 : 17;
             }
@@ -4435,6 +5445,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                         AdvancedGraphCatalog.categoryColor("functions"), false);
             }
             graphics.disableScissor();
+            drawSidebarScrollTrack(graphics, layoutRight() - 5, sections.optionsTop() + 1, 3,
+                    Math.max(1, sections.optionsBottom() - sections.optionsTop() - 2),
+                    inspectorOptionsContentHeight(selectedNode),
+                    Math.max(1, sections.optionsBottom() - sections.optionsTop()), inspectorOptionsScroll);
         }
         drawInspectorDivider(graphics, x, sections.optionsDividerTop());
 
@@ -4442,6 +5456,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 inspectorTargetsCollapsed);
         if (selectedNode != null && !inspectorTargetsCollapsed
                 && sections.targetsBottom() > sections.targetsTop()) {
+            inspectorTargetsScroll = Mth.clamp(inspectorTargetsScroll, 0,
+                    inspectorTargetsMaximumScroll(selectedNode, sections));
             int y = sections.targetsTop() + 8 - inspectorTargetsScroll;
             graphics.enableScissor(x, sections.targetsTop(), layoutRight(), sections.targetsBottom());
             if (usesBinding(selectedNode)) {
@@ -4459,11 +5475,16 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
             if (usesTarget(selectedNode)) {
                 y += 5;
+                if (canOpenScmBlockPicker(selectedNode)) {
+                    renderAdvancedButton(graphics, font, x + 7, y - 3, layoutRight() - x - 14, 18,
+                            Component.literal("Pick block from assembled 3D view"), false, true);
+                    y += 22;
+                }
                 graphics.drawString(font, "Available Targets", x + 10, y,
                         interfaceAccentTextColor(), false);
                 y += 15;
                 for (ControllerDiscoveryNode target : graphTargetOptions(selectedNode)) {
-                    boolean selected = target.nodeId().equals(selectedNode.data().getString("Target"));
+                    boolean selected = dataTargetSelected(selectedNode, target);
                     if (selected) renderControllerOption(graphics, x + 7, y - 2,
                             layoutRight() - x - 14, 14, portColor("target"), true);
                     List<AeroworksControllerCompat.ConsoleSection> consoleSections =
@@ -4504,12 +5525,12 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                         y += 14;
                     }
                 }
-                if ("acc_display_external".equals(selectedNode.type())) {
+                if (isExternalDisplaySourceNode(selectedNode)) {
                     y += 5;
                     graphics.drawString(font, "External Sources", x + 10, y,
                             interfaceAccentTextColor(), false);
                     y += 15;
-                    for (ControllerDiscoveryNode src : graphDisplaySourceOptions()) {
+                    for (ControllerDiscoveryNode src : graphDisplaySourceOptions(selectedNode)) {
                         boolean selected = src.nodeId().equals(selectedNode.data().getString("Source"));
                         if (selected) renderControllerOption(graphics, x + 7, y - 2,
                                 layoutRight() - x - 14, 14, portColor("target"), true);
@@ -4521,31 +5542,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 }
             }
             graphics.disableScissor();
+            drawSidebarScrollTrack(graphics, layoutRight() - 5, sections.targetsTop() + 1, 3,
+                    Math.max(1, sections.targetsBottom() - sections.targetsTop() - 2),
+                    inspectorTargetsContentHeight(selectedNode),
+                    Math.max(1, sections.targetsBottom() - sections.targetsTop()), inspectorTargetsScroll);
         }
         drawInspectorDivider(graphics, x, sections.targetsDividerTop());
 
-        drawInspectorSectionHeader(graphics, x, sections.variablesHeaderTop(), "Variables",
-                inspectorVariablesCollapsed);
-        if (!inspectorVariablesCollapsed && sections.variablesBottom() > sections.variablesTop()) {
-            int y = sections.variablesTop() + 3;
-            graphics.enableScissor(x, sections.variablesTop(), layoutRight(), sections.variablesBottom());
-            if (draft.variables().isEmpty()) {
-                graphics.drawString(font, "No variables", x + 10, y + 3, interfaceMutedColor(), false);
-            } else {
-                for (var variable : draft.variables().entrySet()) {
-                    int getX = variableGetButtonX();
-                    int setX = variableSetButtonX();
-                    graphics.drawString(font, trim(variable.getKey(), 17), x + 10, y + 5,
-                            interfaceSecondaryColor(), false);
-                    renderAdvancedButton(graphics, font, getX, y + 1, VARIABLE_BROWSER_BUTTON_WIDTH, 16,
-                            Component.literal("GET"), false, true);
-                    renderAdvancedButton(graphics, font, setX, y + 1, VARIABLE_BROWSER_BUTTON_WIDTH, 16,
-                            Component.literal("SET"), false, true);
-                    y += VARIABLE_BROWSER_ROW_HEIGHT;
-                }
-            }
-            graphics.disableScissor();
-        }
         graphics.drawString(font, activeNodes().size() + " nodes / " + activeEdges().size() + " wires",
                 x + 10, height - 14,
                 v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF899CAA, false);
@@ -4591,6 +5594,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     graphics, leftX, handleY, SIDEBAR_HANDLE_WIDTH, 44, false);
             graphics.drawCenteredString(font, leftSidebarCollapsed ? ">" : "<",
                     leftX + SIDEBAR_HANDLE_WIDTH / 2, handleY + 18, AdvancedControllerV2Theme.SECONDARY);
+            if (graphConfigSidebarRetired()) return;
 
             int rightX = rightSidebarHandleX();
             AdvancedControllerV2Theme.drawHandle(
@@ -4604,6 +5608,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         graphics.renderOutline(leftX, TOOLBAR_HEIGHT, SIDEBAR_HANDLE_WIDTH, height - TOOLBAR_HEIGHT, 0xFF344A5C);
         graphics.drawCenteredString(font, leftSidebarCollapsed ? ">" : "<", leftX + SIDEBAR_HANDLE_WIDTH / 2,
                 TOOLBAR_HEIGHT + 10, 0xFFE0EDF4);
+        if (graphConfigSidebarRetired()) return;
 
         int rightX = rightSidebarHandleX();
         drawSidebarChevron(graphics, rightX, TOOLBAR_HEIGHT, SIDEBAR_HANDLE_WIDTH, height - TOOLBAR_HEIGHT);
@@ -4672,7 +5677,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private void drawInspectorSlider(GuiGraphics graphics, AdvancedGraphDocument.Node node, String port, int x, int y) {
         int left = x + 8 + inspectorInlineMapPortIndent(node, port, false);
         int right = layoutRight() - 8;
-        String val = compactNumber(inputNumber(node, port));
+        String val = nodeNumber(node, inputNumber(node, port));
         SliderTrack track = inspectorSliderTrack(node, port);
         int trackY = y + 4;
         double[] range = numberRange(node, port);
@@ -4692,7 +5697,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         int left = x + 8;
         int right = layoutRight() - 8;
         double num = outputNumber(node, port);
-        String val = compactNumber(num);
+        String val = nodeNumber(node, num);
         SliderTrack track = inspectorOutputSliderTrack(node, port);
         double amount = sliderAmount(num, numberRange(node, port));
         renderControllerOption(graphics, left, y - 3, right - left, 15,
@@ -4726,21 +5731,18 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
         int dividerSpace = (!inspectorOptionsCollapsed ? INSPECTOR_SECTION_DIVIDER_HEIGHT : 0)
                 + (!inspectorTargetsCollapsed ? INSPECTOR_SECTION_DIVIDER_HEIGHT : 0);
-        int headersSpace = INSPECTOR_SECTION_HEADER_HEIGHT * 3;
+        int headersSpace = INSPECTOR_SECTION_HEADER_HEIGHT * 2;
         int contentBottom = Math.max(TOOLBAR_HEIGHT, height - 20);
         int latestTop = Math.max(TOOLBAR_HEIGHT + 28, contentBottom - headersSpace - dividerSpace);
         int top = Math.min(desiredTop, latestTop);
         int contentSpace = Math.max(0, contentBottom - top - headersSpace - dividerSpace);
 
         int minimumTargets = inspectorTargetsCollapsed ? 0 : INSPECTOR_SECTION_MIN_CONTENT_HEIGHT;
-        int minimumVariables = inspectorVariablesCollapsed ? 0 : INSPECTOR_SECTION_MIN_CONTENT_HEIGHT;
         int optionsContent = inspectorOptionsCollapsed ? 0
-                : allocateInspectorContent(inspectorOptionsHeight, contentSpace, minimumTargets + minimumVariables);
+                : allocateInspectorContent(inspectorOptionsHeight, contentSpace, minimumTargets);
         int remaining = Math.max(0, contentSpace - optionsContent);
         int targetsContent = inspectorTargetsCollapsed ? 0
-                : allocateInspectorContent(inspectorTargetsHeight, remaining, minimumVariables);
-        remaining = Math.max(0, remaining - targetsContent);
-        int variablesContent = inspectorVariablesCollapsed ? 0 : remaining;
+                : allocateInspectorContent(inspectorTargetsHeight, remaining, 0);
 
         int cursor = top;
         int optionsHeaderTop = cursor;
@@ -4757,13 +5759,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         int targetsDividerTop = inspectorTargetsCollapsed ? -1 : cursor;
         if (!inspectorTargetsCollapsed) cursor += INSPECTOR_SECTION_DIVIDER_HEIGHT;
 
-        int variablesHeaderTop = cursor;
-        cursor += INSPECTOR_SECTION_HEADER_HEIGHT;
-        int variablesTop = cursor;
-        cursor += variablesContent;
         return new InspectorSections(optionsHeaderTop, optionsTop, optionsTop + optionsContent, optionsDividerTop,
                 targetsHeaderTop, targetsTop, targetsTop + targetsContent, targetsDividerTop,
-                variablesHeaderTop, variablesTop, Math.min(cursor, contentBottom));
+                -1, -1, -1);
     }
 
     // Allocate the inspector content
@@ -4791,7 +5789,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         AdvancedControllerUiPreferences.save(new AdvancedControllerUiPreferences.State(
                 leftSidebarCollapsed, rightSidebarCollapsed,
                 inspectorOptionsCollapsed, inspectorTargetsCollapsed, inspectorVariablesCollapsed,
-                inspectorOptionsHeight, inspectorTargetsHeight, saveOnClose,
+                inspectorOptionsHeight, inspectorTargetsHeight, leftVariableBrowserHeight, saveOnClose,
+                gridSnapStep,
                 Set.copyOf(collapsedNodes)));
     }
 
@@ -4875,6 +5874,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         graphics.drawCenteredString(font, "Input", gogglesInputX + 8, gogglesInputY - 14, 0xFFB8CDD8);
         graphics.drawCenteredString(font, "Linked", gogglesOutputX + 8, gogglesOutputY - 14, 0xFFB8CDD8);
         drawGogglesLinkProgress(graphics, gogglesInputX, gogglesInputY, gogglesOutputX, gogglesOutputY);
+        UiRect bound = boundGlassesButtonBounds();
+        renderAdvancedButton(graphics, font, bound.x(), bound.y(), bound.width(), bound.height(),
+                Component.translatable("createthrusters.advanced_controller.bound_glasses.title"),
+                bound.contains(mouseX, mouseY), true);
         graphics.drawString(font, "Player Inventory", linkerX + 16, linkerY + 198, 0xFFD8E5ED, false);
     }
 
@@ -4911,6 +5914,70 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 blue ? BLUE_FREQUENCY_SLOT_U : RED_FREQUENCY_SLOT_U,
                 FREQUENCY_SLOT_V, FREQUENCY_SLOT_SIZE, FREQUENCY_SLOT_SIZE,
                 TNT_GUI_TEXTURE_SIZE, TNT_GUI_TEXTURE_SIZE);
+    }
+
+    private UiRect boundGlassesButtonBounds(){
+        return new UiRect(linkerX + 16, linkerY + 158, LINKER_MODAL_WIDTH - 32, 20);
+    }
+
+    private UiRect boundGlassesBounds(){
+        int width = Math.min(330, layoutRight() - layoutLeft() - 16);
+        int modalHeight = Math.min(280, height - TOOLBAR_HEIGHT - 16);
+        return new UiRect(layoutLeft() + (layoutRight() - layoutLeft() - width) / 2,
+                TOOLBAR_HEIGHT + (height - TOOLBAR_HEIGHT - modalHeight) / 2, width, modalHeight);
+    }
+
+    private int boundGlassesVisibleRows(){ return Math.max(1, (boundGlassesBounds().height() - 42) / 26); }
+
+    private void drawBoundGlasses(GuiGraphics graphics, int mouseX, int mouseY){
+        UiRect bounds = boundGlassesBounds();
+        renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        graphics.drawString(font, Component.translatable("createthrusters.advanced_controller.bound_glasses.title"),
+                bounds.x() + 10, bounds.y() + 10, 0xFFFFFFFF, false);
+        renderAdvancedButton(graphics, font, bounds.right() - 26, bounds.y() + 5, 20, 20,
+                Component.literal("x"), inside(mouseX, mouseY, bounds.right() - 26, bounds.y() + 5, 20, 20), true);
+        var pairs = gogglesTrackerPairs();
+        int rows = boundGlassesVisibleRows();
+        boundGlassesScroll = Mth.clamp(boundGlassesScroll, 0, Math.max(0, pairs.size() - rows));
+        if(pairs.isEmpty()) graphics.drawString(font,
+                Component.translatable("createthrusters.advanced_controller.bound_glasses.empty"),
+                bounds.x() + 10, bounds.y() + 38, 0xFFB8CDD8, false);
+        for(int idx = boundGlassesScroll; idx < Math.min(pairs.size(), boundGlassesScroll + rows); idx++){
+            var pair = pairs.get(idx);
+            int y = bounds.y() + 34 + (idx - boundGlassesScroll) * 26;
+            ResourceLocation itemId = ResourceLocation.tryParse(pair.itemId());
+            ItemStack icon = itemId == null ? ItemStack.EMPTY
+                    : BuiltInRegistries.ITEM.getOptional(itemId).map(ItemStack::new).orElse(ItemStack.EMPTY);
+            graphics.renderItem(icon, bounds.x() + 10, y + 2);
+            graphics.drawString(font, font.plainSubstrByWidth(pair.label(), Math.max(10, bounds.width() - 128)),
+                    bounds.x() + 30, y + 2, 0xFFD8E5ED, false);
+            graphics.drawString(font, font.plainSubstrByWidth(icon.getHoverName().getString(), Math.max(10, bounds.width() - 128)),
+                    bounds.x() + 30, y + 12, 0xFF9FB4C0, false);
+            renderAdvancedButton(graphics, font, bounds.right() - 78, y, 68, 20,
+                    Component.translatable("createthrusters.advanced_controller.bound_glasses.unbind"),
+                    inside(mouseX, mouseY, bounds.right() - 78, y, 68, 20), true);
+        }
+    }
+
+    private boolean clickBoundGlasses(double mouseX, double mouseY, int button){
+        if(button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
+        UiRect bounds = boundGlassesBounds();
+        if(inside(mouseX, mouseY, bounds.right() - 26, bounds.y() + 5, 20, 20)){
+            boundGlassesOpen = false;
+            setLinkerOpen(true);
+            return true;
+        }
+        var pairs = gogglesTrackerPairs();
+        for(int idx = boundGlassesScroll; idx < Math.min(pairs.size(), boundGlassesScroll + boundGlassesVisibleRows()); idx++){
+            int y = bounds.y() + 34 + (idx - boundGlassesScroll) * 26;
+            if(inside(mouseX, mouseY, bounds.right() - 78, y, 68, 20)){
+                PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+                        MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId()), "unbind_glasses",
+                        savedDraft.revision(), new CompoundTag(), pairs.get(idx).id().toString(), 0L));
+                return true;
+            }
+        }
+        return true;
     }
 
     // Draw the goggles link progress
@@ -5079,8 +6146,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         imageWidth = layoutRight() - layoutLeft();
         leftPos = layoutLeft();
         resize(minecraft, width, height);
-        if (nodeSearch != null) nodeSearch.setVisible(!leftSidebarCollapsed && !blockBrowserOpen);
-        if (blockSearch != null) blockSearch.setVisible(!leftSidebarCollapsed && blockBrowserOpen);
+        if (nodeSearch != null) nodeSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview
+                && !leftSidebarCollapsed && !blockBrowserOpen);
+        if (blockSearch != null) blockSearch.setVisible(!scmGraphOverview && !scheduleGraphOverview
+                && !leftSidebarCollapsed && blockBrowserOpen);
         RecipeViewerVisibility.recalculateEmi();
     }
 
@@ -5140,11 +6209,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         for (int row = 0; row < visibleRows; row++) {
             String option = optionDropdown.options().get(scroll + row);
-            boolean selected = option.equals(current);
+            boolean cameraFilter = isCameraFilterInput(node, optionDropdown.port());
+            boolean selected = cameraFilter ? cameraFilterEntries(node).contains(option) : option.equals(current);
             if (selected) renderControllerOption(graphics, optionDropdown.x() + 2, y,
                     optionDropdown.width() - 4, OPTION_DROPDOWN_ITEM_HEIGHT - 2, 0xFF5D9FE3, true);
             boolean variableType = "variable_set".equals(node.type()) && "type".equals(optionDropdown.port());
-            String shown = functionPort ? humanPort(option) : optionDropdown.property()
+            String shown = cameraFilter ? (selected ? "[x] " : "[ ] ")
+                    + com.rieno.gadgetsandgizmos.lib.view.ViewRaycast.Category.find(option).label()
+                    : functionPort ? humanPort(option) : optionDropdown.property()
                     ? propertyOptionLabel(node, optionDropdown.port(), option)
                     : isShipFlightBehaviorInput(node, optionDropdown.port())
                     ? shipFlightBehaviorLabel(option)
@@ -5216,6 +6288,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             AdvancedGraphDocument.Node node = findNode(dropdown.nodeId());
             if (node != null) {
                 String option = dropdown.options().get(idx);
+                if(isCameraFilterInput(node, dropdown.port())){
+                    checkpoint();
+                    Set<String> entries = new LinkedHashSet<>(cameraFilterEntries(node));
+                    if(!entries.remove(option)) entries.add(option);
+                    putInputDefault(node, "filter", "string", String.join(",", entries));
+                    syncInspector();
+                    return true;
+                }
                 if (FUNCTION_PORT_DROPDOWN.equals(dropdown.port())) {
                     addFunctionInterfacePort(node, option);
                 } else {
@@ -5227,7 +6307,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                             && "switch".equals(node.type())) {
                         configureSwitchType(node, String.valueOf(val), true);
                     } else if (dropdown.property()) {
-                        if ("acc_display_crn".equals(node.type())
+                        if (isShippingInformationNodeType(node.type())
                                 && "DisplayMode".equals(dropdown.port())) {
                             configAccCrnMode(node, String.valueOf(val));
                         } else {
@@ -5244,6 +6324,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     }
                     else {
                         putInputDefault(node, dropdown.port(), dropdown.type(), val);
+                        
                         if ("face".equals(dropdown.port())
                                 && ("get_block_data".equals(node.type())
                                 || "set_block_data".equals(node.type()))) {
@@ -5267,7 +6348,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                                     double x, double y, double width, List<String> opts) {
         boolean searchable = "play_sound".equals(node.type()) && "sound".equals(port);
         int maximumWidth = searchable ? 232 : 158;
-        int dropdownWidth = Math.max(54, Math.min(maximumWidth,
+        int dropdownWidth = Math.max(isCameraFilterInput(node, port) ? 158 : 54, Math.min(maximumWidth,
                 Math.max((int) Math.round(width), maximumWidth == 232 ? 232 : 54)));
         int left = Mth.clamp((int) Math.round(x), layoutLeft() + 4,
                 Math.max(layoutLeft() + 4, layoutRight() - dropdownWidth - 4));
@@ -5432,9 +6513,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Get the input option value
     private String inputOptionValue(AdvancedGraphDocument.Node node, String port, String type, List<String> opts) {
         if ("boolean".equals(type)) return Boolean.toString(inputBoolean(node, port));
-        if ("number".equals(type)) return compactNumber(inputNumber(node, port));
+        if ("number".equals(type)) return nodeNumber(node, inputNumber(node, port));
         String val = inputString(node, port, opts.isEmpty() ? "" : opts.getFirst());
-        return "compare".equals(node.type()) && "operator".equals(port) ? normalizeCompareOperator(val) : val;
+        return ("compare".equals(node.type()) || "pulse_if".equals(node.type())) && "operator".equals(port) ? normalizeCompareOperator(val) : val;
     }
 
     // Get the property option value
@@ -5458,7 +6539,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if ("PulseBehavior".equals(property)) {
             return PULSE_BEHAVIOR_OPTIONS.contains(val) ? val : "both";
         }
-        if ("acc_display_crn".equals(node.type()) && "DisplayMode".equals(property)) {
+        if (isShippingInformationNodeType(node.type()) && "DisplayMode".equals(property)) {
             return ShipInformationDisplayModes.normalize(val);
         }
         return val;
@@ -5473,7 +6554,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if ("event_variable_change".equals(node.type()) && "Variable".equals(property)) {
             return option;
         }
-        if ("acc_display_crn".equals(node.type()) && "DisplayMode".equals(property)) {
+        if (isShippingInformationNodeType(node.type()) && "DisplayMode".equals(property)) {
             return crnDisplayModeLabel(option);
         }
         return humanPort(option);
@@ -5644,9 +6725,36 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle mouse clicked
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if(boundGlassesOpen) return clickBoundGlasses(mouseX, mouseY, button);
+        if(linkerOpen && boundGlassesButtonBounds().contains(mouseX, mouseY)){
+            if(button == GLFW.GLFW_MOUSE_BUTTON_LEFT && setLinkerOpen(false)){
+                boundGlassesOpen = true;
+                boundGlassesScroll = 0;
+            }
+            return true;
+        }
+        if(bodyValueEditor != null && bodyValueEditor.mouseClicked(mouseX, mouseY, button)) return true;
+        if(graphSearchVisible()){
+            UiRect search = graphSearchBounds();
+            if(inside(mouseX, mouseY, search.x(), search.y(), search.width() + 43, search.height())){
+                if(mouseX < search.right()){
+                    graphSearch.mouseClicked(mouseX, mouseY, button);
+                    graphSearch.setFocused(true);
+                    setFocused(graphSearch);
+                }else if(button == GLFW.GLFW_MOUSE_BUTTON_LEFT) jumpGraphSearch(mouseX < search.right() + 22);
+                return true;
+            }
+            graphSearch.setFocused(false);
+            if(getFocused() == graphSearch) setFocused(null);
+        }
         if(playerSelectOpen()) return playerSelectModal.mouseClicked(mouseX, mouseY, button);
+        if(hudColorPicker != null && hudColorPicker.isOpen())
+            return hudColorPicker.mouseClicked(mouseX, mouseY, button);
         if (graphColorPicker != null && graphColorPicker.isOpen())
             return graphColorPicker.mouseClicked(mouseX, mouseY, button);
+        if (commentGroupLabelEditing() && commentGroupLabelEditor.mouseClicked(mouseX, mouseY, button)) return true;
+        if(shipPermissionsOpen) return clickShipPermissions(mouseX, mouseY, button);
+        if (themeEditorOpen) return clickThemeEditor(mouseX, mouseY, button);
         if (controllerAliasEditor != null && controllerAliasEditor.visible) {
             if (controllerAliasEditor.mouseClicked(mouseX, mouseY, button)) return true;
             finishControllerAliasRename(false);
@@ -5657,9 +6765,24 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return true;
         }
         if (mouseY >= 5 && mouseY < 23 && super.mouseClicked(mouseX, mouseY, button)) return true;
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && gridSnapSliderBounds().contains(mouseX, mouseY)) {
+            draggingGridSnapSlider = true;
+            updateGridSnapStep(mouseX);
+            return true;
+        }
 
         // ------------------------------------OVERLAY INPUT------------------------------------
 
+        
+        
+        if (graphTargetPickerOpen) return clickGraphTargetPicker(mouseX, mouseY, button);
+        
+        if (scmBlockPickerOpen) {
+            return clickScmBlockPicker(mouseX, mouseY, button);
+        }
+        if (scmConfigurationOpen) {
+            return clickScmConfiguration(mouseX, mouseY, button);
+        }
         if (hudOpen) {
             if (clickHud(mouseX, mouseY, button)) {
                 clearHudFieldFocus();
@@ -5687,6 +6810,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         if (graphHistoryOpen) return handleGraphHistoryClick(mouseX, mouseY, button);
         if (templatePicker && handleTemplateClick(mouseX, mouseY, button)) return true;
+        if (schedulePropertyDropdownBounds != null && clickSchedulePropertyDropdown(mouseX, mouseY, button)) return true;
         if (optionDropdown != null && clickOptionDropdown(mouseX, mouseY, button)) return true;
         if (contextMenu != null && handleContextMenuClick(mouseX, mouseY, button)) return true;
         if (miniBrowser != null && handleMiniBrowserClick(mouseX, mouseY, button)) return true;
@@ -5703,17 +6827,6 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return true;
         }
         if (handleGraphTabClick(mouseX, mouseY, button)) return true;
-
-        AdvancedGraphDocument.Node activeSticky = findNode(editingStickyNode);
-        if (activeSticky != null && button == GLFW.GLFW_MOUSE_BUTTON_LEFT
-                && stickyTextAreaAt(activeSticky, mouseX, mouseY)) {
-            positionStickyCaret(activeSticky, mouseX, mouseY, hasShiftDown());
-            return true;
-        }
-        if (editingStickyNode != null) {
-            finishStickyEditing();
-        }
-
         if (linkerOpen && mouseX >= linkerX && mouseX <= linkerX + LINKER_MODAL_WIDTH
                 && mouseY >= linkerY && mouseY <= linkerY + 22) {
             if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
@@ -5727,15 +6840,38 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return true;
         }
         if (linkerOpen) return true;
+        if (scmGraphOverview) return clickScmGraphWorkspace(mouseX, mouseY, button);
+        if (scheduleGraphOverview) return clickShippingScheduleWorkspace(mouseX, mouseY, button);
+        
+
+        AdvancedGraphDocument.Node activeSticky = findNode(editingStickyNode);
+        if (activeSticky != null && button == GLFW.GLFW_MOUSE_BUTTON_LEFT
+                && stickyTextAreaAt(activeSticky, mouseX, mouseY)) {
+            positionStickyCaret(activeSticky, mouseX, mouseY, hasShiftDown());
+            return true;
+        }
+        if (editingStickyNode != null) {
+            finishStickyEditing();
+        }
 
         if (handleSidebarHandleClick(mouseX, mouseY, button)) return true;
 
-        if (!leftSidebarCollapsed && mouseX >= layoutLeft() && mouseX < layoutLeft() + activeLeftWidth() && mouseY >= 59) {
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && leftVariableBrowserDividerAt(mouseX, mouseY)) {
+            draggingLeftVariableBrowserDivider = true;
+            return true;
+        }
+
+        
+
+        if (!leftSidebarCollapsed && mouseX >= layoutLeft() && mouseX < layoutLeft() + activeLeftWidth()
+                && mouseY >= 59) {
             return blockBrowserOpen ? handleBlockBrowserClick(mouseX, mouseY, button)
                     : handleNodeBrowserClick(mouseX, mouseY, button);
         }
 
-        if (!rightSidebarCollapsed && mouseX >= graphRight() && mouseX < layoutRight() && mouseY >= TOOLBAR_HEIGHT) {
+        if (!graphConfigSidebarRetired() && !rightSidebarCollapsed
+                && mouseX >= graphRight() && mouseX < layoutRight() && mouseY >= TOOLBAR_HEIGHT) {
+            
             if (handleInspectorCurveClick(mouseX, mouseY, button)) return true;
             if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT
                     && (rightClickHudInspector(mouseX, mouseY)
@@ -5754,6 +6890,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
         if (inGraph(mouseX, mouseY)) {
             clearTextFocus();
+            AdvancedGraphDocument.Node preciseNode = preciseValuesAt(mouseX, mouseY);
+            if(button == GLFW.GLFW_MOUSE_BUTTON_LEFT && preciseNode != null){
+                togglePreciseValues(preciseNode);
+                return true;
+            }
             ForceWriteHit forceWriteHit = setDataForceWriteAt(mouseX, mouseY);
             if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && forceWriteHit != null) {
                 checkpoint();
@@ -5780,6 +6921,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 wireMouseY = mouseY;
                 return true;
             }
+            if (clickCommentGroupHeader(mouseX, mouseY, button)) return true;
             AdvancedGraphDocument.Node node = nodeAt(mouseX, mouseY);
             CompoundTag group = node == null ? groupAt(mouseX, mouseY) : null;
             if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && node == null && handleWireClick(mouseX, mouseY)) {
@@ -5807,6 +6949,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 syncInspector();
                 return true;
             }
+            
             if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
                 rightPanPending = true;
                 rightPanning = false;
@@ -5824,6 +6967,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     return true;
                 }
                 selectedGroup = null;
+                if (!isReroute(node) && handleOutputPortSectionClick(node, mouseX, mouseY)) return true;
                 if (!isReroute(node) && handleRichBodyClick(node, mouseX, mouseY)) return true;
                 if (hasControlDown()) {
                     if (!selectedNodes.add(node.id())) selectedNodes.remove(node.id());
@@ -6013,7 +7157,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return true;
         }
         int rightX = rightSidebarHandleX();
-        if (mouseX >= rightX && mouseX < rightX + SIDEBAR_HANDLE_WIDTH) {
+        if (!graphConfigSidebarRetired() && mouseX >= rightX && mouseX < rightX + SIDEBAR_HANDLE_WIDTH) {
             rightSidebarCollapsed = !rightSidebarCollapsed;
             saveUiPreferences();
             ensureSidebarFit();
@@ -6026,11 +7170,112 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle mouse dragged
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if(boundGlassesOpen) return true;
+        if(bodyValueEditor != null) return bodyValueEditor.mouseDragged(mouseX, mouseY, button);
         if(playerSelectOpen()) return true;
+        if(hudColorPicker != null && hudColorPicker.isOpen())
+            return hudColorPicker.mouseDragged(mouseX, mouseY, button);
         if (graphColorPicker != null && graphColorPicker.isOpen())
             return graphColorPicker.mouseDragged(mouseX, mouseY, button);
+        if (commentGroupLabelEditing()) return commentGroupLabelEditor.mouseDragged(mouseX, mouseY, button);
         wireMouseX = mouseX;
         wireMouseY = mouseY;
+        if (themeEditorOpen) {
+            if (themeColorPicker != null && themeColorPicker.isOpen()) {
+                return themeColorPicker.mouseDragged(mouseX, mouseY, button);
+            }
+            return true;
+        }
+        if (draggingGridSnapSlider && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            updateGridSnapStep(mouseX);
+            return true;
+        }
+        if (draggingLeftVariableBrowserDivider && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            resizeLeftVariableBrowser(mouseY);
+            return true;
+        }
+        if (graphTargetPickerOpen) {
+            UiRect preview = graphTargetPickerPreviewBounds(graphTargetPickerBounds());
+            if (graphTargetPickerBlockTab && !scmBlockPickerDropdownOpen() && preview.contains(mouseX, mouseY)
+                    && blockPickerRootSubLevelId() != null) {
+                scmLivePreviewRenderer.mouseDragged(dragX, dragY);
+            }
+            return true;
+        }
+        if (scmBlockPickerOpen) {
+            UiRect preview = scmBlockPickerPreviewBounds(scmBlockPickerBounds());
+            if (blockPickerRootSubLevelId() != null && preview.contains(mouseX, mouseY)) {
+                scmLivePreviewRenderer.mouseDragged(dragX, dragY);
+            }
+            return true;
+        }
+        if (scheduleGraphOverview) {
+            if (draggingInspectorDivider == InspectorDivider.SCHEDULE_PROPERTIES
+                    && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                // Keep the Schedule inspector's property list genuinely
+                // resizable. This used to clear the drag immediately, which
+                // made the painted handle look decorative rather than usable.
+                scheduleInspectorPropertiesHeight = Mth.clamp((int) mouseY - 128,
+                        22, Math.max(22, height - 230));
+                return true;
+            }
+            if (draggingScheduleMinimapViewport && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                AdvancedControllerMinimapGeometry.Transform transform = scheduleMinimapDragTransform == null
+                        ? scheduleMinimapTransform(ShippingScheduleGraph.orderedBlocks(scheduleDraft))
+                        : scheduleMinimapDragTransform;
+                panScheduleMinimapViewport(mouseX, mouseY, transform);
+                return true;
+            }
+            if (schedulePanning && (button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE
+                    || button == GLFW.GLFW_MOUSE_BUTTON_RIGHT)) {
+                schedulePanX += dragX / scheduleZoom;
+                schedulePanY += dragY / scheduleZoom;
+                return true;
+            }
+            if (scheduleMarquee && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                scheduleMarqueeCurrentX = mouseX;
+                scheduleMarqueeCurrentY = mouseY;
+                return true;
+            }
+            if (draggingScheduleBlock != null && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                for (String id : scheduleDragRoots()) {
+                    AdvancedGraphDocument.Node dragged = scheduleNode(id);
+                    if (dragged == null) continue;
+                    if (id.equals(draggingScheduleBlock)) {
+                        dragged = promoteDraggedScheduleBlock(dragged, mouseX, mouseY);
+                        if (dragged == null) continue;
+                    }
+                    double x = dragged.x() + dragX / scheduleZoom;
+                    double y = dragged.y() + dragY / scheduleZoom;
+                    if (hasShiftDown()) {
+                        x = snapGraphCoordinate(x);
+                        y = snapGraphCoordinate(y);
+                    }
+                    ShippingScheduleGraph.moveBlock(scheduleDraft, dragged.id(),
+                            x, y);
+                }
+                draggingScheduleBlockMoved |= dragX != 0.0D || dragY != 0.0D;
+            }
+            return true;
+        }
+        if (scmConfigurationOpen || scmGraphOverview) {
+            if (scmGraphOverview && !scmSimulationSidebarCollapsed
+                    && mouseX >= layoutLeft() && mouseX < layoutLeft() + scmSimulationSidebarWidth()
+                    && mouseY >= TOOLBAR_HEIGHT) {
+                int visibleRows = Math.max(1, (height - (TOOLBAR_HEIGHT + 62) - 30) / 17);
+                int maximum = Math.max(0, scmSimulationFields().size() - visibleRows);
+                scmSimulationSidebarScroll = Mth.clamp(scmSimulationSidebarScroll - (int) Math.signum(dragY),
+                        0, maximum);
+                return true;
+            }
+            UiRect bounds = scmConfigurationBounds();
+            UiRect previewBounds = scmConfigurationPreviewBounds(bounds);
+            if (scmConfigurationRootSubLevelId != null
+                    && previewBounds.contains(mouseX, mouseY)) {
+                scmLivePreviewRenderer.mouseDragged(dragX, dragY);
+            }
+            return true;
+        }
         // ------------------------------------OVERLAY DRAGGING------------------------------------
         if (draggingV2MinimapViewport && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             AdvancedControllerMinimapGeometry.Transform transform = v2MinimapDragTransform == null
@@ -6043,8 +7288,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return true;
         }
         if (hudOpen) {
-            if (draggingHudColorControl != null) {
-                updateHudColorSlider(mouseX);
+            if(draggingHudOpacityKey != null){
+                updateHudOpacitySlider(mouseX);
                 return true;
             }
             if (draggingHudPropSlider != null) {
@@ -6060,9 +7305,12 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             if (draggingInspectorDivider == InspectorDivider.OPTIONS) {
                 inspectorOptionsHeight = Mth.clamp((int) mouseY - sections.optionsTop(),
                         INSPECTOR_SECTION_MIN_CONTENT_HEIGHT, 800);
-            } else {
+            } else if (draggingInspectorDivider == InspectorDivider.TARGETS) {
                 inspectorTargetsHeight = Mth.clamp((int) mouseY - sections.targetsTop(),
                         INSPECTOR_SECTION_MIN_CONTENT_HEIGHT, 800);
+            } else {
+                scheduleInspectorPropertiesHeight = Mth.clamp((int) mouseY - 128,
+                        22, Math.max(22, height - 230));
             }
             return true;
         }
@@ -6129,10 +7377,102 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle mouse released
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if(boundGlassesOpen) return true;
+        if(bodyValueEditor != null) return bodyValueEditor.mouseReleased(mouseX, mouseY, button);
         if(playerSelectOpen()) return true;
+        if(hudColorPicker != null && hudColorPicker.isOpen())
+            return hudColorPicker.mouseReleased(mouseX, mouseY, button);
         if (graphColorPicker != null && graphColorPicker.isOpen())
             return graphColorPicker.mouseReleased(mouseX, mouseY, button);
+        if (commentGroupLabelEditing()) return commentGroupLabelEditor.mouseReleased(mouseX, mouseY, button);
+        if (themeEditorOpen) {
+            if (themeColorPicker != null && themeColorPicker.isOpen()) {
+                return themeColorPicker.mouseReleased(mouseX, mouseY, button);
+            }
+            return true;
+        }
+        if (draggingGridSnapSlider && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            draggingGridSnapSlider = false;
+            saveUiPreferences();
+            return true;
+        }
+        if (draggingLeftVariableBrowserDivider && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            draggingLeftVariableBrowserDivider = false;
+            saveUiPreferences();
+            return true;
+        }
         draggingOptionDropdownThumb = false;
+        if (graphTargetPickerOpen) {
+            UiRect preview = graphTargetPickerPreviewBounds(graphTargetPickerBounds());
+            if (graphTargetPickerBlockTab && !scmBlockPickerDropdownOpen() && preview.contains(mouseX, mouseY)
+                    && blockPickerRootSubLevelId() != null) {
+                ScmLiveSubLevelPreviewRenderer.PickTarget picked = scmLivePreviewRenderer.mouseReleased(
+                        mouseX, mouseY, button, preview.x(), preview.y(), preview.width(), preview.height(),
+                        minecraft == null ? 0.0F : minecraft.getTimer().getGameTimeDeltaPartialTick(false),
+                        scmLivePreviewRenderer.pickTargets());
+                stageGraphTargetPickerBlockSelection(picked);
+            }
+            return true;
+        }
+        if (scmBlockPickerOpen) {
+            UiRect preview = scmBlockPickerPreviewBounds(scmBlockPickerBounds());
+            if (blockPickerRootSubLevelId() != null && preview.contains(mouseX, mouseY)) {
+                ScmLiveSubLevelPreviewRenderer.PickTarget picked = scmLivePreviewRenderer.mouseReleased(
+                        mouseX, mouseY, button, preview.x(), preview.y(), preview.width(), preview.height(),
+                        minecraft == null ? 0.0F : minecraft.getTimer().getGameTimeDeltaPartialTick(false),
+                        scmLivePreviewRenderer.pickTargets());
+                if (picked != null) {
+                    scmBlockPickerSelected = picked;
+                    scmLivePreviewRenderer.invalidate();
+                }
+            }
+            return true;
+        }
+        if (scheduleGraphOverview) {
+            if (draggingInspectorDivider == InspectorDivider.SCHEDULE_PROPERTIES
+                    && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                draggingInspectorDivider = null;
+                return true;
+            }
+            if (draggingScheduleMinimapViewport && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                draggingScheduleMinimapViewport = false;
+                scheduleMinimapDragTransform = null;
+                return true;
+            }
+            if (scheduleMarquee && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                scheduleMarqueeCurrentX = mouseX;
+                scheduleMarqueeCurrentY = mouseY;
+                finishScheduleMarqueeSelection();
+                scheduleMarquee = false;
+                return true;
+            }
+            if (draggingScheduleBlock != null && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                if (draggingScheduleBlockMoved) {
+                    completeScheduleBlockDrop(mouseX, mouseY);
+                    saveShippingScheduleDraft();
+                }
+                draggingScheduleBlock = null;
+                draggingScheduleBlockMoved = false;
+                return true;
+            }
+            if (button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE || button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+                schedulePanning = false;
+            }
+            return true;
+        }
+        if (scmConfigurationOpen || scmGraphOverview) {
+            UiRect bounds = scmConfigurationBounds();
+            UiRect previewBounds = scmConfigurationPreviewBounds(bounds);
+            if (scmConfigurationRootSubLevelId != null
+                    && previewBounds.contains(mouseX, mouseY)) {
+                ScmLiveSubLevelPreviewRenderer.PickTarget picked = scmLivePreviewRenderer.mouseReleased(mouseX, mouseY, button,
+                        previewBounds.x(), previewBounds.y(), previewBounds.width(), previewBounds.height(),
+                        minecraft == null ? 0.0F : minecraft.getTimer().getGameTimeDeltaPartialTick(false),
+                        scmConfigurationPickTargets());
+                selectScmConfigurationBlock(picked);
+            }
+            return true;
+        }
         if (draggingV2MinimapViewport && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             draggingV2MinimapViewport = false;
             v2MinimapDragTransform = null;
@@ -6141,8 +7481,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (hudOpen) {
             draggingHudElement = false;
             resizingHudElement = false;
-            draggingHudColorKey = null;
-            draggingHudColorControl = null;
+            draggingHudOpacityKey = null;
             draggingHudPropSlider = null;
             return true;
         }
@@ -6249,6 +7588,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 "Collapse Input to MAP", "Collapse Output to MAP"));
         if (selectedNodes.size() == 1) {
             actions.add("Copy Node ID");
+            AdvancedGraphDocument.Node selected = selectedNode();
+            if (activeFunctionId == null && selected != null
+                    && AdvancedGraphCatalog.isPublicScmActionDispatchType(selected.type())) {
+                AdvancedGraphDocument.FunctionGraph bound = draft == null ? null
+                        : draft.function(draft.scmActionFunction(selected.type()));
+                actions.add(bound == null ? "Create SCM Action Function"
+                        : "Open SCM Action Function");
+            }
         }
         if (selectedNodes.size() > 1) {
             actions.add("Convert to Function");
@@ -6291,8 +7638,114 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle mouse scrolled
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if(boundGlassesOpen){
+            boundGlassesScroll = Mth.clamp(boundGlassesScroll - (int)Math.signum(scrollY), 0,
+                    Math.max(0, gogglesTrackerPairs().size() - boundGlassesVisibleRows()));
+            return true;
+        }
         if(playerSelectOpen()) return playerSelectModal.mouseScrolled(scrollY);
+        if(hudColorPicker != null && hudColorPicker.isOpen()) return true;
+        if (graphColorPicker != null && graphColorPicker.isOpen()) return true;
+        if (commentGroupLabelEditing()) return true;
+        if(shipPermissionsOpen){
+            int maximum = Math.max(0, shipPermissionsSnapshot.getList("Players", Tag.TAG_COMPOUND).size() - 8);
+            shipPermissionsScroll = Mth.clamp(shipPermissionsScroll - (int)Math.signum(scrollY), 0, maximum);
+            return true;
+        }
+        if (themeEditorOpen) return true;
         // -----------------------------------------------------MODAL WINDOWS-----------------------------------------------------
+        
+        
+        
+        if (graphTargetPickerOpen) {
+            UiRect bounds = graphTargetPickerBounds();
+            UiRect preview = graphTargetPickerPreviewBounds(bounds);
+            if(graphTargetPickerBlockTab && graphTargetPickerSupportsMergeLikePorts()
+                    && graphTargetSelectionsBounds(bounds).contains(mouseX, mouseY)){
+                int rows = graphTargetSelectionRows(graphTargetSelectionsBounds(bounds));
+                graphTargetAliasScroll = Mth.clamp(graphTargetAliasScroll - (int)Math.signum(scrollY), 0,
+                        Math.max(0, graphTargetPickerSelections.size() - rows));
+            }else if (graphTargetPickerBlockTab && !scmBlockPickerDropdownOpen() && preview.contains(mouseX, mouseY)
+                    && blockPickerRootSubLevelId() != null) {
+                scmLivePreviewRenderer.mouseScrolled(scrollY);
+            } else if (!graphTargetPickerBlockTab && graphTargetPickerListBounds(bounds).contains(mouseX, mouseY)) {
+                int maximum = Math.max(0, graphTargetPickerChoices().size()
+                        - graphTargetPickerVisibleRows(graphTargetPickerListBounds(bounds)));
+                graphTargetPickerScroll = Mth.clamp(
+                        graphTargetPickerScroll - (int) Math.signum(scrollY), 0, maximum);
+            }
+            return true;
+        }
+        if (scmBlockPickerOpen) {
+            UiRect preview = scmBlockPickerPreviewBounds(scmBlockPickerBounds());
+            if (blockPickerRootSubLevelId() != null && preview.contains(mouseX, mouseY)) {
+                scmLivePreviewRenderer.mouseScrolled(scrollY);
+            }
+            return true;
+        }
+        if (scmConfigurationOpen || scmGraphOverview) {
+            UiRect bounds = scmConfigurationBounds();
+            UiRect previewBounds = scmConfigurationPreviewBounds(bounds);
+            UiRect viewBounds = scmConfigurationViewBounds(bounds);
+            if (scmGraphOverview && !scmSimulationSidebarCollapsed
+                    && mouseX >= layoutLeft() && mouseX < layoutLeft() + scmSimulationSidebarWidth()
+                    && mouseY >= TOOLBAR_HEIGHT) {
+                scmSimulationSidebarScroll = Mth.clamp(scmSimulationSidebarScroll
+                        - (int) Math.signum(scrollY), 0, scmSimulationMaximumScroll());
+                return true;
+            }
+            int viewX = viewBounds.x();
+            int viewY = viewBounds.y();
+            int panelX = viewBounds.right() + 14;
+            int panelWidth = bounds.right() - panelX - (scmConfigurationWorkspace() ? 8 : 14);
+            ScmConfigurationSidebarLayout sidebarLayout = scmConfigurationSidebarLayout(bounds, viewBounds);
+            if (scmConfigurationTargetDropdownOpen
+                    && scmConfigurationTargetDropdownBounds(panelX, sidebarLayout.contentTop() + 287, panelWidth)
+                    .contains(mouseX, mouseY)) {
+                int visible = Math.min(SCM_CONFIGURATION_DROPDOWN_VISIBLE_ROWS,
+                        scmConfigurationActions().size());
+                int maximum = Math.max(0, scmConfigurationActions().size() - visible);
+                scmConfigurationTargetDropdownScroll = Mth.clamp(
+                        scmConfigurationTargetDropdownScroll - (int) Math.signum(scrollY), 0, maximum);
+                return true;
+            }
+            if (scmConfigurationRootSubLevelId != null
+                    && previewBounds.contains(mouseX, mouseY)) {
+                scmLivePreviewRenderer.mouseScrolled(scrollY);
+            } else if (!scmConfigurationSidebarCollapsed
+                    && mouseX >= viewBounds.right() && mouseX < bounds.right()) {
+                if (sidebarLayout.maximumScroll() > 0) {
+                    scmConfigurationSidebarScroll = Mth.clamp(scmConfigurationSidebarScroll
+                            - (int) Math.round(scrollY * 18.0D), 0, sidebarLayout.maximumScroll());
+                } else {
+                    scmConfigurationListScroll = Math.max(0, scmConfigurationListScroll
+                            - (int) Math.signum(scrollY));
+                }
+            }
+            return true;
+        }
+        if (scheduleGraphOverview) {
+            UiRect palette = schedulePaletteBounds();
+            if (!leftSidebarCollapsed && palette.contains(mouseX, mouseY)) {
+                int maximum = Math.max(0, schedulePaletteContentHeight() - Math.max(1, height - 82));
+                schedulePaletteScroll = Mth.clamp(schedulePaletteScroll - (int) Math.round(scrollY * 34.0D),
+                        0, maximum);
+            } else if (!rightSidebarCollapsed && mouseX >= graphRight() && mouseX < layoutRight()) {
+                AdvancedGraphDocument.Node selected = scheduleNode(selectedScheduleBlock);
+                int maximum = Math.max(0, schedulePropertyKeys(selected).size()
+                        - scheduleVisiblePropertyRows(schedulePropertyKeys(selected)));
+                schedulePropertyScroll = Mth.clamp(schedulePropertyScroll - (int) Math.signum(scrollY), 0, maximum);
+            } else if (inGraph(mouseX, mouseY)) {
+                double graphMouseX = scheduleGraphX(mouseX);
+                double graphMouseY = scheduleGraphY(mouseY);
+                scheduleZoom = Mth.clamp(scheduleZoom + scrollY * 0.1D, 0.20D, 2.50D);
+                UiRect canvas = scheduleCanvasBounds();
+                schedulePanX = (mouseX - canvas.x()) / scheduleZoom - graphMouseX;
+                schedulePanY = (mouseY - canvas.y()) / scheduleZoom - graphMouseY;
+            }
+            return true;
+        }
+        
         if (frequencyModalOpen) {
             return true;
         }
@@ -6309,7 +7762,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     functionTabScroll - (int) Math.round(scrollY * 32.0D), 0, maximum);
             return true;
         }
+        
         // ------------------------------------DROPDOWN SCROLL------------------------------------
+        if ((scmGraphOverview || scheduleGraphOverview) && inGraph(mouseX, mouseY)) {
+            return true;
+        }
         if (optionDropdown != null) {
             int visibleRows = Math.min(OPTION_DROPDOWN_VISIBLE_ROWS, optionDropdown.options().size());
             int maximum = Math.max(0, optionDropdown.options().size() - visibleRows);
@@ -6324,7 +7781,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         // -----------------------------------------------------HUD DESIGNER-----------------------------------------------------
         if (hudOpen) {
-            if (hudBindingDropdownKey != null) {
+            if(hudStyleDropdownOpen && hudElement() != null){
+                int count = AdvancedHudInteractiveStyles.options(hudElement().getString("Type")).size();
+                hudStyleDropdownScroll = Mth.clamp(hudStyleDropdownScroll - (int)Math.signum(scrollY),
+                        0, Math.max(0, count - hudStyleVisibleRows(count)));
+            } else if (hudBindingDropdownKey != null) {
                 List<String> ports = hudBindingPorts(hudNode());
                 int maxScroll = Math.max(0, ports.size() - HUD_PORT_VISIBLE_ROWS);
                 hudBindingDropdownScroll = Mth.clamp(
@@ -6374,19 +7835,29 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return true;
         }
         if (!leftSidebarCollapsed && mouseX >= layoutLeft() && mouseX < layoutLeft() + activeLeftWidth()) {
-            if (blockBrowserOpen) blockBrowserScroll = Math.max(0, blockBrowserScroll - (int) (scrollY * 34));
-            else browserScroll = Math.max(0, browserScroll - (int) (scrollY * 34));
+            if (!inspectorVariablesCollapsed && mouseY >= leftVariableBrowserTop()) {
+                int viewportHeight = leftVariableBrowserContentHeight();
+                inspectorVariablesScroll = Mth.clamp(inspectorVariablesScroll - (int) (scrollY * 34), 0,
+                        Math.max(0, inspectorVariablesContentHeight() - viewportHeight));
+            } else if (blockBrowserOpen) {
+                blockBrowserScroll = Math.max(0, blockBrowserScroll - (int) (scrollY * 34));
+            } else {
+                browserScroll = Math.max(0, browserScroll - (int) (scrollY * 34));
+            }
             return true;
         }
-        if (!rightSidebarCollapsed && mouseX >= graphRight() && mouseX < layoutRight() && mouseY >= TOOLBAR_HEIGHT) {
+        if (!graphConfigSidebarRetired() && !rightSidebarCollapsed
+                && mouseX >= graphRight() && mouseX < layoutRight() && mouseY >= TOOLBAR_HEIGHT) {
             AdvancedGraphDocument.Node node = selectedNode();
             InspectorSections sections = inspectorSections(node);
             if (!inspectorOptionsCollapsed && mouseY >= sections.optionsTop()
                     && mouseY < sections.optionsBottom()) {
-                inspectorOptionsScroll = Math.max(0, inspectorOptionsScroll - (int) (scrollY * 34));
+                inspectorOptionsScroll = Mth.clamp(inspectorOptionsScroll - (int) (scrollY * 34), 0,
+                        inspectorOptionsMaximumScroll(node, sections));
             } else if (!inspectorTargetsCollapsed && mouseY >= sections.targetsTop()
                     && mouseY < sections.targetsBottom()) {
-                inspectorTargetsScroll = Math.max(0, inspectorTargetsScroll - (int) (scrollY * 34));
+                inspectorTargetsScroll = Mth.clamp(inspectorTargetsScroll - (int) (scrollY * 34), 0,
+                        inspectorTargetsMaximumScroll(node, sections));
             }
             return true;
         }
@@ -6406,9 +7877,25 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle key pressed
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if(boundGlassesOpen){
+            if(keyCode == GLFW.GLFW_KEY_ESCAPE){ boundGlassesOpen = false; setLinkerOpen(true); }
+            return true;
+        }
+        if(bodyValueEditor != null) return bodyValueEditor.keyPressed(keyCode, scanCode, modifiers);
+        if(graphSearch != null && graphSearch.visible && graphSearch.isFocused()){
+            if(keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) jumpGraphSearch(hasShiftDown());
+            else if(keyCode == GLFW.GLFW_KEY_ESCAPE){ graphSearch.setFocused(false); setFocused(null); }
+            else graphSearch.keyPressed(keyCode, scanCode, modifiers);
+            return true;
+        }
         if(playerSelectOpen()) return playerSelectModal.keyPressed(keyCode, scanCode, modifiers);
+        boolean controlDown = (modifiers & (Minecraft.ON_OSX ? GLFW.GLFW_MOD_SUPER : GLFW.GLFW_MOD_CONTROL)) != 0 || hasControlDown();
+        boolean shiftDown = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0 || hasShiftDown();
+        if(hudColorPicker != null && hudColorPicker.isOpen())
+            return hudColorPicker.keyPressed(keyCode, scanCode, modifiers);
         if (graphColorPicker != null && graphColorPicker.isOpen())
             return graphColorPicker.keyPressed(keyCode, scanCode, modifiers);
+        if (commentGroupLabelEditing()) return commentGroupLabelEditor.keyPressed(keyCode, scanCode, modifiers);
         if (controllerAliasEditor != null && controllerAliasEditor.visible) {
             if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
                 finishControllerAliasRename(false);
@@ -6419,7 +7906,45 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
             return true;
         }
+        if(shipPermissionsOpen){
+            if(keyCode == GLFW.GLFW_KEY_ESCAPE) shipPermissionsOpen = false;
+            return true;
+        }
+        if (themeEditorOpen) {
+            if (themeColorPicker != null && themeColorPicker.isOpen()) {
+                return themeColorPicker.keyPressed(keyCode, scanCode, modifiers);
+            }
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                closeThemeEditor();
+                return true;
+            }
+            if (themeNameEditor != null && themeNameEditor.visible && themeNameEditor.isFocused()) {
+                themeNameEditor.keyPressed(keyCode, scanCode, modifiers);
+            }
+            return true;
+        }
+        
+        
+        if (graphTargetPickerOpen) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) closeGraphTargetPicker();
+            else if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                applyGraphTargetPickerSelections();
+            }else if(graphTargetPickerBlockTab && graphTargetAliasEditor != null && graphTargetAliasEditor.isFocused()){
+                graphTargetAliasEditor.keyPressed(keyCode, scanCode, modifiers);
+            }
+            return true;
+        }
+        
+        
+        if ((scmConfigurationOpen || scmGraphOverview) && controlDown && keyCode == GLFW.GLFW_KEY_S) {
+            saveAndApplyDraft("save_apply", beginGraphActionToast("Saving ACC and SCM..."));
+            return true;
+        }
         // -----------------------------------------------------EDITOR MODALS-----------------------------------------------------
+        if (scmBlockPickerOpen) {
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) closeScmBlockPicker();
+            return true;
+        }
         if (functionNameEditor != null && functionNameEditor.visible) {
             if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
                 finishFunctionRename(false);
@@ -6487,6 +8012,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return true;
         }
         // ------------------------------------WINDOW CONTROLS------------------------------------
+        if(scheduleGraphOverview && keyCode == GLFW.GLFW_KEY_ESCAPE
+                && schedulePropertyDropdownBounds != null){
+            closeSchedulePropertyDropdown();
+            return true;
+        }
         if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             if (contextMenu != null || optionDropdown != null || miniBrowser != null
                     || templatePicker || linkerOpen || shareModalOpen || graphHistoryOpen || toolsMenuOpen) {
@@ -6503,6 +8033,81 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
             return super.keyPressed(keyCode, scanCode, modifiers);
         }
+        if (scheduleGraphOverview) {
+            if (schedulePropertyDropdownBounds != null && keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                closeSchedulePropertyDropdown();
+                return true;
+            }
+            if (getFocused() instanceof EditBox editBox && editBox.visible) {
+                if (keyCode == GLFW.GLFW_KEY_ESCAPE || keyCode == GLFW.GLFW_KEY_ENTER
+                        || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                    editBox.setFocused(false);
+                    setFocused(null);
+                    editingScheduleInlineProperty = false;
+                    if (scheduleInlinePropertyValue != null) scheduleInlinePropertyValue.setVisible(false);
+                    return true;
+                }
+                editBox.keyPressed(keyCode, scanCode, modifiers);
+                return true;
+            }
+            if (hasControlDown() && keyCode == GLFW.GLFW_KEY_S) {
+                saveShippingScheduleDraft();
+                return true;
+            }
+            if(keyCode == GLFW.GLFW_KEY_F2){
+                openScheduleBlockConfiguration(scheduleNode(selectedScheduleBlock));
+                return true;
+            }
+            if(hasAltDown() && (keyCode == GLFW.GLFW_KEY_UP || keyCode == GLFW.GLFW_KEY_DOWN)){
+                String moved = ShippingScheduleGraph.moveCondition(scheduleDraft, selectedScheduleBlock,
+                        keyCode == GLFW.GLFW_KEY_UP ? -1 : 1, minecraft.level.registryAccess());
+                if(!moved.isBlank()){
+                    selectedScheduleBlock = moved;
+                    selectedScheduleBlocks.clear();
+                    selectedScheduleBlocks.add(moved);
+                    saveShippingScheduleDraft();
+                }
+                return true;
+            }
+            if (nudgeScheduleSelected(keyCode)) return true;
+            if (hasControlDown() && keyCode == GLFW.GLFW_KEY_A) {
+                selectedScheduleBlocks.clear();
+                for (AdvancedGraphDocument.Node node : ShippingScheduleGraph.orderedBlocks(scheduleDraft)) {
+                    selectedScheduleBlocks.add(node.id());
+                }
+                selectedScheduleBlock = selectedScheduleBlocks.stream().findFirst().orElse(null);
+                return true;
+            }
+            if (hasControlDown() && keyCode == GLFW.GLFW_KEY_C) {
+                copySelectedScheduleBlocks();
+                return true;
+            }
+            if (hasControlDown() && keyCode == GLFW.GLFW_KEY_X) {
+                copySelectedScheduleBlocks();
+                deleteSelectedScheduleBlocks();
+                return true;
+            }
+            if (hasControlDown() && keyCode == GLFW.GLFW_KEY_V) {
+                pasteScheduleBlocks();
+                return true;
+            }
+            if (hasControlDown() && keyCode == GLFW.GLFW_KEY_D) {
+                duplicateSelectedScheduleBlocks();
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_DELETE || keyCode == GLFW.GLFW_KEY_BACKSPACE) {
+                deleteSelectedScheduleBlocks();
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                clearScheduleBlockSelection();
+                editingScheduleInlineProperty = false;
+                if (scheduleInlinePropertyValue != null) scheduleInlinePropertyValue.setVisible(false);
+                return true;
+            }
+            return true;
+        }
+        
         if (contextMenu != null) {
             if (keyCode == GLFW.GLFW_KEY_BACKSPACE && !contextMenu.query().isEmpty()) {
                 contextMenu = new ContextMenu(contextMenu.x(), contextMenu.y(), contextMenu.items(),
@@ -6518,20 +8123,25 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
         }
         // ------------------------------------DOCUMENT SHORTCUTS------------------------------------
-        if (hasControlDown() && keyCode == GLFW.GLFW_KEY_S) {
+        if (controlDown && keyCode == GLFW.GLFW_KEY_S) {
             long requestId = beginGraphActionToast("Saving and applying graph...");
             saveAndApplyDraft("save_apply", requestId);
             return true;
         }
-        if (hasControlDown() && keyCode == GLFW.GLFW_KEY_Z) {
-            restoreFrom(hasShiftDown() ? redo : undo, hasShiftDown() ? undo : redo);
+        if (controlDown && keyCode == GLFW.GLFW_KEY_Z) {
+            restoreFrom(shiftDown ? redo : undo, shiftDown ? undo : redo);
             return true;
         }
-        if (hasControlDown() && keyCode == GLFW.GLFW_KEY_Y) {
+        if (controlDown && keyCode == GLFW.GLFW_KEY_Y) {
             restoreFrom(redo, undo);
             return true;
         }
-        if (getFocused() instanceof EditBox editBox) {
+        if (getFocused() instanceof EditBox editBox && editBox.visible && editBox.active && editBox.isFocused()) {
+            if(editingBodyValue && (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER)){
+                clearTextFocus();
+                syncInspector();
+                return true;
+            }
             editBox.keyPressed(keyCode, scanCode, modifiers);
             return true;
         }
@@ -6545,19 +8155,19 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             deleteSelected();
             return true;
         }
-        if (keyCode == GLFW.GLFW_KEY_D && hasControlDown()) {
+        if (keyCode == GLFW.GLFW_KEY_D && controlDown) {
             duplicateSelected();
             return true;
         }
-        if (keyCode == GLFW.GLFW_KEY_C && hasControlDown()) {
+        if (keyCode == GLFW.GLFW_KEY_C && controlDown) {
             copySelected();
             return true;
         }
-        if (keyCode == GLFW.GLFW_KEY_V && hasControlDown()) {
+        if (keyCode == GLFW.GLFW_KEY_V && controlDown) {
             pasteCopied();
             return true;
         }
-        if (keyCode == GLFW.GLFW_KEY_G && hasControlDown() && !selectedNodes.isEmpty()) {
+        if (keyCode == GLFW.GLFW_KEY_G && controlDown && !selectedNodes.isEmpty()) {
             createCommentGroup();
             return true;
         }
@@ -6569,12 +8179,32 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle typed characters
     @Override
     public boolean charTyped(char codePoint, int modifiers) {
+        if(graphTargetPickerOpen && graphTargetPickerBlockTab && graphTargetAliasEditor != null
+                && graphTargetAliasEditor.isFocused()) return graphTargetAliasEditor.charTyped(codePoint, modifiers);
+        if(boundGlassesOpen) return true;
+        if(bodyValueEditor != null) return bodyValueEditor.charTyped(codePoint, modifiers);
+        if(graphSearch != null && graphSearch.visible && graphSearch.isFocused()) return graphSearch.charTyped(codePoint, modifiers);
         if(playerSelectOpen()) return playerSelectModal.charTyped(codePoint, modifiers);
+        if(hudColorPicker != null && hudColorPicker.isOpen())
+            return hudColorPicker.charTyped(codePoint, modifiers);
         if (graphColorPicker != null && graphColorPicker.isOpen())
             return graphColorPicker.charTyped(codePoint, modifiers);
+        if (commentGroupLabelEditing()) return commentGroupLabelEditor.charTyped(codePoint, modifiers);
         if (controllerAliasEditor != null && controllerAliasEditor.visible) {
             return controllerAliasEditor.charTyped(codePoint, modifiers);
         }
+        if (themeEditorOpen) {
+            if (themeColorPicker != null && themeColorPicker.isOpen()) {
+                return themeColorPicker.charTyped(codePoint, modifiers);
+            }
+            if (themeNameEditor != null && themeNameEditor.visible && themeNameEditor.isFocused()) {
+                return themeNameEditor.charTyped(codePoint, modifiers);
+            }
+            return true;
+        }
+        
+        
+        if (graphTargetPickerOpen) return true;
         if (hudOpen) {
             if (getFocused() instanceof EditBox editBox) {
                 return editBox.charTyped(codePoint, modifiers);
@@ -6602,6 +8232,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle key released
     @Override
     public boolean keyReleased(int keyCode, int scanCode, int modifiers) {
+        if (themeEditorOpen) return true;
         if (hudOpen) return true;
         if (!sharedGraphConflictName.isBlank()) return true;
         if (editingStickyNode != null) return true;
@@ -6639,6 +8270,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle the node browser click
     private boolean handleNodeBrowserClick(double mouseX, double mouseY, int btn) {
         if (btn != GLFW.GLFW_MOUSE_BUTTON_LEFT || mouseY < 82) return true;
+        if (clickLeftVariableBrowser(mouseX, mouseY)) return true;
+        if (mouseY >= nodeBrowserBottom()) return true;
         int y = 86 - browserScroll;
         for (BrowserEntry entry : nodeBrowserEntries(nodeSearch.getValue().trim().toLowerCase(Locale.ROOT))) {
             int rowHeight = browserEntryRowHeight(entry);
@@ -6705,7 +8338,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         int bodyTop = nodeBodyTop(node, y);
         int rowHeight = Math.max(10, (int) (15 * zoom));
         if ("curve".equals(node.type())) bodyTop += (int) (CURVE_BODY_HEIGHT * zoom);
-        if (mouseX < x + 5 || mouseX > x + NODE_WIDTH * zoom - 5 || mouseY < bodyTop
+        if (mouseX < x + 5 || mouseX > x + nodeWidth(node) * zoom - 5 || mouseY < bodyTop
                 || mouseY > bodyTop + bodyControlCount(node) * rowHeight) {
             return false;
         }
@@ -6724,7 +8357,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 selectOnly(node.id());
                 selectedInputPort = AdvancedGraphCatalog.SWITCH_TYPE_TAG;
                 openPropertyDropdown(node, AdvancedGraphCatalog.SWITCH_TYPE_TAG,
-                        x + 5, mouseY + 8, NODE_WIDTH * zoom - 10, SWITCH_TYPE_OPTIONS);
+                        x + 5, mouseY + 8, nodeWidth(node) * zoom - 10, SWITCH_TYPE_OPTIONS);
                 syncInspector();
                 return true;
             }
@@ -6737,35 +8370,35 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 if ("mouse_input".equals(node.type())) {
                     selectedInputPort = "MouseInput";
                     openPropertyDropdown(node, "MouseInput", x + 5, mouseY + 8,
-                            NODE_WIDTH * zoom - 10, MOUSE_INPUT_OPTIONS);
+                            nodeWidth(node) * zoom - 10, MOUSE_INPUT_OPTIONS);
                     syncInspector();
                     return true;
                 }
                 if ("portable_tracker".equals(node.type())) {
                     selectedInputPort = "GogglesPair";
                     openPropertyDropdown(node, "GogglesPair", x + 5, mouseY + 8,
-                            NODE_WIDTH * zoom - 10, gogglesTrackerPairIds());
+                            nodeWidth(node) * zoom - 10, gogglesTrackerPairIds());
                     syncInspector();
                     return true;
                 }
                 if(AdvancedGraphCatalog.COUNT_DIRECTION_TAG.equals(editableProperty(node))){
                     selectedInputPort = AdvancedGraphCatalog.COUNT_DIRECTION_TAG;
                     openPropertyDropdown(node, selectedInputPort, x + 5, mouseY + 8,
-                            NODE_WIDTH * zoom - 10, GraphCounters.Direction.optionIds());
+                            nodeWidth(node) * zoom - 10, GraphCounters.Direction.optionIds());
                     syncInspector();
                     return true;
                 }
                 if(GraphSignalRange.VALUE_TYPE_TAG.equals(editableProperty(node))){
                     selectedInputPort = GraphSignalRange.VALUE_TYPE_TAG;
                     openPropertyDropdown(node, selectedInputPort, x + 5, mouseY + 8,
-                            NODE_WIDTH * zoom - 10, SignalValueType.optionIds());
+                            nodeWidth(node) * zoom - 10, SignalValueType.optionIds());
                     syncInspector();
                     return true;
                 }
                 if ("PulseBehavior".equals(editableProperty(node))) {
                     selectedInputPort = "PulseBehavior";
                     openPropertyDropdown(node, "PulseBehavior", x + 5, mouseY + 8,
-                            NODE_WIDTH * zoom - 10, PULSE_BEHAVIOR_OPTIONS);
+                            nodeWidth(node) * zoom - 10, PULSE_BEHAVIOR_OPTIONS);
                     syncInspector();
                     return true;
                 }
@@ -6777,21 +8410,21 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 if (isAccDisplayWidgetType(node.type())) {
                     selectedInputPort = "WidgetType";
                     openPropertyDropdown(node, "WidgetType", x + 5, mouseY + 8,
-                            NODE_WIDTH * zoom - 10, ACC_DISPLAY_WIDGET_TYPES);
+                            nodeWidth(node) * zoom - 10, ACC_DISPLAY_WIDGET_TYPES);
                     syncInspector();
                     return true;
                 }
-                if ("acc_display_crn".equals(node.type())) {
+                if (isShippingInformationNodeType(node.type())) {
                     selectedInputPort = "DisplayMode";
                     openPropertyDropdown(node, "DisplayMode", x + 5, mouseY + 8,
-                            NODE_WIDTH * zoom - 10, ACC_DISPLAY_CRN_MODES);
+                            nodeWidth(node) * zoom - 10, ACC_DISPLAY_CRN_MODES);
                     syncInspector();
                     return true;
                 }
                 if ("event_variable_change".equals(node.type())) {
                     selectedInputPort = "Variable";
                     openPropertyDropdown(node, "Variable", x + 5, mouseY + 8,
-                            NODE_WIDTH * zoom - 10, variableSelectorOptions(node));
+                            nodeWidth(node) * zoom - 10, variableSelectorOptions(node));
                     syncInspector();
                     return true;
                 }
@@ -6807,6 +8440,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         // ------------------------------------INPUT CONTROLS------------------------------------
         for (var port : nodeInputs(node).entrySet()) {
             if ("exec".equals(port.getValue()) || ("curve".equals(node.type()) && "value".equals(port.getKey()))) continue;
+            GraphPortSection section = portSectionStartingAt(node, port.getKey(), false);
+            if (section != null) {
+                if (row-- == 0) {
+                    checkpoint();
+                    togglePortSection(node, section, false);
+                    return true;
+                }
+            }
             if (!isDataPortVisible(node, port.getKey(), false)) continue;
             if (row-- != 0) continue;
             if (isInputConnected(node, port.getKey())) return false;
@@ -6823,7 +8464,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     || List.of("boolean", "direction", "frequency", "target").contains(port.getValue())) {
                 int controlInset = inputControlInset(node, port.getKey());
                 applyInputControl(node, port.getKey(), port.getValue(), mouseX, mouseY,
-                        x + 5 + controlInset, NODE_WIDTH * zoom - 10 - controlInset);
+                        x + 5 + controlInset, nodeWidth(node) * zoom - 10 - controlInset);
             } else {
                 syncInspector();
                 openBodyEditor(node, port.getKey(), bodyTop + portRow * rowHeight, rowHeight);
@@ -6836,12 +8477,19 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             addHudField(node);
             return true;
         }
+        if(isAdvancedHudNode(node) && row-- == 0){
+            selectOnly(node.id());
+            selectedInputPort = null;
+            syncInspector();
+            openHud(node);
+            return true;
+        }
         if (isConstructorNode(node) && row-- == 0) {
             addConstructorInput(node);
             return true;
         }
         if (isFunctionInterfaceNode(node) && row-- == 0) {
-            openFunctionPortDropdown(node, x + 5, mouseY + 8, NODE_WIDTH * zoom - 10);
+            openFunctionPortDropdown(node, x + 5, mouseY + 8, nodeWidth(node) * zoom - 10);
             return true;
         }
         return false;
@@ -6971,22 +8619,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         selectedInputPort = FUNCTION_LABEL_PREFIX + port;
         syncInspector();
         int rowHeight = Math.max(10, (int) (15 * zoom));
-        int rowY;
-        if (isFunctionOutputNode(node)) {
-            if ("exec".equals(AdvancedGraphCatalog.inputs(node).get(port))) {
-                rowY = portPosition(node, port, false).y() - rowHeight / 2;
-            } else {
-                int visibleRow = 0;
-                for (var entry : AdvancedGraphCatalog.inputs(node).entrySet()) {
-                    if ("exec".equals(entry.getValue())) continue;
-                    if (entry.getKey().equals(port)) break;
-                    visibleRow++;
-                }
-                rowY = nodeBodyTop(node, screenY(node.y())) + visibleRow * rowHeight;
-            }
-        } else {
-            rowY = portPosition(node, port, true).y() - rowHeight / 2;
-        }
+        int rowY = portPosition(node, port, isFunctionInputNode(node)).y() - rowHeight / 2;
         openBodyEditor(node, FUNCTION_LABEL_PREFIX + port, rowY, rowHeight);
         return true;
     }
@@ -7066,11 +8699,6 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             saveUiPreferences();
             return true;
         }
-        if (inInspectorHeader(mouseY, sections.variablesHeaderTop())) {
-            inspectorVariablesCollapsed = !inspectorVariablesCollapsed;
-            saveUiPreferences();
-            return true;
-        }
         if (inInspectorDivider(mouseY, sections.optionsDividerTop())) {
             draggingInspectorDivider = InspectorDivider.OPTIONS;
             return true;
@@ -7079,8 +8707,6 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             draggingInspectorDivider = InspectorDivider.TARGETS;
             return true;
         }
-        if (clickVarBrowser(mouseX, mouseY, sections)) return true;
-
         CompoundTag group = selectedGroup();
         if (group != null) {
             int[] colors = {0xFF5D9FE3, 0xFFE45B67, 0xFF59C58B, 0xFFE09B53, 0xFFB987E8, 0xFF44B8B0, 0xFF9099A5};
@@ -7172,7 +8798,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     syncInspector();
                     return true;
                 }
-                if ("acc_display_crn".equals(node.type())) {
+                if (isShippingInformationNodeType(node.type())) {
                     selectedInputPort = "DisplayMode";
                     openPropertyDropdown(node, "DisplayMode", graphRight() + 7, mouseY + 8,
                             RIGHT_WIDTH - 14, ACC_DISPLAY_CRN_MODES);
@@ -7248,9 +8874,16 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
         }
         if (usesTarget(node)) {
+            if (canOpenScmBlockPicker(node)) {
+                if (inTargets && mouseY >= y + 2 && mouseY < y + 20) {
+                    openScmBlockPicker(node);
+                    return true;
+                }
+                y += 22;
+            }
             y += 20;
             for (ControllerDiscoveryNode target : graphTargetOptions(node)) {
-                boolean selected = target.nodeId().equals(node.data().getString("Target"));
+                boolean selected = dataTargetSelected(node, target);
                 if (inTargets && mouseY >= y - 2 && mouseY < y + 12) {
                     checkpoint();
                     node.data().putString("Target", target.nodeId());
@@ -7302,15 +8935,17 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 }
             }
         }
-        if ("acc_display_external".equals(node.type())) {
+        if (isExternalDisplaySourceNode(node)) {
             y += 20;
-            for (ControllerDiscoveryNode src : graphDisplaySourceOptions()) {
+            for (ControllerDiscoveryNode src : graphDisplaySourceOptions(node)) {
                 if (inTargets && mouseY >= y - 2 && mouseY < y + 12) {
                     checkpoint();
+                    if(!src.nodeId().equals(node.data().getString("Source"))) node.data().remove("SourceFace");
                     node.data().putString("Source", src.nodeId());
                     node.data().putString("SourceLabel",
                             src.label().isBlank() ? src.nodeId() : src.label());
                     node.data().put("SourceData", src.toTag());
+                    putInputDefault(node, "source", "target", src.toTag());
                     syncInspector();
                     return true;
                 }
@@ -7325,7 +8960,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private boolean clickVarBrowser(double mouseX, double mouseY, InspectorSections sections) {
         if (inspectorVariablesCollapsed || mouseY < sections.variablesTop()
                 || mouseY >= sections.variablesBottom()) return false;
-        int y = sections.variablesTop() + 3;
+        int y = sections.variablesTop() + 3 - inspectorVariablesScroll;
         for (String variable : draft.variables().keySet()) {
             if (mouseY >= y && mouseY < y + VARIABLE_BROWSER_ROW_HEIGHT) {
                 if (inside(mouseX, mouseY, variableGetButtonX(), y + 1,
@@ -7385,6 +9020,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             case "Convert to Function" -> selectionToFunction();
             case "Collapse Input to MAP" -> toggleSelectedPortMap(false);
             case "Collapse Output to MAP" -> toggleSelectedPortMap(true);
+            case "Create SCM Action Function", "Open SCM Action Function" ->
+                    createOrOpenScmActionFunction();
         }
     }
 
@@ -7479,7 +9116,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Expose the current keys of a MAP output as direct ports on the same node.
     private void inlineBreakoutMapOutput(AdvancedGraphDocument.Node node, String sourcePort) {
-        CompoundTag entries = mapBreakoutEntries(node, sourcePort, true);
+        Map<String, String> entries = mapBreakoutEntries(node, sourcePort, true);
         if (entries.isEmpty()) {
             showGraphToast("MAP has no readable entries to break out", GraphActionToastSeverity.WARNING);
             return;
@@ -7487,16 +9124,20 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         checkpoint();
         CompoundTag mappings = node.data().getCompound(AdvancedGraphCatalog.INLINE_MAP_OUTPUTS_TAG).copy();
         CompoundTag dynamicOutputs = node.data().getCompound("DynamicOutputs").copy();
-        for (String key : entries.getAllKeys()) {
+        List<String> children = new ArrayList<>();
+        for (String key : entries.keySet()) {
             String inlinePort = inlineMapPortName(node, sourcePort, key, true, mappings);
             CompoundTag mapping = new CompoundTag();
             mapping.putString(AdvancedGraphCatalog.INLINE_MAP_SOURCE_TAG, sourcePort);
             mapping.putString(AdvancedGraphCatalog.INLINE_MAP_KEY_TAG, key);
             mappings.put(inlinePort, mapping);
-            dynamicOutputs.putString(inlinePort, entries.getString(key));
+            children.add(inlinePort);
+            dynamicOutputs.putString(inlinePort, entries.get(key));
         }
         node.data().put(AdvancedGraphCatalog.INLINE_MAP_OUTPUTS_TAG, mappings);
         node.data().put("DynamicOutputs", dynamicOutputs);
+        GraphPortOrder.write(node.data(), GraphPortOrder.OUTPUT_ORDER, GraphPortOrder.withChildren(
+                AdvancedGraphCatalog.outputs(node).keySet(), sourcePort, children));
         clearGraphRenderCache();
         syncInspector();
         showGraphToast("MAP fields added to node outputs", GraphActionToastSeverity.SUCCESS);
@@ -7504,7 +9145,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Expose the current keys of a MAP input as editable direct inputs on the same node.
     private void inlineBreakoutMapInput(AdvancedGraphDocument.Node node, String sourcePort) {
-        CompoundTag entries = mapBreakoutEntries(node, sourcePort, false);
+        Map<String, String> entries = mapBreakoutEntries(node, sourcePort, false);
         if (entries.isEmpty()) {
             showGraphToast("MAP has no readable entries to break out", GraphActionToastSeverity.WARNING);
             return;
@@ -7513,28 +9154,32 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         CompoundTag mappings = node.data().getCompound(AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG).copy();
         CompoundTag dynamicInputs = node.data().getCompound("DynamicInputs").copy();
         CompoundTag inputOptions = node.data().getCompound("InputOptions").copy();
-        for (String key : entries.getAllKeys()) {
+        List<String> children = new ArrayList<>();
+        for (String key : entries.keySet()) {
             String inlinePort = inlineMapPortName(node, sourcePort, key, false, mappings);
             CompoundTag mapping = new CompoundTag();
             mapping.putString(AdvancedGraphCatalog.INLINE_MAP_SOURCE_TAG, sourcePort);
             mapping.putString(AdvancedGraphCatalog.INLINE_MAP_KEY_TAG, key);
             mappings.put(inlinePort, mapping);
-            dynamicInputs.putString(inlinePort, entries.getString(key));
+            children.add(inlinePort);
+            dynamicInputs.putString(inlinePort, entries.get(key));
             if (inputOptions.contains(key, Tag.TAG_LIST)) {
                 inputOptions.put(inlinePort, inputOptions.get(key).copy());
             }
             AdvancedGraphDocument.Value initialValue = GraphRuntime.structuredValue(
                     currentPortValue(node, sourcePort, false), key);
             ListTag options = inputOptions.getList(key, Tag.TAG_STRING);
-            if ("string".equals(entries.getString(key)) && !options.isEmpty()
+            if ("string".equals(entries.get(key)) && !options.isEmpty()
                     && options.stream().map(Tag::getAsString)
                     .noneMatch(initialValue.asString()::equals)) {
                 initialValue = AdvancedGraphDocument.Value.string(options.getString(0));
             }
-            putInputDefault(node, inlinePort, entries.getString(key), initialValue);
+            putInputDefault(node, inlinePort, entries.get(key), initialValue);
         }
         node.data().put(AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG, mappings);
         node.data().put("DynamicInputs", dynamicInputs);
+        GraphPortOrder.write(node.data(), GraphPortOrder.INPUT_ORDER, GraphPortOrder.withChildren(
+                AdvancedGraphCatalog.inputs(node).keySet(), sourcePort, children));
         if (inputOptions.isEmpty()) node.data().remove("InputOptions");
         else node.data().put("InputOptions", inputOptions);
         clearGraphRenderCache();
@@ -7543,10 +9188,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     // Get typed MAP breakout entries from a generated data-port schema or the current MAP value
-    private CompoundTag mapBreakoutEntries(AdvancedGraphDocument.Node node, String sourcePort, boolean output) {
+    private Map<String, String> mapBreakoutEntries(AdvancedGraphDocument.Node node, String sourcePort, boolean output) {
         CompoundTag schema = AdvancedContraptionControllerBlockEntity.dataPortGroup(node, sourcePort);
-        return schema.isEmpty() ? GraphRuntime.splitListOutputsFor(
-                currentPortValue(node, sourcePort, output)) : schema;
+        AdvancedGraphDocument.Value value = currentPortValue(node, sourcePort, output);
+        return schema.isEmpty() ? GraphRuntime.splitListOutputTypesFor(value)
+                : GraphPortOrder.merge(Map.of(), schema, value == null ? List.of() : value.entryOrder());
     }
 
     // Collapse an unwired MAP breakout back into its parent port
@@ -7807,7 +9453,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (graphType == null || "exec".equals(graphType)) return;
         double x = output
                 ? sourceNode.x() + nodeWidth(sourceNode) + 80.0D
-                : sourceNode.x() - NODE_WIDTH - 80.0D;
+                : sourceNode.x() - nodeWidth(sourceNode) - 80.0D;
         AdvancedGraphDocument.Node setter = addNode(
                 "variable_set", x, sourceNode.y(), true);
         if (setter == null) return;
@@ -7986,9 +9632,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private void openMiniBrowser(int x, int y, String wireNode, String wirePort, boolean wireOutput) {
         List<AdvancedGraphCatalog.Definition> definitions = new ArrayList<>();
         if (wireNode == null) {
-            for (AdvancedGraphCatalog.Definition definition : AdvancedGraphCatalog.all()) {
-                if (AdvancedGraphFunctions.CALL_TYPE.equals(definition.id())) continue;
-                if (isNodeAvailableInEditor(definition.id())) definitions.add(definition);
+            for (AdvancedGraphCatalog.Definition registered : AdvancedGraphCatalog.all()) {
+                if (AdvancedGraphFunctions.CALL_TYPE.equals(registered.id())) continue;
+                if (!isNodeAvailableInEditor(registered.id())) continue;
+                definitions.add(AdvancedGraphCatalog.editorDefinition(registered.id()));
             }
             draft.functions().stream().map(this::functionDefinition).forEach(definitions::add);
         } else {
@@ -7996,9 +9643,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             AdvancedGraphCatalog.Definition src = node == null ? null : AdvancedGraphCatalog.get(node.type());
             if (src != null) {
                 String type = wireOutput ? AdvancedGraphCatalog.outputs(node).get(wirePort) : AdvancedGraphCatalog.inputs(node).get(wirePort);
-                for (AdvancedGraphCatalog.Definition definition : AdvancedGraphCatalog.all()) {
-                    if (AdvancedGraphFunctions.CALL_TYPE.equals(definition.id())) continue;
-                    if (!isNodeAvailableInEditor(definition.id())) continue;
+                for (AdvancedGraphCatalog.Definition registered : AdvancedGraphCatalog.all()) {
+                    if (AdvancedGraphFunctions.CALL_TYPE.equals(registered.id())) continue;
+                    if (!isNodeAvailableInEditor(registered.id())) continue;
+                    AdvancedGraphCatalog.Definition definition = AdvancedGraphCatalog.editorDefinition(registered.id());
                     if ("reroute".equals(definition.id())) {
                         definitions.add(definition);
                         continue;
@@ -8047,7 +9695,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
             categories.computeIfAbsent(definition.category(), ignored -> new ArrayList<>()).add(definition);
         }
-        for (String category : CATEGORY_ORDER) {
+        
+        for (String category : GraphNodeBrowser.categories(CATEGORY_ORDER, categories.keySet(), AdvancedGraphCatalog::categoryName)) {
             List<AdvancedGraphCatalog.Definition> definitions = categories.get(category);
             if (definitions == null || definitions.isEmpty()) continue;
             res.add(new BrowserEntry(category, true));
@@ -8092,7 +9741,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         checkpoint();
         AdvancedGraphPortNormalizer.ConnectResult result = AdvancedGraphPortNormalizer.connect(activeNodes(), activeEdges(),
                 UUID.randomUUID().toString(), fromNode, fromPort, toNode, toPort);
-        if (!result.connected()) showGraphToast(result.message(), GraphActionToastSeverity.ERROR);
+        if (!result.connected()) {
+            showGraphToast(result.message(), GraphActionToastSeverity.ERROR);
+        }
         synchronizeComparePorts();
     }
 
@@ -8297,15 +9948,22 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 : keyCode == GLFW.GLFW_KEY_DOWN ? 1.0D : 0.0D;
         if (dx == 0.0D && dy == 0.0D) return false;
         checkpoint();
-        GraphViewport viewport = new GraphViewport(0.0D, 0.0D, 0.0D, 0.0D, zoom);
-        moveSelected(viewport.graphDistance(dx), viewport.graphDistance(dy));
+        double pixels = hasControlDown() ? V2_GRID_SPACING : 1.0D;
+        moveSelected(graphViewport().graphDistance(dx * pixels),
+                graphViewport().graphDistance(dy * pixels));
         return true;
     }
 
     // Replace the moved node
     private void replaceMovedNode(int idx, AdvancedGraphDocument.Node node, double dx, double dy) {
+        double x = node.x() + dx;
+        double y = node.y() + dy;
+        if (hasShiftDown()) {
+            x = snapGraphCoordinate(x);
+            y = snapGraphCoordinate(y);
+        }
         AdvancedGraphDocument.Node moved = new AdvancedGraphDocument.Node(
-                node.id(), node.type(), node.label(), node.x() + dx, node.y() + dy, node.data());
+                node.id(), node.type(), node.label(), x, y, node.data());
         activeNodes().set(idx, moved);
         if (graphRenderCacheDocument == draft) {
             graphRenderNodes.put(moved.id(), moved);
@@ -8377,7 +10035,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         List<AdvancedGraphDocument.Edge> sourceEdges = activeEdges();
         List<CompoundTag> sourceGroups = activeGroups();
         Set<String> selected = sourceNodes.stream()
-                .filter(node -> selectedNodes.contains(node.id()) && !isStandaloneExecSource(node.type()))
+                .filter(node -> selectedNodes.contains(node.id()) && !isStandaloneExecSource(node))
                 .map(AdvancedGraphDocument.Node::id)
                 .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
         List<AdvancedGraphDocument.Node> movedNodes = sourceNodes.stream()
@@ -8526,6 +10184,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         checkpoint();
         boolean inputNode = isFunctionInputNode(node);
         String key = inputNode ? "DynamicOutputs" : "DynamicInputs";
+        List<String> order = new ArrayList<>((inputNode ? AdvancedGraphCatalog.outputs(node)
+                : AdvancedGraphCatalog.inputs(node)).keySet());
         CompoundTag ports = node.data().getCompound(key);
         Set<String> used = new LinkedHashSet<>(ports.getAllKeys());
         String requested = "exec".equals(type)
@@ -8534,6 +10194,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         String port = AdvancedGraphFunctions.uniquePort(requested, used);
         ports.putString(port, type);
         node.data().put(key, ports);
+        order.add(port);
+        GraphPortOrder.write(node.data(), inputNode ? GraphPortOrder.OUTPUT_ORDER : GraphPortOrder.INPUT_ORDER, order);
         AdvancedGraphFunctions.synchronizeCalls(draft);
         clearGraphRenderCache();
         syncInspector();
@@ -8911,6 +10573,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         activeEdges().addAll(replacement.edges());
         activeGroups().clear();
         replacement.groups().forEach(group -> activeGroups().add(group.copy()));
+        clearGraphRenderCache();
     }
 
     // Get the clipboard bounds
@@ -8940,7 +10603,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Check if the node available is in the editor
     private boolean isNodeAvailableInEditor(String type) {
-        if (type == null || DISABLED_NODE_TYPES.contains(type)) {
+        if (type == null || DISABLED_NODE_TYPES.contains(type)
+                || AdvancedGraphCatalog.isRetiredScmActionType(type)) {
             return false;
         }
         if (type.startsWith("function:")) {
@@ -8950,11 +10614,30 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 || AdvancedGraphFunctions.OUTPUT_TYPE.equals(type)) {
             return activeFunction() != null;
         }
+        if(type.startsWith("createthrusters:flight_control_")){
+            return activeFunction() == null
+                    && com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.nodeAvailable(menu.getMenuConfigTargetBlockEntity(), type);
+        }
+        if (activeFunction() != null && AdvancedGraphCatalog.isShipControlType(type)
+                && !AdvancedGraphCatalog.isScmFunctionPrimitiveType(type)) {
+            return false;
+        }
+        
         if (activeFunction() != null && isStandaloneExecSource(type)) {
             return false;
         }
         AdvancedContraptionControllerBlockEntity controller = menu.getMenuConfigTargetBlockEntity();
+        if (AdvancedGraphCatalog.isShippingScheduleControlType(type)) {
+            return controller != null && controller.hasShippingScheduleWorkspace();
+        }
         if (AdvancedGraphCatalog.isShipControlType(type)) {
+            return controller != null && controller.hasShipControlModule();
+        }
+        AdvancedGraphCatalog.Definition definition = AdvancedGraphCatalog.get(type);
+        
+        
+        
+        if ("acc_display_scm_information".equals(type)) {
             return controller != null && controller.hasShipControlModule();
         }
         return switch (type) {
@@ -8965,11 +10648,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     // Check if this is a standalone exec source
-    private static boolean isStandaloneExecSource(String type) {
-        AdvancedGraphCatalog.Definition definition = AdvancedGraphCatalog.get(type);
-        return definition != null
-                && definition.inputs().values().stream().noneMatch("exec"::equals)
-                && definition.outputs().values().stream().anyMatch("exec"::equals);
+    private static boolean isStandaloneExecSource(String type){
+        AdvancedGraphCatalog.Definition definition = AdvancedGraphCatalog.editorDefinition(type);
+        return definition != null && GraphNodeBrowser.standaloneExecutionSource(definition.inputs(), definition.outputs());
+    }
+
+    private static boolean isStandaloneExecSource(AdvancedGraphDocument.Node node){
+        return node != null && GraphNodeBrowser.standaloneExecutionSource(
+                AdvancedGraphCatalog.inputs(node), AdvancedGraphCatalog.outputs(node));
     }
 
     // Get the function definition
@@ -9025,7 +10711,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Get the port
     private PortHit portAt(double mouseX, double mouseY) {
         prepareGraphRenderCache();
-        List<AdvancedGraphDocument.Node> nodes = activeNodes();
+        List<AdvancedGraphDocument.Node> nodes = activeNodesInRenderOrder();
         for (int nodeIndex = nodes.size() - 1; nodeIndex >= 0; nodeIndex--) {
             AdvancedGraphDocument.Node node = nodes.get(nodeIndex);
             int nodeX = screenX(node.x());
@@ -9036,20 +10722,34 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 continue;
             }
             boolean insideNode = containsNode(node, mouseX, mouseY);
+            PortHit closest = null;
+            double closestDistance = Double.POSITIVE_INFINITY;
+            boolean preferClosest = isFunctionNode(node) || isSetResetLatch(node) || "bounded_loop".equals(node.type())
+                    || "get_block_data".equals(node.type()) || "set_block_data".equals(node.type());
             Map<String, String> inputs = nodeInputs(node);
             for (String port : inputs.keySet()) {
+                if(isNodeSettingInput(node, port)) continue;
                 if (!"exec".equals(inputs.get(port))
                         && !isDataPortVisible(node, port, false)) continue;
                 PortPosition pos = portPosition(node, port, false);
-                if (Math.abs(mouseX - pos.x()) <= 8 && Math.abs(mouseY - pos.y()) <= 8) return new PortHit(node, port, false);
+                if(Math.abs(mouseX - pos.x()) <= 8 && Math.abs(mouseY - pos.y()) <= 8){
+                    if(!preferClosest) return new PortHit(node, port, false);
+                    double distance = Math.pow(mouseX - pos.x(), 2) + Math.pow(mouseY - pos.y(), 2);
+                    if(distance < closestDistance){ closest = new PortHit(node, port, false);closestDistance = distance; }
+                }
             }
             Map<String, String> outputs = nodeOutputs(node);
             for (String port : outputs.keySet()) {
-                if (!"exec".equals(outputs.get(port))
+                if ((!"exec".equals(outputs.get(port)) || portSection(node, port, true) != null)
                         && !isDataPortVisible(node, port, true)) continue;
                 PortPosition pos = portPosition(node, port, true);
-                if (Math.abs(mouseX - pos.x()) <= 8 && Math.abs(mouseY - pos.y()) <= 8) return new PortHit(node, port, true);
+                if(Math.abs(mouseX - pos.x()) <= 8 && Math.abs(mouseY - pos.y()) <= 8){
+                    if(!preferClosest) return new PortHit(node, port, true);
+                    double distance = Math.pow(mouseX - pos.x(), 2) + Math.pow(mouseY - pos.y(), 2);
+                    if(distance < closestDistance){ closest = new PortHit(node, port, true);closestDistance = distance; }
+                }
             }
+            if(closest != null) return closest;
             if (insideNode) return null;
         }
         return null;
@@ -9063,11 +10763,28 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             int y = screenY(node.y()) + (int) Math.round(REROUTE_HEIGHT * zoom * 0.5D);
             return new PortPosition(x, y);
         }
+        GraphPortSection collapsedSection = output ? portSection(node, port, true) : null;
+        if(collapsedSection != null && isPortSectionCollapsed(node, port, true)){
+            return new PortPosition(screenX(node.x()) + (int)Math.round(nodeWidth(node) * zoom),
+                    screenY(node.y()) + (int)Math.round((outputSectionHeaderOffset(node, collapsedSection) + 6) * zoom));
+        }
         int x;
         int y;
         if ("exec".equals(portMap.get(port))) {
-            x = screenX(node.x()) + (output ? (int) (NODE_WIDTH * zoom) : 0);
-            if (output && isShipCompletionPort(node, port)) {
+            x = screenX(node.x()) + (output ? (int) (nodeWidth(node) * zoom) : 0);
+            GraphPortSection section = output ? portSection(node, port, true) : null;
+            if(isFunctionNode(node)){
+                GraphNodeLayout.PortRows inputs = functionExecutionInputs(node);
+                int offset = output ? inputs.height() + outputDataPortOffset(node, port)
+                        : inputs.offsets().getOrDefault(port, 0);
+                y = screenY(node.y()) + (int)Math.round((portStart(node) + offset) * zoom);
+            }else if(output && isLoopBodyOutput(node, port)){
+                y = screenY(node.y()) + (int)Math.round((portStart(node) + outputDataPortOffset(node, port)) * zoom);
+            }else if(section != null){
+                y = screenY(node.y()) + (int)Math.round((isPortSectionCollapsed(node, port, true)
+                        ? outputSectionHeaderOffset(node, section) + 6
+                        : portStart(node) + outputDataPortOffset(node, port)) * zoom);
+            } else if (output && isShipCompletionPort(node, port)) {
                 y = screenY(node.y()) + (int) ((portStart(node)
                         + outputDataPortsHeight(node) + 6) * zoom);
             } else if (output && ("branch".equals(node.type()) || isExecutionSplitterNode(node))) {
@@ -9075,8 +10792,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                         .filter(name -> "exec".equals(portMap.get(name))).toList();
                 int idx = Math.max(0, execPorts.indexOf(port));
                 y = screenY(node.y()) + (int) ((portStart(node) + idx * 13) * zoom);
-            } else if (!output && isExecutionCombinerNode(node)) {
-                List<String> execPorts = portMap.keySet().stream()
+            } else if (!output && (isExecutionCombinerNode(node) || isSetResetLatch(node))) {
+                List<String> execPorts = isSetResetLatch(node) ? List.of("set", "reset") : portMap.keySet().stream()
                         .filter(name -> "exec".equals(portMap.get(name))).toList();
                 int idx = Math.max(0, execPorts.indexOf(port));
                 y = screenY(node.y()) + (int) ((portStart(node) + idx * 13) * zoom);
@@ -9094,8 +10811,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 y = bodyControlCenterY(node, port);
             }
         } else {
-            x = screenX(node.x()) + (int) (NODE_WIDTH * zoom) - inlineMapPortIndent(node, port, true);
-            y = screenY(node.y()) + (int) Math.round(portStart(node) * zoom)
+            x = screenX(node.x()) + (int) (nodeWidth(node) * zoom) - inlineMapPortIndent(node, port, true);
+            y = screenY(node.y()) + (int) Math.round((portStart(node) + functionExecutionInputHeight(node)) * zoom)
                     + (int) Math.round(outputDataPortOffset(node, port) * zoom);
         }
         return new PortPosition(x, y);
@@ -9109,19 +10826,25 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the body control center y
     private int bodyControlCenterY(AdvancedGraphDocument.Node node, String port) {
+        NodePortLayout layout = graphRenderCacheDocument == draft ? graphRenderPortLayouts.get(node.id()) : null;
+        if(layout != null && layout.inputRows() != null){
+            int row = layout.inputRows().offsets().getOrDefault(port, layout.inputRows().height());
+            int y = nodeBodyTop(node, screenY(node.y()));
+            if("curve".equals(node.type())) y += (int)(CURVE_BODY_HEIGHT * zoom);
+            return y + row * (int)(15 * zoom) + (int)(6.5 * zoom);
+        }
         int row = (usesBinding(node) ? 1 : 0) + propertyControlCount(node);
         for (var entry : nodeInputs(node).entrySet()) {
             if ("exec".equals(entry.getValue())
                     || ("curve".equals(node.type()) && "value".equals(entry.getKey()))) continue;
+            if (portSectionStartingAt(node, entry.getKey(), false) != null) row++;
             if (!isDataPortVisible(node, entry.getKey(), false)) continue;
             if (entry.getKey().equals(port)) break;
             row++;
         }
         int y = nodeBodyTop(node, screenY(node.y()));
         if("curve".equals(node.type())) y += (int) (CURVE_BODY_HEIGHT * zoom);
-        for(int idx = 0; idx < row; idx++){
-            y += (int) (15 * zoom);
-        }
+        y += row * (int)(15 * zoom);
         return y + (int)(6.5 * zoom);
     }
 
@@ -9130,7 +10853,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (!canCollapse(node)) return false;
         int x = screenX(node.x());
         int y = screenY(node.y());
-        int width = (int) (NODE_WIDTH * zoom);
+        int width = (int) (nodeWidth(node) * zoom);
         int height = (int) (nodeHeight(node) * zoom);
         int handleHeight = collapseHandleHeight();
         int top = collapseHandleTop(y);
@@ -9394,7 +11117,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the node
     private AdvancedGraphDocument.Node nodeAt(double mouseX, double mouseY) {
-        List<AdvancedGraphDocument.Node> reverse = new ArrayList<>(activeNodes());
+        List<AdvancedGraphDocument.Node> reverse = activeNodesInRenderOrder();
         Collections.reverse(reverse);
         for (AdvancedGraphDocument.Node node : reverse) {
             if (containsNode(node, mouseX, mouseY)) return node;
@@ -9411,14 +11134,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     // Check if the pointer is near the node
-    static boolean pointerNearNode(double mouseX, double mouseY, int nodeX, int nodeY,
+    private static boolean pointerNearNode(double mouseX, double mouseY, int nodeX, int nodeY,
                                    int nodeWidth, int nodeHeight, int margin) {
         return mouseX >= nodeX - margin && mouseX <= nodeX + nodeWidth + margin
                 && mouseY >= nodeY - margin && mouseY <= nodeY + nodeHeight + margin;
     }
 
     // Check if the bounds intersect the viewport
-    static boolean intersectsViewport(int x, int y, int width, int height,
+    private static boolean intersectsViewport(int x, int y, int width, int height,
                                       int viewportLeft, int viewportTop,
                                       int viewportRight, int viewportBottom, int margin) {
         int right = x + Math.max(1, width);
@@ -9431,9 +11154,18 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private AdvancedGraphDocument.Node findNode(String id) {
         if (id == null) return null;
         if (graphRenderCacheDocument == draft) {
-            return graphRenderNodes.get(id);
+            AdvancedGraphDocument.Node cached = graphRenderNodes.get(id);
+            if (cached != null) return cached;
         }
-        return activeNodes().stream().filter(node -> node.id().equals(id)).findFirst().orElse(null);
+        AdvancedGraphDocument.Node active = activeNodes().stream()
+                .filter(node -> node.id().equals(id)).findFirst().orElse(null);
+        if (active != null) return active;
+        for (AdvancedGraphDocument.FunctionGraph function : draft.functions()) {
+            AdvancedGraphDocument.Node nested = function.nodes().stream()
+                    .filter(node -> node.id().equals(id)).findFirst().orElse(null);
+            if (nested != null) return nested;
+        }
+        return null;
     }
 
     // Get the selected node
@@ -9484,10 +11216,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (frequencyModalOpen && settleCarriedStack && !settleCarriedStackForModal()) {
             return false;
         }
-        if (frequencyModalOpen && syncNode && findNode(frequencyNode) != null) {
+        if (frequencyModalOpen && syncNode && (scheduleParameterEditor || findNode(frequencyNode) != null)) {
             syncFrequencyNode();
         }
         frequencyNode = null;
+        scheduleParameterEditor = false;
         frequencyModalOpen = false;
         menu.ghostSlotsActive = false;
         menu.playerSlotsActive = linkerOpen;
@@ -9568,22 +11301,22 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the screen x
     private int screenX(double graphX) {
-        return (int) (graphLeft() + panX + graphX * zoom);
+        return (int) graphViewport().screenX(graphX);
     }
 
     // Get the screen y
     private int screenY(double graphY) {
-        return (int) (graphTop() + panY + graphY * zoom);
+        return (int) graphViewport().screenY(graphY);
     }
 
     // Get the graph x
     private double graphX(double screenX) {
-        return (screenX - graphLeft() - panX) / zoom;
+        return graphViewport().graphX(screenX);
     }
 
     // Get the graph y
     private double graphY(double screenY) {
-        return (screenY - graphTop() - panY) / zoom;
+        return graphViewport().graphY(screenY);
     }
 
     // Restore the viewport
@@ -9641,9 +11374,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 .orElse((int) inputNumber(node, port));
     }
 
-    private static void drawGraphColorSwatch(GuiGraphics graphics, int x, int y, int color) {
-        graphics.fill(x, y + 1, x + 14, y + 13, 0xFF1D242B);
-        graphics.fill(x + 2, y + 3, x + 12, y + 11, color);
+    private void drawGraphColorSwatch(GuiGraphics graphics, int x, int y, int color) {
+        GuiControlPreviews.drawColorSwatch(graphics, x, y, color, zoom);
     }
 
     private void openGraphColorPicker(AdvancedGraphDocument.Node node, String port) {
@@ -9689,14 +11421,12 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             case "parallel_execution", "sequenced_execution", "switch" -> "OutputCount";
             case "exec_combine" -> "InputCount";
             case "convert_type" -> "OutputType";
-            case "count" -> AdvancedGraphCatalog.COUNT_DIRECTION_TAG;
             case "send_chat_message" -> AdvancedGraphCatalog.CHAT_BROADCAST_TAG;
             case "curve" -> "CurveType";
             case "pid" -> AdvancedGraphCatalog.PID_PREVENT_INTEGRAL_WINDUP_TAG;
             case "portable_tracker" -> gogglesTrackerPairs().size() > 1 ? "GogglesPair" : null;
             case "image_reference" -> "Source";
-            case "acc_display_widget", "acc_hologram_widget" -> "WidgetType";
-            case "acc_display_crn" -> "DisplayMode";
+            case "acc_display_crn", "acc_display_shipping_information" -> "DisplayMode";
             default -> null;
         };
     }
@@ -9779,7 +11509,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if ("constant_boolean".equals(node.type())) return node.data().getBoolean(property) ? "[x]" : "[ ]";
         if ("pid".equals(node.type())) return node.data().getBoolean(property) ? "[x]" : "[ ]";
         if ("send_chat_message".equals(node.type())) return AdvancedGraphCatalog.chatBroadcastNearby(node) ? "[x]" : "[ ]";
-        if ("constant_number".equals(node.type())) return compactNumber(node.data().getDouble(property));
+        if ("constant_number".equals(node.type())) return nodeNumber(node, node.data().getDouble(property));
         if ("convert_type".equals(node.type())) return humanPort(node.data().getString(property));
         if ("mouse_input".equals(node.type())) return humanPort(propertyOptionValue(node, property));
         if ("PulseBehavior".equals(property)) return humanPort(propertyOptionValue(node, property));
@@ -9795,7 +11525,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             String type = node.data().getString("WidgetType");
             return humanPort(type.isBlank() ? "text" : type);
         }
-        if ("acc_display_crn".equals(node.type())) {
+        if (isShippingInformationNodeType(node.type())) {
             return crnDisplayModeLabel(propertyOptionValue(node, property));
         }
         if ("OutputCount".equals(property)) return Integer.toString(executionOutputCount(node));
@@ -9902,7 +11632,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Configure the ACC CRN mode
     private void configAccCrnMode(AdvancedGraphDocument.Node node, String displayMode) {
-        if (node == null || !"acc_display_crn".equals(node.type())) {
+        if (node == null || !isShippingInformationNodeType(node.type())) {
             return;
         }
         String mode = ShipInformationDisplayModes.normalize(displayMode);
@@ -9991,12 +11721,12 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 if (idx >= sharedGraphEntries.size()) {
                     break;
                 }
-                ControllerManifestStore.SharedGraphEntry entry = sharedGraphEntries.get(idx);
+                SourcedGraphCatalog.Entry entry = sharedGraphEntries.get(idx);
                 int rowY = listY + 3 + row * 13;
                 if (idx == selectedSharedGraphIndex) {
                     renderControllerOption(graphics, x + 2, rowY - 1, listW - 4, 12, 0xFF5D9FE3, true);
                 }
-                graphics.drawString(font, trim(entry.name(), 18), x + 5, rowY,
+                graphics.drawString(font, trim(entry.label(), 18), x + 5, rowY,
                         idx == selectedSharedGraphIndex ? nodeValueTextColor() : 0xFFE6F6FF, false);
             }
         }
@@ -10112,6 +11842,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private boolean isSetDataForceWriteInput(AdvancedGraphDocument.Node node, String port) {
         return node != null && "set_block_data".equals(node.type())
                 && port != null && !"exec".equals(port) && !"target".equals(port)
+                && !"merge_like_ports".equals(port)
                 && !isInputConnected(node, port);
     }
 
@@ -10193,10 +11924,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             bodyY += (int) (propertyControlCount(node) * 15 * zoom);
             for (var port : nodeInputs(node).entrySet()) {
                 if ("exec".equals(port.getValue())
-                        || ("curve".equals(node.type()) && "value".equals(port.getKey()))
-                        || !isDataPortVisible(node, port.getKey(), false)) {
+                        || ("curve".equals(node.type()) && "value".equals(port.getKey()))) {
                     continue;
                 }
+                if (portSectionStartingAt(node, port.getKey(), false) != null) {
+                    bodyY += (int) (NODE_PORT_SECTION_HEIGHT * zoom);
+                }
+                if (!isDataPortVisible(node, port.getKey(), false)) continue;
                 if (isSetDataForceWriteInput(node, port.getKey())
                         && setDataForceWriteBounds(node, port.getKey(), x, bodyY).contains(mouseX, mouseY)) {
                     return new ForceWriteHit(node, port.getKey());
@@ -10265,7 +11999,17 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the input value label
     private String inputValueLabel(AdvancedGraphDocument.Node node, String port, String type) {
+        if(GraphNumberDisplay.numericType(type) || "any".equals(type) && GraphNumberDisplay.numericType(
+                resolvedDisplayPortType(node, port, false, new HashSet<>()))) return nodeNumber(node, inputNumber(node, port));
         if(isChatRecipientsInput(node, port)) return valueOrUnset(chatRecipientsText(node));
+        if(isCameraFilterInput(node, port)){
+            Set<String> entries = cameraFilterEntries(node);
+            String selected = com.rieno.gadgetsandgizmos.lib.view.ViewRaycast.Category.optionIds().stream()
+                    .filter(entries::contains)
+                    .map(id -> com.rieno.gadgetsandgizmos.lib.view.ViewRaycast.Category.find(id).label())
+                    .collect(java.util.stream.Collectors.joining(", "));
+            return (selected.isEmpty() ? "None" : selected) + " v";
+        }
         if ("color".equals(type)) return String.format("#%08X", graphInputColor(node, port));
         if ("desmos_plot_point".equals(node.type()) && "x_functionality".equals(port)) {
             return humanPort(inputString(node, port, "ignore"));
@@ -10276,6 +12020,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return trim(valueOrUnset(first) + " + " + valueOrUnset(second), 18);
         }
         if ("target".equals(type)) {
+            if (isExternalDisplaySourceNode(node) && "source".equals(port)) {
+                return valueOrUnset(node.data().getString("SourceLabel"));
+            }
+            
             String sectionLabel = node.data().getString(AeroworksControllerCompat.GRAPH_SECTION_LABEL_KEY);
             return valueOrUnset(sectionLabel.isBlank() ? node.data().getString("TargetLabel") : sectionLabel);
         }
@@ -10295,7 +12043,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         return switch (type) {
             case "boolean" -> inputBoolean(node, port) ? "[x]" : "[ ]";
-            case "number" -> compactNumber(inputNumber(node, port));
+            case "number" -> nodeNumber(node, inputNumber(node, port));
             case "direction" -> valueOrUnset(inputString(node, port, "north"));
             default -> valueOrUnset(inputString(node, port, ""));
         };
@@ -10308,9 +12056,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         AdvancedGraphLiveValue liveValue = controller.getGraphLiveInput(node.id(), port);
         AdvancedGraphLiveValue simulatedValue = simulatedLiveInput(node.id(), port);
-        if (simulatedValue != null) return graphValueLabel(simulatedValue, type);
-        if (liveValue != null) return graphValueLabel(liveValue, type);
-        return graphValueLabel(controller.previewGraphInput(draft, node, port), type);
+        if (simulatedValue != null) return graphValueLabel(node, simulatedValue, type);
+        if (liveValue != null) return graphValueLabel(node, liveValue, type);
+        return graphValueLabel(node, controller.previewGraphInput(draft, node, port), type);
     }
 
     // Get the simulated live input
@@ -10372,23 +12120,28 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
         }
         for (AdvancedGraphDocument.Node node : activeNodes()) {
-            if (!"compare".equals(node.type())) continue;
+            boolean pulseIf = "pulse_if".equals(node.type());
+            if (!"compare".equals(node.type()) && !pulseIf) continue;
             String matchedType = null;
             for (AdvancedGraphDocument.Edge edge : activeEdges()) {
                 if (!edge.toNode().equals(node.id()) || (!"a".equals(edge.toPort()) && !"b".equals(edge.toPort()))) {
                     continue;
                 }
+                if(pulseIf && !"a".equals(edge.toPort())) continue;
                 AdvancedGraphDocument.Node src = findNode(edge.fromNode());
                 String sourceType = src == null ? null : AdvancedGraphCatalog.outputs(src).get(edge.fromPort());
                 if (sourceType == null || "any".equals(sourceType)) continue;
                 matchedType = matchedType == null || matchedType.equals(sourceType) ? sourceType : "any";
             }
+            if(pulseIf) matchedType = GraphComparison.operandType(matchedType,
+                    node.data().getCompound("Defaults").getCompound("a").getString("Type"));
             CompoundTag inputs = node.data().getCompound("DynamicInputs");
             if (matchedType == null || "any".equals(matchedType)) {
                 inputs.remove("a");
                 inputs.remove("b");
             } else {
-                inputs.putString("a", matchedType);
+                if(pulseIf) inputs.remove("a");
+                else inputs.putString("a", matchedType);
                 inputs.putString("b", matchedType);
             }
             if (inputs.isEmpty()) node.data().remove("DynamicInputs");
@@ -10515,9 +12268,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return;
         }
         if ("target".equals(type)) {
-            cycleTarget(node, port);
+            openGraphTargetPicker(node, port);
             return;
         }
+        
+        
         List<String> opts = inputOptions(node, port);
         if (!opts.isEmpty()) {
             openOptionDropdown(node, port, type, x, mouseY + 8, width, opts);
@@ -10525,7 +12280,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         checkpoint();
         switch (type) {
-            case "boolean" -> putInputDefault(node, port, type, !inputBoolean(node, port));
+            case "boolean" -> {
+                boolean enabled = !inputBoolean(node, port);
+                putInputDefault(node, port, type, enabled);
+                if (isDataTargetMergeLikePortsInput(node, port)) {
+                    node.data().putBoolean(AdvancedGraphCatalog.MERGE_LIKE_PORTS_TAG, enabled);
+                    configureMultiDataTargetPorts(node);
+                    clearGraphRenderCache();
+                }
+            }
             case "direction" -> {
                 List<String> directions = List.of("north", "east", "south", "west", "up", "down");
                 String current = inputString(node, port, "north");
@@ -10537,12 +12300,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 double val = Mth.lerp(amount, range[0], range[1]);
                 putInputDefault(node, port, type, isWholeNumberValue(node, port) ? Math.round(val) : val);
             }
-            case "string" -> {
+            case "string", "tag_filter" -> {
                 if (inspectorValue != null) inspectorValue.setFocused(true);
             }
             default -> {
             }
         }
+        
     }
 
     // Start the slider drag
@@ -10600,7 +12364,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (!"curve".equals(node.type())) return false;
         int x = screenX(node.x()) + 7;
         int y = nodeBodyTop(node, screenY(node.y()));
-        int width = (int) (NODE_WIDTH * zoom) - 14;
+        int width = (int) (nodeWidth(node) * zoom) - 14;
         int height = (int) (CURVE_BODY_HEIGHT * zoom);
         return handleCurveClick(node, mouseX, mouseY, btn, x, y, width, height, false);
     }
@@ -10649,7 +12413,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (node == null) return;
         int x = draggingInspectorCurve ? graphRight() + 10 : screenX(node.x()) + 7;
         int y = draggingInspectorCurve ? 163 : nodeBodyTop(node, screenY(node.y()));
-        int width = draggingInspectorCurve ? RIGHT_WIDTH - 20 : (int) (NODE_WIDTH * zoom) - 14;
+        int width = draggingInspectorCurve ? RIGHT_WIDTH - 20 : (int) (nodeWidth(node) * zoom) - 14;
         int height = draggingInspectorCurve ? 116 : (int) (CURVE_BODY_HEIGHT * zoom);
         List<CompoundTag> points = curvePoints(node);
         if (draggingCurvePoint < 0 || draggingCurvePoint >= points.size()) return;
@@ -10732,6 +12496,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return;
         }
         frequencyNode = node.id();
+        scheduleParameterEditor = false;
         frequencyModalOpen = true;
         contextMenu = null;
         closeOptionDropdown();
@@ -10746,6 +12511,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Sync the frequency node
     private void syncFrequencyNode() {
         if (!frequencyModalOpen) {
+            return;
+        }
+        if (scheduleParameterEditor) {
+            syncScheduleParameterEditor();
             return;
         }
         AdvancedGraphDocument.Node node = findNode(frequencyNode);
@@ -10779,7 +12548,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         topPos = bounds.y() - FREQUENCY_MODAL_BASE_Y;
         menu.playerSlotsActive = true;
         menu.ghostSlotsActive = true;
-        menu.ghostSlotMask = 0x3;
+        menu.ghostSlotMask = scheduleParameterEditor && scheduleParameterSlotCount() < 2 ? 0x1 : 0x3;
     }
 
     // Get the frequency body y
@@ -10860,12 +12629,17 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Cycle the target
     private void cycleTarget(AdvancedGraphDocument.Node node, String port) {
-        List<ControllerDiscoveryNode> opts = new ArrayList<>(graphTargetOptions(node));
-        opts.addAll(graphScmTargetOptions(node));
+        List<ControllerDiscoveryNode> opts;
+        {
+            opts = new ArrayList<>(graphTargetOptions(node));
+            opts.addAll(graphScmTargetOptions(node));
+        }
         if (opts.isEmpty()) {
             setBlockBrowserOpen(true);
+            
             return;
         }
+        
         int current = -1;
         for (int i = 0; i < opts.size(); i++) if (opts.get(i).nodeId().equals(node.data().getString("Target"))) current = i;
         ControllerDiscoveryNode target = opts.get((current + 1) % opts.size());
@@ -10886,6 +12660,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         boolean directInput = "discovered_target_input".equals(node.type()) || "linker_face_input".equals(node.type());
         boolean directOutput = "direct_target_output".equals(node.type()) || "linker_face_output".equals(node.type());
         boolean displayMode = "acc_display_mode".equals(node.type());
+        if (getData || setData) {
+            addDataTarget(node, target);
+            configureMultiDataTargetPorts(node);
+            return;
+        }
         if (displayMode) {
             AdvancedContraptionControllerBlockEntity activeController =
                     menu.getMenuConfigTargetBlockEntity();
@@ -10916,41 +12695,17 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             removeEdgesForMissingPorts(node, true);
             return;
         }
-        net.minecraft.world.level.block.entity.BlockEntity blockEntity =
-                SimulatedHelper.findBlockEntity(minecraft.level, target.subLevelId(), target.blockPos());
-        net.minecraft.world.level.Level targetLevel = blockEntity != null && blockEntity.getLevel() != null
-                ? blockEntity.getLevel() : minecraft.level;
-        net.minecraft.core.BlockPos targetPos = blockEntity == null ? target.blockPos() : blockEntity.getBlockPos();
-        if ((getData || setData) && targetLevel.getBlockState(targetPos).getBlock()
-                instanceof com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerPlaneBlock) {
-            List<ContraptionNetworkLinkerData.FaceOption> faces =
-                    ContraptionNetworkLinkerData.faceOptionsForNode(target);
-            List<net.minecraft.core.Direction> availableFaces = faces.stream()
-                    .map(ContraptionNetworkLinkerData.FaceOption::face)
-                    .filter(Objects::nonNull)
-                    .distinct()
-                    .toList();
-            net.minecraft.core.Direction side = net.minecraft.core.Direction.byName(
-                    inputString(node, "face", ""));
-            if (side == null && availableFaces.size() == 1) {
-                side = availableFaces.getFirst();
-            }
-            if (side == null || !availableFaces.contains(side)) {
-                return;
-            }
-            net.minecraft.core.BlockPos attachedPos = targetPos.relative(side.getOpposite());
-            if (!targetLevel.isLoaded(attachedPos)
-                    || targetLevel.getBlockState(attachedPos).isAir()) {
-                return;
-            }
-            targetPos = attachedPos;
-        }
+        AdvancedContraptionControllerBlockEntity.GraphDataTarget resolved =
+                AdvancedContraptionControllerBlockEntity.resolveGraphDataTarget(minecraft.level, node, target);
+        if (resolved == null) return;
+        net.minecraft.world.level.Level targetLevel = resolved.level();
+        net.minecraft.core.BlockPos targetPos = resolved.pos();
         boolean schemaResolved = targetLevel.isLoaded(targetPos)
                 && !targetLevel.getBlockState(targetPos).isAir();
         if (!schemaResolved) {
             return;
         }
-        blockEntity = targetLevel.getBlockEntity(targetPos);
+        net.minecraft.world.level.block.entity.BlockEntity blockEntity = targetLevel.getBlockEntity(targetPos);
         if ((getData || setData) && !com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataAdapterRegistry
                 .isDataSchemaReady(blockEntity)) {
             return;
@@ -11054,7 +12809,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 ? sortedGraphTargets(currentGraphTargetSeeds())
                 : List.copyOf(liveGraphTargets);
         if (node == null) return opts;
-        if ("acc_display_crn".equals(node.type())) {
+        if("camera".equals(node.type()) || "control_camera".equals(node.type())){
+            return opts.stream().map(this::resolveDisplayLinkerTarget)
+                    .filter(target -> "createthrusters:camera".equals(target.blockId())).toList();
+        }
+        if (node.type().startsWith("acc_display_") || isAccDisplayWidgetType(node.type())) {
+            opts = opts.stream().map(this::resolveDisplayLinkerTarget).toList();
+        }
+        if (isShippingInformationNodeType(node.type())) {
             opts = opts.stream().filter(target ->
                     isAccDisplayTarget(target) || isDisplayAdapterTarget(target)).toList();
         } else if (node.type().startsWith("acc_display_") || isAccDisplayWidgetType(node.type())) {
@@ -11065,6 +12827,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 || "set_block_data".equals(node.type())) {
             opts = opts.stream().filter(target -> target.kind() != ControllerDiscoveryKind.LINKER_FACE_INPUT).toList();
         }
+        if (supportsScmBlockPicker(node)) {
+            ControllerDiscoveryNode saved = ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
+            if (saved != null && saved.nodeId().startsWith("scm_picker:")
+                    && opts.stream().noneMatch(target -> saved.nodeId().equals(target.nodeId()))) {
+                List<ControllerDiscoveryNode> withSaved = new ArrayList<>(opts);
+                withSaved.add(saved);
+                opts = List.copyOf(withSaved);
+            }
+        }
         return opts;
     }
 
@@ -11073,7 +12844,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         List<ControllerDiscoveryNode> opts = liveGraphTargets.isEmpty()
                 ? sortedGraphTargets(currentGraphTargetSeeds())
                 : List.copyOf(liveGraphTargets);
-        return opts.stream().filter(AdvancedContraptionControllerScreen::isDisplayAdapterTarget).toList();
+        return opts.stream().map(this::resolveDisplayLinkerTarget)
+                .filter(target -> {
+                    if (isDisplayAdapterTarget(target)) return true;
+                    var level = minecraft == null || minecraft.level == null ? null
+                            : SubLevelBlockEntityCollector.resolveTargetLevel(minecraft.level, target.subLevelId());
+                    return level != null && target.blockPos() != null && level.isLoaded(target.blockPos())
+                            && AccDisplaySourceRegistry.source(level.getBlockEntity(target.blockPos())) != null;
+                }).toList();
     }
 
     // Get the graph SCM target options
@@ -11113,7 +12891,28 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Request the shared graphs
     private void requestSharedGraphs() {
+        refreshSharedGraphEntries();
         send("shared_graphs", "");
+    }
+
+    // Refresh local files while preserving server entries and the selected source
+    private void refreshSharedGraphEntries(){
+        SourcedGraphCatalog.Entry selected = selectedSharedGraphIndex >= 0 && selectedSharedGraphIndex < sharedGraphEntries.size()
+                ? sharedGraphEntries.get(selectedSharedGraphIndex) : null;
+        sharedGraphEntries.clear();
+        sharedGraphEntries.addAll(SourcedGraphCatalog.merge(ControllerManifestStore.listSharedGraphs(),
+                serverSharedGraphEntries, ControllerManifestStore.SharedGraphEntry::id, ControllerManifestStore.SharedGraphEntry::name));
+        selectedSharedGraphIndex = -1;
+        if(selected != null){
+            for(int idx = 0; idx < sharedGraphEntries.size(); idx++){
+                SourcedGraphCatalog.Entry entry = sharedGraphEntries.get(idx);
+                if(entry.source() == selected.source() && entry.id().equals(selected.id())){
+                    selectedSharedGraphIndex = idx;
+                    break;
+                }
+            }
+        }
+        sharedGraphScroll = Mth.clamp(sharedGraphScroll, 0, Math.max(0, sharedGraphEntries.size() - 4));
     }
 
     // Save the current graph locally
@@ -11150,11 +12949,16 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return;
         }
 
-        sharedGraphEntries.clear();
-        sharedGraphEntries.addAll(ControllerManifestStore.listSharedGraphs());
-        selectedSharedGraphIndex = sharedGraphEntries.stream()
-                .map(ControllerManifestStore.SharedGraphEntry::id)
-                .toList().indexOf(res.id());
+        refreshSharedGraphEntries();
+        selectedSharedGraphIndex = -1;
+        for(int idx = 0; idx < sharedGraphEntries.size(); idx++){
+            SourcedGraphCatalog.Entry entry = sharedGraphEntries.get(idx);
+            if(entry.source() == SourcedGraphCatalog.Source.CLIENT && entry.id().equals(res.id())){
+                selectedSharedGraphIndex = idx;
+                sharedGraphScroll = Math.max(0, idx - 3);
+                break;
+            }
+        }
         showLinkerStatus("Shared graph saved locally as " + res.id());
         showGraphToast("Graph saved locally", GraphActionToastSeverity.SUCCESS);
         if (sharedGraphSaveTarget == SharedGraphSaveTarget.LOCAL_AND_SERVER) {
@@ -11184,7 +12988,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Check if this can upload shared graph
     private boolean canUploadSharedGraph() {
-        return minecraft != null && minecraft.getCurrentServer() != null;
+        return minecraft != null && minecraft.getConnection() != null;
     }
 
     // Open the shared graphs dir
@@ -11214,7 +13018,21 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             showLinkerStatus("Select a shared graph");
             return;
         }
-        send("load_shared_graph", sharedGraphEntries.get(selectedSharedGraphIndex).id());
+        SourcedGraphCatalog.Entry entry = sharedGraphEntries.get(selectedSharedGraphIndex);
+        if(entry.source() == SourcedGraphCatalog.Source.SERVER){
+            send("load_shared_graph", entry.id());
+            return;
+        }
+        ControllerManifestStore.ManifestSnapshot snapshot = ControllerManifestStore.loadSharedGraph(entry.id());
+        List<ContraptionNetworkLinkerData.StoredGraph> graphs = snapshot == null ? List.of()
+                : ContraptionNetworkLinkerData.readStoredGraphs(snapshot.linkerData());
+        if(graphs.isEmpty()){
+            showLinkerStatus("Shared graph not found");
+            return;
+        }
+        MenuConfigTarget target = MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId());
+        PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+                target, "load_client_shared_graph", savedDraft.revision(), graphs.getFirst().graphTag(), entry.id(), 0L));
     }
 
     // Show the linker status
@@ -11316,15 +13134,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     void applyProjectionSharedGraphManifests(List<ControllerManifestStore.SharedGraphEntry> entries,
                                              String message, String conflictingName,
                                              CompoundTag graphTag) {
-        sharedGraphEntries.clear();
-        if (entries != null) {
-            sharedGraphEntries.addAll(entries);
-        }
-        sharedGraphScroll = Mth.clamp(sharedGraphScroll, 0,
-                Math.max(0, sharedGraphEntries.size() - 4));
-        if (selectedSharedGraphIndex >= sharedGraphEntries.size()) {
-            selectedSharedGraphIndex = sharedGraphEntries.isEmpty() ? -1 : sharedGraphEntries.size() - 1;
-        }
+        serverSharedGraphEntries.clear();
+        if(entries != null) serverSharedGraphEntries.addAll(entries);
+        refreshSharedGraphEntries();
         if (conflictingName != null && !conflictingName.isBlank()) {
             sharedGraphConflictName = conflictingName.trim();
             if (sharedGraphSaveTarget == SharedGraphSaveTarget.NONE) {
@@ -11427,6 +13239,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     private void adoptControllerGraphSnapshot(AdvancedControllerGraphSnapshotPayload.GraphSnapshot snapshot) {
+        if(snapshot != null){
+            previewActiveGraph = null;
+            previewActiveGraphRevision = Integer.MIN_VALUE;
+            simulatedDraft = null;
+        }
         if (snapshot == null || snapshot.draft().isEmpty() || savedDraft == null) return;
         AdvancedGraphDocument incoming = AdvancedGraphDocument.fromTag(snapshot.draft());
         if (incoming.toTag().equals(savedDraft.toTag())) return;
@@ -11496,9 +13313,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the input options
     private List<String> inputOptions(AdvancedGraphDocument.Node node, String port) {
+        if(isCameraFilterInput(node, port)){
+            return com.rieno.gadgetsandgizmos.lib.view.ViewRaycast.Category.optionIds();
+        }
         if (node != null && "desmos_plot_point".equals(node.type()) && "x_functionality".equals(port)) {
             return com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline.XMode.optionIds();
         }
+        
         if (isShipTargetPointInput(node, port)) {
             return AdvancedGraphCatalog.shipTargetPointOptions();
         }
@@ -11529,6 +13350,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
         }
         for (int idx = 0; idx < values.size(); idx++) opts.add(values.getString(idx));
+        if(opts.isEmpty() && "flip_flop".equals(node.type()) && "flip_on".equals(port)){
+            opts.addAll(com.rieno.gadgetsandgizmos.lib.graph.GraphCounters.FlipMode.optionLabels());
+        }
+        if(opts.isEmpty()) opts.addAll(com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.inputOptions(node.type(), port));
         return opts;
     }
 
@@ -11577,11 +13402,23 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the numeric range
     private double[] numberRange(AdvancedGraphDocument.Node node, String port) {
+        if("strength".equals(port) && AdvancedGraphCatalog.isShipControlType(node.type())) return new double[]{0, 1};
         if("createthrusters:announce".equals(node.type()) && List.of("fade_in", "stay", "fade_out").contains(port)){
             return new double[]{0, Math.max(200, inputNumber(node, port))};
         }
+        if("flip_flop".equals(node.type()) && "skip_pulses".equals(port)) return new double[]{0, Integer.MAX_VALUE};
+        if("bounded_loop".equals(node.type()) && "iterations".equals(port)) return new double[]{0, GraphRuntime.MAX_LOOP_ITERATIONS};
         if("do_n".equals(node.type()) && "count".equals(port)) return new double[]{0, 256};
         if("count".equals(node.type()) && "step".equals(port)) return new double[]{0, 16};
+        if("camera".equals(node.type())){
+            return switch(port){
+                case "pan" -> new double[]{-180, 180};
+                case "tilt" -> new double[]{-135, 135};
+                case "max_ray_length" -> new double[]{0, com.rieno.gadgetsandgizmos.lib.view.ViewRaycast.MAX_LENGTH};
+                case "rays_per_tick" -> new double[]{0, com.rieno.gadgetsandgizmos.lib.view.ViewRaycast.MAX_RAYS};
+                default -> new double[]{-1, 1};
+            };
+        }
         if (isRedstoneValue(node, port)) return new double[]{0, 15};
         if (node.type().startsWith("acc_display_")) {
             return switch (port) {
@@ -11607,7 +13444,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return new double[]{0, Math.max(1, AllConfigs.server().kinetics.maxRotationSpeed.get())};
         }
         if (AdvancedGraphCatalog.isShipSpeedPort(node, port)) {
-            return new double[]{0, 10};
+            return new double[]{0, 100};
         }
         if ("ship_telemetry".equals(node.type())
                 && "collision_detection_distance".equals(port)) {
@@ -11620,6 +13457,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if ("amount".equals(port) && node.type().startsWith("ship_")) {
             return new double[]{-1, 1};
         }
+        
+        
         if ("send_named_controller_event".equals(node.type()) && "distance".equals(port)) {
             return new double[]{0, Math.max(1, AllConfigs.server().logistics.linkRange.get())};
         }
@@ -11657,7 +13496,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Check if this is a redstone value
     private static boolean isRedstoneValue(AdvancedGraphDocument.Node node, String port) {
-        return "redstone_signal_strength".equals(port)
+        return GraphSignalRange.isRedstonePort(node, port)
                 || "value".equals(port) && (node.type().startsWith("local_redstone")
                 || node.type().startsWith("wireless_frequency")
                 || node.type().startsWith("linker_face")
@@ -11677,6 +13516,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 || "random_int_in_range".equals(node.type())
                 && ("min".equals(port) || "max".equals(port))
                 || "mouse_input".equals(node.type()) && "timeout".equals(port)
+                || "flip_flop".equals(node.type()) && "skip_pulses".equals(port)
+                || "bounded_loop".equals(node.type()) && "iterations".equals(port)
                 || "do_n".equals(node.type()) && "count".equals(port);
     }
 
@@ -11723,6 +13564,12 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the input number
     private double inputNumber(AdvancedGraphDocument.Node node, String port) {
+        double val = savedInputNumber(node, port);
+        return "strength".equals(port) && AdvancedGraphCatalog.isShipControlType(node.type())
+                ? com.rieno.gadgetsandgizmos.lib.scm.ScmControlInputs.strength(val) : val;
+    }
+
+    private double savedInputNumber(AdvancedGraphDocument.Node node, String port) {
         CompoundTag payload = inputPayload(node, port);
         if (payload.contains("Value")) return payload.getDouble("Value");
         if ("ship_telemetry".equals(node.type())
@@ -11745,6 +13592,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Read the boolean input
     private boolean inputBoolean(AdvancedGraphDocument.Node node, String port) {
+        if (isDataTargetMergeLikePortsInput(node, port)) {
+            return node.data().getBoolean(AdvancedGraphCatalog.MERGE_LIKE_PORTS_TAG);
+        }
         CompoundTag payload = inputPayload(node, port);
         if (payload.contains("Value")) return payload.getBoolean("Value");
         String property = Character.toUpperCase(port.charAt(0)) + port.substring(1);
@@ -11800,18 +13650,24 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Put the input default
     private void putInputDefault(AdvancedGraphDocument.Node node, String port, String type, Object val) {
-        if("do_n".equals(node.type()) && "count".equals(port) && val instanceof Number num){
+        if(("do_n".equals(node.type()) && "count".equals(port)
+                || "flip_flop".equals(node.type()) && "skip_pulses".equals(port)
+                || "bounded_loop".equals(node.type()) && "iterations".equals(port)) && val instanceof Number num){
             val = GraphCounters.wholeCount(num.doubleValue());
         }
+        nodeValueChanged();
+        com.rieno.gadgetsandgizmos.lib.graph.GraphPortValueEdits.mark(node.data(), "input:" + port);
         CompoundTag defaults = node.data().getCompound("Defaults");
         defaults.put(port, graphDefault(type, val));
         node.data().put("Defaults", defaults);
+        if("pulse_if".equals(node.type()) && "a".equals(port)) synchronizeComparePorts();
+        if("camera".equals(node.type()) && "mode".equals(port)) removeEdgesForMissingPorts(node, true);
         if (AdvancedGraphPortState.isPersistent(node, port, false)) {
             AdvancedGraphPortState.updatePersistentValueTag(
                     node, port, false, defaults.getCompound(port));
         }
         if (AdvancedGraphCatalog.isShipSpeedPort(node, port)) {
-            node.data().remove(AdvancedGraphCatalog.SHIP_SPEED_PERCENT_TAG);
+            node.data().putBoolean(AdvancedGraphCatalog.SHIP_SPEED_PERCENT_TAG, true);
         }
         CompoundTag prefilledInputs = node.data().getCompound("PrefilledInputs");
         if (prefilledInputs.contains(port)) {
@@ -11961,12 +13817,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Check if this is a constructor node
     private static boolean isConstructorNode(AdvancedGraphDocument.Node node) {
-        return node != null && AdvancedGraphCatalog.isConstructorType(node.type());
+        return node != null && (AdvancedGraphCatalog.isConstructorType(node.type())
+                || "string_concat".equals(node.type()));
     }
 
     // Check if the port accepts a constructor value
     private static boolean constructorValuePort(AdvancedGraphDocument.Node node, String port) {
         if (!isConstructorNode(node) || port == null) return false;
+        if ("string_concat".equals(node.type())) return AdvancedGraphCatalog.inputs(node).containsKey(port);
         if (AdvancedGraphCatalog.isDynamicConstructor(node)) {
             return AdvancedGraphCatalog.inputs(node).containsKey(port);
         }
@@ -11979,6 +13837,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (!functionCallLabel.isBlank()) return functionCallLabel;
         String inlineMapLabel = inlineMapPortLabel(node, port, false);
         if (!inlineMapLabel.isBlank()) return inlineMapLabel;
+        String generatedLabel = node.data().getCompound(AdvancedGraphCatalog.INPUT_LABELS_TAG).getString(port);
+        if (!generatedLabel.isBlank()) return generatedLabel;
         if ("set_block_data".equals(node.type()) && "direct_signal".equals(port)) return "Value";
         if (isFunctionOutputNode(node)) {
             return functionInterfacePortLabel(node, port);
@@ -11994,6 +13854,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the output display label
     private String outputDisplayLabel(AdvancedGraphDocument.Node node, String port) {
+        if("bounded_loop".equals(node.type()) && "body".equals(port)) return "Iteration";
         String label = functionCallPortLabel(node, port, true);
         if (label.isBlank()) {
             label = isFunctionInputNode(node) ? functionInterfacePortLabel(node, port)
@@ -12065,7 +13926,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Ensure the dynamic constructor
     private void ensureDynamicConstructor(AdvancedGraphDocument.Node node) {
-        if (!isConstructorNode(node) || AdvancedGraphCatalog.isDynamicConstructor(node)) return;
+        if (!isConstructorNode(node) || "string_concat".equals(node.type())
+                || AdvancedGraphCatalog.isDynamicConstructor(node)) return;
         CompoundTag inputs = new CompoundTag();
         CompoundTag labels = new CompoundTag();
         CompoundTag defaults = node.data().getCompound("Defaults");
@@ -12093,11 +13955,23 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Add the constructor input
     private void addConstructorInput(AdvancedGraphDocument.Node node) {
         if (!isConstructorNode(node)) return;
+        if ("string_concat".equals(node.type())) {
+            if (AdvancedGraphCatalog.inputs(node).size() >= GraphTextInputs.MAX_INPUTS) return;
+            checkpoint();
+            String port = GraphTextInputs.add(node.data());
+            CompoundTag defaults = node.data().getCompound("Defaults");
+            defaults.put(port, graphDefault("string", ""));
+            node.data().put("Defaults", defaults);
+            clearGraphRenderCache();
+            syncInspector();
+            return;
+        }
         int currentCount = AdvancedGraphCatalog.isDynamicConstructor(node)
                 ? AdvancedGraphCatalog.inputs(node).size() : 1;
         if (currentCount >= MAX_CONSTRUCTOR_INPUTS) return;
         checkpoint();
         ensureDynamicConstructor(node);
+        List<String> order = new ArrayList<>(AdvancedGraphCatalog.inputs(node).keySet());
         CompoundTag inputs = node.data().getCompound("DynamicInputs");
         CompoundTag labels = node.data().getCompound(AdvancedGraphCatalog.INPUT_LABELS_TAG);
         CompoundTag defaults = node.data().getCompound("Defaults");
@@ -12109,6 +13983,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         } while (inputs.contains(port));
         int displayOrdinal = inputs.getAllKeys().size() + 1;
         inputs.putString(port, "any");
+        order.add(port);
+        GraphPortOrder.write(node.data(), GraphPortOrder.INPUT_ORDER, order);
         labels.putString(port, ("list_create".equals(node.type()) ? "Value " : "Field ") + displayOrdinal);
         defaults.put(port, graphDefault("string", ""));
         node.data().put("DynamicInputs", inputs);
@@ -12121,6 +13997,16 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Remove the constructor input
     private void removeConstructorInput(AdvancedGraphDocument.Node node, String port) {
         if (!constructorValuePort(node, port)) return;
+        if ("string_concat".equals(node.type())) {
+            if (AdvancedGraphCatalog.inputs(node).size() <= 1) return;
+            checkpoint();
+            GraphTextInputs.remove(node.data(), port);
+            activeEdges().removeIf(edge -> edge.toNode().equals(node.id()) && edge.toPort().equals(port));
+            selectedInputPort = null;
+            clearGraphRenderCache();
+            syncInspector();
+            return;
+        }
         int currentCount = AdvancedGraphCatalog.isDynamicConstructor(node)
                 ? AdvancedGraphCatalog.inputs(node).size() : 1;
         if (currentCount <= 1) return;
@@ -12290,6 +14176,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private void addHudField(AdvancedGraphDocument.Node node) {
         if (!isHudNode(node)) return;
         checkpoint();
+        List<String> order = new ArrayList<>(AdvancedGraphCatalog.inputs(node).keySet());
         CompoundTag inputs = node.data().getCompound("DynamicInputs");
         CompoundTag labels = node.data().getCompound(HUD_FIELD_LABELS);
         CompoundTag defaults = node.data().getCompound("Defaults");
@@ -12300,6 +14187,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         } while (inputs.contains(port));
         String label = "Value [" + (idx - 1) + "]";
         inputs.putString(port, "any");
+        order.add(port);
+        GraphPortOrder.write(node.data(), GraphPortOrder.INPUT_ORDER, order);
         labels.putString(port, label);
         defaults.put(port, graphDefault("string", ""));
         node.data().put("DynamicInputs", inputs);
@@ -12354,7 +14243,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         int bodyTop = nodeBodyTop(node, y);
         int rowHeight = Math.max(10, (int) (15 * zoom));
         if ("curve".equals(node.type())) bodyTop += (int) (CURVE_BODY_HEIGHT * zoom);
-        if (mouseX < x + 5 || mouseX > x + NODE_WIDTH * zoom - 5 || mouseY < bodyTop
+        if (mouseX < x + 5 || mouseX > x + nodeWidth(node) * zoom - 5 || mouseY < bodyTop
                 || mouseY > bodyTop + bodyControlCount(node) * rowHeight) {
             return null;
         }
@@ -12372,28 +14261,25 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Get the function interface body port at a label
     private String functionInterfaceBodyPortAt(AdvancedGraphDocument.Node node,
                                                double mouseX, double mouseY) {
-        if (isFunctionOutputNode(node)) {
-            String input = hudBodyPortAt(node, mouseX, mouseY);
-            if (input != null) return input;
-            for (var port : AdvancedGraphCatalog.inputs(node).entrySet()) {
-                if (!"exec".equals(port.getValue())) continue;
-                PortPosition position = portPosition(node, port.getKey(), false);
-                if (Math.abs(mouseY - position.y()) <= 7) return port.getKey();
-            }
-            return null;
-        }
-        if (!isFunctionInputNode(node)) return null;
+        if(!isFunctionInterfaceNode(node)) return null;
         int left = screenX(node.x()) + 5;
-        int right = screenX(node.x()) + (int) (NODE_WIDTH * zoom) - 5;
-        if (mouseX < left || mouseX > right) return null;
-        for (var port : AdvancedGraphCatalog.outputs(node).entrySet()) {
-            if (!"exec".equals(port.getValue()) && !isDataPortVisible(node, port.getKey(), true)) continue;
-            PortPosition position = portPosition(node, port.getKey(), true);
-            int halfHeight = "exec".equals(port.getValue()) ? 7
-                    : Math.max(6, (int) Math.ceil(outputDataPortRowHeight(node, port.getKey()) * zoom / 2.0D));
-            if (Math.abs(mouseY - position.y()) <= halfHeight) return port.getKey();
+        int right = screenX(node.x()) + (int)(nodeWidth(node) * zoom) - 5;
+        if(mouseX < left || mouseX > right) return null;
+        boolean output = isFunctionInputNode(node);
+        Map<String, String> ports = output ? nodeOutputs(node) : nodeInputs(node);
+        String closest = null;
+        double distance = Double.POSITIVE_INFINITY;
+        for(var port : ports.entrySet()){
+            if(!isDataPortVisible(node, port.getKey(), output)) continue;
+            PortPosition position = portPosition(node, port.getKey(), output);
+            double height = "exec".equals(port.getValue()) ? 13
+                    : output ? outputDataPortRowHeight(node, port.getKey()) : 15;
+            double delta = Math.abs(mouseY - position.y());
+            if(delta <= Math.max(1, height * zoom / 2.0D) && delta < distance){
+                closest = port.getKey();distance = delta;
+            }
         }
-        return null;
+        return closest;
     }
 
     // Check if this is a HUD reserved port
@@ -12608,17 +14494,27 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         AdvancedContraptionControllerBlockEntity controller = menu.getMenuConfigTargetBlockEntity();
         if (controller == null || draft == null) return;
         for (AdvancedGraphDocument.Node node : activeNodes()) {
+            if(com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphTargets.multiple(node)
+                    && activeEdges().stream().anyMatch(edge -> node.id().equals(edge.toNode()) && "target".equals(edge.toPort()))){
+                com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphTargets.apply(minecraft.level, node,
+                        draftSimulationRuntime == null ? controller.previewGraphInput(draft, node, "target")
+                                : previewDraftInput(node, "target"), activeEdges());
+            }
             if (isBreakOutNode(node)) {
-                CompoundTag outputs = structuredInputTypes(controller, node, "value");
+                Map<String, String> outputs = structuredInputTypes(controller, node, "value");
                 outputs = com.rieno.gadgetsandgizmos.lib.graph.GraphDynamicPortSchema.retainConnectedOutputs(
-                        outputs, node.data().getCompound("DynamicOutputs"), activeEdges().stream()
+                        outputs, GraphPortOrder.merge(Map.of(), node.data().getCompound("DynamicOutputs"),
+                                GraphPortOrder.read(node.data(), GraphPortOrder.OUTPUT_ORDER)), activeEdges().stream()
                                 .filter(edge -> edge.fromNode().equals(node.id()))
                                 .map(AdvancedGraphDocument.Edge::fromPort).toList());
                 if (outputs.isEmpty() && shouldHoldStructuredOutputs(controller, node, "value")) {
                     continue;
                 }
-                if (outputs.isEmpty()) node.data().remove("DynamicOutputs");
-                else node.data().put("DynamicOutputs", outputs);
+                CompoundTag types = new CompoundTag();
+                outputs.forEach(types::putString);
+                if (types.isEmpty()) node.data().remove("DynamicOutputs");
+                else node.data().put("DynamicOutputs", types);
+                GraphPortOrder.write(node.data(), GraphPortOrder.OUTPUT_ORDER, outputs.keySet());
                 if (selectedNodes.contains(node.id()) && selectedInputPort != null
                         && selectedInputPort.startsWith("out:")) {
                     selectedInputPort = null;
@@ -12631,17 +14527,16 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     // Get the structured input types
-    private CompoundTag structuredInputTypes(AdvancedContraptionControllerBlockEntity controller,
+    private Map<String, String> structuredInputTypes(AdvancedContraptionControllerBlockEntity controller,
                                              AdvancedGraphDocument.Node node, String port) {
-        CompoundTag outputs = GraphRuntime.splitListOutputsFor(
+        Map<String, String> outputs = GraphRuntime.splitListOutputTypesFor(
                 draftSimulationRuntime == null
                         ? controller.previewGraphInput(draft, node, port)
                         : previewDraftInput(node, port));
         if (!outputs.isEmpty()) return outputs;
         AdvancedGraphLiveValue liveValue = controller.getGraphLiveInput(node.id(), port);
         if (liveValue == null || liveValue.entryTypes().isEmpty()) return outputs;
-        liveValue.entryTypes().forEach(outputs::putString);
-        return outputs;
+        return liveValue.entryTypes();
     }
 
     // Check if this should hold structured outputs
@@ -12671,14 +14566,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     // Sync the structure key options
-    private void syncStructureKeyOptions(AdvancedGraphDocument.Node node, CompoundTag entryTypes) {
+    private void syncStructureKeyOptions(AdvancedGraphDocument.Node node, Map<String, String> entryTypes) {
         boolean wired = activeEdges().stream().anyMatch(edge ->
                 edge.fromNode().equals(node.id()) && "value".equals(edge.fromPort()));
         if (entryTypes.isEmpty() && wired) return;
         CompoundTag inputOptions = node.data().getCompound("InputOptions");
         ListTag keys = new ListTag();
-        entryTypes.getAllKeys().stream().sorted(String.CASE_INSENSITIVE_ORDER)
-                .forEach(key -> keys.add(StringTag.valueOf(key)));
+        entryTypes.keySet().forEach(key -> keys.add(StringTag.valueOf(key)));
         if (keys.isEmpty()) {
             inputOptions.remove("key");
             node.data().remove("DynamicOutputs");
@@ -12688,7 +14582,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             if (selectedKey.isBlank()) selectedKey = keys.getString(0);
             if (inputString(node, "key", "").isBlank()) putInputDefault(node, "key", "string", selectedKey);
             CompoundTag dynamicOutputs = node.data().getCompound("DynamicOutputs");
-            String selectedType = entryTypes.getString(selectedKey);
+            String selectedType = entryTypes.getOrDefault(selectedKey, "");
             if (selectedType.isBlank()) {
                 if (!wired) dynamicOutputs.remove("value");
             } else {
@@ -12856,8 +14750,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     // Check if the execution ports match
-    private static boolean executionPortsMatch(
-            AdvancedGraphDocument.Node node, CompoundTag ports, int count) {
+    private static boolean executionPortsMatch(AdvancedGraphDocument.Node node, CompoundTag ports, int count) {
         long casePortCount = ports.getAllKeys().stream()
                 .filter(port -> port.startsWith(
                         "switch".equals(node.type()) ? "case_" : "exec_"))
@@ -13011,13 +14904,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Open the HUD
     private void openHud(AdvancedGraphDocument.Node node) {
         if (!isAdvancedHudNode(node)) return;
+        if(hudColorPicker != null) hudColorPicker.cancel();
         clearTextFocus();
+        if("acc_display_widget".equals(node.type())) syncDisplayWidgetCanvas(node);
         hudOpen = true;
         hudNodeId = node.id();
         hudPortDropdownOpen = false;
         hudPortDropdownScroll = 0;
-        draggingHudColorKey = null;
-        draggingHudColorControl = null;
+        draggingHudOpacityKey = null;
         draggingHudPropSlider = null;
         hudFontStyleDropdownOpen = false;
         hudStyleDropdownOpen = false;
@@ -13035,8 +14929,33 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         syncHudFields();
     }
 
+    // Size the designer to the complete selected display surface
+    private void syncDisplayWidgetCanvas(AdvancedGraphDocument.Node node){
+        if(minecraft == null || minecraft.level == null) return;
+        CompoundTag target = node.data().getCompound("TargetData");
+        var controller = menu.getMenuConfigTargetBlockEntity();
+        if(controller != null){
+            var input = controller.previewGraphInput(draft, node, "target");
+            if(input != null && "target".equals(input.type()) && input.payload().contains("BlockPos")) target = input.payload();
+        }
+        if(!target.contains("BlockPos")) return;
+        ControllerDiscoveryNode discovery = ControllerDiscoveryNode.fromTag(target);
+        var resolved = AdvancedContraptionControllerBlockEntity.resolveGraphDataTarget(minecraft.level, node, discovery);
+        if(resolved == null || !(resolved.level().getBlockEntity(resolved.pos()) instanceof AccDisplayBlockEntity display)) return;
+        AccDisplayBlockEntity root = display.networkRoot();
+        if(root == null) return;
+        int height = root.surfacePixelHeight();
+        if(root.displayFrame().getList("Sources", Tag.TAG_COMPOUND).size() > 1) height -= AccDisplayBlockEntity.TASKBAR_PIXELS;
+        height = Math.max(1, height);
+        if(node.data().getInt("WidgetWidth") == root.surfacePixelWidth()
+                && node.data().getInt("WidgetHeight") == height) return;
+        checkpoint();
+        AdvancedDisplayWidgets.resizeCanvas(node, root.surfacePixelWidth(), height);
+    }
+
     // Close the HUD
     private void closeHud() {
+        if(hudColorPicker != null) hudColorPicker.cancel();
         clearHudFieldFocus();
         hudOpen = false;
         hudNodeId = null;
@@ -13045,8 +14964,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         resizingHudElement = false;
         hudPortDropdownOpen = false;
         hudPortDropdownScroll = 0;
-        draggingHudColorKey = null;
-        draggingHudColorControl = null;
+        draggingHudOpacityKey = null;
         draggingHudPropSlider = null;
         hudFontStyleDropdownOpen = false;
         hudStyleDropdownOpen = false;
@@ -13116,6 +15034,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         hudBorderWidth.setY(propertyTop + 91);
         hudBorderWidth.setWidth(64);
         hudBorderWidth.setVisible(boxVisible);
+        if(hudStyleDropdownOpen) for(EditBox field : hudFields()) field.setVisible(false);
     }
 
     // Sync the HUD fields
@@ -13185,6 +15104,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Draw the HUD
     private void drawHud(GuiGraphics graphics, int mouseX, int mouseY) {
+        layoutHudWidgets();
         UiRect bounds = hudBounds();
         UiRect canvas = hudCanvasBounds();
         UiRect sidebar = hudSidebarBounds();
@@ -13240,6 +15160,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         int previewHeight = (int) Math.round(Math.max(1, node.data().getInt("WidgetHeight")) * scale);
         int previewX = canvas.x() + (canvas.width() - previewWidth) / 2;
         int previewY = canvas.y() + (canvas.height() - previewHeight) / 2;
+        graphics.enableScissor(canvas.x(), canvas.y(), canvas.right(), canvas.bottom());
         graphics.fill(previewX, previewY, previewX + previewWidth, previewY + previewHeight, 0xFF0E151D);
         graphics.renderOutline(previewX, previewY, previewWidth, previewHeight, 0xFF64879D);
 
@@ -13281,7 +15202,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                         elementRect.x(), elementRect.y(), elementRect.width(), elementRect.height(), scale);
                 case "button", "toggle", "slider", "text_input" -> drawHudInteractive(
                         graphics, elm, elementRect, scale);
-                case "progress" -> drawHudProgress(graphics, node, elm, elementRect);
+                case "progress" -> drawHudProgress(graphics, node, elm, elementRect, scale);
                 default -> AdvancedHudElementRenderer.drawText(graphics, font, elm, elm.getString("Text"),
                         elementRect.x(), elementRect.y(), elementRect.width(), elementRect.height(), scale);
             }
@@ -13293,6 +15214,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
         }
 
+        graphics.disableScissor();
+
         // -----------------------------------------------------SELECTED WIDGET---------------------------------------------------
 
         CompoundTag selected = hudElement();
@@ -13301,6 +15224,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return;
         }
         String type = selected.getString("Type");
+        ElementInspectorLayout inspector = ElementInspectorLayout.forType(type);
         graphics.drawString(font, "Type: " + humanPort(type), sidebar.x() + 8, sidebar.y() + 30,
                 0xFFFFFFFF, false);
         graphics.drawString(font, "Drag to move; corner to resize.", sidebar.x() + 8, sidebar.y() + 46,
@@ -13337,23 +15261,20 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                                 node, selected.getString("Port"))),
                         sidebar.x() + 8, propertyTop + 38, 0xFF91A9B8, false);
                 graphics.drawString(font, "Font size: " + AdvancedHudElementStyle.fontSize(selected),
-                        sidebar.x() + 8, propertyTop + 54, 0xFFC8D7E3, false);
+                        sidebar.x() + 8, propertyTop + inspector.fontSizeOffset() - 11, 0xFFC8D7E3, false);
                 drawHudPropSlider(graphics, hudFontSizeSliderBounds(),
                         AdvancedHudElementStyle.fontSize(selected), AdvancedHudElementStyle.MIN_FONT_SIZE,
                         AdvancedHudElementStyle.MAX_FONT_SIZE, "FontSize", mouseX, mouseY);
-                drawHudColorSliders(graphics, selected, "Color", "Text color",
-                        propertyTop + 84, mouseX, mouseY);
-                graphics.drawString(font, "Font style", sidebar.x() + 8, propertyTop + 132,
+                drawHudColorControl(graphics, selected, "Color", "Text color", mouseX, mouseY);
+                graphics.drawString(font, "Font style", sidebar.x() + 8, propertyTop + inspector.fontStyleOffset() - 12,
                         0xFFC8D7E3, false);
                 drawHudFontStyleBtn(graphics, selected, mouseX, mouseY);
                 graphics.drawString(font, "W / H / Rotation / Scale",
                         sidebar.x() + 8, propertyTop + 176, 0xFFC8D7E3, false);
             }
             case "box" -> {
-                drawHudColorSliders(graphics, selected, "Color", "Background color",
-                        propertyTop, mouseX, mouseY);
-                drawHudColorSliders(graphics, selected, "BorderColor", "Border color",
-                        propertyTop + 46, mouseX, mouseY);
+                drawHudColorControl(graphics, selected, "Color", "Background color", mouseX, mouseY);
+                drawHudColorControl(graphics, selected, "BorderColor", "Border color", mouseX, mouseY);
                 graphics.drawString(font, "Border width", sidebar.x() + 8, propertyTop + 96,
                         0xFFC8D7E3, false);
                 graphics.drawString(font, "Border radius: " + AdvancedHudElementStyle.borderRadius(selected),
@@ -13395,13 +15316,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                         sidebar.x() + 8, propertyTop, 0xFFC8D7E3, false);
                 if ("progress".equals(type)) {
                     drawHudPortBtn(graphics, node, selected, mouseX, mouseY);
-                } else {
-                    drawHudStyleBtn(graphics, selected, mouseX, mouseY);
+                    graphics.drawString(font, "Style", hudStyleBtnBounds().x(), propertyTop, 0xFFC8D7E3, false);
                 }
+                drawHudStyleBtn(graphics, selected, mouseX, mouseY);
                 graphics.drawString(font, "Range: " + compactNumber(selected.getDouble("Min"))
                                 + " to " + compactNumber(selected.getDouble("Max")),
                         sidebar.x() + 8, propertyTop + 42, 0xFFC8D7E3, false);
-                graphics.drawString(font, "Step: " + compactNumber(selected.getDouble("Step")),
+                graphics.drawString(font, "progress".equals(type)
+                                ? "Circle: square / Half: 2:1"
+                                : "Step: " + compactNumber(selected.getDouble("Step")),
                         sidebar.x() + 8, propertyTop + 58, 0xFF91A9B8, false);
                 graphics.drawString(font, "W / H / Rotation / Scale", sidebar.x() + 8, propertyTop + 80,
                         0xFFC8D7E3, false);
@@ -13409,20 +15332,19 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             default -> {
                 graphics.drawString(font, "Text", sidebar.x() + 8, propertyTop, 0xFFC8D7E3, false);
                 graphics.drawString(font, "Font size: " + AdvancedHudElementStyle.fontSize(selected),
-                        sidebar.x() + 8, propertyTop + 38,
+                        sidebar.x() + 8, propertyTop + inspector.fontSizeOffset() - 11,
                         0xFFC8D7E3, false);
                 drawHudPropSlider(graphics, hudFontSizeSliderBounds(),
                         AdvancedHudElementStyle.fontSize(selected), AdvancedHudElementStyle.MIN_FONT_SIZE,
                         AdvancedHudElementStyle.MAX_FONT_SIZE, "FontSize", mouseX, mouseY);
-                drawHudColorSliders(graphics, selected, "Color", "Text color",
-                        propertyTop + 68, mouseX, mouseY);
-                boolean interactive = "button".equals(type) || "toggle".equals(type)
-                        || "text_input".equals(type);
-                graphics.drawString(font, "Font style", sidebar.x() + 8, propertyTop + 116,
+                drawHudColorControl(graphics, selected, "Color", "Text color", mouseX, mouseY);
+                boolean interactive = AdvancedHudInteractiveStyles.supports(type);
+                graphics.drawString(font, "Font style", sidebar.x() + 8, propertyTop + inspector.fontStyleOffset() - 12,
                         0xFFC8D7E3, false);
                 if (interactive) {
-                    int styleLabelX = sidebar.x() + 16 + (sidebar.width() - 24) / 2;
-                    graphics.drawString(font, "Style", styleLabelX, propertyTop + 116,
+                    int styleLabelX = hudStyleBtnBounds().x();
+                    graphics.drawString(font, "Style", styleLabelX,
+                            propertyTop + inspector.fontStyleOffset() - 12,
                             0xFFC8D7E3, false);
                 }
                 drawHudFontStyleBtn(graphics, selected, mouseX, mouseY);
@@ -13433,16 +15355,22 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                         0xFFC8D7E3, false);
             }
         }
+        if (AdvancedHudInteractiveStyles.supports(type)) drawHudPalette(graphics, selected, mouseX, mouseY);
         if (hudPortDropdownOpen && ("value".equals(type) || "image".equals(type)
                 || "progress".equals(type))) {
             drawHudPortDropdown(graphics, node, selected, mouseX, mouseY);
         }
-        if (hudFontStyleDropdownOpen && ("text".equals(type) || "value".equals(type)
-                || "button".equals(type) || "toggle".equals(type))) {
+        if (hudFontStyleDropdownOpen && inspector.hasFontControls()) {
             drawHudFontStyleDropdown(graphics, selected, mouseX, mouseY);
         }
-        if (hudStyleDropdownOpen && isInteractiveHudType(type)) {
-            drawHudStyleDropdown(graphics, selected, mouseX, mouseY);
+        if (hudStyleDropdownOpen && AdvancedHudInteractiveStyles.supports(type)) {
+            graphics.pose().pushPose();
+            try{
+                graphics.pose().translate(0, 0, 200);
+                drawHudStyleDropdown(graphics, selected, mouseX, mouseY);
+            }finally{
+                graphics.pose().popPose();
+            }
         }
         if (hudImageDropdownOpen && "image".equals(type)) {
             drawHudImageDropdown(graphics, selected, mouseX, mouseY);
@@ -13507,27 +15435,12 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Draw the HUD progress
     private void drawHudProgress(
             GuiGraphics graphics, AdvancedGraphDocument.Node node,
-            CompoundTag elm, UiRect rect) {
-        double minimum = elm.getDouble("Min");
-        double maximum = elm.getDouble("Max");
-        if (!(maximum > minimum)) maximum = minimum + 1.0D;
+            CompoundTag elm, UiRect rect, double scale) {
         String port = elm.getString("Port");
-        AdvancedGraphDocument.Value val = hudDataVal(node,
-                port.isBlank() ? "value" : port);
-        double pct = Mth.clamp(((val == null ? elm.getDouble("Value") : val.asNumber())
-                - minimum) / (maximum - minimum), 0.0D, 1.0D);
-        int background = AdvancedHudElementStyle.color(elm, "TrackColor",
-                AdvancedHudElementStyle.DEFAULT_WIDGET_TRACK_COLOR);
-        int accent = AdvancedHudElementStyle.color(elm, "AccentColor",
-                AdvancedHudElementStyle.DEFAULT_WIDGET_ACCENT_COLOR);
-        graphics.fill(rect.x(), rect.y(), rect.right(), rect.bottom(), background);
-        graphics.fill(rect.x(), rect.y(),
-                rect.x() + (int) Math.round(rect.width() * pct), rect.bottom(), accent);
-        String label = Math.round(pct * 100.0D) + "%";
-        graphics.drawCenteredString(font, label, rect.x() + rect.width() / 2,
-                rect.y() + Math.max(0, (rect.height() - font.lineHeight) / 2),
-                AdvancedHudElementStyle.color(elm, "Color",
-                        AdvancedHudElementStyle.DEFAULT_TEXT_COLOR));
+        AdvancedGraphDocument.Value val = hudDataVal(node, port.isBlank() ? "value" : port);
+        AdvancedHudInteractiveStyleRenderer.drawProgress(graphics, font, elm,
+                rect.x(), rect.y(), rect.width(), rect.height(), scale,
+                val == null ? elm.getDouble("Value") : val.asNumber());
     }
 
     // Get the HUD data val
@@ -13558,18 +15471,18 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         switch (elm.getString("Type")) {
             case "text" -> properties.addAll(List.of("Text", "Color", "FontSize"));
             case "button", "toggle", "text_input" -> properties.addAll(List.of(
-                    "Text", "Color", "BackgroundColor", "AccentColor", "TrackColor",
+                    "Text", "Color", "BackgroundColor", "AccentColor", "GradientColor", "TrackColor",
                     "BorderColor", "BorderWidth", "BorderRadius", "FontSize"));
             case "value" -> properties.addAll(List.of("Color", "FontSize"));
             case "box" -> properties.addAll(List.of(
                     "Color", "BorderColor", "BorderWidth", "BorderRadius"));
             case "image" -> properties.add("Texture");
             case "slider" -> properties.addAll(List.of(
-                    "Color", "BackgroundColor", "AccentColor", "TrackColor",
+                    "Color", "BackgroundColor", "AccentColor", "GradientColor", "TrackColor",
                     "BorderColor", "BorderWidth", "BorderRadius", "FontSize",
                     "Min", "Max", "Step", "Value"));
             case "progress" -> properties.addAll(List.of(
-                    "Color", "BackgroundColor", "AccentColor", "TrackColor",
+                    "Color", "BackgroundColor", "AccentColor", "GradientColor", "TrackColor",
                     "BorderColor", "BorderWidth", "BorderRadius", "FontSize",
                     "Min", "Max", "Value"));
             default -> {
@@ -13782,7 +15695,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         UiRect btn = hudFontStyleBtnBounds();
         String label = AdvancedHudElementStyle.fontStyleLabel(AdvancedHudElementStyle.fontStyle(elm));
         renderAdvancedButton(graphics, font, btn.x(), btn.y(), btn.width(), btn.height(),
-                Component.literal(label + (hudFontStyleDropdownOpen ? " ^" : " v")),
+                Component.literal(GraphTextLayout.ellipsize(label, font::width, btn.width() - 20)
+                        + (hudFontStyleDropdownOpen ? " ^" : " v")),
                 btn.contains(mouseX, mouseY), true);
     }
 
@@ -13814,29 +15728,78 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         String label = AdvancedHudInteractiveStyles.label(
                 type, AdvancedHudInteractiveStyles.style(elm));
         renderAdvancedButton(graphics, font, btn.x(), btn.y(), btn.width(), btn.height(),
-                Component.literal(label + (hudStyleDropdownOpen ? " ^" : " v")),
+                Component.literal(GraphTextLayout.ellipsize(label, font::width, btn.width() - 20)
+                        + (hudStyleDropdownOpen ? " ^" : " v")),
                 btn.contains(mouseX, mouseY), true);
     }
 
+    private static final List<String> HUD_PALETTE_KEYS = List.of(
+            "BackgroundColor", "AccentColor", "GradientColor", "TrackColor", "BorderColor", "Color");
+    private static final List<String> HUD_PALETTE_LABELS = List.of("Base", "Fill", "End", "Track", "Edge", "Text");
+
+    private UiRect hudPaletteSwatchBounds(int index){
+        UiRect sidebar = hudSidebarBounds();
+        CompoundTag elm = hudElement();
+        boolean compact = elm != null && ("slider".equals(elm.getString("Type")) || "progress".equals(elm.getString("Type")));
+        int top = hudPropTop(sidebar) + (compact ? 132 : 198);
+        int cell = (sidebar.width() - 16) / HUD_PALETTE_KEYS.size();
+        return new UiRect(sidebar.x() + 8 + cell * index + (cell - 16) / 2, top, 16, 12);
+    }
+
+    private void drawHudPalette(GuiGraphics graphics, CompoundTag elm, int mouseX, int mouseY){
+        for(int i = 0; i < HUD_PALETTE_KEYS.size(); i++){
+            UiRect swatch = hudPaletteSwatchBounds(i);
+            graphics.drawCenteredString(font, HUD_PALETTE_LABELS.get(i), swatch.x() + swatch.width() / 2,
+                    swatch.y() - 12, nodeMutedTextColor());
+            drawHudCheckerboard(graphics, swatch);
+            graphics.fill(swatch.x(), swatch.y(), swatch.right(), swatch.bottom(), hudColorVal(elm, HUD_PALETTE_KEYS.get(i)));
+            graphics.renderOutline(swatch.x(), swatch.y(), swatch.width(), swatch.height(),
+                    swatch.contains(mouseX, mouseY) ? 0xFFFFFFFF : 0xFF527185);
+        }
+    }
+
+    private int hudStyleVisibleRows(int count){
+        boolean toggle = hudElement() != null && "toggle".equals(hudElement().getString("Type"));
+        return Math.max(1, Math.min(count, (hudBounds().height() - 56 - (toggle ? 26 : 0)) / 18));
+    }
+
+    private UiRect hudToggleShapeBtnBounds(boolean checkbox){
+        UiRect bounds = hudStyleDropdownBounds(AdvancedHudInteractiveStyles.options("toggle").size());
+        int width = (bounds.width() - 12) / 2;
+        return new UiRect(bounds.x() + 4 + (checkbox ? width + 4 : 0), bounds.bottom() - 24, width, 20);
+    }
+
+
     // Draw the HUD style dropdown
-    private void drawHudStyleDropdown(GuiGraphics graphics, CompoundTag elm,
-                                              int mouseX, int mouseY) {
-        List<AdvancedHudInteractiveStyles.Option> opts =
-                AdvancedHudInteractiveStyles.options(elm.getString("Type"));
+    private void drawHudStyleDropdown(GuiGraphics graphics, CompoundTag elm, int mouseX, int mouseY) {
+        List<AdvancedHudInteractiveStyles.Option> opts = AdvancedHudInteractiveStyles.options(elm.getString("Type"));
         UiRect bounds = hudStyleDropdownBounds(opts.size());
         renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
         String selectedStyle = AdvancedHudInteractiveStyles.style(elm);
-        int rowY = bounds.y() + 2;
-        for (AdvancedHudInteractiveStyles.Option option : opts) {
+        int visible = hudStyleVisibleRows(opts.size());
+        hudStyleDropdownScroll = Mth.clamp(hudStyleDropdownScroll, 0, Math.max(0, opts.size() - visible));
+        for(int row = 0; row < visible; row++){
+            AdvancedHudInteractiveStyles.Option option = opts.get(hudStyleDropdownScroll + row);
+            int rowY = bounds.y() + 2 + row * 18;
             boolean selected = option.id().equals(selectedStyle);
             boolean hovered = inside(mouseX, mouseY, bounds.x() + 2, rowY, bounds.width() - 4, 16);
-            if (selected || hovered) {
-                renderControllerOption(graphics, bounds.x() + 2, rowY, bounds.width() - 4, 16,
-                        AdvancedGraphCatalog.categoryColor("hud"), selected);
-            }
+            if(selected || hovered) renderControllerOption(graphics, bounds.x() + 2, rowY,
+                    bounds.width() - 4, 16, AdvancedGraphCatalog.categoryColor("hud"), selected);
             graphics.drawString(font, option.label(), bounds.x() + 7, rowY + 4,
                     selected ? nodeValueTextColor() : 0xFFE0EDF4, false);
-            rowY += 18;
+            CompoundTag preview = elm.copy();
+            preview.putString("Style", option.id());
+            preview.putDouble("Min", 0); preview.putDouble("Max", 1);
+            AdvancedHudInteractiveStyleRenderer.paint(HudControlRenderer.gui(graphics), preview,
+                    bounds.right() - 52, rowY + 2, 44, 12, 0.55, 0.65, true, false);
+        }
+        if("toggle".equals(elm.getString("Type"))){
+            for(boolean checkbox : new boolean[]{false, true}){
+                UiRect btn = hudToggleShapeBtnBounds(checkbox);
+                boolean selected = checkbox == HudStyleCatalog.checkbox(elm.getString("ToggleShape"));
+                renderAdvancedButton(graphics, font, btn.x(), btn.y(), btn.width(), btn.height(),
+                        Component.literal(checkbox ? "Checkbox" : "Switch"), btn.contains(mouseX, mouseY), selected);
+            }
         }
     }
 
@@ -13896,10 +15859,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle the HUD font style click
     private boolean clickHudFontStyle(double mouseX, double mouseY) {
         CompoundTag elm = hudElement();
-        if (elm == null || !("text".equals(elm.getString("Type"))
-                || "value".equals(elm.getString("Type"))
-                || "button".equals(elm.getString("Type"))
-                || "toggle".equals(elm.getString("Type")))) {
+        if (elm == null || !ElementInspectorLayout.forType(elm.getString("Type")).hasFontControls()) {
             hudFontStyleDropdownOpen = false;
             return false;
         }
@@ -13936,7 +15896,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle the HUD style click
     private boolean clickHudStyle(double mouseX, double mouseY) {
         CompoundTag elm = hudElement();
-        if (elm == null || !isInteractiveHudType(elm.getString("Type"))) {
+        if (elm == null || !AdvancedHudInteractiveStyles.supports(elm.getString("Type"))) {
             hudStyleDropdownOpen = false;
             return false;
         }
@@ -13946,10 +15906,20 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (hudStyleDropdownOpen) {
             UiRect dropdown = hudStyleDropdownBounds(opts.size());
             if (dropdown.contains(mouseX, mouseY)) {
+                if("toggle".equals(elm.getString("Type"))){
+                    for(boolean checkbox : new boolean[]{false, true}){
+                        if(hudToggleShapeBtnBounds(checkbox).contains(mouseX, mouseY)){
+                            checkpoint();
+                            elm.putString("ToggleShape", checkbox ? "checkbox" : "switch");
+                            return true;
+                        }
+                    }
+                }
                 int row = (int) ((mouseY - dropdown.y() - 2) / 18);
-                if (row >= 0 && row < opts.size()) {
+                int index = hudStyleDropdownScroll + row;
+                if (row >= 0 && row < hudStyleVisibleRows(opts.size()) && index < opts.size()) {
                     checkpoint();
-                    AdvancedHudInteractiveStyles.setStyle(elm, opts.get(row).id());
+                    AdvancedHudInteractiveStyles.setStyle(elm, opts.get(index).id());
                 }
                 hudStyleDropdownOpen = false;
                 return true;
@@ -13963,6 +15933,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         if (btn.contains(mouseX, mouseY)) {
             hudStyleDropdownOpen = true;
+            int visible = hudStyleVisibleRows(opts.size());
+            int selected = 0;
+            for(int i = 0; i < opts.size(); i++) if(opts.get(i).id().equals(AdvancedHudInteractiveStyles.style(elm))) selected = i;
+            hudStyleDropdownScroll = Mth.clamp(selected - visible + 1, 0, Math.max(0, opts.size() - visible));
             hudFontStyleDropdownOpen = false;
             hudPortDropdownOpen = false;
             hudImageDropdownOpen = false;
@@ -13978,8 +15952,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return false;
         }
         String type = elm.getString("Type");
-        if (("text".equals(type) || "value".equals(type)
-                || "button".equals(type) || "toggle".equals(type))
+        if (ElementInspectorLayout.forType(type).hasFontControls()
                 && hudFontSizeSliderBounds().contains(mouseX, mouseY)) {
             checkpoint();
             draggingHudPropSlider = "FontSize";
@@ -13998,7 +15971,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Get the HUD color keys
     private List<String> hudColorKeys(CompoundTag elm) {
         return switch (elm.getString("Type")) {
-            case "text", "value", "button", "toggle", "slider" -> List.of("Color");
+            case "text", "value", "button", "toggle", "text_input" -> List.of("Color");
             case "box" -> List.of("Color", "BorderColor");
             default -> List.of();
         };
@@ -14006,11 +15979,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Get the HUD color val
     private int hudColorVal(CompoundTag elm, String key) {
-        int fallback = "BorderColor".equals(key)
-                ? AdvancedHudElementStyle.DEFAULT_BOX_BORDER_COLOR
-                : "box".equals(elm.getString("Type"))
-                ? AdvancedHudElementStyle.DEFAULT_BOX_BACKGROUND_COLOR
-                : AdvancedHudElementStyle.DEFAULT_TEXT_COLOR;
+        int fallback = switch(key){
+            case "BackgroundColor" -> AdvancedHudElementStyle.DEFAULT_WIDGET_BACKGROUND_COLOR;
+            case "AccentColor" -> AdvancedHudElementStyle.DEFAULT_WIDGET_ACCENT_COLOR;
+            case "GradientColor" -> AdvancedHudElementStyle.DEFAULT_WIDGET_GRADIENT_COLOR;
+            case "TrackColor" -> AdvancedHudElementStyle.DEFAULT_WIDGET_TRACK_COLOR;
+            case "BorderColor" -> AdvancedHudElementStyle.DEFAULT_BOX_BORDER_COLOR;
+            default -> "box".equals(elm.getString("Type"))
+                    ? AdvancedHudElementStyle.DEFAULT_BOX_BACKGROUND_COLOR : AdvancedHudElementStyle.DEFAULT_TEXT_COLOR;
+        };
         return AdvancedHudElementStyle.color(elm, key, fallback);
     }
 
@@ -14087,6 +16064,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle the HUD click
     private boolean clickHud(double mouseX, double mouseY, int btn) {
         if (!hudOpen) return false;
+        if(hudStyleDropdownOpen) return clickHudStyle(mouseX, mouseY);
         if (btn == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             // ------------------------------------OPEN MENUS------------------------------------
             if (hudBindingDropdownKey != null) {
@@ -14147,7 +16125,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     return true;
                 }
             }
-            if (clickHudColorSlider(mouseX, mouseY)) {
+            if (clickHudColorControl(mouseX, mouseY)) {
                 return true;
             }
             if (clickHudFontStyle(mouseX, mouseY)) {
@@ -14201,8 +16179,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     hudSelectedIdx = elements.size() - 1;
                     hudPortDropdownOpen = false;
                     hudImageDropdownOpen = false;
-                    draggingHudColorKey = null;
-                    draggingHudColorControl = null;
+                    draggingHudOpacityKey = null;
                     hudFontStyleDropdownOpen = false;
                     hudStyleDropdownOpen = false;
                     hudBindingDropdownKey = null;
@@ -14220,7 +16197,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             }
             // ------------------------------------CANVAS SELECTION------------------------------------
             AdvancedGraphDocument.Node node = hudNode();
-            if (isAdvancedHudNode(node)) {
+            if (isAdvancedHudNode(node) && hudCanvasBounds().contains(mouseX, mouseY)) {
                 ListTag elements = node.data().getList(WIDGET_ELEMENTS, Tag.TAG_COMPOUND);
                 for (int i = elements.size() - 1; i >= 0; i--) {
                     CompoundTag elm = AdvancedHudElementBinding.resolvedCopy(
@@ -14230,8 +16207,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                         hudSelectedIdx = i;
                         hudPortDropdownOpen = false;
                         hudImageDropdownOpen = false;
-                        draggingHudColorKey = null;
-                        draggingHudColorControl = null;
+                        draggingHudOpacityKey = null;
                         hudFontStyleDropdownOpen = false;
                         hudStyleDropdownOpen = false;
                         hudBindingDropdownKey = null;
@@ -14251,8 +16227,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     hudSelectedIdx = -1;
                     hudPortDropdownOpen = false;
                     hudImageDropdownOpen = false;
-                    draggingHudColorKey = null;
-                    draggingHudColorControl = null;
+                    draggingHudOpacityKey = null;
                     hudFontStyleDropdownOpen = false;
                     hudStyleDropdownOpen = false;
                     hudBindingDropdownKey = null;
@@ -14324,8 +16299,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         hudSelectedIdx = Math.min(hudSelectedIdx, elements.size() - 1);
         hudPortDropdownOpen = false;
         hudImageDropdownOpen = false;
-        draggingHudColorKey = null;
-        draggingHudColorControl = null;
+        draggingHudOpacityKey = null;
         hudFontStyleDropdownOpen = false;
         hudStyleDropdownOpen = false;
         syncHudFields();
@@ -14354,7 +16328,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private UiRect hudFontSizeSliderBounds() {
         UiRect sidebar = hudSidebarBounds();
         CompoundTag elm = hudElement();
-        int offset = elm != null && "value".equals(elm.getString("Type")) ? 65 : 49;
+        int offset = ElementInspectorLayout.forType(elm == null ? "" : elm.getString("Type")).fontSizeOffset();
         return new UiRect(sidebar.x() + 8, hudPropTop(sidebar) + offset,
                 sidebar.width() - 16, 14);
     }
@@ -14370,11 +16344,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private UiRect hudFontStyleBtnBounds() {
         UiRect sidebar = hudSidebarBounds();
         CompoundTag elm = hudElement();
-        int offset = elm != null && "value".equals(elm.getString("Type")) ? 144 : 128;
-        boolean interactive = elm != null && ("button".equals(elm.getString("Type"))
-                || "toggle".equals(elm.getString("Type")));
-        int width = interactive ? (sidebar.width() - 24) / 2 : sidebar.width() - 16;
-        return new UiRect(sidebar.x() + 8, hudPropTop(sidebar) + offset, width, 20);
+        ElementInspectorLayout inspector = ElementInspectorLayout.forType(elm == null ? "" : elm.getString("Type"));
+        return new UiRect(sidebar.x() + 8, hudPropTop(sidebar) + inspector.fontStyleOffset(),
+                inspector.fontStyleWidth(sidebar.width() - 16), 20);
     }
 
     // Get the HUD font style dropdown bounds
@@ -14392,22 +16364,26 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private UiRect hudStyleBtnBounds() {
         UiRect sidebar = hudSidebarBounds();
         CompoundTag elm = hudElement();
+        if(elm != null && "progress".equals(elm.getString("Type"))){
+            UiRect port = hudPortBtnBounds();
+            return new UiRect(port.right() + 8, port.y(), port.width(), 20);
+        }
         boolean slider = elm != null && "slider".equals(elm.getString("Type"));
         if (slider) {
             return new UiRect(sidebar.x() + 8, hudPropTop(sidebar) + 14,
                     sidebar.width() - 16, 20);
         }
-        int width = (sidebar.width() - 24) / 2;
-        return new UiRect(sidebar.x() + 16 + width, hudPropTop(sidebar) + 128,
-                width, 20);
+        UiRect fontStyle = hudFontStyleBtnBounds();
+        return new UiRect(fontStyle.right() + 8, fontStyle.y(), fontStyle.width(), 20);
     }
 
     // Get the HUD style dropdown bounds
     private UiRect hudStyleDropdownBounds(int optionCount) {
         UiRect btn = hudStyleBtnBounds();
         UiRect modal = hudBounds();
-        int height = Math.max(1, optionCount) * 18 + 4;
-        int width = 170;
+        boolean toggle = hudElement() != null && "toggle".equals(hudElement().getString("Type"));
+        int height = hudStyleVisibleRows(optionCount) * 18 + 4 + (toggle ? 26 : 0);
+        int width = 236;
         int x = Math.max(modal.x() + 4, btn.x() - width - 8);
         int y = Mth.clamp(btn.y(), modal.y() + 36, modal.bottom() - height - 4);
         return new UiRect(x, y, width, height);
@@ -14460,8 +16436,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Get the HUD port btn bounds
     private UiRect hudPortBtnBounds() {
         UiRect sidebar = hudSidebarBounds();
-        return new UiRect(sidebar.x() + 8, hudPropTop(sidebar) + 14,
-                sidebar.width() - 16, 20);
+        CompoundTag elm = hudElement();
+        int width = elm != null && "progress".equals(elm.getString("Type"))
+                ? (sidebar.width() - 24) / 2 : sidebar.width() - 16;
+        return new UiRect(sidebar.x() + 8, hudPropTop(sidebar) + 14, width, 20);
     }
 
     // Get the HUD image upload btn bounds
@@ -14897,8 +16875,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         hudSelectedIdx = elements.size() - 1;
         hudPortDropdownOpen = false;
         hudImageDropdownOpen = false;
-        draggingHudColorKey = null;
-        draggingHudColorControl = null;
+        draggingHudOpacityKey = null;
         hudFontStyleDropdownOpen = false;
         hudStyleDropdownOpen = false;
         syncHudFields();
@@ -15018,17 +16995,108 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
     }
 
+    // Display preferences never change stored defaults, live doubles or runtime state
+    private String nodeNumber(AdvancedGraphDocument.Node node, double value){
+        return GraphNumberDisplay.format(value, GraphNumberDisplay.precise(node.data()));
+    }
+
+    private boolean precisionControlSpace(AdvancedGraphDocument.Node node){
+        return node != null && !isReroute(node) && GraphNumberDisplay.supportsNumericPorts(
+                AdvancedGraphCatalog.inputs(node), AdvancedGraphCatalog.outputs(node));
+    }
+
+    private boolean hasNumericDisplayPorts(AdvancedGraphDocument.Node node){
+        return node != null && !isReroute(node) && GraphNumberDisplay.hasNumericPorts(
+                AdvancedGraphCatalog.inputs(node), AdvancedGraphCatalog.outputs(node),
+                (port, output) -> resolvedDisplayPortType(node, port, output, new HashSet<>()));
+    }
+
+    // Resolve any ports from wires and sampled values without evaluating or mutating the graph
+    private String resolvedDisplayPortType(AdvancedGraphDocument.Node node, String port, boolean output, Set<String> visited){
+        String key = node.id() + (output ? ":out:" : ":in:") + port;
+        if(!visited.add(key)) return "any";
+        String declared = (output ? AdvancedGraphCatalog.outputs(node) : AdvancedGraphCatalog.inputs(node)).getOrDefault(port, "any");
+        if(!"any".equals(declared)) return declared;
+        if(!output){
+            for(AdvancedGraphDocument.Edge edge : activeEdges()){
+                if(!node.id().equals(edge.toNode()) || !port.equals(edge.toPort())) continue;
+                AdvancedGraphDocument.Node source = findNode(edge.fromNode());
+                if(source != null) return resolvedDisplayPortType(source, edge.fromPort(), true, visited);
+            }
+        }
+        AdvancedGraphDocument.Value sampled = draftSimulationRuntime == null ? null : (output
+                ? draftSimulationRuntime.liveOutputs() : draftSimulationRuntime.liveInputs()).get(node.id() + ":" + port);
+        if(sampled != null && !"any".equals(sampled.type())) return sampled.type();
+        AdvancedContraptionControllerBlockEntity controller = menu == null ? null : menu.getMenuConfigTargetBlockEntity();
+        AdvancedGraphLiveValue live = controller == null ? null : output
+                ? controller.getGraphLiveOutput(node.id(), port) : controller.getGraphLiveInput(node.id(), port);
+        if(live != null && !"any".equals(live.type()) && !live.type().isBlank()) return live.type();
+        String stored = node.data().getCompound(output ? AdvancedGraphPortState.OUTPUT_DEFAULTS_TAG : "Defaults").getCompound(port).getString("Type");
+        if(!stored.isBlank() && !"any".equals(stored)) return stored;
+        if(output && draft != null && ("variable_get".equals(node.type()) || "variable_set".equals(node.type()))){
+            AdvancedGraphDocument.Value value = draft.variables().get(node.data().getString("Variable"));
+            if(value != null) return value.type();
+        }
+        if(output && "value".equals(port) && ("reroute".equals(node.type()) || "latch".equals(node.type())
+                || "event_value_change".equals(node.type()) || "variable_set".equals(node.type()))){
+            return resolvedDisplayPortType(node, "value", false, visited);
+        }
+        return "any";
+    }
+
+    private UiRect preciseValuesBounds(AdvancedGraphDocument.Node node){
+        int size = Math.max(8, (int)Math.round((isReroute(node) ? 12 : 15) * zoom));
+        int inset = isReroute(node) ? 5 : v2Ui ? 22 : 7;
+        int x = screenX(node.x()) + (int)Math.round(inset * zoom);
+        int y = screenY(node.y()) + (int)Math.round((isReroute(node) ? 2 : 4) * zoom);
+        return new UiRect(x, y, size, size);
+    }
+
+    private int nodeTitleLeft(AdvancedGraphDocument.Node node, int x){
+        if(!hasNumericDisplayPorts(node)) return x + (int)Math.round((v2Ui ? 22 : 7) * zoom);
+        UiRect button = preciseValuesBounds(node);
+        return button.x() + button.width() + Math.max(2, (int)Math.round(4 * zoom));
+    }
+
+    private AdvancedGraphDocument.Node preciseValuesAt(double mouseX, double mouseY){
+        if(zoom < 0.55) return null;
+        AdvancedGraphDocument.Node node = nodeAt(mouseX, mouseY);
+        return node != null && hasNumericDisplayPorts(node) && preciseValuesBounds(node).contains(mouseX, mouseY) ? node : null;
+    }
+
+    // Save an undoable display-only change without resetting the editor simulation
+    private void togglePreciseValues(AdvancedGraphDocument.Node node){
+        undo.push(draft.copy());
+        while(undo.size() > 64) undo.removeLast();
+        redo.clear();
+        GraphNumberDisplay.setPrecise(node.data(), !GraphNumberDisplay.precise(node.data()));
+        draftDirty = true;
+        clearGraphRenderCache();
+    }
+
+    private void drawPreciseValuesButton(GuiGraphics graphics, AdvancedGraphDocument.Node node, double mouseX, double mouseY){
+        if(zoom < 0.55 || !hasNumericDisplayPorts(node)) return;
+        UiRect bounds = preciseValuesBounds(node);
+        boolean enabled = GraphNumberDisplay.precise(node.data());
+        renderControllerOption(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height(),
+                enabled ? 0xFF5AA3DD : 0xFF526574, enabled, bounds.contains(mouseX, mouseY));
+        drawNodeStringCentered(graphics, ".0", bounds.x() + bounds.width() / 2,
+                bounds.y() + Math.max(1, (int)Math.round(3 * zoom)), enabled ? nodeValueTextColor() : nodeMutedTextColor());
+    }
+
     // Get the compact number
     private static String compactNumber(double val) {
-        return Math.abs(val - Math.rint(val)) < 0.0001 ? Long.toString(Math.round(val))
-                : String.format(Locale.ROOT, "%.2f", val);
+        return GraphNumberDisplay.format(val, false);
     }
 
     // Sync the inspector
     private void syncInspector() {
         if (inspectorValue == null) return;
-        if (rightSidebarCollapsed) {
+        if(bodyValueEditor != null){ inspectorValue.setVisible(false); return; }
+        if (graphConfigSidebarRetired() ? !editingBodyValue : rightSidebarCollapsed) {
             inspectorValue.setVisible(false);
+            inspectorValue.setFocused(false);
+            if(getFocused() == inspectorValue) setFocused(null);
             return;
         }
         inspectorValue.setWidth(RIGHT_WIDTH - 16);
@@ -15079,7 +17147,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         if (inputEditable) {
             setInspectorValue(isChatRecipientsInput(node, selectedInputPort) ? chatRecipientsText(node)
-                    : "number".equals(inputType) ? compactNumber(inputNumber(node, selectedInputPort))
+                    : "number".equals(inputType) ? GraphNumberDisplay.format(inputNumber(node, selectedInputPort), true)
+                    : List.of("any", "map", "list").contains(inputType)
+                    ? com.rieno.gadgetsandgizmos.lib.graph.GraphValueText.format(GraphRuntime.toLibraryValue(
+                            AdvancedGraphPortState.inputDefault(node, selectedInputPort, inputType)))
                     : inputString(node, selectedInputPort, ""));
             return;
         }
@@ -15136,23 +17207,139 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Open the body editor
     private void openBodyEditor(AdvancedGraphDocument.Node node, String port, int rowY, int rowHeight) {
-        if (inspectorValue == null || node == null || port == null) return;
+        if(inspectorValue == null || node == null || port == null) return;
+        if(bodyValueEditor != null) bodyValueEditor.accept();
         editingBodyValue = true;
         selectedInputPort = port;
         syncInspector();
-        inspectorValue.setVisible(true);
-        inspectorValue.setWidth(Math.max(44, (int) (NODE_WIDTH * zoom * 0.42)));
-        inspectorValue.setX(screenX(node.x()) + (int) (NODE_WIDTH * zoom * 0.55));
-        inspectorValue.setY(rowY - 2);
-        inspectorValue.setHeight(Math.max(12, rowHeight + 2));
-        inspectorValue.setFocused(true);
-        setFocused(inspectorValue);
+        String initial = inspectorValue.getValue();
+        inspectorValue.setVisible(false);
+        inspectorValue.setFocused(false);
+        setFocused(null);
+        bodyValueNode = node.id();
+        bodyValuePort = port;
+        bodyValueOffsetY = (rowY - screenY(node.y())) / zoom;
+        bodyValueEditor = new InlineTextEditor(font, Component.literal("Node value"), initial,
+                Integer.MAX_VALUE, value -> {
+                    updateNodeProperty(value);
+                    nodeValueChanged();
+                    bodyValueEditor = null;
+                    editingBodyValue = false;
+                }, () -> {
+                    bodyValueEditor = null;
+                    editingBodyValue = false;
+                });
+        bodyValueEditor.setDecorated(false);
+        positionBodyValueEditor(node);
+    }
+
+    private void positionBodyValueEditor(AdvancedGraphDocument.Node node){
+        int x = screenX(node.x());
+        int width = (int)Math.round(nodeWidth(node) * zoom);
+        int y = screenY(node.y() + bodyValueOffsetY) + 3;
+        String labelPort = editableInputLabelPort(node, bodyValuePort);
+        boolean label = labelPort != null;
+        bodyValueEditor.setTextColor(label ? nodeMutedTextColor() : nodeValueTextColor());
+        bodyValueEditor.setRightAligned(!label);
+        if(label && isFunctionInterfaceNode(node)){
+            boolean output = isFunctionInputNode(node);
+            PortPosition pos = portPosition(node, labelPort, output);
+            bodyValueEditor.setRightAligned(output);
+            bodyValueEditor.setBounds(x + 9, pos.y() - (int)Math.round(font.lineHeight * zoom / 2),
+                    Math.max(1, width - 18), (float)zoom);
+            return;
+        }
+        if(label){
+            int left = x + 5 + inputControlInset(node, labelPort);
+            int right = nodeInputControlLeft(node, labelPort, x, width) - 2;
+            y = bodyControlCenterY(node, labelPort) - (int)(6.5 * zoom) + 3;
+            bodyValueEditor.setBounds(left, y, Math.max(1, right - left), (float)zoom);
+        }else{
+            int left = nodeInputs(node).containsKey(bodyValuePort)
+                    ? nodeInputControlLeft(node, bodyValuePort, x, width) + Math.max(3, (int)Math.round(5 * zoom))
+                    : x + (int)Math.round(width * .55);
+            bodyValueEditor.setBounds(left, y, Math.max(1, x + width - 8 - left), (float)zoom);
+        }
+    }
+
+    private boolean bodyValueEditing(AdvancedGraphDocument.Node node, String port){
+        return bodyValueEditor != null && node.id().equals(bodyValueNode) && Objects.equals(bodyValuePort, port);
+    }
+
+    private boolean bodyLabelEditing(AdvancedGraphDocument.Node node, String port){
+        return bodyValueEditor != null && node.id().equals(bodyValueNode)
+                && Objects.equals(editableInputLabelPort(node, bodyValuePort), port);
+    }
+
+    private void drawBodyValueEditor(GuiGraphics graphics, float partialTick, int mouseX, int mouseY){
+        if(bodyValueEditor == null) return;
+        AdvancedGraphDocument.Node node = findNode(bodyValueNode);
+        if(node == null){ bodyValueEditor.cancel(); return; }
+        positionBodyValueEditor(node);
+        bodyValueEditor.render(graphics, mouseX, mouseY, partialTick);
+    }
+
+    private void nodeValueChanged(){
+        clearGraphRenderCache();
+        simulatedDraft = null;
+        draftDirty = true;
+        if(draftSimulationRuntime != null) draftSimulationRuntime.invalidatePreview();
+    }
+
+    private UiRect graphSearchBounds(){
+        int width = Math.min(180, Math.max(60, graphRight() - graphLeft() - 60));
+        return new UiRect(graphRight() - width - 48, graphTop() + 6, width, 18);
+    }
+
+    private boolean graphSearchVisible(){
+        return !masksUnderlyingHover() && !boundGlassesOpen && !linkerOpen && !shareModalOpen && !hudOpen
+                && !frequencyModalOpen && !templatePicker && contextMenu == null && miniBrowser == null
+                && !scmGraphOverview && !scheduleGraphOverview;
+    }
+
+    private List<AdvancedGraphDocument.Node> graphSearchMatches(){
+        return com.rieno.gadgetsandgizmos.lib.graph.GraphCanvasSearch.matches(activeNodes(), graphSearchQuery,
+                node -> nodeTitle(node) + " " + node.data().getString(GraphNodeAlias.DATA_KEY)
+                        + " " + node.data().getString("Variable"));
+    }
+
+    private void jumpGraphSearch(boolean previous){
+        var matches = graphSearchMatches();
+        var node = com.rieno.gadgetsandgizmos.lib.graph.GraphCanvasSearch.next(matches, graphSearchCurrent, previous);
+        if(node == null) return;
+        if(bodyValueEditor != null) bodyValueEditor.accept();
+        graphSearchCurrent = node.id();
+        selectOnly(node.id());
+        var centered = graphViewport().centerOn(node.x() + nodeWidth(node) / 2.0,
+                node.y() + nodeHeight(node) / 2.0, graphRight() - graphLeft(), graphBottom() - graphTop());
+        panX = centered.panX();
+        panY = centered.panY();
+        syncInspector();
+    }
+
+    private void drawGraphSearch(GuiGraphics graphics, int mouseX, int mouseY){
+        if(!graphSearchVisible()) return;
+        UiRect bounds = graphSearchBounds();
+        for(int idx = 0; idx < 2; idx++){
+            int x = bounds.right() + 3 + idx * 20;
+            boolean hover = inside(mouseX, mouseY, x, bounds.y(), 18, 18);
+            renderAdvancedButton(graphics, font, x, bounds.y(), 18, 18, Component.empty(), hover, true);
+            int centerX = x + 9, centerY = bounds.y() + 9;
+            for(int step = 0; step < 5; step++){
+                int y = centerY + (idx == 0 ? step - 2 : 2 - step);
+                graphics.fill(centerX - 4 + step, y, centerX - 3 + step, y + 1, 0xFFFFFFFF);
+                graphics.fill(centerX + 4 - step, y, centerX + 5 - step, y + 1, 0xFFFFFFFF);
+            }
+            if(hover) graphics.renderTooltip(font, Component.translatable(
+                    "createthrusters.advanced_controller.search." + (idx == 0 ? "previous" : "next")), mouseX, mouseY);
+        }
     }
 
     // Update the node property
     private void updateNodeProperty(String val) {
         // -----------------------------------------------------UPDATE CHECK-----------------------------------------------------
         if (syncingInspectorValue) return;
+        nodeValueChanged();
         // ------------------------------------GROUP PROPERTY------------------------------------
         CompoundTag group = selectedGroup();
         if (group != null) {
@@ -15188,13 +17375,17 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             try {
                 if ("number".equals(inputType)) {
                     double num = Double.parseDouble(val);
+                    if(!Double.isFinite(num)) return;
                     putInputDefault(node, selectedInputPort, inputType,
                             isWholeNumberValue(node, selectedInputPort) ? Math.round(num) : num);
+                } else if(List.of("any", "map", "list").contains(inputType)){
+                    var parsed = GraphRuntime.fromLibraryValue(
+                            com.rieno.gadgetsandgizmos.lib.graph.GraphValueText.parse(inputType, val));
+                    putInputDefault(node, selectedInputPort, parsed.type(), parsed);
                 } else {
-                    putInputDefault(node, selectedInputPort,
-                            "any".equals(inputType) ? "string" : inputType, val);
+                    putInputDefault(node, selectedInputPort, inputType, val);
                 }
-            } catch (NumberFormatException ignored) {
+            } catch (IllegalArgumentException ignored) {
             }
             return;
         }
@@ -15202,12 +17393,17 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         String outputPort = selectedOutputPort(node, selectedInputPort);
         if (outputPort != null) {
             String outputType = AdvancedGraphCatalog.outputs(node).getOrDefault(outputPort, "any");
-            AdvancedGraphDocument.Value parsed = switch (outputType) {
+            AdvancedGraphDocument.Value parsed;
+            if(List.of("any", "map", "list").contains(outputType)){
+                try{ parsed = GraphRuntime.fromLibraryValue(
+                        com.rieno.gadgetsandgizmos.lib.graph.GraphValueText.parse(outputType, val)); }
+                catch(IllegalArgumentException err){ return; }
+            }else parsed = switch (outputType) {
                 case "boolean" -> AdvancedGraphDocument.Value.bool(Boolean.parseBoolean(val));
                 case "number" -> {
                     try {
                         yield AdvancedGraphDocument.Value.number(Double.parseDouble(val));
-                    } catch (NumberFormatException ignored) {
+                    } catch (IllegalArgumentException ignored) {
                         yield null;
                     }
                 }
@@ -15234,8 +17430,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         String property = editableProperty(node);
         if (node == null || property == null) return;
         try {
-            if ("Value".equals(property) && "constant_number".equals(node.type())) node.data().putDouble(property, Double.parseDouble(val));
-            else if ("Value".equals(property) && "constant_boolean".equals(node.type())) node.data().putBoolean(property, Boolean.parseBoolean(val));
+            if("Value".equals(property) && List.of("constant_number", "constant_boolean", "constant_string").contains(node.type())){
+                String type = node.type().substring("constant_".length());
+                var parsed = GraphRuntime.fromLibraryValue(com.rieno.gadgetsandgizmos.lib.graph.GraphValueText.parse(type, val));
+                AdvancedGraphPortState.setOutputDefault(node, "value", type, parsed);
+            }
             else if ("Ticks".equals(property) || "Period".equals(property)) node.data().putInt(property, Math.max(1, Integer.parseInt(val)));
             else if ("OutputCount".equals(property) && isExecutionSplitterNode(node)) {
                 setExecutionOutputCount(node, Integer.parseInt(val), true);
@@ -15279,7 +17478,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 }
                 if ("Variable".equals(property)) synchronizeVariableNodes();
             }
-        } catch (NumberFormatException ignored) {
+        } catch (IllegalArgumentException ignored) {
         }
     }
 
@@ -15306,7 +17505,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Check if this has unsaved draft
     private boolean hasUnsavedDraft() {
-        return draftDirty;
+        return draftDirty || scmConfigurationDirty;
     }
 
     // Save the draft on close
@@ -15336,8 +17535,20 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         syncHudPorts(draft);
         clearGraphRenderCache();
         MenuConfigTarget target = MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId());
+        CompoundTag graph = draft.toTag();
+        if (scmConfigurationDirty && List.of("save", "save_apply", "apply_save", "save_apply_close").contains(action)) {
+            graph.put("ScmConfiguration", scmConfigurationProfile.toTag());
+            scmConfigurationSavePending = true;
+        }
         PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
-                target, action, savedDraft.revision(), draft.toTag(), argument, requestId));
+                target, action, savedDraft.revision(), graph, argument, requestId));
+    }
+
+    // Live block previews need the world pass to prepare textured render state
+    @Override
+    public boolean suppressWorldRendering(){
+        return !projectionRendering && !scmGraphOverview && !scmConfigurationOpen && !scmBlockPickerOpen
+                && !(graphTargetPickerOpen && graphTargetPickerBlockTab);
     }
 
     // Check if this is a pause screen
@@ -15359,8 +17570,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle the close event
     @Override
     public void onClose() {
+        finishCommentGroupLabelEdit();
+        if(bodyValueEditor != null) bodyValueEditor.accept();
+        if (graphColorPicker != null) graphColorPicker.cancel();
+        if(hudColorPicker != null) hudColorPicker.cancel();
         if (frequencyModalOpen) closeFrequencyEditor(false);
-        AccGuiScaleOverride.restoreAfterExit();
+        restoreAccGuiScale();
+        scmLivePreviewRenderer.close();
         saveDraftOnClose();
         super.onClose();
     }
@@ -15368,7 +17584,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Handle screen removal
     @Override
     public void removed() {
+        finishCommentGroupLabelEdit();
+        if(bodyValueEditor != null) bodyValueEditor.accept();
+        if (graphColorPicker != null) graphColorPicker.cancel();
         if(playerSelectModal != null) playerSelectModal.cancel();
+        if(hudColorPicker != null) hudColorPicker.cancel();
         AnalogueContraptionControllerClientHandler.clearOpenMenuHardwareControllerInput(menu);
         ControllerGraphWebServer.clearOpenGraph();
         for (Set<String> bindings : activeGraphKeyBindings.values()) {
@@ -15379,6 +17599,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         activeGraphKeyBindings.clear();
         if (frequencyModalOpen) closeFrequencyEditor(false);
+        restoreAccGuiScale();
+        scmLivePreviewRenderer.close();
         if (openingFunctionPlotter) {
             openingFunctionPlotter = false;
         } else {
@@ -15388,7 +17610,6 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (initialEmiVisibility != null) RecipeViewerVisibility.setEmiVisible(initialEmiVisibility);
         setLinkerOpen(false, false);
         super.removed();
-        AccGuiScaleOverride.restoreAfterExit();
     }
 
     // Define the graph action toast severity values
@@ -15614,6 +17835,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return null;
         }
         // -----------------------------------------------------GRAPH PORTS-----------------------------------------------------
+        AdvancedGraphDocument.Node preciseNode = inGraph(mouseX, mouseY) ? preciseValuesAt(mouseX, mouseY) : null;
+        if(preciseNode != null) return "Show precise values: " + (GraphNumberDisplay.precise(preciseNode.data()) ? "On" : "Off");
         ForceWriteHit forceWriteHit = inGraph(mouseX, mouseY) ? setDataForceWriteAt(mouseX, mouseY) : null;
         if (forceWriteHit != null) {
             return "Force update value";
@@ -15623,12 +17846,27 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             String type = (hit.output() ? AdvancedGraphCatalog.outputs(hit.node()) : AdvancedGraphCatalog.inputs(hit.node())).get(hit.port());
             String label = hit.output() ? outputDisplayLabel(hit.node(), hit.port())
                     : inputDisplayLabel(hit.node(), hit.port());
-            return trim(label + " (" + humanPort(type) + "): "
-                    + portValueLabel(hit, type), PORT_TOOLTIP_MAX_CHARACTERS);
+            String value = portValueLabel(hit, type);
+            if(GraphNumberDisplay.precise(hit.node().data()) && GraphNumberDisplay.numericType(
+                    resolvedDisplayPortType(hit.node(), hit.port(), hit.output(), new HashSet<>()))){
+                return trim(label, 40) + " (" + humanPort(type) + "): " + value;
+            }
+            return trim(label + " (" + humanPort(type) + "): " + value, PORT_TOOLTIP_MAX_CHARACTERS);
         }
-        if (inGraph(mouseX, mouseY)) return null;
+        if (inGraph(mouseX, mouseY)) {
+            if (!commentGroupLabelEditing() && nodeAt(mouseX, mouseY) == null) {
+                CompoundTag group = groupAt(mouseX, mouseY);
+                if (group != null) {
+                    GraphGroupHeader.Layout bounds = commentGroupHeader(group);
+                    if (bounds.colorContains(mouseX, mouseY)) return "Change comment group color";
+                    if (bounds.titleContains(mouseX, mouseY)) return "Click to edit comment group label";
+                }
+            }
+            return null;
+        }
         // -----------------------------------------------------INSPECTOR-----------------------------------------------------
-        if (!rightSidebarCollapsed && mouseX >= graphRight() && mouseX < layoutRight() && mouseY >= TOOLBAR_HEIGHT) {
+        if (!graphConfigSidebarRetired() && !rightSidebarCollapsed
+                && mouseX >= graphRight() && mouseX < layoutRight() && mouseY >= TOOLBAR_HEIGHT) {
             AdvancedGraphDocument.Node node = selectedNode();
             if (node == null) return null;
             InspectorSections sections = inspectorSections(node);
@@ -15732,18 +17970,18 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (controller == null) return "...";
         AdvancedGraphLiveValue liveValue = controller.getGraphLiveOutput(hit.node().id(), hit.port());
         AdvancedGraphLiveValue simulatedValue = simulatedLiveOutput(hit.node().id(), hit.port());
-        if (simulatedValue != null) return graphValueLabel(simulatedValue, type);
-        if (liveValue != null) return graphValueLabel(liveValue, type);
-        return graphValueLabel(controller.previewGraphOutput(draft, hit.node(), hit.port()), type);
+        if (simulatedValue != null) return graphValueLabel(hit.node(), simulatedValue, type);
+        if (liveValue != null) return graphValueLabel(hit.node(), liveValue, type);
+        return graphValueLabel(hit.node(), controller.previewGraphOutput(draft, hit.node(), hit.port()), type);
     }
 
     // Get the graph value label
-    private String graphValueLabel(AdvancedGraphLiveValue val, String type) {
+    private String graphValueLabel(AdvancedGraphDocument.Node node, AdvancedGraphLiveValue val, String type) {
         if (val == null) return "...";
         String displayType = "any".equals(type) ? val.type() : type;
         return switch (displayType) {
             case "boolean" -> val.booleanValue() ? "true" : "false";
-            case "number" -> compactNumber(val.numberValue());
+            case "number", "integer", "int", "float", "double" -> nodeNumber(node, val.numberValue());
             case "string", "direction", "target" -> valueOrUnset(val.textValue());
             default -> val.textValue().isBlank() ? val.type() : val.textValue();
         };
@@ -15757,12 +17995,12 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     // Get the graph value label
-    private String graphValueLabel(AdvancedGraphDocument.Value val, String type) {
+    private String graphValueLabel(AdvancedGraphDocument.Node node, AdvancedGraphDocument.Value val, String type) {
         if (val == null) return "...";
         String displayType = "any".equals(type) ? val.type() : type;
         return switch (displayType) {
             case "boolean" -> val.asBoolean() ? "true" : "false";
-            case "number" -> compactNumber(val.asNumber());
+            case "number", "integer", "int", "float", "double" -> nodeNumber(node, val.asNumber());
             case "string", "direction" -> valueOrUnset(val.asString());
             case "target" -> valueOrUnset(val.payload().getString("Label"));
             default -> val.payload().isEmpty() ? val.type() : val.payload().toString();
@@ -15779,7 +18017,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             case "string", "direction" -> val.asString();
             case "target" -> val.payload().getString("Label");
             case "frequency" -> val.payload().getString("Value");
-            default -> val.payload().toString();
+            default -> com.rieno.gadgetsandgizmos.lib.graph.GraphValueText.format(GraphRuntime.toLibraryValue(val));
         };
     }
 
@@ -15825,6 +18063,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private static boolean usesTarget(AdvancedGraphDocument.Node node) {
         return node != null && (node.type().contains("target") || node.type().startsWith("linker_face")
                 || node.type().startsWith("acc_display_")
+                || "camera".equals(node.type()) || "control_camera".equals(node.type())
                 || "get_block_data".equals(node.type()) || "set_block_data".equals(node.type()));
     }
 
@@ -15838,9 +18077,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Check if this is an ACC display target
     private static boolean isAccDisplayTarget(ControllerDiscoveryNode target) {
-        if (target == null) {
-            return false;
-        }
+        if (target == null) return false;
         return target.kind() == ControllerDiscoveryKind.DISPLAY
                 || target.blockId().startsWith("createthrusters:acc_display");
     }
@@ -15895,167 +18132,248 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     // Store the browser entry
-    private record BrowserEntry(String id, boolean category) {
-    }
+    private static record BrowserEntry(String id, boolean category) {
+}
 
     // Store the graph template option
-    private record GraphTemplateOption(String id, String label) {
-    }
+    private static record GraphTemplateOption(String id, String label) {
+}
 
     // Store the registry entry
-    private record RegistryEntry(String id, ItemStack stack, boolean header) {
-    }
+    private static record RegistryEntry(String id, ItemStack stack, boolean header) {
+}
 
     // Store the port hit
-    private record PortHit(AdvancedGraphDocument.Node node, String port, boolean output) {
-    }
+    private static record PortHit(AdvancedGraphDocument.Node node, String port, boolean output) {
+}
 
     // Store the force write hit
-    private record ForceWriteHit(AdvancedGraphDocument.Node node, String port) {
-    }
+    private static record ForceWriteHit(AdvancedGraphDocument.Node node, String port) {
+}
 
     // Store the port position
-    private record PortPosition(int x, int y) {
-    }
+    private static record PortPosition(int x, int y) {
+}
 
     // Handle the node port layout
     private static final class NodePortLayout {
-        // Tracked inputs
-        private final Map<String, String> inputs;
-        // Tracked outputs
-        private final Map<String, String> outputs;
-        // Tracked visible inputs
-        private final Set<String> visibleInputs;
-        // Tracked visible outputs
-        private final Set<String> visibleOutputs;
-        // Tracked connected inputs
-        private final Set<String> connectedInputs;
-        // Output offsets
-        private final Map<String, Integer> outputOffsets;
-        // Output labels
-        private final Map<String, List<FormattedCharSequence>> outputLabels;
-        // Tracks whether collapsible is set
-        private final boolean collapsible;
-        // Tracks whether collapsed is set
-        private final boolean collapsed;
-        // Output data height
-        private int outputDataHeight;
+    // Tracked inputs
+    private final Map<String, String> inputs;
+    // Tracked outputs
+    private final Map<String, String> outputs;
+    // Tracked visible inputs
+    private final Set<String> visibleInputs;
+    // Tracked visible outputs
+    private final Set<String> visibleOutputs;
+    // Tracked connected inputs
+    private final Set<String> connectedInputs;
+    // Tracked connected outputs
+    private final Set<String> connectedOutputs;
+    // Output offsets
+    private final Map<String, Integer> outputOffsets;
+    // Output labels
+    private final Map<String, List<FormattedCharSequence>> outputLabels;
+    // Cached section membership includes expanded MAP children
+    private List<GraphPortSection> inputSections;
+    private List<GraphPortSection> outputSections;
+    private GraphPortIndex<GraphPortSection> inputSectionIndex;
+    private GraphPortIndex<GraphPortSection> outputSectionIndex;
+    private GraphNodeLayout.PortRows inputRows;
+    private final Map<String, Integer> outputSectionOffsets = new LinkedHashMap<>();
+    // Tracks whether collapsible is set
+    private final boolean collapsible;
+    // Tracks whether collapsed is set
+    private final boolean collapsed;
+    // Output data height
+    private int outputDataHeight;
+    private GraphNodeLayout.PortRows executionInputs;
+    // Cached node body-control count
+    private int bodyControlCount;
+    // Cached node width
+    private int nodeWidth;
+    // Cached node height
+    private int nodeHeight;
 
-        // Initialize the node port layout
-        private NodePortLayout(Map<String, String> inputs, Map<String, String> outputs,
-                               Set<String> visibleInputs, Set<String> visibleOutputs,
-                               Set<String> connectedInputs, Map<String, Integer> outputOffsets,
-                               Map<String, List<FormattedCharSequence>> outputLabels,
-                               boolean collapsible, boolean collapsed) {
-            this.inputs = inputs;
-            this.outputs = outputs;
-            this.visibleInputs = visibleInputs;
-            this.visibleOutputs = visibleOutputs;
-            this.connectedInputs = connectedInputs;
-            this.outputOffsets = outputOffsets;
-            this.outputLabels = outputLabels;
-            this.collapsible = collapsible;
-            this.collapsed = collapsed;
-        }
+    // Initialize the node port layout
+    NodePortLayout(Map<String, String> inputs, Map<String, String> outputs,
+                   Set<String> visibleInputs, Set<String> visibleOutputs,
+                   Set<String> connectedInputs, Set<String> connectedOutputs,
+                   Map<String, Integer> outputOffsets,
+                   Map<String, List<FormattedCharSequence>> outputLabels,
+                   boolean collapsible, boolean collapsed) {
+        this.inputs = inputs;
+        this.outputs = outputs;
+        this.visibleInputs = visibleInputs;
+        this.visibleOutputs = visibleOutputs;
+        this.connectedInputs = connectedInputs;
+        this.connectedOutputs = connectedOutputs;
+        this.outputOffsets = outputOffsets;
+        this.outputLabels = outputLabels;
+        this.collapsible = collapsible;
+        this.collapsed = collapsed;
+    }
 
-        // Get the inputs
-        private Map<String, String> inputs() {
-            return inputs;
-        }
+    // Get the inputs
+    Map<String, String> inputs() {
+        return inputs;
+    }
 
-        // Get the outputs
-        private Map<String, String> outputs() {
-            return outputs;
-        }
+    // Get the outputs
+    Map<String, String> outputs() {
+        return outputs;
+    }
 
-        // Get the visible inputs
-        private Set<String> visibleInputs() {
-            return visibleInputs;
-        }
+    // Get the visible inputs
+    Set<String> visibleInputs() {
+        return visibleInputs;
+    }
 
-        // Get the visible outputs
-        private Set<String> visibleOutputs() {
-            return visibleOutputs;
-        }
+    // Get the visible outputs
+    Set<String> visibleOutputs() {
+        return visibleOutputs;
+    }
 
-        // Get the connected inputs
-        private Set<String> connectedInputs() {
-            return connectedInputs;
-        }
+    // Get the connected inputs
+    Set<String> connectedInputs() {
+        return connectedInputs;
+    }
 
-        // Get the output offsets
-        private Map<String, Integer> outputOffsets() {
-            return outputOffsets;
-        }
+    // Get the connected outputs
+    Set<String> connectedOutputs() {
+        return connectedOutputs;
+    }
 
-        // Get the output labels
-        private Map<String, List<FormattedCharSequence>> outputLabels() {
-            return outputLabels;
-        }
+    GraphNodeLayout.PortRows executionInputs(){ return executionInputs; }
+    void setExecutionInputs(GraphNodeLayout.PortRows rows){ executionInputs = rows; }
 
-        // Check if the node can be collapsed
-        private boolean collapsible() {
-            return collapsible;
-        }
+    // Get the output offsets
+    Map<String, Integer> outputOffsets() {
+        return outputOffsets;
+    }
 
-        // Check if the node is collapsed
-        private boolean collapsed() {
-            return collapsed;
-        }
+    // Get the output labels
+    Map<String, List<FormattedCharSequence>> outputLabels() {
+        return outputLabels;
+    }
 
-        // Get the output data height
-        private int outputDataHeight() {
-            return outputDataHeight;
-        }
+    List<GraphPortSection> portSections(boolean output){
+        return output ? outputSections : inputSections;
+    }
 
-        // Set the output data height
-        private void setOutputDataHeight(int outputDataHeight) {
-            this.outputDataHeight = Math.max(0, outputDataHeight);
+    void setPortSections(boolean output, List<GraphPortSection> sections){
+        GraphPortIndex<GraphPortSection> index = GraphPortIndex.of(
+                (output ? outputs : inputs).keySet(), sections, GraphPortSection::ports);
+        if(output){
+            outputSections = List.copyOf(sections);
+            outputSectionIndex = index;
+        }else{
+            inputSections = List.copyOf(sections);
+            inputSectionIndex = index;
         }
     }
+
+    GraphPortIndex<GraphPortSection> sectionIndex(boolean output){
+        return output ? outputSectionIndex : inputSectionIndex;
+    }
+
+    GraphNodeLayout.PortRows inputRows(){ return inputRows; }
+    void setInputRows(GraphNodeLayout.PortRows rows){ inputRows = rows; }
+    Map<String, Integer> outputSectionOffsets(){ return outputSectionOffsets; }
+
+    // Check if the node can be collapsed
+    boolean collapsible() {
+        return collapsible;
+    }
+
+    // Check if the node is collapsed
+    boolean collapsed() {
+        return collapsed;
+    }
+
+    // Get the output data height
+    int outputDataHeight() {
+        return outputDataHeight;
+    }
+
+    // Set the output data height
+    void setOutputDataHeight(int outputDataHeight) {
+        this.outputDataHeight = Math.max(0, outputDataHeight);
+    }
+
+    // Get the cached body-control count
+    int bodyControlCount() {
+        return bodyControlCount;
+    }
+
+    // Set the cached body-control count
+    void setBodyControlCount(int bodyControlCount) {
+        this.bodyControlCount = Math.max(0, bodyControlCount);
+    }
+
+    // Get the cached node width
+    int nodeWidth() {
+        return nodeWidth;
+    }
+
+    // Set the cached node width
+    void setNodeWidth(int nodeWidth) {
+        this.nodeWidth = Math.max(0, nodeWidth);
+    }
+
+    // Get the cached node height
+    int nodeHeight() {
+        return nodeHeight;
+    }
+
+    // Set the cached node height
+    void setNodeHeight(int nodeHeight) {
+        this.nodeHeight = Math.max(0, nodeHeight);
+    }
+}
 
     // Store the sticky edit line
-    private record StickyEditLine(String text, int start, int end) {
-    }
+    private static record StickyEditLine(String text, int start, int end) {
+}
 
     // Store the slider track
-    private record SliderTrack(int left, int right) {
-        // Get the width
-        private int width() {
-            return Math.max(1, right - left);
-        }
-
-        // Check if this contains x
-        private boolean containsX(double mouseX, int margin) {
-            return mouseX >= left - margin && mouseX <= right + margin;
-        }
+    private static record SliderTrack(int left, int right) {
+    // Get the width
+    int width() {
+        return Math.max(1, right - left);
     }
+
+    // Check if this contains x
+    boolean containsX(double mouseX, int margin) {
+        return mouseX >= left - margin && mouseX <= right + margin;
+    }
+}
 
     // Store the clipboard bounds
-    private record ClipboardBounds(double left, double top, double right, double bottom) {
-        // Get the center x
-        private double centerX() {
-            return (left + right) * 0.5D;
-        }
-
-        // Get the center y
-        private double centerY() {
-            return (top + bottom) * 0.5D;
-        }
+    private static record ClipboardBounds(double left, double top, double right, double bottom) {
+    // Get the center x
+    double centerX() {
+        return (left + right) * 0.5D;
     }
+
+    // Get the center y
+    double centerY() {
+        return (top + bottom) * 0.5D;
+    }
+}
 
     // Store the inspector sections
-    private record InspectorSections(int optionsHeaderTop, int optionsTop, int optionsBottom,
-                                     int optionsDividerTop, int targetsHeaderTop, int targetsTop,
-                                     int targetsBottom, int targetsDividerTop, int variablesHeaderTop,
-                                     int variablesTop, int variablesBottom) {
-    }
+    private static record InspectorSections(int optionsHeaderTop, int optionsTop, int optionsBottom,
+                         int optionsDividerTop, int targetsHeaderTop, int targetsTop,
+                         int targetsBottom, int targetsDividerTop, int variablesHeaderTop,
+                         int variablesTop, int variablesBottom) {
+}
 
     // Define the inspector divider values
     private enum InspectorDivider {
-        OPTIONS,
-        TARGETS
-    }
+    OPTIONS,
+    TARGETS,
+    SCHEDULE_PROPERTIES
+}
 
     // Define the HUD designer color control values
     private enum HudDesignerColorControl {
@@ -16070,60 +18388,6773 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     // Store the UI rect
-    private record UiRect(int x, int y, int width, int height) {
-        // Get the right
-        private int right() {
-            return x + width;
-        }
-
-        // Get the bottom
-        private int bottom() {
-            return y + height;
-        }
-
-        // Check if this contains the value
-        private boolean contains(double mouseX, double mouseY) {
-            return mouseX >= x && mouseX < right() && mouseY >= y && mouseY < bottom();
-        }
+    private static record UiRect(int x, int y, int width, int height) {
+    // Get the right
+    int right() {
+        return x + width;
     }
+
+    // Get the bottom
+    int bottom() {
+        return y + height;
+    }
+
+    // Check if this contains the value
+    boolean contains(double mouseX, double mouseY) {
+        return mouseX >= x && mouseX < right() && mouseY >= y && mouseY < bottom();
+    }
+}
 
     // Store the context menu
-    private record ContextMenu(int x, int y, List<String> items, String query,
-                               PortContext port) {
-    }
+    private static record ContextMenu(int x, int y, List<String> items, String query, PortContext port) {
+}
 
     // Store port context
-    private record PortContext(String nodeId, String port, boolean output) {
-    }
+    private static record PortContext(String nodeId, String port, boolean output) {
+}
 
     // Store the option dropdown
-    private record OptionDropdown(int x, int y, int width, String nodeId, String port, String type,
-                                  List<String> options, boolean property, int scroll,
-                                  boolean searchable) {
-    }
+    private static record OptionDropdown(int x, int y, int width, String nodeId, String port, String type,
+                      List<String> options, boolean property, int scroll, boolean searchable) {
+}
 
     // Store the dropdown scrollbar
-    private record DropdownScrollbar(
-            int trackX,
-            int trackTop,
-            int trackHeight,
-            int thumbTop,
-            int thumbHeight,
-            int thumbTravel,
-            int maximumScroll
-    ) {
-    }
+    private static record DropdownScrollbar(int trackX, int trackTop, int trackHeight, int thumbTop,
+                         int thumbHeight, int thumbTravel, int maximumScroll) {
+}
 
     // Store the embedded image
-    private record EmbeddedImage(String mimeType, String base64) {
-    }
+    private static record EmbeddedImage(String mimeType, String base64) {
+}
 
     // Handle the image reference size exception
     private static final class ImageReferenceSizeException extends RuntimeException {
-    }
+}
 
     // Store the mini browser
-    private record MiniBrowser(int x, int y, List<AdvancedGraphCatalog.Definition> definitions,
-                               String wireNode, String wirePort, boolean wireOutput) {
+    private static record MiniBrowser(int x, int y, List<AdvancedGraphCatalog.Definition> definitions,
+                   String wireNode, String wirePort, boolean wireOutput) {
+}
+
+
+    // Adopt the asynchronous schedule part of the same graph snapshot used by
+    // Main Graph. A menu can be constructed before its compressed snapshot has
+    // arrived; without this refresh, a valid legacy schedule remained blank
+    // for the entire open screen.
+    private void refreshShippingScheduleSnapshot() {
+        AdvancedControllerGraphSnapshotPayload.GraphSnapshot snapshot =
+                AdvancedControllerGraphSnapshotPayload.latestClientSnapshot(
+                        menu.getContentPos(), menu.getContentSubLevelId());
+        if (snapshot == null) return;
+        AdvancedGraphDocument incoming = AdvancedGraphDocument.fromTag(snapshot.scheduleDraft());
+        if (incoming.nodes().isEmpty()) return;
+        ShippingScheduleGraph.ensureTemplate(incoming);
+        int currentRevision = savedScheduleDraft == null ? Integer.MIN_VALUE : savedScheduleDraft.revision();
+        if (scheduleDraft != null && !scheduleDraft.nodes().isEmpty()
+                && incoming.revision() < currentRevision) {
+            return;
+        }
+        if (scheduleDraft != null && !scheduleDraft.nodes().isEmpty()
+                && incoming.revision() == currentRevision) {
+            return;
+        }
+        scheduleDraft = incoming;
+        savedScheduleDraft = incoming.copy();
+        if (selectedScheduleBlock != null && scheduleNode(selectedScheduleBlock) == null) {
+            selectedScheduleBlock = null;
+        }
+        selectedScheduleBlocks.removeIf(id -> scheduleNode(id) == null);
+        if (selectedScheduleBlock == null) {
+            selectedScheduleBlock = selectedScheduleBlocks.stream().findFirst().orElse(null);
+        }
+        clearGraphRenderCache();
+    }
+
+
+    // Open the client-local ACC theme preset editor.
+    private void openThemeEditor() {
+        toolsMenuOpen = false;
+        themeColorPicker = null;
+        themeColorPickerKey = null;
+        themePresets = AdvancedControllerThemePresets.load();
+        selectedThemePreset = themePresets.stream()
+                .filter(preset -> preset.id().equals(themePresetId))
+                .findFirst().orElse(themePresets.getFirst());
+        themePresetId = selectedThemePreset.id();
+        themeDraft = selectedThemePreset.palette();
+        themeEditorOpen = true;
+        applyThemeDraft();
+        syncThemeNameEditor();
+    }
+
+
+    // Close the theme editor without writing its live preview to disk.
+    private void closeThemeEditor() {
+        themeEditorOpen = false;
+        themeColorPicker = null;
+        themeColorPickerKey = null;
+        if (themeNameEditor != null) {
+            themeNameEditor.setVisible(false);
+            themeNameEditor.setFocused(false);
+        }
+        if (getFocused() == themeNameEditor) setFocused(null);
+    }
+
+
+    // Draw the complete theme editor and its custom preset controls.
+    private void drawThemeEditor(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        UiRect bounds = themeEditorBounds();
+        graphics.fill(0, 0, width, height, 0xA8000000);
+        renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        graphics.drawString(font, "Theme Editor", bounds.x() + 12, bounds.y() + 11,
+                interfacePrimaryColor(), false);
+        graphics.drawString(font, "Live preview. Save writes a preset JSON only when requested.",
+                bounds.x() + 12, bounds.y() + 23, interfaceMutedColor(), false);
+
+        UiRect presets = themePresetPanelBounds(bounds);
+        renderAdvancedPanel(graphics, presets.x(), presets.y(), presets.width(), presets.height());
+        graphics.drawString(font, "PRESETS", presets.x() + 8, presets.y() + 7, interfaceMutedColor(), false);
+        int rows = Math.min(13, themePresets.size());
+        for (int index = 0; index < rows; index++) {
+            AdvancedControllerThemePresets.Preset preset = themePresets.get(index);
+            UiRect row = themePresetRowBounds(bounds, index);
+            boolean selected = preset.id().equals(themePresetId);
+            renderAdvancedButton(graphics, font, row.x(), row.y(), row.width(), row.height(),
+                    Component.literal(trim(preset.name(), 18)), row.contains(mouseX, mouseY), true);
+            if (selected) {
+                AdvancedControllerV2Theme.drawOutline(graphics, row.x(), row.y(), row.width(), row.height(),
+                        AdvancedControllerV2Theme.ACCENT);
+            }
+            if (preset.locked()) {
+                graphics.drawString(font, "LOCKED", row.right() - 35, row.y() + 5, interfaceMutedColor(), false);
+            }
+        }
+        UiRect create = themeNewBounds(bounds);
+        renderAdvancedButton(graphics, font, create.x(), create.y(), create.width(), create.height(),
+                Component.literal("New Theme"), create.contains(mouseX, mouseY), true);
+
+        boolean locked = selectedThemePreset == null || selectedThemePreset.locked();
+        int rightX = presets.right() + 12;
+        graphics.drawString(font, "Theme Name", rightX, bounds.y() + 45, interfaceSecondaryColor(), false);
+        UiRect name = themeNameBounds(bounds);
+        renderAdvancedPanel(graphics, name.x(), name.y(), name.width(), name.height());
+        graphics.drawString(font, locked ? "Default is locked; choose New Theme to customize." :
+                        "Custom presets are saved under config/createthrusters/acc_theme.",
+                rightX, bounds.y() + 80, interfaceMutedColor(), false);
+        graphics.drawString(font, "COLORS", rightX, bounds.y() + 101, interfaceMutedColor(), false);
+        for (int index = 0; index < THEME_COLOR_ENTRIES.size(); index++) {
+            ThemeColorEntry entry = THEME_COLOR_ENTRIES.get(index);
+            UiRect row = themeColorRowBounds(bounds, index);
+            boolean hovered = row.contains(mouseX, mouseY) && !locked;
+            renderAdvancedButton(graphics, font, row.x(), row.y(), row.width(), row.height(),
+                    Component.literal(entry.label()), hovered, !locked);
+            int color = themeColor(themeDraft, entry.key());
+            AdvancedControllerV2Theme.drawRoundedRect(graphics, row.right() - 26, row.y() + 4, 18, 10, 3,
+                    color);
+            AdvancedControllerV2Theme.drawOutline(graphics, row.right() - 26, row.y() + 4, 18, 10,
+                    AdvancedControllerV2Theme.BORDER_STRONG);
+        }
+        UiRect save = themeSaveBounds(bounds);
+        renderAdvancedButton(graphics, font, save.x(), save.y(), save.width(), save.height(),
+                Component.literal(locked ? "Default Locked" : "Save Theme"), save.contains(mouseX, mouseY), !locked);
+        UiRect close = themeCloseBounds(bounds);
+        renderAdvancedButton(graphics, font, close.x(), close.y(), close.width(), close.height(),
+                Component.literal("Close"), close.contains(mouseX, mouseY), true);
+
+        positionThemeNameEditor(bounds);
+        if (themeNameEditor != null && themeNameEditor.visible) {
+            themeNameEditor.render(graphics, mouseX, mouseY, partialTick);
+        }
+        if (themeColorPicker != null && themeColorPicker.isOpen()) {
+            graphics.pose().pushPose();
+            graphics.pose().translate(0.0F, 0.0F, 25.0F);
+            themeColorPicker.renderStyled(graphics, font, width, height, colorPickerAppearance(), mouseX, mouseY);
+            graphics.pose().popPose();
+        }
+        drawGraphActionToast(graphics);
+    }
+
+
+    // Handle the blocking theme editor input.
+    private boolean clickThemeEditor(double mouseX, double mouseY, int button) {
+        if (themeColorPicker != null && themeColorPicker.isOpen()) {
+            return themeColorPicker.mouseClicked(mouseX, mouseY, button);
+        }
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
+        UiRect bounds = themeEditorBounds();
+        if (themeNameEditor != null && themeNameEditor.visible && themeNameEditor.mouseClicked(mouseX, mouseY, button)) {
+            themeNameEditor.setFocused(true);
+            setFocused(themeNameEditor);
+            return true;
+        }
+        for (int index = 0; index < Math.min(13, themePresets.size()); index++) {
+            if (!themePresetRowBounds(bounds, index).contains(mouseX, mouseY)) continue;
+            selectThemePreset(themePresets.get(index));
+            return true;
+        }
+        if (themeNewBounds(bounds).contains(mouseX, mouseY)) {
+            createThemePreset();
+            return true;
+        }
+        if (themeSaveBounds(bounds).contains(mouseX, mouseY)) {
+            saveThemePreset();
+            return true;
+        }
+        if (themeCloseBounds(bounds).contains(mouseX, mouseY) || !bounds.contains(mouseX, mouseY)) {
+            closeThemeEditor();
+            return true;
+        }
+        if (selectedThemePreset != null && !selectedThemePreset.locked()) {
+            for (int index = 0; index < THEME_COLOR_ENTRIES.size(); index++) {
+                if (!themeColorRowBounds(bounds, index).contains(mouseX, mouseY)) continue;
+                openThemeColorPicker(THEME_COLOR_ENTRIES.get(index).key());
+                return true;
+            }
+        }
+        return true;
+    }
+
+
+    // Select one saved preset and apply it immediately as the live preview.
+    private void selectThemePreset(AdvancedControllerThemePresets.Preset preset) {
+        if (preset == null) return;
+        selectedThemePreset = preset;
+        themePresetId = preset.id();
+        themeDraft = preset.palette();
+        applyThemeDraft();
+        syncThemeNameEditor();
+    }
+
+
+    // Create a memory-only preset that is written only through Save Theme.
+    private void createThemePreset() {
+        AdvancedControllerThemePresets.Preset preset = AdvancedControllerThemePresets.create("New Theme", themeDraft,
+                themePresets);
+        List<AdvancedControllerThemePresets.Preset> next = new ArrayList<>(themePresets);
+        next.add(preset);
+        themePresets = List.copyOf(next);
+        selectThemePreset(preset);
+        if (themeNameEditor != null) {
+            themeNameEditor.setValue("New Theme");
+            themeNameEditor.setFocused(true);
+            setFocused(themeNameEditor);
+        }
+    }
+
+
+    // Save the selected custom theme as its own local JSON document.
+    private void saveThemePreset() {
+        if (selectedThemePreset == null || selectedThemePreset.locked()) {
+            showGraphToast("Default theme is locked", GraphActionToastSeverity.WARNING);
+            return;
+        }
+        String name = themeNameEditor == null ? selectedThemePreset.name() : themeNameEditor.getValue();
+        AdvancedControllerThemePresets.Preset saved = AdvancedControllerThemePresets.save(selectedThemePreset, name, themeDraft);
+        if (saved == null) {
+            showGraphToast("Failed to save theme", GraphActionToastSeverity.ERROR);
+            return;
+        }
+        List<AdvancedControllerThemePresets.Preset> next = new ArrayList<>(themePresets);
+        next.removeIf(preset -> preset.id().equals(saved.id()));
+        next.add(saved);
+        themePresets = next.stream().sorted((first, second) -> {
+            if (first.locked()) return -1;
+            if (second.locked()) return 1;
+            return first.name().compareToIgnoreCase(second.name());
+        }).toList();
+        selectedThemePreset = saved;
+        themePresetId = saved.id();
+        themeDraft = saved.palette();
+        syncThemeNameEditor();
+        showGraphToast("Theme saved: " + saved.name(), GraphActionToastSeverity.SUCCESS);
+    }
+
+
+    // Open the library color modal for one custom palette field.
+    private void openThemeColorPicker(String key) {
+        int initial = themeColor(themeDraft, key);
+        themeColorPickerKey = key;
+        themeColorPicker = new ColorPickerModal(initial, color -> {
+            themeDraft = withThemeColor(themeDraft, key, color);
+            applyThemeDraft();
+        }, () -> {
+            themeColorPicker = null;
+            themeColorPickerKey = null;
+        }, () -> {
+            themeColorPicker = null;
+            themeColorPickerKey = null;
+        });
+    }
+
+
+    // Apply the draft palette to every ACC V2 surface immediately.
+    private void applyThemeDraft() {
+        AdvancedControllerV2Theme.applyPalette(themeDraft);
+        applyThemeTextColors(nodeSearch, blockSearch, miniBrowserSearch, functionNameEditor, optionDropdownSearch,
+                inspectorValue, scmVehicleName, schedulePropertyValue,
+                scheduleInlinePropertyValue, hudText, hudTexture, hudWidth, hudHeight, hudRotation, hudScale,
+                hudBorderWidth, linkerShareName, themeNameEditor);
+    }
+
+
+    // Update all visible ACC text controls after a palette color changes.
+    private void applyThemeTextColors(EditBox... editors) {
+        if (editors == null) return;
+        for (EditBox editor : editors) {
+            if (editor == null) continue;
+            editor.setTextColor(AdvancedControllerV2Theme.PRIMARY);
+            editor.setTextColorUneditable(AdvancedControllerV2Theme.MUTED);
+        }
+    }
+
+
+    // Keep the custom preset name editor positioned and synchronized with its selected preset.
+    private void syncThemeNameEditor() {
+        if (themeNameEditor == null) return;
+        boolean editable = themeEditorOpen && selectedThemePreset != null && !selectedThemePreset.locked();
+        themeNameEditor.setVisible(themeEditorOpen);
+        themeNameEditor.setEditable(editable);
+        themeNameEditor.setValue(selectedThemePreset == null ? "" : selectedThemePreset.name());
+        themeNameEditor.setTextColor(editable ? AdvancedControllerV2Theme.PRIMARY : AdvancedControllerV2Theme.MUTED);
+        themeNameEditor.setTextColorUneditable(AdvancedControllerV2Theme.MUTED);
+        positionThemeNameEditor(themeEditorBounds());
+    }
+
+
+    // Position the custom preset name field inside the theme editor.
+    private void positionThemeNameEditor(UiRect bounds) {
+        if (themeNameEditor == null) return;
+        UiRect name = themeNameBounds(bounds);
+        themeNameEditor.setX(name.x() + 4);
+        themeNameEditor.setY(name.y() + 1);
+        themeNameEditor.setWidth(Math.max(32, name.width() - 8));
+    }
+
+
+    // Build the reusable color picker chrome from the current ACC theme.
+    private static ColorPickerModal.Chrome themePickerChrome() {
+        return new ColorPickerModal.Chrome(0xA8000000, AdvancedControllerV2Theme.PANEL_BACKGROUND,
+                AdvancedControllerV2Theme.TITLE_BACKGROUND, AdvancedControllerV2Theme.PANEL_RAISED,
+                AdvancedControllerV2Theme.PANEL_HOVERED, AdvancedControllerV2Theme.BORDER_STRONG,
+                AdvancedControllerV2Theme.PRIMARY, AdvancedControllerV2Theme.SECONDARY,
+                AdvancedControllerV2Theme.ACCENT, AdvancedControllerV2Theme.PRIMARY_ACTION_TEXT);
+    }
+
+
+    // Get the bounds of the centered theme editor.
+    private UiRect themeEditorBounds() {
+        int modalWidth = Math.min(THEME_EDITOR_WIDTH, Math.max(360, width - 16));
+        int modalHeight = Math.min(THEME_EDITOR_HEIGHT, Math.max(300, height - 16));
+        return new UiRect(Math.max(8, (width - modalWidth) / 2), Math.max(8, (height - modalHeight) / 2),
+                modalWidth, modalHeight);
+    }
+
+
+    // Get the bounds of the preset list panel.
+    private static UiRect themePresetPanelBounds(UiRect bounds) {
+        return new UiRect(bounds.x() + 12, bounds.y() + 38, 150, bounds.height() - 88);
+    }
+
+
+    // Get one preset row.
+    private static UiRect themePresetRowBounds(UiRect bounds, int index) {
+        UiRect panel = themePresetPanelBounds(bounds);
+        return new UiRect(panel.x() + 5, panel.y() + 20 + index * 20, panel.width() - 10, 18);
+    }
+
+
+    // Get the New Theme button bounds.
+    private static UiRect themeNewBounds(UiRect bounds) {
+        UiRect panel = themePresetPanelBounds(bounds);
+        return new UiRect(panel.x() + 5, panel.bottom() - 24, panel.width() - 10, 18);
+    }
+
+
+    // Get the custom theme name field bounds.
+    private static UiRect themeNameBounds(UiRect bounds) {
+        UiRect panel = themePresetPanelBounds(bounds);
+        return new UiRect(panel.right() + 12, bounds.y() + 39, bounds.right() - panel.right() - 24, 20);
+    }
+
+
+    // Get one color-property row.
+    private static UiRect themeColorRowBounds(UiRect bounds, int index) {
+        UiRect name = themeNameBounds(bounds);
+        int column = index % 2;
+        int row = index / 2;
+        int gap = 8;
+        int width = (name.width() - gap) / 2;
+        return new UiRect(name.x() + column * (width + gap), bounds.y() + 112 + row * THEME_COLOR_ROW_HEIGHT,
+                width, 19);
+    }
+
+
+    // Get the Save Theme button bounds.
+    private static UiRect themeSaveBounds(UiRect bounds) {
+        return new UiRect(bounds.right() - 188, bounds.bottom() - 30, 104, 18);
+    }
+
+
+    // Get the Close button bounds.
+    private static UiRect themeCloseBounds(UiRect bounds) {
+        return new UiRect(bounds.right() - 74, bounds.bottom() - 30, 62, 18);
+    }
+
+
+    // Get one color from a palette by its persistent JSON key.
+    private static int themeColor(GraphV2ThemeData.Palette palette, String key) {
+        GraphV2ThemeData.Palette value = palette == null ? GraphV2ThemeData.DEFAULT : palette;
+        return switch (key) {
+            case "canvas_background" -> value.canvasBackground();
+            case "canvas_dot" -> value.canvasDot();
+            case "title_background" -> value.titleBackground();
+            case "panel_background" -> value.panelBackground();
+            case "panel_raised" -> value.panelRaised();
+            case "panel_hovered" -> value.panelHovered();
+            case "panel_selected" -> value.panelSelected();
+            case "border" -> value.border();
+            case "border_strong" -> value.borderStrong();
+            case "border_soft" -> value.borderSoft();
+            case "primary" -> value.primary();
+            case "secondary" -> value.secondary();
+            case "muted" -> value.muted();
+            case "accent" -> value.accent();
+            case "accent_light" -> value.accentLight();
+            case "accent_dark" -> value.accentDark();
+            case "accent_overlay" -> value.accentOverlay();
+            case "primary_action_text" -> value.primaryActionText();
+            case "danger" -> value.danger();
+            default -> value.accent();
+        };
+    }
+
+
+    // Replace one color while retaining every other palette field.
+    private static GraphV2ThemeData.Palette withThemeColor(GraphV2ThemeData.Palette palette, String key, int color) {
+        GraphV2ThemeData.Palette value = palette == null ? GraphV2ThemeData.DEFAULT : palette;
+        return new GraphV2ThemeData.Palette(
+                "canvas_background".equals(key) ? color : value.canvasBackground(),
+                "canvas_dot".equals(key) ? color : value.canvasDot(),
+                "title_background".equals(key) ? color : value.titleBackground(),
+                "panel_background".equals(key) ? color : value.panelBackground(),
+                "panel_raised".equals(key) ? color : value.panelRaised(),
+                "panel_hovered".equals(key) ? color : value.panelHovered(),
+                "panel_selected".equals(key) ? color : value.panelSelected(),
+                "border".equals(key) ? color : value.border(),
+                "border_strong".equals(key) ? color : value.borderStrong(),
+                "border_soft".equals(key) ? color : value.borderSoft(),
+                "primary".equals(key) ? color : value.primary(),
+                "secondary".equals(key) ? color : value.secondary(),
+                "muted".equals(key) ? color : value.muted(),
+                "accent".equals(key) ? color : value.accent(),
+                "accent_light".equals(key) ? color : value.accentLight(),
+                "accent_dark".equals(key) ? color : value.accentDark(),
+                "accent_overlay".equals(key) ? color : value.accentOverlay(),
+                "primary_action_text".equals(key) ? color : value.primaryActionText(),
+                "danger".equals(key) ? color : value.danger());
+    }
+
+
+    // Open the persistent SCM workspace and request its current
+    // server-authoritative profile and live body metadata. Opening this view
+    // never scans, freezes, or pulses an assembled ship.
+    private void openScmConfiguration() {
+        selectScmGraphTab();
+    }
+
+
+    private void beginScmConfigurationWorkspace() {
+        scmConfigurationOpen = false;
+        scmConfigurationHasThrusters = null;
+        scmConfigurationSelection.clear();
+        scmConfigurationListScroll = 0;
+        scmConfigurationSidebarScroll = 0;
+        scmConfigurationTargetDropdownScroll = 0;
+        scmConfigurationFilters.clear();
+        scmConfigurationFilters.add(ScmLiveSubLevelPreviewRenderer.Filter.ALL);
+        scmLivePreviewRenderer.setVisibleFilters(scmConfigurationFilters);
+        scmConfigurationWireframeExcludedFilters.clear();
+        scmConfigurationWireframeFiltersDropdownOpen = false;
+        scmLivePreviewRenderer.setWireframeExcludedFilters(scmConfigurationWireframeExcludedFilters);
+        scmConfigurationCollapsedGroups.clear();
+        scmConfigurationGroupStateInitialized = false;
+        scmConfigurationControlBindingMode = ScmControlBindingMode.BLOCK;
+        scmConfigurationInputFace = null;
+        scmConfigurationControlModeDropdownOpen = false;
+        scmConfigurationFaceDropdownOpen = false;
+        scmConfigurationSnapshotTicks = 0;
+        sendScmConfiguration("scm_configuration_open", new CompoundTag());
+    }
+
+
+    // Draw the SCM calibration workspace around the actual loaded Sable bodies.
+    private void drawScmConfiguration(GuiGraphics graphics, int mouseX, int mouseY) {
+        UiRect bounds = scmConfigurationBounds();
+        boolean workspace = scmConfigurationWorkspace();
+        if (!workspace) {
+            graphics.fill(0, 0, width, height, 0xA8000000);
+        }
+        if (workspace) {
+            graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(), v2Ui
+                    ? AdvancedControllerV2Theme.CANVAS_BACKGROUND : 0xFF10141C);
+        } else if (v2Ui) {
+            AdvancedControllerV2Theme.drawRoundedRect(graphics, bounds.x(), bounds.y(),
+                    bounds.width(), bounds.height(), 8, AdvancedControllerV2Theme.BORDER_STRONG);
+            AdvancedControllerV2Theme.drawRoundedRect(graphics, bounds.x() + 1, bounds.y() + 1,
+                    bounds.width() - 2, bounds.height() - 2, 7,
+                    AdvancedControllerV2Theme.PANEL_BACKGROUND);
+            AdvancedControllerV2Theme.drawRoundedRect(graphics, bounds.x() + 1, bounds.y() + 1,
+                    bounds.width() - 2, 34, 7, AdvancedControllerV2Theme.PANEL_RAISED);
+        } else {
+            renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        }
+        if (!workspace) {
+        graphics.drawString(font, "SCM Calibration", bounds.x() + 16, bounds.y() + 12,
+                v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFFE0EDF4, false);
+        graphics.drawString(font, "Configure groups, then let the SCM graph drive them.",
+                bounds.x() + 16, bounds.y() + 24,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
+        graphics.drawString(font, "×", bounds.x() + bounds.width() - 20, bounds.y() + 11,
+                v2Ui ? AdvancedControllerV2Theme.DANGER : 0xFFE0A0A0, false);
+
+        }
+        UiRect viewBounds = scmConfigurationViewBounds(bounds);
+        int viewX = viewBounds.x();
+        int viewY = viewBounds.y();
+        int viewWidth = viewBounds.width();
+        int viewHeight = viewBounds.height();
+        UiRect previewBounds = scmConfigurationPreviewBounds(bounds);
+        graphics.fill(viewX, viewY, viewX + viewWidth,
+                viewY + viewHeight, 0xFF081017);
+        drawScmPreviewFilters(graphics, viewX, viewY, viewWidth, mouseX, mouseY);
+        drawScmOrientationControls(graphics, viewBounds, mouseX, mouseY);
+        scmLivePreviewRenderer.setBodies(scmConfigurationRootSubLevelId,
+                scmConfigurationViewSubLevelIds);
+        scmLivePreviewRenderer.setVisibleFilters(scmConfigurationFilters);
+        scmLivePreviewRenderer.setWireframe(scmConfigurationWireframe);
+        scmLivePreviewRenderer.setWireframeExcludedFilters(scmConfigurationWireframeExcludedFilters);
+        if (scmConfigurationRootSubLevelId == null
+                || !scmLivePreviewRenderer.render(graphics, previewBounds.x(), previewBounds.y(),
+                previewBounds.width(), previewBounds.height(),
+                minecraft == null ? 0.0F : minecraft.getTimer().getGameTimeDeltaPartialTick(false),
+                scmConfigurationHighlights(), scmConfigurationMarkers())) {
+            graphics.drawCenteredString(font, scmConfigurationScanning
+                            ? "Loading the live craft view…"
+                            : "The parent sub-level is not loaded on this client.",
+                    previewBounds.x() + previewBounds.width() / 2,
+                    previewBounds.y() + previewBounds.height() / 2 - 6,
+                    v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8);
+            graphics.drawCenteredString(font, "Open this while the assembled craft is in range.",
+                    previewBounds.x() + previewBounds.width() / 2,
+                    previewBounds.y() + previewBounds.height() / 2 + 8,
+                    v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF637A8C);
+        }
+        graphics.renderOutline(viewX, viewY, viewWidth,
+                viewHeight,
+                v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF344A5C);
+        graphics.drawString(font, "Live 3D sub-level • left-drag orbit • right-drag pan • scroll zoom • click block faces to select",
+                viewX + 8, viewY + viewHeight - 14,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
+
+        if (scmConfigurationFiltersDropdownOpen) {
+            drawScmPreviewFilterDropdown(graphics, viewX, viewY, mouseX, mouseY);
+        }
+        if (scmConfigurationWireframeFiltersDropdownOpen) {
+            drawScmWireframeFilterDropdown(graphics, viewX, viewY, mouseX, mouseY,
+                    scmConfigurationWireframeExcludedFilters);
+        }
+
+        // The right SCM sidebar can collapse independently from the normal
+        // graph inspector, giving the 3D craft view the whole workspace.
+        if (!workspace || !scmConfigurationSidebarCollapsed) {
+        int panelX = viewBounds.right() + 14;
+        int panelWidth = bounds.right() - panelX - (workspace ? 8 : 14);
+        ScmConfigurationSidebarLayout sidebarLayout = scmConfigurationSidebarLayout(bounds, viewBounds);
+        int sidebarY = sidebarLayout.contentTop();
+        int autoDetectY = sidebarY + 176;
+        int controlsY = sidebarY + 236;
+        AdvancedContraptionControllerBlockEntity controller = activeScmController();
+        UiRect vehicleName = scmVehicleNameBounds(panelX, sidebarY, panelWidth);
+        if (controller != null && !scmVehicleName.isFocused()) {
+            scmVehicleName.setValue(controller.getShipName());
+        }
+        scmVehicleName.setPosition(vehicleName.x(), vehicleName.y());
+        scmVehicleName.setWidth(vehicleName.width());
+        scmVehicleName.setVisible(true);
+        graphics.enableScissor(panelX, sidebarLayout.viewportTop(), bounds.right(), sidebarLayout.viewportBottom());
+        drawScmConfigurationHeader(graphics, panelX, sidebarY, panelWidth, mouseX, mouseY);
+        graphics.drawString(font, "Vehicle Name", panelX, sidebarY + 58,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
+        drawScmButton(graphics, panelX, sidebarY + 92, panelWidth,
+                "Apply Vehicle Name", mouseX, mouseY);
+        boolean displayProgress = controller != null && controller.scmDisplayProgress();
+        graphics.drawString(font, "Display Progress", panelX, sidebarY + 117,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
+        drawScmButton(graphics, panelX, sidebarY + 130, panelWidth,
+                displayProgress ? "On" : "Off", mouseX, mouseY);
+        drawScmButton(graphics, panelX, sidebarY + 154, panelWidth,
+                "Re-initialize Groups", mouseX, mouseY);
+        drawScmAutoDetectControls(graphics, panelX, autoDetectY, panelWidth, mouseX, mouseY);
+        graphics.drawString(font, "Assign selected blocks", panelX, controlsY + 2,
+                v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFF91D9FF, false);
+        graphics.drawString(font, "SCM node / function", panelX, controlsY + 19,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
+        drawScmButton(graphics, panelX, controlsY + 33, panelWidth,
+                scmConfigurationTargetLabel(activeScmConfigurationAction()) + " ▾", mouseX, mouseY);
+        int controlModeY = controlsY + 71;
+        boolean faceMode = scmConfigurationControlBindingMode == ScmControlBindingMode.FACE;
+        graphics.drawString(font, "Control mode", panelX, controlsY + 57,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
+        drawScmButton(graphics, panelX, controlModeY, panelWidth,
+                scmConfigurationControlBindingMode.label() + " ▾", mouseX, mouseY);
+        int assignY = controlsY + 95;
+        int blacklistY = controlsY + 119;
+        int groupsLabelY = controlsY + 151;
+        int groupsY = controlsY + 164;
+        int saveY = sidebarY + sidebarLayout.contentHeight() - 26;
+        int groupsHeight = Math.max(72, saveY - groupsY - 30);
+        if (faceMode) {
+            graphics.drawString(font, "Control face", panelX, controlsY + 95,
+                    v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
+            drawScmButton(graphics, panelX, controlsY + 109, panelWidth,
+                    scmConfigurationFaceLabel() + " ▾", mouseX, mouseY);
+            assignY = controlsY + 133;
+            blacklistY = controlsY + 157;
+            groupsLabelY = controlsY + 189;
+            groupsY = controlsY + 202;
+            groupsHeight = Math.max(72, saveY - groupsY - 30);
+        }
+        drawScmButton(graphics, panelX, assignY, panelWidth,
+                "Assign " + scmConfigurationSelection.size() + " selected", mouseX, mouseY);
+        drawScmButton(graphics, panelX, blacklistY, panelWidth,
+                selectionIsBlacklisted() ? "Restore selected" : "Blacklist selected", mouseX, mouseY);
+        graphics.drawString(font, "Calibrated actuator groups", panelX, groupsLabelY,
+                v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFF91D9FF, false);
+        drawScmGroupList(graphics, panelX, groupsY, panelWidth, groupsHeight, mouseX, mouseY);
+        graphics.drawString(font, "Saved with ACC Save (Ctrl+S)", panelX, saveY + 5, 0xFF91A9B8, false);
+        if (!workspace) {
+            drawScmButton(graphics, panelX, saveY + 24, panelWidth, "Close", mouseX, mouseY);
+        }
+        graphics.disableScissor();
+        drawSidebarScrollTrack(graphics, bounds.right() - 5, sidebarLayout.viewportTop() + 2, 3,
+                Math.max(1, sidebarLayout.viewportBottom() - sidebarLayout.viewportTop() - 4),
+                sidebarLayout.contentHeight(), sidebarLayout.viewportHeight(),
+                scmConfigurationSidebarScroll);
+
+        // Dropdowns are a raised modal layer, not ordinary panel content. This
+        // keeps their rows above labels and buttons they temporarily cover.
+        graphics.pose().pushPose();
+        graphics.pose().translate(0.0F, 0.0F, 20.0F);
+        if (scmConfigurationTargetDropdownOpen) {
+            drawScmTargetDropdown(graphics, panelX, controlsY + 51, panelWidth, mouseX, mouseY);
+        }
+        if (scmConfigurationControlModeDropdownOpen) {
+            drawScmControlModeDropdown(graphics, panelX, controlsY + 89, panelWidth, mouseX, mouseY);
+        }
+        if (faceMode && scmConfigurationFaceDropdownOpen) {
+            drawScmFaceDropdown(graphics, panelX, controlsY + 127, panelWidth, mouseX, mouseY);
+        }
+        graphics.pose().popPose();
+        } else if (scmVehicleName != null) {
+            scmVehicleName.setVisible(false);
+        }
+        if (workspace) {
+            drawScmConfigurationSidebarHandle(graphics, bounds, viewBounds);
+        }
+        String previewStatus = scmLivePreviewRenderer.visibleBlockCount() + " / "
+                + scmLivePreviewRenderer.blockCount() + " craft blocks"
+                + (scmLivePreviewRenderer.truncated() ? " (preview limit reached)" : "")
+                + "  Gold = selected  Red = blacklisted";
+        graphics.drawString(font, previewStatus, viewX,
+                bounds.bottom() - 22, v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
+        graphics.drawString(font, trim(scmConfigurationStatus, 110), viewX,
+                bounds.bottom() - 10, v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFFB9CCD9, false);
+    }
+
+
+    private void drawScmButton(GuiGraphics graphics, int x, int y, int buttonWidth,
+                               String label, int mouseX, int mouseY) {
+        renderAdvancedButton(graphics, font, x, y, buttonWidth, 18,
+                Component.literal(label), inside(mouseX, mouseY, x, y, buttonWidth, 18), true);
+    }
+
+
+    // Draw automatic category assignment controls for the live craft preview
+    private void drawScmAutoDetectControls(
+            GuiGraphics graphics, int x, int y, int width, int mouseX, int mouseY
+    ) {
+        graphics.drawString(font, "Auto Detect and assign", x, y + 2,
+                v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFF91D9FF, false);
+        for (int index = 0; index < SCM_AUTO_DETECT_CATEGORIES.size(); index++) {
+            UiRect bounds = scmAutoDetectButtonBounds(x, y, width, index);
+            drawScmButton(graphics, bounds.x(), bounds.y(), bounds.width(),
+                    scmAutoDetectCategoryLabel(SCM_AUTO_DETECT_CATEGORIES.get(index)), mouseX, mouseY);
+        }
+    }
+
+
+    // Get one three-column automatic assignment button's bounds
+    private static UiRect scmAutoDetectButtonBounds(int x, int y, int width, int index) {
+        int gap = 3;
+        int buttonWidth = Math.max(1, (width - gap * 2) / 3);
+        int column = Math.floorMod(index, 3);
+        int row = index / 3;
+        int buttonX = x + column * (buttonWidth + gap);
+        int adjustedWidth = column == 2 ? x + width - buttonX : buttonWidth;
+        return new UiRect(buttonX, y + 16 + row * 21, adjustedWidth, 18);
+    }
+
+
+    // Get a compact label for one automatic category
+    private static String scmAutoDetectCategoryLabel(String category) {
+        return switch (category) {
+            case "thrusters" -> "Thrusters";
+            case "bearings" -> "Bearings";
+            case "actuators" -> "Actuators";
+            case "propulsion" -> "Propulsion";
+            default -> "Controls";
+        };
+    }
+
+
+    // Draw the SCM configuration header with the shared graph-inspector card treatment.
+    private void drawScmConfigurationHeader(GuiGraphics graphics, int x, int y, int panelWidth,
+                                            int mouseX, int mouseY) {
+        renderAdvancedPanel(graphics, x, y, panelWidth, 50);
+        renderControllerOption(graphics, x + 5, y + 6, 38, 38,
+                AdvancedGraphCatalog.categoryColor("ship_control"), true);
+        graphics.renderItem(new ItemStack(BuiltInRegistries.ITEM.get(ResourceLocation.parse("minecraft:compass"))),
+                x + 15, y + 17);
+        graphics.drawString(font, "SCM Configuration", x + 51, y + 9, interfacePrimaryColor(), false);
+        graphics.drawString(font, "Vehicle controls and bindings", x + 51, y + 24,
+                interfaceMutedColor(), false);
+        renderControllerOption(graphics, x + panelWidth - 25, y + 7, 20, 20, 0xFF485B68,
+                inside(mouseX, mouseY, x + panelWidth - 25, y + 7, 20, 20), false);
+        graphics.drawCenteredString(font, "?", x + panelWidth - 15, y + 13, interfacePrimaryColor());
+    }
+
+
+    private UiRect scmVehicleNameBounds(int panelX, int sidebarY, int panelWidth) {
+        return new UiRect(panelX, sidebarY + 70, panelWidth, 18);
+    }
+
+
+    // Draw the direct SCM block picker used by Get/Set Block Data.  This uses
+    // the same live sub-level renderer and ray picker as SCM calibration, but
+    // writes the selected block directly into the graph node's persisted target.
+    private void drawScmBlockPicker(GuiGraphics graphics, int mouseX, int mouseY) {
+        UiRect bounds = scmBlockPickerBounds();
+        UiRect preview = scmBlockPickerPreviewBounds(bounds);
+        graphics.fill(0, 0, width, height, 0xB8000000);
+        if (v2Ui) {
+            AdvancedControllerV2Theme.drawRoundedRect(graphics, bounds.x(), bounds.y(),
+                    bounds.width(), bounds.height(), 8, AdvancedControllerV2Theme.BORDER_STRONG);
+            AdvancedControllerV2Theme.drawRoundedRect(graphics, bounds.x() + 1, bounds.y() + 1,
+                    bounds.width() - 2, bounds.height() - 2, 7, AdvancedControllerV2Theme.PANEL_BACKGROUND);
+        } else {
+            renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        }
+        graphics.drawString(font, "Select Assembled Block", bounds.x() + 14, bounds.y() + 11,
+                v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFFE0EDF4, false);
+        graphics.drawString(font, "Select a block, then confirm the binding. Wireframe blocks click through.",
+                bounds.x() + 14, bounds.y() + 25,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
+        graphics.drawString(font, "x", bounds.right() - 17, bounds.y() + 11,
+                v2Ui ? AdvancedControllerV2Theme.DANGER : 0xFFE0A0A0, false);
+
+        UiRect toolbar = scmBlockPickerToolbarBounds(bounds);
+        drawScmBlockPickerFilters(graphics, toolbar.x(), toolbar.y(), toolbar.width(), mouseX, mouseY);
+        graphics.fill(preview.x(), preview.y(), preview.right(), preview.bottom(), 0xFF081017);
+        UUID rootSubLevelId = blockPickerRootSubLevelId();
+        List<UUID> visibleSubLevels = rootSubLevelId != null
+                && scmConfigurationViewSubLevelIds.contains(rootSubLevelId)
+                ? scmConfigurationViewSubLevelIds
+                : rootSubLevelId == null ? List.of() : List.of(rootSubLevelId);
+        scmLivePreviewRenderer.setBodies(rootSubLevelId, visibleSubLevels);
+        scmLivePreviewRenderer.setVisibleFilters(scmBlockPickerFilters);
+        scmLivePreviewRenderer.setWireframe(scmBlockPickerWireframe);
+        scmLivePreviewRenderer.setWireframeExcludedFilters(scmBlockPickerWireframeExcludedFilters);
+        List<ScmLiveSubLevelPreviewRenderer.Highlight> highlights = scmBlockPickerSelected == null ? List.of()
+                : List.of(new ScmLiveSubLevelPreviewRenderer.Highlight(scmBlockPickerSelected.subLevelId(),
+                        scmBlockPickerSelected.position(), scmBlockPickerSelected.face(), 0xFFFFD44D));
+        if (rootSubLevelId == null || !scmLivePreviewRenderer.render(graphics,
+                preview.x(), preview.y(), preview.width(), preview.height(),
+                minecraft == null ? 0.0F : minecraft.getTimer().getGameTimeDeltaPartialTick(false), highlights)) {
+            graphics.drawCenteredString(font, scmConfigurationScanning
+                            ? "Loading the live craft view..."
+                            : "The assembled sub-level is not loaded on this client.",
+                    preview.x() + preview.width() / 2, preview.y() + preview.height() / 2 - 5,
+                    v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8);
+        }
+        graphics.renderOutline(preview.x(), preview.y(), preview.width(), preview.height(),
+                v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF344A5C);
+        String status = scmLivePreviewRenderer.visibleBlockCount() + " / "
+                + scmLivePreviewRenderer.blockCount() + " live blocks";
+        graphics.drawString(font, status, preview.x() + 7, preview.bottom() - 14,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
+        drawScmBlockPickerDropdowns(graphics, toolbar, mouseX, mouseY);
+        String selectedLabel = scmBlockPickerSelected == null ? "No block selected"
+                : "Selected: " + scmLivePreviewRenderer.blockName(scmBlockPickerSelected.subLevelId(),
+                scmBlockPickerSelected.position());
+        graphics.drawString(font, trim(selectedLabel, 52), bounds.x() + 14, bounds.bottom() - 19,
+                scmBlockPickerSelected == null
+                        ? (v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF91A9B8)
+                        : (v2Ui ? AdvancedControllerV2Theme.ACCENT_LIGHT : 0xFFFFD44D), false);
+        UiRect confirm = scmBlockPickerConfirmBounds(bounds);
+        renderAdvancedButton(graphics, font, confirm.x(), confirm.y(), confirm.width(), confirm.height(),
+                Component.literal("Use selected block"), confirm.contains(mouseX, mouseY),
+                scmBlockPickerSelected != null);
+        UiRect cancel = scmBlockPickerCancelBounds(bounds);
+        renderAdvancedButton(graphics, font, cancel.x(), cancel.y(), cancel.width(), cancel.height(),
+                Component.literal("Cancel"), cancel.contains(mouseX, mouseY), true);
+    }
+
+
+    private UiRect scmBlockPickerBounds() {
+        int modalWidth = Math.min(760, Math.max(320, width - 32));
+        int modalHeight = Math.min(540, Math.max(280, height - 48));
+        return new UiRect((width - modalWidth) / 2, (height - modalHeight) / 2,
+                modalWidth, modalHeight);
+    }
+
+
+    private static UiRect scmBlockPickerPreviewBounds(UiRect bounds) {
+        return new UiRect(bounds.x() + 12, bounds.y() + 66, bounds.width() - 24,
+                Math.max(150, bounds.height() - 104));
+    }
+
+
+    private static UiRect scmBlockPickerToolbarBounds(UiRect bounds) {
+        return new UiRect(bounds.x() + 12, bounds.y() + 42, bounds.width() - 24,
+                SCM_CONFIGURATION_FILTER_HEIGHT);
+    }
+
+
+    private static UiRect scmBlockPickerConfirmBounds(UiRect bounds) {
+        return new UiRect(bounds.right() - 242, bounds.bottom() - 26, 148, 18);
+    }
+
+
+    private static UiRect scmBlockPickerCancelBounds(UiRect bounds) {
+        return new UiRect(bounds.right() - 84, bounds.bottom() - 26, 72, 18);
+    }
+
+
+    private void openScmBlockPicker(AdvancedGraphDocument.Node node) {
+        if (!canOpenScmBlockPicker(node)) return;
+        openGraphTargetPicker(node, "target");
+        graphTargetPickerBlockTab = true;
+    }
+
+
+    private void closeScmBlockPicker() {
+        scmBlockPickerOpen = false;
+        scmBlockPickerNodeId = "";
+        scmBlockPickerSelected = null;
+        scmBlockPickerFiltersDropdownOpen = false;
+        scmBlockPickerWireframeFiltersDropdownOpen = false;
+        // Restore the SCM workspace preferences if the user returns to it.
+        scmLivePreviewRenderer.setVisibleFilters(scmConfigurationFilters);
+        scmLivePreviewRenderer.setWireframe(scmConfigurationWireframe);
+        scmLivePreviewRenderer.setWireframeExcludedFilters(scmConfigurationWireframeExcludedFilters);
+        scmLivePreviewRenderer.invalidate();
+    }
+
+
+    private void selectScmBlockPickerTarget(ScmLiveSubLevelPreviewRenderer.PickTarget picked) {
+        AdvancedGraphDocument.Node node = findNode(scmBlockPickerNodeId);
+        if (node == null || !supportsScmBlockPicker(node) || picked == null || picked.subLevelId() == null) return;
+        String label = scmLivePreviewRenderer.blockName(picked.subLevelId(), picked.position());
+        String targetId = "scm_picker:" + picked.subLevelId() + ":" + picked.position().asLong();
+        ControllerDiscoveryNode target = new ControllerDiscoveryNode(targetId, ControllerDiscoveryKind.MACHINE,
+                "scm_picker", scmLivePreviewRenderer.blockId(picked.subLevelId(), picked.position()), label,
+                picked.subLevelId(), picked.position());
+        checkpoint();
+        node.data().putString("Target", target.nodeId());
+        node.data().putString("TargetLabel", label.isBlank() ? target.nodeId() : label);
+        node.data().put("TargetData", target.toTag());
+        if(picked.face() != null) putInputDefault(node, "face", "direction", picked.face().getSerializedName());
+        node.data().remove(AeroworksControllerCompat.GRAPH_SECTION_ID_KEY);
+        node.data().remove(AeroworksControllerCompat.GRAPH_SECTION_LABEL_KEY);
+        configureDataPorts(node, target);
+        syncInspector();
+        showGraphToast("Bound " + (label.isBlank() ? "assembled block" : label), GraphActionToastSeverity.SUCCESS);
+        closeScmBlockPicker();
+    }
+
+
+    private boolean clickScmBlockPicker(double mouseX, double mouseY, int button) {
+        UiRect bounds = scmBlockPickerBounds();
+        UiRect preview = scmBlockPickerPreviewBounds(bounds);
+        if (scmBlockPickerCancelBounds(bounds).contains(mouseX, mouseY)
+                || (mouseX >= bounds.right() - 28 && mouseY >= bounds.y() && mouseY < bounds.y() + 36)) {
+            closeScmBlockPicker();
+            return true;
+        }
+        if (scmBlockPickerConfirmBounds(bounds).contains(mouseX, mouseY)
+                && scmBlockPickerSelected != null) {
+            selectScmBlockPickerTarget(scmBlockPickerSelected);
+            return true;
+        }
+        if (!bounds.contains(mouseX, mouseY)) return true;
+        if (clickScmBlockPickerToolbar(mouseX, mouseY, scmBlockPickerToolbarBounds(bounds))) return true;
+        if (preview.contains(mouseX, mouseY) && blockPickerRootSubLevelId() != null) {
+            scmLivePreviewRenderer.mousePressed(mouseX, mouseY, button);
+        }
+        return true;
+    }
+
+
+    private boolean clickScmBlockPickerToolbar(double mouseX, double mouseY, UiRect toolbar) {
+        if (scmConfigurationFiltersButtonBounds(toolbar.x(), toolbar.y()).contains(mouseX, mouseY)) {
+            scmBlockPickerFiltersDropdownOpen = !scmBlockPickerFiltersDropdownOpen;
+            scmBlockPickerWireframeFiltersDropdownOpen = false;
+            return true;
+        }
+        if (scmConfigurationWireframeButtonBounds(toolbar.x(), toolbar.y()).contains(mouseX, mouseY)) {
+            scmBlockPickerWireframe = !scmBlockPickerWireframe;
+            if (!scmBlockPickerWireframe) scmBlockPickerWireframeFiltersDropdownOpen = false;
+            scmBlockPickerFiltersDropdownOpen = false;
+            scmLivePreviewRenderer.setWireframe(scmBlockPickerWireframe);
+            return true;
+        }
+        if (scmBlockPickerWireframe
+                && scmConfigurationWireframeFiltersButtonBounds(toolbar.x(), toolbar.y()).contains(mouseX, mouseY)) {
+            scmBlockPickerWireframeFiltersDropdownOpen = !scmBlockPickerWireframeFiltersDropdownOpen;
+            scmBlockPickerFiltersDropdownOpen = false;
+            return true;
+        }
+        if (scmBlockPickerWireframeFiltersDropdownOpen) {
+            UiRect dropdown = scmWireframeFilterDropdownBounds(toolbar.x(), toolbar.y());
+            if (!dropdown.contains(mouseX, mouseY)) {
+                scmBlockPickerWireframeFiltersDropdownOpen = false;
+                return true;
+            }
+            if (toggleWireframeExcludedFilter(mouseX, mouseY, dropdown,
+                    scmBlockPickerWireframeExcludedFilters)) {
+                scmLivePreviewRenderer.setWireframeExcludedFilters(scmBlockPickerWireframeExcludedFilters);
+            }
+            return true;
+        }
+        if (scmBlockPickerFiltersDropdownOpen) {
+            UiRect dropdown = scmConfigurationFilterDropdownBounds(toolbar.x(), toolbar.y());
+            if (!dropdown.contains(mouseX, mouseY)) {
+                scmBlockPickerFiltersDropdownOpen = false;
+                return true;
+            }
+            int selected = (int) ((mouseY - dropdown.y() - 3) / 20);
+            ScmLiveSubLevelPreviewRenderer.Filter[] filters = ScmLiveSubLevelPreviewRenderer.Filter.values();
+            if (selected >= 0 && selected < filters.length) {
+                toggleVisibleScmFilter(scmBlockPickerFilters, filters[selected]);
+                scmLivePreviewRenderer.setVisibleFilters(scmBlockPickerFilters);
+            }
+            return true;
+        }
+        return false;
+    }
+
+
+    private static void toggleVisibleScmFilter(Set<ScmLiveSubLevelPreviewRenderer.Filter> filters,
+                                               ScmLiveSubLevelPreviewRenderer.Filter filter) {
+        if (filter == ScmLiveSubLevelPreviewRenderer.Filter.ALL) {
+            filters.clear();
+            filters.add(filter);
+            return;
+        }
+        filters.remove(ScmLiveSubLevelPreviewRenderer.Filter.ALL);
+        if (!filters.add(filter)) filters.remove(filter);
+        if (filters.isEmpty()) filters.add(ScmLiveSubLevelPreviewRenderer.Filter.ALL);
+    }
+
+
+    private boolean scmConfigurationWorkspace() {
+        return scmGraphOverview && !scmConfigurationOpen;
+    }
+
+
+    private UiRect scmConfigurationViewBounds(UiRect bounds) {
+        if (!scmConfigurationWorkspace()) {
+            return new UiRect(bounds.x() + 14, bounds.y() + 46,
+                    SCM_CONFIGURATION_VIEW_WIDTH, SCM_CONFIGURATION_VIEW_HEIGHT);
+        }
+        int panelWidth = scmConfigurationSidebarCollapsed ? SIDEBAR_HANDLE_WIDTH
+                : Math.min(350, Math.max(270, bounds.width() / 4));
+        int viewWidth = Math.max(300, bounds.width() - panelWidth - 22);
+        return new UiRect(bounds.x() + 8, bounds.y() + 6, viewWidth,
+                Math.max(250, bounds.height() - 34));
+    }
+
+
+    private UiRect scmConfigurationPreviewBounds(UiRect bounds) {
+        UiRect viewBounds = scmConfigurationViewBounds(bounds);
+        int toolbarHeight = scmConfigurationToolbarHeight(viewBounds.width());
+        return new UiRect(viewBounds.x(), viewBounds.y() + toolbarHeight + SCM_ORIENTATION_HEIGHT,
+                viewBounds.width(), viewBounds.height() - toolbarHeight - SCM_ORIENTATION_HEIGHT);
+    }
+
+
+    // Resolve the effective vehicle mode using the same availability registry as the server
+    private boolean scmAirshipVehicle(){
+        String selected = scmConfigurationProfile.vehicleType();
+        return ScmBuiltinControlModes.AIRSHIP_ID.equals(ScmControlModeRegistry.resolve(
+                "auto".equals(selected) ? scmDetectedVehicleType : selected).id());
+    }
+
+
+    // Keep the propulsion notice below the buttons when the preview is narrow
+    private int scmConfigurationToolbarHeight(int viewWidth){
+        if(!scmAirshipVehicle()) return SCM_CONFIGURATION_FILTER_HEIGHT;
+        int noticeX = scmConfigurationWireframe ? 389 : 237;
+        int noticeWidth = Math.max(font.width(Component.translatable(
+                "createthrusters.controller.scm.no_thrusters")), font.width(Component.translatable(
+                "createthrusters.controller.scm.propellers_incomplete")));
+        return viewWidth - noticeX - 7 >= noticeWidth ? SCM_CONFIGURATION_FILTER_HEIGHT
+                : SCM_CONFIGURATION_FILTER_HEIGHT + 24;
+    }
+
+
+    private UiRect scmOrientationButton(UiRect view, int index){
+        if(index >= 3){
+            int buttonWidth = (view.width() - 12) / 2;
+            return new UiRect(view.x() + 4 + (index - 3) * (buttonWidth + 4),
+                    view.y() + scmConfigurationToolbarHeight(view.width()) + 27, buttonWidth, 18);
+        }
+        int buttonWidth = (view.width() - 16) / 3;
+        return new UiRect(view.x() + 4 + index * (buttonWidth + 4),
+                view.y() + scmConfigurationToolbarHeight(view.width()) + 3, buttonWidth, 18);
+    }
+
+
+    private void drawScmOrientationControls(GuiGraphics graphics, UiRect view, int mouseX, int mouseY){
+        ScmOrientation orientation = scmConfigurationProfile.resolveOrientation(scmDefaultOrientation);
+        String[] labels = {"Forward: " + orientation.forward().getName(),
+                "Up: " + orientation.up().getName(),
+                scmConfigurationProfile.orientationOverride() == null
+                        ? "ACC defaults" : "Use ACC defaults",
+                "Vehicle: " + ("auto".equals(scmConfigurationProfile.vehicleType())
+                        ? "Auto (" + ScmControlModeRegistry.displayName(scmDetectedVehicleType) + ")"
+                        : ScmControlModeRegistry.displayName(scmConfigurationProfile.vehicleType())),
+                scmConfigurationProfile.usesIkVehicle() && ScmBuiltinControlModes.isIkEnabled()
+                        ? "IK Solver: " + ScmLeggedGait.fromId(
+                        scmConfigurationProfile.ikGait()).displayName()
+                        : "Steering: " + (ScmSteeringMode.AUTO.id().equals(
+                        scmConfigurationProfile.steeringType())
+                        ? "Auto (" + ScmSteeringMode.fromId(scmDetectedSteeringType)
+                        .availableOrFallback(ScmSteeringMode.CUSTOM).displayName() + ")"
+                        : ScmSteeringMode.fromId(
+                        scmConfigurationProfile.steeringType())
+                        .availableOrFallback(ScmSteeringMode.CUSTOM).displayName())};
+        for(int index = 0; index < labels.length; index++){
+            UiRect button = scmOrientationButton(view, index);
+            drawScmButton(graphics, button.x(), button.y(), button.width(), labels[index], mouseX, mouseY);
+            if(index < 2){
+                graphics.fill(button.x() + 2, button.bottom() - 2, button.right() - 2, button.bottom(),
+                        index == 0 ? SCM_FORWARD_COLOR : SCM_UP_COLOR);
+            }
+        }
+    }
+
+
+    // Cycle only perpendicular local axes; changing a selection never silently flips the other axis.
+    private boolean clickScmOrientation(UiRect view, double mouseX, double mouseY){
+        for(int index = 0; index < 5; index++){
+            if(!scmOrientationButton(view, index).contains(mouseX, mouseY)) continue;
+            ScmOrientation orientation = scmConfigurationProfile.resolveOrientation(scmDefaultOrientation);
+            if(index == 3){
+                List<String> modes = new ArrayList<>();
+                modes.add("auto");
+                modes.addAll(ScmControlModeRegistry.serializedIds());
+                int next = (modes.indexOf(scmConfigurationProfile.vehicleType()) + 1) % modes.size();
+                scmConfigurationProfile.setVehicleType(modes.get(next));
+            } else if(index == 4){
+                if (scmConfigurationProfile.usesIkVehicle() && ScmBuiltinControlModes.isIkEnabled()) {
+                    List<ScmLeggedGait> modes = ScmLeggedGait.selections();
+                    int next = (modes.indexOf(ScmLeggedGait.fromId(
+                            scmConfigurationProfile.ikGait())) + 1) % modes.size();
+                    scmConfigurationProfile.setIkGait(modes.get(next).id());
+                } else {
+                    List<ScmSteeringMode> modes = ScmSteeringMode.availableSelections();
+                    int next = (modes.indexOf(ScmSteeringMode.fromId(
+                            scmConfigurationProfile.steeringType())) + 1) % modes.size();
+                    scmConfigurationProfile.setSteeringType(modes.get(next).id());
+                }
+            } else if(index == 2){
+                scmConfigurationProfile.setOrientationOverride(null);
+            } else {
+                Direction selected = index == 0 ? orientation.forward() : orientation.up();
+                Direction fixed = index == 0 ? orientation.up() : orientation.forward();
+                Direction[] directions = Direction.values();
+                do {
+                    selected = directions[(selected.ordinal() + 1) % directions.length];
+                } while(!ScmOrientation.isValid(selected, fixed));
+                scmConfigurationProfile.setOrientationOverride(index == 0
+                        ? new ScmOrientation(selected, fixed) : new ScmOrientation(fixed, selected));
+            }
+            scmConfigurationDirty = true;
+            scmConfigurationSavePending = false;
+            scmConfigurationStatus = "SCM changed. Use ACC Save to apply. Blue = forward; green = up.";
+            scmLivePreviewRenderer.invalidate();
+            return true;
+        }
+        return false;
+    }
+
+
+    private void drawScmPreviewFilters(GuiGraphics graphics, int x, int y, int viewWidth,
+                                       int mouseX, int mouseY) {
+        if (drawCompactScmPreviewFilters(graphics, x, y, viewWidth, mouseX, mouseY)) return;
+        graphics.fill(x + 1, y + 1, x + viewWidth - 1,
+                y + SCM_CONFIGURATION_FILTER_HEIGHT, v2Ui
+                        ? AdvancedControllerV2Theme.PANEL_RAISED : 0xFF101B25);
+        graphics.drawString(font, "Show:", x + 8, y + 8,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91A9B8, false);
+        int cursor = x + 45;
+        for (ScmLiveSubLevelPreviewRenderer.Filter filter
+                : ScmLiveSubLevelPreviewRenderer.Filter.values()) {
+            UiRect checkbox = scmConfigurationFilterBounds(cursor, y, filter);
+            boolean enabled = scmConfigurationFilters.contains(filter);
+            boolean hovered = checkbox.contains(mouseX, mouseY);
+            graphics.fill(checkbox.x(), checkbox.y() + 4, checkbox.x() + 10, checkbox.y() + 14,
+                    enabled ? (v2Ui ? AdvancedControllerV2Theme.ACCENT : 0xFF55D6BE)
+                            : (v2Ui ? AdvancedControllerV2Theme.PANEL_BACKGROUND : 0xFF081017));
+            graphics.renderOutline(checkbox.x(), checkbox.y() + 4, 10, 10,
+                    hovered ? (v2Ui ? AdvancedControllerV2Theme.ACCENT_LIGHT : 0xFF91D9FF)
+                            : (v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF344A5C));
+            if (enabled) {
+                graphics.drawString(font, "✓", checkbox.x() + 2, checkbox.y() + 5,
+                        0xFF071219, false);
+            }
+            graphics.drawString(font, filter.label(), checkbox.x() + 14, checkbox.y() + 7,
+                    hovered ? (v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFFE0EDF4)
+                            : (v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFFB9CCD9), false);
+            cursor = checkbox.right() + 8;
+        }
+    }
+
+
+    private boolean drawCompactScmPreviewFilters(GuiGraphics graphics, int x, int y, int viewWidth,
+                                                 int mouseX, int mouseY) {
+        graphics.fill(x + 1, y + 1, x + viewWidth - 1,
+                y + scmConfigurationToolbarHeight(viewWidth), v2Ui
+                        ? AdvancedControllerV2Theme.PANEL_RAISED : 0xFF101B25);
+        UiRect filters = scmConfigurationFiltersButtonBounds(x, y);
+        UiRect wireframe = scmConfigurationWireframeButtonBounds(x, y);
+        int activeFilters = scmConfigurationFilters.contains(ScmLiveSubLevelPreviewRenderer.Filter.ALL)
+                ? ScmLiveSubLevelPreviewRenderer.Filter.values().length : scmConfigurationFilters.size();
+        drawScmButton(graphics, filters.x(), filters.y(), filters.width(),
+                "Filters (" + activeFilters + ") v", mouseX, mouseY);
+        drawScmButton(graphics, wireframe.x(), wireframe.y(), wireframe.width(),
+                "Wireframe: " + (scmConfigurationWireframe ? "On" : "Off"), mouseX, mouseY);
+        if (scmConfigurationWireframe) {
+            UiRect wireframeFilters = scmConfigurationWireframeFiltersButtonBounds(x, y);
+            drawScmButton(graphics, wireframeFilters.x(), wireframeFilters.y(), wireframeFilters.width(),
+                    "Solid filters (" + scmConfigurationWireframeExcludedFilters.size() + ") v",
+                    mouseX, mouseY);
+        }
+        drawScmPropulsionNotice(graphics, x, y, viewWidth);
+        return true;
+    }
+
+
+    // Show propulsion limitations beside the live preview controls
+    private void drawScmPropulsionNotice(GuiGraphics graphics, int x, int y, int viewWidth){
+        if(!scmAirshipVehicle()) return;
+        boolean below = scmConfigurationToolbarHeight(viewWidth) > SCM_CONFIGURATION_FILTER_HEIGHT;
+        int noticeX = x + (below ? 8 : scmConfigurationWireframe ? 389 : 237);
+        int noticeY = y + (below ? SCM_CONFIGURATION_FILTER_HEIGHT + 3 : 3);
+        Component presence = Component.translatable(scmConfigurationHasThrusters == null
+                ? "createthrusters.controller.scm.checking_thrusters" : scmConfigurationHasThrusters
+                ? "createthrusters.controller.scm.thrusters_detected" : "createthrusters.controller.scm.no_thrusters");
+        graphics.drawString(font, presence, noticeX, noticeY,
+                Boolean.TRUE.equals(scmConfigurationHasThrusters) ? SCM_FORWARD_COLOR : 0xFFFFC66D, false);
+        graphics.drawString(font, Component.translatable("createthrusters.controller.scm.propellers_incomplete"),
+                noticeX, noticeY + 10, 0xFFFFC66D, false);
+    }
+
+
+    private UiRect scmConfigurationFiltersButtonBounds(int x, int y) {
+        return new UiRect(x + 7, y + 3, 102, 18);
+    }
+
+
+    private UiRect scmConfigurationWireframeButtonBounds(int x, int y) {
+        return new UiRect(x + 115, y + 3, 116, 18);
+    }
+
+
+    private UiRect scmConfigurationWireframeFiltersButtonBounds(int x, int y) {
+        return new UiRect(x + 237, y + 3, 144, 18);
+    }
+
+
+    private UiRect scmConfigurationFilterDropdownBounds(int x, int y) {
+        return new UiRect(x + 7, y + SCM_CONFIGURATION_FILTER_HEIGHT, 190,
+                ScmLiveSubLevelPreviewRenderer.Filter.values().length * 20 + 6);
+    }
+
+
+    private void drawScmPreviewFilterDropdown(GuiGraphics graphics, int x, int y, int mouseX, int mouseY) {
+        UiRect dropdown = scmConfigurationFilterDropdownBounds(x, y);
+        graphics.pose().pushPose();
+        graphics.pose().translate(0.0F, 0.0F, 30.0F);
+        graphics.fill(dropdown.x(), dropdown.y(), dropdown.right(), dropdown.bottom(),
+                v2Ui ? AdvancedControllerV2Theme.PANEL_RAISED : 0xFF152330);
+        graphics.renderOutline(dropdown.x(), dropdown.y(), dropdown.width(), dropdown.height(),
+                v2Ui ? AdvancedControllerV2Theme.BORDER_STRONG : 0xFF4A687F);
+        int rowY = dropdown.y() + 3;
+        for (ScmLiveSubLevelPreviewRenderer.Filter filter
+                : ScmLiveSubLevelPreviewRenderer.Filter.values()) {
+            UiRect row = new UiRect(dropdown.x() + 4, rowY, dropdown.width() - 8, 20);
+            if (row.contains(mouseX, mouseY)) {
+                graphics.fill(row.x(), row.y(), row.right(), row.bottom(),
+                        v2Ui ? 0x664BAFBC : 0x663A718C);
+            }
+            boolean enabled = scmConfigurationFilters.contains(filter);
+            graphics.drawString(font, enabled ? "[x]" : "[ ]", row.x() + 7, row.y() + 6,
+                    enabled ? (v2Ui ? AdvancedControllerV2Theme.ACCENT_LIGHT : 0xFF55D6BE)
+                            : (v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF91A9B8), false);
+            graphics.drawString(font, filter.label(), row.x() + 34, row.y() + 6,
+                    v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFFE0EDF4, false);
+            rowY += 20;
+        }
+        graphics.pose().popPose();
+    }
+
+
+    // In wireframe mode these categories remain ordinary block models. The
+    // shared preview renderer treats the wireframe lines as click-through, so
+    // only these solid blocks participate in block picking.
+    private UiRect scmWireframeFilterDropdownBounds(int x, int y) {
+        return new UiRect(x + 237, y + SCM_CONFIGURATION_FILTER_HEIGHT, 190,
+                (ScmLiveSubLevelPreviewRenderer.Filter.values().length - 1) * 20 + 6);
+    }
+
+
+    private void drawScmWireframeFilterDropdown(GuiGraphics graphics, int x, int y,
+                                                int mouseX, int mouseY,
+                                                Set<ScmLiveSubLevelPreviewRenderer.Filter> selectedFilters) {
+        UiRect dropdown = scmWireframeFilterDropdownBounds(x, y);
+        graphics.pose().pushPose();
+        graphics.pose().translate(0.0F, 0.0F, 31.0F);
+        graphics.fill(dropdown.x(), dropdown.y(), dropdown.right(), dropdown.bottom(),
+                v2Ui ? AdvancedControllerV2Theme.PANEL_RAISED : 0xFF152330);
+        graphics.renderOutline(dropdown.x(), dropdown.y(), dropdown.width(), dropdown.height(),
+                v2Ui ? AdvancedControllerV2Theme.BORDER_STRONG : 0xFF4A687F);
+        int rowY = dropdown.y() + 3;
+        for (ScmLiveSubLevelPreviewRenderer.Filter filter
+                : ScmLiveSubLevelPreviewRenderer.Filter.values()) {
+            if (filter == ScmLiveSubLevelPreviewRenderer.Filter.ALL) continue;
+            UiRect row = new UiRect(dropdown.x() + 4, rowY, dropdown.width() - 8, 20);
+            if (row.contains(mouseX, mouseY)) {
+                graphics.fill(row.x(), row.y(), row.right(), row.bottom(),
+                        v2Ui ? 0x664BAFBC : 0x663A718C);
+            }
+            boolean enabled = selectedFilters.contains(filter);
+            graphics.drawString(font, enabled ? "[x]" : "[ ]", row.x() + 7, row.y() + 6,
+                    enabled ? (v2Ui ? AdvancedControllerV2Theme.ACCENT_LIGHT : 0xFF55D6BE)
+                            : (v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF91A9B8), false);
+            graphics.drawString(font, filter.label() + " (solid)", row.x() + 34, row.y() + 6,
+                    v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFFE0EDF4, false);
+            rowY += 20;
+        }
+        graphics.pose().popPose();
+    }
+
+
+    private void drawScmBlockPickerFilters(GuiGraphics graphics, int x, int y, int toolbarWidth,
+                                           int mouseX, int mouseY) {
+        graphics.fill(x + 1, y + 1, x + toolbarWidth - 1, y + SCM_CONFIGURATION_FILTER_HEIGHT,
+                v2Ui ? AdvancedControllerV2Theme.PANEL_RAISED : 0xFF101B25);
+        UiRect filters = scmConfigurationFiltersButtonBounds(x, y);
+        UiRect wireframe = scmConfigurationWireframeButtonBounds(x, y);
+        int activeFilters = scmBlockPickerFilters.contains(ScmLiveSubLevelPreviewRenderer.Filter.ALL)
+                ? ScmLiveSubLevelPreviewRenderer.Filter.values().length : scmBlockPickerFilters.size();
+        drawScmButton(graphics, filters.x(), filters.y(), filters.width(),
+                "Filters (" + activeFilters + ") v", mouseX, mouseY);
+        drawScmButton(graphics, wireframe.x(), wireframe.y(), wireframe.width(),
+                "Wireframe: " + (scmBlockPickerWireframe ? "On" : "Off"), mouseX, mouseY);
+        if (scmBlockPickerWireframe) {
+            UiRect wireframeFilters = scmConfigurationWireframeFiltersButtonBounds(x, y);
+            drawScmButton(graphics, wireframeFilters.x(), wireframeFilters.y(), wireframeFilters.width(),
+                    "Solid filters (" + scmBlockPickerWireframeExcludedFilters.size() + ") v",
+                    mouseX, mouseY);
+        }
+    }
+
+
+    private void drawScmBlockPickerFilterDropdown(GuiGraphics graphics, int x, int y,
+                                                  int mouseX, int mouseY) {
+        UiRect dropdown = scmConfigurationFilterDropdownBounds(x, y);
+        graphics.pose().pushPose();
+        graphics.pose().translate(0.0F, 0.0F, 32.0F);
+        graphics.fill(dropdown.x(), dropdown.y(), dropdown.right(), dropdown.bottom(),
+                v2Ui ? AdvancedControllerV2Theme.PANEL_RAISED : 0xFF152330);
+        graphics.renderOutline(dropdown.x(), dropdown.y(), dropdown.width(), dropdown.height(),
+                v2Ui ? AdvancedControllerV2Theme.BORDER_STRONG : 0xFF4A687F);
+        int rowY = dropdown.y() + 3;
+        for (ScmLiveSubLevelPreviewRenderer.Filter filter
+                : ScmLiveSubLevelPreviewRenderer.Filter.values()) {
+            UiRect row = new UiRect(dropdown.x() + 4, rowY, dropdown.width() - 8, 20);
+            if (row.contains(mouseX, mouseY)) {
+                graphics.fill(row.x(), row.y(), row.right(), row.bottom(),
+                        v2Ui ? 0x664BAFBC : 0x663A718C);
+            }
+            boolean enabled = scmBlockPickerFilters.contains(filter);
+            graphics.drawString(font, enabled ? "[x]" : "[ ]", row.x() + 7, row.y() + 6,
+                    enabled ? (v2Ui ? AdvancedControllerV2Theme.ACCENT_LIGHT : 0xFF55D6BE)
+                            : (v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF91A9B8), false);
+            graphics.drawString(font, filter.label(), row.x() + 34, row.y() + 6,
+                    v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFFE0EDF4, false);
+            rowY += 20;
+        }
+        graphics.pose().popPose();
+    }
+
+
+    // Draw picker filters above the live preview
+    private void drawScmBlockPickerDropdowns(GuiGraphics graphics, UiRect toolbar, int mouseX, int mouseY){
+        if(scmBlockPickerFiltersDropdownOpen){
+            drawScmBlockPickerFilterDropdown(graphics, toolbar.x(), toolbar.y(), mouseX, mouseY);
+        }
+        if(scmBlockPickerWireframeFiltersDropdownOpen){
+            drawScmWireframeFilterDropdown(graphics, toolbar.x(), toolbar.y(), mouseX, mouseY,
+                    scmBlockPickerWireframeExcludedFilters);
+        }
+    }
+
+
+    // Check whether a picker filter menu owns preview input
+    private boolean scmBlockPickerDropdownOpen(){
+        return scmBlockPickerFiltersDropdownOpen || scmBlockPickerWireframeFiltersDropdownOpen;
+    }
+
+
+    private UiRect scmConfigurationFilterBounds(int x, int y, ScmLiveSubLevelPreviewRenderer.Filter filter) {
+        return new UiRect(x, y, 14 + font.width(filter.label()), SCM_CONFIGURATION_FILTER_HEIGHT);
+    }
+
+
+    private boolean toggleScmPreviewFilter(double mouseX, double mouseY, int viewX, int viewY) {
+        if (scmConfigurationFiltersButtonBounds(viewX, viewY).contains(mouseX, mouseY)) {
+            scmConfigurationFiltersDropdownOpen = !scmConfigurationFiltersDropdownOpen;
+            scmConfigurationWireframeFiltersDropdownOpen = false;
+            return true;
+        }
+        if (scmConfigurationWireframeButtonBounds(viewX, viewY).contains(mouseX, mouseY)) {
+            scmConfigurationWireframe = !scmConfigurationWireframe;
+            if (!scmConfigurationWireframe) scmConfigurationWireframeFiltersDropdownOpen = false;
+            scmConfigurationFiltersDropdownOpen = false;
+            scmLivePreviewRenderer.setWireframe(scmConfigurationWireframe);
+            return true;
+        }
+        if (scmConfigurationWireframe
+                && scmConfigurationWireframeFiltersButtonBounds(viewX, viewY).contains(mouseX, mouseY)) {
+            scmConfigurationWireframeFiltersDropdownOpen = !scmConfigurationWireframeFiltersDropdownOpen;
+            scmConfigurationFiltersDropdownOpen = false;
+            return true;
+        }
+        if (scmConfigurationWireframeFiltersDropdownOpen) {
+            UiRect dropdown = scmWireframeFilterDropdownBounds(viewX, viewY);
+            if (!dropdown.contains(mouseX, mouseY)) {
+                scmConfigurationWireframeFiltersDropdownOpen = false;
+                return true;
+            }
+            if (toggleWireframeExcludedFilter(mouseX, mouseY, dropdown,
+                    scmConfigurationWireframeExcludedFilters)) {
+                scmLivePreviewRenderer.setWireframeExcludedFilters(scmConfigurationWireframeExcludedFilters);
+            }
+            return true;
+        }
+        if (scmConfigurationFiltersDropdownOpen) {
+            UiRect dropdown = scmConfigurationFilterDropdownBounds(viewX, viewY);
+            if (!dropdown.contains(mouseX, mouseY)) {
+                scmConfigurationFiltersDropdownOpen = false;
+                return false;
+            }
+            int selected = (int) ((mouseY - dropdown.y() - 3) / 20);
+            ScmLiveSubLevelPreviewRenderer.Filter[] filters = ScmLiveSubLevelPreviewRenderer.Filter.values();
+            if (selected < 0 || selected >= filters.length) return true;
+            ScmLiveSubLevelPreviewRenderer.Filter filter = filters[selected];
+            if (filter == ScmLiveSubLevelPreviewRenderer.Filter.ALL) {
+                scmConfigurationFilters.clear();
+                scmConfigurationFilters.add(filter);
+            } else {
+                scmConfigurationFilters.remove(ScmLiveSubLevelPreviewRenderer.Filter.ALL);
+                if (!scmConfigurationFilters.add(filter)) scmConfigurationFilters.remove(filter);
+                if (scmConfigurationFilters.isEmpty()) {
+                    scmConfigurationFilters.add(ScmLiveSubLevelPreviewRenderer.Filter.ALL);
+                }
+            }
+            scmLivePreviewRenderer.setVisibleFilters(scmConfigurationFilters);
+            return true;
+        }
+        int cursor = viewX + 45;
+        for (ScmLiveSubLevelPreviewRenderer.Filter filter
+                : ScmLiveSubLevelPreviewRenderer.Filter.values()) {
+            UiRect checkbox = scmConfigurationFilterBounds(cursor, viewY, filter);
+            if (checkbox.contains(mouseX, mouseY)) {
+                if (filter == ScmLiveSubLevelPreviewRenderer.Filter.ALL) {
+                    if (scmConfigurationFilters.size() == 1
+                            && scmConfigurationFilters.contains(filter)) {
+                        scmConfigurationFilters.clear();
+                    } else {
+                        scmConfigurationFilters.clear();
+                        scmConfigurationFilters.add(filter);
+                    }
+                } else {
+                    // Selecting a category enters filtered-view mode. Several
+                    // categories may still be combined, but All must be off.
+                    scmConfigurationFilters.remove(ScmLiveSubLevelPreviewRenderer.Filter.ALL);
+                    if (!scmConfigurationFilters.add(filter)) {
+                        scmConfigurationFilters.remove(filter);
+                    }
+                }
+                scmLivePreviewRenderer.setVisibleFilters(scmConfigurationFilters);
+                return true;
+            }
+            cursor = checkbox.right() + 8;
+        }
+        return false;
+    }
+
+
+    private static boolean toggleWireframeExcludedFilter(double mouseX, double mouseY, UiRect dropdown,
+                                                         Set<ScmLiveSubLevelPreviewRenderer.Filter> selectedFilters) {
+        int selected = (int) ((mouseY - dropdown.y() - 3) / 20);
+        int row = 0;
+        for (ScmLiveSubLevelPreviewRenderer.Filter filter
+                : ScmLiveSubLevelPreviewRenderer.Filter.values()) {
+            if (filter == ScmLiveSubLevelPreviewRenderer.Filter.ALL) continue;
+            if (row++ != selected) continue;
+            if (!selectedFilters.add(filter)) selectedFilters.remove(filter);
+            return true;
+        }
+        return false;
+    }
+
+
+    private UiRect scmConfigurationBounds() {
+        if (scmConfigurationWorkspace()) {
+            return new UiRect(graphLeft(), graphTop(),
+                    Math.max(0, graphRight() - graphLeft()),
+                    Math.max(0, graphBottom() - graphTop()));
+        }
+        int modalWidth = Math.min(SCM_CONFIGURATION_MODAL_WIDTH, Math.max(540, width - 24));
+        int modalHeight = Math.min(SCM_CONFIGURATION_MODAL_HEIGHT,
+                Math.max(360, height - TOOLBAR_HEIGHT - 16));
+        return new UiRect((width - modalWidth) / 2,
+                Math.max(TOOLBAR_HEIGHT + 5, (height - modalHeight) / 2), modalWidth, modalHeight);
+    }
+
+
+    // Calculate the virtual vertical document used by the SCM assignment
+    // sidebar. On a roomy display it exactly fills the available panel and
+    // keeps Save pinned at the bottom; at smaller GUI sizes it exposes the
+    // same complete control set through ordinary wheel scrolling.
+    private ScmConfigurationSidebarLayout scmConfigurationSidebarLayout(UiRect bounds, UiRect viewBounds) {
+        boolean faceMode = scmConfigurationControlBindingMode == ScmControlBindingMode.FACE;
+        int viewportTop = viewBounds.y();
+        int viewportBottom = Math.max(viewportTop + 1, bounds.bottom());
+        int availableHeight = viewportBottom - viewportTop;
+        int minimumContentHeight = faceMode ? 566 : 528;
+        int contentHeight = Math.max(availableHeight, minimumContentHeight);
+        int maximumScroll = Math.max(0, contentHeight - availableHeight);
+        scmConfigurationSidebarScroll = Mth.clamp(scmConfigurationSidebarScroll, 0, maximumScroll);
+        return new ScmConfigurationSidebarLayout(viewportTop - scmConfigurationSidebarScroll,
+                viewportTop, viewportBottom, contentHeight, maximumScroll);
+    }
+
+
+    private boolean clickScmConfiguration(double mouseX, double mouseY, int button) {
+        UiRect bounds = scmConfigurationBounds();
+        if (!bounds.contains(mouseX, mouseY)) {
+            return true;
+        }
+        UiRect viewBounds = scmConfigurationViewBounds(bounds);
+        int viewX = viewBounds.x();
+        int viewY = viewBounds.y();
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT
+                && toggleScmPreviewFilter(mouseX, mouseY, viewX, viewY)) {
+            return true;
+        }
+        if(button == GLFW.GLFW_MOUSE_BUTTON_LEFT && clickScmOrientation(viewBounds, mouseX, mouseY)){
+            return true;
+        }
+        UiRect previewBounds = scmConfigurationPreviewBounds(bounds);
+        if (previewBounds.contains(mouseX, mouseY) && scmConfigurationRootSubLevelId != null) {
+            scmLivePreviewRenderer.mousePressed(mouseX, mouseY, button);
+            return true;
+        }
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
+        if (!scmConfigurationWorkspace()
+                && inside(mouseX, mouseY, bounds.x() + bounds.width() - 28, bounds.y() + 4, 24, 20)) {
+            closeScmConfiguration();
+            return true;
+        }
+        int panelX = viewBounds.right() + 14;
+        int panelWidth = bounds.right() - panelX - (scmConfigurationWorkspace() ? 8 : 14);
+        ScmConfigurationSidebarLayout sidebarLayout = scmConfigurationSidebarLayout(bounds, viewBounds);
+        int sidebarY = sidebarLayout.contentTop();
+        int autoDetectY = sidebarY + 176;
+        int controlsY = sidebarY + 236;
+        if (scmVehicleNameBounds(panelX, sidebarY, panelWidth).contains(mouseX, mouseY)) {
+            scmVehicleName.mouseClicked(mouseX, mouseY, button);
+            scmVehicleName.setFocused(true);
+            setFocused(scmVehicleName);
+            return true;
+        }
+        if (inside(mouseX, mouseY, panelX, sidebarY + 92, panelWidth, 18)) {
+            sendScmVehicleName(scmVehicleName.getValue());
+            return true;
+        }
+        if (inside(mouseX, mouseY, panelX, sidebarY + 130, panelWidth, 18)) {
+            AdvancedContraptionControllerBlockEntity controller = activeScmController();
+            sendScmDisplayProgress(controller == null || !controller.scmDisplayProgress());
+            return true;
+        }
+        if (inside(mouseX, mouseY, panelX, sidebarY + 154, panelWidth, 18)) {
+            sendScmConfiguration("scm_configuration_reinitialize", scmConfigurationProfile.toTag());
+            return true;
+        }
+        for (int index = 0; index < SCM_AUTO_DETECT_CATEGORIES.size(); index++) {
+            if (scmAutoDetectButtonBounds(panelX, autoDetectY, panelWidth, index)
+                    .contains(mouseX, mouseY)) {
+                autoDetectAndAssignScmConfiguration(SCM_AUTO_DETECT_CATEGORIES.get(index));
+                return true;
+            }
+        }
+        // An open popup owns its entire layer. Do not let the controls below
+        // it consume clicks from later rows in the popup.
+        if (scmConfigurationTargetDropdownOpen) {
+            if (selectScmConfigurationTarget(mouseX, mouseY, panelX, controlsY + 51, panelWidth)) {
+                scmConfigurationTargetDropdownOpen = false;
+            } else if (!scmConfigurationTargetDropdownBounds(panelX, controlsY + 51, panelWidth)
+                    .contains(mouseX, mouseY)) {
+                scmConfigurationTargetDropdownOpen = false;
+            }
+            return true;
+        }
+        if (scmConfigurationControlModeDropdownOpen) {
+            if (selectScmConfigurationControlMode(mouseX, mouseY, panelX, controlsY + 89, panelWidth)) {
+                scmConfigurationControlModeDropdownOpen = false;
+            } else if (!scmConfigurationControlModeDropdownBounds(panelX, controlsY + 89, panelWidth)
+                    .contains(mouseX, mouseY)) {
+                scmConfigurationControlModeDropdownOpen = false;
+            }
+            return true;
+        }
+        if (scmConfigurationControlBindingMode == ScmControlBindingMode.FACE
+                && scmConfigurationFaceDropdownOpen) {
+            if (selectScmConfigurationFace(mouseX, mouseY, panelX, controlsY + 127, panelWidth)) {
+                scmConfigurationFaceDropdownOpen = false;
+            } else if (!scmConfigurationFaceDropdownBounds(panelX, controlsY + 127, panelWidth)
+                    .contains(mouseX, mouseY)) {
+                scmConfigurationFaceDropdownOpen = false;
+            }
+            return true;
+        }
+        boolean faceMode = scmConfigurationControlBindingMode == ScmControlBindingMode.FACE;
+        int assignY = controlsY + (faceMode ? 133 : 95);
+        int blacklistY = controlsY + (faceMode ? 157 : 119);
+        int groupsY = controlsY + (faceMode ? 202 : 164);
+        int saveY = sidebarY + sidebarLayout.contentHeight() - 26;
+        int groupsHeight = Math.max(72, saveY - groupsY - 30);
+        if (inside(mouseX, mouseY, panelX, controlsY + 33, panelWidth, 18)) {
+            scmConfigurationTargetDropdownOpen = !scmConfigurationTargetDropdownOpen;
+            scmConfigurationTargetDropdownScroll = 0;
+            scmConfigurationControlModeDropdownOpen = false;
+            scmConfigurationFaceDropdownOpen = false;
+        } else if (inside(mouseX, mouseY, panelX, controlsY + 71, panelWidth, 18)) {
+            scmConfigurationControlModeDropdownOpen = !scmConfigurationControlModeDropdownOpen;
+            scmConfigurationTargetDropdownOpen = false;
+            scmConfigurationFaceDropdownOpen = false;
+        } else if (faceMode && inside(mouseX, mouseY, panelX, controlsY + 109, panelWidth, 18)) {
+            scmConfigurationFaceDropdownOpen = !scmConfigurationFaceDropdownOpen;
+            scmConfigurationTargetDropdownOpen = false;
+            scmConfigurationControlModeDropdownOpen = false;
+        } else if (inside(mouseX, mouseY, panelX, assignY, panelWidth, 18)) {
+            assignScmConfigurationSelection();
+        } else if (inside(mouseX, mouseY, panelX, blacklistY, panelWidth, 18)) {
+            toggleScmConfigurationBlacklist();
+        } else if (clickScmGroupList(mouseX, mouseY, panelX, groupsY, panelWidth, groupsHeight)) {
+            return true;
+        } else if (!scmConfigurationWorkspace()
+                && inside(mouseX, mouseY, panelX, saveY + 24, panelWidth, 18)) {
+            closeScmConfiguration();
+        }
+        return true;
+    }
+
+
+    private void closeScmConfiguration() {
+        scmConfigurationOpen = false;
+        scmConfigurationTargetDropdownOpen = false;
+        scmConfigurationControlModeDropdownOpen = false;
+        scmConfigurationFaceDropdownOpen = false;
+        scmConfigurationFiltersDropdownOpen = false;
+        scmConfigurationWireframeFiltersDropdownOpen = false;
+        scmConfigurationSidebarScroll = 0;
+        scmLivePreviewRenderer.close();
+    }
+
+
+    private List<String> scmConfigurationActions() {
+        LinkedHashSet<String> actions = new LinkedHashSet<>(SCM_CALIBRATION_ACTIONS);
+        if (scmConfigurationProfile.usesIkVehicle() && ScmBuiltinControlModes.isIkEnabled()) {
+            actions.addAll(ScmConfigurationProfile.ikActions(scmConfigurationProfile.ikGait()));
+        }
+        if (draft != null) {
+            // The binding palette is intentionally limited to the direct
+            // physical controls. Legacy autonomous action functions remain
+            // executable for compatibility but must not reappear here.
+            draft.scmActionFunctions().keySet().stream()
+                    .filter(SCM_CALIBRATION_ACTIONS::contains)
+                    .forEach(actions::add);
+        }
+        boolean dockingSelection = scmConfigurationSelection.stream()
+                .anyMatch(this::isScmConfigurationDockingConnector);
+        return actions.stream().filter(action -> dockingSelection
+                == ScmConfigurationProfile.isDockingConnectorAction(action)).toList();
+    }
+
+
+    // Check whether one live selection is a docking connector.
+    private boolean isScmConfigurationDockingConnector(
+            ScmConfigurationProfile.UnitReference reference
+    ) {
+        if (reference == null) return false;
+        ScmConfigurationProfile.DockingConnectorReference connector =
+                new ScmConfigurationProfile.DockingConnectorReference(
+                        reference.subLevelId(), reference.blockPosition());
+        return scmConfigurationDockingConnectors.contains(connector)
+                || scmLivePreviewRenderer.isDockingConnector(
+                new ScmLiveSubLevelPreviewRenderer.PickTarget("", reference.subLevelId(),
+                        reference.blockPosition(), reference.face()));
+    }
+
+
+    private String activeScmConfigurationAction() {
+        List<String> actions = scmConfigurationActions();
+        if (actions.isEmpty()) return "";
+        scmConfigurationActionIndex = Math.floorMod(scmConfigurationActionIndex, actions.size());
+        return actions.get(scmConfigurationActionIndex);
+    }
+
+
+    private Set<ScmConfigurationProfile.UnitReference> scmUnitsForAction(String action) {
+        String groupId = scmConfigurationProfile.actionGroups().get(action);
+        if (groupId == null) return Set.of();
+        return scmConfigurationProfile.groups().stream()
+                .filter(group -> groupId.equals(group.id())).findFirst()
+                .map(ScmConfigurationProfile.Group::units).orElse(Set.of());
+    }
+
+
+    private String scmConfigurationTargetLabel(String action) {
+        if (action == null || action.isBlank()) return "No SCM action available";
+        ScmConfigurationProfile.DockingConnectorGroup dockingGroup =
+                ScmConfigurationProfile.dockingConnectorGroupForAction(action);
+        if (dockingGroup != null) return "Docking Connector: " + dockingGroup.label();
+        if (ScmConfigurationProfile.isAutoAction(action)) {
+            return "Auto - automatic allocation";
+        }
+        if (ScmConfigurationProfile.isAccelerationAction(action)) {
+            return "Acceleration - analogue speed control";
+        }
+        if (ScmConfigurationProfile.isIkAction(action)) {
+            return ScmConfigurationProfile.ikActionLabel(action);
+        }
+        AdvancedGraphDocument.FunctionGraph function = draft == null ? null
+                : draft.function(draft.scmActionFunction(action));
+        String label = scmConfigurationActionLabel(action);
+        return trim(function == null ? label + " (built-in)" : label + " → " + function.name(), 31);
+    }
+
+
+    private static String scmConfigurationActionLabel(String action) {
+        ScmConfigurationProfile.DockingConnectorGroup dockingGroup =
+                ScmConfigurationProfile.dockingConnectorGroupForAction(action);
+        if (dockingGroup != null) return "Docking Connector: " + dockingGroup.label();
+        if (ScmConfigurationProfile.isAutoAction(action)) {
+            return "Auto";
+        }
+        if (ScmConfigurationProfile.isAccelerationAction(action)) {
+            return "Acceleration";
+        }
+        if (ScmConfigurationProfile.isIkAction(action)) {
+            return ScmConfigurationProfile.ikActionLabel(action);
+        }
+        return AdvancedGraphCatalog.displayName(action);
+    }
+
+
+    private void drawScmTargetDropdown(GuiGraphics graphics, int x, int y, int width,
+                                       int mouseX, int mouseY) {
+        List<String> actions = scmConfigurationActions();
+        UiRect bounds = scmConfigurationTargetDropdownBounds(x, y, width);
+        int visible = Math.min(SCM_CONFIGURATION_DROPDOWN_VISIBLE_ROWS, actions.size());
+        int maximum = Math.max(0, actions.size() - visible);
+        scmConfigurationTargetDropdownScroll = Mth.clamp(scmConfigurationTargetDropdownScroll, 0, maximum);
+        renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        for (int row = 0; row < visible; row++) {
+            int idx = scmConfigurationTargetDropdownScroll + row;
+            int rowY = y + 2 + row * 18;
+            boolean selected = actions.get(idx).equals(activeScmConfigurationAction());
+            renderAdvancedButton(graphics, font, x + 2, rowY, width - 4, 17,
+                    Component.literal(scmConfigurationTargetLabel(actions.get(idx))),
+                    selected || inside(mouseX, mouseY, x + 2, rowY, width - 4, 17), true);
+        }
+        if (maximum > 0) {
+            int thumb = Math.max(12, (bounds.height() - 4) * visible / actions.size());
+            int thumbY = bounds.y() + 2 + ((bounds.height() - 4) - thumb)
+                    * scmConfigurationTargetDropdownScroll / maximum;
+            graphics.fill(bounds.right() - 4, bounds.y() + 2, bounds.right() - 2,
+                    bounds.bottom() - 2, 0x55445A6B);
+            graphics.fill(bounds.right() - 4, thumbY, bounds.right() - 2, thumbY + thumb,
+                    v2Ui ? AdvancedControllerV2Theme.ACCENT : 0xFF91D9FF);
+        }
+    }
+
+
+    private UiRect scmConfigurationTargetDropdownBounds(int x, int y, int width) {
+        return new UiRect(x, y, width,
+                Math.min(SCM_CONFIGURATION_DROPDOWN_VISIBLE_ROWS, scmConfigurationActions().size()) * 18 + 4);
+    }
+
+
+    private void drawScmControlModeDropdown(GuiGraphics graphics, int x, int y, int width,
+                                            int mouseX, int mouseY) {
+        renderAdvancedPanel(graphics, x, y, width, ScmControlBindingMode.values().length * 18 + 4);
+        for (int index = 0; index < ScmControlBindingMode.values().length; index++) {
+            ScmControlBindingMode mode = ScmControlBindingMode.values()[index];
+            int rowY = y + 2 + index * 18;
+            renderAdvancedButton(graphics, font, x + 2, rowY, width - 4, 17,
+                    Component.literal(mode.label()), mode == scmConfigurationControlBindingMode
+                            || inside(mouseX, mouseY, x + 2, rowY, width - 4, 17), true);
+        }
+    }
+
+
+    private UiRect scmConfigurationControlModeDropdownBounds(int x, int y, int width) {
+        return new UiRect(x, y, width, ScmControlBindingMode.values().length * 18 + 4);
+    }
+
+
+    private boolean selectScmConfigurationControlMode(double mouseX, double mouseY,
+                                                      int x, int y, int width) {
+        ScmControlBindingMode[] modes = ScmControlBindingMode.values();
+        for (int index = 0; index < modes.length; index++) {
+            if (!inside(mouseX, mouseY, x + 2, y + 2 + index * 18, width - 4, 17)) continue;
+            scmConfigurationControlBindingMode = modes[index];
+            if (scmConfigurationControlBindingMode != ScmControlBindingMode.FACE) {
+                scmConfigurationFaceDropdownOpen = false;
+            }
+            scmLivePreviewRenderer.invalidate();
+            return true;
+        }
+        return false;
+    }
+
+
+    private String scmConfigurationFaceLabel() {
+        return scmConfigurationInputFace == null ? "Auto - use clicked face"
+                : "Bind " + scmConfigurationInputFace.getSerializedName().toUpperCase(Locale.ROOT)
+                + " face";
+    }
+
+
+    private List<Direction> scmConfigurationFaces() {
+        List<Direction> faces = new ArrayList<>(7);
+        faces.add(null);
+        faces.add(Direction.NORTH);
+        faces.add(Direction.SOUTH);
+        faces.add(Direction.EAST);
+        faces.add(Direction.WEST);
+        faces.add(Direction.UP);
+        faces.add(Direction.DOWN);
+        return faces;
+    }
+
+
+    private void drawScmFaceDropdown(GuiGraphics graphics, int x, int y, int width,
+                                     int mouseX, int mouseY) {
+        List<Direction> faces = scmConfigurationFaces();
+        renderAdvancedPanel(graphics, x, y, width, faces.size() * 18 + 4);
+        for (int index = 0; index < faces.size(); index++) {
+            Direction face = faces.get(index);
+            int rowY = y + 2 + index * 18;
+            String label = face == null ? "Auto - use clicked face"
+                    : "Bind " + face.getSerializedName().toUpperCase(Locale.ROOT) + " face";
+            renderAdvancedButton(graphics, font, x + 2, rowY, width - 4, 17,
+                    Component.literal(label), face == scmConfigurationInputFace
+                            || inside(mouseX, mouseY, x + 2, rowY, width - 4, 17), true);
+        }
+    }
+
+
+    private UiRect scmConfigurationFaceDropdownBounds(int x, int y, int width) {
+        return new UiRect(x, y, width, scmConfigurationFaces().size() * 18 + 4);
+    }
+
+
+    private boolean selectScmConfigurationFace(double mouseX, double mouseY,
+                                               int x, int y, int width) {
+        List<Direction> faces = scmConfigurationFaces();
+        for (int index = 0; index < faces.size(); index++) {
+            if (!inside(mouseX, mouseY, x + 2, y + 2 + index * 18, width - 4, 17)) continue;
+            setScmConfigurationInputFace(faces.get(index));
+            return true;
+        }
+        return false;
+    }
+
+
+    private void setScmConfigurationInputFace(Direction face) {
+        scmConfigurationInputFace = face;
+        if (face == null || scmConfigurationSelection.isEmpty()) {
+            scmLivePreviewRenderer.invalidate();
+            return;
+        }
+        Set<ScmConfigurationProfile.UnitReference> updated = scmConfigurationSelection.stream()
+                .map(unit -> unit.withFace(face))
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        scmConfigurationSelection.clear();
+        scmConfigurationSelection.addAll(updated);
+        scmLivePreviewRenderer.invalidate();
+    }
+
+
+    private boolean selectScmConfigurationTarget(double mouseX, double mouseY,
+                                                  int x, int y, int width) {
+        List<String> actions = scmConfigurationActions();
+        int visible = Math.min(SCM_CONFIGURATION_DROPDOWN_VISIBLE_ROWS, actions.size());
+        for (int row = 0; row < visible; row++) {
+            int idx = scmConfigurationTargetDropdownScroll + row;
+            if (!inside(mouseX, mouseY, x + 2, y + 2 + row * 18, width - 4, 17)) continue;
+            scmConfigurationActionIndex = idx;
+            // Changing the destination must never discard the live 3D
+            // selection. It is normal to select blocks first, then decide
+            // which SCM action/function receives that group.
+            scmLivePreviewRenderer.invalidate();
+            return true;
+        }
+        return false;
+    }
+
+
+    private void drawScmGroupList(GuiGraphics graphics, int x, int y, int width, int height,
+                                  int mouseX, int mouseY) {
+        graphics.fill(x, y, x + width, y + height, v2Ui
+                ? AdvancedControllerV2Theme.PANEL_RAISED : 0xFF0B1118);
+        graphics.renderOutline(x, y, width, height,
+                v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF344A5C);
+        List<ScmConfigurationGroupRow> rows = scmConfigurationGroupRows();
+        int visible = Math.max(1, (height - 4) / 18);
+        int maximum = Math.max(0, rows.size() - visible);
+        scmConfigurationListScroll = Mth.clamp(scmConfigurationListScroll, 0, maximum);
+        for (int row = 0; row < visible && scmConfigurationListScroll + row < rows.size(); row++) {
+            int index = scmConfigurationListScroll + row;
+            ScmConfigurationGroupRow entry = rows.get(index);
+            int rowY = y + 2 + row * 18;
+            if (entry.header()) {
+                boolean hovered = inside(mouseX, mouseY, x + 2, rowY, width - 4, 17);
+                if (hovered) {
+                    graphics.fill(x + 2, rowY, x + width - 2, rowY + 17, 0x332C4152);
+                }
+                boolean collapsed = scmConfigurationCollapsedGroups.contains(entry.groupId());
+                graphics.drawString(font, collapsed ? ">" : "v", x + 6, rowY + 5,
+                        v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFF91D9FF, false);
+                graphics.fill(x + 17, rowY + 4, x + 21, rowY + 13, entry.color());
+                String label = entry.label() + " (" + entry.memberCount() + ")";
+                graphics.drawString(font, trim(label, Math.max(12, (width - 54) / 6)), x + 26, rowY + 5,
+                        v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFFE0EDF4, false);
+                if (!SCM_BLACKLISTED_GROUP_ID.equals(entry.groupId())) {
+                    drawScmGroupRemoveControl(graphics, scmConfigurationGroupRemoveBounds(x, rowY, width),
+                            mouseX, mouseY, "-");
+                }
+                continue;
+            }
+            ScmConfigurationProfile.UnitReference unit = entry.unit();
+            if (unit == null) {
+                continue;
+            }
+            boolean selected = containsSameScmBlock(scmConfigurationSelection, unit);
+            if (selected || inside(mouseX, mouseY, x + 2, rowY, width - 4, 17)) {
+                graphics.fill(x + 2, rowY, x + width - 2, rowY + 17,
+                        selected ? 0x553B617C : 0x332C4152);
+            }
+            graphics.fill(x + 20, rowY + 4, x + 24, rowY + 13, entry.color());
+            String label = scmConfigurationUnitLabel(unit);
+            graphics.drawString(font, trim(label, Math.max(12, (width - 52) / 6)), x + 29, rowY + 5,
+                    v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFFE0EDF4, false);
+            if (!SCM_BLACKLISTED_GROUP_ID.equals(entry.groupId())) {
+                drawScmGroupRemoveControl(graphics, scmConfigurationGroupRemoveBounds(x, rowY, width),
+                        mouseX, mouseY, "x");
+            }
+        }
+        if (maximum > 0) {
+            int thumb = Math.max(12, (height - 4) * visible / rows.size());
+            int thumbY = y + 2 + ((height - 4) - thumb) * scmConfigurationListScroll / maximum;
+            graphics.fill(x + width - 4, y + 2, x + width - 2, y + height - 2, 0x55445A6B);
+            graphics.fill(x + width - 4, thumbY, x + width - 2, thumbY + thumb,
+                    v2Ui ? AdvancedControllerV2Theme.ACCENT : 0xFF91D9FF);
+        }
+    }
+
+
+    private UiRect scmConfigurationGroupRemoveBounds(int x, int rowY, int width) {
+        // Keep this left of the scroll track. Headers remove the current 3D
+        // selection from that group, while member rows remove just that exact
+        // block/face binding.
+        return new UiRect(x + width - 23, rowY + 1, 16, 15);
+    }
+
+
+    private void drawScmGroupRemoveControl(GuiGraphics graphics, UiRect bounds,
+                                           int mouseX, int mouseY, String symbol) {
+        boolean hovered = bounds.contains(mouseX, mouseY);
+        graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(),
+                hovered ? 0x885F2832 : 0x553A2028);
+        graphics.renderOutline(bounds.x(), bounds.y(), bounds.width(), bounds.height(),
+                hovered ? 0xFFFF8C99 : 0xFF9A5761);
+        graphics.drawCenteredString(font, symbol, bounds.x() + bounds.width() / 2,
+                bounds.y() + 4, 0xFFFFCDD2);
+    }
+
+
+    private List<ScmConfigurationGroupRow> scmConfigurationGroupRows() {
+        List<ScmConfigurationGroupRow> rows = new ArrayList<>();
+        List<ScmConfigurationProfile.Group> groups = scmConfigurationProfile.groups();
+        if (!scmConfigurationGroupStateInitialized && scmConfigurationProfile.mapId() != null) {
+            groups.forEach(group -> scmConfigurationCollapsedGroups.add(group.id()));
+            if (!scmConfigurationProfile.excludedUnits().isEmpty()) {
+                scmConfigurationCollapsedGroups.add(SCM_BLACKLISTED_GROUP_ID);
+            }
+            scmConfigurationGroupStateInitialized = true;
+        }
+        Map<String, String> actionsByGroup = scmConfigurationProfile.actionGroups();
+        Set<ScmConfigurationProfile.UnitReference> blacklisted = scmConfigurationProfile.excludedUnits();
+        if(scmCachedGroups.equals(groups) && scmCachedActions.equals(actionsByGroup)
+                && scmCachedExcludedUnits.equals(blacklisted)
+                && scmCachedCollapsedGroups.equals(scmConfigurationCollapsedGroups)) return scmCachedGroupRows;
+        for (int index = 0; index < groups.size(); index++) {
+            ScmConfigurationProfile.Group group = groups.get(index);
+            int groupColor = scmGroupColor(index);
+            String actions = scmActionsForGroup(group.id());
+            String label = group.label().isBlank() ? group.id() : group.label();
+            if (!actions.isBlank()) label += " — " + actions;
+            rows.add(new ScmConfigurationGroupRow(group.id(), label, null,
+                    groupColor, group.units().size()));
+            if (scmConfigurationCollapsedGroups.contains(group.id())) continue;
+            group.units().stream().sorted(Comparator
+                            .comparing((ScmConfigurationProfile.UnitReference unit) -> unit.subLevelId().toString())
+                            .thenComparing(ScmConfigurationProfile.UnitReference::blockPosition)
+                            .thenComparing(unit -> unit.face() == null ? "" : unit.face().getSerializedName()))
+                    .forEach(unit -> rows.add(new ScmConfigurationGroupRow(group.id(), "", unit,
+                            groupColor, group.units().size())));
+        }
+        if (!blacklisted.isEmpty()) {
+            String id = SCM_BLACKLISTED_GROUP_ID;
+            rows.add(new ScmConfigurationGroupRow(id, "Blacklisted", null, 0xFFE15B64,
+                    blacklisted.size()));
+            if (!scmConfigurationCollapsedGroups.contains(id)) {
+                blacklisted.stream().sorted(Comparator
+                                .comparing((ScmConfigurationProfile.UnitReference unit) -> unit.subLevelId().toString())
+                                .thenComparing(ScmConfigurationProfile.UnitReference::blockPosition)
+                                .thenComparing(unit -> unit.face() == null ? "" : unit.face().getSerializedName()))
+                        .forEach(unit -> rows.add(new ScmConfigurationGroupRow(id, "", unit,
+                                0xFFE15B64, blacklisted.size())));
+            }
+        }
+        scmCachedGroups = groups;
+        scmCachedActions = actionsByGroup;
+        scmCachedExcludedUnits = blacklisted;
+        scmCachedCollapsedGroups = Set.copyOf(scmConfigurationCollapsedGroups);
+        scmCachedGroupRows = List.copyOf(rows);
+        return scmCachedGroupRows;
+    }
+
+
+    private String scmActionsForGroup(String groupId) {
+        return scmConfigurationProfile.actionGroups().entrySet().stream()
+                .filter(entry -> groupId.equals(entry.getValue()))
+                .map(Map.Entry::getKey)
+                .map(AdvancedContraptionControllerScreen::scmConfigurationActionLabel)
+                .sorted()
+                .collect(java.util.stream.Collectors.joining(", "));
+    }
+
+
+    private boolean clickScmGroupList(double mouseX, double mouseY,
+                                      int x, int y, int width, int height) {
+        if (!inside(mouseX, mouseY, x, y, width, height)) return false;
+        int index = scmConfigurationListScroll + ((int) mouseY - y - 2) / 18;
+        List<ScmConfigurationGroupRow> rows = scmConfigurationGroupRows();
+        if (index < 0 || index >= rows.size()) return true;
+        ScmConfigurationGroupRow entry = rows.get(index);
+        int rowY = y + 2 + (index - scmConfigurationListScroll) * 18;
+        if (!SCM_BLACKLISTED_GROUP_ID.equals(entry.groupId())
+                && scmConfigurationGroupRemoveBounds(x, rowY, width).contains(mouseX, mouseY)) {
+            if (entry.header()) {
+                removeScmConfigurationSelectionFromGroup(entry.groupId());
+            } else {
+                removeScmConfigurationUnitFromGroup(entry.groupId(), entry.unit());
+            }
+            return true;
+        }
+        if (entry.header()) {
+            if (!scmConfigurationCollapsedGroups.add(entry.groupId())) {
+                scmConfigurationCollapsedGroups.remove(entry.groupId());
+            }
+            scmConfigurationListScroll = 0;
+        }
+        return true;
+    }
+
+
+    private static boolean containsSameScmBlock(
+            Collection<ScmConfigurationProfile.UnitReference> units,
+            ScmConfigurationProfile.UnitReference target
+    ) {
+        return units != null && units.stream().anyMatch(unit -> unit != null && unit.sameBlock(target));
+    }
+
+
+    private String scmConfigurationUnitLabel(ScmConfigurationProfile.UnitReference unit) {
+        if (unit == null) return "Unknown block";
+        float partialTick = minecraft == null ? 0.0F
+                : minecraft.getTimer().getGameTimeDeltaPartialTick(false);
+        String name = scmLivePreviewRenderer.blockName(unit.subLevelId(), unit.blockPosition());
+        BlockPos relative = scmLivePreviewRenderer.relativePosition(
+                unit.subLevelId(), unit.blockPosition(), partialTick);
+        String face = unit.face() == null ? "" : " [" + unit.face().getSerializedName().toUpperCase(Locale.ROOT)
+                + " face]";
+        return name + face + " @ " + relative.toShortString();
+    }
+
+
+    private static int scmGroupColor(int index) {
+        int[] colors = {0xFF55D6BE, 0xFF9A7CFF, 0xFFFFA957, 0xFF62B6FF, 0xFFEF76C8, 0xFFB9D75A};
+        return colors[Math.floorMod(index, colors.length)];
+    }
+
+
+    // Highlight only selected or configured bindings. The live renderer still
+    // picks every block in the body chain; drawing an outline on every block
+    // would obscure the craft and make calibration harder.
+    private List<ScmLiveSubLevelPreviewRenderer.Highlight> scmConfigurationHighlights() {
+        Map<ScmBlockKey, Integer> colors = new LinkedHashMap<>();
+        List<ScmConfigurationProfile.Group> groups = scmConfigurationProfile.groups();
+        for (int index = 0; index < groups.size(); index++) {
+            for (ScmConfigurationProfile.UnitReference unit : groups.get(index).units()) {
+                Direction face = unit.face();
+                colors.putIfAbsent(new ScmBlockKey(unit.subLevelId(), unit.blockPosition(), face),
+                        scmGroupColor(index));
+            }
+        }
+        for (ScmConfigurationProfile.UnitReference unit : scmConfigurationProfile.excludedUnits()) {
+            Direction face = unit.face();
+            colors.put(new ScmBlockKey(unit.subLevelId(), unit.blockPosition(), face), 0xFFE15B64);
+        }
+        for (ScmConfigurationProfile.UnitReference unit : scmConfigurationSelection) {
+            Direction face = unit.face();
+            colors.put(new ScmBlockKey(unit.subLevelId(), unit.blockPosition(), face), 0xFFF6D365);
+        }
+        List<ScmLiveSubLevelPreviewRenderer.Highlight> highlights = new ArrayList<>();
+        for (Map.Entry<ScmBlockKey, Integer> entry : colors.entrySet()) {
+            ScmBlockKey block = entry.getKey();
+            highlights.add(new ScmLiveSubLevelPreviewRenderer.Highlight(
+                    block.subLevelId(), block.blockPosition(), block.face(), entry.getValue()));
+        }
+        return highlights;
+    }
+
+
+    private List<ScmLiveSubLevelPreviewRenderer.PickTarget> scmConfigurationPickTargets() {
+        return scmLivePreviewRenderer.pickTargets();
+    }
+
+
+    // Apply one click from the live 3D view. It is intentionally not limited
+    // to discovery candidates: a player may bind any real block and let the
+    // chosen SCM function validate the available control path at initialization.
+    private void selectScmConfigurationBlock(ScmLiveSubLevelPreviewRenderer.PickTarget target) {
+        if (target == null || target.subLevelId() == null) return;
+        ScmControlBindingMode controlMode = scmConfigurationControlBindingMode;
+        Direction selectedFace = switch (controlMode) {
+            case BLOCK -> null;
+            case FACE -> target.face();
+        };
+        if (selectedFace != null) {
+            scmConfigurationInputFace = selectedFace;
+        }
+        ScmConfigurationProfile.UnitReference selectedTarget =
+                new ScmConfigurationProfile.UnitReference(target.subLevelId(), target.position(), "", selectedFace);
+        int index = ensureScmConfigurationCandidate(selectedTarget);
+        if (hasShiftDown() && scmConfigurationLastSelectionIndex >= 0) {
+            int from = Math.min(scmConfigurationLastSelectionIndex, index);
+            int to = Math.max(scmConfigurationLastSelectionIndex, index);
+            if (!hasControlDown()) scmConfigurationSelection.clear();
+            for (int selected = from; selected <= to; selected++) {
+                ScmConfigurationProfile.UnitReference candidate = scmConfigurationCandidates.get(selected);
+                scmConfigurationSelection.add(switch (controlMode) {
+                    case BLOCK -> blockControlReference(candidate);
+                    case FACE -> candidate.withFace(selectedFace == null
+                            ? scmConfigurationInputFace : selectedFace);
+                });
+            }
+        } else if (hasControlDown()) {
+            if (!scmConfigurationSelection.add(selectedTarget)) {
+                scmConfigurationSelection.remove(selectedTarget);
+            }
+        } else {
+            scmConfigurationSelection.clear();
+            scmConfigurationSelection.add(selectedTarget);
+        }
+        scmConfigurationLastSelectionIndex = index;
+        scmLivePreviewRenderer.invalidate();
+    }
+
+
+    // Keep a direct adapter when switching a selected block out of face control
+    private static ScmConfigurationProfile.UnitReference blockControlReference(
+            ScmConfigurationProfile.UnitReference reference) {
+        String adapter = reference.adapter().startsWith("scm:") ? "" : reference.adapter();
+        return new ScmConfigurationProfile.UnitReference(
+                reference.subLevelId(), reference.blockPosition(), adapter, null);
+    }
+
+
+    private int ensureScmConfigurationCandidate(ScmConfigurationProfile.UnitReference target) {
+        int index = scmConfigurationCandidates.indexOf(target);
+        if (index >= 0) return index;
+        if (scmConfigurationCandidates.size() < com.rieno.gadgetsandgizmos.lib.scm.ScmCapacity.MAX_CONTROL_UNITS) {
+            scmConfigurationCandidates.add(target);
+            return scmConfigurationCandidates.size() - 1;
+        }
+        return Math.max(0, scmConfigurationCandidates.size() - 1);
+    }
+
+
+    private void autoDetectAndAssignScmConfiguration(String category) {
+        if (scmConfigurationProfile.mapId() == null) {
+            scmConfigurationStatus = "Wait for the live craft view before detecting controls";
+            return;
+        }
+        Set<ScmConfigurationProfile.UnitReference> detected = scmConfigurationCandidates.stream()
+                .filter(unit -> scmAutoDetectMatches(unit, category))
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        if (detected.isEmpty()) {
+            scmConfigurationStatus = "No " + scmAutoDetectCategoryLabel(category).toLowerCase(Locale.ROOT)
+                    + " were detected in the loaded craft";
+            return;
+        }
+        scmConfigurationSelection.clear();
+        scmConfigurationSelection.addAll(detected);
+        if (assignScmConfigurationSelection(ScmConfigurationProfile.AUTO_ACTION,
+                ScmControlBindingMode.BLOCK)) {
+            scmConfigurationStatus = "Auto-detected and assigned " + detected.size() + " "
+                    + scmAutoDetectCategoryLabel(category).toLowerCase(Locale.ROOT)
+                    + " to Auto";
+        }
+    }
+
+
+    // Check whether a discovered live control matches one automatic assignment category
+    private boolean scmAutoDetectMatches(ScmConfigurationProfile.UnitReference unit, String category) {
+        if (unit == null || category == null) return false;
+        if (scmLivePreviewRenderer.matchesAutoDetectCategory(
+                unit.subLevelId(), unit.blockPosition(), category)) {
+            return true;
+        }
+        String adapter = unit.adapter().toLowerCase(Locale.ROOT);
+        return switch (category) {
+            case "thrusters" -> adapter.contains("thruster") || adapter.contains("engine")
+                    || adapter.contains("rocket") || adapter.contains("jet") || adapter.contains("fan");
+            case "bearings" -> adapter.contains("bearing") || adapter.contains("rotor")
+                    || adapter.contains("hinge");
+            case "actuators" -> adapter.contains("joint") || adapter.contains("actuator")
+                    || adapter.contains("motor") || adapter.contains("servo") || adapter.contains("piston");
+            case "propulsion" -> adapter.contains("propulsion") || adapter.contains("thruster")
+                    || adapter.contains("engine") || adapter.contains("rocket") || adapter.contains("jet");
+            default -> false;
+        };
+    }
+
+
+    private void assignScmConfigurationSelection() {
+        assignScmConfigurationSelection(activeScmConfigurationAction(), scmConfigurationControlBindingMode);
+    }
+
+
+    // Assign selected controls to one action using the requested target scope
+    private boolean assignScmConfigurationSelection(String action, ScmControlBindingMode bindingMode) {
+        if (scmConfigurationProfile.mapId() == null || scmConfigurationSelection.isEmpty()) {
+            scmConfigurationStatus = "Wait for the live craft view, then select one or more blocks";
+            return false;
+        }
+        if (action == null || action.isBlank()) {
+            scmConfigurationStatus = "No SCM action is available for that assignment";
+            return false;
+        }
+        ScmConfigurationProfile.DockingConnectorGroup dockingGroup =
+                ScmConfigurationProfile.dockingConnectorGroupForAction(action);
+        if (dockingGroup != null) {
+            int assigned = 0;
+            int changed = 0;
+            for (ScmConfigurationProfile.UnitReference selected : scmConfigurationSelection) {
+                if (!isScmConfigurationDockingConnector(selected)) continue;
+                assigned++;
+                if (scmConfigurationProfile.setDockingConnectorGroup(
+                        selected.subLevelId(), selected.blockPosition(), dockingGroup)) {
+                    changed++;
+                }
+            }
+            if (assigned == 0) {
+                scmConfigurationStatus = "Select one or more docking connectors in the live craft view";
+                return false;
+            }
+            scmConfigurationDirty |= changed > 0;
+            scmConfigurationStatus = (changed == 0 ? "Already assigned " : "Assigned ")
+                    + assigned + " docking connector"
+                    + (assigned == 1 ? " to " : "s to ") + dockingGroup.label();
+            scmConfigurationSelection.clear();
+            scmLivePreviewRenderer.invalidate();
+            return true;
+        }
+        String groupId = "action_" + action;
+        Map<String, ScmConfigurationProfile.Group> groups = new LinkedHashMap<>();
+        scmConfigurationProfile.groups().forEach(group -> groups.put(group.id(), group));
+        boolean faceMode = bindingMode == ScmControlBindingMode.FACE;
+        boolean missingFace = faceMode && scmConfigurationSelection.stream()
+                .anyMatch(unit -> unit.face() == null && scmConfigurationInputFace == null);
+        if (missingFace) {
+            scmConfigurationStatus = "Redstone Control: click a block face or choose a direction first";
+            return false;
+        }
+        Set<ScmConfigurationProfile.UnitReference> bindings = scmConfigurationSelection.stream()
+                .map(unit -> switch (bindingMode) {
+                    case BLOCK -> blockControlReference(unit);
+                    case FACE -> unit.withFace(unit.face() == null
+                            ? scmConfigurationInputFace : unit.face());
+                })
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        bindings.forEach(this::ensureScmConfigurationCandidate);
+        ScmConfigurationProfile.Group existing = groups.get(groupId);
+        Set<ScmConfigurationProfile.UnitReference> members = new LinkedHashSet<>();
+        if (existing != null) {
+            members.addAll(existing.units());
+        }
+        // Replace the control scope for this block within the selected group.
+        // Other action groups can still bind the same actuator independently.
+        members.removeIf(member -> bindings.stream().anyMatch(binding ->
+                binding.sameBlock(member) && (binding.face() == null
+                        || member.face() == null || binding.face() == member.face())));
+        members.addAll(bindings);
+        groups.put(groupId, new ScmConfigurationProfile.Group(groupId,
+                scmConfigurationActionLabel(action), members));
+        Map<String, String> actions = new LinkedHashMap<>(scmConfigurationProfile.actionGroups());
+        actions.put(action, groupId);
+        Set<ScmConfigurationProfile.UnitReference> excluded = new LinkedHashSet<>(
+                scmConfigurationProfile.excludedUnits());
+        excluded.removeIf(excludedUnit -> bindings.stream().anyMatch(binding ->
+                binding.sameBlock(excludedUnit) && (binding.face() == null
+                        || binding.face() == excludedUnit.face())));
+        scmConfigurationProfile.replace(scmConfigurationProfile.mapId(), new ArrayList<>(groups.values()),
+                actions, excluded);
+        scmConfigurationDirty = true;
+        scmConfigurationSelection.clear();
+        scmConfigurationSelection.addAll(bindings);
+        scmConfigurationStatus = "Assigned " + bindings.size() + " block(s) to "
+                + scmConfigurationActionLabel(action);
+        scmLivePreviewRenderer.invalidate();
+        return true;
+    }
+
+
+    private void removeScmConfigurationSelectionFromGroup(String groupId) {
+        if (scmConfigurationProfile.mapId() == null || scmConfigurationSelection.isEmpty()) {
+            scmConfigurationStatus = "Select one or more blocks in the live craft view first";
+            return;
+        }
+        Map<String, ScmConfigurationProfile.Group> groups = new LinkedHashMap<>();
+        scmConfigurationProfile.groups().forEach(group -> groups.put(group.id(), group));
+        ScmConfigurationProfile.Group group = groups.get(groupId);
+        if (group == null) {
+            scmConfigurationStatus = "That actuator group no longer exists";
+            return;
+        }
+        Set<ScmConfigurationProfile.UnitReference> members = new LinkedHashSet<>(group.units());
+        int before = members.size();
+        // A block click in the 3D view selects a block, not a particular
+        // redstone face. Removing through a group header therefore removes
+        // every binding of the selected block from this one group only. Its
+        // memberships in every other group remain intact.
+        members.removeIf(member -> scmConfigurationSelection.stream().anyMatch(selected ->
+                selected.sameBlock(member)));
+        groups.put(groupId, new ScmConfigurationProfile.Group(group.id(), group.label(), members));
+        scmConfigurationProfile.replace(scmConfigurationProfile.mapId(), new ArrayList<>(groups.values()),
+                scmConfigurationProfile.actionGroups(), scmConfigurationProfile.excludedUnits());
+        scmConfigurationDirty = true;
+        int removed = before - members.size();
+        scmConfigurationStatus = removed == 0
+                ? "The selected blocks are not assigned to " + scmConfigurationGroupLabel(group)
+                : "Removed " + removed + " block" + (removed == 1 ? "" : "s") + " from "
+                + scmConfigurationGroupLabel(group);
+        scmLivePreviewRenderer.invalidate();
+    }
+
+
+    private void removeScmConfigurationUnitFromGroup(String groupId,
+                                                     ScmConfigurationProfile.UnitReference unit) {
+        if (scmConfigurationProfile.mapId() == null || unit == null) {
+            scmConfigurationStatus = "That actuator binding is no longer available";
+            return;
+        }
+        Map<String, ScmConfigurationProfile.Group> groups = new LinkedHashMap<>();
+        scmConfigurationProfile.groups().forEach(group -> groups.put(group.id(), group));
+        ScmConfigurationProfile.Group group = groups.get(groupId);
+        if (group == null) {
+            scmConfigurationStatus = "That actuator group no longer exists";
+            return;
+        }
+        Set<ScmConfigurationProfile.UnitReference> members = new LinkedHashSet<>(group.units());
+        if (!members.remove(unit)) {
+            scmConfigurationStatus = "That actuator is not assigned to " + scmConfigurationGroupLabel(group);
+            return;
+        }
+        groups.put(groupId, new ScmConfigurationProfile.Group(group.id(), group.label(), members));
+        scmConfigurationProfile.replace(scmConfigurationProfile.mapId(), new ArrayList<>(groups.values()),
+                scmConfigurationProfile.actionGroups(), scmConfigurationProfile.excludedUnits());
+        scmConfigurationDirty = true;
+        scmConfigurationStatus = "Removed " + scmConfigurationUnitLabel(unit) + " from "
+                + scmConfigurationGroupLabel(group);
+        scmLivePreviewRenderer.invalidate();
+    }
+
+
+    private static String scmConfigurationGroupLabel(ScmConfigurationProfile.Group group) {
+        return group.label().isBlank() ? group.id() : group.label();
+    }
+
+
+    private boolean selectionIsBlacklisted() {
+        return !scmConfigurationSelection.isEmpty()
+                && scmConfigurationProfile.excludedUnits().containsAll(scmConfigurationSelection);
+    }
+
+
+    private void toggleScmConfigurationBlacklist() {
+        if (scmConfigurationProfile.mapId() == null || scmConfigurationSelection.isEmpty()) {
+            scmConfigurationStatus = "Select one or more blocks in the live craft view first";
+            return;
+        }
+        Set<ScmConfigurationProfile.UnitReference> excluded = new LinkedHashSet<>(
+                scmConfigurationProfile.excludedUnits());
+        boolean clear = excluded.containsAll(scmConfigurationSelection);
+        if (clear) excluded.removeAll(scmConfigurationSelection);
+        else excluded.addAll(scmConfigurationSelection);
+        scmConfigurationProfile.replace(scmConfigurationProfile.mapId(), scmConfigurationProfile.groups(),
+                scmConfigurationProfile.actionGroups(), excluded);
+        scmConfigurationDirty = true;
+        scmConfigurationStatus = (clear ? "Removed " : "Blacklisted ")
+                + scmConfigurationSelection.size() + " block(s)";
+        scmLivePreviewRenderer.invalidate();
+    }
+
+
+    // Draw the shared snap-step control used by every editable graph workspace.
+    private void drawGridSnapToolbarControl(GuiGraphics graphics) {
+        UiRect bounds = gridSnapSliderBounds();
+        if (bounds.width() <= 0) return;
+        graphics.drawString(font, "Grid " + gridSnapStep, bounds.x(), bounds.y() + 5,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFFD2E4F0, false);
+        int trackLeft = bounds.x() + 42;
+        int trackWidth = Math.max(18, bounds.width() - 46);
+        int trackY = bounds.y() + 9;
+        graphics.fill(trackLeft, trackY, trackLeft + trackWidth, trackY + 2,
+                v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF466A82);
+        int handle = trackLeft + (trackWidth - 4) * (gridSnapStep - GRID_SNAP_MINIMUM)
+                / (GRID_SNAP_MAXIMUM - GRID_SNAP_MINIMUM);
+        graphics.fill(handle, trackY - 3, handle + 4, trackY + 5,
+                draggingGridSnapSlider ? interfaceAccentTextColor()
+                        : v2Ui ? AdvancedControllerV2Theme.ACCENT : 0xFF91D9FF);
+    }
+
+
+    // Get the bounds of the toolbar grid-snap control.
+    private UiRect gridSnapSliderBounds() {
+        return new UiRect(layoutRight() - 392, 5, 84, 18);
+    }
+
+
+    // Update the shared graph snap size from the toolbar slider.
+    private void updateGridSnapStep(double mouseX) {
+        UiRect bounds = gridSnapSliderBounds();
+        int trackLeft = bounds.x() + 42;
+        int trackWidth = Math.max(18, bounds.width() - 46);
+        double amount = Mth.clamp((mouseX - trackLeft) / trackWidth, 0.0D, 1.0D);
+        int snapped = GRID_SNAP_MINIMUM + (int) Math.round(amount
+                * (GRID_SNAP_MAXIMUM - GRID_SNAP_MINIMUM) / 4.0D) * 4;
+        gridSnapStep = Mth.clamp(snapped, GRID_SNAP_MINIMUM, GRID_SNAP_MAXIMUM);
+    }
+
+
+    // Draw the host-only Scratch presentation inside the normal ACC canvas.
+    // The graph shell, tab bar, sidebars and theme stay shared with Main Graph;
+    // only the schedule document's visual grammar changes.
+    private void drawShippingScheduleWorkspace(GuiGraphics graphics, int mouseX, int mouseY) {
+        UiRect canvas = scheduleCanvasBounds();
+        int canvasColour = v2Ui ? AdvancedControllerV2Theme.CANVAS_BACKGROUND : 0xFF10141C;
+        graphics.drawString(font, "SCHEDULE", canvas.x() + 12, canvas.y() + 10,
+                v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF91D9FF, false);
+        scheduleLayout = ScratchBlockSurface.renderFreeform(graphics, font, ShippingScheduleScratchBlocks.registry(),
+                ShippingScheduleGraph.orderedBlocks(scheduleDraft), canvas.x(), canvas.y(), canvas.width(), canvas.height(),
+                node -> node instanceof AdvancedGraphDocument.Node scheduleNode
+                        ? new ScratchBlockSurface.Position(scheduleNode.x(), scheduleNode.y())
+                        : ScratchBlockSurface.Position.ORIGIN,
+                schedulePanX, schedulePanY, scheduleZoom, selectedScheduleBlocks, canvasColour,
+                node -> node instanceof AdvancedGraphDocument.Node scheduleNode
+                        ? ShippingScheduleGraph.scratchParent(scheduleNode) : "",
+                node -> node instanceof AdvancedGraphDocument.Node scheduleNode
+                        ? scheduleInlineDetail(scheduleNode) : null);
+        drawScheduleMarquee(graphics);
+        drawScheduleInlineEditorBackdrop(graphics);
+        syncScheduleInlinePropertyEditor();
+        if (scheduleLayout.blocks().isEmpty()) {
+            graphics.drawString(font, "Choose a schedule step from the shared library to begin.",
+                    canvas.x() + 18, canvas.y() + 38,
+                    v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFFAAB8C6, false);
+        }
+    }
+
+
+    // Draw the current drag-selection rectangle over the shared ACC canvas.
+    private void drawScheduleMarquee(GuiGraphics graphics) {
+        if (!scheduleMarquee) return;
+        int left = (int) Math.floor(Math.min(scheduleMarqueeStartX, scheduleMarqueeCurrentX));
+        int top = (int) Math.floor(Math.min(scheduleMarqueeStartY, scheduleMarqueeCurrentY));
+        int right = (int) Math.ceil(Math.max(scheduleMarqueeStartX, scheduleMarqueeCurrentX));
+        int bottom = (int) Math.ceil(Math.max(scheduleMarqueeStartY, scheduleMarqueeCurrentY));
+        if (right <= left || bottom <= top) return;
+        int colour = v2Ui ? AdvancedControllerV2Theme.ACCENT : 0xFF91D9FF;
+        graphics.fill(left, top, right, bottom, (colour & 0x00FFFFFF) | 0x2E000000);
+        graphics.renderOutline(left, top, right - left, bottom - top, colour);
+    }
+
+
+    // Read the selected block's real Create/Scratch configuration for its
+    // inline input pill. The graph remains the one source of truth.
+    private String schedulePrimaryProperty(AdvancedGraphDocument.Node node) {
+        if (minecraft == null || minecraft.level == null || scheduleDraft == null) return "";
+        return ShippingScheduleGraph.primaryProperty(scheduleDraft, node, minecraft.level.registryAccess());
+    }
+
+
+    // Hide the painted value while the actual inline EditBox owns that one field.
+    private String scheduleInlineDetail(AdvancedGraphDocument.Node node) {
+        if (minecraft == null || minecraft.level == null || scheduleDraft == null) return null;
+        String property = ShippingScheduleGraph.primaryPropertyKey(scheduleDraft, node,
+                minecraft.level.registryAccess());
+        if (property.isBlank()) return null;
+        return editingScheduleInlineProperty && node.id().equals(selectedScheduleBlock)
+                && property.equals(selectedScheduleProperty) ? null : schedulePrimaryProperty(node);
+    }
+
+
+    // Draw the one pale field behind the real inline editor, avoiding a duplicate static value.
+    private void drawScheduleInlineEditorBackdrop(GuiGraphics graphics) {
+        if (!editingScheduleInlineProperty || scheduleLayout == null || selectedScheduleBlock == null) return;
+        ScratchBlockSurface.BlockBounds block = scheduleBlockBounds(selectedScheduleBlock);
+        if (block == null) return;
+        int fieldWidth = Math.min(76, Math.max(34, block.width() - 98));
+        int x = block.x() + block.width() - fieldWidth - 9;
+        int y = block.y() + Math.max(3, Math.min(7, block.height() / 3 - 4));
+        graphics.fill(x + 3, y, x + fieldWidth - 3, y + 15, 0xFFF7F7F7);
+        graphics.fill(x, y + 3, x + fieldWidth, y + 12, 0xFFF7F7F7);
+        graphics.fill(x + 5, y + 2, x + fieldWidth - 5, y + 13, 0xFFE9EEF3);
+    }
+
+
+    // The Schedule canvas owns an independent viewport so navigating a large
+    // Scratch program never disturbs the Main Graph's saved camera position.
+    private void drawScheduleGrid(GuiGraphics graphics) {
+        UiRect canvas = scheduleCanvasBounds();
+        if (!v2Ui) {
+            graphics.fill(canvas.x(), canvas.y(), canvas.right(), canvas.bottom(), 0xFF10141C);
+            return;
+        }
+        int spacing = Math.max(8, (int) Math.round(V2_GRID_SPACING * scheduleZoom));
+        int dotSize = scheduleZoom >= 1.35D ? 2 : 1;
+        int xPhase = Math.floorMod((int) Math.round(schedulePanX * scheduleZoom), spacing);
+        int yPhase = Math.floorMod((int) Math.round(schedulePanY * scheduleZoom), spacing);
+        Matrix4f pose = graphics.pose().last().pose();
+        VertexConsumer buffer = graphics.bufferSource().getBuffer(RenderType.gui());
+        addGuiQuad(buffer, pose, canvas.x(), canvas.y(), canvas.right(), canvas.bottom(),
+                AdvancedControllerV2Theme.CANVAS_BACKGROUND);
+        for (int y = canvas.y() + yPhase - spacing; y < canvas.bottom(); y += spacing) {
+            for (int x = canvas.x() + xPhase - spacing; x < canvas.right(); x += spacing) {
+                if (x >= canvas.x() && y >= canvas.y()) {
+                    addGuiQuad(buffer, pose, x, y, x + dotSize, y + dotSize,
+                            AdvancedControllerV2Theme.CANVAS_DOT);
+                }
+            }
+        }
+        graphics.flush();
+    }
+
+
+    private void drawScheduleCanvasOverlay(GuiGraphics graphics) {
+        UiRect canvas = scheduleCanvasBounds();
+        if (canvas.width() < 170 || canvas.height() < 120) return;
+        UiRect read = scheduleReadItemBounds();
+        UiRect write = scheduleWriteItemBounds();
+        renderAdvancedButton(graphics, font, read.x(), read.y(), read.width(), read.height(),
+                Component.literal("Read Item"), false, false);
+        renderAdvancedButton(graphics, font, write.x(), write.y(), write.width(), write.height(),
+                Component.literal("Write Item"), false, false);
+        for (String action : List.of("start", "pause", "resume", "stop")) {
+            UiRect control = scheduleRuntimeButtonBounds(action);
+            renderAdvancedButton(graphics, font, control.x(), control.y(), control.width(), control.height(),
+                    Component.literal(switch (action) {
+                        case "start" -> "Start";
+                        case "pause" -> "Pause";
+                        case "resume" -> "Resume";
+                        default -> "Stop";
+                    }), false, false);
+        }
+        String zoomLabel = (int) Math.round(scheduleZoom * 100.0D) + "%";
+        String blockLabel = "BLOCKS: " + ShippingScheduleGraph.orderedBlocks(scheduleDraft).size();
+        UiRect status = scheduleCanvasStatusBounds();
+        if (v2Ui) {
+            AdvancedControllerV2Theme.drawPanel(graphics, status.x(), status.y(), status.width(), status.height());
+            graphics.drawString(font, "ZOOM", status.x() + 8, status.y() + 6,
+                    AdvancedControllerV2Theme.MUTED, false);
+            graphics.drawString(font, zoomLabel, status.x() + 41, status.y() + 6,
+                    AdvancedControllerV2Theme.PRIMARY, false);
+            graphics.drawString(font, blockLabel, status.right() - font.width(blockLabel) - 8, status.y() + 6,
+                    AdvancedControllerV2Theme.SECONDARY, false);
+        } else {
+            graphics.fill(status.x(), status.y(), status.right(), status.bottom(), 0xCC17212D);
+            graphics.drawString(font, zoomLabel + "  " + blockLabel, status.x() + 7, status.y() + 6,
+                    0xFFD6E4F2, false);
+        }
+        drawScheduleMinimap(graphics);
+    }
+
+
+    private UiRect scheduleCanvasStatusBounds() {
+        String zoomLabel = (int) Math.round(scheduleZoom * 100.0D) + "%";
+        String blockLabel = "BLOCKS: " + ShippingScheduleGraph.orderedBlocks(scheduleDraft).size();
+        return new UiRect(graphLeft() + 10, graphBottom() - 27,
+                Math.max(126, font.width(zoomLabel) + font.width(blockLabel) + 48), 19);
+    }
+
+
+    // Explicit direction controls make the SCM graph authoritative while still
+    // supporting a legacy shipping schedule held by the attached pilot.
+    private UiRect scheduleReadItemBounds() {
+        UiRect canvas = scheduleCanvasBounds();
+        return new UiRect(canvas.x() + 78, canvas.y() + 4, 68, 18);
+    }
+
+
+    private UiRect scheduleWriteItemBounds() {
+        UiRect read = scheduleReadItemBounds();
+        return new UiRect(read.right() + 4, read.y(), 72, read.height());
+    }
+
+
+    // Runtime controls belong to the SCM-owned schedule. They remain useful
+    // when the pilot is not holding a physical shipping-schedule item.
+    private UiRect scheduleRuntimeButtonBounds(String action) {
+        UiRect write = scheduleWriteItemBounds();
+        int x = write.right() + 5;
+        return switch (action) {
+            case "start" -> new UiRect(x, write.y(), 43, write.height());
+            case "pause" -> new UiRect(x + 47, write.y(), 45, write.height());
+            case "resume" -> new UiRect(x + 96, write.y(), 54, write.height());
+            default -> new UiRect(x + 154, write.y(), 40, write.height());
+        };
+    }
+
+
+    private UiRect scheduleMinimapBounds() {
+        return new UiRect(graphRight() - 132, graphBottom() - 92, 122, 82);
+    }
+
+
+    private void drawScheduleMinimap(GuiGraphics graphics) {
+        List<AdvancedGraphDocument.Node> blocks = ShippingScheduleGraph.orderedBlocks(scheduleDraft);
+        UiRect bounds = scheduleMinimapBounds();
+        if (v2Ui) {
+            AdvancedControllerV2Theme.drawPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+            graphics.drawString(font, "MINIMAP", bounds.x() + 8, bounds.y() + 7,
+                    AdvancedControllerV2Theme.MUTED, false);
+            graphics.drawString(font, "RESET", bounds.right() - font.width("RESET") - 8, bounds.y() + 7,
+                    AdvancedControllerV2Theme.PRIMARY, false);
+            AdvancedControllerV2Theme.fill(graphics, bounds.x() + 1, bounds.y() + 21,
+                    bounds.right() - 1, bounds.y() + 22, AdvancedControllerV2Theme.BORDER_SOFT);
+        } else {
+            graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(), 0xE017212D);
+            graphics.drawString(font, "Minimap", bounds.x() + 6, bounds.y() + 6, 0xFF91D9FF, false);
+        }
+        AdvancedControllerMinimapGeometry.Transform transform = scheduleMinimapDragTransform == null
+                ? scheduleMinimapTransform(blocks) : scheduleMinimapDragTransform;
+        for (AdvancedGraphDocument.Node node : blocks) {
+            int left = (int) Math.round(transform.mapX(node.x()));
+            int top = (int) Math.round(transform.mapY(node.y()));
+            int right = Math.max(left + 2, (int) Math.round(transform.mapX(
+                    node.x() + ScratchBlockSurface.DEFAULT_BLOCK_WIDTH)));
+            int bottom = Math.max(top + 2, (int) Math.round(transform.mapY(node.y() + ScratchBlockSurface.C_BLOCK_HEIGHT)));
+            ScratchBlockDefinition definition = ShippingScheduleScratchBlocks.registry().get(node.type());
+            int colour = definition == null ? AdvancedControllerV2Theme.MUTED : definition.colour();
+            if (v2Ui) {
+                AdvancedControllerV2Theme.fill(graphics, left, top, right, bottom,
+                        (colour & 0x00FFFFFF) | 0xAA000000);
+                AdvancedControllerV2Theme.drawOutline(graphics, left, top, Math.max(1, right - left),
+                        Math.max(1, bottom - top), colour);
+            } else {
+                graphics.fill(left, top, right, bottom, colour);
+            }
+        }
+        AdvancedControllerMinimapGeometry.Rect viewport = scheduleMinimapViewport(transform);
+        if (viewport.width() <= 0.0D || viewport.height() <= 0.0D) return;
+        int left = (int) Math.floor(viewport.left());
+        int top = (int) Math.floor(viewport.top());
+        int right = Math.max(left + 2, (int) Math.ceil(viewport.right()));
+        int bottom = Math.max(top + 2, (int) Math.ceil(viewport.bottom()));
+        int colour = v2Ui ? AdvancedControllerV2Theme.ACCENT : 0xFF91D9FF;
+        graphics.fill(left, top, right, bottom, (colour & 0x00FFFFFF) | 0x33000000);
+        graphics.renderOutline(left, top, right - left, bottom - top, colour);
+    }
+
+
+    private AdvancedControllerMinimapGeometry.Transform scheduleMinimapTransform(
+            List<AdvancedGraphDocument.Node> blocks) {
+        UiRect canvas = scheduleCanvasBounds();
+        double minX = scheduleGraphX(canvas.x());
+        double minY = scheduleGraphY(canvas.y());
+        double maxX = scheduleGraphX(canvas.right());
+        double maxY = scheduleGraphY(canvas.bottom());
+        for (AdvancedGraphDocument.Node node : blocks) {
+            minX = Math.min(minX, node.x());
+            minY = Math.min(minY, node.y());
+            maxX = Math.max(maxX, node.x() + ScratchBlockSurface.DEFAULT_BLOCK_WIDTH);
+            maxY = Math.max(maxY, node.y() + ScratchBlockSurface.C_BLOCK_HEIGHT);
+        }
+        double horizontalPadding = Math.max(24.0D, (maxX - minX) * 0.04D);
+        double verticalPadding = Math.max(24.0D, (maxY - minY) * 0.04D);
+        UiRect bounds = scheduleMinimapBounds();
+        return AdvancedControllerMinimapGeometry.fit(minX - horizontalPadding, minY - verticalPadding,
+                maxX + horizontalPadding, maxY + verticalPadding,
+                bounds.x() + 8, bounds.y() + 28, bounds.width() - 16, bounds.height() - 36);
+    }
+
+
+    private AdvancedControllerMinimapGeometry.Rect scheduleMinimapViewport(
+            AdvancedControllerMinimapGeometry.Transform transform) {
+        UiRect canvas = scheduleCanvasBounds();
+        return AdvancedControllerMinimapGeometry.viewport(transform, scheduleGraphX(canvas.x()),
+                scheduleGraphY(canvas.y()), scheduleGraphX(canvas.right()), scheduleGraphY(canvas.bottom()));
+    }
+
+
+    private int scheduleScreenX(double graphX) {
+        return scheduleCanvasBounds().x() + (int) Math.round((graphX + schedulePanX) * scheduleZoom);
+    }
+
+
+    private int scheduleScreenY(double graphY) {
+        return scheduleCanvasBounds().y() + (int) Math.round((graphY + schedulePanY) * scheduleZoom);
+    }
+
+
+    private double scheduleGraphX(double screenX) {
+        return (screenX - scheduleCanvasBounds().x()) / scheduleZoom - schedulePanX;
+    }
+
+
+    private double scheduleGraphY(double screenY) {
+        return (screenY - scheduleCanvasBounds().y()) / scheduleZoom - schedulePanY;
+    }
+
+
+    private boolean clickScheduleCanvasOverlay(double mouseX, double mouseY, int button) {
+        UiRect canvas = scheduleCanvasBounds();
+        if (canvas.width() < 170 || canvas.height() < 120) return false;
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && scheduleReadItemBounds().contains(mouseX, mouseY)) {
+            requestScheduleItemTransfer("schedule_read", "Reading held shipping schedule...");
+            return true;
+        }
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && scheduleWriteItemBounds().contains(mouseX, mouseY)) {
+            requestScheduleItemTransfer("schedule_write", "Writing schedule to pilot...");
+            return true;
+        }
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            for (String action : List.of("start", "pause", "resume", "stop")) {
+                if (scheduleRuntimeButtonBounds(action).contains(mouseX, mouseY)) {
+                    requestScheduleItemTransfer("schedule_" + action,
+                            Character.toUpperCase(action.charAt(0)) + action.substring(1) + " SCM schedule...");
+                    return true;
+                }
+            }
+        }
+        UiRect minimap = scheduleMinimapBounds();
+        if (minimap.contains(mouseX, mouseY)) {
+            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT
+                    && inside(mouseX, mouseY, minimap.right() - 46, minimap.y(), 46, 22)) {
+                schedulePanX = 24.0D;
+                schedulePanY = 12.0D;
+                scheduleZoom = 1.0D;
+                draggingScheduleMinimapViewport = false;
+                scheduleMinimapDragTransform = null;
+                return true;
+            }
+            if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+                AdvancedControllerMinimapGeometry.Transform transform = scheduleMinimapTransform(
+                        ShippingScheduleGraph.orderedBlocks(scheduleDraft));
+                AdvancedControllerMinimapGeometry.Rect content = transform.contentBounds();
+                if (content.contains(mouseX, mouseY)) {
+                    AdvancedControllerMinimapGeometry.Rect viewport = scheduleMinimapViewport(transform);
+                    if (viewport.contains(mouseX, mouseY)) {
+                        scheduleMinimapDragOffsetX = mouseX - viewport.centerX();
+                        scheduleMinimapDragOffsetY = mouseY - viewport.centerY();
+                    } else {
+                        scheduleMinimapDragOffsetX = 0.0D;
+                        scheduleMinimapDragOffsetY = 0.0D;
+                        panScheduleMinimapViewport(mouseX, mouseY, transform);
+                    }
+                    scheduleMinimapDragTransform = transform;
+                    draggingScheduleMinimapViewport = true;
+                }
+            }
+            return true;
+        }
+        return scheduleCanvasStatusBounds().contains(mouseX, mouseY);
+    }
+
+
+    private void panScheduleMinimapViewport(double mouseX, double mouseY,
+                                             AdvancedControllerMinimapGeometry.Transform transform) {
+        AdvancedControllerMinimapGeometry.Rect content = transform.contentBounds();
+        double mapCenterX = Mth.clamp(mouseX - scheduleMinimapDragOffsetX, content.left(), content.right());
+        double mapCenterY = Mth.clamp(mouseY - scheduleMinimapDragOffsetY, content.top(), content.bottom());
+        double worldCenterX = transform.worldX(mapCenterX);
+        double worldCenterY = transform.worldY(mapCenterY);
+        UiRect canvas = scheduleCanvasBounds();
+        schedulePanX = AdvancedControllerMinimapGeometry.panForWorldCenter(
+                worldCenterX, scheduleZoom, canvas.width()) / scheduleZoom;
+        schedulePanY = AdvancedControllerMinimapGeometry.panForWorldCenter(
+                worldCenterY, scheduleZoom, canvas.height()) / scheduleZoom;
+    }
+
+
+    // Draw the normal ACC library sidebar with the shipping schedule registry
+    // in place of ordinary graph nodes.
+    private void drawScheduleLibrary(GuiGraphics graphics, int mouseX, int mouseY) {
+        int left = layoutLeft();
+        if (leftSidebarCollapsed) {
+            renderSidebarPanel(graphics, left, TOOLBAR_HEIGHT, SIDEBAR_HANDLE_WIDTH, height - TOOLBAR_HEIGHT);
+            return;
+        }
+        renderSidebarPanel(graphics, left, TOOLBAR_HEIGHT, activeLeftWidth(), height - TOOLBAR_HEIGHT);
+        graphics.fill(left + activeLeftWidth() - 1, TOOLBAR_HEIGHT, left + activeLeftWidth(), height,
+                v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF344A5C);
+        graphics.drawString(font, v2Ui ? "SCHEDULE LIBRARY" : "Schedule Blocks", left + 8, 62,
+                v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF91D9FF, false);
+
+        int contentHeight = schedulePaletteContentHeight();
+        int viewportHeight = Math.max(1, height - 82);
+        schedulePaletteScroll = Mth.clamp(schedulePaletteScroll, 0, Math.max(0, contentHeight - viewportHeight));
+        int y = 86 - schedulePaletteScroll;
+        graphics.enableScissor(left, 82, left + activeLeftWidth(), height);
+        for (String category : schedulePaletteCategories()) {
+            List<ScratchBlockDefinition> definitions = schedulePaletteDefinitions(category);
+            if (definitions.isEmpty()) continue;
+            String categoryId = schedulePaletteCategoryId(category);
+            boolean collapsed = collapsedCategories.contains(categoryId);
+            int colour = definitions.getFirst().colour();
+            boolean hovered = inside(mouseX, mouseY, left + 4, y - 1, activeLeftWidth() - 8, 25);
+            if (v2Ui) {
+                AdvancedControllerV2Theme.drawBrowserCategory(graphics, left + 4, y - 1,
+                        activeLeftWidth() - 8, 25, colour, collapsed, hovered);
+                graphics.drawString(font, collapsed ? ">" : "v", left + 12, y + 7, colour, false);
+                graphics.drawString(font, schedulePaletteCategoryName(category).toUpperCase(Locale.ROOT),
+                        left + 27, y + 7, AdvancedControllerV2Theme.SECONDARY, false);
+            } else {
+                renderControllerOption(graphics, left + 5, y - 2, activeLeftWidth() - 10, 16,
+                        colour, false, false);
+                graphics.drawString(font, (collapsed ? "> " : "v ") + schedulePaletteCategoryName(category),
+                        left + 12, y + 1, interfacePrimaryColor(), false);
+            }
+            y += 25;
+            if (collapsed) continue;
+            for (ScratchBlockDefinition definition : definitions) {
+                boolean blockHovered = inside(mouseX, mouseY, left + 7, y,
+                        activeLeftWidth() - 14, SCHEDULE_PALETTE_ROW_HEIGHT - 1);
+                if (v2Ui) {
+                    AdvancedControllerV2Theme.drawBrowserNode(graphics, left + 7, y,
+                            activeLeftWidth() - 14, SCHEDULE_PALETTE_ROW_HEIGHT - 1,
+                            definition.colour(), blockHovered);
+                    graphics.drawString(font, trim(definition.title().toUpperCase(Locale.ROOT), 27),
+                            left + 23, y + 4, AdvancedControllerV2Theme.PRIMARY, false);
+                } else {
+                    if (blockHovered) graphics.fill(left + 8, y, left + activeLeftWidth() - 7,
+                            y + SCHEDULE_PALETTE_ROW_HEIGHT - 1, 0x663B617C);
+                    graphics.fill(left + 13, y + 6, left + 18, y + 15, definition.colour());
+                    graphics.drawString(font, trim(definition.title(), 27), left + 24, y + 5,
+                            interfacePrimaryColor(), false);
+                }
+                y += SCHEDULE_PALETTE_ROW_HEIGHT;
+            }
+        }
+        graphics.disableScissor();
+        drawSidebarScrollTrack(graphics, left + activeLeftWidth() - 5, 84, 3,
+                Math.max(1, height - 88), contentHeight, viewportHeight, schedulePaletteScroll);
+    }
+
+
+    // Draw the normal ACC inspector frame with schedule-specific controls.
+    private void drawScheduleInspector(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (rightSidebarCollapsed) {
+            if (schedulePropertyValue != null) schedulePropertyValue.setVisible(false);
+            return;
+        }
+        int x = graphRight();
+        renderSidebarPanel(graphics, x, TOOLBAR_HEIGHT, layoutRight() - x, height - TOOLBAR_HEIGHT);
+        graphics.fill(x, TOOLBAR_HEIGHT, x + 1, height,
+                v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF344A5C);
+        graphics.drawString(font, v2Ui ? "CONFIG" : "Inspector", x + 10, 38,
+                v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF91D9FF, false);
+
+        AdvancedGraphDocument.Node selected = scheduleNode(selectedScheduleBlock);
+        if (selected == null) {
+            graphics.drawString(font, "Select a schedule block to configure it.", x + 10, 62,
+                    interfaceMutedColor(), false);
+        } else {
+            drawGraphConfigCard(graphics, x, layoutRight() - x, selected,
+                    scheduleBlockLabel(selected), mouseX, mouseY);
+        }
+
+        List<String> properties = schedulePropertyKeys(selected);
+        int visiblePropertyRows = scheduleVisiblePropertyRows(properties);
+        schedulePropertyScroll = Mth.clamp(schedulePropertyScroll, 0,
+                Math.max(0, properties.size() - visiblePropertyRows));
+        if (selectedScheduleProperty == null || !properties.contains(selectedScheduleProperty)) {
+            selectedScheduleProperty = properties.isEmpty() ? null : properties.getFirst();
+        }
+        if (selected == null) {
+            graphics.drawString(font, "Select a block to configure it.", x + 10, 112,
+                    interfaceMutedColor(), false);
+        } else if (properties.isEmpty()) {
+            graphics.drawString(font, "This block has no editable values.", x + 10, 112,
+                    interfaceMutedColor(), false);
+        } else {
+            graphics.drawString(font, "Properties", x + 10, 112, interfaceSecondaryColor(), false);
+            for (int row = 0; row < visiblePropertyRows; row++) {
+                int propertyIndex = schedulePropertyScroll + row;
+                String property = properties.get(propertyIndex);
+                UiRect bounds = schedulePropertyBounds(row);
+                boolean active = property.equals(selectedScheduleProperty);
+                if (v2Ui) {
+                    AdvancedControllerV2Theme.drawBrowserNode(graphics, bounds.x(), bounds.y(), bounds.width(),
+                            bounds.height(), active ? AdvancedControllerV2Theme.ACCENT : AdvancedControllerV2Theme.BORDER,
+                            bounds.contains(mouseX, mouseY));
+                } else if (active || bounds.contains(mouseX, mouseY)) {
+                    graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(), 0x553B617C);
+                }
+                graphics.drawString(font, trim(ShippingScheduleGraph.propertyLabel(selected, property), 12),
+                        bounds.x() + 6, bounds.y() + 5, interfacePrimaryColor(), false);
+                UiRect field = schedulePropertyValueBounds(bounds);
+                List<SchedulePropertyChoice> choices = schedulePropertyChoices(selected, property);
+                String value = scheduleProperties(selected).getOrDefault(property, "");
+                if (!choices.isEmpty()) {
+                    String label = choices.stream().filter(choice -> choice.value().equals(value))
+                            .map(SchedulePropertyChoice::label).findFirst().orElse(value);
+                    renderAdvancedButton(graphics, font, field.x(), field.y(), field.width(), field.height(),
+                            Component.literal(trim(label, 13)), field.contains(mouseX, mouseY), active);
+                } else if (!(active && schedulePropertyValue != null && schedulePropertyValue.visible)) {
+                    graphics.drawString(font, trim(value, Math.max(14, field.width() - 5)), field.x() + 3,
+                            field.y() + 5, interfaceSecondaryColor(), false);
+                }
+            }
+        }
+        syncSchedulePropertyEditor(selected);
+        drawInspectorDivider(graphics, x, schedulePropertyDividerY());
+
+        if(selected != null && !ShippingScheduleGraph.isFlowBlock(selected.type())){
+            UiRect configure = scheduleConfigureBounds();
+            renderAdvancedButton(graphics, font, configure.x(), configure.y(), configure.width(), configure.height(),
+                    Component.literal("Configure Block"), configure.contains(mouseX, mouseY), false);
+        }
+
+        boolean hasParameters = scheduleInputSlotCount(selected) > 0;
+        if (hasParameters) {
+            UiRect parameters = scheduleParameterBounds();
+            String label = selected != null && selected.type().endsWith("redstone_link")
+                    ? "Set Frequencies" : "Set Parameters";
+            renderAdvancedButton(graphics, font, parameters.x(), parameters.y(), parameters.width(), parameters.height(),
+                    Component.literal(label), parameters.contains(mouseX, mouseY), false);
+            drawInspectorDivider(graphics, x, parameters.bottom() + 5);
+        }
+        UiRect remove = scheduleRemoveBounds();
+        renderAdvancedButton(graphics, font, remove.x(), remove.y(), remove.width(), remove.height(), Component.literal("Remove"),
+                remove.contains(mouseX, mouseY), selected != null);
+        drawInspectorDivider(graphics, x, remove.bottom() + 5);
+
+        int flowTop = scheduleFlowTop();
+        drawInspectorSectionHeader(graphics, x, flowTop, "Flow", false);
+        boolean cyclic = scheduleDraft != null && scheduleDraft.variables()
+                .getOrDefault(ShippingScheduleGraph.CYCLIC_VARIABLE, AdvancedGraphDocument.Value.bool(false))
+                .asBoolean();
+        graphics.drawString(font, "Route loop", x + 10, flowTop + 26, interfaceSecondaryColor(), false);
+        UiRect cycle = scheduleCycleBounds();
+        renderAdvancedButton(graphics, font, cycle.x(), cycle.y(), cycle.width(), cycle.height(),
+                Component.literal(cyclic ? "Repeat: On" : "Repeat: Off"), cycle.contains(mouseX, mouseY), cyclic);
+        AdvancedContraptionControllerBlockEntity controller = activeScmController();
+        int routePlanningTop = scheduleRoutePlanningTop();
+        drawInspectorSectionHeader(graphics, x, routePlanningTop, "Route Planning", false);
+        UiRect precalculate = schedulePrecalculateRouteBounds();
+        boolean calculating = controller != null && controller.isPrecalculatingShippingScheduleRoute();
+        renderAdvancedButton(graphics, font, precalculate.x(), precalculate.y(), precalculate.width(),
+                precalculate.height(), Component.literal(calculating ? "Calculating Route..." : "Pre-Calculate Route"),
+                precalculate.contains(mouseX, mouseY), calculating);
+        UiRect deleteRoute = scheduleDeleteRouteBounds();
+        renderAdvancedButton(graphics, font, deleteRoute.x(), deleteRoute.y(), deleteRoute.width(),
+                deleteRoute.height(), Component.literal("Delete Route"),
+                deleteRoute.contains(mouseX, mouseY), false);
+        boolean displayProgress = controller != null && controller.scmDisplayProgress();
+        UiRect display = scheduleDisplayProgressBounds();
+        renderAdvancedButton(graphics, font, display.x(), display.y(), display.width(), display.height(),
+                Component.literal(displayProgress ? "Display Progress: On" : "Display Progress: Off"),
+                display.contains(mouseX, mouseY), displayProgress);
+        UUID routeOwner = controller == null ? null : controller.getScmPersistenceId();
+        boolean routeVisible = ShippingRouteSplineClient.isVisible(routeOwner);
+        UiRect showRoute = scheduleShowRouteBounds();
+        renderAdvancedButton(graphics, font, showRoute.x(), showRoute.y(), showRoute.width(), showRoute.height(),
+                Component.literal(routeVisible ? "Show Route: On" : "Show Route: Off"),
+                showRoute.contains(mouseX, mouseY), routeVisible);
+        boolean followRoute = scheduleDraft.variables().getOrDefault(ShippingScheduleGraph.FOLLOW_ROUTE_VARIABLE,
+                AdvancedGraphDocument.Value.bool(true)).asBoolean();
+        UiRect follow = scheduleFollowRouteBounds();
+        renderAdvancedButton(graphics, font, follow.x(), follow.y(), follow.width(), follow.height(),
+                Component.literal(followRoute ? "Follow Route: On" : "Follow Route: Off"),
+                follow.contains(mouseX, mouseY), followRoute);
+        if (calculating) {
+            graphics.drawString(font, "Progress " + Math.round(
+                    controller.shippingScheduleRoutePrecalculationProgress() * 100.0D) + "%",
+                    x + 10, follow.bottom() + 7, interfaceMutedColor(), false);
+        }
+        graphics.drawString(font, ShippingScheduleGraph.orderedNodes(scheduleDraft).size() + " schedule steps",
+                x + 10, height - 14, v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF899CAA, false);
+    }
+
+
+    // The left and centre regions deliberately use the same dimensions as the
+    // standard graph editor so collapse handles and data-pack UI themes align.
+    private UiRect schedulePaletteBounds() {
+        return new UiRect(layoutLeft(), TOOLBAR_HEIGHT, activeLeftWidth(), height - TOOLBAR_HEIGHT);
+    }
+
+
+    private UiRect scheduleCanvasBounds() {
+        return new UiRect(graphLeft(), graphTop(), Math.max(0, graphRight() - graphLeft()),
+                graphBottom() - graphTop());
+    }
+
+
+    private UiRect scheduleCycleBounds() {
+        int x = graphRight() + 9;
+        return new UiRect(x, scheduleFlowTop() + 22, Math.max(60, layoutRight() - x - 18), 18);
+    }
+
+
+    private int scheduleRoutePlanningTop() {
+        return scheduleFlowTop() + 48;
+    }
+
+
+    private UiRect schedulePrecalculateRouteBounds() {
+        int x = graphRight() + 9;
+        return new UiRect(x, scheduleRoutePlanningTop() + 22,
+                Math.max(60, layoutRight() - x - 18), 18);
+    }
+
+
+    private UiRect scheduleDisplayProgressBounds() {
+        UiRect deleteRoute = scheduleDeleteRouteBounds();
+        return new UiRect(deleteRoute.x(), deleteRoute.bottom() + 4,
+                deleteRoute.width(), 18);
+    }
+
+
+    private UiRect scheduleShowRouteBounds() {
+        UiRect displayProgress = scheduleDisplayProgressBounds();
+        return new UiRect(displayProgress.x(), displayProgress.bottom() + 4,
+                displayProgress.width(), 18);
+    }
+
+
+    private UiRect scheduleFollowRouteBounds(){
+        UiRect show = scheduleShowRouteBounds();
+        return new UiRect(show.x(), show.bottom() + 4, show.width(), 18);
+    }
+
+
+    private UiRect scheduleConfigureBounds(){
+        int x = graphRight() + 9;
+        return new UiRect(x, scheduleActionTop() + 4, Math.max(60, layoutRight() - x - 18), 18);
+    }
+
+
+    private UiRect scheduleDeleteRouteBounds() {
+        UiRect precalculate = schedulePrecalculateRouteBounds();
+        return new UiRect(precalculate.x(), precalculate.bottom() + 4,
+                precalculate.width(), 18);
+    }
+
+
+    private UiRect scheduleRemoveBounds() {
+        int x = graphRight() + 9;
+        return new UiRect(x, scheduleActionTop() + (scheduleInputSlotCount(scheduleNode(selectedScheduleBlock)) > 0 ? 51 : 26),
+                Math.max(60, layoutRight() - x - 18), 18);
+    }
+
+
+    private UiRect scheduleParameterBounds() {
+        int x = graphRight() + 9;
+        return new UiRect(x, scheduleActionTop() + 26, Math.max(60, layoutRight() - x - 18), 18);
+    }
+
+
+    private int scheduleFlowTop() {
+        return scheduleRemoveBounds().bottom() + 8;
+    }
+
+
+    private int scheduleActionTop() {
+        AdvancedGraphDocument.Node selected = scheduleNode(selectedScheduleBlock);
+        return 128 + schedulePropertyViewportHeight(schedulePropertyKeys(selected));
+    }
+
+
+    private int schedulePropertyDividerY() {
+        return scheduleActionTop() - 5;
+    }
+
+
+    private int scheduleVisiblePropertyRows(List<String> properties) {
+        if (properties == null || properties.isEmpty()) return 0;
+        return Math.max(1, Math.min(properties.size(),
+                schedulePropertyViewportHeight(properties) / 22));
+    }
+
+
+    // Keep the divider at the dragged pixel while rows remain aligned to their fixed height.
+    private int schedulePropertyViewportHeight(List<String> properties) {
+        if (properties == null || properties.isEmpty()) return 0;
+        int defaultHeight = Math.max(22, (height - 336) / 22 * 22);
+        int propertyHeight = scheduleInspectorPropertiesHeight <= 0
+                ? defaultHeight : scheduleInspectorPropertiesHeight;
+        return Mth.clamp(propertyHeight, 22, Math.max(22, Math.min(properties.size() * 22, height - 336)));
+    }
+
+
+    private UiRect schedulePropertyBounds(int visibleRow) {
+        int x = graphRight() + 9;
+        return new UiRect(x, 128 + visibleRow * 22,
+                Math.max(60, layoutRight() - x - 18), 18);
+    }
+
+
+    private UiRect schedulePropertyValueBounds(UiRect row) {
+        int fieldX = row.x() + Math.min(82, Math.max(52, row.width() / 2));
+        return new UiRect(fieldX, row.y() + 1, Math.max(26, row.right() - fieldX - 3), row.height() - 2);
+    }
+
+
+    private int scheduleInputSlotCount(AdvancedGraphDocument.Node node) {
+        if (node == null || minecraft == null || minecraft.level == null || scheduleDraft == null) return 0;
+        return ShippingScheduleGraph.inputSlotCount(scheduleDraft, node.id(), minecraft.level.registryAccess());
+    }
+
+
+    private List<String> schedulePropertyKeys(AdvancedGraphDocument.Node node) {
+        if (node == null || minecraft == null || minecraft.level == null || scheduleDraft == null) return List.of();
+        return scheduleProperties(node)
+                .keySet().stream().sorted(String.CASE_INSENSITIVE_ORDER).toList();
+    }
+
+
+    private CreateScheduleInputFields scheduleFields(com.simibubi.create.content.trains.schedule.IScheduleInput input){
+        if(scheduleFields == null || !input.getId().equals(scheduleFieldsId)
+                || !input.getData().equals(scheduleFieldsData) || scheduleFieldsFont != font){
+            scheduleFields = new CreateScheduleInputFields(input, font);
+            scheduleFieldsId = input.getId();
+            scheduleFieldsData = input.getData().copy();
+            scheduleFieldsFont = font;
+        }
+        return scheduleFields;
+    }
+
+
+    // Include every native field, including selectors omitted from the default NBT
+    private Map<String, String> scheduleProperties(AdvancedGraphDocument.Node node){
+        Map<String, String> res = new LinkedHashMap<>(ShippingScheduleGraph.editableProperties(
+                scheduleDraft, node.id(), minecraft.level.registryAccess()));
+        var input = ShippingScheduleGraph.scheduleInput(scheduleDraft, node.id(), minecraft.level.registryAccess());
+        if(input != null){
+            var data = scheduleFields(input).data(input);
+            for(String key : data.getAllKeys()){
+                var val = data.get(key);
+                if(val instanceof net.minecraft.nbt.NumericTag || val instanceof net.minecraft.nbt.StringTag){
+                    res.put(key, val.getAsString());
+                }
+            }
+        }
+        return res;
+    }
+
+
+    // Apply the native text filter, integer bounds and serialized selector type
+    private boolean setScheduleProperty(String nodeId, String key, String val){
+        var input = ShippingScheduleGraph.scheduleInput(scheduleDraft, nodeId, minecraft.level.registryAccess());
+        if(input == null || "WaitLogic".equals(key)){
+            return ShippingScheduleGraph.setProperty(scheduleDraft, nodeId, key, val, minecraft.level.registryAccess());
+        }
+        var data = new CreateScheduleInputFields(input, font).edit(input, key, val);
+        return data != null && ShippingScheduleGraph.setInputData(scheduleDraft, nodeId, data, minecraft.level.registryAccess());
+    }
+
+
+    // Provide selectors for Create's enum-style schedule settings instead of forcing raw integer entry.
+    private List<SchedulePropertyChoice> schedulePropertyChoices(AdvancedGraphDocument.Node node, String property) {
+        if (property == null) return List.of();
+        if(node != null && minecraft != null && minecraft.level != null && scheduleDraft != null){
+            var input = ShippingScheduleGraph.scheduleInput(scheduleDraft, node.id(), minecraft.level.registryAccess());
+            if(input != null){
+                var opts = scheduleFields(input).choices(property);
+                List<SchedulePropertyChoice> choices = new ArrayList<>();
+                for(int idx = 0; idx < opts.size(); idx++){
+                    choices.add(new SchedulePropertyChoice(Integer.toString(idx), opts.get(idx).getString()));
+                }
+                if(!choices.isEmpty()) return List.copyOf(choices);
+            }
+        }
+        return switch (property) {
+            case "WaitLogic" -> List.of(new SchedulePropertyChoice("AND", "AND previous"),
+                    new SchedulePropertyChoice("OR", "OR branch"));
+            case ShippingScheduleGraph.FLOW_TARGET_TAG -> scheduleDraft == null ? List.of()
+                    : ShippingScheduleGraph.orderedNodes(scheduleDraft).stream()
+                    .map(step -> new SchedulePropertyChoice(step.id(), scheduleBlockLabel(step)))
+                    .toList();
+            default -> List.of();
+        };
+    }
+
+
+    // Draw and operate the dedicated schedule selector above the shared graph UI.
+    private void drawSchedulePropertyDropdown(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (schedulePropertyDropdownBounds == null || schedulePropertyDropdownChoices.isEmpty()) return;
+        UiRect bounds = schedulePropertyDropdownBounds;
+        int rowHeight = 18;
+        int height = schedulePropertyDropdownChoices.size() * rowHeight + 4;
+        renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), height);
+        for (int index = 0; index < schedulePropertyDropdownChoices.size(); index++) {
+            SchedulePropertyChoice choice = schedulePropertyDropdownChoices.get(index);
+            int y = bounds.y() + 2 + index * rowHeight;
+            boolean hovered = inside(mouseX, mouseY, bounds.x() + 2, y, bounds.width() - 4, rowHeight - 1);
+            if (hovered) renderControllerOption(graphics, bounds.x() + 2, y, bounds.width() - 4,
+                    rowHeight - 1, 0xFF5D9FE3, true);
+            graphics.drawString(font, choice.label(), bounds.x() + 7, y + 5,
+                    hovered ? nodeValueTextColor() : interfacePrimaryColor(), false);
+        }
+    }
+
+
+    // Open the schedule selector at the actual inspector field rather than a detached text prompt.
+    private void openSchedulePropertyDropdown(AdvancedGraphDocument.Node node, String property, UiRect field,
+                                              List<SchedulePropertyChoice> choices) {
+        if (node == null || property == null || field == null || choices == null || choices.isEmpty()) return;
+        int height = choices.size() * 18 + 4;
+        int y = field.bottom() + 2;
+        if (y + height > this.height - 4) y = field.y() - height - 2;
+        schedulePropertyDropdownBounds = new UiRect(field.x(), Math.max(TOOLBAR_HEIGHT + 2, y), field.width(), height);
+        schedulePropertyDropdownChoices = List.copyOf(choices);
+        schedulePropertyDropdownNode = node.id();
+        schedulePropertyDropdownKey = property;
+    }
+
+
+    // Apply one selector choice to the same graph-backed ScheduleEntry property used by text fields.
+    private boolean clickSchedulePropertyDropdown(double mouseX, double mouseY, int button) {
+        if (schedulePropertyDropdownBounds == null) return false;
+        UiRect bounds = schedulePropertyDropdownBounds;
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT || !bounds.contains(mouseX, mouseY)) {
+            closeSchedulePropertyDropdown();
+            return true;
+        }
+        int index = (int) ((mouseY - bounds.y() - 2) / 18);
+        if (index >= 0 && index < schedulePropertyDropdownChoices.size() && minecraft != null && minecraft.level != null
+                && scheduleDraft != null) {
+            SchedulePropertyChoice choice = schedulePropertyDropdownChoices.get(index);
+            if("WaitLogic".equals(schedulePropertyDropdownKey)){
+                String moved = ShippingScheduleGraph.setConditionConjunction(scheduleDraft, schedulePropertyDropdownNode,
+                        "AND".equals(choice.value()), minecraft.level.registryAccess());
+                if(!moved.isBlank()){
+                    selectedScheduleBlock = moved;
+                    selectedScheduleBlocks.clear();
+                    selectedScheduleBlocks.add(moved);
+                    saveShippingScheduleDraft();
+                }
+                closeSchedulePropertyDropdown();
+                return true;
+            }
+            if (setScheduleProperty(schedulePropertyDropdownNode, schedulePropertyDropdownKey, choice.value())) {
+                saveShippingScheduleDraft();
+            }
+        }
+        closeSchedulePropertyDropdown();
+        return true;
+    }
+
+
+    // Close the Schedule-only selector without disturbing Main Graph dropdown state.
+    private void closeSchedulePropertyDropdown() {
+        schedulePropertyDropdownBounds = null;
+        schedulePropertyDropdownChoices = List.of();
+        schedulePropertyDropdownNode = "";
+        schedulePropertyDropdownKey = "";
+    }
+
+
+    private void syncSchedulePropertyEditor(AdvancedGraphDocument.Node selected) {
+        if (schedulePropertyValue == null) return;
+        if (!scheduleGraphOverview || rightSidebarCollapsed || selected == null || selectedScheduleProperty == null
+                || minecraft == null || minecraft.level == null || scheduleDraft == null) {
+            schedulePropertyValue.setVisible(false);
+            return;
+        }
+        List<String> properties = schedulePropertyKeys(selected);
+        int index = properties.indexOf(selectedScheduleProperty);
+        if (index < schedulePropertyScroll || index >= schedulePropertyScroll + scheduleVisiblePropertyRows(properties)) {
+            schedulePropertyValue.setVisible(false);
+            return;
+        }
+        UiRect row = schedulePropertyBounds(index - schedulePropertyScroll);
+        if (!schedulePropertyChoices(selected, selectedScheduleProperty).isEmpty()) {
+            schedulePropertyValue.setVisible(false);
+            return;
+        }
+        UiRect field = schedulePropertyValueBounds(row);
+        schedulePropertyValue.setX(field.x());
+        schedulePropertyValue.setY(field.y());
+        schedulePropertyValue.setWidth(field.width());
+        String editorKey = selected.id() + "\u0000" + selectedScheduleProperty;
+        if (!editorKey.equals(schedulePropertyEditorNode + "\u0000" + schedulePropertyEditorKey)) {
+            String value = scheduleProperties(selected).getOrDefault(selectedScheduleProperty, "");
+            syncingScheduleProperty = true;
+            schedulePropertyValue.setValue(value);
+            syncingScheduleProperty = false;
+            schedulePropertyEditorNode = selected.id();
+            schedulePropertyEditorKey = selectedScheduleProperty;
+        }
+        schedulePropertyValue.setVisible(true);
+    }
+
+
+    // When a player clicks the pale field painted on a Scratch block, promote
+    // it to an actual text widget in exactly that field. The same selected key
+    // remains available in the standard ACC config sidebar.
+    private void syncScheduleInlinePropertyEditor() {
+        if (scheduleInlinePropertyValue == null || !editingScheduleInlineProperty || !scheduleGraphOverview
+                || selectedScheduleBlock == null || selectedScheduleProperty == null || scheduleLayout == null
+                || minecraft == null || minecraft.level == null || scheduleDraft == null) {
+            if (scheduleInlinePropertyValue != null) scheduleInlinePropertyValue.setVisible(false);
+            return;
+        }
+        ScratchBlockSurface.BlockBounds block = null;
+        for (ScratchBlockSurface.BlockBounds bounds : scheduleLayout.blocks()) {
+            if (selectedScheduleBlock.equals(bounds.id())) {
+                block = bounds;
+                break;
+            }
+        }
+        AdvancedGraphDocument.Node selected = scheduleNode(selectedScheduleBlock);
+        if (block == null || selected == null) {
+            scheduleInlinePropertyValue.setVisible(false);
+            return;
+        }
+        int fieldWidth = Math.min(76, Math.max(34, block.width() - 98));
+        int fieldX = block.x() + block.width() - fieldWidth - 9;
+        int fieldY = block.y() + Math.max(3, Math.min(7, block.height() / 3 - 4));
+        scheduleInlinePropertyValue.setX(fieldX + 2);
+        scheduleInlinePropertyValue.setY(fieldY + 1);
+        scheduleInlinePropertyValue.setWidth(Math.max(20, fieldWidth - 8));
+        String editorKey = selected.id() + "\u0000" + selectedScheduleProperty;
+        if (!editorKey.equals(scheduleInlinePropertyEditorNode + "\u0000" + scheduleInlinePropertyEditorKey)) {
+            String value = scheduleProperties(selected).getOrDefault(selectedScheduleProperty, "");
+            syncingScheduleProperty = true;
+            scheduleInlinePropertyValue.setValue(value);
+            syncingScheduleProperty = false;
+            scheduleInlinePropertyEditorNode = selected.id();
+            scheduleInlinePropertyEditorKey = selectedScheduleProperty;
+        }
+        scheduleInlinePropertyValue.setVisible(true);
+    }
+
+
+    private ScratchBlockSurface.BlockBounds scheduleBlockBounds(String id) {
+        if (id == null || scheduleLayout == null) return null;
+        for (ScratchBlockSurface.BlockBounds bounds : scheduleLayout.blocks()) {
+            if (id.equals(bounds.id())) return bounds;
+        }
+        return null;
+    }
+
+
+    private boolean selectPrimaryScheduleProperty(AdvancedGraphDocument.Node node) {
+        List<String> properties = schedulePropertyKeys(node);
+        if (properties.isEmpty()) return false;
+        for (String preferred : List.of("Text", "Destination", "Dock", "Threshold", "Value", "Time",
+                ShippingScheduleGraph.FLOW_REPEAT_TAG, ShippingScheduleGraph.FLOW_TARGET_TAG)) {
+            if (properties.contains(preferred)) {
+                selectedScheduleProperty = preferred;
+                return true;
+            }
+        }
+        selectedScheduleProperty = properties.getFirst();
+        return true;
+    }
+
+
+    private void updateScheduleProperty(String value) {
+        if (syncingScheduleProperty || !scheduleGraphOverview || selectedScheduleBlock == null
+                || selectedScheduleProperty == null || minecraft == null || minecraft.level == null) return;
+        if (setScheduleProperty(selectedScheduleBlock, selectedScheduleProperty, value)) {
+            saveShippingScheduleDraft();
+        }
+    }
+
+
+    // Edit the complete registered input through the shared native schedule editor
+    private void openScheduleBlockConfiguration(AdvancedGraphDocument.Node selected){
+        if(selected == null || minecraft == null || minecraft.level == null || scheduleDraft == null) return;
+        var input = ShippingScheduleGraph.scheduleInput(scheduleDraft, selected.id(), minecraft.level.registryAccess());
+        if(input != null) minecraft.setScreen(new CreateScheduleInputScreen(this, input,
+                minecraft.level.registryAccess(), edited -> {
+            if(ShippingScheduleGraph.setScheduleInput(scheduleDraft, selected.id(), edited, minecraft.level.registryAccess())){
+                saveShippingScheduleDraft();
+            }
+        }, edited -> {
+            var controller = menu.getMenuConfigTargetBlockEntity();
+            return controller == null ? List.of() : controller.shippingScheduleDestinationNames(edited.getId());
+        }, edited -> true));
+    }
+
+
+    // Finish a freeform Scratch drag. Dropping on a statement connector
+    // reorders real schedule steps and shifts the following stack; otherwise
+    // the document simply retains the player's chosen graph coordinates.
+    private void completeScheduleBlockDrop(double mouseX, double mouseY) {
+        AdvancedGraphDocument.Node moved = scheduleNode(draggingScheduleBlock);
+        if (moved == null || scheduleLayout == null || minecraft == null || minecraft.level == null) return;
+        ScratchBlockSurface.BlockBounds targetBounds = null;
+        double closest = Double.MAX_VALUE;
+        int cavityArea = Integer.MAX_VALUE;
+        for (ScratchBlockSurface.BlockBounds candidate : scheduleLayout.blocks()) {
+            if (candidate.id().equals(moved.id()) || selectedScheduleBlocks.contains(candidate.id())) continue;
+            AdvancedGraphDocument.Node candidateNode = scheduleNode(candidate.id());
+            if (candidateNode == null || ShippingScheduleGraph.isConditionBlock(candidateNode.type())
+                    && !ShippingScheduleGraph.isDetachedCondition(candidateNode)) continue;
+            boolean horizontal = mouseX >= candidate.x() - 12 && mouseX < candidate.x() + candidate.width() + 12;
+            boolean connector = Math.abs(mouseY - candidate.y()) <= 19
+                    || Math.abs(mouseY - (candidate.y() + candidate.height())) <= 21;
+            boolean cavity = candidate.cBlock() && mouseX >= candidate.x() + 12
+                    && mouseX < candidate.x() + candidate.width() - 4
+                    && mouseY >= candidate.y() + 23 && mouseY < candidate.y() + candidate.height() - 14;
+            if (cavity) {
+                // Nested cavities overlap their parents. Prefer the smallest
+                // one so a block dropped onto an inner loop does not get
+                // captured by a nearby outer step.
+                int area = candidate.width() * candidate.height();
+                if (area < cavityArea) {
+                    targetBounds = candidate;
+                    cavityArea = area;
+                }
+                continue;
+            }
+            if (targetBounds != null && cavityArea != Integer.MAX_VALUE) continue;
+            double distance = Math.min(Math.abs(mouseY - candidate.y()),
+                    Math.abs(mouseY - (candidate.y() + candidate.height())));
+            if (horizontal && connector && distance < closest) {
+                targetBounds = candidate;
+                closest = distance;
+            }
+        }
+        if (targetBounds == null) {
+            if (ShippingScheduleGraph.isConditionBlock(moved.type())
+                    && !ShippingScheduleGraph.isDetachedCondition(moved)) {
+                ShippingScheduleGraph.detachCondition(scheduleDraft, moved.id(), scheduleGraphX(mouseX),
+                        scheduleGraphY(mouseY), minecraft.level.registryAccess());
+            }
+            detachScheduleBlockWhenDroppedOutsideParent(moved, mouseX, mouseY);
+            return;
+        }
+        AdvancedGraphDocument.Node target = scheduleNode(targetBounds.id());
+        if (target == null) return;
+        boolean cavity = targetBounds.cBlock() && mouseX >= targetBounds.x() + 12
+                && mouseX < targetBounds.x() + targetBounds.width() - 4
+                && mouseY >= targetBounds.y() + 23 && mouseY < targetBounds.y() + targetBounds.height() - 14;
+        if (ShippingScheduleGraph.isConditionBlock(moved.type())) {
+            if (ShippingScheduleGraph.isInstructionBlock(target.type())) {
+                String attached = ShippingScheduleGraph.moveConditionToInstruction(scheduleDraft, moved.id(),
+                        target.id(), minecraft.level.registryAccess());
+                if (!attached.isBlank()) setScheduleBlockSelection(attached);
+                return;
+            }
+            if (!ShippingScheduleGraph.isDetachedCondition(moved)) {
+                if (!cavity || !ShippingScheduleGraph.isFlowBlock(target.type())) {
+                    ShippingScheduleGraph.detachCondition(scheduleDraft, moved.id(), scheduleGraphX(mouseX),
+                            scheduleGraphY(mouseY), minecraft.level.registryAccess());
+                    return;
+                }
+                ShippingScheduleGraph.detachCondition(scheduleDraft, moved.id(), scheduleGraphX(mouseX),
+                        scheduleGraphY(mouseY), minecraft.level.registryAccess());
+                moved = scheduleNode(moved.id());
+                if (moved == null) return;
+            }
+        }
+        if (cavity) {
+            // A schedule-step cavity is the real Create wait-condition list;
+            // generic statements belong in Flow C blocks instead. Keeping the
+            // two contracts distinct prevents a visually nested instruction
+            // from silently being ignored by the shipping runtime.
+            if (ShippingScheduleGraph.isInstructionBlock(target.type())) return;
+            int insertion = scheduleCavityInsertionIndex(target.id(), moved.id(), mouseY);
+            if (ShippingScheduleGraph.placeScratchChild(scheduleDraft, moved.id(), target.id(), insertion)) {
+                snapScheduleBlockIntoContainer(moved.id(), targetBounds);
+            }
+            return;
+        }
+        boolean after = mouseY >= targetBounds.y() + targetBounds.height() / 2.0D;
+        if (ShippingScheduleGraph.isInstructionBlock(moved.type())
+                && ShippingScheduleGraph.isInstructionBlock(target.type())) {
+            List<AdvancedGraphDocument.Node> ordered = ShippingScheduleGraph.orderedNodes(scheduleDraft);
+            int sourceIndex = ordered.indexOf(moved);
+            int targetIndex = ordered.indexOf(target);
+            if (sourceIndex >= 0 && targetIndex >= 0) {
+                int insertion = targetIndex + (after ? 1 : 0);
+                if (sourceIndex < insertion) insertion--;
+                ShippingScheduleGraph.moveInstructionToIndex(scheduleDraft, moved.id(), insertion);
+                snapScheduleBlockBeside(moved.id(), targetBounds, after);
+                reflowScheduleStackFrom(moved.id());
+            }
+            return;
+        }
+        if (!ShippingScheduleGraph.isConditionBlock(moved.type())
+                || ShippingScheduleGraph.isDetachedCondition(moved)) {
+            String parent = ShippingScheduleGraph.scratchParent(target);
+            if (!parent.isBlank()) {
+                int insertion = ShippingScheduleGraph.scratchChildInsertionIndex(scheduleDraft, parent,
+                        target.id(), after);
+                if (ShippingScheduleGraph.placeScratchChild(scheduleDraft, moved.id(), parent, insertion)) return;
+            }
+            ShippingScheduleGraph.setScratchParent(scheduleDraft, moved.id(), parent);
+        }
+        if (after) ShippingScheduleGraph.connectScratchBlocks(scheduleDraft, target.id(), moved.id());
+        else ShippingScheduleGraph.insertScratchBlockBefore(scheduleDraft, moved.id(), target.id());
+        snapScheduleBlockBeside(moved.id(), targetBounds, after);
+    }
+
+
+    // Snap a statement to the top or bottom connector of another block.
+    private void snapScheduleBlockBeside(String id, ScratchBlockSurface.BlockBounds target, boolean after) {
+        AdvancedGraphDocument.Node moved = scheduleNode(id);
+        if (moved == null || target == null) return;
+        double x = scheduleGraphX(target.x());
+        double y = after ? scheduleGraphY(target.y() + target.height())
+                : scheduleGraphY(target.y())
+                - ShippingScheduleGraph.scratchVisualHeight(scheduleDraft, moved.id());
+        ShippingScheduleGraph.moveBlock(scheduleDraft, moved.id(), x, y);
+    }
+
+
+    // Snap one block into the visible inner channel of a C block.
+    private void snapScheduleBlockIntoContainer(String id, ScratchBlockSurface.BlockBounds container) {
+        if (container == null) return;
+        ShippingScheduleGraph.moveBlock(scheduleDraft, id,
+                scheduleGraphX(container.x() + 23), scheduleGraphY(container.y() + 29));
+    }
+
+
+    // Convert a cavity drop's vertical position to a stable Scratch sibling
+    // index. The rendered block bounds are the source of truth here, so a
+    // nested C block remains movable and reorderable like any other statement.
+    private int scheduleCavityInsertionIndex(String parentId, String movingId, double mouseY) {
+        if (scheduleLayout == null) return 0;
+        List<ScratchBlockSurface.BlockBounds> siblings = new ArrayList<>();
+        for (ScratchBlockSurface.BlockBounds bounds : scheduleLayout.blocks()) {
+            AdvancedGraphDocument.Node node = scheduleNode(bounds.id());
+            if (node == null || node.id().equals(movingId)
+                    || !parentId.equals(ShippingScheduleGraph.scratchParent(node))
+                    || ShippingScheduleGraph.isConditionBlock(node.type())
+                    && !ShippingScheduleGraph.isDetachedCondition(node)) continue;
+            siblings.add(bounds);
+        }
+        siblings.sort(Comparator.comparingInt(ScratchBlockSurface.BlockBounds::y));
+        int insertion = 0;
+        for (ScratchBlockSurface.BlockBounds sibling : siblings) {
+            if (mouseY >= sibling.y() + sibling.height() * 0.5D) insertion++;
+            else break;
+        }
+        return insertion;
+    }
+
+
+    // Dragging a nested block beyond its C cavity promotes it back to a root
+    // statement, making nested schedule logic editable in both directions.
+    private void detachScheduleBlockWhenDroppedOutsideParent(AdvancedGraphDocument.Node node,
+                                                              double mouseX, double mouseY) {
+        if (node == null || ShippingScheduleGraph.isConditionBlock(node.type())
+                && !ShippingScheduleGraph.isDetachedCondition(node)) return;
+        String parentId = ShippingScheduleGraph.scratchParent(node);
+        ScratchBlockSurface.BlockBounds parent = scheduleBlockBounds(parentId);
+        if (parent == null) return;
+        boolean insideCavity = parent.cBlock() && mouseX >= parent.x() + 12
+                && mouseX < parent.x() + parent.width() - 4
+                && mouseY >= parent.y() + 23 && mouseY < parent.y() + parent.height() - 14;
+        if (!insideCavity) ShippingScheduleGraph.setScratchParent(scheduleDraft, node.id(), "");
+    }
+
+
+    // While a nested child is dragged beyond its owning C block, promote it
+    // immediately rather than waiting for release. That lets the player see
+    // it follow the pointer and prevents the canonical C layout from pulling
+    // the child back into the cavity during the drag.
+    private AdvancedGraphDocument.Node promoteDraggedScheduleBlock(AdvancedGraphDocument.Node node,
+                                                                     double mouseX, double mouseY) {
+        if (node == null || minecraft == null || minecraft.level == null) return node;
+        String parentId = ShippingScheduleGraph.scratchParent(node);
+        ScratchBlockSurface.BlockBounds parent = scheduleBlockBounds(parentId);
+        if (parent == null || parent.contains(mouseX, mouseY)) return node;
+        if (ShippingScheduleGraph.isConditionBlock(node.type())
+                && !ShippingScheduleGraph.isDetachedCondition(node)) {
+            ShippingScheduleGraph.detachCondition(scheduleDraft, node.id(), node.x(), node.y(),
+                    minecraft.level.registryAccess());
+        } else {
+            ShippingScheduleGraph.setScratchParent(scheduleDraft, node.id(), "");
+        }
+        return scheduleNode(node.id());
+    }
+
+
+    private void reflowScheduleStackFrom(String nodeId) {
+        List<AdvancedGraphDocument.Node> ordered = ShippingScheduleGraph.orderedNodes(scheduleDraft);
+        int start = -1;
+        for (int index = 0; index < ordered.size(); index++) {
+            if (ordered.get(index).id().equals(nodeId)) {
+                start = index;
+                break;
+            }
+        }
+        if (start < 0) return;
+        for (int index = Math.max(1, start + 1); index < ordered.size(); index++) {
+            AdvancedGraphDocument.Node previous = ordered.get(index - 1);
+            AdvancedGraphDocument.Node current = ordered.get(index);
+            ShippingScheduleGraph.moveBlock(scheduleDraft, current.id(), previous.x(),
+                    previous.y() + ShippingScheduleGraph.scratchVisualHeight(scheduleDraft, previous.id()));
+        }
+    }
+
+
+    private static String schedulePaletteCategoryId(String category) {
+        return "schedule:" + category;
+    }
+
+
+    private static String schedulePaletteCategoryName(String category) {
+        return switch (category) {
+            case "conditions" -> "Wait Conditions";
+            case "flow" -> "Flow Control";
+            default -> "Schedule Steps";
+        };
+    }
+
+
+    private static List<String> schedulePaletteCategories() {
+        return List.of("instructions", "conditions", "flow");
+    }
+
+
+    private List<ScratchBlockDefinition> schedulePaletteDefinitions(String category) {
+        return ShippingScheduleScratchBlocks.registry().definitions().stream()
+                .filter(definition -> category.equals(definition.category()))
+                .sorted(Comparator.comparing(ScratchBlockDefinition::title))
+                .toList();
+    }
+
+
+    private int schedulePaletteContentHeight() {
+        int height = 0;
+        for (String category : schedulePaletteCategories()) {
+            List<ScratchBlockDefinition> definitions = schedulePaletteDefinitions(category);
+            if (definitions.isEmpty()) continue;
+            height += 25;
+            if (!collapsedCategories.contains(schedulePaletteCategoryId(category))) {
+                height += definitions.size() * SCHEDULE_PALETTE_ROW_HEIGHT;
+            }
+        }
+        return height;
+    }
+
+
+    private String scheduleBlockLabel(AdvancedGraphDocument.Node node) {
+        ScratchBlockDefinition definition = node == null ? null
+                : ShippingScheduleScratchBlocks.registry().get(node.type());
+        return definition == null ? node == null ? "" : node.type() : definition.title();
+    }
+
+
+    // Look up the selected Scratch graph node.
+    private AdvancedGraphDocument.Node scheduleNode(String id) {
+        if (scheduleDraft == null || id == null) return null;
+        for (AdvancedGraphDocument.Node node : scheduleDraft.nodes()) {
+            if (id.equals(node.id())) return node;
+        }
+        return null;
+    }
+
+
+    // Replace the Scratch selection with one block.
+    private void setScheduleBlockSelection(String id) {
+        selectedScheduleBlocks.clear();
+        if (id != null && scheduleNode(id) != null) selectedScheduleBlocks.add(id);
+        selectedScheduleBlock = selectedScheduleBlocks.isEmpty() ? null : id;
+    }
+
+
+    // Toggle one block in the independent Scratch multi-selection.
+    private void toggleScheduleBlockSelection(String id) {
+        if (id == null || scheduleNode(id) == null) return;
+        if (!selectedScheduleBlocks.add(id)) selectedScheduleBlocks.remove(id);
+        selectedScheduleBlock = selectedScheduleBlocks.contains(id)
+                ? id : selectedScheduleBlocks.stream().findFirst().orElse(null);
+    }
+
+
+    // Clear the host-only Scratch selection without changing Main Graph state.
+    private void clearScheduleBlockSelection() {
+        selectedScheduleBlocks.clear();
+        selectedScheduleBlock = null;
+        selectedScheduleProperty = null;
+    }
+
+
+    // Complete a marquee selection using the live painted block bounds. Nested
+    // children have their own bounds, so they remain independently selectable.
+    private void finishScheduleMarqueeSelection() {
+        if (scheduleLayout == null) return;
+        int left = (int) Math.floor(Math.min(scheduleMarqueeStartX, scheduleMarqueeCurrentX));
+        int top = (int) Math.floor(Math.min(scheduleMarqueeStartY, scheduleMarqueeCurrentY));
+        int right = (int) Math.ceil(Math.max(scheduleMarqueeStartX, scheduleMarqueeCurrentX));
+        int bottom = (int) Math.ceil(Math.max(scheduleMarqueeStartY, scheduleMarqueeCurrentY));
+        if (right - left < 3 && bottom - top < 3) return;
+        Set<String> selected = new LinkedHashSet<>();
+        for (ScratchBlockSurface.BlockBounds bounds : scheduleLayout.blocks()) {
+            boolean intersects = bounds.x() < right && bounds.x() + bounds.width() > left
+                    && bounds.y() < bottom && bounds.y() + bounds.height() > top;
+            if (intersects) selected.add(bounds.id());
+        }
+        if (!scheduleMarqueeAdditive) selectedScheduleBlocks.clear();
+        selectedScheduleBlocks.addAll(selected);
+        selectedScheduleBlock = selected.isEmpty()
+                ? selectedScheduleBlocks.stream().findFirst().orElse(null)
+                : selected.iterator().next();
+    }
+
+
+    // Return only the selected roots. Moving a parent already moves its nested
+    // descendants, so this prevents a multi-selection from applying a delta twice.
+    private List<String> scheduleDragRoots() {
+        Set<String> candidates = new LinkedHashSet<>(selectedScheduleBlocks);
+        if (candidates.isEmpty() && draggingScheduleBlock != null) candidates.add(draggingScheduleBlock);
+        List<String> roots = new ArrayList<>();
+        for (String id : candidates) {
+            String parent = ShippingScheduleGraph.scratchParent(scheduleNode(id));
+            Set<String> visited = new LinkedHashSet<>();
+            boolean nestedSelection = false;
+            while (parent != null && !parent.isBlank() && visited.add(parent)) {
+                if (candidates.contains(parent)) {
+                    nestedSelection = true;
+                    break;
+                }
+                parent = ShippingScheduleGraph.scratchParent(scheduleNode(parent));
+            }
+            if (!nestedSelection) roots.add(id);
+        }
+        return roots;
+    }
+
+
+    private boolean nudgeScheduleSelected(int keyCode) {
+        double dx = keyCode == GLFW.GLFW_KEY_LEFT ? -1.0D
+                : keyCode == GLFW.GLFW_KEY_RIGHT ? 1.0D : 0.0D;
+        double dy = keyCode == GLFW.GLFW_KEY_UP ? -1.0D
+                : keyCode == GLFW.GLFW_KEY_DOWN ? 1.0D : 0.0D;
+        if ((dx == 0.0D && dy == 0.0D) || selectedScheduleBlocks.isEmpty()) return false;
+        double step = (hasControlDown() ? V2_GRID_SPACING : 1.0D) / scheduleZoom;
+        for (String id : scheduleDragRoots()) {
+            AdvancedGraphDocument.Node block = scheduleNode(id);
+            if (block != null) {
+                ShippingScheduleGraph.moveBlock(scheduleDraft, id,
+                        block.x() + dx * step, block.y() + dy * step);
+            }
+        }
+        saveShippingScheduleDraft();
+        return true;
+    }
+
+
+    // Delete selected schedule blocks through their authoritative graph helpers.
+    private void deleteSelectedScheduleBlocks() {
+        if (scheduleDraft == null || minecraft == null || minecraft.level == null) return;
+        List<String> selected = new ArrayList<>(selectedScheduleBlocks);
+        if (selected.isEmpty() && selectedScheduleBlock != null) selected.add(selectedScheduleBlock);
+        if (selected.isEmpty()) return;
+        boolean changed = false;
+        int remainingInstructions = ShippingScheduleGraph.orderedNodes(scheduleDraft).size();
+        for (String id : selected) {
+            AdvancedGraphDocument.Node node = scheduleNode(id);
+            if (node == null || !ShippingScheduleGraph.isConditionBlock(node.type())) continue;
+            changed |= ShippingScheduleGraph.removeCondition(scheduleDraft, id, minecraft.level.registryAccess());
+        }
+        for (String id : selected) {
+            AdvancedGraphDocument.Node node = scheduleNode(id);
+            if (node == null || !ShippingScheduleGraph.isFlowBlock(node.type())) continue;
+            changed |= ShippingScheduleGraph.removeFlowBlock(scheduleDraft, id);
+        }
+        for (String id : selected) {
+            AdvancedGraphDocument.Node node = scheduleNode(id);
+            if (node == null || !ShippingScheduleGraph.isInstructionBlock(node.type()) || remainingInstructions <= 1) continue;
+            if (ShippingScheduleGraph.removeInstruction(scheduleDraft, id)) {
+                remainingInstructions--;
+                changed = true;
+            }
+        }
+        if (changed) {
+            clearScheduleBlockSelection();
+            saveShippingScheduleDraft();
+        }
+    }
+
+
+    // Copy selected graph-backed blocks and their Scratch-only chain edges.
+    private void copySelectedScheduleBlocks() {
+        scheduleClipboard.clear();
+        scheduleClipboardEdges.clear();
+        if (scheduleDraft == null) return;
+        Set<String> ids = expandedScheduleClipboardSelection();
+        for (AdvancedGraphDocument.Node node : ShippingScheduleGraph.orderedBlocks(scheduleDraft)) {
+            if (ids.contains(node.id())) {
+                scheduleClipboard.add(new AdvancedGraphDocument.Node(node.id(), node.type(), node.label(),
+                        node.x(), node.y(), node.data().copy()));
+            }
+        }
+        for (AdvancedGraphDocument.Edge edge : scheduleDraft.edges()) {
+            if (edge != null && ids.contains(edge.fromNode()) && ids.contains(edge.toNode())
+                    && "scratch_next".equals(edge.fromPort()) && "scratch_next".equals(edge.toPort())) {
+                scheduleClipboardEdges.add(edge);
+            }
+        }
+    }
+
+
+    // Copying a C block includes the complete nested branch. Copying a real
+    // schedule step similarly includes its authoritative wait-condition nodes;
+    // copying an attached condition by itself would leave it pointing at an
+    // instruction that is not part of the paste, so it is intentionally skipped.
+    private Set<String> expandedScheduleClipboardSelection() {
+        Set<String> ids = new LinkedHashSet<>(selectedScheduleBlocks);
+        if (ids.isEmpty() && selectedScheduleBlock != null) ids.add(selectedScheduleBlock);
+        if (scheduleDraft == null || ids.isEmpty()) return ids;
+        boolean expanded;
+        do {
+            expanded = false;
+            for (AdvancedGraphDocument.Node node : scheduleDraft.nodes()) {
+                if (node == null || ids.contains(node.id())) continue;
+                boolean attachedCondition = ShippingScheduleGraph.isConditionBlock(node.type())
+                        && !ShippingScheduleGraph.isDetachedCondition(node);
+                String parent = attachedCondition ? ShippingScheduleGraph.conditionParent(node)
+                        : ShippingScheduleGraph.scratchParent(node);
+                AdvancedGraphDocument.Node parentNode = scheduleNode(parent);
+                if (!parent.isBlank() && ids.contains(parent)
+                        && (!attachedCondition || parentNode != null
+                        && ShippingScheduleGraph.isInstructionBlock(parentNode.type()))) {
+                    ids.add(node.id());
+                    expanded = true;
+                }
+            }
+        } while (expanded);
+        ids.removeIf(id -> {
+            AdvancedGraphDocument.Node node = scheduleNode(id);
+            return node != null && ShippingScheduleGraph.isConditionBlock(node.type())
+                    && !ShippingScheduleGraph.isDetachedCondition(node)
+                    && !ids.contains(ShippingScheduleGraph.conditionParent(node));
+        });
+        return ids;
+    }
+
+
+    // Paste copied document nodes with fresh identity and remapped nested links.
+    private void pasteScheduleBlocks() {
+        if (scheduleDraft == null || scheduleClipboard.isEmpty()) return;
+        Map<String, String> ids = new LinkedHashMap<>();
+        int capacity = AdvancedGraphDocument.maxNodes() - scheduleDraft.nodes().size();
+        for (AdvancedGraphDocument.Node source : scheduleClipboard) {
+            if (ids.size() >= capacity) break;
+            ids.put(source.id(), "shipping_scratch_" + UUID.randomUUID().toString().replace('-', '_'));
+        }
+        Set<String> pasted = new LinkedHashSet<>();
+        for (AdvancedGraphDocument.Node source : scheduleClipboard) {
+            String id = ids.get(source.id());
+            if (id == null) continue;
+            CompoundTag data = source.data().copy();
+            String parent = data.getString(ShippingScheduleGraph.SCRATCH_PARENT_TAG);
+            if (ids.containsKey(parent)) data.putString(ShippingScheduleGraph.SCRATCH_PARENT_TAG, ids.get(parent));
+            else data.remove(ShippingScheduleGraph.SCRATCH_PARENT_TAG);
+            String conditionParent = data.getString(ShippingScheduleGraph.CONDITION_PARENT_TAG);
+            if (!conditionParent.isBlank()) {
+                if (!ids.containsKey(conditionParent)) continue;
+                data.putString(ShippingScheduleGraph.CONDITION_PARENT_TAG, ids.get(conditionParent));
+            }
+            scheduleDraft.nodes().add(new AdvancedGraphDocument.Node(id, source.type(), source.label(),
+                    source.x() + 24.0D, source.y() + 24.0D, data));
+            pasted.add(id);
+        }
+        for (AdvancedGraphDocument.Edge edge : scheduleClipboardEdges) {
+            String from = ids.get(edge.fromNode());
+            String to = ids.get(edge.toNode());
+            if (from != null && to != null && pasted.contains(from) && pasted.contains(to)) {
+                ShippingScheduleGraph.connectScratchBlocks(scheduleDraft, from, to);
+            }
+        }
+        selectedScheduleBlocks.clear();
+        selectedScheduleBlocks.addAll(pasted);
+        selectedScheduleBlock = selectedScheduleBlocks.stream().findFirst().orElse(null);
+        saveShippingScheduleDraft();
+    }
+
+
+    // Duplicate in place by routing through the same copy/paste contract as shortcuts.
+    private void duplicateSelectedScheduleBlocks() {
+        copySelectedScheduleBlocks();
+        pasteScheduleBlocks();
+    }
+
+
+    // Handle one host-owned Scratch schedule action. This deliberately never
+    // forwards into the ordinary ACC node editor, despite sharing its document
+    // contract, so the surface cannot be enabled as a general editor mode.
+    private boolean clickShippingScheduleWorkspace(double mouseX, double mouseY, int button) {
+        if (scheduleDraft == null) return true;
+        if (scheduleInlinePropertyValue != null && scheduleInlinePropertyValue.visible
+                && inside(mouseX, mouseY, scheduleInlinePropertyValue.getX(), scheduleInlinePropertyValue.getY(),
+                scheduleInlinePropertyValue.getWidth(), scheduleInlinePropertyValue.getHeight())) {
+            scheduleInlinePropertyValue.mouseClicked(mouseX, mouseY, button);
+            scheduleInlinePropertyValue.setFocused(true);
+            setFocused(scheduleInlinePropertyValue);
+            return true;
+        }
+        if (clickScheduleCanvasOverlay(mouseX, mouseY, button)) return true;
+        UiRect canvas = scheduleCanvasBounds();
+        if ((button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE || button == GLFW.GLFW_MOUSE_BUTTON_RIGHT)
+                && canvas.contains(mouseX, mouseY)) {
+            schedulePanning = true;
+            return true;
+        }
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
+        editingScheduleInlineProperty = false;
+        if (scheduleInlinePropertyValue != null) scheduleInlinePropertyValue.setVisible(false);
+        if (handleSidebarHandleClick(mouseX, mouseY, button)) return true;
+        if (!rightSidebarCollapsed && mouseX >= graphRight() && mouseX < layoutRight()
+                && inInspectorDivider(mouseY, schedulePropertyDividerY())) {
+            draggingInspectorDivider = InspectorDivider.SCHEDULE_PROPERTIES;
+            return true;
+        }
+        if (schedulePropertyValue != null && schedulePropertyValue.visible
+                && inside(mouseX, mouseY, schedulePropertyValue.getX(), schedulePropertyValue.getY(),
+                schedulePropertyValue.getWidth(), schedulePropertyValue.getHeight())) {
+            schedulePropertyValue.mouseClicked(mouseX, mouseY, button);
+            schedulePropertyValue.setFocused(true);
+            setFocused(schedulePropertyValue);
+            return true;
+        }
+        UiRect cycle = scheduleCycleBounds();
+        if (cycle.contains(mouseX, mouseY)) {
+            boolean cyclic = scheduleDraft.variables()
+                    .getOrDefault(ShippingScheduleGraph.CYCLIC_VARIABLE, AdvancedGraphDocument.Value.bool(false))
+                    .asBoolean();
+            ShippingScheduleGraph.setCyclic(scheduleDraft, !cyclic);
+            saveShippingScheduleDraft();
+            return true;
+        }
+        if (schedulePrecalculateRouteBounds().contains(mouseX, mouseY)) {
+            requestScheduleItemTransfer("schedule_precalculate_route", "Queueing full schedule route...");
+            return true;
+        }
+        if (scheduleDeleteRouteBounds().contains(mouseX, mouseY)) {
+            requestScheduleItemTransfer("schedule_delete_route", "Deleting schedule route...");
+            return true;
+        }
+        if (scheduleDisplayProgressBounds().contains(mouseX, mouseY)) {
+            AdvancedContraptionControllerBlockEntity controller = activeScmController();
+            sendScmDisplayProgress(controller == null || !controller.scmDisplayProgress());
+            return true;
+        }
+        if (scheduleShowRouteBounds().contains(mouseX, mouseY)) {
+            AdvancedContraptionControllerBlockEntity controller = activeScmController();
+            if (controller != null) {
+                UUID ownerId = controller.getScmPersistenceId();
+                PacketDistributor.sendToServer(new ShippingRouteVisibilityPayload(
+                        ownerId, !ShippingRouteSplineClient.isVisible(ownerId)));
+            }
+            return true;
+        }
+        AdvancedGraphDocument.Node selected = scheduleNode(selectedScheduleBlock);
+        if(scheduleFollowRouteBounds().contains(mouseX, mouseY)){
+            boolean follow = scheduleDraft.variables().getOrDefault(ShippingScheduleGraph.FOLLOW_ROUTE_VARIABLE,
+                    AdvancedGraphDocument.Value.bool(true)).asBoolean();
+            scheduleDraft.variables().put(ShippingScheduleGraph.FOLLOW_ROUTE_VARIABLE, AdvancedGraphDocument.Value.bool(!follow));
+            saveShippingScheduleDraft();
+            return true;
+        }
+        if(selected != null && !ShippingScheduleGraph.isFlowBlock(selected.type())
+                && scheduleConfigureBounds().contains(mouseX, mouseY)){
+            openScheduleBlockConfiguration(selected);
+            return true;
+        }
+        if (scheduleInputSlotCount(selected) > 0 && scheduleParameterBounds().contains(mouseX, mouseY)) {
+            openScheduleParameterEditor(selected);
+            return true;
+        }
+        if (scheduleRemoveBounds().contains(mouseX, mouseY)) {
+            deleteSelectedScheduleBlocks();
+            return true;
+        }
+
+        List<String> properties = schedulePropertyKeys(selected);
+        for (int row = 0; row < scheduleVisiblePropertyRows(properties); row++) {
+            UiRect propertyBounds = schedulePropertyBounds(row);
+            if (!propertyBounds.contains(mouseX, mouseY)) continue;
+            selectedScheduleProperty = properties.get(schedulePropertyScroll + row);
+            schedulePropertyEditorNode = "";
+            schedulePropertyEditorKey = "";
+            UiRect field = schedulePropertyValueBounds(propertyBounds);
+            List<SchedulePropertyChoice> choices = schedulePropertyChoices(selected, selectedScheduleProperty);
+            if (!choices.isEmpty()) {
+                openSchedulePropertyDropdown(selected, selectedScheduleProperty, field, choices);
+            } else {
+                syncSchedulePropertyEditor(selected);
+                if (schedulePropertyValue != null) {
+                    schedulePropertyValue.setFocused(true);
+                    setFocused(schedulePropertyValue);
+                    schedulePropertyValue.moveCursorToEnd(false);
+                }
+            }
+            return true;
+        }
+
+        UiRect palette = schedulePaletteBounds();
+        if (!leftSidebarCollapsed && palette.contains(mouseX, mouseY) && mouseY >= 82) {
+            int y = 86 - schedulePaletteScroll;
+            for (String category : schedulePaletteCategories()) {
+                List<ScratchBlockDefinition> definitions = schedulePaletteDefinitions(category);
+                if (definitions.isEmpty()) continue;
+                if (mouseY >= y - 2 && mouseY < y + 23) {
+                    toggle(collapsedCategories, schedulePaletteCategoryId(category));
+                    schedulePaletteScroll = 0;
+                    return true;
+                }
+                y += 25;
+                if (collapsedCategories.contains(schedulePaletteCategoryId(category))) continue;
+                for (ScratchBlockDefinition definition : definitions) {
+                    if (mouseY >= y && mouseY < y + SCHEDULE_PALETTE_ROW_HEIGHT) {
+                        appendScheduleBlock(definition);
+                        return true;
+                    }
+                    y += SCHEDULE_PALETTE_ROW_HEIGHT;
+                }
+            }
+            return true;
+        }
+
+        if (canvas.contains(mouseX, mouseY)) {
+            String hit = ScratchBlockSurface.blockAt(scheduleLayout, mouseX, mouseY);
+            if (hit != null) {
+                boolean additive = hasControlDown() || hasShiftDown();
+                if (additive) {
+                    toggleScheduleBlockSelection(hit);
+                } else {
+                    // A normal Scratch drag always starts a fresh selection.
+                    // Retaining an old marquee selection here moved unrelated
+                    // blocks with the clicked block and made snapping appear
+                    // to affect a random neighbour.
+                    setScheduleBlockSelection(hit);
+                }
+                selectedScheduleProperty = null;
+                schedulePropertyEditorNode = "";
+                schedulePropertyEditorKey = "";
+                ScratchBlockSurface.BlockBounds bounds = scheduleBlockBounds(hit);
+                int fieldWidth = bounds == null ? 0 : Math.min(76, Math.max(34, bounds.width() - 98));
+                boolean inlineField = bounds != null && mouseX >= bounds.x() + bounds.width() - fieldWidth - 11
+                        && mouseX < bounds.x() + bounds.width() - 5 && mouseY >= bounds.y()
+                        && mouseY < bounds.y() + Math.min(24, bounds.height());
+                if (inlineField && selectedScheduleBlocks.size() == 1
+                        && !ShippingScheduleGraph.primaryPropertyKey(scheduleDraft, scheduleNode(hit),
+                        minecraft.level.registryAccess()).isBlank()
+                        && selectPrimaryScheduleProperty(scheduleNode(hit))) {
+                    editingScheduleInlineProperty = true;
+                    scheduleInlinePropertyEditorNode = "";
+                    scheduleInlinePropertyEditorKey = "";
+                    syncScheduleInlinePropertyEditor();
+                    if (scheduleInlinePropertyValue != null) {
+                        scheduleInlinePropertyValue.setFocused(true);
+                        setFocused(scheduleInlinePropertyValue);
+                        scheduleInlinePropertyValue.moveCursorToEnd(false);
+                    }
+                } else {
+                    editingScheduleInlineProperty = false;
+                    draggingScheduleBlock = hit;
+                    draggingScheduleBlockMoved = false;
+                }
+            } else {
+                scheduleMarquee = true;
+                scheduleMarqueeAdditive = hasControlDown() || hasShiftDown();
+                scheduleMarqueeStartX = mouseX;
+                scheduleMarqueeStartY = mouseY;
+                scheduleMarqueeCurrentX = mouseX;
+                scheduleMarqueeCurrentY = mouseY;
+                if (!scheduleMarqueeAdditive) clearScheduleBlockSelection();
+            }
+            return true;
+        }
+        return true;
+    }
+
+
+    // Add one registered block while preserving the normal Create schedule
+    // semantics stored in the shared graph document.
+    private void appendScheduleBlock(ScratchBlockDefinition definition) {
+        if (definition == null || minecraft == null || minecraft.level == null) return;
+        if (ShippingScheduleGraph.isFlowBlock(definition.id())) {
+            double x = scheduleGraphX(scheduleCanvasBounds().x() + scheduleCanvasBounds().width() / 2.0D)
+                    - ScratchBlockSurface.DEFAULT_BLOCK_WIDTH * 0.5D;
+            double y = scheduleGraphY(scheduleCanvasBounds().y() + scheduleCanvasBounds().height() / 2.0D)
+                    - ScratchBlockSurface.BLOCK_HEIGHT * 0.5D;
+            if (ShippingScheduleGraph.appendFlowBlock(scheduleDraft, ShippingScheduleGraph.flowKind(definition.id()), x, y)) {
+                setScheduleBlockSelection(scheduleDraft.nodes().getLast().id());
+                selectedScheduleProperty = null;
+                saveShippingScheduleDraft();
+            }
+            return;
+        }
+        ResourceLocation blockId;
+        try {
+            String prefix = ShippingScheduleGraph.isInstructionBlock(definition.id())
+                    ? ShippingScheduleGraph.INSTRUCTION_PREFIX : ShippingScheduleGraph.CONDITION_PREFIX;
+            blockId = ResourceLocation.parse(definition.id().substring(prefix.length()));
+        } catch (RuntimeException ignored) {
+            return;
+        }
+        boolean instruction = ShippingScheduleGraph.isInstructionBlock(definition.id());
+        boolean changed;
+        String addedCondition = "";
+        if (instruction) {
+            changed = ShippingScheduleGraph.appendInstruction(scheduleDraft, blockId, minecraft.level.registryAccess());
+        } else {
+            AdvancedGraphDocument.Node selected = scheduleNode(selectedScheduleBlock);
+            if (selected != null && ShippingScheduleGraph.isInstructionBlock(selected.type())) {
+                changed = ShippingScheduleGraph.appendCondition(scheduleDraft, selected.id(), blockId,
+                        minecraft.level.registryAccess());
+            } else {
+                double x = scheduleGraphX(scheduleCanvasBounds().x() + scheduleCanvasBounds().width() / 2.0D)
+                        - ScratchBlockSurface.DEFAULT_BLOCK_WIDTH * 0.5D;
+                double y = scheduleGraphY(scheduleCanvasBounds().y() + scheduleCanvasBounds().height() / 2.0D)
+                        - ScratchBlockSurface.BLOCK_HEIGHT * 0.5D;
+                addedCondition = ShippingScheduleGraph.appendDetachedCondition(scheduleDraft, blockId, x, y,
+                        minecraft.level.registryAccess());
+                changed = !addedCondition.isBlank();
+            }
+        }
+        if (!changed) return;
+        List<AdvancedGraphDocument.Node> ordered = ShippingScheduleGraph.orderedNodes(scheduleDraft);
+        if (instruction && !ordered.isEmpty()) {
+            setScheduleBlockSelection(ordered.getLast().id());
+            AdvancedGraphDocument.Node inserted = scheduleNode(selectedScheduleBlock);
+            AdvancedGraphDocument.Node previous = ordered.size() < 2 ? null : ordered.get(ordered.size() - 2);
+            if (inserted != null && previous != null) {
+                ShippingScheduleGraph.moveBlock(scheduleDraft, inserted.id(), previous.x(),
+                        previous.y() + ShippingScheduleGraph.scratchVisualHeight(scheduleDraft, previous.id()));
+            }
+        } else if (!addedCondition.isBlank()) {
+            setScheduleBlockSelection(addedCondition);
+        }
+        selectedScheduleProperty = null;
+        saveShippingScheduleDraft();
+    }
+
+
+    // Persist a schedule document through its own revision gate. Normal graph
+    // revisions are intentionally unrelated, allowing both editors to coexist.
+    private void saveShippingScheduleDraft() {
+        if (scheduleDraft == null || savedScheduleDraft == null) return;
+        ShippingScheduleGraph.ensureTemplate(scheduleDraft);
+        scheduleDraft.setViewport(schedulePanX, schedulePanY, scheduleZoom);
+        int expectedRevision = savedScheduleDraft.revision();
+        scheduleDraft.setRevision(expectedRevision + 1);
+        savedScheduleDraft = scheduleDraft.copy();
+        MenuConfigTarget target = MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId());
+        PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+                target, "schedule_save", expectedRevision, scheduleDraft.toTag(), "", 0L));
+    }
+
+
+    // Request an explicit controller/item transfer without treating the held
+    // item as an editor draft. The authoritative snapshot follows the result.
+    private void requestScheduleItemTransfer(String action, String progressMessage) {
+        if (savedScheduleDraft == null) return;
+        long requestId = beginGraphActionToast(progressMessage);
+        MenuConfigTarget target = MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId());
+        PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+                target, action, savedScheduleDraft.revision(), new CompoundTag(), "", requestId));
+    }
+
+
+    // These overlays are rendered after the container's ordinary widgets. Give
+    // the underlying pass an off-screen pointer so hidden buttons, nodes, and
+    // slots cannot light up through a popup or modal.
+    private boolean masksUnderlyingHover() {
+        return playerSelectOpen() || boundGlassesOpen || shipPermissionsOpen || scmConfigurationOpen || scmBlockPickerOpen || graphTargetPickerOpen
+                || toolsMenuOpen || themeEditorOpen
+                || themeColorPicker != null || hudColorPicker != null || optionDropdown != null
+                || scmWorkspaceDropdownOpen();
+    }
+
+
+    private boolean scmWorkspaceDropdownOpen() {
+        return scmGraphOverview && (scmConfigurationFiltersDropdownOpen
+                || scmConfigurationWireframeFiltersDropdownOpen
+                || !scmConfigurationSidebarCollapsed && (scmConfigurationTargetDropdownOpen
+                || scmConfigurationControlModeDropdownOpen || scmConfigurationFaceDropdownOpen));
+    }
+
+
+    // The SCM workspace itself is drawn during the normal container pass. When
+    // a dropdown is open that pass intentionally receives an off-screen mouse
+    // position, so redraw just the raised menu at the end with the real cursor.
+    // This preserves menu hover feedback without allowing the graph, sidebars,
+    // or buttons below the popup to react to the cursor.
+    private void drawScmWorkspaceDropdowns(GuiGraphics graphics, int mouseX, int mouseY) {
+        if (!scmWorkspaceDropdownOpen()) return;
+
+        UiRect bounds = scmConfigurationBounds();
+        UiRect viewBounds = scmConfigurationViewBounds(bounds);
+        int viewX = viewBounds.x();
+        int viewY = viewBounds.y();
+
+        graphics.pose().pushPose();
+        graphics.pose().translate(0.0F, 0.0F, 500.0F);
+        if (scmConfigurationFiltersDropdownOpen) {
+            drawScmPreviewFilterDropdown(graphics, viewX, viewY, mouseX, mouseY);
+        }
+        if (scmConfigurationWireframeFiltersDropdownOpen) {
+            drawScmWireframeFilterDropdown(graphics, viewX, viewY, mouseX, mouseY,
+                    scmConfigurationWireframeExcludedFilters);
+        }
+        if (!scmConfigurationSidebarCollapsed) {
+            int panelX = viewBounds.right() + 14;
+            int panelWidth = bounds.right() - panelX - 8;
+            int sidebarY = scmConfigurationSidebarLayout(bounds, viewBounds).contentTop();
+            if (scmConfigurationTargetDropdownOpen) {
+                drawScmTargetDropdown(graphics, panelX, sidebarY + 287, panelWidth, mouseX, mouseY);
+            }
+            if (scmConfigurationControlModeDropdownOpen) {
+                drawScmControlModeDropdown(graphics, panelX, sidebarY + 325, panelWidth, mouseX, mouseY);
+            }
+            if (scmConfigurationControlBindingMode == ScmControlBindingMode.FACE
+                    && scmConfigurationFaceDropdownOpen) {
+                drawScmFaceDropdown(graphics, panelX, sidebarY + 363, panelWidth, mouseX, mouseY);
+            }
+        }
+        graphics.pose().popPose();
+    }
+
+
+    // Return the current node stack in the same order it is painted. Selected
+    // nodes intentionally occupy the front of that stack, without mutating the
+    // saved graph's node order.
+    private List<AdvancedGraphDocument.Node> activeNodesInRenderOrder() {
+        Collection<AdvancedGraphDocument.Node> source = graphRenderCacheDocument == draft
+                ? graphRenderNodes.values() : activeNodes();
+        List<AdvancedGraphDocument.Node> nodes = new ArrayList<>(source);
+        nodes.sort(Comparator.comparing(node -> selectedNodes.contains(node.id())));
+        return nodes;
+    }
+
+
+    // Select the persistent SCM calibration/control surface.
+    private void selectScmGraphTab() {
+        if (scmGraphOverview || !hasScmWorkspace()) return;
+        storeViewport();
+        scmGraphOverview = true;
+        scheduleGraphOverview = false;
+        
+        
+        
+        if (schedulePropertyValue != null) schedulePropertyValue.setVisible(false);
+        editingScheduleInlineProperty = false;
+        if (scheduleInlinePropertyValue != null) scheduleInlinePropertyValue.setVisible(false);
+        activeFunctionId = null;
+        clearSelection();
+        clearGraphRenderCache();
+        beginScmConfigurationWorkspace();
+    }
+
+
+    // SCM-specific screens are only meaningful while this controller has its
+    // actual SCM module attached. The normal graph editor remains available
+    // on every controller.
+    private boolean hasScmWorkspace() {
+        AdvancedContraptionControllerBlockEntity controller = menu.getMenuConfigTargetBlockEntity();
+        return controller != null && controller.isMountedOnShipControlModule();
+    }
+
+
+    // The Schedule tab is host-only. The server repeats this check when a
+    // Scratch document is saved, so client state can never expose it elsewhere.
+    private boolean hasShippingScheduleWorkspace() {
+        AdvancedContraptionControllerBlockEntity controller = menu.getMenuConfigTargetBlockEntity();
+        return controller != null && controller.hasShippingScheduleWorkspace();
+    }
+
+
+    // Parse a positive worker amount for roster-only packets
+    private static long parsePositiveLong(String value, long fallback) {
+        try {
+            return Math.max(1L, Long.parseLong(value));
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
+
+    // Open the Contraption Network Linker target picker for a graph target port.
+    private void openGraphTargetPicker(AdvancedGraphDocument.Node node, String port) {
+        if (node == null) return;
+        setFocused(null);
+        if(graphSearch != null) graphSearch.setFocused(false);
+        graphTargetPickerOpen = true;
+        graphTargetPickerNode = node.id();
+        graphTargetPickerPort = port == null ? "target" : port;
+        graphTargetPickerScroll = 0;
+        graphTargetPickerSelections.clear();
+        graphTargetPickerSelectionFaces.clear();
+        graphTargetAliasScroll = 0;
+        graphTargetPickerSelectionAliases.clear();
+        graphTargetAliasEditor = new EditBox(font, 0, 0, 140, 18, Component.translatable("createthrusters.advanced_controller.target_alias"));
+        graphTargetAliasEditor.setMaxLength(GraphTargetSelection.MAX_ALIAS_LENGTH);
+        graphTargetAliasEditor.setHint(Component.translatable("createthrusters.advanced_controller.target_alias"));
+        graphTargetAliasEditor.setResponder(value -> {
+            if(!graphTargetPickerPreviewTarget.isBlank()) graphTargetPickerSelectionAliases.put(
+                    graphTargetPickerPreviewTarget, GraphTargetSelection.normalizeAlias(value));
+        });
+        CompoundTag aliases = node.data().getCompound(GraphTargetSelection.ALIASES_TAG);
+        aliases.getAllKeys().forEach(id -> graphTargetPickerSelectionAliases.put(id, aliases.getString(id)));
+        if ("get_block_data".equals(node.type()) || "set_block_data".equals(node.type())) {
+            CompoundTag selectedFaces = node.data().getCompound(AdvancedGraphCatalog.DATA_TARGET_FACES_TAG);
+            for (ControllerDiscoveryNode target : dataTargets(node)) {
+                graphTargetPickerSelections.put(target.nodeId(), target);
+                Direction face = Direction.byName(selectedFaces.getString(target.nodeId()));
+                if(face == null) face = AdvancedContraptionControllerBlockEntity.selectedDataTargetFace(node, target);
+                if (face != null) graphTargetPickerSelectionFaces.put(target.nodeId(), face);
+            }
+        } else {
+            String dataKey = "source".equals(graphTargetPickerPort) ? "SourceData" : "TargetData";
+            ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(node.data().getCompound(dataKey));
+            if(target != null){
+                graphTargetPickerSelections.put(target.nodeId(), target);
+                Direction face = "source".equals(graphTargetPickerPort)
+                        ? Direction.byName(node.data().getString("SourceFace"))
+                        : AdvancedContraptionControllerBlockEntity.selectedDataTargetFace(node, target);
+                if(face != null) graphTargetPickerSelectionFaces.put(target.nodeId(), face);
+            }
+        }
+        graphTargetPickerPreviewTarget = graphTargetPickerSelections.keySet().stream().findFirst().orElse("");
+        refreshGraphTargetAliasEditor();
+        graphTargetPickerBlockTab = false;
+        graphTargetPickerMergeLikePorts = node.data().getBoolean(AdvancedGraphCatalog.MERGE_LIKE_PORTS_TAG);
+        resetGraphTargetPickerBlockView();
+    }
+
+
+    // Close the Contraption Network Linker target picker.
+    private void closeGraphTargetPicker() {
+        graphTargetAliasEditor = null;
+        graphTargetPickerSelectionAliases.clear();
+        graphTargetPickerOpen = false;
+        graphTargetPickerNode = "";
+        graphTargetPickerPort = "";
+        graphTargetPickerSelections.clear();
+        graphTargetPickerSelectionFaces.clear();
+        graphTargetPickerPreviewTarget = "";
+        graphTargetPickerBlockTab = false;
+        graphTargetPickerMergeLikePorts = false;
+        scmBlockPickerSelected = null;
+        scmBlockPickerFiltersDropdownOpen = false;
+        scmBlockPickerWireframeFiltersDropdownOpen = false;
+        scmLivePreviewRenderer.setVisibleFilters(scmConfigurationFilters);
+        scmLivePreviewRenderer.setWireframe(scmConfigurationWireframe);
+        scmLivePreviewRenderer.setWireframeExcludedFilters(scmConfigurationWireframeExcludedFilters);
+        scmLivePreviewRenderer.invalidate();
+    }
+
+
+    // Draw the combined CNL and assembled-block target picker.
+    private void drawGraphTargetPicker(GuiGraphics graphics, int mouseX, int mouseY) {
+        UiRect bounds = graphTargetPickerBounds();
+        graphics.fill(0, 0, width, height, 0xA8000000);
+        renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        graphics.drawString(font, "source".equals(graphTargetPickerPort) ? "Select Source" : "Select Target",
+                bounds.x() + 12, bounds.y() + 10,
+                interfaceAccentTextColor(), false);
+        graphics.drawString(font, "x", bounds.right() - 17, bounds.y() + 10, interfaceMutedColor(), false);
+        UiRect linkerTab = graphTargetPickerLinkerTabBounds(bounds);
+        renderAdvancedButton(graphics, font, linkerTab.x(), linkerTab.y(), linkerTab.width(), linkerTab.height(),
+                Component.literal("Linker Targets"), linkerTab.contains(mouseX, mouseY), !graphTargetPickerBlockTab);
+        if (graphTargetPickerHasBlockTab()) {
+            UiRect blockTab = graphTargetPickerBlockTabBounds(bounds);
+            renderAdvancedButton(graphics, font, blockTab.x(), blockTab.y(), blockTab.width(), blockTab.height(),
+                    Component.literal("3D Block Picker"), blockTab.contains(mouseX, mouseY), graphTargetPickerBlockTab);
+        }
+        if (graphTargetPickerBlockTab) {
+            drawGraphTargetPickerBlockTab(graphics, bounds, mouseX, mouseY);
+        } else {
+            drawGraphTargetPickerLinkerTab(graphics, bounds, mouseX, mouseY);
+        }
+        String selectionLabel = graphTargetPickerSelectionLabel();
+        graphics.drawString(font, trim(selectionLabel, Math.max(12, (bounds.width() - 220) / 6)),
+                bounds.x() + 12, bounds.bottom() - 20, interfaceMutedColor(), false);
+        UiRect accept = graphTargetPickerAcceptBounds(bounds);
+        renderAdvancedButton(graphics, font, accept.x(), accept.y(), accept.width(), accept.height(),
+                Component.literal("Accept"), accept.contains(mouseX, mouseY), true);
+        UiRect cancel = graphTargetPickerCancelBounds(bounds);
+        renderAdvancedButton(graphics, font, cancel.x(), cancel.y(), cancel.width(), cancel.height(),
+                Component.literal("Cancel"), cancel.contains(mouseX, mouseY), true);
+    }
+
+
+    // Draw the CNL target list.
+    private void drawGraphTargetPickerLinkerTab(GuiGraphics graphics, UiRect bounds, int mouseX, int mouseY) {
+        if (graphTargetPickerSupportsMergeLikePorts()) {
+            UiRect merge = graphTargetPickerMergeBounds(bounds);
+            renderControllerOption(graphics, merge.x(), merge.y(), merge.width(), merge.height(),
+                    portColor("boolean"), merge.contains(mouseX, mouseY), false);
+            graphics.drawString(font, "Merge Like Ports", merge.x() + 6, merge.y() + 5, interfaceSecondaryColor(), false);
+            int switchX = merge.right() - 26;
+            graphics.fill(switchX, merge.y() + 4, switchX + 20, merge.y() + 14,
+                    graphTargetPickerMergeLikePorts ? 0xFF4C9E70 : 0xFF394952);
+            graphics.fill(graphTargetPickerMergeLikePorts ? switchX + 11 : switchX + 2, merge.y() + 5,
+                    graphTargetPickerMergeLikePorts ? switchX + 18 : switchX + 9, merge.y() + 13,
+                    graphTargetPickerMergeLikePorts ? 0xFFCAF4D8 : 0xFFB7C3C7);
+        }
+        UiRect list = graphTargetPickerListBounds(bounds);
+        graphics.fill(list.x(), list.y(), list.right(), list.bottom(), 0xFF081017);
+        graphics.renderOutline(list.x(), list.y(), list.width(), list.height(), AdvancedControllerV2Theme.BORDER);
+        List<ControllerDiscoveryNode> choices = graphTargetPickerChoices();
+        int visible = graphTargetPickerVisibleRows(list);
+        int end = Math.min(choices.size(), graphTargetPickerScroll + visible);
+        for (int index = graphTargetPickerScroll; index < end; index++) {
+            ControllerDiscoveryNode choice = choices.get(index);
+            int rowY = list.y() + 4 + (index - graphTargetPickerScroll) * 42;
+            boolean selected = graphTargetPickerSelections.containsKey(choice.nodeId());
+            boolean hovered = inside(mouseX, mouseY, list.x() + 4, rowY, list.width() - 8, 38);
+            graphics.fill(list.x() + 4, rowY, list.right() - 4, rowY + 38,
+                    selected ? 0xFF315D72 : hovered ? 0xFF314657 : 0xFF18232D);
+            graphics.drawString(font, selected ? "[x]" : "[ ]", list.x() + 8, rowY + 5,
+                    selected ? interfaceAccentTextColor() : interfaceMutedColor(), false);
+            int iconX = list.x() + 30;
+            renderControllerOption(graphics, iconX, rowY + 4, 28, 28, portColor("target"), false, false);
+            ItemStack icon = graphTargetPickerIcon(choice);
+            if (!icon.isEmpty()) graphics.renderItem(icon, iconX + 6, rowY + 10);
+            else graphics.drawCenteredString(font, "?", iconX + 14, rowY + 14, interfaceMutedColor());
+            String label = choice.label().isBlank() ? choice.nodeId() : choice.label();
+            String kind = choice.kind().name().replace('_', ' ').toLowerCase(Locale.ROOT);
+            String kindText = trim(kind, Math.max(5, list.width() / 12));
+            int textX = iconX + 34;
+            int textWidth = Math.max(8, (list.right() - textX - font.width(kindText) - 20) / 6);
+            graphics.drawString(font, trim(label, textWidth), textX, rowY + 5,
+                    interfaceSecondaryColor(), false);
+            graphics.drawString(font, kindText, list.right() - 8 - font.width(kindText), rowY + 5,
+                    interfaceMutedColor(), false);
+            String location = choice.blockPos() == null ? choice.blockId()
+                    : choice.blockPos().getX() + ", " + choice.blockPos().getY() + ", " + choice.blockPos().getZ();
+            graphics.drawString(font, trim(location, Math.max(8, (list.right() - textX - 12) / 6)), textX, rowY + 21,
+                    interfaceMutedColor(), false);
+        }
+        if (choices.isEmpty()) {
+            graphics.drawString(font, "No CNL input or output targets are available.",
+                    list.x() + 8, list.y() + 10, interfaceMutedColor(), false);
+        }
+    }
+
+
+    // Draw the assembled-block tab within the same picker modal.
+    private void drawGraphTargetPickerBlockTab(GuiGraphics graphics, UiRect bounds, int mouseX, int mouseY) {
+        UiRect toolbar = graphTargetPickerBlockToolbarBounds(bounds);
+        drawScmBlockPickerFilters(graphics, toolbar.x(), toolbar.y(), toolbar.width(), mouseX, mouseY);
+        UiRect preview = graphTargetPickerPreviewBounds(bounds);
+        drawGraphTargetPickerBlockPreview(graphics, preview);
+        if(graphTargetPickerSupportsMergeLikePorts()) drawGraphTargetSelections(graphics, bounds, mouseX, mouseY);
+        drawScmBlockPickerDropdowns(graphics, toolbar, mouseX, mouseY);
+    }
+
+
+    // Draw the dedicated live assembled-block picker view.
+    private void drawGraphTargetPickerBlockPreview(GuiGraphics graphics, UiRect preview) {
+        graphics.fill(preview.x(), preview.y(), preview.right(), preview.bottom(), 0xFF081017);
+        UUID rootSubLevelId = blockPickerRootSubLevelId();
+        List<UUID> visibleSubLevels = rootSubLevelId != null
+                && scmConfigurationViewSubLevelIds.contains(rootSubLevelId)
+                ? scmConfigurationViewSubLevelIds
+                : rootSubLevelId == null ? List.of() : List.of(rootSubLevelId);
+        scmLivePreviewRenderer.setBodies(rootSubLevelId, visibleSubLevels);
+        scmLivePreviewRenderer.setVisibleFilters(scmBlockPickerFilters);
+        scmLivePreviewRenderer.setWireframe(scmBlockPickerWireframe);
+        scmLivePreviewRenderer.setWireframeExcludedFilters(scmBlockPickerWireframeExcludedFilters);
+        List<ScmLiveSubLevelPreviewRenderer.Highlight> highlights = graphTargetPickerHighlights();
+        if (rootSubLevelId == null || !scmLivePreviewRenderer.render(graphics,
+                preview.x(), preview.y(), preview.width(), preview.height(),
+                minecraft == null ? 0.0F : minecraft.getTimer().getGameTimeDeltaPartialTick(false), highlights)) {
+            graphics.drawCenteredString(font, rootSubLevelId == null
+                            ? "No assembled sub-level is available."
+                            : "Loading the live craft view...",
+                    preview.x() + preview.width() / 2, preview.y() + preview.height() / 2 - 5,
+                    interfaceMutedColor());
+        }
+        graphics.renderOutline(preview.x(), preview.y(), preview.width(), preview.height(), AdvancedControllerV2Theme.BORDER);
+        String status = scmLivePreviewRenderer.visibleBlockCount() + " / "
+                + scmLivePreviewRenderer.blockCount() + " live blocks";
+        graphics.drawString(font, status, preview.x() + 7, preview.bottom() - 14, interfaceMutedColor(), false);
+    }
+
+
+    // Get whether the active target picker can choose a live assembled block.
+    private boolean graphTargetPickerHasBlockTab() {
+        return canOpenScmBlockPicker(findNode(graphTargetPickerNode));
+    }
+
+
+    // Check whether the active picker owns the staged port-merge setting.
+    private boolean graphTargetPickerSupportsMergeLikePorts() {
+        AdvancedGraphDocument.Node node = findNode(graphTargetPickerNode);
+        return node != null && ("get_block_data".equals(node.type()) || "set_block_data".equals(node.type()));
+    }
+
+
+    // Get the selected target used to focus the live preview.
+    private ControllerDiscoveryNode graphTargetPickerPreviewTarget() {
+        ControllerDiscoveryNode target = graphTargetPickerSelections.get(graphTargetPickerPreviewTarget);
+        if (target != null) return target;
+        return graphTargetPickerSelections.values().stream().findFirst().orElse(null);
+    }
+
+
+    // Get highlights for every target staged in the assembled-block picker.
+    private List<ScmLiveSubLevelPreviewRenderer.Highlight> graphTargetPickerHighlights() {
+        List<ScmLiveSubLevelPreviewRenderer.Highlight> highlights = new ArrayList<>();
+        for (ControllerDiscoveryNode target : graphTargetPickerSelections.values()) {
+            if (target.subLevelId() == null || target.blockPos() == null) continue;
+            highlights.add(new ScmLiveSubLevelPreviewRenderer.Highlight(target.subLevelId(), target.blockPos(),
+                    graphTargetPickerSelectionFaces.get(target.nodeId()), 0xFFFFD44D));
+        }
+        return highlights;
+    }
+
+
+    // Get the staged selection label.
+    private String graphTargetPickerSelectionLabel() {
+        int count = graphTargetPickerSelections.size();
+        if (count == 0) return "No target selected";
+        ControllerDiscoveryNode target = graphTargetPickerPreviewTarget();
+        String label = target == null || target.label().isBlank() ? "Selected target" : target.label();
+        return count == 1 ? "Selected: " + label : "Selected: " + count + " targets";
+    }
+
+
+    // Reset the shared live-view controls for this picker session.
+    private void resetGraphTargetPickerBlockView() {
+        scmBlockPickerSelected = null;
+        scmBlockPickerFilters.clear();
+        scmBlockPickerFilters.add(ScmLiveSubLevelPreviewRenderer.Filter.ALL);
+        scmBlockPickerWireframeExcludedFilters.clear();
+        scmBlockPickerFiltersDropdownOpen = false;
+        scmBlockPickerWireframeFiltersDropdownOpen = false;
+        scmBlockPickerWireframe = false;
+        scmLivePreviewRenderer.invalidate();
+    }
+
+
+    // Get CNL input/output choices for the graph target picker.
+    private List<ControllerDiscoveryNode> graphTargetPickerChoices() {
+        AdvancedGraphDocument.Node node = findNode(graphTargetPickerNode);
+        if (node == null) return List.of();
+        List<ControllerDiscoveryNode> choices = new ArrayList<>("source".equals(graphTargetPickerPort)
+                ? graphDisplaySourceOptions(node) : graphTargetOptions(node));
+        if (!"source".equals(graphTargetPickerPort)) choices.addAll(graphScmTargetOptions(node));
+        if("camera".equals(node.type()) || "acc_display_camera_source".equals(node.type()) && "source".equals(graphTargetPickerPort)){
+            for(var pair : gogglesTrackerPairs()) choices.add(new ControllerDiscoveryNode(
+                    com.rieno.gadgetsandgizmos.content.BoundGlassesCamera.PREFIX + pair.id(),
+                    ControllerDiscoveryKind.MACHINE, "", pair.itemId(), pair.label(), null, BlockPos.ZERO));
+        }
+        boolean faceOnly = "linker_face_input".equals(node.type()) || "linker_face_output".equals(node.type());
+        return choices.stream().filter(target -> !faceOnly
+                        || target.kind() == ControllerDiscoveryKind.LINKER_FACE_INPUT
+                        || target.kind() == ControllerDiscoveryKind.LINKER_FACE_OUTPUT)
+                .sorted(Comparator.comparing(target -> target.label().isBlank()
+                        ? target.nodeId() : target.label(), String.CASE_INSENSITIVE_ORDER))
+                .toList();
+    }
+
+
+    // Get the target block's inventory icon for the linker list.
+    private ItemStack graphTargetPickerIcon(ControllerDiscoveryNode target) {
+        if (target == null || target.blockId().isBlank()) return ItemStack.EMPTY;
+        ResourceLocation blockId = ResourceLocation.tryParse(target.blockId());
+        if (blockId == null) return ItemStack.EMPTY;
+        if(blockId.getPath().equals("contraption_network_linker_plane") && target.blockPos() != null){
+            ItemStack linker = menu.getCurrentLinkerStack();
+            for(var linked : ContraptionNetworkLinkerData.readTargets(linker)){
+                if(!ContraptionNetworkLinkerData.nodeIdForTarget(linked).equals(target.nodeId())
+                        || linked.faces().isEmpty()) continue;
+                var targetLevel = com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector
+                        .resolveTargetLevel(Minecraft.getInstance().level, linked.subLevelId());
+                if(targetLevel == null) break;
+                BlockPos support = linked.blockPos().relative(linked.faces().getFirst().face().getOpposite());
+                if(targetLevel.isLoaded(support)) return new ItemStack(targetLevel.getBlockState(support).getBlock().asItem());
+            }
+        }
+        if(target.nodeId().startsWith(com.rieno.gadgetsandgizmos.content.BoundGlassesCamera.PREFIX)){
+            ResourceLocation itemId = gogglesTrackerPairs().stream()
+                    .filter(pair -> target.nodeId().equals(com.rieno.gadgetsandgizmos.content.BoundGlassesCamera.PREFIX + pair.id()))
+                    .map(pair -> ResourceLocation.tryParse(pair.itemId())).filter(Objects::nonNull)
+                    .findFirst().orElse(blockId);
+            return BuiltInRegistries.ITEM.getOptional(itemId).map(ItemStack::new).orElse(ItemStack.EMPTY);
+        }
+        return BuiltInRegistries.BLOCK.getOptional(blockId)
+                .map(block -> new ItemStack(block.asItem())).orElse(ItemStack.EMPTY);
+    }
+
+
+    // Check whether a target is selected by a data node.
+    private boolean dataTargetSelected(AdvancedGraphDocument.Node node, ControllerDiscoveryNode target) {
+        if (node == null || target == null) return false;
+        if ("get_block_data".equals(node.type()) || "set_block_data".equals(node.type())) {
+            return dataTargets(node).stream().anyMatch(existing -> existing.nodeId().equals(target.nodeId()));
+        }
+        return target.nodeId().equals(node.data().getString("Target"));
+    }
+
+
+    // Handle a CNL target picker click.
+    private boolean clickGraphTargetPicker(double mouseX, double mouseY, int button) {
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
+        UiRect bounds = graphTargetPickerBounds();
+        if(graphTargetPickerBlockTab && scmBlockPickerDropdownOpen()
+                && clickScmBlockPickerToolbar(mouseX, mouseY, graphTargetPickerBlockToolbarBounds(bounds))) return true;
+        if (graphTargetPickerCancelBounds(bounds).contains(mouseX, mouseY)
+                || (mouseX >= bounds.right() - 28 && mouseY >= bounds.y() && mouseY < bounds.y() + 32)) {
+            closeGraphTargetPicker();
+            return true;
+        }
+        if (graphTargetPickerAcceptBounds(bounds).contains(mouseX, mouseY)) {
+            applyGraphTargetPickerSelections();
+            return true;
+        }
+        if (!graphTargetPickerBlockTab && graphTargetPickerSupportsMergeLikePorts()
+                && graphTargetPickerMergeBounds(bounds).contains(mouseX, mouseY)) {
+            graphTargetPickerMergeLikePorts = !graphTargetPickerMergeLikePorts;
+            return true;
+        }
+        if (graphTargetPickerLinkerTabBounds(bounds).contains(mouseX, mouseY)) {
+            graphTargetPickerBlockTab = false;
+            return true;
+        }
+        if (graphTargetPickerHasBlockTab() && graphTargetPickerBlockTabBounds(bounds).contains(mouseX, mouseY)) {
+            graphTargetPickerBlockTab = true;
+            return true;
+        }
+        if (graphTargetPickerBlockTab) {
+            if(graphTargetPickerSupportsMergeLikePorts() && clickGraphTargetSelections(mouseX, mouseY, bounds)) return true;
+            if(graphTargetAliasEditor != null) graphTargetAliasEditor.setFocused(false);
+            UiRect toolbar = graphTargetPickerBlockToolbarBounds(bounds);
+            if (clickScmBlockPickerToolbar(mouseX, mouseY, toolbar)) return true;
+            UiRect preview = graphTargetPickerPreviewBounds(bounds);
+            if (preview.contains(mouseX, mouseY) && blockPickerRootSubLevelId() != null) {
+                scmLivePreviewRenderer.mousePressed(mouseX, mouseY, button);
+            }
+            return true;
+        }
+        UiRect list = graphTargetPickerListBounds(bounds);
+        if (!list.contains(mouseX, mouseY)) return true;
+        List<ControllerDiscoveryNode> choices = graphTargetPickerChoices();
+        int visible = graphTargetPickerVisibleRows(list);
+        int end = Math.min(choices.size(), graphTargetPickerScroll + visible);
+        for (int index = graphTargetPickerScroll; index < end; index++) {
+            int rowY = list.y() + 4 + (index - graphTargetPickerScroll) * 42;
+            if (inside(mouseX, mouseY, list.x() + 4, rowY, list.width() - 8, 38)) {
+                toggleGraphTargetPickerSelection(choices.get(index));
+                return true;
+            }
+        }
+        return true;
+    }
+
+
+    // Stage or unstage one target without changing the graph.
+    private void toggleGraphTargetPickerSelection(ControllerDiscoveryNode target) {
+        if (target == null) return;
+        AdvancedGraphDocument.Node node = findNode(graphTargetPickerNode);
+        if (node == null) return;
+        boolean multiTarget = "get_block_data".equals(node.type()) || "set_block_data".equals(node.type());
+        if (graphTargetPickerSelections.containsKey(target.nodeId())) {
+            graphTargetPickerSelections.remove(target.nodeId());
+            graphTargetPickerSelectionFaces.remove(target.nodeId());
+        } else {
+            if (!multiTarget) {
+                graphTargetPickerSelections.clear();
+                graphTargetPickerSelectionFaces.clear();
+                graphTargetPickerSelectionAliases.clear();
+            }
+            graphTargetPickerSelections.put(target.nodeId(), target);
+        }
+        graphTargetPickerPreviewTarget = target.nodeId();
+        refreshGraphTargetAliasEditor();
+        scmLivePreviewRenderer.invalidate();
+    }
+
+
+    // Stage or unstage a block selected from the live assembled view.
+    private void stageGraphTargetPickerBlockSelection(ScmLiveSubLevelPreviewRenderer.PickTarget picked) {
+        if (picked == null || picked.subLevelId() == null) return;
+        String label = scmLivePreviewRenderer.blockName(picked.subLevelId(), picked.position());
+        String targetId = "scm_picker:" + picked.subLevelId() + ":" + picked.position().asLong();
+        ControllerDiscoveryNode target = new ControllerDiscoveryNode(targetId, ControllerDiscoveryKind.MACHINE,
+                "scm_picker", scmLivePreviewRenderer.blockId(picked.subLevelId(), picked.position()), label,
+                picked.subLevelId(), picked.position());
+        AdvancedGraphDocument.Node node = findNode(graphTargetPickerNode);
+        boolean multiTarget = node != null && ("get_block_data".equals(node.type()) || "set_block_data".equals(node.type()));
+        if(multiTarget) target = GraphTargetSelection.withFace(target, picked.face());
+        String selectedId = GraphTargetSelection.matchingFace(graphTargetPickerSelections.values(),
+                graphTargetPickerSelectionFaces, target, picked.face());
+        if (selectedId != null) {
+            graphTargetPickerSelections.remove(selectedId);
+            graphTargetPickerSelectionFaces.remove(selectedId);
+            graphTargetPickerSelectionAliases.remove(selectedId);
+            if (selectedId.equals(graphTargetPickerPreviewTarget)) {
+                graphTargetPickerPreviewTarget = graphTargetPickerSelections.keySet().stream().findFirst().orElse("");
+            }
+            scmBlockPickerSelected = null;
+        } else {
+            if (!multiTarget) {
+                graphTargetPickerSelections.clear();
+                graphTargetPickerSelectionFaces.clear();
+                graphTargetPickerSelectionAliases.clear();
+            }
+            graphTargetPickerSelections.put(target.nodeId(), target);
+            if (picked.face() != null) graphTargetPickerSelectionFaces.put(target.nodeId(), picked.face());
+            graphTargetPickerPreviewTarget = target.nodeId();
+            scmBlockPickerSelected = picked;
+        }
+        refreshGraphTargetAliasEditor();
+        scmLivePreviewRenderer.invalidate();
+    }
+
+
+    // Commit staged targets only after the player accepts the modal.
+    private void applyGraphTargetPickerSelections() {
+        AdvancedGraphDocument.Node node = findNode(graphTargetPickerNode);
+        if (node == null) {
+            closeGraphTargetPicker();
+            return;
+        }
+        List<ControllerDiscoveryNode> targets = List.copyOf(graphTargetPickerSelections.values());
+        checkpoint();
+        if ("source".equals(graphTargetPickerPort) && isExternalDisplaySourceNode(node)) {
+            ControllerDiscoveryNode source = targets.isEmpty() ? null : targets.getFirst();
+            if (source == null) {
+                node.data().remove("Source");
+                node.data().remove("SourceLabel");
+                node.data().remove("SourceData");
+                node.data().remove("SourceFace");
+                putInputDefault(node, "source", "target", new CompoundTag());
+            } else {
+                node.data().putString("Source", source.nodeId());
+                node.data().putString("SourceLabel", source.label().isBlank() ? source.nodeId() : source.label());
+                node.data().put("SourceData", source.toTag());
+                Direction face = graphTargetPickerSelectionFaces.get(source.nodeId());
+                if(face == null) node.data().remove("SourceFace");
+                else node.data().putString("SourceFace", face.getSerializedName());
+                putInputDefault(node, "source", "target", source.toTag());
+            }
+        } else if ("get_block_data".equals(node.type()) || "set_block_data".equals(node.type())) {
+            node.data().putBoolean(AdvancedGraphCatalog.MERGE_LIKE_PORTS_TAG, graphTargetPickerMergeLikePorts);
+            CompoundTag aliases = new CompoundTag();
+            for(ControllerDiscoveryNode target : targets){
+                String alias = GraphTargetSelection.normalizeAlias(graphTargetPickerSelectionAliases.get(target.nodeId()));
+                if(!alias.isBlank()) aliases.putString(target.nodeId(), alias);
+            }
+            if(aliases.isEmpty()) node.data().remove(GraphTargetSelection.ALIASES_TAG);
+            else node.data().put(GraphTargetSelection.ALIASES_TAG, aliases);
+            ListTag saved = new ListTag();
+            for (ControllerDiscoveryNode target : targets) {
+                saved.add(target.toTag());
+            }
+            if (saved.isEmpty()) {
+                node.data().remove(AdvancedGraphCatalog.DATA_TARGETS_TAG);
+                node.data().remove(AdvancedGraphCatalog.DATA_TARGET_FACES_TAG);
+                node.data().remove("Target");
+                node.data().remove("TargetLabel");
+                node.data().remove("TargetData");
+            } else {
+                ControllerDiscoveryNode primary = targets.getFirst();
+                node.data().put(AdvancedGraphCatalog.DATA_TARGETS_TAG, saved);
+                node.data().putString("Target", primary.nodeId());
+                node.data().putString("TargetLabel", primary.label().isBlank() ? primary.nodeId() : primary.label());
+                node.data().put("TargetData", primary.toTag());
+                CompoundTag selectedFaces = new CompoundTag();
+                for (ControllerDiscoveryNode target : targets) {
+                    Direction face = graphTargetPickerSelectionFaces.get(target.nodeId());
+                    if (face != null) selectedFaces.putString(target.nodeId(), face.getSerializedName());
+                }
+                if (selectedFaces.isEmpty()) node.data().remove(AdvancedGraphCatalog.DATA_TARGET_FACES_TAG);
+                else node.data().put(AdvancedGraphCatalog.DATA_TARGET_FACES_TAG, selectedFaces);
+            }
+            configureMultiDataTargetPorts(node);
+        } else {
+            ControllerDiscoveryNode target = targets.isEmpty() ? null : targets.getFirst();
+            if (target == null) {
+                node.data().remove("Target");
+                node.data().remove("TargetLabel");
+                node.data().remove("TargetData");
+                putInputDefault(node, graphTargetPickerPort, "target", "");
+                selectOnly(node.id());
+                syncInspector();
+                closeGraphTargetPicker();
+                return;
+            }
+            node.data().putString("Target", target.nodeId());
+            node.data().putString("TargetLabel", target.label().isBlank() ? target.nodeId() : target.label());
+            node.data().put("TargetData", target.toTag());
+            Direction face = graphTargetPickerSelectionFaces.get(target.nodeId());
+            if(face != null) putInputDefault(node, "face", "direction", face.getSerializedName());
+            if(!target.nodeId().startsWith(com.rieno.gadgetsandgizmos.content.BoundGlassesCamera.PREFIX)) configureDataPorts(node, target);
+            putInputDefault(node, graphTargetPickerPort, "target", target.nodeId());
+        }
+        selectOnly(node.id());
+        syncInspector();
+        closeGraphTargetPicker();
+    }
+
+
+    // Get the combined picker bounds.
+    private UiRect graphTargetPickerBounds() {
+        int modalWidth = Math.max(280, Math.min(840, width - 32));
+        int modalHeight = Math.max(230, Math.min(560, height - 40));
+        return new UiRect((width - modalWidth) / 2, (height - modalHeight) / 2, modalWidth, modalHeight);
+    }
+
+
+    // Get the linker-target tab bounds.
+    private static UiRect graphTargetPickerLinkerTabBounds(UiRect bounds) {
+        return new UiRect(bounds.x() + 12, bounds.y() + 30, 112, 18);
+    }
+
+
+    // Get the assembled-block tab bounds.
+    private static UiRect graphTargetPickerBlockTabBounds(UiRect bounds) {
+        return new UiRect(bounds.x() + 128, bounds.y() + 30, 112, 18);
+    }
+
+
+    // Get the assembled-block picker preview bounds.
+    private UiRect graphTargetPickerPreviewBounds(UiRect bounds) {
+        int top = bounds.y() + 74;
+        int bottom = bounds.bottom() - 34;
+        int sidebar = graphTargetPickerBlockTab && graphTargetPickerSupportsMergeLikePorts()
+                ? Math.min(180, bounds.width() / 3) + 8 : 0;
+        return new UiRect(bounds.x() + 12, top, bounds.width() - 24 - sidebar, Math.max(120, bottom - top));
+    }
+
+
+    private UiRect graphTargetSelectionsBounds(UiRect bounds){
+        int side = Math.min(180, bounds.width() / 3);
+        return new UiRect(bounds.right() - 12 - side, bounds.y() + 74, side, Math.max(120, bounds.height() - 108));
+    }
+
+    private int graphTargetSelectionRows(UiRect panel){ return Math.max(1, (panel.height() - 72) / 30); }
+
+    private void refreshGraphTargetAliasEditor(){
+        if(graphTargetAliasEditor == null) return;
+        if(!graphTargetPickerSelections.containsKey(graphTargetPickerPreviewTarget)){
+            graphTargetPickerPreviewTarget = graphTargetPickerSelections.keySet().stream().findFirst().orElse("");
+        }
+        graphTargetAliasEditor.setValue(graphTargetPickerSelectionAliases.getOrDefault(graphTargetPickerPreviewTarget, ""));
+        graphTargetAliasEditor.setFocused(false);
+    }
+
+    private void drawGraphTargetSelections(GuiGraphics graphics, UiRect bounds, int mouseX, int mouseY){
+        UiRect panel = graphTargetSelectionsBounds(bounds);
+        graphics.fill(panel.x(), panel.y(), panel.right(), panel.bottom(), 0xFF101B24);
+        graphics.drawString(font, Component.translatable("createthrusters.advanced_controller.selected_faces"),
+                panel.x() + 6, panel.y() + 6, 0xFFFFFFFF, false);
+        var targets = List.copyOf(graphTargetPickerSelections.values());
+        int rows = graphTargetSelectionRows(panel);
+        graphTargetAliasScroll = Mth.clamp(graphTargetAliasScroll, 0, Math.max(0, targets.size() - rows));
+        for(int idx = graphTargetAliasScroll; idx < Math.min(targets.size(), graphTargetAliasScroll + rows); idx++){
+            var target = targets.get(idx);
+            int y = panel.y() + 22 + (idx - graphTargetAliasScroll) * 30;
+            if(target.nodeId().equals(graphTargetPickerPreviewTarget)) graphics.fill(panel.x() + 3, y, panel.right() - 3, y + 28, 0xFF244153);
+            String label = GraphTargetSelection.label(target, graphTargetPickerSelectionFaces.get(target.nodeId()),
+                    graphTargetPickerSelectionAliases.get(target.nodeId()));
+            graphics.drawString(font, font.plainSubstrByWidth(label, panel.width() - 26), panel.x() + 6, y + 3, 0xFFE4EEF4, false);
+            Direction face = graphTargetPickerSelectionFaces.get(target.nodeId());
+            String detail = face == null ? target.label() : face.getSerializedName() + " - " + target.label();
+            graphics.drawString(font, font.plainSubstrByWidth(detail, panel.width() - 26), panel.x() + 6, y + 15, 0xFF9FB4C0, false);
+            graphics.drawString(font, "x", panel.right() - 14, y + 8, 0xFFFFAFAF, false);
+        }
+        if(graphTargetAliasEditor != null){
+            graphTargetAliasEditor.setX(panel.x() + 6);
+            graphTargetAliasEditor.setY(panel.bottom() - 24);
+            graphTargetAliasEditor.setWidth(Math.max(20, panel.width() - 12));
+            graphTargetAliasEditor.setEditable(!graphTargetPickerSelections.isEmpty());
+            graphics.drawString(font, Component.translatable("createthrusters.advanced_controller.target_alias"),
+                    panel.x() + 6, panel.bottom() - 38, 0xFF9FB4C0, false);
+            graphTargetAliasEditor.render(graphics, mouseX, mouseY, 0);
+        }
+    }
+
+    private boolean clickGraphTargetSelections(double mouseX, double mouseY, UiRect bounds){
+        UiRect panel = graphTargetSelectionsBounds(bounds);
+        if(!panel.contains(mouseX, mouseY)) return false;
+        if(graphTargetAliasEditor != null && graphTargetAliasEditor.mouseClicked(mouseX, mouseY, GLFW.GLFW_MOUSE_BUTTON_LEFT)) return true;
+        if(graphTargetAliasEditor != null) graphTargetAliasEditor.setFocused(false);
+        var targets = List.copyOf(graphTargetPickerSelections.values());
+        int rows = graphTargetSelectionRows(panel);
+        for(int idx = graphTargetAliasScroll; idx < Math.min(targets.size(), graphTargetAliasScroll + rows); idx++){
+            int y = panel.y() + 22 + (idx - graphTargetAliasScroll) * 30;
+            if(mouseY < y || mouseY >= y + 28) continue;
+            String id = targets.get(idx).nodeId();
+            if(mouseX >= panel.right() - 22){
+                graphTargetPickerSelections.remove(id);
+                graphTargetPickerSelectionFaces.remove(id);
+                graphTargetPickerSelectionAliases.remove(id);
+            }else graphTargetPickerPreviewTarget = id;
+            refreshGraphTargetAliasEditor();
+            scmLivePreviewRenderer.invalidate();
+            return true;
+        }
+        return true;
+    }
+
+    // Get the CNL target-list bounds.
+    private static UiRect graphTargetPickerListBounds(UiRect bounds) {
+        int top = bounds.y() + 80;
+        int bottom = bounds.bottom() - 34;
+        return new UiRect(bounds.x() + 12, top, bounds.width() - 24, Math.max(120, bottom - top));
+    }
+
+
+    // Get the staged Merge Like Ports toggle bounds.
+    private static UiRect graphTargetPickerMergeBounds(UiRect bounds) {
+        return new UiRect(bounds.x() + 12, bounds.y() + 58, 156, 18);
+    }
+
+
+    // Get the live-view filter bar bounds.
+    private static UiRect graphTargetPickerBlockToolbarBounds(UiRect bounds) {
+        return new UiRect(bounds.x() + 12, bounds.y() + 52, bounds.width() - 24, SCM_CONFIGURATION_FILTER_HEIGHT);
+    }
+
+
+    // Get the accept button bounds.
+    private static UiRect graphTargetPickerAcceptBounds(UiRect bounds) {
+        return new UiRect(bounds.right() - 164, bounds.bottom() - 26, 72, 18);
+    }
+
+
+    // Get the cancel button bounds.
+    private static UiRect graphTargetPickerCancelBounds(UiRect bounds) {
+        return new UiRect(bounds.right() - 82, bounds.bottom() - 26, 70, 18);
+    }
+
+
+    // Get the number of visible CNL targets.
+    private static int graphTargetPickerVisibleRows(UiRect bounds) {
+        return Math.max(1, (bounds.height() - 8) / 42);
+    }
+
+
+    // Select the conditional host-owned Scratch schedule surface.
+    private void selectShippingScheduleTab() {
+        if (scheduleGraphOverview || !hasShippingScheduleWorkspace()) return;
+        storeViewport();
+        scheduleGraphOverview = true;
+        scmGraphOverview = false;
+        
+        
+        
+        activeFunctionId = null;
+        if (scheduleDraft == null) {
+            scheduleDraft = menu.getInitialShippingScheduleDraft();
+        }
+        ShippingScheduleGraph.ensureTemplate(scheduleDraft);
+        if (savedScheduleDraft == null) {
+            savedScheduleDraft = scheduleDraft.copy();
+        }
+        if (scheduleDraft.viewportZoom() >= 0.20F) {
+            schedulePanX = scheduleDraft.viewportX();
+            schedulePanY = scheduleDraft.viewportY();
+            scheduleZoom = Mth.clamp(scheduleDraft.viewportZoom(), 0.20F, 2.50F);
+        }
+        selectedScheduleProperty = null;
+        schedulePropertyEditorNode = "";
+        schedulePropertyEditorKey = "";
+        clearSelection();
+        clearGraphRenderCache();
+        scmLivePreviewRenderer.close();
+    }
+
+
+    // Apply the shared ACC editor GUI-scale override after initial layout.
+    private void applyAccGuiScale() {
+        if (!projectionScreen) AccGuiScaleOverride.apply(hasScmWorkspace() ? 800 : 0);
+    }
+
+
+    // Queue restoration after the active GUI layer has finished changing.
+    private void restoreAccGuiScale() {
+        AccGuiScaleOverride.restoreAfterExit();
+    }
+
+
+    // Draw the SCM calibration workspace directly in its graph tab. This is
+    // intentionally not an action-card launcher or a modal: the live craft,
+    // its explicit routing groups, and simulation fields remain visible while
+    // the player configures control bindings.
+    private void drawScmGraphWorkspace(GuiGraphics graphics, int mouseX, int mouseY) {
+        drawScmConfiguration(graphics, mouseX, mouseY);
+    }
+
+
+    // The ordinary node library becomes a read-only, server-authoritative live
+    // simulation summary on the SCM tab. These are values from the same SCM
+    // runtime ports graph nodes consume, not labels copied from the mockup.
+    private void drawScmSimulationSidebar(GuiGraphics graphics) {
+        int left = layoutLeft();
+        int sidebarWidth = scmSimulationSidebarWidth();
+        renderSidebarPanel(graphics, left, TOOLBAR_HEIGHT, sidebarWidth,
+                height - TOOLBAR_HEIGHT);
+        graphics.fill(left + sidebarWidth - 1, TOOLBAR_HEIGHT, left + sidebarWidth, height,
+                v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF314657);
+        if (scmSimulationSidebarCollapsed) {
+            drawScmSidebarChevron(graphics, scmSimulationSidebarHandleX(), true, true);
+            return;
+        }
+        graphics.drawString(font, "SIMULATION", left + 14, TOOLBAR_HEIGHT + 16,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFFB9CCD9, false);
+        UiRect centerMass = scmCenterMassButtonBounds(left, sidebarWidth);
+        UiRect centerLift = scmCenterLiftButtonBounds(left, sidebarWidth);
+        drawScmButton(graphics, centerMass.x(), centerMass.y(), centerMass.width(),
+                "Center of Mass" + (scmShowCenterOfMass ? " *" : ""), 0, 0);
+        drawScmButton(graphics, centerLift.x(), centerLift.y(), centerLift.width(),
+                "Center of Lift" + (scmShowCenterOfLift ? " *" : ""), 0, 0);
+        List<ScmSimulationField> fields = scmSimulationFields();
+        int firstFieldY = TOOLBAR_HEIGHT + 62;
+        int visibleRows = Math.max(1, (height - firstFieldY - 30) / 17);
+        int maximumScroll = Math.max(0, fields.size() - visibleRows);
+        scmSimulationSidebarScroll = Mth.clamp(scmSimulationSidebarScroll, 0, maximumScroll);
+        int y = firstFieldY - scmSimulationSidebarScroll * 17;
+        graphics.enableScissor(left + 2, firstFieldY, left + sidebarWidth - 2, height - 28);
+        for (ScmSimulationField field : fields) {
+            if (y + font.lineHeight < firstFieldY || y >= height - 28) {
+                y += 17;
+                continue;
+            }
+            int labelColor = v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF91A9B8;
+            int valueColor = v2Ui ? AdvancedControllerV2Theme.PRIMARY : 0xFFE0EDF4;
+            String value = scmSimulationValue(field.port());
+            graphics.drawString(font, field.label(), left + 12, y, labelColor, false);
+            graphics.drawString(font, trim(value, 22), left + sidebarWidth - 12
+                    - font.width(trim(value, 22)), y, valueColor, false);
+            y += 17;
+        }
+        graphics.disableScissor();
+        drawSidebarScrollTrack(graphics, left + sidebarWidth - 5, firstFieldY, 3,
+                Math.max(1, height - firstFieldY - 30), fields.size() * 17,
+                visibleRows * 17, scmSimulationSidebarScroll * 17);
+        if (!scmConfigurationStatus.isBlank()) {
+            graphics.drawString(font, trim(scmConfigurationStatus, 34), left + 12,
+                    height - 18, v2Ui ? AdvancedControllerV2Theme.ACCENT_LIGHT : 0xFF91D9FF,
+                    false);
+        }
+        drawScmSidebarChevron(graphics, scmSimulationSidebarHandleX(), true, false);
+    }
+
+
+    private List<ScmSimulationField> scmSimulationFields() {
+        return List.of(
+                new ScmSimulationField("Runtime Status", "status"),
+                new ScmSimulationField("Ready", "ready"),
+                new ScmSimulationField("Attached", "attached"),
+                new ScmSimulationField("Initialized", "initialized"),
+                new ScmSimulationField("Initialization", "progress"),
+                new ScmSimulationField("Map ID", "map_id"),
+                new ScmSimulationField("Units", "unit_count"),
+                new ScmSimulationField("Controllable Units", "controllable_count"),
+                new ScmSimulationField("Bearings", "bearing_count"),
+                new ScmSimulationField("Vector Thrusters", "vector_thruster_count"),
+                new ScmSimulationField("Docking Connectors", "docking_connector_count"),
+                new ScmSimulationField("Mass", "mass"),
+                new ScmSimulationField("Weight", "weight"),
+                new ScmSimulationField("Facing", "facing"),
+                new ScmSimulationField("Center Mass X", "center_of_mass_x"),
+                new ScmSimulationField("Center Mass Y", "center_of_mass_y"),
+                new ScmSimulationField("Center Mass Z", "center_of_mass_z"),
+                new ScmSimulationField("Center Lift X", "center_of_lift_x"),
+                new ScmSimulationField("Center Lift Y", "center_of_lift_y"),
+                new ScmSimulationField("Center Lift Z", "center_of_lift_z"),
+                new ScmSimulationField("Position X", "x"),
+                new ScmSimulationField("Position Y", "y"),
+                new ScmSimulationField("Position Z", "z"),
+                new ScmSimulationField("Velocity X", "velocity_x"),
+                new ScmSimulationField("Velocity Y", "velocity_y"),
+                new ScmSimulationField("Velocity Z", "velocity_z"),
+                new ScmSimulationField("Speed", "speed"),
+                new ScmSimulationField("Angular Velocity X", "angular_velocity_x"),
+                new ScmSimulationField("Angular Velocity Y", "angular_velocity_y"),
+                new ScmSimulationField("Angular Velocity Z", "angular_velocity_z"),
+                new ScmSimulationField("Yaw", "yaw"),
+                new ScmSimulationField("Pitch", "pitch"),
+                new ScmSimulationField("Roll", "roll"),
+                new ScmSimulationField("Collision Forward", "collision_distance_forward"),
+                new ScmSimulationField("Collision Backward", "collision_distance_backward"),
+                new ScmSimulationField("Collision Left", "collision_distance_left"),
+                new ScmSimulationField("Collision Right", "collision_distance_right"),
+                new ScmSimulationField("Collision Up", "collision_distance_up"),
+                new ScmSimulationField("Collision Down", "collision_distance_down"),
+                new ScmSimulationField("Nearest Collision", "nearest_collision_distance"),
+                new ScmSimulationField("Collision Scan Range", "collision_scan_range"),
+                new ScmSimulationField("Navigation Distance", "navigation_target_distance"),
+                new ScmSimulationField("Inertia Tensor", "inertia_tensor"));
+    }
+
+
+    private UiRect scmCenterMassButtonBounds(int left, int sidebarWidth) {
+        int buttonWidth = Math.max(72, (sidebarWidth - 30) / 2);
+        return new UiRect(left + 12, TOOLBAR_HEIGHT + 30, buttonWidth, 18);
+    }
+
+
+    private UiRect scmCenterLiftButtonBounds(int left, int sidebarWidth) {
+        UiRect mass = scmCenterMassButtonBounds(left, sidebarWidth);
+        return new UiRect(mass.right() + 6, mass.y(), Math.max(72, sidebarWidth - 12 - mass.right() + left - 6), 18);
+    }
+
+
+    private int scmSimulationSidebarWidth() {
+        if (scmSimulationSidebarCollapsed) {
+            return SIDEBAR_HANDLE_WIDTH;
+        }
+        return Math.min(SCM_SIMULATION_SIDEBAR_WIDTH,
+                Math.max(180, layoutRight() - layoutLeft() - 420));
+    }
+
+
+    private int scmSimulationSidebarHandleX() {
+        // Keep the collapse control out in the 3D workspace rather than
+        // recessed into the simulation panel itself.
+        return graphLeft() + 4;
+    }
+
+
+    private int scmSimulationMaximumScroll() {
+        int firstFieldY = TOOLBAR_HEIGHT + 62;
+        int visibleRows = Math.max(1, (height - firstFieldY - 30) / 17);
+        return Math.max(0, scmSimulationFields().size() - visibleRows);
+    }
+
+
+    private String scmSimulationValue(String port) {
+        CompoundTag encoded = scmSimulationTelemetry.get(port);
+        if (encoded == null || encoded.isEmpty()) {
+            return "—";
+        }
+        CompoundTag payload = encoded.getCompound("Payload");
+        return switch (encoded.getString("Type")) {
+            case "number" -> formatScmSimulationNumber(payload.getDouble("Value"));
+            case "boolean" -> payload.getBoolean("Value") ? "true" : "false";
+            case "string", "direction" -> payload.getString("Value");
+            case "map" -> "inertia_tensor".equals(port) ? formatScmInertiaTensor(payload) : "—";
+            default -> "—";
+        };
+    }
+
+
+    private List<ScmLiveSubLevelPreviewRenderer.Marker> scmConfigurationMarkers() {
+        if (scmConfigurationRootSubLevelId == null) return List.of();
+        List<ScmLiveSubLevelPreviewRenderer.Marker> markers = new ArrayList<>();
+        if(menu.getContentPos() != null && menu.getContentSubLevelId() != null){
+            ScmOrientation orientation = scmConfigurationProfile.resolveOrientation(scmDefaultOrientation);
+            Vec3 origin = Vec3.atCenterOf(menu.getContentPos());
+            markers.add(new ScmLiveSubLevelPreviewRenderer.Marker(menu.getContentSubLevelId(),
+                    origin, orientation.forwardVector(), SCM_FORWARD_COLOR));
+            markers.add(new ScmLiveSubLevelPreviewRenderer.Marker(menu.getContentSubLevelId(),
+                    origin, orientation.upVector(), SCM_UP_COLOR));
+        }
+        if (scmShowCenterOfMass) {
+            markers.add(new ScmLiveSubLevelPreviewRenderer.Marker(scmConfigurationRootSubLevelId,
+                    scmSimulationVector("center_of_mass"), new Vec3(0.0D, 1.0D, 0.0D), 0xFFFF5A5A));
+        }
+        if (scmShowCenterOfLift) {
+            markers.add(new ScmLiveSubLevelPreviewRenderer.Marker(scmConfigurationRootSubLevelId,
+                    scmSimulationVector("center_of_lift"), new Vec3(0.0D, 1.0D, 0.0D), 0xFF57D8FF));
+        }
+        return markers;
+    }
+
+
+    private Vec3 scmSimulationVector(String prefix) {
+        return new Vec3(scmSimulationNumber(prefix + "_x"), scmSimulationNumber(prefix + "_y"),
+                scmSimulationNumber(prefix + "_z"));
+    }
+
+
+    private double scmSimulationNumber(String port) {
+        CompoundTag encoded = scmSimulationTelemetry.get(port);
+        if (encoded == null || !"number".equals(encoded.getString("Type"))) return 0.0D;
+        double value = encoded.getCompound("Payload").getDouble("Value");
+        return Double.isFinite(value) ? value : 0.0D;
+    }
+
+
+    private static String formatScmSimulationNumber(double value) {
+        if (!Double.isFinite(value)) {
+            return "—";
+        }
+        double magnitude = Math.abs(value);
+        if (magnitude >= 1000.0D || (magnitude > 0.0D && magnitude < 0.01D)) {
+            return String.format(Locale.ROOT, "%.3g", value);
+        }
+        return String.format(Locale.ROOT, "%.2f", value);
+    }
+
+
+    private static String formatScmInertiaTensor(CompoundTag values) {
+        if (values == null || values.isEmpty()) {
+            return "—";
+        }
+        return "[" + formatScmSimulationNumber(scmTensorValue(values, "m00"))
+                + ", " + formatScmSimulationNumber(scmTensorValue(values, "m11"))
+                + ", " + formatScmSimulationNumber(scmTensorValue(values, "m22")) + "]";
+    }
+
+
+    private static double scmTensorValue(CompoundTag values, String key) {
+        return values.getCompound(key).getCompound("Payload").getDouble("Value");
+    }
+
+
+    private void drawScmConfigurationSidebarHandle(GuiGraphics graphics, UiRect bounds, UiRect viewBounds) {
+        int x = scmConfigurationSidebarHandleX(bounds, viewBounds);
+        drawScmSidebarChevron(graphics, x, false, scmConfigurationSidebarCollapsed);
+    }
+
+
+    private int scmConfigurationSidebarHandleX(UiRect bounds, UiRect viewBounds) {
+        // The right sidebar's chevron mirrors the simulation one: it sits in
+        // the 3D view just outside the panel, never inside the panel content.
+        return viewBounds.right() - SIDEBAR_HANDLE_WIDTH - 4;
+    }
+
+
+    private void drawScmSidebarChevron(GuiGraphics graphics, int x, boolean left, boolean collapsed) {
+        UiRect handle = scmSidebarChevronBounds(x);
+        if (v2Ui) {
+            AdvancedControllerV2Theme.drawHandle(graphics, handle.x(), handle.y(),
+                    handle.width(), handle.height(), false);
+        } else {
+            drawSidebarChevron(graphics, handle.x(), handle.y(), handle.width(), handle.height());
+            graphics.fill(handle.x(), handle.y(), handle.right(), handle.bottom(), 0x66101820);
+            graphics.renderOutline(handle.x(), handle.y(), handle.width(), handle.height(), 0xFF344A5C);
+        }
+        String arrow = left ? (collapsed ? ">" : "<") : (collapsed ? "<" : ">");
+        graphics.drawCenteredString(font, arrow, handle.x() + handle.width() / 2, handle.y() + 18,
+                v2Ui ? AdvancedControllerV2Theme.SECONDARY : 0xFFE0EDF4);
+    }
+
+
+    private UiRect scmSidebarChevronBounds(int x) {
+        return new UiRect(x, Math.max(TOOLBAR_HEIGHT + 8, height / 2 - 22),
+                SIDEBAR_HANDLE_WIDTH, 44);
+    }
+
+
+    private boolean clickScmWorkspaceSidebarHandle(double mouseX, double mouseY, int button) {
+        if (button != GLFW.GLFW_MOUSE_BUTTON_LEFT) {
+            return false;
+        }
+        int leftX = scmSimulationSidebarHandleX();
+        if (scmSidebarChevronBounds(leftX).contains(mouseX, mouseY)) {
+            scmSimulationSidebarCollapsed = !scmSimulationSidebarCollapsed;
+            return true;
+        }
+        UiRect bounds = scmConfigurationBounds();
+        UiRect viewBounds = scmConfigurationViewBounds(bounds);
+        int rightX = scmConfigurationSidebarHandleX(bounds, viewBounds);
+        if (scmSidebarChevronBounds(rightX).contains(mouseX, mouseY)) {
+            scmConfigurationSidebarCollapsed = !scmConfigurationSidebarCollapsed;
+            scmConfigurationTargetDropdownOpen = false;
+            scmConfigurationControlModeDropdownOpen = false;
+            scmConfigurationFaceDropdownOpen = false;
+            return true;
+        }
+        return false;
+    }
+
+
+    private boolean clickScmGraphWorkspace(double mouseX, double mouseY, int button) {
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && !scmSimulationSidebarCollapsed) {
+            int left = layoutLeft();
+            int sidebarWidth = scmSimulationSidebarWidth();
+            if (scmCenterMassButtonBounds(left, sidebarWidth).contains(mouseX, mouseY)) {
+                scmShowCenterOfMass = !scmShowCenterOfMass;
+                scmLivePreviewRenderer.invalidate();
+                return true;
+            }
+            if (scmCenterLiftButtonBounds(left, sidebarWidth).contains(mouseX, mouseY)) {
+                scmShowCenterOfLift = !scmShowCenterOfLift;
+                scmLivePreviewRenderer.invalidate();
+                return true;
+            }
+        }
+        if (clickScmWorkspaceSidebarHandle(mouseX, mouseY, button)) {
+            return true;
+        }
+        return clickScmConfiguration(mouseX, mouseY, button);
+    }
+
+
+    // Check whether this graph surface uses node-body configuration only.
+    private boolean graphConfigSidebarRetired() {
+        return !scmGraphOverview && !scheduleGraphOverview;
+    }
+
+
+    // Draw an input value within its node control
+    private void drawNodeInputValue(GuiGraphics graphics, String val, int left, int right, int y) {
+        int width = Math.max(0, (int) Math.floor((right - left) / zoom));
+        String shown = GraphTextLayout.ellipsize(val, font::width, width);
+        if (shown.isEmpty()) return;
+        drawNodeStringRight(graphics, shown, right, y, nodeValueTextColor());
+    }
+
+
+    // Keep dynamic input names inside their own space before the value control
+    private void drawClippedNodeInputLabel(GuiGraphics graphics, String label, int left, int controlLeft,
+                                           int y, int rowHeight){
+        int right = Math.max(left + 1, controlLeft - 2);
+        graphics.enableScissor(left, y, right, y + rowHeight);
+        drawNodeString(graphics, label, left, y + 3, nodeMutedTextColor());
+        graphics.disableScissor();
+    }
+
+
+    // Draw a node input using the Worker Graph configuration field treatment.
+    private void drawNodeInputField(GuiGraphics graphics, AdvancedGraphDocument.Node node, String port, String type,
+                                    int x, int y, int width) {
+        
+        int right = x + width - 5;
+        int labelLeft = x + 5 + inputControlInset(node, port);
+        int controlLeft = nodeInputControlLeft(node, port, x, width);
+        int rowHeight = Math.max(12, (int) (13 * zoom));
+        String label = bodyLabelEditing(node, port) ? "" : inputDisplayLabel(node, port);
+        drawClippedNodeInputLabel(graphics, label, labelLeft, controlLeft, y, rowHeight);
+        renderControllerOption(graphics, controlLeft, y, right - controlLeft + 1, rowHeight,
+                portColor(type), port.equals(selectedInputPort), false);
+        if ("color".equals(type)) {
+            drawGraphColorSwatch(graphics, right - (int) Math.round(18 * zoom), y,
+                    graphInputColor(node, port));
+            return;
+        }
+        if ("boolean".equals(type)) {
+            boolean enabled = inputBoolean(node, port);
+            int switchWidth = Math.max(12, (int) Math.round(20 * zoom));
+            int switchHeight = Math.max(7, (int) Math.round(10 * zoom));
+            int switchX = right - switchWidth - Math.max(2, (int) Math.round(3 * zoom));
+            int switchY = y + Math.max(2, (rowHeight - switchHeight) / 2);
+            int knobWidth = Math.max(4, switchWidth / 3);
+            graphics.fill(switchX, switchY, switchX + switchWidth, switchY + switchHeight,
+                    enabled ? 0xFF4C9E70 : 0xFF394952);
+            int knobX = enabled ? switchX + switchWidth - knobWidth - 2 : switchX + 2;
+            graphics.fill(knobX, switchY + 1, knobX + knobWidth, switchY + switchHeight - 1,
+                    enabled ? 0xFFCAF4D8 : 0xFFB7C3C7);
+            return;
+        }
+        int valueLeft = controlLeft + Math.max(3, (int) Math.round(5 * zoom));
+        if ("target".equals(type)) {
+            int iconSize = Math.max(8, (int) Math.round(11 * zoom));
+            renderControllerOption(graphics, valueLeft, y + Math.max(1, (rowHeight - iconSize) / 2), iconSize,
+                    iconSize, portColor(type), false, false);
+            drawNodeStringCentered(graphics, "*", valueLeft + iconSize / 2,
+                    y + Math.max(1, (rowHeight - iconSize) / 2), nodeValueTextColor());
+            valueLeft += iconSize + Math.max(2, (int) Math.round(3 * zoom));
+        }
+        String value = inputValueLabel(node, port, type);
+        boolean options = !inputOptions(node, port).isEmpty();
+        int dropdownWidth = Math.max(10, (int) Math.round(15 * zoom));
+        int dropdownLeft = right - dropdownWidth;
+        int valueRight = options ? dropdownLeft - Math.max(2, (int) Math.round(3 * zoom)) : right - 3;
+        if (options) {
+            graphics.fill(dropdownLeft, y + 1, right, y + rowHeight - 1, AdvancedControllerV2Theme.PANEL_RAISED);
+            graphics.fill(dropdownLeft, y + 1, dropdownLeft + 1, y + rowHeight - 1,
+                    AdvancedControllerV2Theme.BORDER_SOFT);
+            drawNodeStringCentered(graphics, "v", dropdownLeft + dropdownWidth / 2, y + 3, nodeMutedTextColor());
+        }
+        if(!bodyValueEditing(node, port)) drawNodeInputValue(graphics, value, valueLeft, valueRight, y + 3);
+    }
+
+
+    // Get the control start for a Worker-style node input.
+    private int nodeInputControlLeft(AdvancedGraphDocument.Node node, String port, int x, int width) {
+        int labelLeft = x + 5 + inputControlInset(node, port);
+        int right = x + width - 5;
+        int labelWidth = (int) Math.round((font.width(inputDisplayLabel(node, port)) + 7) * zoom);
+        int gap = Math.max(3, (int) Math.round(4 * zoom));
+        int minimumControlWidth = Math.max(34, (int) Math.round(44 * zoom));
+        if(GraphNumberDisplay.precise(node.data())){
+            minimumControlWidth = Math.max(minimumControlWidth,
+                    (int)Math.ceil((font.width(GraphNumberDisplay.PRECISE_WIDTH_SAMPLE) + 12) * zoom));
+        }
+        return Math.min(right - minimumControlWidth, labelLeft + labelWidth + gap);
+    }
+
+
+    // Draw a labelled divider that can collapse one target's generated ports.
+    private void drawNodePortSection(GuiGraphics graphics, AdvancedGraphDocument.Node node,
+                                     GraphPortSection section, boolean output, int x, int y, int width) {
+        int lineY = y + Math.max(5, (int) Math.round(7 * zoom));
+        int color = AdvancedGraphCatalog.categoryColor("data");
+        graphics.fill(x + 7, lineY, x + width - 7, lineY + 1, 0xAA000000 | (color & 0x00FFFFFF));
+        String label = (isPortSectionCollapsed(node, section.ports().getFirst(), output) ? "> " : "v ")
+                + section.label();
+        label = GraphTextLayout.ellipsize(label, font::width, Math.max(1, (int)Math.floor((width - 28) / zoom)));
+        int labelWidth = Math.min(width - 16, Math.max(44,
+                (int) Math.round((font.width(label) + 12) * zoom)));
+        renderControllerOption(graphics, x + 8, y, labelWidth,
+                Math.max(10, (int) Math.round(12 * zoom)), color, false, false);
+        drawNodeString(graphics, label, x + 12, y + 2, nodeMutedTextColor());
+    }
+
+
+    // Measure a dynamic node's height when its cached body layout changes.
+    private int measureNodeHeight(AdvancedGraphDocument.Node node, int bodyControls) {
+        int outputHeight = outputDataPortsHeight(node) + functionExecutionInputHeight(node);
+        if ("branch".equals(node.type())) outputHeight = Math.max(outputHeight, 2 * 13);
+        if (isExecutionSplitterNode(node)) outputHeight = Math.max(outputHeight, executionOutputCount(node) * 13);
+        if (isExecutionCombinerNode(node)) outputHeight = Math.max(outputHeight, executionInputCount(node) * 13);
+        if (isSetResetLatch(node)) outputHeight = Math.max(outputHeight, 2 * 13);
+        if ("play_sound".equals(node.type())) outputHeight = Math.max(outputHeight, 13);
+        if (AdvancedGraphCatalog.isShipControlCompletionType(node.type())) outputHeight += 13;
+        int portStart = nodeBodyTopUnits(node) + 6 + bodyControls * 15
+                + ("curve".equals(node.type()) ? CURVE_BODY_HEIGHT : 0);
+        return Math.max(54, portStart + outputHeight + NODE_EXTRA_HEIGHT + NODE_FRAME_BODY_HEIGHT_PAD);
+    }
+
+
+    // Measure a dynamic node's full-label width once per structural render-cache refresh.
+    private int measureNodeWidth(AdvancedGraphDocument.Node node, Map<String, String> inputs,
+                                 Map<String, String> outputs) {
+        List<String> labels = new ArrayList<>();
+        labels.add((precisionControlSpace(node) ? ".0 " : "") + nodeTitle(node));
+        if(GraphNumberDisplay.precise(node.data())){
+            String sample = GraphNumberDisplay.PRECISE_WIDTH_SAMPLE;
+            labels.add("Value " + sample);
+            for(var port : inputs.entrySet()){
+                if(GraphNumberDisplay.numericType(port.getValue()) || "any".equals(port.getValue())){
+                    labels.add(inputDisplayLabel(node, port.getKey()) + " " + sample);
+                }
+            }
+        }
+        for (var port : inputs.entrySet()) {
+            if (!"exec".equals(port.getValue()) || isFunctionNode(node)) {
+                labels.add(inputDisplayLabel(node, port.getKey()));
+            }
+        }
+        for (var port : outputs.entrySet()) {
+            if (!"exec".equals(port.getValue()) || isFunctionNode(node)) {
+                labels.add(outputDisplayLabel(node, port.getKey()));
+            }
+        }
+        for (GraphPortSection section : portSections(node, false)) labels.add(section.label());
+        for (GraphPortSection section : portSections(node, true)) labels.add(section.label());
+        return GraphNodeLayout.width(labels, font::width, NODE_WIDTH, 960, 82);
+    }
+
+
+    // Count node-body rows while rebuilding the structural render cache.
+    private int measureBodyControlCount(AdvancedGraphDocument.Node node) {
+        int count = (usesBinding(node) ? 1 : 0) + propertyControlCount(node);
+        List<GraphNodeLayout.Row> rows = new ArrayList<>();
+        rows.add(new GraphNodeLayout.Row("", count));
+        for (var port : nodeInputs(node).entrySet()) {
+            if ("exec".equals(port.getValue())
+                    || ("curve".equals(node.type()) && "value".equals(port.getKey()))) continue;
+            if (portSectionStartingAt(node, port.getKey(), false) != null){
+                count++;
+                rows.add(new GraphNodeLayout.Row("", 1));
+            }
+            if (isDataPortVisible(node, port.getKey(), false)){
+                count++;
+                rows.add(new GraphNodeLayout.Row(port.getKey(), 1));
+            }
+        }
+        NodePortLayout layout = graphRenderCacheDocument == draft ? graphRenderPortLayouts.get(node.id()) : null;
+        if(layout != null) layout.setInputRows(GraphNodeLayout.rows(rows));
+        if (isHudNode(node) || isConstructorNode(node) || isFunctionInterfaceNode(node)) count++;
+        if(isAdvancedHudNode(node)) count++;
+        return count;
+    }
+
+
+    // Check whether a port still has a wire attached
+    private boolean isPortConnected(AdvancedGraphDocument.Node node, String port, boolean output) {
+        if (node == null || port == null || port.isBlank()) return false;
+        NodePortLayout layout = graphRenderCacheDocument == draft ? graphRenderPortLayouts.get(node.id()) : null;
+        if (layout != null) {
+            return (output ? layout.connectedOutputs() : layout.connectedInputs()).contains(port);
+        }
+        return activeEdges().stream().anyMatch(edge -> output
+                ? node.id().equals(edge.fromNode()) && port.equals(edge.fromPort())
+                : node.id().equals(edge.toNode()) && port.equals(edge.toPort()));
+    }
+
+
+    // Get the top offset for one output port-section divider.
+    private int outputSectionHeaderOffset(AdvancedGraphDocument.Node node, GraphPortSection wanted) {
+        NodePortLayout layout = graphRenderCacheDocument == draft ? graphRenderPortLayouts.get(node.id()) : null;
+        if(layout != null && layout.outputSectionOffsets().containsKey(wanted.id())){
+            return portStart(node) + functionExecutionInputHeight(node) + layout.outputSectionOffsets().get(wanted.id());
+        }
+        int offset = portStart(node) + functionExecutionInputHeight(node);
+        for (var entry : nodeOutputs(node).entrySet()) {
+            if ("exec".equals(entry.getValue()) && !isFunctionNode(node) && !isLoopBodyOutput(node, entry.getKey()) && portSection(node, entry.getKey(), true) == null) continue;
+            GraphPortSection section = portSectionStartingAt(node, entry.getKey(), true);
+            if (section != null) {
+                if (section.id().equals(wanted.id())) return offset;
+                offset += NODE_PORT_SECTION_HEIGHT;
+            }
+            if (isDataPortVisible(node, entry.getKey(), true)) {
+                offset += outputDataPortRowHeight(node, entry.getKey());
+            }
+        }
+        return offset;
+    }
+
+
+    // Handle a click on an output port-section divider.
+    private boolean handleOutputPortSectionClick(AdvancedGraphDocument.Node node,
+                                                 double mouseX, double mouseY) {
+        if (node == null) return false;
+        int x = screenX(node.x());
+        int width = (int) Math.round(nodeWidth(node) * zoom);
+        for (GraphPortSection section : portSections(node, true)) {
+            int y = screenY(node.y()) + (int) Math.round(outputSectionHeaderOffset(node, section) * zoom);
+            int height = Math.max(10, (int) Math.round(12 * zoom));
+            if (inside(mouseX, mouseY, x + 7, y, width - 14, height)) {
+                checkpoint();
+                togglePortSection(node, section, true);
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+    // Get the saved port sections for one side of a node.
+    private List<GraphPortSection> portSections(AdvancedGraphDocument.Node node, boolean output) {
+        if (node == null) return List.of();
+        NodePortLayout layout = graphRenderCacheDocument == draft ? graphRenderPortLayouts.get(node.id()) : null;
+        if(layout != null && layout.portSections(output) != null) return layout.portSections(output);
+        CompoundTag encodedSections = node.data().getCompound(AdvancedGraphCatalog.PORT_SECTIONS_TAG)
+                .getCompound(output ? "Outputs" : "Inputs");
+        if(encodedSections.isEmpty()){
+            if(layout != null) layout.setPortSections(output, List.of());
+            return List.of();
+        }
+        CompoundTag mappings = node.data().getCompound(output
+                ? AdvancedGraphCatalog.INLINE_MAP_OUTPUTS_TAG : AdvancedGraphCatalog.INLINE_MAP_INPUTS_TAG);
+        Map<String, String> parents = new LinkedHashMap<>();
+        for(String port : mappings.getAllKeys()){
+            parents.put(port, mappings.getCompound(port).getString(AdvancedGraphCatalog.INLINE_MAP_SOURCE_TAG));
+        }
+        Set<String> order = (output ? AdvancedGraphCatalog.outputs(node) : AdvancedGraphCatalog.inputs(node)).keySet();
+        List<GraphPortSection> sections = new ArrayList<>();
+        for (String id : encodedSections.getAllKeys()) {
+            CompoundTag encoded = encodedSections.getCompound(id);
+            List<String> ports = new ArrayList<>();
+            for (Tag raw : encoded.getList("Ports", Tag.TAG_STRING)) {
+                if (raw instanceof StringTag string && !string.getAsString().isBlank()) {
+                    ports.add(string.getAsString());
+                }
+            }
+            if (!ports.isEmpty()) {
+                String label = encoded.getString("Label");
+                sections.add(new GraphPortSection(id, label.isBlank() ? id : label,
+                        GraphPortOrder.withDescendants(order, ports, parents)));
+            }
+        }
+        List<GraphPortSection> result = List.copyOf(sections);
+        if(layout != null) layout.setPortSections(output, result);
+        return result;
+    }
+
+
+    // Get the section that owns one port.
+    private GraphPortSection portSection(AdvancedGraphDocument.Node node, String port, boolean output) {
+        if(node == null) return null;
+        NodePortLayout layout = graphRenderCacheDocument == draft ? graphRenderPortLayouts.get(node.id()) : null;
+        if(layout != null){
+            portSections(node, output);
+            return layout.sectionIndex(output).section(port);
+        }
+        for (GraphPortSection section : portSections(node, output)) {
+            if (section.ports().contains(port)) return section;
+        }
+        return null;
+    }
+
+
+    // Check whether a port section is collapsed.
+    private boolean isPortSectionCollapsed(AdvancedGraphDocument.Node node, String port, boolean output) {
+        GraphPortSection section = portSection(node, port, output);
+        return section != null && node.data().getCompound(AdvancedGraphCatalog.COLLAPSED_PORT_SECTIONS_TAG)
+                .getBoolean((output ? "O:" : "I:") + section.id());
+    }
+
+
+    // Check whether this port starts a labelled port section.
+    private GraphPortSection portSectionStartingAt(AdvancedGraphDocument.Node node, String port, boolean output) {
+        if(node == null) return null;
+        NodePortLayout layout = graphRenderCacheDocument == draft ? graphRenderPortLayouts.get(node.id()) : null;
+        if(layout != null){
+            portSections(node, output);
+            return layout.sectionIndex(output).startingAt(port);
+        }
+        GraphPortSection section = portSection(node, port, output);
+        if (section == null) return null;
+        Map<String, String> ports = output ? nodeOutputs(node) : nodeInputs(node);
+        for (String candidate : ports.keySet()) {
+            if (section.ports().contains(candidate)) return port.equals(candidate) ? section : null;
+        }
+        return null;
+    }
+
+
+    // Toggle one labelled port section.
+    private void togglePortSection(AdvancedGraphDocument.Node node, GraphPortSection section, boolean output) {
+        if (node == null || section == null) return;
+        CompoundTag collapsed = node.data().getCompound(AdvancedGraphCatalog.COLLAPSED_PORT_SECTIONS_TAG);
+        String key = (output ? "O:" : "I:") + section.id();
+        collapsed.putBoolean(key, !collapsed.getBoolean(key));
+        node.data().put(AdvancedGraphCatalog.COLLAPSED_PORT_SECTIONS_TAG, collapsed);
+        clearGraphRenderCache();
+    }
+
+
+    // Draw the graph variable browser at the bottom of the node library.
+    private void drawLeftVariableBrowser(GuiGraphics graphics, int mouseX, int mouseY) {
+        int left = layoutLeft();
+        int panelWidth = activeLeftWidth();
+        int top = leftVariableBrowserTop();
+        int headerHeight = INSPECTOR_SECTION_HEADER_HEIGHT;
+        if (!inspectorVariablesCollapsed) drawLeftVariableBrowserDivider(graphics, left, panelWidth, top);
+        boolean hovered = inside(mouseX, mouseY, left + 4, top, panelWidth - 8, headerHeight);
+        AdvancedControllerV2Theme.drawBrowserCategory(graphics, left + 4, top, panelWidth - 8, headerHeight,
+                AdvancedGraphCatalog.categoryColor("variables"), inspectorVariablesCollapsed, hovered);
+        graphics.drawString(font, inspectorVariablesCollapsed ? ">" : "v", left + 12, top + 7,
+                AdvancedGraphCatalog.categoryColor("variables"), false);
+        graphics.drawString(font, "VARIABLES", left + 27, top + 7,
+                AdvancedControllerV2Theme.SECONDARY, false);
+        if (inspectorVariablesCollapsed) return;
+
+        int bottom = height - 4;
+        int contentTop = top + headerHeight;
+        int viewportHeight = Math.max(1, bottom - contentTop);
+        inspectorVariablesScroll = Mth.clamp(inspectorVariablesScroll, 0,
+                Math.max(0, inspectorVariablesContentHeight() - viewportHeight));
+        int y = contentTop + 3 - inspectorVariablesScroll;
+        graphics.enableScissor(left, contentTop, left + panelWidth, bottom);
+        if (draft.variables().isEmpty()) {
+            graphics.drawString(font, "No variables", left + 10, y + 3, interfaceMutedColor(), false);
+        } else {
+            for (var variable : draft.variables().entrySet()) {
+                int getX = leftVariableGetButtonX();
+                int setX = leftVariableSetButtonX();
+                graphics.drawString(font, trim(variable.getKey(), 15), left + 10, y + 5,
+                        interfaceSecondaryColor(), false);
+                renderAdvancedButton(graphics, font, getX, y + 1, VARIABLE_BROWSER_BUTTON_WIDTH, 16,
+                        Component.literal("GET"), false, true);
+                renderAdvancedButton(graphics, font, setX, y + 1, VARIABLE_BROWSER_BUTTON_WIDTH, 16,
+                        Component.literal("SET"), false, true);
+                y += VARIABLE_BROWSER_ROW_HEIGHT;
+            }
+        }
+        graphics.disableScissor();
+        drawSidebarScrollTrack(graphics, left + panelWidth - 5, contentTop + 1, 3,
+                Math.max(1, bottom - contentTop - 2), inspectorVariablesContentHeight(), viewportHeight,
+                inspectorVariablesScroll);
+    }
+
+
+    // Get the top of the variable browser.
+    private int leftVariableBrowserTop() {
+        int contentHeight = inspectorVariablesCollapsed ? 0 : leftVariableBrowserContentHeight();
+        return Math.max(82, height - contentHeight - INSPECTOR_SECTION_HEADER_HEIGHT - 4);
+    }
+
+
+    // Get the allocated height for the variable browser content.
+    private int leftVariableBrowserContentHeight() {
+        int maximum = Math.max(VARIABLE_BROWSER_MIN_HEIGHT,
+                height - 82 - INSPECTOR_SECTION_HEADER_HEIGHT - 8);
+        return Mth.clamp(leftVariableBrowserHeight, VARIABLE_BROWSER_MIN_HEIGHT, maximum);
+    }
+
+
+    // Draw the resize divider above the variable browser.
+    private void drawLeftVariableBrowserDivider(GuiGraphics graphics, int left, int panelWidth, int top) {
+        int y = top - 3;
+        graphics.fill(left + 8, y + 2, left + panelWidth - 8, y + 3,
+                v2Ui ? AdvancedControllerV2Theme.BORDER : 0xFF52758D);
+        graphics.fill(left + panelWidth / 2 - 10, y + 1, left + panelWidth / 2 + 10, y + 4,
+                v2Ui ? AdvancedControllerV2Theme.MUTED : 0xFF7FA9C2);
+    }
+
+
+    // Check whether the pointer is on the variable browser resize divider.
+    private boolean leftVariableBrowserDividerAt(double mouseX, double mouseY) {
+        if (leftSidebarCollapsed || inspectorVariablesCollapsed) return false;
+        int top = leftVariableBrowserTop();
+        return inside(mouseX, mouseY, layoutLeft() + 8, top - 5,
+                activeLeftWidth() - 16, 8);
+    }
+
+
+    // Resize the variable browser from its top divider.
+    private void resizeLeftVariableBrowser(double mouseY) {
+        int maximum = Math.max(VARIABLE_BROWSER_MIN_HEIGHT,
+                height - 82 - INSPECTOR_SECTION_HEADER_HEIGHT - 8);
+        int requested = (int) mouseY;
+        leftVariableBrowserHeight = Mth.clamp(height - 4 - INSPECTOR_SECTION_HEADER_HEIGHT - requested,
+                VARIABLE_BROWSER_MIN_HEIGHT, maximum);
+        int viewportHeight = leftVariableBrowserContentHeight();
+        inspectorVariablesScroll = Mth.clamp(inspectorVariablesScroll, 0,
+                Math.max(0, inspectorVariablesContentHeight() - viewportHeight));
+    }
+
+
+    // Get the bottom edge available to node-library content.
+    private int nodeBrowserBottom() {
+        return leftVariableBrowserTop() - 4;
+    }
+
+
+    // Get the left variable GET button x coordinate.
+    private int leftVariableGetButtonX() {
+        return layoutLeft() + activeLeftWidth() - VARIABLE_BROWSER_BUTTON_WIDTH * 2 - 13;
+    }
+
+
+    // Get the left variable SET button x coordinate.
+    private int leftVariableSetButtonX() {
+        return layoutLeft() + activeLeftWidth() - VARIABLE_BROWSER_BUTTON_WIDTH - 8;
+    }
+
+
+    // Draw a Worker Graph browser entry through the V2 main-graph theme primitives.
+    private void drawWorkerGraphV2BrowserEntry(GuiGraphics graphics, BrowserEntry entry, int left, int panelWidth,
+                                               int y, int rowHeight, int mouseX, int mouseY) {
+        if (entry.category()) {
+            int color = nodeTitlebarColor(entry.id());
+            boolean collapsed = collapsedCategories.contains(entry.id());
+            boolean hovered = inside(mouseX, mouseY, left + 4, y - 1, panelWidth - 8, rowHeight);
+            AdvancedControllerV2Theme.drawBrowserCategory(graphics, left + 4, y - 1, panelWidth - 8, rowHeight,
+                    color, collapsed, hovered);
+            graphics.drawString(font, collapsed ? ">" : "v", left + 12, y + 7, color, false);
+            graphics.drawString(font, v2CategoryName(entry.id()).toUpperCase(Locale.ROOT), left + 27, y + 7,
+                    AdvancedControllerV2Theme.SECONDARY, false);
+            return;
+        }
+        boolean hovered = inside(mouseX, mouseY, left + 7, y, panelWidth - 14, rowHeight - 1);
+        AdvancedControllerV2Theme.drawBrowserNode(graphics, left + 7, y, panelWidth - 14, rowHeight - 1,
+                nodeTitlebarColor(browserEntryCategory(entry.id())), hovered);
+        graphics.drawString(font, trim(browserEntryName(entry.id()).toUpperCase(Locale.ROOT), 27),
+                left + 23, y + 4, AdvancedControllerV2Theme.PRIMARY, false);
+    }
+
+
+    // Draw the shared graph-node configuration card used by every graph inspector.
+    private int drawGraphConfigCard(GuiGraphics graphics, int x, int panelWidth,
+                                    AdvancedGraphDocument.Node node, String description,
+                                    int mouseX, int mouseY) {
+        AdvancedGraphCatalog.Definition definition = AdvancedGraphCatalog.get(node.type());
+        int accent = AdvancedGraphCatalog.categoryColor(definition == null ? "core" : definition.category());
+        renderAdvancedPanel(graphics, x + 6, 48, panelWidth - 12, 50);
+        renderControllerOption(graphics, x + 11, 54, 38, 38, accent, true);
+        ItemStack icon = graphInspectorIcon(node);
+        if (!icon.isEmpty()) graphics.renderItem(icon, x + 21, 65);
+        else graphics.drawCenteredString(font, graphInspectorGlyph(node), x + 30, 68, interfacePrimaryColor());
+        int titleWidth = Math.max(8, (panelWidth - 96) / 6);
+        graphics.drawString(font, trim(nodeTitle(node), titleWidth), x + 57, 57, interfacePrimaryColor(), false);
+        graphics.drawString(font, trim(description, titleWidth), x + 57, 72, interfaceMutedColor(), false);
+        renderControllerOption(graphics, x + panelWidth - 31, 55, 20, 20, 0xFF485B68,
+                inside(mouseX, mouseY, x + panelWidth - 31, 55, 20, 20), false);
+        graphics.drawCenteredString(font, "?", x + panelWidth - 21, 61, interfacePrimaryColor());
+        return accent;
+    }
+
+
+    // Get the compact inventory icon used by the shared graph-node configuration card.
+    private static ItemStack graphInspectorIcon(AdvancedGraphDocument.Node node) {
+        
+        
+        AdvancedGraphCatalog.Definition definition = node == null ? null : AdvancedGraphCatalog.get(node.type());
+        String id = definition == null ? "" : switch (definition.category()) {
+            case "events" -> "minecraft:bell";
+            case "logic", "flow" -> "minecraft:repeater";
+            case "math" -> "minecraft:redstone";
+            case "data", "variables" -> "minecraft:book";
+            case "controller" -> "minecraft:comparator";
+            case "ship_control" -> "minecraft:compass";
+            case "shipping_schedule" -> "minecraft:clock";
+            default -> "";
+        };
+        return id.isBlank() ? ItemStack.EMPTY : new ItemStack(BuiltInRegistries.ITEM.get(ResourceLocation.parse(id)));
+    }
+
+
+    // Get the fallback glyph used when a graph-node configuration card has no item icon.
+    private static String graphInspectorGlyph(AdvancedGraphDocument.Node node) {
+        AdvancedGraphCatalog.Definition definition = node == null ? null : AdvancedGraphCatalog.get(node.type());
+        return definition == null ? "*" : switch (definition.category()) {
+            case "events" -> "!";
+            case "logic", "flow" -> ">";
+            case "math" -> "+";
+            case "data", "variables" -> "#";
+            case "controller" -> "@";
+            default -> "*";
+        };
+    }
+
+
+    // Describe a normal graph node for the shared configuration card.
+    private static String graphInspectorDescription(AdvancedGraphDocument.Node node) {
+        if (node == null) return "Select a node to configure it";
+        
+        AdvancedGraphCatalog.Definition definition = AdvancedGraphCatalog.get(node.type());
+        return definition == null ? "Graph node configuration"
+                : AdvancedGraphCatalog.categoryName(definition.category()) + " node configuration";
+    }
+
+
+    // Draw a graph input with the shared Worker Graph configuration treatment.
+    private void drawGraphInputField(GuiGraphics graphics, AdvancedGraphDocument.Node node, String port, String type,
+                                     UiRect bounds, String rawValue, int mouseX, int mouseY) {
+        boolean hovered = bounds.contains(mouseX, mouseY);
+        boolean selected = port.equals(selectedInputPort);
+        String label = trim(inputDisplayLabel(node, port), Math.max(4, bounds.width() / 14));
+        int labelWidth = Math.min(86, Math.max(54, bounds.width() / 3));
+        int valueLeft = bounds.x() + labelWidth + 4;
+        int valueWidth = Math.max(42, bounds.right() - valueLeft);
+        graphics.drawString(font, label, bounds.x() + 3, bounds.y() + 6, interfaceSecondaryColor(), false);
+        renderControllerOption(graphics, valueLeft, bounds.y(), valueWidth, bounds.height(), portColor(type),
+                hovered || selected, false);
+        if ("boolean".equals(type)) {
+            boolean enabled = inputBoolean(node, port);
+            int switchX = bounds.right() - 27;
+            graphics.fill(switchX, bounds.y() + 5, switchX + 20, bounds.y() + 15,
+                    enabled ? 0xFF4C9E70 : 0xFF394952);
+            graphics.fill(enabled ? switchX + 11 : switchX + 2, bounds.y() + 6,
+                    enabled ? switchX + 18 : switchX + 9, bounds.y() + 14,
+                    enabled ? 0xFFCAF4D8 : 0xFFB7C3C7);
+            return;
+        }
+        if ("target".equals(type)) {
+            renderControllerOption(graphics, valueLeft + 2, bounds.y() + 2, 17, Math.max(13, bounds.height() - 4),
+                    portColor(type), false, false);
+            graphics.drawCenteredString(font, "*", valueLeft + 10, bounds.y() + 5, interfacePrimaryColor());
+            valueLeft += 20;
+        }
+        boolean options = !"target".equals(type) && !inputOptions(node, port).isEmpty();
+        int dropdownLeft = bounds.right() - 20;
+        int valueRight = options ? dropdownLeft - 4 : bounds.right() - 8;
+        if (options) {
+            graphics.fill(dropdownLeft, bounds.y() + 2, bounds.right() - 2, bounds.bottom() - 2,
+                    AdvancedControllerV2Theme.PANEL_RAISED);
+            graphics.fill(dropdownLeft, bounds.y() + 2, dropdownLeft + 1, bounds.bottom() - 2,
+                    AdvancedControllerV2Theme.BORDER_SOFT);
+            graphics.drawCenteredString(font, "v", dropdownLeft + 10, bounds.y() + 6, interfaceMutedColor());
+        }
+        String value = rawValue == null ? "unset" : rawValue;
+        int available = Math.max(4, (valueRight - valueLeft) / 6);
+        value = trim(value, available);
+        graphics.drawString(font, value, valueRight - font.width(value), bounds.y() + 6,
+                interfacePrimaryColor(), false);
+    }
+
+
+    // Get the pixel height of the current node library, including category
+    // rows. Browser scroll positions are pixels rather than entry indices so
+    // classic and V2 layouts scroll at the same rate.
+    private int browserContentHeight(List<BrowserEntry> entries) {
+        int height = 0;
+        for (BrowserEntry entry : entries) {
+            height += browserEntryRowHeight(entry);
+        }
+        return height;
+    }
+
+
+    private static int blockBrowserContentHeight(List<RegistryEntry> entries) {
+        int height = 0;
+        for (RegistryEntry entry : entries) {
+            height += entry.header() ? 19 : 20;
+        }
+        return height;
+    }
+
+
+    // Draw the small, non-interactive position indicator shared by scrollable
+    // graph sidebars. Wheel scrolling remains the input mechanism; the track
+    // simply makes overflow and the current viewport immediately obvious.
+    private void drawSidebarScrollTrack(GuiGraphics graphics, int x, int y, int width, int height,
+                                        int contentHeight, int viewportHeight, int scroll) {
+        if (width <= 0 || height <= 0 || contentHeight <= viewportHeight) return;
+        int maximum = Math.max(1, contentHeight - viewportHeight);
+        int thumbHeight = Math.max(12, height * viewportHeight / Math.max(1, contentHeight));
+        thumbHeight = Math.min(height, thumbHeight);
+        int thumbY = y + (height - thumbHeight) * Mth.clamp(scroll, 0, maximum) / maximum;
+        graphics.fill(x, y, x + width, y + height,
+                v2Ui ? 0x664B6375 : 0x55445A6B);
+        graphics.fill(x, thumbY, x + width, thumbY + thumbHeight,
+                v2Ui ? AdvancedControllerV2Theme.ACCENT : 0xFF91D9FF);
+    }
+
+
+    private int inspectorOptionsContentHeight(AdvancedGraphDocument.Node node) {
+        if (node == null) return 0;
+        int height = 17; // Alias
+        if (hasSwitchTypeControl(node)) height += 17;
+        if (hasPropertyControl(node)) height += 17;
+        for (var port : nodeInputs(node).entrySet()) {
+            if ("exec".equals(port.getValue())
+                    || ("curve".equals(node.type()) && "value".equals(port.getKey()))) continue;
+            height += "frequency".equals(port.getValue()) ? 22 : 17;
+        }
+        if (isConstructorNode(node) || isFunctionInterfaceNode(node)) height += 17;
+        return height;
+    }
+
+
+    private int inspectorOptionsMaximumScroll(AdvancedGraphDocument.Node node, InspectorSections sections) {
+        return Math.max(0, inspectorOptionsContentHeight(node)
+                - Math.max(1, sections.optionsBottom() - sections.optionsTop()));
+    }
+
+
+    private int inspectorTargetsContentHeight(AdvancedGraphDocument.Node node) {
+        if (node == null || (!usesBinding(node) && !usesTarget(node))) return 0;
+        int height = 8;
+        if (usesBinding(node)) {
+            height += 15 + bindingOptions(node).size() * 14;
+        }
+        if (!usesTarget(node)) return height;
+        height += 5;
+        if (canOpenScmBlockPicker(node)) height += 22;
+        height += 15; // Available Targets label
+        for (ControllerDiscoveryNode target : graphTargetOptions(node)) {
+            height += 14;
+            if (target.nodeId().equals(node.data().getString("Target"))) {
+                height += aeroworksSectionsForTarget(node, target).size() * 14;
+            }
+        }
+        List<ControllerDiscoveryNode> scmTargets = graphScmTargetOptions(node);
+        if (!scmTargets.isEmpty()) height += 5 + 15 + scmTargets.size() * 14;
+        if (isExternalDisplaySourceNode(node)) {
+            List<ControllerDiscoveryNode> sources = graphDisplaySourceOptions(node);
+            if (!sources.isEmpty()) height += 5 + 15 + sources.size() * 14;
+        }
+        return height;
+    }
+
+
+    private int inspectorTargetsMaximumScroll(AdvancedGraphDocument.Node node, InspectorSections sections) {
+        return Math.max(0, inspectorTargetsContentHeight(node)
+                - Math.max(1, sections.targetsBottom() - sections.targetsTop()));
+    }
+
+
+    private int inspectorVariablesContentHeight() {
+        return draft.variables().isEmpty() ? 16 : 3 + draft.variables().size() * VARIABLE_BROWSER_ROW_HEIGHT;
+    }
+
+
+    private int inspectorVariablesMaximumScroll(InspectorSections sections) {
+        return Math.max(0, inspectorVariablesContentHeight()
+                - Math.max(1, sections.variablesBottom() - sections.variablesTop()));
+    }
+
+
+    // Handle clicks in the left variable browser.
+    private boolean clickLeftVariableBrowser(double mouseX, double mouseY) {
+        int top = leftVariableBrowserTop();
+        if (mouseY < top || mouseY >= height - 4) return false;
+        if (mouseY < top + INSPECTOR_SECTION_HEADER_HEIGHT) {
+            inspectorVariablesCollapsed = !inspectorVariablesCollapsed;
+            inspectorVariablesScroll = 0;
+            saveUiPreferences();
+            return true;
+        }
+        if (inspectorVariablesCollapsed) return true;
+        int y = top + INSPECTOR_SECTION_HEADER_HEIGHT + 3 - inspectorVariablesScroll;
+        for (String variable : draft.variables().keySet()) {
+            if (mouseY >= y && mouseY < y + VARIABLE_BROWSER_ROW_HEIGHT) {
+                if (inside(mouseX, mouseY, leftVariableGetButtonX(), y + 1,
+                        VARIABLE_BROWSER_BUTTON_WIDTH, 16)) {
+                    addVariableAccessNode(variable, false);
+                    return true;
+                }
+                if (inside(mouseX, mouseY, leftVariableSetButtonX(), y + 1,
+                        VARIABLE_BROWSER_BUTTON_WIDTH, 16)) {
+                    addVariableAccessNode(variable, true);
+                    return true;
+                }
+                return true;
+            }
+            y += VARIABLE_BROWSER_ROW_HEIGHT;
+        }
+        return true;
+    }
+
+
+    // Give every public SCM action a function graph with an exact matching
+    // interface. The body begins with the raw built-in action, so it behaves
+    // identically until the player inserts ADRC/PID/filter logic around it.
+    private void createOrOpenScmActionFunction() {
+        AdvancedGraphDocument.Node actionNode = selectedNode();
+        if (draft == null || activeFunctionId != null || actionNode == null
+                || !AdvancedGraphCatalog.isPublicScmActionDispatchType(actionNode.type())) {
+            return;
+        }
+        createOrOpenScmActionFunction(actionNode.type());
+    }
+
+
+    // Open one SCM action function from either the action-node context menu or
+    // the dedicated SCM Graph tab.
+    private void createOrOpenScmActionFunction(String action) {
+        if (draft == null || action == null
+                || !AdvancedGraphCatalog.isPublicScmActionDispatchType(action)) {
+            return;
+        }
+        AdvancedGraphDocument.FunctionGraph existing =
+                draft.function(draft.scmActionFunction(action));
+        if (existing != null) {
+            selectGraphTab(existing.id());
+            return;
+        }
+
+        AdvancedGraphCatalog.Definition definition = AdvancedGraphCatalog.get(action);
+        if (definition == null) {
+            return;
+        }
+        checkpoint();
+        String functionId = UUID.randomUUID().toString();
+        String actionName = AdvancedGraphCatalog.displayName(action);
+        AdvancedGraphDocument.FunctionGraph function = new AdvancedGraphDocument.FunctionGraph(
+                functionId, nextFunctionName("SCM " + actionName));
+        CompoundTag inputData = new CompoundTag();
+        CompoundTag inputPorts = new CompoundTag();
+        definition.inputs().forEach(inputPorts::putString);
+        inputData.put("DynamicOutputs", inputPorts);
+        CompoundTag outputData = new CompoundTag();
+        CompoundTag outputPorts = new CompoundTag();
+        definition.outputs().forEach(outputPorts::putString);
+        outputData.put("DynamicInputs", outputPorts);
+        AdvancedGraphDocument.Node input = new AdvancedGraphDocument.Node(
+                UUID.randomUUID().toString(), AdvancedGraphFunctions.INPUT_TYPE,
+                "Inputs", 40.0D, 110.0D, inputData);
+        AdvancedGraphDocument.Node builtin = new AdvancedGraphDocument.Node(
+                UUID.randomUUID().toString(), action, "Built-in " + actionName,
+                270.0D, 110.0D, new CompoundTag());
+        AdvancedGraphDocument.Node output = new AdvancedGraphDocument.Node(
+                UUID.randomUUID().toString(), AdvancedGraphFunctions.OUTPUT_TYPE,
+                "Outputs", 510.0D, 110.0D, outputData);
+        function.nodes().add(input);
+        function.nodes().add(builtin);
+        function.nodes().add(output);
+        definition.inputs().forEach((port, ignored) -> function.edges().add(
+                AdvancedGraphFunctions.edge(input.id(), port, builtin.id(), port)));
+        definition.outputs().forEach((port, ignored) -> function.edges().add(
+                AdvancedGraphFunctions.edge(builtin.id(), port, output.id(), port)));
+        draft.functions().add(function);
+        draft.setScmActionFunction(action, functionId);
+        AdvancedGraphFunctions.synchronizeCalls(draft);
+        selectGraphTab(functionId);
+        showGraphToast("Created SCM action function for " + actionName,
+                GraphActionToastSeverity.SUCCESS);
+    }
+
+
+    // Align one graph-space coordinate to the configured Shift-drag grid.
+    private double snapGraphCoordinate(double coordinate) {
+        return Math.round(coordinate / gridSnapStep) * (double) gridSnapStep;
+    }
+
+
+    // Get the active graph viewport
+    private GraphViewport graphViewport() {
+        return new GraphViewport(graphLeft(), graphTop(), panX, panY, zoom);
+    }
+
+
+    // Open Create's ordinary item-parameter slots for a graph-backed schedule block.
+    private void openScheduleParameterEditor(AdvancedGraphDocument.Node node) {
+        if (node == null || minecraft == null || minecraft.level == null || scheduleDraft == null
+                || ShippingScheduleGraph.inputSlotCount(scheduleDraft, node.id(), minecraft.level.registryAccess()) <= 0) {
+            return;
+        }
+        if (linkerOpen && !setLinkerOpen(false)) return;
+        frequencyNode = node.id();
+        scheduleParameterEditor = true;
+        frequencyModalOpen = true;
+        contextMenu = null;
+        closeOptionDropdown();
+        closeMiniBrowser();
+        templatePicker = false;
+        menu.ghostInventory.setStackInSlot(0, ShippingScheduleGraph.inputSlot(scheduleDraft, node.id(), 0,
+                minecraft.level.registryAccess()));
+        menu.ghostInventory.setStackInSlot(1, ShippingScheduleGraph.inputSlot(scheduleDraft, node.id(), 1,
+                minecraft.level.registryAccess()));
+        setLinkerOpen(false);
+        positionFrequencySlots();
+    }
+
+
+    // Get the active schedule parameter count while the shared ghost-slot modal is open.
+    private int scheduleParameterSlotCount() {
+        if (!scheduleParameterEditor || minecraft == null || minecraft.level == null || scheduleDraft == null) return 0;
+        return ShippingScheduleGraph.inputSlotCount(scheduleDraft, frequencyNode, minecraft.level.registryAccess());
+    }
+
+
+    // Commit ScheduleDataEntry item parameters through the exact owning ScheduleEntry tag.
+    private void syncScheduleParameterEditor() {
+        if (!frequencyModalOpen || !scheduleParameterEditor || minecraft == null || minecraft.level == null
+                || scheduleDraft == null) return;
+        AdvancedGraphDocument.Node node = scheduleNode(frequencyNode);
+        int slots = scheduleParameterSlotCount();
+        if (node == null || slots <= 0) {
+            closeFrequencyEditor(true, false);
+            return;
+        }
+        boolean changed = false;
+        for (int slot = 0; slot < slots; slot++) {
+            ItemStack requested = copySingle(menu.ghostInventory.getStackInSlot(slot));
+            ItemStack current = ShippingScheduleGraph.inputSlot(scheduleDraft, node.id(), slot,
+                    minecraft.level.registryAccess());
+            if (!ItemStack.isSameItemSameComponents(requested, current)) {
+                changed |= ShippingScheduleGraph.setInputSlot(scheduleDraft, node.id(), slot, requested,
+                        minecraft.level.registryAccess());
+            }
+        }
+        if (changed) saveShippingScheduleDraft();
+    }
+
+
+    // Get all targets attached to a multi-target data node, migrating the legacy primary target when needed.
+    private List<ControllerDiscoveryNode> dataTargets(AdvancedGraphDocument.Node node) {
+        List<ControllerDiscoveryNode> targets = new ArrayList<>();
+        if (node == null) return targets;
+        ListTag saved = node.data().getList(AdvancedGraphCatalog.DATA_TARGETS_TAG, Tag.TAG_COMPOUND);
+        for (Tag raw : saved) {
+            if (raw instanceof CompoundTag encoded) {
+                ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(encoded);
+                if (target != null && targets.stream().noneMatch(existing -> existing.nodeId().equals(target.nodeId()))) {
+                    targets.add(target);
+                }
+            }
+        }
+        if (targets.isEmpty()) {
+            ControllerDiscoveryNode legacy = ControllerDiscoveryNode.fromTag(node.data().getCompound("TargetData"));
+            if (legacy != null) targets.add(legacy);
+        }
+        return targets;
+    }
+
+
+    // Add one target to a multi-target data node and retain a primary target for legacy integrations.
+    private void addDataTarget(AdvancedGraphDocument.Node node, ControllerDiscoveryNode target) {
+        if (node == null || target == null) return;
+        List<ControllerDiscoveryNode> targets = dataTargets(node);
+        if (targets.stream().noneMatch(existing -> existing.nodeId().equals(target.nodeId()))) {
+            targets.add(target);
+        }
+        ListTag saved = new ListTag();
+        for (ControllerDiscoveryNode entry : targets) {
+            saved.add(entry.toTag());
+        }
+        node.data().put(AdvancedGraphCatalog.DATA_TARGETS_TAG, saved);
+        ControllerDiscoveryNode primary = targets.getFirst();
+        node.data().putString("Target", primary.nodeId());
+        node.data().putString("TargetLabel", primary.label().isBlank() ? primary.nodeId() : primary.label());
+        node.data().put("TargetData", primary.toTag());
+    }
+
+
+    // Resolve and compose the individual target schemas for a multi-target data node.
+    private void configureMultiDataTargetPorts(AdvancedGraphDocument.Node node) {
+        boolean writable = "set_block_data".equals(node.type());
+        List<GraphTargetPortLayout.Target> schemas = new ArrayList<>();
+        List<ControllerDiscoveryNode> targets = dataTargets(node);
+        for (ControllerDiscoveryNode target : targets) {
+            GraphTargetPortLayout.Target schema = dataTargetSchema(node, target, writable);
+            if (schema != null) schemas.add(schema);
+        }
+        if (schemas.size() != targets.size()) return;
+        AdvancedContraptionControllerBlockEntity.applyDataTargetPortLayout(node, schemas, writable);
+        com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphTargetSignals.upgrade(node, activeEdges());
+        AdvancedContraptionControllerBlockEntity.configureDataTargetFaceOptions(node,
+                targets.isEmpty() ? null : targets.getFirst());
+        removeEdgesForMissingPorts(node, true);
+    }
+
+
+    // Resolve one target schema for multi-target composition.
+    private GraphTargetPortLayout.Target dataTargetSchema(AdvancedGraphDocument.Node node,
+                                                          ControllerDiscoveryNode target, boolean writable) {
+        if (minecraft == null || minecraft.level == null) return null;
+        return AdvancedContraptionControllerBlockEntity.graphDataTargetPortLayout(
+                minecraft.level, node, target, writable);
+    }
+
+
+    // Check whether this presentation selects a separate live source
+    private static boolean isExternalDisplaySourceNode(AdvancedGraphDocument.Node node){
+        return node != null && ("acc_display_external".equals(node.type())
+                || "acc_display_camera_source".equals(node.type()));
+    }
+
+
+    // Limit the camera presentation source picker to camera blocks
+    private List<ControllerDiscoveryNode> graphDisplaySourceOptions(AdvancedGraphDocument.Node node){
+        List<ControllerDiscoveryNode> opts = graphDisplaySourceOptions();
+        return "acc_display_camera_source".equals(node.type())
+                ? opts.stream().filter(target -> "createthrusters:camera".equals(target.blockId())).toList()
+                : opts;
+    }
+
+
+    // Resolve a linker plane to the block carrying its display or source
+    private ControllerDiscoveryNode resolveDisplayLinkerTarget(ControllerDiscoveryNode target) {
+        if (target == null || target.blockPos() == null
+                || !"createthrusters:contraption_network_linker_plane".equals(target.blockId())
+                || minecraft == null || minecraft.level == null) return target;
+        ItemStack linker = menu.getCurrentLinkerStack();
+        if (linker == null || linker.isEmpty()) return target;
+        var level = SubLevelBlockEntityCollector.resolveTargetLevel(minecraft.level, target.subLevelId());
+        if (level == null) return target;
+        for (var linked : ContraptionNetworkLinkerData.readTargets(linker)) {
+            if (!target.nodeId().equals(ContraptionNetworkLinkerData.nodeIdForTarget(linked))) continue;
+            for (var face : linked.faces()) {
+                BlockPos support = linked.blockPos().relative(face.face().getOpposite());
+                if (!level.isLoaded(support)) continue;
+                var blockEntity = level.getBlockEntity(support);
+                if (!(blockEntity instanceof AccDisplayBlockEntity)
+                        && !(blockEntity instanceof UniversalDisplayAdapterBlockEntity)
+                        && AccDisplaySourceRegistry.source(blockEntity) == null) continue;
+                var state = level.getBlockState(support);
+                return target.withBlockTarget(BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString(),
+                        state.getBlock().getName().getString(), support);
+            }
+        }
+        return target;
+    }
+
+
+    // Receive the authoritative configuration snapshot used by the SCM modal.
+    public static void applyScmConfigurationSnapshot(BlockPos controllerPos, UUID controllerSubLevelId,
+                                                     UUID rootSubLevelId, boolean scanning, String status,
+                                                     CompoundTag profile, CompoundTag candidates) {
+        Screen current = Minecraft.getInstance().screen;
+        if (current instanceof AdvancedContraptionControllerScreen screen
+                && screen.matchesController(controllerPos, controllerSubLevelId)) {
+            screen.applyScmConfigurationSnapshot(rootSubLevelId, scanning, status, profile, candidates);
+        }
+    }
+
+
+    private void applyScmConfigurationSnapshot(UUID rootSubLevelId, boolean scanning, String status,
+                                               CompoundTag profile, CompoundTag candidates) {
+        if(candidates != null && candidates.contains("ChunkLoading")) scmChunkLoading = candidates.getBoolean("ChunkLoading");
+        if(candidates != null && candidates.contains("ShipPermissions", Tag.TAG_COMPOUND)){
+            shipPermissionsSnapshot = candidates.getCompound("ShipPermissions").copy();
+        }
+        scmConfigurationRootSubLevelId = rootSubLevelId;
+        scmConfigurationScanning = scanning;
+        scmConfigurationStatus = status == null ? "" : status;
+        scmConfigurationHasThrusters = candidates == null || !candidates.contains("HasThrusters", Tag.TAG_BYTE)
+                ? null : candidates.getBoolean("HasThrusters");
+        scmDetectedVehicleType = candidates == null ? "airship" : candidates.getString("DetectedVehicleType");
+        scmDetectedSteeringType = candidates == null
+                || !candidates.contains("DetectedSteeringType", Tag.TAG_STRING)
+                ? ScmSteeringMode.CUSTOM.id()
+                : candidates.getString("DetectedSteeringType");
+        scmDefaultOrientation = ScmOrientation.fromTag(candidates == null ? null
+                : candidates.getCompound("DefaultOrientation"))
+                .orElse(ScmOrientation.fromMount(Direction.NORTH, Direction.UP));
+        ScmConfigurationProfile authoritativeProfile = ScmConfigurationProfile.fromTag(profile);
+        boolean mapChanged = scmConfigurationDirty
+                && !Objects.equals(scmConfigurationProfile.mapId(), authoritativeProfile.mapId());
+        boolean savedProfileAcknowledged = scmConfigurationSavePending
+                && scmConfigurationProfile.toTag().equals(authoritativeProfile.toTag());
+        if (!scmConfigurationDirty || mapChanged || savedProfileAcknowledged) {
+            scmConfigurationProfile = authoritativeProfile;
+            scmConfigurationDirty = false;
+            scmConfigurationSavePending = false;
+        }
+        scmSimulationTelemetry.clear();
+        CompoundTag telemetry = candidates == null ? new CompoundTag()
+                : candidates.getCompound("Telemetry");
+        for (String port : telemetry.getAllKeys()) {
+            CompoundTag value = telemetry.getCompound(port);
+            if (!value.isEmpty()) {
+                scmSimulationTelemetry.put(port, value.copy());
+            }
+        }
+        scmConfigurationCandidates.clear();
+        scmConfigurationDockingConnectors.clear();
+        scmConfigurationProfile.dockingConnectorGroups().keySet().forEach(
+                scmConfigurationDockingConnectors::add);
+        ListTag dockingConnectors = candidates == null ? new ListTag()
+                : candidates.getList("DockingConnectors", Tag.TAG_COMPOUND);
+        for (int index = 0; index < dockingConnectors.size(); index++) {
+            ScmConfigurationProfile.DockingConnectorReference connector =
+                    ScmConfigurationProfile.DockingConnectorReference.fromTag(
+                            dockingConnectors.getCompound(index));
+            if (connector.isValid()) {
+                scmConfigurationDockingConnectors.add(connector);
+            }
+        }
+        scmConfigurationViewSubLevelIds.clear();
+        if (rootSubLevelId != null) scmConfigurationViewSubLevelIds.add(rootSubLevelId);
+        ListTag bodies = candidates == null ? new ListTag()
+                : candidates.getList("ViewSubLevels", Tag.TAG_COMPOUND);
+        for (int index = 0; index < bodies.size(); index++) {
+            CompoundTag body = bodies.getCompound(index);
+            if (body.hasUUID("Id") && !scmConfigurationViewSubLevelIds.contains(body.getUUID("Id"))) {
+                scmConfigurationViewSubLevelIds.add(body.getUUID("Id"));
+            }
+        }
+        if (candidates != null && candidates.contains("PreviewBlocks", Tag.TAG_LIST)) {
+            List<ScmLiveSubLevelPreviewRenderer.SnapshotBlock> snapshotBlocks = new ArrayList<>();
+            ListTag preview = candidates.getList("PreviewBlocks", Tag.TAG_COMPOUND);
+            for (int index = 0; index < preview.size() && snapshotBlocks.size() < com.rieno.gadgetsandgizmos.lib.scm.ScmCapacity.MAX_PREVIEW_BLOCKS; index++) {
+                CompoundTag block = preview.getCompound(index);
+                if (!block.hasUUID("SubLevelId") || !block.contains("Position", Tag.TAG_LONG)
+                        || !block.contains("State", Tag.TAG_COMPOUND)) {
+                    continue;
+                }
+                try {
+                    snapshotBlocks.add(new ScmLiveSubLevelPreviewRenderer.SnapshotBlock(
+                            block.getUUID("SubLevelId"), BlockPos.of(block.getLong("Position")),
+                            NbtUtils.readBlockState(BuiltInRegistries.BLOCK.asLookup(), block.getCompound("State")),
+                            new Vec3(block.getDouble("RootX"), block.getDouble("RootY"), block.getDouble("RootZ")),
+                            new org.joml.Quaternionf(block.getFloat("Qx"), block.getFloat("Qy"), block.getFloat("Qz"),
+                                    block.contains("Qw") ? block.getFloat("Qw") : 1.0F)));
+                } catch (RuntimeException ignored) {
+                    // A server may omit a block state from an optional mod the
+                    // client does not have; keep the rest of the preview usable.
+                }
+            }
+            scmLivePreviewRenderer.setSnapshotBlocks(snapshotBlocks);
+        }
+        ListTag units = candidates == null ? new ListTag() : candidates.getList("Units", Tag.TAG_COMPOUND);
+        Set<ScmConfigurationProfile.UnitReference> knownUnits = new LinkedHashSet<>(scmConfigurationCandidates);
+        for (int index = 0; index < units.size() && scmConfigurationCandidates.size() < com.rieno.gadgetsandgizmos.lib.scm.ScmCapacity.MAX_CONTROL_UNITS; index++) {
+            CompoundTag unitTag = units.getCompound(index);
+            ScmConfigurationProfile.UnitReference unit =
+                    ScmConfigurationProfile.UnitReference.fromTag(unitTag);
+            if(unit.isValid() && knownUnits.add(unit)){
+                scmConfigurationCandidates.add(unit);
+            }
+        }
+        scmConfigurationProfile.groups().forEach(group -> group.units().forEach(
+                this::ensureScmConfigurationCandidate));
+        scmConfigurationProfile.excludedUnits().forEach(this::ensureScmConfigurationCandidate);
+        scmLivePreviewRenderer.invalidate();
+    }
+
+
+    // Identify the camera's category selector
+    private static boolean isCameraFilterInput(AdvancedGraphDocument.Node node, String port){
+        return node != null && "camera".equals(node.type()) && "filter".equals(port);
+    }
+
+
+    // Read selected categories without treating an empty blacklist as a selection
+    private Set<String> cameraFilterEntries(AdvancedGraphDocument.Node node){
+        return com.rieno.gadgetsandgizmos.lib.view.ViewRaycast.Filter.fromValue(
+                com.rieno.gadgetsandgizmos.lib.graph.GraphValue.string(inputPayload(node, "filter").getString("Value")),
+                false).entries();
+    }
+
+
+    // Check whether this is the Get or Set Data target-port merge input
+    private static boolean isDataTargetMergeLikePortsInput(AdvancedGraphDocument.Node node, String port) {
+        return node != null && "merge_like_ports".equals(port)
+                && ("get_block_data".equals(node.type()) || "set_block_data".equals(node.type()));
+    }
+
+
+    // Draw the HUD color preview and opacity slider
+    private void drawHudColorControl(GuiGraphics graphics, CompoundTag elm, String key,
+                                     String label, int mouseX, int mouseY){
+        UiRect sidebar = hudSidebarBounds();
+        int col = hudColorVal(elm, key);
+        UiRect swatch = hudColorPreviewBounds(key);
+        graphics.drawString(font, label, sidebar.x() + 8, swatch.y(), 0xFFC8D7E3, false);
+        drawHudCheckerboard(graphics, swatch);
+        graphics.fill(swatch.x(), swatch.y(), swatch.right(), swatch.bottom(), col);
+        graphics.renderOutline(swatch.x(), swatch.y(), swatch.width(), swatch.height(),
+                swatch.contains(mouseX, mouseY) ? 0xFFFFFFFF : 0xFFB9CFDC);
+        UiRect row = hudOpacitySliderBounds(key);
+        UiRect track = hudOpacitySliderTrackBounds(key);
+        float pct = ColorOpacity.opacity(col);
+        graphics.drawString(font, "Opacity", row.x(), row.y() + 3, 0xFF91A9B8, false);
+        renderControllerSlider(graphics, track.x(), track.y() + track.height() / 2,
+                track.width(), pct, portColor("number"),
+                key.equals(draggingHudOpacityKey) || track.contains(mouseX, mouseY));
+        String pctLabel = Math.round(pct * 100.0F) + "%";
+        graphics.drawString(font, pctLabel, row.right() - font.width(pctLabel), row.y() + 3,
+                0xFF91A9B8, false);
+    }
+
+
+    // Open the HUD color picker or drag opacity
+    private boolean clickHudColorControl(double mouseX, double mouseY){
+        CompoundTag elm = hudElement();
+        if(elm == null){
+            draggingHudOpacityKey = null;
+            return false;
+        }
+        if(AdvancedHudInteractiveStyles.supports(elm.getString("Type"))){
+            for(int i = 0; i < HUD_PALETTE_KEYS.size(); i++){
+                if(hudPaletteSwatchBounds(i).contains(mouseX, mouseY)){
+                    openHudColorPicker(elm, HUD_PALETTE_KEYS.get(i));
+                    return true;
+                }
+            }
+        }
+        for(String key : hudColorKeys(elm)){
+            if(hudColorPreviewBounds(key).contains(mouseX, mouseY)){
+                openHudColorPicker(elm, key);
+                return true;
+            }
+            if(hudOpacitySliderTrackBounds(key).contains(mouseX, mouseY)){
+                checkpoint();
+                draggingHudOpacityKey = key;
+                hudFontStyleDropdownOpen = false;
+                hudStyleDropdownOpen = false;
+                hudPortDropdownOpen = false;
+                hudImageDropdownOpen = false;
+                updateHudOpacitySlider(mouseX);
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+    // Use the library picker for one HUD property and restore cancelled edits
+    private void openHudColorPicker(CompoundTag elm, String key){
+        AdvancedGraphDocument.Node node = hudNode();
+        if(node == null || elm == null) return;
+        clearHudFieldFocus();
+        draggingHudOpacityKey = null;
+        draggingHudPropSlider = null;
+        draggingHudElement = false;
+        resizingHudElement = false;
+        hudFontStyleDropdownOpen = false;
+        hudStyleDropdownOpen = false;
+        hudPortDropdownOpen = false;
+        hudImageDropdownOpen = false;
+        CompoundTag prevData = node.data().copy();
+        boolean wasDirty = draftDirty;
+        ArrayDeque<AdvancedGraphDocument> prevUndo = new ArrayDeque<>(undo);
+        ArrayDeque<AdvancedGraphDocument> prevRedo = new ArrayDeque<>(redo);
+        checkpoint();
+        hudColorPicker = new ColorPickerModal(hudColorVal(elm, key),
+                col -> setHudColor(elm, key, col), () -> {
+            hudColorPicker = null;
+            syncHudFields();
+        }, () -> {
+            hudColorPicker = null;
+            for(String dataKey : new ArrayList<>(node.data().getAllKeys())) node.data().remove(dataKey);
+            node.data().merge(prevData);
+            undo.clear();
+            undo.addAll(prevUndo);
+            redo.clear();
+            redo.addAll(prevRedo);
+            draftDirty = wasDirty;
+            clearGraphRenderCache();
+            syncHudFields();
+        });
+    }
+
+
+    // Update the HUD color and its managed widget default
+    private void setHudColor(CompoundTag elm, String key, int col){
+        elm.putInt(key, col);
+        updateManagedAccWidgetDefault(elm, key, graphDefault("number", col));
+        simulatedDraft = null;
+    }
+
+
+    // Update opacity without changing the selected color
+    private void updateHudOpacitySlider(double mouseX){
+        CompoundTag elm = hudElement();
+        if(elm == null || draggingHudOpacityKey == null) return;
+        UiRect track = hudOpacitySliderTrackBounds(draggingHudOpacityKey);
+        float amount = (float) Mth.clamp((mouseX - track.x() - 4.5D)
+                / Math.max(1.0D, track.width() - 9.0D), 0.0D, 1.0D);
+        int col = ColorOpacity.withOpacity(hudColorVal(elm, draggingHudOpacityKey), amount);
+        setHudColor(elm, draggingHudOpacityKey, col);
+    }
+
+
+    // Get the shared color label position
+    private int hudColorLabelY(String key){
+        CompoundTag elm = hudElement();
+        String type = elm == null ? "" : elm.getString("Type");
+        return hudPropTop(hudSidebarBounds()) + ElementInspectorLayout.forType(type).colorLabelOffset(key);
+    }
+
+
+    // Get the color preview square used for rendering and input
+    private UiRect hudColorPreviewBounds(String key){
+        UiRect sidebar = hudSidebarBounds();
+        return new UiRect(sidebar.right() - 22, hudColorLabelY(key), 14, 14);
+    }
+
+
+    // Get the full opacity row beneath the color preview
+    private UiRect hudOpacitySliderBounds(String key){
+        UiRect sidebar = hudSidebarBounds();
+        return new UiRect(sidebar.x() + 8, hudColorLabelY(key) + 18, sidebar.width() - 16, 14);
+    }
+
+
+    // Keep the opacity track clear of its label and percentage
+    private UiRect hudOpacitySliderTrackBounds(String key){
+        UiRect row = hudOpacitySliderBounds(key);
+        int labelWidth = font.width("Opacity") + 6;
+        int valWidth = font.width("100%") + 6;
+        return new UiRect(row.x() + labelWidth, row.y(), row.width() - labelWidth - valWidth, row.height());
+    }
+
+
+    // SCM configuration has an independent persistent model, so it deliberately
+    // does not serialize or overwrite the graph draft while the modal is open.
+    private void sendScmConfiguration(String action, CompoundTag profile) {
+        if ("scm_configuration_save".equals(action)
+                || "scm_configuration_reinitialize".equals(action)) {
+            scmConfigurationSavePending = true;
+        }
+        MenuConfigTarget target = MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId());
+        PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+                target, action, savedDraft.revision(),
+                profile == null ? new CompoundTag() : profile.copy(), "", 0L));
+    }
+
+
+    // Draw the player list and the selected player's ship actions
+    private void drawShipPermissions(GuiGraphics graphics, int mouseX, int mouseY){
+        UiRect bounds = shipPermissionsBounds();
+        graphics.fill(0, 0, width, height, 0xB0000000);
+        renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        graphics.drawString(font, "Ship Permissions", bounds.x() + 16, bounds.y() + 15, 0xFFF4F7FB, false);
+        renderAdvancedButton(graphics, font, bounds.right() - 33, bounds.y() + 9, 22, 20,
+                Component.literal("X"), inside(mouseX, mouseY, bounds.right() - 33, bounds.y() + 9, 22, 20), true);
+        if(!shipPermissionsSnapshot.contains("Enabled", Tag.TAG_BYTE)){
+            graphics.drawString(font, "Loading permissions...", bounds.x() + 16, bounds.y() + 54,
+                    0xFFB9C8D9, false);
+            return;
+        }
+        if(!shipPermissionsSnapshot.getBoolean("Enabled")){
+            graphics.drawString(font, "Permissions are disabled in single player.", bounds.x() + 16, bounds.y() + 54,
+                    0xFFE4B982, false);
+            return;
+        }
+        boolean open = shipPermissionsSnapshot.getBoolean("Open");
+        boolean canEdit = shipPermissionsSnapshot.getBoolean("CanEdit");
+        boolean claimed = shipPermissionsSnapshot.getBoolean("Claimed");
+        renderAdvancedButton(graphics, font, bounds.x() + 16, bounds.y() + 42, 130, 22,
+                Component.literal(open ? "Access: Open" : "Access: Closed"),
+                inside(mouseX, mouseY, bounds.x() + 16, bounds.y() + 42, 130, 22), canEdit);
+        graphics.drawString(font, open ? "Open: the permissions list is ignored." : "Closed: the permissions list is enforced.",
+                bounds.x() + 16, bounds.y() + 73, 0xFFB9C8D9, false);
+        graphics.drawString(font, "Players", bounds.x() + 16, bounds.y() + 92, 0xFFB9C8D9, false);
+        ListTag players = shipPermissionsSnapshot.getList("Players", Tag.TAG_COMPOUND);
+        for(int row = 0; row < 8 && row + shipPermissionsScroll < players.size(); row++){
+            CompoundTag player = players.getCompound(row + shipPermissionsScroll);
+            int y = bounds.y() + 110 + row * 27;
+            boolean selected = player.hasUUID("Id") && player.getUUID("Id").equals(shipPermissionsSelected);
+            graphics.fill(bounds.x() + 13, y, bounds.x() + 192, y + 24,
+                    selected ? 0xFF45617C : inside(mouseX, mouseY, bounds.x() + 13, y, 179, 24)
+                            ? 0xFF34485B : 0xFF253543);
+            String name = (player.getBoolean("Owner") ? "(Owner) " : "") + player.getString("Name");
+            graphics.drawString(font, font.plainSubstrByWidth(name, 155),
+                    bounds.x() + 22, y + 8, 0xFFF4F7FB, false);
+        }
+        CompoundTag selected = selectedShipPermissionPlayer();
+        if(selected == null){
+            graphics.drawString(font, "Select a player", bounds.x() + 215, bounds.y() + 110,
+                    0xFFB9C8D9, false);
+            return;
+        }
+        graphics.drawString(font, font.plainSubstrByWidth(selected.getString("Name"), 190),
+                bounds.x() + 215, bounds.y() + 92, 0xFFF4F7FB, false);
+        ShipPermission[] permissions = {ShipPermission.INTERACT, ShipPermission.ACC_GRAPH,
+                ShipPermission.PLACE, ShipPermission.DESTROY, ShipPermission.PHYSICS_STAFF, ShipPermission.STORE};
+        String[] labels = {"Interact", "ACC Graph", "Place", "Destroy", "Physics Staff", "Store"};
+        int mask = selected.getInt("Mask");
+        int visible = shipPermissionsSnapshot.getBoolean("StoreEnabled") ? permissions.length : permissions.length - 1;
+        for(int idx = 0; idx < visible; idx++){
+            int y = bounds.y() + 110 + idx * 31;
+            boolean enabled = (mask & (1 << permissions[idx].ordinal())) != 0;
+            graphics.fill(bounds.x() + 215, y, bounds.right() - 15, y + 25,
+                    inside(mouseX, mouseY, bounds.x() + 215, y, bounds.width() - 230, 25)
+                            ? 0xFF34485B : 0xFF253543);
+            graphics.drawString(font, enabled ? "[x]" : "[ ]", bounds.x() + 224, y + 8,
+                    enabled ? 0xFF85DBA8 : 0xFFB9C8D9, false);
+            graphics.drawString(font, labels[idx], bounds.x() + 254, y + 8, 0xFFF4F7FB, false);
+        }
+        boolean owner = selected.getBoolean("Owner");
+        renderAdvancedButton(graphics, font, bounds.x() + 215, bounds.y() + 303, bounds.width() - 230, 22,
+                Component.literal(owner ? "Current owner" : "Transfer ownership"),
+                inside(mouseX, mouseY, bounds.x() + 215, bounds.y() + 303, bounds.width() - 230, 22),
+                canEdit && claimed && !owner);
+        if(!claimed){
+            graphics.drawString(font, "Close access to claim ownership.", bounds.x() + 16, bounds.bottom() - 22,
+                    0xFFE4B982, false);
+        }else if(!canEdit){
+            graphics.drawString(font, "Only the owner can change permissions.",
+                    bounds.x() + 215, bounds.bottom() - 22, 0xFFE4B982, false);
+        }
+    }
+
+
+    // Size the permission modal for the access mode and ownership controls
+    private UiRect shipPermissionsBounds(){
+        return new UiRect((width - 450) / 2, (height - 370) / 2, 450, 370);
+    }
+
+
+    // Resolve the selected row from the latest server snapshot
+    private CompoundTag selectedShipPermissionPlayer(){
+        if(shipPermissionsSelected == null) return null;
+        ListTag players = shipPermissionsSnapshot.getList("Players", Tag.TAG_COMPOUND);
+        for(int idx = 0; idx < players.size(); idx++){
+            CompoundTag player = players.getCompound(idx);
+            if(player.hasUUID("Id") && shipPermissionsSelected.equals(player.getUUID("Id"))) return player;
+        }
+        return null;
+    }
+
+
+    // Send access mode, ownership and member changes to the server
+    private boolean clickShipPermissions(double mouseX, double mouseY, int button){
+        if(button != GLFW.GLFW_MOUSE_BUTTON_LEFT) return true;
+        UiRect bounds = shipPermissionsBounds();
+        if(inside(mouseX, mouseY, bounds.right() - 33, bounds.y() + 9, 22, 20)
+                || !bounds.contains(mouseX, mouseY)){
+            shipPermissionsOpen = false;
+            return true;
+        }
+        if(!shipPermissionsSnapshot.getBoolean("Enabled")) return true;
+        if(shipPermissionsSnapshot.getBoolean("CanEdit")
+                && inside(mouseX, mouseY, bounds.x() + 16, bounds.y() + 42, 130, 22)){
+            CompoundTag change = new CompoundTag();
+            change.putBoolean("Open", !shipPermissionsSnapshot.getBoolean("Open"));
+            sendScmConfiguration("scm_permissions_access", change);
+            return true;
+        }
+        ListTag players = shipPermissionsSnapshot.getList("Players", Tag.TAG_COMPOUND);
+        for(int row = 0; row < 8 && row + shipPermissionsScroll < players.size(); row++){
+            int y = bounds.y() + 110 + row * 27;
+            if(!inside(mouseX, mouseY, bounds.x() + 13, y, 179, 24)) continue;
+            CompoundTag player = players.getCompound(row + shipPermissionsScroll);
+            shipPermissionsSelected = player.hasUUID("Id") ? player.getUUID("Id") : null;
+            return true;
+        }
+        CompoundTag selected = selectedShipPermissionPlayer();
+        if(selected == null || selected.getBoolean("Owner") || !shipPermissionsSnapshot.getBoolean("CanEdit")
+                || !shipPermissionsSnapshot.getBoolean("Claimed")) return true;
+        if(inside(mouseX, mouseY, bounds.x() + 215, bounds.y() + 303, bounds.width() - 230, 22)){
+            CompoundTag change = new CompoundTag();
+            change.putUUID("Player", selected.getUUID("Id"));
+            sendScmConfiguration("scm_permissions_transfer", change);
+            return true;
+        }
+        ShipPermission[] permissions = {ShipPermission.INTERACT, ShipPermission.ACC_GRAPH,
+                ShipPermission.PLACE, ShipPermission.DESTROY, ShipPermission.PHYSICS_STAFF, ShipPermission.STORE};
+        int visible = shipPermissionsSnapshot.getBoolean("StoreEnabled") ? permissions.length : permissions.length - 1;
+        for(int idx = 0; idx < visible; idx++){
+            int y = bounds.y() + 110 + idx * 31;
+            if(!inside(mouseX, mouseY, bounds.x() + 215, y, bounds.width() - 230, 25)) continue;
+            CompoundTag change = new CompoundTag();
+            change.putUUID("Player", selected.getUUID("Id"));
+            change.putString("Permission", permissions[idx].id());
+            change.putBoolean("Enabled", (selected.getInt("Mask") & (1 << permissions[idx].ordinal())) == 0);
+            sendScmConfiguration("scm_permissions_set", change);
+            return true;
+        }
+        return true;
+    }
+
+
+    // Get the menu's synchronized SCM controller when this client has it loaded.
+    private AdvancedContraptionControllerBlockEntity activeScmController() {
+        return menu.getMenuConfigTargetBlockEntity() instanceof AdvancedContraptionControllerBlockEntity controller
+                ? controller : null;
+    }
+
+
+    // Persist the shared SCM and Schedule route-progress preference.
+    private void sendScmDisplayProgress(boolean enabled) {
+        CompoundTag settings = new CompoundTag();
+        settings.putBoolean("DisplayProgress", enabled);
+        MenuConfigTarget target = MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId());
+        PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+                target, "scm_set_display_progress", savedDraft.revision(), settings, "", 0L));
+    }
+
+
+    // Persist the inline SCM workspace vehicle name.
+    private void sendScmVehicleName(String name) {
+        MenuConfigTarget target = MenuConfigTarget.of(menu.getContentPos(), menu.getContentSubLevelId());
+        PacketDistributor.sendToServer(new AdvancedContraptionControllerGraphPayload(
+                target, "scm_set_vehicle_name", savedDraft.revision(), new CompoundTag(),
+                name == null ? "" : name, 0L));
+    }
+
+
+    // Identify one editable ACC theme color in the preset editor.
+    private record ThemeColorEntry(String key, String label) {
+    }
+
+
+    // Direct block data access is available on any assembled sub-level. It is
+    // deliberately independent of SCM, which only powers ship control.
+    private boolean canOpenScmBlockPicker(AdvancedGraphDocument.Node node) {
+        return supportsScmBlockPicker(node) && blockPickerRootSubLevelId() != null;
+    }
+
+
+    private UUID blockPickerRootSubLevelId() {
+        return menu.getContentSubLevelId();
+    }
+
+
+    private static record ScmConfigurationSidebarLayout(int contentTop, int viewportTop, int viewportBottom,
+                                     int contentHeight, int maximumScroll) {
+    // Get the viewport height
+    int viewportHeight() {
+        return Math.max(1, viewportBottom - viewportTop);
+    }
+}
+
+
+    private static record GraphPortSection(String id, String label, List<String> ports) {
+}
+
+
+    private static record ScmCalibrationPoint(int x, int y) {
+}
+
+
+    private static record ScmConfigurationGroupRow(String groupId, String label,
+                                ScmConfigurationProfile.UnitReference unit,
+                                int color, int memberCount) {
+    // Check if this is a group header
+    boolean header() {
+        return unit == null;
+    }
+}
+
+
+    private static record ScmBlockKey(UUID subLevelId, BlockPos blockPosition, Direction face) {
+    ScmBlockKey {
+        blockPosition = blockPosition == null ? BlockPos.ZERO : blockPosition.immutable();
+    }
+}
+
+
+    private static record ScmSimulationField(String label, String port) {
+}
+
+
+    private enum ScmControlBindingMode {
+    BLOCK("Block Control"),
+    FACE("Redstone Control");
+
+    private final String label;
+
+    ScmControlBindingMode(String label) {
+        this.label = label;
+    }
+
+    // Get the mode label
+    String label() {
+        return label;
+    }
+}
+
+
+    private static record SchedulePropertyChoice(String value, String label) {
+}
+
+
+    private static boolean supportsScmBlockPicker(AdvancedGraphDocument.Node node) {
+        return node != null && ("get_block_data".equals(node.type())
+                || "set_block_data".equals(node.type()));
+    }
+
+
+    private static boolean isShippingInformationNodeType(String type) {
+        return "acc_display_crn".equals(type) || "acc_display_shipping_information".equals(type);
     }
 }

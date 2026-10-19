@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
+import com.rieno.gadgetsandgizmos.lib.physics.AttachmentFrames;
 import com.rieno.gadgetsandgizmos.lib.physics.SableConstraintApi;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyTopologyInvalidation;
@@ -2199,64 +2200,11 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
                 ? shaftState.getValue(PhysicsGantryShaftBlock.FACING)
                 : Direction.fromAxisAndDirection(localShaftAxis, Direction.AxisDirection.POSITIVE);
 
-        Vector3d localOutward = directionVector(currentFacing);
-        Vector3d localShaft = axisVector(localShaftAxis);
-        Vector3d targetOutward = directionVector(clickedFace);
-        Vector3d targetShaft = directionVector(shaftDirection);
-
-        if (clickedShaft != null) {
-            Vec3 outward = SimulatedHelper.toContainingWorldDirection(clickedShaft, toVec3(targetOutward));
-            Vec3 shaft = SimulatedHelper.toContainingWorldDirection(clickedShaft, toVec3(targetShaft));
-            if (outward == null || shaft == null || outward.lengthSqr() < 1.0E-6D || shaft.lengthSqr() < 1.0E-6D) {
-                return null;
-            }
-            targetOutward.set(outward.x, outward.y, outward.z);
-            targetShaft.set(shaft.x, shaft.y, shaft.z);
-        }
-
-        return basisOrientation(targetOutward, targetShaft)
-                .mul(basisOrientation(localOutward, localShaft).conjugate())
-                .normalize();
-    }
-
-    // Get the direction vector
-    private Vector3d directionVector(Direction dir) {
-        return new Vector3d(dir.getStepX(), dir.getStepY(), dir.getStepZ());
-    }
-
-    // Get the axis vector
-    private Vector3d axisVector(Direction.Axis axis) {
-        return switch (axis) {
-            case X -> new Vector3d(1.0D, 0.0D, 0.0D);
-            case Y -> new Vector3d(0.0D, 1.0D, 0.0D);
-            case Z -> new Vector3d(0.0D, 0.0D, 1.0D);
-        };
-    }
-
-    // Convert the vector to a Minecraft position
-    private Vec3 toVec3(Vector3dc vector) {
-        return new Vec3(vector.x(), vector.y(), vector.z());
-    }
-
-    // Get the basis orientation
-    private Quaterniond basisOrientation(Vector3d outward, Vector3d shaft) {
-        Vector3d z = new Vector3d(outward).normalize();
-        Vector3d x = new Vector3d(shaft).normalize();
-        x.sub(new Vector3d(z).mul(x.dot(z)));
-        if (x.lengthSquared() < 1.0E-8D) {
-            x = Math.abs(z.y) < 0.9D
-                    ? new Vector3d(0.0D, 1.0D, 0.0D)
-                    : new Vector3d(1.0D, 0.0D, 0.0D);
-            x.sub(new Vector3d(z).mul(x.dot(z)));
-        }
-        x.normalize();
-        Vector3d y = new Vector3d(z).cross(x).normalize();
-
-        Matrix3d basis = new Matrix3d().identity();
-        basis.setColumn(0, x);
-        basis.setColumn(1, y);
-        basis.setColumn(2, z);
-        return new Quaterniond().setFromNormalized(basis).normalize();
+        Quaterniond relativeOrientation = AttachmentFrames.alignAxes(
+                currentFacing, localShaftAxis, clickedFace, shaftDirection.getAxis());
+        Object parent = clickedShaft == null ? null : SimulatedHelper.getContainingSubLevel(clickedShaft);
+        Quaterniond parentOrientation = readSubLevelOrientation(parent);
+        return parentOrientation == null ? relativeOrientation : parentOrientation.mul(relativeOrientation).normalize();
     }
 
     // Calculate the carriage local pose
@@ -2676,9 +2624,8 @@ public class PhysicsGantryCarriageBlockEntity extends KineticBlockEntity
 
         Direction carriageLocalFacing = carriageState.getValue(PhysicsGantryCarriageBlock.FACING);
         Direction.Axis carriageLocalShaftAxis = PhysicsGantryCarriageBlock.getValidGantryShaftAxis(carriageState);
-        return basisOrientation(directionVector(attachedCarriageFacing), directionVector(attachedShaftDirection))
-                .mul(basisOrientation(directionVector(carriageLocalFacing), axisVector(carriageLocalShaftAxis)).conjugate())
-                .normalize();
+        return AttachmentFrames.alignAxes(carriageLocalFacing, carriageLocalShaftAxis,
+                attachedCarriageFacing, attachedShaftDirection.getAxis());
     }
 
     // Resolve the only valid world orientation for initial placement and collision checks.

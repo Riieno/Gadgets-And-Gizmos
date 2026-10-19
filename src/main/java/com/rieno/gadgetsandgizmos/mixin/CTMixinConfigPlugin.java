@@ -89,6 +89,7 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
         String targetMod = optionalTargetMod(targetClassName);
         if(targetMod != null && !MixinCompatibility.canApply(targetClassName, targetMod)) return false;
+        if(mixinClassName.contains(".FlightControl")) return MixinCompatibility.canApply(targetClassName, "create_flight_control");
         // ---------------------------------------------------DIRECT MOD GATES---------------------------------------------------
         if ("com.rieno.gadgetsandgizmos.mixin.WaystonesTeleportMomentumMixin".equals(mixinClassName)) {
             return MixinCompatibility.isModLoaded("waystones");
@@ -106,14 +107,6 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
         }
 
         // ------------------------------------------------SIMULATED / SABLE APIS------------------------------------------------
-        if (isDockingConnectorEnergyMixin(mixinClassName)) {
-            boolean apply = supportsDockingConnectorEnergyTransfer();
-            if (!apply && CT_LOGGED_DOCKING_ENERGY_SKIP.compareAndSet(false, true)) {
-                CT_LOGGER.info("[G&G][Compat] Disabled docking-connector FE transfer for the legacy Sable/Simulated API");
-            }
-            return apply;
-        }
-
         if (isSimulatedCreateRopeMixin(mixinClassName)) {
             boolean currentApi = hasSimulatedCreateRopeBooleanParameter();
             logSimulatedRopeApi(currentApi);
@@ -526,4 +519,6 @@ public final class CTMixinConfigPlugin implements IMixinConfigPlugin {
     @Override
     public void postApply(String targetClassName, ClassNode targetClass, String mixinClassName, IMixinInfo mixinInfo) {
     }
+
+
 }

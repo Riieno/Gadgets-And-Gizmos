@@ -27,6 +27,7 @@ public record ShipControlMap(
         List<DockingConnector> dockingConnectors,
         List<CrnDisplay> crnDisplays,
         List<AccDisplay> accDisplays,
+        List<Seat> seats,
         long updatedAt
 ) {
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -38,20 +39,22 @@ public record ShipControlMap(
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Initialize the ship control map
-    public ShipControlMap {
-        dimension = dimension == null ? "" : dimension;
-        controllerPosition = controllerPosition == null ? BlockPos.ZERO : controllerPosition.immutable();
-        centerOfMass = centerOfMass == null ? Vec3.ZERO : centerOfMass;
-        units = units == null ? List.of() : List.copyOf(units);
-        bearings = bearings == null ? List.of() : List.copyOf(bearings);
-        dockingConnectors = dockingConnectors == null
-                ? List.of() : List.copyOf(dockingConnectors);
-        crnDisplays = crnDisplays == null
-                ? List.of()
-                : crnDisplays.stream().filter(java.util.Objects::nonNull).distinct().toList();
-        accDisplays = accDisplays == null
-                ? List.of()
-                : accDisplays.stream().filter(java.util.Objects::nonNull).distinct().toList();
+    public ShipControlMap(
+            UUID id,
+            String dimension,
+            UUID rootSubLevelId,
+            BlockPos controllerPosition,
+            Vec3 centerOfMass,
+            List<PropulsionUnit> units,
+            List<BearingUnit> bearings,
+            List<DockingConnector> dockingConnectors,
+            List<CrnDisplay> crnDisplays,
+            List<AccDisplay> accDisplays,
+            long updatedAt
+    ) {
+        this(id, dimension, rootSubLevelId, controllerPosition, centerOfMass,
+                units, bearings, dockingConnectors, crnDisplays, accDisplays,
+                List.of(), updatedAt);
     }
 
     // Initialize the ship control map
@@ -68,7 +71,7 @@ public record ShipControlMap(
             long updatedAt
     ) {
         this(id, dimension, rootSubLevelId, controllerPosition, centerOfMass,
-                units, bearings, dockingConnectors, crnDisplays, List.of(), updatedAt);
+                units, bearings, dockingConnectors, crnDisplays, List.of(), List.of(), updatedAt);
     }
 
     // Initialize the ship control map
@@ -84,7 +87,7 @@ public record ShipControlMap(
             long updatedAt
     ) {
         this(id, dimension, rootSubLevelId, controllerPosition, centerOfMass,
-                units, bearings, dockingConnectors, List.of(), List.of(), updatedAt);
+                units, bearings, dockingConnectors, List.of(), List.of(), List.of(), updatedAt);
     }
 
     // Initialize the ship control map
@@ -99,7 +102,7 @@ public record ShipControlMap(
             long updatedAt
     ) {
         this(id, dimension, rootSubLevelId, controllerPosition, centerOfMass,
-                units, bearings, List.of(), List.of(), List.of(), updatedAt);
+                units, bearings, List.of(), List.of(), List.of(), List.of(), updatedAt);
     }
 
     // Initialize the ship control map
@@ -113,7 +116,7 @@ public record ShipControlMap(
             long updatedAt
     ) {
         this(id, dimension, rootSubLevelId, controllerPosition, centerOfMass,
-                units, List.of(), List.of(), List.of(), List.of(), updatedAt);
+                units, List.of(), List.of(), List.of(), List.of(), List.of(), updatedAt);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -174,8 +177,17 @@ public record ShipControlMap(
             double maxX,
             double minZ,
             double maxZ,
-            List<BearingPose> poses
+            List<BearingPose> poses,
+            com.rieno.gadgetsandgizmos.lib.scm.ScmGeometryFrame calibrationFrame
     ) {
+        // Retain compatibility with maps authored before host frames were recorded
+        public BearingUnit(int index, UUID hostSubLevelId, BlockPos blockPosition, String blockId, String adapter,
+                           List<UUID> childSubLevelIds, double minX, double maxX, double minZ, double maxZ,
+                           List<BearingPose> poses){
+            this(index, hostSubLevelId, blockPosition, blockId, adapter, childSubLevelIds,
+                    minX, maxX, minZ, maxZ, poses, null);
+        }
+
         // Initialize the bearing unit
         public BearingUnit {
             blockPosition = blockPosition == null ? BlockPos.ZERO : blockPosition.immutable();
@@ -341,5 +353,35 @@ public record ShipControlMap(
     // Normalize the value to a finite result
     private static double finite(double val) {
         return Double.isFinite(val) ? val : 0.0D;
+    }
+
+
+    // Initialize the ship control map
+    public ShipControlMap {
+        dimension = dimension == null ? "" : dimension;
+        controllerPosition = controllerPosition == null ? BlockPos.ZERO : controllerPosition.immutable();
+        centerOfMass = centerOfMass == null ? Vec3.ZERO : centerOfMass;
+        units = units == null ? List.of() : List.copyOf(units);
+        bearings = bearings == null ? List.of() : List.copyOf(bearings);
+        dockingConnectors = dockingConnectors == null
+                ? List.of() : List.copyOf(dockingConnectors);
+        crnDisplays = crnDisplays == null
+                ? List.of()
+                : crnDisplays.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        accDisplays = accDisplays == null
+                ? List.of()
+                : accDisplays.stream().filter(java.util.Objects::nonNull).distinct().toList();
+        seats = seats == null
+                ? List.of()
+                : seats.stream().filter(java.util.Objects::nonNull).distinct().toList();
+    }
+
+
+    // Store a mapped seat using its ship-local address
+    public record Seat(UUID subLevelId, BlockPos blockPosition) {
+        // Initialize the mapped seat
+        public Seat {
+            blockPosition = blockPosition == null ? BlockPos.ZERO : blockPosition.immutable();
+        }
     }
 }

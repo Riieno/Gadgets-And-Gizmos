@@ -29,7 +29,8 @@ public record AdvancedControllerRuntimePayload(BlockPos pos, UUID subLevelId, in
                                                Map<String, AdvancedGraphLiveValue> liveInputs,
                                                Map<String, AdvancedGraphLiveValue> liveOutputs,
                                                Map<String, Long> executionPulses,
-                                               Map<String, AdvancedGraphDocument.Value> variables)
+                                               Map<String, AdvancedGraphDocument.Value> variables,
+                                               Map<UUID, String> gogglesTrackerItems)
         implements CustomPacketPayload {
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -62,6 +63,16 @@ public record AdvancedControllerRuntimePayload(BlockPos pos, UUID subLevelId, in
         liveOutputs = liveOutputs == null ? Map.of() : Map.copyOf(liveOutputs);
         executionPulses = executionPulses == null ? Map.of() : Map.copyOf(executionPulses);
         variables = variables == null ? Map.of() : Map.copyOf(variables);
+        gogglesTrackerItems = gogglesTrackerItems == null ? Map.of() : Map.copyOf(gogglesTrackerItems);
+    }
+
+    public AdvancedControllerRuntimePayload(BlockPos pos, UUID subLevelId, int containerId,
+                                           Map<UUID, String> gogglesTrackerPairs,
+                                           Map<String, AdvancedGraphLiveValue> liveInputs,
+                                           Map<String, AdvancedGraphLiveValue> liveOutputs,
+                                           Map<String, Long> executionPulses,
+                                           Map<String, AdvancedGraphDocument.Value> variables){
+        this(pos, subLevelId, containerId, gogglesTrackerPairs, liveInputs, liveOutputs, executionPulses, variables, Map.of());
     }
 
     public AdvancedControllerRuntimePayload(BlockPos pos, UUID subLevelId, int containerId,
@@ -138,6 +149,9 @@ public record AdvancedControllerRuntimePayload(BlockPos pos, UUID subLevelId, in
         snapshot.put("Inputs", inputs);
         snapshot.put("Outputs", outputs);
         snapshot.put("Variables", variables);
+        CompoundTag items = new CompoundTag();
+        payload.gogglesTrackerItems().forEach((id, item) -> items.putString(id.toString(), item));
+        snapshot.put("BoundItems", items);
         GraphNbtPayloadCodec.write(buffer, snapshot);
     }
 
@@ -166,9 +180,12 @@ public record AdvancedControllerRuntimePayload(BlockPos pos, UUID subLevelId, in
         for(String key : variableTags.getAllKeys()){
             variables.put(key, AdvancedGraphDocument.Value.fromTag(variableTags.getCompound(key)));
         }
+        Map<UUID, String> items = new LinkedHashMap<>();
+        CompoundTag itemTags = snapshot.getCompound("BoundItems");
+        for(String key : itemTags.getAllKeys()) items.put(UUID.fromString(key), itemTags.getString(key));
         return new AdvancedControllerRuntimePayload(
                 pos, subLevelId, containerId, gogglesTrackerPairs,
-                liveInputs, liveOutputs, executionPulses, variables);
+                liveInputs, liveOutputs, executionPulses, variables, items);
     }
 
     private static void restoreValues(Map<String, AdvancedGraphLiveValue> values, CompoundTag tags){

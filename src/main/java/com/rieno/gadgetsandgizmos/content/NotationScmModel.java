@@ -91,19 +91,7 @@ public final class NotationScmModel {
 
     // Create the notation SCM model
     public static NotationScmModel from(ShipControlMap map) {
-        if (map == null) return empty();
-        int surfaces = map.bearings().stream()
-                .flatMap(bearing -> bearing.poses().stream())
-                .mapToInt(pose -> pose.aerodynamicSurfaces().size()).max().orElse(0);
-        List<ResponseSample> resp = new ArrayList<>(RESPONSE_SAMPLE_COUNT);
-        for (int idx = 0; idx < RESPONSE_SAMPLE_COUNT; idx++) {
-            double control = idx / (double) (RESPONSE_SAMPLE_COUNT - 1);
-            resp.add(simulate(map, control));
-        }
-        int controllableUnits = map.controllableUnitCount();
-        boolean hasResponseData = controllableUnits > 0 || surfaces > 0;
-        return new NotationScmModel(hasResponseData, controllableUnits, map.bearings().size(),
-                surfaces, map.updatedAt(), resp);
+        return from(map, ScmConfigurationProfile.empty());
     }
 
     // Check if this is available
@@ -394,5 +382,88 @@ public final class NotationScmModel {
                     tag.getDouble(OutputMode.TORQUE_X.id), tag.getDouble(OutputMode.TORQUE_Y.id),
                     tag.getDouble(OutputMode.TORQUE_Z.id), tag.getDouble(OutputMode.SPEED.id));
         }
+    }
+
+
+    // Build the plotter model from calibrated Sable data while respecting the
+    // player's persistent configuration blacklist. This is a prediction model,
+    // not a cloned or live-actuated second ship.
+    public static NotationScmModel from(ShipControlMap map,
+                                        ScmConfigurationProfile configuration) {
+        if (map == null) return empty();
+        int surfaces = map.bearings().stream()
+                .flatMap(bearing -> bearing.poses().stream())
+                .mapToInt(pose -> pose.aerodynamicSurfaces().size()).max().orElse(0);
+        List<ResponseSample> resp = new ArrayList<>(RESPONSE_SAMPLE_COUNT);
+        for (int idx = 0; idx < RESPONSE_SAMPLE_COUNT; idx++) {
+            double control = idx / (double) (RESPONSE_SAMPLE_COUNT - 1);
+            resp.add(simulate(map, control, configuration));
+        }
+        int controllableUnits = (int) map.units().stream().filter(ShipControlMap.PropulsionUnit::controllable)
+                .filter(unit -> configuration == null || !configuration.isConfiguredFor(map)
+                        || configuration.allows(unit)).count();
+        boolean hasResponseData = controllableUnits > 0 || surfaces > 0;
+        return new NotationScmModel(hasResponseData, controllableUnits, map.bearings().size(),
+                surfaces, map.updatedAt(), resp);
+    }
+
+
+    // Get the simulate
+    private static ResponseSample simulate(ShipControlMap map, double control,
+                                           ScmConfigurationProfile configuration) {
+        Map<Integer, ShipControlMap.BearingResponse> bearingResponses = new LinkedHashMap<>();
+        List<ShipControlMap.BearingPose> selectedPoses = new ArrayList<>();
+        for (ShipControlMap.BearingUnit bearing : map.bearings()) {
+            ShipControlMap.BearingPose pose = closestPose(bearing, control);
+            if (pose == null) continue;
+            selectedPoses.add(pose);
+            pose.responses().forEach(resp -> bearingResponses.put(resp.propulsionUnitIndex(), resp));
+        }
+
+        Vec3 totalForce = Vec3.ZERO;
+        Vec3 totalTorque = Vec3.ZERO;
+        double speed = 0.0D;
+        for (ShipControlMap.PropulsionUnit unit : map.units()) {
+            if (!unit.controllable() || configuration != null
+                    && configuration.isConfiguredFor(map) && !configuration.allows(unit)) continue;
+            double thrust = calibratedThrust(unit, control);
+            ShipControlMap.BearingResponse bearing = bearingResponses.get(unit.index());
+            Vec3 pos = unit.rootPosition();
+            Vec3 dir = unit.forceDirection();
+            if (bearing != null) {
+                double ratio = unit.maxThrust() <= 1.0E-9D
+                        ? control : clamp(thrust / unit.maxThrust(), 0.0D, 1.0D);
+                thrust = bearing.maxThrust() * ratio;
+                pos = bearing.rootPosition();
+                dir = bearing.forceDirection();
+            }
+            Vec3 force = dir.scale(thrust);
+            totalForce = totalForce.add(force);
+            totalTorque = totalTorque.add(pos.subtract(map.centerOfMass()).cross(force));
+            double speedRatio = unit.maxThrust() <= 1.0E-9D
+                    ? control : clamp(thrust / unit.maxThrust(), 0.0D, 1.0D);
+            speed = Math.max(speed, unit.maxSpeed() * speedRatio);
+        }
+
+        for (ShipControlMap.BearingPose pose : selectedPoses) {
+            List<ShipControlMap.AerodynamicSurface> surfaces = pose.aerodynamicSurfaces();
+            double weightTotal = surfaces.stream().mapToDouble(NotationScmModel::surfaceWeight).sum();
+            if (surfaces.isEmpty() || weightTotal <= 1.0E-9D) continue;
+            Vec3 surfaceForce = Vec3.ZERO;
+            Vec3 surfaceTorque = Vec3.ZERO;
+            for (ShipControlMap.AerodynamicSurface surface : surfaces) {
+                Vec3 force = surface.normal().scale(surfaceWeight(surface) / weightTotal);
+                surfaceForce = surfaceForce.add(force);
+                surfaceTorque = surfaceTorque.add(
+                        surface.rootPosition().subtract(map.centerOfMass()).cross(force));
+            }
+            surfaceForce = scaledAuthority(surfaceForce, pose.maxAerodynamicForce() * control);
+            surfaceTorque = scaledAuthority(surfaceTorque, pose.maxAerodynamicTorque() * control);
+            totalForce = totalForce.add(surfaceForce);
+            totalTorque = totalTorque.add(surfaceTorque);
+        }
+
+        return new ResponseSample(control, totalForce.length(), totalForce.x, totalForce.y, totalForce.z,
+                totalTorque.length(), totalTorque.x, totalTorque.y, totalTorque.z, speed);
     }
 }

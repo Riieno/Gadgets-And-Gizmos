@@ -18,6 +18,9 @@ import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 
 // Give the advanced controller its embedded shape, runtime block entity and server ticker
 public class AdvancedContraptionControllerBlock extends AnalogueContraptionControllerBlock {
@@ -69,5 +72,28 @@ public class AdvancedContraptionControllerBlock extends AnalogueContraptionContr
                     AdvancedContraptionControllerBlockEntity::tickServer;
         }
         return null;
+    }
+
+
+    // Record the player placing the ACC before it joins a ship
+    @Override
+    public void setPlacedBy(Level level, BlockPos pos, BlockState state, @Nullable LivingEntity placer, ItemStack stack) {
+        super.setPlacedBy(level, pos, state, placer, stack);
+        if(!level.isClientSide && placer instanceof Player player
+                && level.getBlockEntity(pos) instanceof AdvancedContraptionControllerBlockEntity controller){
+            controller.setShipPermissionPlacerId(player.getUUID());
+        }
+    }
+
+
+    // Release the ship when its controller is removed, including embedded SCM mounts
+    @Override
+    protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState next, boolean isMoving){
+        if(!level.isClientSide && !isMoving && state.getBlock() != next.getBlock()
+                && level.getBlockEntity(pos) instanceof AdvancedContraptionControllerBlockEntity controller
+                && !controller.isAssemblyTransferPending()){
+            ShipPermissions.unclaim(level, pos);
+        }
+        super.onRemove(state, level, pos, next, isMoving);
     }
 }

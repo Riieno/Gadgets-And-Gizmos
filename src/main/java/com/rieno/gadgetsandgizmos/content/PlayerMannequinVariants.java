@@ -19,6 +19,8 @@ import java.util.Map;
 
 // Map mannequin model variants to their saved IDs and dimensions
 public final class PlayerMannequinVariants {
+
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -39,6 +41,8 @@ public final class PlayerMannequinVariants {
             registerBuiltIn("christeroph", Component.literal("Christeroph"), true);
     public static final PlayerMannequinVariant RAYRAY = registerBuiltIn("rayray", Component.literal("RayRay"));
     public static final PlayerMannequinVariant DJRAG = registerBuiltIn("djrag", Component.literal("Djrag"));
+    public static final PlayerMannequinVariant WANIIII = registerBuiltIn("waniiii_", Component.literal("Waniiii_"));
+    public static final PlayerMannequinVariant ZELAUX = registerBuiltIn("zelaux_", Component.literal("Zelaux_"));
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -144,4 +148,6 @@ public final class PlayerMannequinVariants {
         }
         return val.strip().toLowerCase(Locale.ROOT);
     }
+
+
 }

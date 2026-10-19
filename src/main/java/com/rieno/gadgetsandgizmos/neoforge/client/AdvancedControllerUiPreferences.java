@@ -42,7 +42,7 @@ final class AdvancedControllerUiPreferences {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final String FILE_NAME = "advanced_controller_ui.json";
     private static final State DEFAULTS = new State(
-            false, false, false, false, false, 150, 130, false, Set.of());
+            false, false, false, false, false, 150, 130, 116, false, 16, Set.of());
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -166,7 +166,8 @@ final class AdvancedControllerUiPreferences {
     // Store the current state
     record State(boolean leftSidebarCollapsed, boolean rightSidebarCollapsed,
                  boolean optionsCollapsed, boolean targetsCollapsed, boolean variablesCollapsed,
-                 int optionsHeight, int targetsHeight, boolean saveOnClose,
+                 int optionsHeight, int targetsHeight, int variablesHeight, boolean saveOnClose,
+                 int gridSnapStep,
                  Set<String> collapsedNodeIds) {
         // Get the normalized
         private State normalized() {
@@ -179,8 +180,12 @@ final class AdvancedControllerUiPreferences {
             }
             return new State(leftSidebarCollapsed, rightSidebarCollapsed,
                     optionsCollapsed, targetsCollapsed, variablesCollapsed,
-                    Mth.clamp(optionsHeight, 24, 800), Mth.clamp(targetsHeight, 24, 800), saveOnClose,
+                    Mth.clamp(optionsHeight, 24, 800), Mth.clamp(targetsHeight, 24, 800),
+                    variablesHeight <= 0 ? 116 : Mth.clamp(variablesHeight, 36, 800), saveOnClose,
+                    gridSnapStep <= 0 ? 16 : Mth.clamp(gridSnapStep, 4, 64),
                     Set.copyOf(normalizedCollapsedNodes));
         }
     }
+
+
 }

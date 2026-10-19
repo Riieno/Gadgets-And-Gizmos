@@ -43,6 +43,7 @@ import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedHudImageUploadPayload
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedHudInteractionPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayTextInputOpenPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayTextInputPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayWidgetInputPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayModePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayComputerInputPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AileronBearingConfigPayload;
@@ -124,6 +125,19 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import org.slf4j.Logger;
 
 import java.lang.reflect.Method;
+import com.rieno.gadgetsandgizmos.neoforge.network.ScmConfigurationSnapshotPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayTextScalePayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayCameraControlPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayCameraTakeoverPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayCameraInteractPayload;
+
+
+import com.rieno.gadgetsandgizmos.neoforge.network.PathfinderDebugRendererPayload;
+
+import com.rieno.gadgetsandgizmos.neoforge.network.ShippingRouteEditPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.ShippingRouteSplinePayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.ShippingRouteVisibilityPayload;
+import net.neoforged.neoforge.event.server.ServerStartedEvent;
 
 // Connect server lifecycle and gameplay events to the addon's stateful systems
 public final class CTCommonEvents {
@@ -226,13 +240,24 @@ public final class CTCommonEvents {
                 registrar.playToServer(AdvancedHudInteractionPayload.TYPE, AdvancedHudInteractionPayload.STREAM_CODEC,
                                 AdvancedHudInteractionPayload::handle);
                 // ------------------------------------DISPLAYS / PORTABLE CONTROLS------------------------------------
+                registrar.playToServer(AccDisplayWidgetInputPayload.TYPE, AccDisplayWidgetInputPayload.STREAM_CODEC,
+                                AccDisplayWidgetInputPayload::handle);
                 registrar.playToServer(AccDisplayTextInputPayload.TYPE, AccDisplayTextInputPayload.STREAM_CODEC,
                                 AccDisplayTextInputPayload::handle);
                 registrar.playToServer(AccDisplayModePayload.TYPE, AccDisplayModePayload.STREAM_CODEC,
                                 AccDisplayModePayload::handle);
+                registrar.playToServer(AccDisplayTextScalePayload.TYPE, AccDisplayTextScalePayload.STREAM_CODEC,
+                                AccDisplayTextScalePayload::handle);
                 registrar.playToServer(AccDisplayComputerInputPayload.TYPE,
                                 AccDisplayComputerInputPayload.STREAM_CODEC,
                                 AccDisplayComputerInputPayload::handle);
+                registrar.playToServer(AccDisplayCameraControlPayload.TYPE,
+                                AccDisplayCameraControlPayload.STREAM_CODEC,
+                                AccDisplayCameraControlPayload::handle);
+                registrar.playToServer(AccDisplayCameraTakeoverPayload.TYPE,
+                                AccDisplayCameraTakeoverPayload.STREAM_CODEC, AccDisplayCameraTakeoverPayload::handle);
+                registrar.playToServer(AccDisplayCameraInteractPayload.TYPE,
+                                AccDisplayCameraInteractPayload.STREAM_CODEC, AccDisplayCameraInteractPayload::handle);
                 registrar.playToServer(PortableContraptionControllerKeyPayload.TYPE, PortableContraptionControllerKeyPayload.STREAM_CODEC,
                                 PortableContraptionControllerKeyPayload::handle);
                 registrar.playToServer(PortableContraptionControllerModePayload.TYPE, PortableContraptionControllerModePayload.STREAM_CODEC,
@@ -267,14 +292,27 @@ public final class CTCommonEvents {
                 // ------------------------------------SHIPPING / TOOLS------------------------------------
                 registrar.playToServer(ShippingManifestRefreshPayload.TYPE, ShippingManifestRefreshPayload.STREAM_CODEC,
                                 ShippingManifestRefreshPayload::handle);
+                
                 registrar.playToServer(ShippingAutoRefuelPayload.TYPE, ShippingAutoRefuelPayload.STREAM_CODEC,
                                 ShippingAutoRefuelPayload::handle);
+                registrar.playToServer(ShippingRouteVisibilityPayload.TYPE,
+                                ShippingRouteVisibilityPayload.STREAM_CODEC,
+                                ShippingRouteVisibilityPayload::handle);
+                registrar.playToServer(ShippingRouteEditPayload.TYPE,
+                                ShippingRouteEditPayload.STREAM_CODEC,
+                                ShippingRouteEditPayload::handle);
                 registrar.playToServer(ShipDockConfigPayload.TYPE, ShipDockConfigPayload.STREAM_CODEC,
                                 ShipDockConfigPayload::handle);
+                
+                
+        
                 registrar.playToServer(DiagnosticTabletActionPayload.TYPE, DiagnosticTabletActionPayload.STREAM_CODEC,
                                 DiagnosticTabletActionPayload::handle);
+                
                 registrar.playToServer(ContraptionNetworkLinkerSyncPayload.TYPE, ContraptionNetworkLinkerSyncPayload.STREAM_CODEC,
                                 ContraptionNetworkLinkerSyncPayload::handle);
+                
+        
                 registrar.playToServer(ArmorStandPoseSyncPayload.TYPE, ArmorStandPoseSyncPayload.STREAM_CODEC,
                                 ArmorStandPoseSyncPayload::handle);
                 registrar.playToServer(MannequinSkinChangePayload.TYPE, MannequinSkinChangePayload.STREAM_CODEC,
@@ -331,6 +369,10 @@ public final class CTCommonEvents {
                 registrar.playToClient(AdvancedControllerGraphSnapshotPayload.TYPE,
                                 AdvancedControllerGraphSnapshotPayload.STREAM_CODEC,
                                 AdvancedControllerGraphSnapshotPayload::handle);
+                
+                registrar.playToClient(ScmConfigurationSnapshotPayload.TYPE,
+                                ScmConfigurationSnapshotPayload.STREAM_CODEC,
+                                ScmConfigurationSnapshotPayload::handle);
                 registrar.playToClient(AdvancedControllerRuntimePayload.TYPE, AdvancedControllerRuntimePayload.STREAM_CODEC,
                                 AdvancedControllerRuntimePayload::handle);
                 registrar.playToClient(FunctionPlotterDataPayload.TYPE,
@@ -344,6 +386,12 @@ public final class CTCommonEvents {
                                 AccDisplayTextInputOpenPayload::handle);
                 registrar.playToClient(GizmosLinkHighlightPayload.TYPE, GizmosLinkHighlightPayload.STREAM_CODEC,
                                 GizmosLinkHighlightPayload::handle);
+                registrar.playToClient(PathfinderDebugRendererPayload.TYPE,
+                                PathfinderDebugRendererPayload.STREAM_CODEC,
+                                PathfinderDebugRendererPayload::handle);
+                registrar.playToClient(ShippingRouteSplinePayload.TYPE,
+                                ShippingRouteSplinePayload.STREAM_CODEC,
+                                ShippingRouteSplinePayload::handle);
                 // ------------------------------------CLIENT RUNTIME / CONFIG------------------------------------
                 registrar.playToClient(ControllerRuntimeSyncPayload.TYPE, ControllerRuntimeSyncPayload.STREAM_CODEC,
                                 ControllerRuntimeSyncPayload::handle);
@@ -418,6 +466,7 @@ public final class CTCommonEvents {
     // Register the capabilities
     public static void registerCapabilities(RegisterCapabilitiesEvent evt) {
         // ------------------------------------STORAGE CAPABILITIES------------------------------------
+
         if (CTBlockEntities.SHIP_DOCK != null) {
             evt.registerBlockEntity(Capabilities.ItemHandler.BLOCK, CTBlockEntities.SHIP_DOCK.get(),
                     (com.rieno.gadgetsandgizmos.content.ShipDockBlockEntity be, Direction side) -> be.getItemBuffer());
@@ -474,6 +523,21 @@ public final class CTCommonEvents {
             evt.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, CTBlockEntities.INDUSTRIAL_MOTOR.get(),
                     (IndustrialMotorBlockEntity be, Direction side) -> be.getEnergyStorage());
         }
+        if (CTBlockEntities.SMART_VAULT != null) {
+            evt.registerBlockEntity(Capabilities.ItemHandler.BLOCK, CTBlockEntities.SMART_VAULT.get(),
+                    (com.rieno.gadgetsandgizmos.content.SmartVaultBlockEntity be, Direction side) ->
+                            be.getItemHandler());
+        }
+        if (CTBlockEntities.SMART_TANK != null) {
+            evt.registerBlockEntity(Capabilities.FluidHandler.BLOCK, CTBlockEntities.SMART_TANK.get(),
+                    (com.rieno.gadgetsandgizmos.content.SmartTankBlockEntity be, Direction side) ->
+                            be.getFluidHandler());
+        }
+        if (CTBlockEntities.SMART_BATTERY != null) {
+            evt.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, CTBlockEntities.SMART_BATTERY.get(),
+                    (com.rieno.gadgetsandgizmos.content.SmartBatteryBlockEntity be, Direction side) ->
+                            be.getEnergyHandler());
+        }
         // ------------------------------------OPTIONAL COMPAT------------------------------------
         if (ModList.get().isLoaded("computercraft")) {
 
@@ -506,4 +570,6 @@ public final class CTCommonEvents {
                         }
                 }
     }
+
+
 }

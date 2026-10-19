@@ -58,6 +58,14 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Supplier;
+import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
+import com.simibubi.create.content.kinetics.simpleRelays.SimpleKineticBlockEntity;
+import com.rieno.gadgetsandgizmos.content.CameraBlockEntity;
+import com.rieno.gadgetsandgizmos.content.RatchetCogwheelBlockEntity;
+import com.rieno.gadgetsandgizmos.content.SmartBatteryBlockEntity;
+import com.rieno.gadgetsandgizmos.content.SmartTankBlockEntity;
+import com.rieno.gadgetsandgizmos.content.SmartVaultBlockEntity;
+import com.rieno.gadgetsandgizmos.content.ShipControlModuleBlockEntity;
 
 // Register addon block entities
 public final class CTBlockEntities {
@@ -71,7 +79,26 @@ public final class CTBlockEntities {
 
     public static final DeferredRegister<BlockEntityType<?>> REGISTRAR = DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, CreateThrusters.MOD_ID);
 
-    @Nullable
+    
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<KineticBlockEntity>> BLACKSTONE_ENCASED_SHAFT =
+            register("blackstone_encased_shaft", () -> BlockEntityType.Builder.of(
+                    (pos, state) -> new KineticBlockEntity(CTBlockEntities.BLACKSTONE_ENCASED_SHAFT.get(), pos, state),
+                    CTBlocks.BLACKSTONE_ENCASED_SHAFT.get()).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<SimpleKineticBlockEntity>> BLACKSTONE_ENCASED_COGWHEEL =
+            register("blackstone_encased_cogwheel", () -> BlockEntityType.Builder.of(
+                    (pos, state) -> new SimpleKineticBlockEntity(CTBlockEntities.BLACKSTONE_ENCASED_COGWHEEL.get(), pos, state),
+                    CTBlocks.BLACKSTONE_ENCASED_COGWHEEL.get()).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<SimpleKineticBlockEntity>> BLACKSTONE_ENCASED_LARGE_COGWHEEL =
+            register("blackstone_encased_large_cogwheel", () -> BlockEntityType.Builder.of(
+                    (pos, state) -> new SimpleKineticBlockEntity(CTBlockEntities.BLACKSTONE_ENCASED_LARGE_COGWHEEL.get(), pos, state),
+                    CTBlocks.BLACKSTONE_ENCASED_LARGE_COGWHEEL.get()).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ShipControlModuleBlockEntity>> SHIP_CONTROL_MODULE =
+            register("ship_control_module", () -> BlockEntityType.Builder.of(
+                    ShipControlModuleBlockEntity::new, CTBlocks.SHIP_CONTROL_MODULE.get()).build(null));
+@Nullable
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ThrusterBlockEntity>> THRUSTER = register("thruster",
             () -> BlockEntityType.Builder.of(ThrusterBlockEntity::new, CTBlocks.THRUSTER.get()).build(null));
 
@@ -153,7 +180,12 @@ public final class CTBlockEntities {
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<BiDirectionalGearshiftBlockEntity>> BI_DIRECTIONAL_GEARSHIFT = register("bi_directional_gearshift",
             () -> BlockEntityType.Builder.of(BiDirectionalGearshiftBlockEntity::new, CTBlocks.BI_DIRECTIONAL_GEARSHIFT.get()).build(null));
 
+    
     @Nullable
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<RatchetCogwheelBlockEntity>> RATCHET_COGWHEEL = register("ratchet_cogwheel",
+            () -> BlockEntityType.Builder.of(RatchetCogwheelBlockEntity::new,
+                    CTBlocks.RATCHET_COGWHEEL.get(), CTBlocks.LARGE_RATCHET_COGWHEEL.get()).build(null));
+@Nullable
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<AnalogueJoystickBlockEntity>> ANALOGUE_JOYSTICK = register("analogue_joystick",
             () -> BlockEntityType.Builder.of(AnalogueJoystickBlockEntity::new, CTBlocks.ANALOGUE_JOYSTICK.get()).build(null));
 
@@ -169,8 +201,11 @@ public final class CTBlockEntities {
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<AdvancedContraptionControllerBlockEntity>> ADVANCED_CONTRAPTION_CONTROLLER = register("advanced_contraption_controller",
             () -> BlockEntityType.Builder.of(AdvancedContraptionControllerBlockEntity::new, CTBlocks.ADVANCED_CONTRAPTION_CONTROLLER.get()).build(null));
 
+    
     @Nullable
-    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<AccDisplayBlockEntity>> ACC_DISPLAY =
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<CameraBlockEntity>> CAMERA =
+            register("camera", () -> BlockEntityType.Builder.of(CameraBlockEntity::new, CTBlocks.CAMERA.get()).build(null));
+public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<AccDisplayBlockEntity>> ACC_DISPLAY =
             CTBlocks.ACC_DISPLAY == null ? null : register("acc_display",
                     () -> BlockEntityType.Builder.of(AccDisplayBlockEntity::new,
                             CTBlocks.ACC_DISPLAY.get(), CTBlocks.ACC_DISPLAY_BLOCK.get(),
@@ -191,7 +226,22 @@ public final class CTBlockEntities {
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ShippingManifestBlockEntity>> SHIPPING_MANIFEST = register("shipping_manifest",
             () -> BlockEntityType.Builder.of(ShippingManifestBlockEntity::new, CTBlocks.SHIPPING_MANIFEST.get()).build(null));
 
+    
     @Nullable
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<SmartVaultBlockEntity>> SMART_VAULT =
+            register("smart_vault", () -> BlockEntityType.Builder.of(
+                    SmartVaultBlockEntity::new, CTBlocks.SMART_VAULT.get()).build(null));
+
+    @Nullable
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<SmartBatteryBlockEntity>> SMART_BATTERY =
+            register("smart_battery", () -> BlockEntityType.Builder.of(
+                    SmartBatteryBlockEntity::new, CTBlocks.SMART_BATTERY.get()).build(null));
+
+    @Nullable
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<SmartTankBlockEntity>> SMART_TANK =
+            register("smart_tank", () -> BlockEntityType.Builder.of(
+                    SmartTankBlockEntity::new, CTBlocks.SMART_TANK.get()).build(null));
+@Nullable
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ShipDockBlockEntity>> SHIP_DOCK = register("ship_dock",
             () -> BlockEntityType.Builder.of(ShipDockBlockEntity::new, CTBlocks.SHIP_DOCK.get()).build(null));
 
@@ -269,4 +319,6 @@ public final class CTBlockEntities {
     // Initialize the CT block entities
     private CTBlockEntities() {
     }
+
+
 }

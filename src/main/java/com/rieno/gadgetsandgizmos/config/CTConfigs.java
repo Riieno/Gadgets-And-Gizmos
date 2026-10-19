@@ -19,6 +19,7 @@ import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppPurchaseScope;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmBuiltinControlModes;
 
 // Define every common, server and client setting exposed by the addon
 public final class CTConfigs {
@@ -73,6 +74,8 @@ public final class CTConfigs {
         SERVER_SPEC = serverBuilder.build();
 
         featureToggleSnapshot = defaultFeatureToggleSnapshot();
+        ScmBuiltinControlModes.setGroundSeaEnabled(false);
+        ScmBuiltinControlModes.setPlaneEnabled(false);
     }
 
     // Initialize the CT configs
@@ -125,9 +128,6 @@ public final class CTConfigs {
         Map<String, ModConfigSpec.ConfigValue<Boolean>> values = new LinkedHashMap<>();
         builder.push(group);
         for (Map.Entry<String, Boolean> entry : defaults.entrySet()) {
-            if ("diagnostic_tablet".equals(entry.getKey())) {
-                continue;
-            }
             String featureLabel = CTFeatureToggles.featureLabel(entry.getKey());
             values.put(entry.getKey(), builder
                     .comment("Allow " + featureLabel + " on this server. Existing content is not removed automatically.")
@@ -140,26 +140,18 @@ public final class CTConfigs {
     // Sync the server feature config
     private static synchronized void syncServerFeatureConfig(ModConfig config) {
         if (config.getSpec() == SERVER_SPEC) {
-            FeatureToggleSnapshot current = featureToggleSnapshot;
+            ScmBuiltinControlModes.setGroundSeaEnabled(Boolean.TRUE.equals(SERVER.enableScmGroundSea.get()));
+            ScmBuiltinControlModes.setPlaneEnabled(Boolean.TRUE.equals(SERVER.enableScmPlane.get()));
             Map<String, Boolean> blocks = new LinkedHashMap<>(
                     snapshotFeatureValues(SERVER.blockFeatures, CTFeatureToggles.blockDefaults()));
             Map<String, Boolean> items = new LinkedHashMap<>(
                     snapshotFeatureValues(SERVER.itemFeatures, CTFeatureToggles.itemDefaults()));
-            boolean tabletEnabled = current.blocks().getOrDefault("diagnostic_tablet", false); // Disable the Smart Tablet by default in release
-            blocks.put("diagnostic_tablet", tabletEnabled);
-            items.put("diagnostic_tablet", tabletEnabled);
             featureToggleSnapshot = new FeatureToggleSnapshot(
                     Map.copyOf(blocks), Map.copyOf(items),
                     snapshotFeatureValues(SERVER.entityFeatures, CTFeatureToggles.entityDefaults()));
         } else if (config.getSpec() == COMMON_SPEC) {
-            FeatureToggleSnapshot current = featureToggleSnapshot;
-            Map<String, Boolean> blocks = new LinkedHashMap<>(current.blocks());
-            Map<String, Boolean> items = new LinkedHashMap<>(current.items());
-            boolean tabletEnabled = Boolean.TRUE.equals(COMMON.enableDiagnosticTablet.get());
-            blocks.put("diagnostic_tablet", tabletEnabled);
-            items.put("diagnostic_tablet", tabletEnabled);
-            featureToggleSnapshot = new FeatureToggleSnapshot(
-                    Map.copyOf(blocks), Map.copyOf(items), current.entities());
+            ScmBuiltinControlModes.setIkEnabled(Boolean.TRUE.equals(COMMON.enableScmIk.get()));
+            return;
         } else {
             return;
         }
@@ -194,6 +186,10 @@ public final class CTConfigs {
 
     // Keep visual and input settings on the client
     public static final class Client {
+        // Refresh rate for each visible camera feed
+        public final ModConfigSpec.IntValue cameraMinimumRefreshRate;
+        // Pixel resolution of the longest edge of each camera feed
+        public final ModConfigSpec.IntValue cameraFeedResolution;
         // Show detailed goggle tooltips
         public final ModConfigSpec.BooleanValue showDetailedGoggleTooltips;
         // Show shipping manifest goggle tooltip
@@ -206,20 +202,37 @@ public final class CTConfigs {
         public final ModConfigSpec.BooleanValue enableMannequinPoserGui;
         // Prefer straw statues poser GUI
         public final ModConfigSpec.BooleanValue preferStrawStatuesPoserGui;
-        // Advanced controller V2 UI
-        public final ModConfigSpec.BooleanValue advancedControllerV2Ui;
         // Thruster max volume
+        public final ModConfigSpec.BooleanValue advancedControllerV2Ui;
         public final ModConfigSpec.DoubleValue thrusterMaxVolume;
         // Thruster particle scale
         public final ModConfigSpec.DoubleValue thrusterParticleScale;
         // Light the surroundings of active thrusters
         public final ModConfigSpec.BooleanValue thrustersEmitLight;
+        // Use the V2 Thruster plume renderer
+        public final ModConfigSpec.BooleanValue useThrusterPlumeV2Renderer;
+        // Use animated metaballs for V2 thruster plumes
+        public final ModConfigSpec.BooleanValue usePlumeMetaballRendering;
+        // Light the world along active thruster plumes
+        public final ModConfigSpec.BooleanValue plumesEmitLight;
+        // Select the active seasonal visual effect
+        public final ModConfigSpec.EnumValue<SeasonalPlumeEffects.Force> forceSeasonalEffects;
+        // Select the Pride Month plume cycle
+        public final ModConfigSpec.EnumValue<SeasonalPlumeEffects.PrideEffect> pridePlumeEffect;
+        // Select the Pride Month plume colors
+        public final ModConfigSpec.EnumValue<SeasonalPlumeEffects.PridePalette> prideColorPalette;
         // Claw marker render mode
         public final ModConfigSpec.EnumValue<ClawMarkerRenderMode> clawMarkerRenderMode;
 
         // Initialize the client
         private Client(ModConfigSpec.Builder builder) {
             builder.comment("Client-side visuals and UX").push("client");
+            cameraMinimumRefreshRate = builder
+                    .comment("Target frames per second for each visible ACC Display or CCTV tablet camera feed. Actual FPS is limited by your computer's frame rate. Changes apply to active feeds.")
+                    .defineInRange("cameraMinimumRefreshRate", 10, 1, 60);
+            cameraFeedResolution = builder
+                    .comment("Pixel resolution of the longest edge of ACC Display and CCTV tablet camera feeds. Aspect ratio is preserved. Higher values improve detail and use more GPU resources. Changes apply to active feeds.")
+                    .defineInRange("cameraFeedResolution", 320, 64, 2048);
             showDetailedGoggleTooltips = builder
                     .comment("Legacy option; addon goggle tooltip details now follow Create's Sneak detail behavior")
                     .define("showDetailedGoggleTooltips", false);
@@ -251,9 +264,35 @@ public final class CTConfigs {
                     .comment("Thrusters emit light")
                     .translation("createthrusters.configuration.thrustersEmitLight")
                     .define("thrustersEmitLight", true);
+            useThrusterPlumeV2Renderer = builder
+                    .comment("Use Thruster Plume V2 Renderer with blue, orange/yellow, and burnt sienna exhaust")
+                    .define("useThrusterPlumeV2Renderer", true);
+            usePlumeMetaballRendering = builder
+                    .comment("Use Plume metaball rendering for the active V2 exhaust")
+                    .define("usePlumeMetaballRendering", true);
+            plumesEmitLight = builder
+                    .comment("Plumes emit light into the surrounding world")
+                    .define("plumesEmitLight", false);
             clawMarkerRenderMode = builder
                     .comment("Claw marker render mode is disabled; OFF is enforced")
                     .defineEnum("clawMarkerRenderMode", ClawMarkerRenderMode.OFF);
+            builder.comment("Seasonal visual effects").push("seasonal");
+            forceSeasonalEffects = builder
+                    .comment("Default uses the current season; Off disables seasonal effects; the other values force a season")
+                    .defineEnum("forceSeasonalEffects", SeasonalPlumeEffects.Force.DEFAULT);
+            builder.comment("Pride Month effects").push("pride_month");
+            pridePlumeEffect = builder
+                    .comment("Solid cycles one color across the plume; Rainbow moves a gradient along it")
+                    .defineEnum("thrusterPlumeEffect", SeasonalPlumeEffects.PrideEffect.SOLID);
+            prideColorPalette = builder
+                    .comment("Color palette for Pride Month thruster exhaust")
+                    .defineEnum("colorPalette", SeasonalPlumeEffects.PridePalette.DEFAULT);
+            builder.pop();
+            builder.comment("Hallows Eve effects").push("hallows_eve");
+            builder.pop();
+            builder.comment("Christmas effects").push("christmas");
+            builder.pop();
+            builder.pop();
             builder.pop();
         }
     }
@@ -344,13 +383,23 @@ public final class CTConfigs {
         public final ModConfigSpec.DoubleValue entityLauncherGrappleSwingAcceleration;
         // Advanced controller max nodes
         public final ModConfigSpec.IntValue advancedControllerMaxNodes;
-        // Enable diagnostic tablet
+        // Enable experimental SCM IK
+        public final ModConfigSpec.BooleanValue enableScmIk;
+        // Allow Flight Control graph nodes without their dedicated blocks
+        public final ModConfigSpec.BooleanValue easyFlightControlIntegration;
+        // Enable smart tablet
         public final ModConfigSpec.BooleanValue enableDiagnosticTablet;
         // App purchase Ownership Scope
         public final ModConfigSpec.EnumValue<TabletAppPurchaseScope> appPurchaseScope;
         // Initialize the common
         private Common(ModConfigSpec.Builder builder) {
             builder.comment("Gameplay values shared between client and server").push("common");
+            builder.comment("Flight Control graph integration").push("flight_control");
+            easyFlightControlIntegration = builder
+                    .comment("Easy Flight control integration. Allow control nodes without dedicated Flight Control blocks. A Creative Flight Control Computer on the sublevel also enables this. Its node always requires the physical block. Existing blocks synchronize with their nodes in either mode. The HUD node is always available.")
+                    .translation("createthrusters.configuration.easyFlightControlIntegration")
+                    .define("easyFlightControlIntegration", false);
+            builder.pop();
             builder.comment("Thruster propulsion, fuel, beam mode, and upgrade scaling").push("thruster");
             thrusterBaseThrust = builder
                     .comment("Base thrust at 100% throttle for normal thrusters. Default 900.")
@@ -418,7 +467,7 @@ public final class CTConfigs {
 
             builder.comment("Gyroscope and gearbox controls").push("gearbox");
             gearboxMaxStaticAngleDeg = builder
-                    .comment("Maximum static per-face angle reported by the bi-directional gearbox from gyro input")
+                    .comment("Default per-face angle limit for gyro input; explicit Smart Gearbox face limits override this value")
                     .defineInRange("gearboxMaxStaticAngleDeg", 90.0D, 1.0D, 180.0D);
             gearboxReverseWithRedstone = builder
                     .comment("Invert gearbox gyro-derived face angles and redstone outputs when the gearbox is powered")
@@ -511,11 +560,14 @@ public final class CTConfigs {
             advancedControllerMaxNodes = builder
                     .comment("Maximum number of nodes allowed across an Advanced Contraption Controller graph and its functions")
                     .defineInRange("maxNodes", 512, 32, 4096);
+            enableScmIk = builder
+                    .comment("Enable experimental inverse-kinematics locomotion in the Advanced Contraption Controller")
+                    .define("enableIk", false);
             builder.pop();
 
             builder.comment("Smart Tablet availability").push("diagnostic_tablet");
             enableDiagnosticTablet = builder
-                    .comment("Enable the Smart Tablet block, item, user interface, apps and networking")
+                    .comment("Legacy startup fallback for the Smart Tablet. The server.features.blocks.diagnostic_tablet setting takes precedence.")
                     .define("enabled", false); // Disable the Tablet by default in release
             builder.pop();
 
@@ -541,9 +593,8 @@ public final class CTConfigs {
         public final ModConfigSpec.BooleanValue enableGyroscopeLinking;
         // Gyroscope link range
         public final ModConfigSpec.IntValue gyroscopeLinkRange;
-        // Virtual orientation source timeout tick count
-        public final ModConfigSpec.IntValue virtualOrientationSourceTimeoutTicks;
         // Controller orientation source max tilt in degrees
+        public final ModConfigSpec.IntValue virtualOrientationSourceTimeoutTicks;
         public final ModConfigSpec.DoubleValue controllerOrientationSourceMaxTiltDegrees;
         // Allow thruster manual toggle
         public final ModConfigSpec.BooleanValue allowThrusterManualToggle;
@@ -556,8 +607,10 @@ public final class CTConfigs {
         public final ModConfigSpec.IntValue physicsGantryBeltWheelMaxDistance;
         // Shipping schedule work spread tick count
         public final ModConfigSpec.IntValue shippingScheduleWorkSpreadTicks;
-        // Enable SCM initialization V2
-        public final ModConfigSpec.BooleanValue enableScmInitializationV2;
+        // Allow incomplete ground/sea vehicle and steering modes
+        public final ModConfigSpec.BooleanValue enableScmGroundSea;
+        // Allow incomplete plane vehicle mode
+        public final ModConfigSpec.BooleanValue enableScmPlane;
         // Tracked block features
         public final Map<String, ModConfigSpec.ConfigValue<Boolean>> blockFeatures;
         // Tracked item features
@@ -611,14 +664,19 @@ public final class CTConfigs {
                     .defineInRange("physicsGantryBeltWheelMaxDistance", 64, 1, 64);
             builder.comment("Advanced Contraption Controller and Ship Control Module tuning")
                     .push("ship_control");
+            enableScmGroundSea = builder
+                    .comment("Incomplete: enable SCM Ground/Sea vehicles and front-wheel, rear-wheel, four-wheel and tank steering. Disabled by default.")
+                    .define("enableScmGroundSea", false);
+            enableScmPlane = builder
+                    .comment("Incomplete: enable SCM Plane vehicles. Disabled by default. Rudder steering remains available for airships.")
+                    .define("enableScmPlane", false);
             shippingScheduleWorkSpreadTicks = builder
                     .comment("Spread shipping schedule maintenance and state updates over this many ticks. Ship physics control still runs every tick.")
                     .defineInRange("shippingScheduleWorkSpreadTicks", 2, 1, 4);
-            enableScmInitializationV2 = builder
-                    .comment("Use the experimental SCM initialization V2 matrix probe, representative propulsion sampling, and interpolated 9x9 bearing maps")
-                    .define("enableScmInitializationV2", false);
             builder.pop();
             builder.pop();
         }
     }
+
+
 }

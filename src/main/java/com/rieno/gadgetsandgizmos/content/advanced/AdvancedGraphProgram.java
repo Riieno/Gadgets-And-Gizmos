@@ -142,7 +142,7 @@ final class AdvancedGraphProgram {
                 continue;
             }
             switch (node.type()) {
-                case "event_tick" -> tickNodes.add(node);
+                case "event_tick", "pulse_if" -> tickNodes.add(node);
                 case "event_periodic" -> periodicNodes.add(node);
                 case "event_trigger" -> add(triggerNodes, node.data().getString("Event"), node);
                 case "event_key" -> add(keyNodes, bindingId(node), node);
@@ -158,7 +158,7 @@ final class AdvancedGraphProgram {
                 case "event_physical_interaction" -> physicalInteractionNodes.add(node);
                 case "pulse_on_change", "event_value_change" -> pulseOnChangeNodes.add(node);
                 case "hud_element", "advanced_hud_element", "acc_display_widget", "acc_hologram_widget",
-                        "acc_display_plotter", "acc_display_external", "acc_display_crn" ->
+                        "acc_display_plotter", "acc_display_external", "acc_display_camera_source", "acc_display_crn" ->
                         hudNodes.add(node);
                 default -> {
                 }
@@ -408,4 +408,6 @@ final class AdvancedGraphProgram {
     // Store the branch key
     private record BranchKey(String nodeId, String selectedPort) {
     }
+
+
 }

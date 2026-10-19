@@ -98,6 +98,8 @@ public record AdvancedControllerPhysicalInteractionPayload(
             if (!permitted) {
                 return;
             }
+            if(payload.active() && payload.remote() && payload.keyPressed().isEmpty()
+                    && controller.hasPhysicalInteractionParticipant(player.getUUID())) return;
             controller.handlePhysicalInteraction(player, payload.active(), payload.remote(),
                     payload.keyPressed().length() > 32 ? payload.keyPressed().substring(0, 32)
                             : payload.keyPressed());
@@ -126,4 +128,6 @@ public record AdvancedControllerPhysicalInteractionPayload(
         return new AdvancedControllerPhysicalInteractionPayload(pos, subLevelId,
                 buffer.readBoolean(), buffer.readBoolean(), buffer.readUtf(32));
     }
+
+
 }

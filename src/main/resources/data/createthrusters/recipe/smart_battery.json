@@ -1,0 +1,24 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    "CCC",
+    "CVC",
+    "CBC"
+  ],
+  "key": {
+    "C": {
+      "item": "createthrusters:blackstone_alloy"
+    },
+    "B": {
+      "item": "createthrusters:andesite_cable"
+    },
+    "V": {
+      "item": "create:item_vault"
+    }
+  },
+  "result": {
+    "id": "createthrusters:smart_battery",
+    "count": 1
+  }
+}

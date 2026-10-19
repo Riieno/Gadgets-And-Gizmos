@@ -19,6 +19,9 @@ import net.minecraft.world.item.ItemStack;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.Map;
+import com.rieno.gadgetsandgizmos.lib.client.render.HeadwearRenderSource;
+import com.rieno.gadgetsandgizmos.lib.client.render.NameplateVisibility;
+import net.minecraft.world.entity.LivingEntity;
 
 // Render the existing mannequin entity through Minecraft's player renderer and baked player models.
 public class PlayerMannequinRenderer extends EntityRenderer<PlayerMannequinEntity> {
@@ -71,7 +74,7 @@ public class PlayerMannequinRenderer extends EntityRenderer<PlayerMannequinEntit
     }
 
     // This client-only player is a rendering proxy. It never enters the world or replaces the saved mannequin.
-    public static final class MannequinRenderPlayer extends RemotePlayer {
+    public static final class MannequinRenderPlayer extends RemotePlayer implements HeadwearRenderSource, NameplateVisibility {
         private final PlayerMannequinEntity mannequin;
 
         private MannequinRenderPlayer(ClientLevel level, PlayerMannequinEntity mannequin) {
@@ -80,6 +83,11 @@ public class PlayerMannequinRenderer extends EntityRenderer<PlayerMannequinEntit
         }
 
         public PlayerMannequinEntity mannequin() {
+            return mannequin;
+        }
+
+        @Override
+        public LivingEntity headwearSource() {
             return mannequin;
         }
 
@@ -105,6 +113,11 @@ public class PlayerMannequinRenderer extends EntityRenderer<PlayerMannequinEntit
 
         @Override
         public boolean shouldShowName() {
+            return isNameplateVisible();
+        }
+
+        @Override
+        public boolean isNameplateVisible() {
             return mannequin.isCustomNameVisible();
         }
 
@@ -162,5 +175,7 @@ public class PlayerMannequinRenderer extends EntityRenderer<PlayerMannequinEntit
             }
         }
     }
+
+
 
 }

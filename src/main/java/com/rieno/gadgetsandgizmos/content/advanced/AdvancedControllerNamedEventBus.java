@@ -162,7 +162,7 @@ public final class AdvancedControllerNamedEventBus {
                     controller.namedControllerEventPosition(), event.maximumDistance())) {
                 continue;
             }
-            controller.receiveNamedControllerEvent(event.name(), data);
+            controller.receiveNamedControllerEvent(event.name(), data, event.origin() == null ? null : event.origin().playerId());
         }
     }
 
@@ -209,4 +209,6 @@ public final class AdvancedControllerNamedEventBus {
 
         void unregister(AdvancedContraptionControllerBlockEntity controller);
     }
+
+
 }

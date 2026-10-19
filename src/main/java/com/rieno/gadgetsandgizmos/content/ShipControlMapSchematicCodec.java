@@ -42,7 +42,9 @@ final class ShipControlMapSchematicCodec {
     private static final String DOCKING_CONNECTORS_TAG = "DockingConnectors";
     private static final String CRN_DISPLAYS_TAG = "CrnDisplays";
     private static final String ACC_DISPLAYS_TAG = "AccDisplays";
-    private static final String UPDATED_AT_TAG = "UpdatedAt";
+    
+    private static final String SEATS_TAG = "Seats";
+private static final String UPDATED_AT_TAG = "UpdatedAt";
     private static final String REFERENCE_TAG = "Reference";
     private static final String SUB_LEVEL_ID_TAG = "SubLevelId";
     private static final String BLOCK_POS_TAG = "BlockPos";
@@ -139,6 +141,7 @@ final class ShipControlMapSchematicCodec {
             entry.putDouble("MaxX", bearing.maxX());
             entry.putDouble("MinZ", bearing.minZ());
             entry.putDouble("MaxZ", bearing.maxZ());
+            if(bearing.calibrationFrame() != null) entry.put("GeometryFrame", bearing.calibrationFrame().write());
             ListTag poses = new ListTag();
             for (ShipControlMap.BearingPose pose : bearing.poses()) {
                 poses.add(writePose(pose));
@@ -177,6 +180,14 @@ final class ShipControlMapSchematicCodec {
             accDisplays.add(entry);
         }
         tag.put(ACC_DISPLAYS_TAG, accDisplays);
+
+        ListTag seats = new ListTag();
+        for (ShipControlMap.Seat seat : map.seats()) {
+            CompoundTag entry = new CompoundTag();
+            entry.put(REFERENCE_TAG, reference(seat.subLevelId(), seat.blockPosition()));
+            seats.add(entry);
+        }
+        tag.put(SEATS_TAG, seats);
         return tag;
     }
 
@@ -264,7 +275,7 @@ final class ShipControlMapSchematicCodec {
                     entry.getDouble("MaxX"),
                     entry.getDouble("MinZ"),
                     entry.getDouble("MaxZ"),
-                    poses));
+                    poses, com.rieno.gadgetsandgizmos.lib.scm.ScmGeometryFrame.read(entry.getCompound("GeometryFrame"))));
         }
 
         // ------------------------------------DOCKING CONNECTORS------------------------------------
@@ -306,6 +317,18 @@ final class ShipControlMapSchematicCodec {
                     reference.subLevelId(), reference.blockPos()));
         }
 
+        List<ShipControlMap.Seat> seats = new ArrayList<>();
+        ListTag seatTags = tag.getList(SEATS_TAG, Tag.TAG_COMPOUND);
+        for (int idx = 0; idx < seatTags.size(); idx++) {
+            Reference reference = readReference(
+                    seatTags.getCompound(idx).getCompound(REFERENCE_TAG));
+            if (reference == null) {
+                return null;
+            }
+            seats.add(new ShipControlMap.Seat(
+                    reference.subLevelId(), reference.blockPos()));
+        }
+
         return new ShipControlMap(
                 tag.getUUID(MAP_ID_TAG),
                 tag.getString(DIMENSION_TAG),
@@ -317,6 +340,7 @@ final class ShipControlMapSchematicCodec {
                 dockingConnectors,
                 crnDisplays,
                 accDisplays,
+                seats,
                 tag.getLong(UPDATED_AT_TAG));
     }
 
@@ -381,10 +405,17 @@ final class ShipControlMapSchematicCodec {
                 }
                 poses.add(remappedPose);
             }
+            var geometryFrame = bearing.calibrationFrame();
+            if(geometryFrame != null){
+                Vec3 origin = remapRootPosition(ctx, map.rootSubLevelId(), geometryFrame.origin());
+                if(origin == null) return null;
+                geometryFrame = geometryFrame.withOrigin(origin);
+            }
             bearings.add(new ShipControlMap.BearingUnit(
                     bearing.index(), reference.subLevelId(), reference.blockPos(),
                     bearing.blockId(), bearing.adapter(), children,
-                    bearing.minX(), bearing.maxX(), bearing.minZ(), bearing.maxZ(), poses));
+                    bearing.minX(), bearing.maxX(), bearing.minZ(), bearing.maxZ(), poses,
+                    geometryFrame));
         }
 
         // ------------------------------------DOCKING / DISPLAYS------------------------------------
@@ -425,6 +456,17 @@ final class ShipControlMapSchematicCodec {
                     reference.subLevelId(), reference.blockPos()));
         }
 
+        List<ShipControlMap.Seat> seats = new ArrayList<>();
+        for (ShipControlMap.Seat seat : map.seats()) {
+            ReferenceRemap reference = remapReference(
+                    ctx, seat.subLevelId(), seat.blockPosition());
+            if (reference == null) {
+                return null;
+            }
+            seats.add(new ShipControlMap.Seat(
+                    reference.subLevelId(), reference.blockPos()));
+        }
+
         UUID mapId = ctx.getType() == SubLevelSchematicSerializationContext.Type.PLACE
                 && root.changed() ? UUID.randomUUID() : map.id();
         long updatedAt = ctx.getType() == SubLevelSchematicSerializationContext.Type.PLACE
@@ -432,7 +474,7 @@ final class ShipControlMapSchematicCodec {
         // -----------------------------------------------------REBUILD MAP-----------------------------------------------------
         ShipControlMap remapped = new ShipControlMap(
                 mapId, map.dimension(), root.subLevelId(), root.blockPos(), rootCenter,
-                units, bearings, dockingConnectors, crnDisplays, accDisplays, updatedAt);
+                units, bearings, dockingConnectors, crnDisplays, accDisplays, seats, updatedAt);
         return write(remapped);
     }
 
@@ -441,7 +483,8 @@ final class ShipControlMapSchematicCodec {
         return new ShipControlMap(
                 map.id(), dimension, map.rootSubLevelId(), map.controllerPosition(),
                 map.centerOfMass(), map.units(), map.bearings(),
-                map.dockingConnectors(), map.crnDisplays(), map.accDisplays(), map.updatedAt());
+                map.dockingConnectors(), map.crnDisplays(), map.accDisplays(),
+                map.seats(), map.updatedAt());
     }
 
     // Write the pose
@@ -628,4 +671,6 @@ final class ShipControlMapSchematicCodec {
     // Store the reference remap
     private record ReferenceRemap(UUID subLevelId, BlockPos blockPos, boolean changed) {
     }
+
+
 }

@@ -125,22 +125,7 @@ public final class ShipDockRegistry {
 
     // Update the ship dock
     public synchronized void update(ShipDockBlockEntity blockEntity) {
-        ensureLoaded();
-        Dock dock = blockEntity.createRouteRecord();
-        if (dock == null) {
-            return;
-        }
-        Dock prev = docks.get(dock.id());
-        boolean definitionChanged = !sameDefinition(prev, dock);
-        boolean becameAvailable = unavailableDocks.remove(dock.id());
-        if (!definitionChanged && !becameAvailable) {
-            return;
-        }
-        unindexDock(prev);
-        docks.put(dock.id(), dock);
-        indexDock(dock);
-        revision++;
-        ShippingRouteDatabase.upsert(server, dock);
+        update(blockEntity, false);
     }
 
     // Remove the ship dock
@@ -209,7 +194,9 @@ public final class ShipDockRegistry {
         ensureLoaded();
         return docks.values().stream()
                 .filter(dock -> dock.dimension().equals(dimension))
-                .map(dock -> resolve(dock, true))
+                // Registry discovery is backed by durable records. A schedule listing its
+                // destinations must never force the physical dock, SubLevel or chunk to load.
+                .map(dock -> resolve(dock, false))
                 .filter(Objects::nonNull)
                 .sorted(DOCK_ORDER)
                 .toList();
@@ -376,9 +363,17 @@ public final class ShipDockRegistry {
         if (loaded) {
             return;
         }
-        for (Dock dock : ShippingRouteDatabase.all(server)) {
-            docks.put(dock.id(), dock);
-            indexDock(dock);
+        ShippingRouteDatabase.DockLoad snapshot = ShippingRouteDatabase.loadAll(server);
+        if (!snapshot.complete()) {
+            return;
+        }
+        for (Dock dock : snapshot.docks()) {
+            Dock normalized = normalizePersistedDimension(dock);
+            docks.putIfAbsent(normalized.id(), normalized);
+            indexDock(docks.get(normalized.id()));
+            if (!normalized.dimension().equals(dock.dimension())) {
+                ShippingRouteDatabase.upsert(server, normalized);
+            }
         }
         loaded = true;
         revision++;
@@ -464,16 +459,21 @@ public final class ShipDockRegistry {
         }
         ServerLevel level = server.getLevel(ResourceKey.create(Registries.DIMENSION, dock.dimension()));
         if (level == null) {
-            markUnavailable(dock, false);
-            return null;
+            // The persisted registry is authoritative across world-load ordering. Explicit block
+            // removal deletes the record, so a dimension which has not attached yet is not evidence
+            // that the destination disappeared.
+            return dock;
         }
         if (dock.subLevelId() == null) {
             if (level.isLoaded(dock.pos())) {
                 var blockEntity = level.getBlockEntity(dock.pos());
                 if (!(blockEntity instanceof ShipDockBlockEntity liveDock)
                         || !liveDock.getDockId().equals(dock.id())) {
-                    markUnavailable(dock, true);
-                    return null;
+                    // Chunk/block-entity initialization is not atomic with every schedule or
+                    // registry lookup. The block removal path deletes a dock explicitly, so a
+                    // transient loaded-chunk miss must not erase its SQLite record or hide it
+                    // from schedule restoration.
+                    return resolveStoredPose(level, dock, null, requestSubLevelLoad);
                 }
             }
             markAvailable(dock.id());
@@ -643,7 +643,9 @@ public final class ShipDockRegistry {
         }
         BlockState state = targetLevel.getBlockState(target.pos());
         if (!isDockingConnector(state)) {
-            return null;
+            // Connector chunks and block entities become visible in separate load phases. Explicit
+            // connector removal updates the registry, so retain the durable target during reload.
+            return target;
         }
         Direction dir = state.hasProperty(BlockStateProperties.FACING)
                 ? state.getValue(BlockStateProperties.FACING) : Direction.NORTH;
@@ -926,6 +928,14 @@ public final class ShipDockRegistry {
                     connectorTargets, zones);
         }
 
+        // Copy the durable dock into its containing server dimension.
+        Dock withDimension(ResourceLocation nextDimension) {
+            return new Dock(id, nextDimension, subLevelId, pos, worldPosition, facing,
+                    name, refuel, restock, packages, connectorSubLevelId, connectorPos,
+                    connectorWorldPosition, connectorFacing, connectorUp, updatedAt,
+                    connectorTargets, landingZones);
+        }
+
         // Get the approach
         public Vec3 approach() {
             if (connectorWorldPosition != null && connectorFacing != null
@@ -1135,4 +1145,95 @@ public final class ShipDockRegistry {
     private static final Comparator<Dock> DOCK_ORDER = Comparator
             .comparing((Dock dock) -> dock.name().toLowerCase(Locale.ROOT))
             .thenComparing(Dock::id);
+
+
+    // Update the ship dock. An explicit connector edit is authoritative; load-time discovery is
+    // allowed to retain a previously persisted connector when its linked sublevel is still loading.
+    synchronized void update(ShipDockBlockEntity blockEntity, boolean connectorBindingsAuthoritative) {
+        ensureLoaded();
+        Dock observed = blockEntity.createRouteRecord();
+        if (observed == null) {
+            return;
+        }
+        Dock prev = docks.get(observed.id());
+        if (prev != null && !samePhysicalDock(prev, observed)) {
+            // A persisted placement remains authoritative even while its chunk or SubLevel is
+            // unloaded. Never overwrite it just because the copied block which reused its UUID
+            // happened to initialize first during this session.
+            UUID replacement;
+            do {
+                replacement = UUID.randomUUID();
+            } while (docks.containsKey(replacement));
+            blockEntity.replaceDuplicateDockId(replacement);
+            observed = blockEntity.createRouteRecord();
+            if (observed == null) return;
+            prev = docks.get(observed.id());
+        }
+        Dock dock = preserveLoadingConnectorTargets(
+                prev, observed, connectorBindingsAuthoritative);
+        boolean definitionChanged = !sameDefinition(prev, dock);
+        boolean becameAvailable = unavailableDocks.remove(dock.id());
+        if (!definitionChanged && !becameAvailable) {
+            return;
+        }
+        unindexDock(prev);
+        docks.put(dock.id(), dock);
+        indexDock(dock);
+        revision++;
+        ShippingRouteDatabase.upsert(server, dock);
+    }
+
+
+    // Check whether the complete durable dock snapshot has been read into memory.
+    synchronized boolean persistentSnapshotReady() {
+        ensureLoaded();
+        return loaded;
+    }
+
+
+    // Migrate records written from a SubLevel view to their containing server dimension using
+    // Sable's saved tracking-point metadata; this does not load the body or its chunks.
+    private Dock normalizePersistedDimension(Dock dock) {
+        if (dock == null || dock.subLevelId() == null) {
+            return dock;
+        }
+        ServerLevel containing = SubLevelBlockEntityCollector.findContainingServerLevel(
+                server, dock.subLevelId());
+        ResourceLocation dimension = containing == null
+                ? dock.dimension() : containing.dimension().location();
+        return dimension.equals(dock.dimension()) ? dock : dock.withDimension(dimension);
+    }
+
+
+    // Check whether two durable records identify the same physical dock placement.
+    private static boolean samePhysicalDock(Dock first, Dock second) {
+        if (!Objects.equals(first.subLevelId(), second.subLevelId())
+                || !Objects.equals(first.pos(), second.pos())) {
+            return false;
+        }
+        return first.subLevelId() != null
+                || Objects.equals(first.dimension(), second.dimension());
+    }
+
+
+    // Keep a durable connector target while its linked chunk or sublevel has not supplied a
+    // fresh block entity yet. Applying an explicit empty connector list still removes it.
+    static Dock preserveLoadingConnectorTargets(
+            @Nullable Dock previous,
+            Dock observed,
+            boolean connectorBindingsAuthoritative
+    ) {
+        if (previous == null || connectorBindingsAuthoritative
+                || !observed.connectorTargets().isEmpty()
+                || previous.connectorTargets().isEmpty()) {
+            return observed;
+        }
+        ConnectorTarget primary = previous.connectorTargets().getFirst();
+        return new Dock(
+                observed.id(), observed.dimension(), observed.subLevelId(), observed.pos(),
+                observed.worldPosition(), observed.facing(), observed.name(), observed.refuel(),
+                observed.restock(), observed.packages(), primary.subLevelId(), primary.pos(),
+                primary.worldPosition(), primary.facing(), primary.up(), observed.updatedAt(),
+                previous.connectorTargets(), observed.landingZones());
+    }
 }

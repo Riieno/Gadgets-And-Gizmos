@@ -39,6 +39,7 @@ import org.joml.Matrix4f;
 
 import java.util.ArrayList;
 import java.util.List;
+import com.rieno.gadgetsandgizmos.lib.client.render.TexturedQuadWriter;
 
 // Draw the Physics Gantry Belt Wheel
 public class PhysicsGantryBeltWheelRenderer extends KineticBlockEntityRenderer<PhysicsGantryBeltWheelBlockEntity> {
@@ -360,25 +361,8 @@ public class PhysicsGantryBeltWheelRenderer extends KineticBlockEntityRenderer<P
                                    Vec3 a, Vec3 b, Vec3 c, Vec3 d,
                                    float minU, float maxU, float minV, float maxV,
                                    int lightFrom, int lightTo, int overlay) {
-        Matrix4f pose = ms.last().pose();
-        PoseStack.Pose normalPose = ms.last();
-        Vec3 edge1 = b.subtract(a);
-        Vec3 edge2 = d.subtract(a);
-        Vec3 normal = edge1.cross(edge2).normalize();
-        if (normal.lengthSqr() <= 1.0E-10D) {
-            normal = new Vec3(0.0D, 1.0D, 0.0D);
-        }
-        Vec3 backNormal = new Vec3(-normal.x, -normal.y, -normal.z);
-
-        addVertex(pose, normalPose, consumer, a, minU, minV, normal, lightFrom, overlay);
-        addVertex(pose, normalPose, consumer, b, maxU, minV, normal, lightFrom, overlay);
-        addVertex(pose, normalPose, consumer, c, maxU, maxV, normal, lightTo, overlay);
-        addVertex(pose, normalPose, consumer, d, minU, maxV, normal, lightTo, overlay);
-
-        addVertex(pose, normalPose, consumer, d, minU, maxV, backNormal, lightTo, overlay);
-        addVertex(pose, normalPose, consumer, c, maxU, maxV, backNormal, lightTo, overlay);
-        addVertex(pose, normalPose, consumer, b, maxU, minV, backNormal, lightFrom, overlay);
-        addVertex(pose, normalPose, consumer, a, minU, minV, backNormal, lightFrom, overlay);
+        TexturedQuadWriter.drawDoubleSided(ms.last(), consumer, a, b, c, d,
+                minU, maxU, minV, maxV, lightFrom, lightTo, overlay);
     }
 
     // Add the vertex
@@ -391,4 +375,6 @@ public class PhysicsGantryBeltWheelRenderer extends KineticBlockEntityRenderer<P
                 .setLight(light)
                 .setNormal(normalPose, (float) normal.x, (float) normal.y, (float) normal.z);
     }
+
+
 }

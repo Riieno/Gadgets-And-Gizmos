@@ -262,9 +262,9 @@ public class PhysicsGantryShaftBlockEntity extends KineticBlockEntity
             List<PhysicsGantryCarriageBlockEntity> carriages = new ArrayList<>();
             Set<PhysicsGantryCarriageBlockEntity> seen = Collections.newSetFromMap(new IdentityHashMap<>());
             for (SubLevel subLevel : SableLevelApi.subLevels(cacheLevel)) {
-                for (BlockEntity blockEntity : SubLevelBlockEntityCollector.getBlockEntities(subLevel)) {
-                    if (blockEntity instanceof PhysicsGantryCarriageBlockEntity carriage
-                            && !carriage.isRemoved() && seen.add(carriage)) {
+                for (PhysicsGantryCarriageBlockEntity carriage : SubLevelBlockEntityCollector.getBlockEntities(
+                        subLevel, PhysicsGantryCarriageBlockEntity.class)) {
+                    if (!carriage.isRemoved() && seen.add(carriage)) {
                         carriages.add(carriage);
                     }
                 }
@@ -467,4 +467,6 @@ public class PhysicsGantryShaftBlockEntity extends KineticBlockEntity
             targetLevel.setBlock(targetCarriagePos, sourceCarriageState, 3);
         }
     }
+
+
 }

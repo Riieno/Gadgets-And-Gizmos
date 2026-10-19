@@ -20,6 +20,7 @@ import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.block.entity.BlockEntity;
 
 // Draw the RCS Thruster
 public class RcsThrusterRenderer extends KineticBlockEntityRenderer<RcsThrusterBlockEntity> {
@@ -67,11 +68,25 @@ public class RcsThrusterRenderer extends KineticBlockEntityRenderer<RcsThrusterB
         if (VisualizationManager.supportsVisualization(blockEntity.getLevel())) {
             return;
         }
-        if (blockEntity.isSelfPowered()) {
-            return;
-        }
 
-        BlockState state = getRenderedBlockState(blockEntity);
+        renderPreview(blockEntity, getRenderedBlockState(blockEntity), poseStack, buffer, light);
+    }
+
+
+    // Draw the RCS shaft in an off-screen SCM preview without its static housing.
+    static boolean renderPreview(
+            BlockEntity entity,
+            BlockState state,
+            PoseStack poseStack,
+            MultiBufferSource buffer,
+            int light
+    ) {
+        if (!(entity instanceof RcsThrusterBlockEntity blockEntity) || state == null) {
+            return false;
+        }
+        if (blockEntity.isSelfPowered()) {
+            return true;
+        }
         Direction facing = state.getValue(BlockStateProperties.FACING);
         Direction shaftFacing = facing.getOpposite();
         Direction.Axis axis = shaftFacing.getAxis();
@@ -81,9 +96,10 @@ public class RcsThrusterRenderer extends KineticBlockEntityRenderer<RcsThrusterB
                         shaftFacing.getStepX() * AXIS_OUTWARD_OFFSET,
                         shaftFacing.getStepY() * AXIS_OUTWARD_OFFSET,
                         shaftFacing.getStepZ() * AXIS_OUTWARD_OFFSET);
-        CTFlywheelVisuals.kineticRotationTransformWhite(
+                CTFlywheelVisuals.kineticRotationTransformWhite(
                         shaft, blockEntity, axis,
                         getAngleForBe(blockEntity, blockEntity.getBlockPos(), axis), light)
                 .renderInto(poseStack, buffer.getBuffer(RenderType.solid()));
+        return true;
     }
 }

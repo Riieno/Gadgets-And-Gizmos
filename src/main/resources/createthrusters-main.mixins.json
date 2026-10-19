@@ -30,6 +30,7 @@
     "LecternPortableContraptionControllerBlockEntityMixin",
     "LevelSignalBridgeMixin",
     "DirectionalGearshiftDirectControlMixin",
+    "DirectionalGearshiftBlockMixin",
     "DirectionalGearshiftBlockInvoker",
     "FluidTankDirectControlMixin",
     "FriendlyByteBufOversizedNbtMixin",
@@ -97,7 +98,31 @@
     "ShippingDockingConnectorBatteryExtractionMixin",
     "SimAssemblyContraptionPhysicsGantryGlueMixin",
     "PhysicsAssemblerScissorPistonMixin",
-    "ArchitecturyEventBusesWhenAvailableGuardMixin"
+    "ArchitecturyEventBusesWhenAvailableGuardMixin",
+    "FlightControlTrailAccess",
+    "FlightControlMouseAccess",
+    "FlightControlAllocationAccess",
+    "FlightControlHostedSubLevelMixin",
+    "FlightControlWrenchFrameMixin",
+    "FlightControlComputerRequestMixin",
+    "FlightControlComputerOutputMixin",
+    "FlightControlDirectRequestMixin",
+    "FlightControlCreativeEnvironmentMixin",
+    "FlightControlScopedPoseMixin",
+    "FlightControlHudStateMixin",
+    "FlightControlFramePhysicsMixin",
+    "FlightControlThrusterSyncMixin",
+    "FlightControlGadgetsThrusterCommandMixin",
+    "FlightControlMouseParticipationMixin",
+    "FlightControlHostedMouseAccessMixin",
+    "FlightControlHostedMouseNetworkingMixin",
+    "FlightControlHostedMouseAuthorityMixin",
+    "FlightControlHostedStateMixin",
+    "FlightControlHostedLookupMixin",
+    "FlightControlHostedPowerMixin",
+    "FlightControlHostedSyncMixin",
+    "FlightControlVectorThrusterDirectControlMixin",
+    "SablePlotChunkUnloadGuardMixin"
   ],
   "client": [
     "BundledSupporterHeadMixin",
@@ -134,9 +159,19 @@
     "PhysicsStaffAnchorPlacementMixin",
     "PhysicsStaffActionInputMixin",
     "ActionKeyKeyboardMixin",
-    "ActionKeyMouseMixin"
+    "ActionKeyMouseMixin",
+    "FlightControlHudRenderAccess",
+    "FlightControlHudRenderMixin",
+    "FlightControlAttitudeRenderMixin",
+    "FlightControlNavigationRenderMixin",
+    "FlightControlTrailRenderAccess",
+    "FlightControlTrailSamplingMixin",
+    "FlightControlHostedMouseClientMixin",
+    "CreateEntityHatsPilotCapMixin",
+    "ShippingScheduleRouteScreenMixin"
   ],
   "injectors": {
     "defaultRequire": 1
-  }
+  },
+  "server": []
 }

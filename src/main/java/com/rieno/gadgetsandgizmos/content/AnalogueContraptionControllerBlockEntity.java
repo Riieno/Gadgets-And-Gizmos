@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
+import com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache;
 import com.rieno.gadgetsandgizmos.compat.simulated.SchematicSubLevelReferenceRemapper;
 import com.rieno.gadgetsandgizmos.compat.controller.ExternalBlockEntityDirectControlCompat;
 import com.rieno.gadgetsandgizmos.lib.control.AnalogueAxis;
@@ -37,11 +38,14 @@ import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.simibubi.create.Create;
 import com.simibubi.create.api.equipment.goggles.IHaveGoggleInformation;
+import com.simibubi.create.api.schematic.requirement.SpecialBlockEntityItemRequirement;
+import com.simibubi.create.content.schematics.requirement.ItemRequirement;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import com.simibubi.create.content.redstone.link.IRedstoneLinkable;
 import com.simibubi.create.content.redstone.link.RedstoneLinkNetworkHandler;
 import com.simibubi.create.infrastructure.config.AllConfigs;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
+import com.rieno.gadgetsandgizmos.lib.physics.archive.SchematicMaterialData;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
 import com.simibubi.create.foundation.blockEntity.behaviour.CenteredSideValueBoxTransform;
 import com.simibubi.create.foundation.blockEntity.behaviour.ValueBoxTransform;
@@ -108,7 +112,8 @@ import java.util.UUID;
 
 // Handle controller inputs, layout and linked outputs
 public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity implements IHaveGoggleInformation,
-        MenuProvider, com.rieno.gadgetsandgizmos.lib.discovery.INamedBlockEntity, BlockEntitySubLevelActor {
+        MenuProvider, com.rieno.gadgetsandgizmos.lib.discovery.INamedBlockEntity, BlockEntitySubLevelActor,
+        SchematicMaterialData, SpecialBlockEntityItemRequirement {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -129,9 +134,9 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     private static final double DEFAULT_SMOOTHING = 0.2D;
     private static final Direction[] OUTPUT_DIRECTIONS = Direction.values();
     private static final String ASSEMBLY_TRANSFER_TAG = "ControllerAssemblyTransfer";
-    private static final String EMBEDDED_SLAB_TAG = "EmbeddedSlab";
-    private static final String EMBEDDED_SLAB_MATERIAL_TAG = "EmbeddedSlabMaterial";
-    private static final String EMBEDDED_BLOCK_ENTITY_TAG = "EmbeddedBlockEntity";
+    private static final String EMBEDDED_SLAB_TAG = ControllerPhysicalState.EMBEDDED_BLOCK;
+    private static final String EMBEDDED_SLAB_MATERIAL_TAG = ControllerPhysicalState.EMBEDDED_MATERIAL;
+    private static final String EMBEDDED_BLOCK_ENTITY_TAG = ControllerPhysicalState.EMBEDDED_BLOCK_ENTITY;
     private static final double RUNTIME_SYNC_RANGE_SQR = 256.0D * 256.0D;
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -207,7 +212,9 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     private final List<ControllerDiscoveryNode> storedTargets = new ArrayList<>();
 
     // Linker slot
-    private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
+        // Targets used by the last linker route snapshot
+    private List<ContraptionNetworkLinkerData.LinkedTarget> syncedLinkerTargets = List.of();
+private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
         // Handle the contents changed event
         @Override
         protected void onContentsChanged(int slot) {
@@ -279,7 +286,8 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     // Current embedded block entity data
     private @Nullable CompoundTag embeddedBlockEntityData;
     // Current embedded block entity preview
-    private @Nullable BlockEntity embeddedBlockEntityPreview;
+    private final RevisionSnapshotCache<BlockEntity> embeddedBlockEntityPreview = new RevisionSnapshotCache<>();
+    private @Nullable CompoundTag unavailableEmbeddedBlockState;
     // Tracks whether embedded block is being restored
     private boolean restoringEmbeddedBlock;
     // Current custom name
@@ -364,13 +372,15 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
                 : blockEntityData.copy();
         if (Objects.equals(embeddedSlabState, normalized)
                 && Objects.equals(embeddedSlabMaterial, normalizedMaterial)
-                && Objects.equals(embeddedBlockEntityData, normalizedBlockEntityData)) {
+                && Objects.equals(embeddedBlockEntityData, normalizedBlockEntityData)
+                && unavailableEmbeddedBlockState == null) {
             return;
         }
         embeddedSlabState = normalized;
         embeddedSlabMaterial = normalizedMaterial;
         embeddedBlockEntityData = normalizedBlockEntityData;
-        embeddedBlockEntityPreview = null;
+        unavailableEmbeddedBlockState = null;
+        embeddedBlockEntityPreview.invalidate();
         setChanged();
         if (level != null) {
             level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
@@ -382,18 +392,11 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
 
     // Get the embedded block entity preview
     public @Nullable BlockEntity getEmbeddedBlockEntityPreview() {
-        if (embeddedBlockEntityPreview != null) {
-            return embeddedBlockEntityPreview;
-        }
         if (level == null || embeddedSlabState == null || embeddedBlockEntityData == null) {
             return null;
         }
-        embeddedBlockEntityPreview = EmbeddedCopycatBlockSnapshot.createPreview(
-                level,
-                worldPosition,
-                embeddedSlabState,
-                embeddedBlockEntityData);
-        return embeddedBlockEntityPreview;
+        return embeddedBlockEntityPreview.get(level, 0, () -> EmbeddedCopycatBlockSnapshot.createPreview(
+                level, worldPosition, embeddedSlabState, embeddedBlockEntityData));
     }
 
     // Get the embedded consumed items
@@ -422,6 +425,10 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         }
 
         BlockEntity restoredBlockEntity = level.getBlockEntity(worldPosition);
+        if(restoredBlockEntity instanceof ShipControlModuleBlockEntity module
+                && this instanceof AdvancedContraptionControllerBlockEntity advanced){
+            module.setPlacerId(advanced.shipPermissionModulePlacerId());
+        }
         if (restoredBlockEntityData != null && restoredBlockEntity != null) {
             EmbeddedCopycatBlockSnapshot.reload(restoredBlockEntity, restoredBlockEntityData);
         } else if (restoredMaterial != null && restoredBlockEntity != null) {
@@ -548,8 +555,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     protected boolean isControllerRuntimeLoaded() {
         return level != null
                 && !level.isClientSide
-                && !isRemoved()
-                && level.isLoaded(worldPosition);
+                && !isRemoved();
     }
 
     // Send the runtime data
@@ -571,7 +577,8 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
                 continue;
             }
             if (SimulatedHelper.distanceSquaredWithSubLevels(
-                    player.level(), player.position(), worldPosition) <= RUNTIME_SYNC_RANGE_SQR) {
+                    player.level(), player.position(), worldPosition) <= RUNTIME_SYNC_RANGE_SQR
+                    || ControllerRuntimeObserver.hasBoundGoggles(player, getBlockPos(), subLevelId)) {
                 PacketDistributor.sendToPlayer(player, payload);
             }
         }
@@ -870,8 +877,6 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         if (network == null || network.isEmpty()) {
             return 0;
         }
-        int linkRange = AllConfigs.server().logistics.linkRange.get();
-        double linkRangeSq = linkRange * (double) linkRange;
         int maxSignal = 0;
         for (IRedstoneLinkable candidate : network) {
             if (candidate == null || candidate == receiver || !candidate.isAlive()) {
@@ -884,11 +889,6 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
             BlockPos candidateLocation = candidate.getLocation();
             BlockPos receiverLocation = receiver.getLocation();
             if (candidateLocation == null || receiverLocation == null) {
-                continue;
-            }
-            double distanceSq = SimulatedHelper.distanceSquaredWithSubLevels(linkLevel,
-                    Vec3.atCenterOf(candidateLocation), Vec3.atCenterOf(receiverLocation));
-            if (distanceSq >= linkRangeSq) {
                 continue;
             }
             maxSignal = Math.max(maxSignal, transmittedStrength);
@@ -1483,11 +1483,14 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         }
         // -----------------------------------------------------OUTPUT SYNC-----------------------------------------------------
         for (String channelId : changedChannels) {
-            pushChannelSignal(channelId);
-            cacheChannelOutput(channelId);
+            com.rieno.gadgetsandgizmos.lib.interaction.InteractionContext.runOutput(channelId, () -> {
+                pushChannelSignal(channelId);
+                cacheChannelOutput(channelId);
+            });
         }
         for (String entryId : changedCustomEntries) {
-            pushCustomEntrySignal(entryId, resolveCustomEntryOutputValue(entryId));
+            com.rieno.gadgetsandgizmos.lib.interaction.InteractionContext.runOutput(entryId,
+                    () -> pushCustomEntrySignal(entryId, resolveCustomEntryOutputValue(entryId)));
         }
         refreshLocalSideOutputs(true);
         markRuntimeStateDirty();
@@ -1718,7 +1721,11 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         entry.deadzone = deadzone;
         entry.smoothing = smoothing;
         entry.localOutputSide = localOutputSide;
-        entry.directTarget = ControllerRedstoneCompat.ensureCompatTarget(level, sanitizeDirectTarget(directTarget));
+        ControllerDirectTargetReference nextTarget = ControllerRedstoneCompat.ensureCompatTarget(level, sanitizeDirectTarget(directTarget));
+        if(!Objects.equals(entry.directTarget, nextTarget)){
+            clearDirectOutputSignalAndSiblings(entry.directTarget, id, true);
+        }
+        entry.directTarget = nextTarget;
         entry.inputTarget = ControllerRedstoneCompat.ensureCompatTarget(level, sanitizeDirectTarget(inputTarget));
         entry.bindingPreset = bindingPreset == null || bindingPreset.isBlank() ? "none" : bindingPreset;
         ItemStack sanitizedFirst = copyMenuStack(first == null ? ItemStack.EMPTY : first);
@@ -1767,7 +1774,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
 
     // Sync the custom fanout
     private void syncCustomFanout(CustomKeyEntry src) {
-        if (src == null) {
+        if (src == null || !usesLinkerFanout()) {
             return;
         }
         for (CustomKeyEntry sibling : customKeyEntries) {
@@ -2570,6 +2577,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         if (java.util.Objects.equals(prev, sanitized)) {
             return;
         }
+        clearDirectOutputSignalAndSiblings(prev, normalized, false);
         directTargets.put(normalized, sanitized);
         invalidateControllerRuntimeProgram();
         setChanged();
@@ -2651,6 +2659,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         }
 
         if (directTargetChanged) {
+            clearDirectOutputSignalAndSiblings(previousDirectTarget, normalizedChannelId, false);
             directTargets.put(normalizedChannelId, sanitizedDirectTarget);
         }
         if (inputTargetChanged) {
@@ -2919,7 +2928,9 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
             linkerSlot.setStackInSlot(0, ItemStack.EMPTY);
         }
         unregisterWirelessNetwork();
-        deleteControllerManifest();
+        if (!retainControllerManifestAfterDestroy()) {
+            deleteControllerManifest();
+        }
     }
 
     // Mark the destructive removal
@@ -3011,17 +3022,13 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     @Override
     protected void write(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.write(tag, provider, clientPacket);
+        CompoundTag physical = new CompoundTag();
+        writeControllerPhysicalState(physical, provider);
+        tag.put(ControllerPhysicalState.TAG_KEY, physical);
         SubLevelSchematicSerializationContext schematicContext =
                 SubLevelSchematicSerializationContext.getCurrentContext();
         if (!clientPacket && schematicContext != null) {
-            CompoundTag payload = pendingControllerSchematicPayload == null
-                    ? createSchematicData(provider)
-                    : pendingControllerSchematicPayload.copy();
-            remapSchematicData(payload, schematicContext);
-            if (schematicContext.getType() == SubLevelSchematicSerializationContext.Type.PLACE) {
-                payload.putBoolean(ControllerSchematicPayload.PLACEMENT_PREPARED_TAG, true);
-            }
-            ControllerSchematicPayload.write(tag, payload);
+            writeSchematicPayload(tag, provider, schematicContext);
             return;
         }
         if (!clientPacket && pendingControllerSchematicPayload != null) {
@@ -3040,6 +3047,29 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         writeControllerBody(tag, provider);
         writeAdditionalControllerManifestData(tag, provider);
         SchematicSubLevelReferenceRemapper.remapInPlace(tag);
+    }
+
+    // Include the flush-mounted backing and its paint in Create and Digisable material bills
+    @Override
+    public ItemRequirement getRequiredItems(BlockState state){
+        if(unavailableEmbeddedBlockState != null) return ItemRequirement.INVALID;
+        if(embeddedSlabState == null) return ItemRequirement.NONE;
+        if(embeddedSlabState.isAir()) return ItemRequirement.INVALID;
+        BlockEntity preview = getEmbeddedBlockEntityPreview();
+        if(embeddedBlockEntityData != null && preview == null) return ItemRequirement.INVALID;
+        return ItemRequirement.of(embeddedSlabState, preview);
+    }
+
+    // Avoid decoding graphs or opening their backing store during material requirement scans
+    @Override
+    public CompoundTag schematicMaterialData(CompoundTag saved){
+        CompoundTag physical = ControllerPhysicalState.materialData(saved);
+        if(level != null && physical.contains(EMBEDDED_SLAB_TAG, Tag.TAG_COMPOUND)){
+            BlockState backing = ControllerPhysicalState.backingState(level.registryAccess(), physical.getCompound(EMBEDDED_SLAB_TAG));
+            if(backing == null || backing.isAir()) throw new IllegalArgumentException(
+                    "Controller schematic requires unavailable backing block: " + physical.getCompound(EMBEDDED_SLAB_TAG).getString("Name"));
+        }
+        return physical;
     }
 
     // Create the schematic data
@@ -3126,10 +3156,11 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         return !clientPacket && level != null && !level.isClientSide;
     }
 
-    // Get the loading dependencies
+    // Include control references in schematic saves without tying their runtime lifetime to the controller
     @Override
     public Iterable<SubLevel> sable$getLoadingDependencies() {
-        if (level == null) return List.of();
+        SubLevelSchematicSerializationContext ctx = SubLevelSchematicSerializationContext.getCurrentContext();
+        if (level == null || ctx == null || ctx.getType() != SubLevelSchematicSerializationContext.Type.SAVE) return List.of();
         Set<UUID> subLevelIds = new LinkedHashSet<>();
         collectTargetSubLevelIds(directTargets.values(), subLevelIds);
         collectTargetSubLevelIds(inputTargets.values(), subLevelIds);
@@ -3221,30 +3252,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
 
     // Reload the controller manifest
     private boolean reloadControllerManifest(HolderLookup.Provider provider) {
-        if (level == null || level.isClientSide || controllerManifestId == null || controllerManifestId.isBlank()) {
-            return false;
-        }
-        ControllerManifestStore.ManifestSnapshot snapshot = ControllerManifestStore.loadController(controllerManifestId, level);
-        if (snapshot == null) {
-            return false;
-        }
-        applyControllerManifestSnapshot(snapshot);
-        String manifestKind = snapshot.kind();
-        CompoundTag controllerData = snapshot.controllerData();
-        if (!snapshot.draftGraph().isEmpty()) {
-            controllerData.put("AdvancedDraftGraph", snapshot.draftGraph());
-        }
-        if (!snapshot.activeGraph().isEmpty()) {
-            controllerData.put("AdvancedActiveGraph", snapshot.activeGraph());
-        }
-        CompoundTag remappedControllerData = SubLevelSchematicSerializationContext.getCurrentContext() == null
-                ? controllerData
-                : SchematicSubLevelReferenceRemapper.remappedCopy(controllerData);
-        readControllerBody(remappedControllerData, provider);
-        readAdditionalControllerManifestData(remappedControllerData, provider, manifestKind);
-        invalidateControllerRuntimeProgram();
-        onControllerManifestReloaded();
-        return true;
+        return restoreControllerManifest(controllerManifestId, provider);
     }
 
     // Handle the controller manifest reloaded event
@@ -3408,15 +3416,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         }
         tag.put("StoredTargets", storedTargetsTag);
         tag.put("LinkerSlot", linkerSlot.serializeNBT(provider));
-        if (embeddedSlabState != null) {
-            tag.put(EMBEDDED_SLAB_TAG, NbtUtils.writeBlockState(embeddedSlabState));
-            if (embeddedSlabMaterial != null) {
-                tag.put(EMBEDDED_SLAB_MATERIAL_TAG, NbtUtils.writeBlockState(embeddedSlabMaterial));
-            }
-            if (embeddedBlockEntityData != null) {
-                tag.put(EMBEDDED_BLOCK_ENTITY_TAG, embeddedBlockEntityData.copy());
-            }
-        }
+        writeControllerPhysicalState(tag, provider);
         if (pendingAssemblyBindingRemap && assemblyOldPos != null && assemblyNewPos != null) {
             CompoundTag transferTag = new CompoundTag();
             transferTag.putBoolean("SourceWasWorld", assemblySourceWasWorld);
@@ -3497,6 +3497,14 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
             pendingControllerSchematicPayload = null;
             pendingControllerSchematicImport = false;
         }
+        controllerData = schematicPayload == null
+                ? ControllerPhysicalState.readSavedBlock(controllerData, tag)
+                : ControllerPhysicalState.readSchematicBlock(controllerData, tag);
+        // Detached safe-NBT conversion retains the portable payload without constructing its graph runtime.
+        if(isVirtual() && schematicPayload != null){
+            readControllerBody(ControllerPhysicalState.materialData(controllerData), provider);
+            return;
+        }
         // ------------------------------------REFERENCE REMAP------------------------------------
         CompoundTag remappedControllerData = schematicPayload != null
                 || schematicContext == null
@@ -3530,15 +3538,20 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     // Read the controller body
     protected void readControllerBody(CompoundTag tag, HolderLookup.Provider provider) {
         // ------------------------------------EMBEDDED BLOCK------------------------------------
+        BlockState previousState = embeddedSlabState;
+        BlockState previousMaterial = embeddedSlabMaterial;
+        CompoundTag previousData = embeddedBlockEntityData;
+        CompoundTag previousUnavailable = unavailableEmbeddedBlockState;
         embeddedSlabState = null;
         embeddedSlabMaterial = null;
         embeddedBlockEntityData = null;
-        embeddedBlockEntityPreview = null;
-        if (tag.contains(EMBEDDED_SLAB_TAG, Tag.TAG_COMPOUND)) {
-            BlockState embeddedState = NbtUtils.readBlockState(
-                    provider.lookupOrThrow(Registries.BLOCK),
-                    tag.getCompound(EMBEDDED_SLAB_TAG));
+        unavailableEmbeddedBlockState = null;
+        if(getBlockState().hasProperty(AnalogueContraptionControllerBlock.EMBEDDED_SLAB)
+                && getBlockState().getValue(AnalogueContraptionControllerBlock.EMBEDDED_SLAB)
+                && tag.contains(EMBEDDED_SLAB_TAG, Tag.TAG_COMPOUND)){
+            BlockState embeddedState = ControllerPhysicalState.backingState(provider, tag.getCompound(EMBEDDED_SLAB_TAG));
             embeddedSlabState = embeddedState;
+            if(embeddedState == null) unavailableEmbeddedBlockState = tag.getCompound(EMBEDDED_SLAB_TAG).copy();
             if (tag.contains(EMBEDDED_SLAB_MATERIAL_TAG, Tag.TAG_COMPOUND)) {
                 embeddedSlabMaterial = NbtUtils.readBlockState(
                         provider.lookupOrThrow(Registries.BLOCK),
@@ -3548,6 +3561,10 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
                 embeddedBlockEntityData = tag.getCompound(EMBEDDED_BLOCK_ENTITY_TAG).copy();
             }
         }
+
+        if(!Objects.equals(previousState, embeddedSlabState) || !Objects.equals(previousMaterial, embeddedSlabMaterial)
+                || !Objects.equals(previousData, embeddedBlockEntityData)
+                || !Objects.equals(previousUnavailable, unavailableEmbeddedBlockState)) embeddedBlockEntityPreview.invalidate();
 
         // ------------------------------------CHANNELS AND AXES------------------------------------
         CompoundTag channelsTag = tag.getCompound("Channels");
@@ -3739,7 +3756,9 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     public boolean canPlayerUse(Player player) {
         return level != null
                 && level.getBlockEntity(worldPosition) == this
-                && player.distanceToSqr(Vec3.atCenterOf(worldPosition)) <= 64.0D;
+                && (com.rieno.gadgetsandgizmos.lib.view.ViewInteractionContext.canUse(player, this)
+                || SimulatedHelper.distanceSquaredWithSubLevels(
+                        level, player.position(), Vec3.atCenterOf(worldPosition)) <= 64.0D);
     }
 
     // Send the menu data
@@ -3877,6 +3896,8 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
 
     // Sync the inserted linker
     private void syncFromInsertedLinker() {
+        // Keep virtual schematic and preview controllers from changing live linker bindings
+        if(isVirtual()) return;
         ItemStack storedLinker = getStoredLinker();
         if (level != null && !level.isClientSide && !storedLinker.isEmpty()) {
             ContraptionNetworkLinkerData.ensureStoredIdentity(storedLinker);
@@ -3895,20 +3916,6 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         }
 
         Map<String, ContraptionNetworkLinkerData.ChannelBind> binds = ContraptionNetworkLinkerData.readChannelBindings(linker);
-        if (binds.isEmpty()) {
-
-            for (String channelId : channels.keySet()) {
-                ControllerDirectTargetReference existingDirect = directTargets.get(channelId);
-                ControllerDirectTargetReference existingInput = inputTargets.get(channelId);
-                if (!ContraptionNetworkLinkerData.isLinkerFaceTarget(existingDirect)
-                        && !ContraptionNetworkLinkerData.isLinkerFaceTarget(existingInput)) {
-                    continue;
-                }
-                ContraptionNetworkLinkerData.writeChannelBinding(linker, channelId, existingDirect, existingInput);
-            }
-            binds = ContraptionNetworkLinkerData.readChannelBindings(linker);
-        }
-
         clearLinkerFaceBindings();
         for (String channelId : channels.keySet()) {
             ContraptionNetworkLinkerData.ChannelBind bind = binds.get(channelId);
@@ -3920,22 +3927,6 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         }
 
         List<CompoundTag> customBindTags = ContraptionNetworkLinkerData.readCustomEntryBindings(linker);
-        if (customBindTags.isEmpty() && level != null) {
-            List<CompoundTag> existingCustomTags = new ArrayList<>();
-            HolderLookup.Provider provider = level.registryAccess();
-            for (CustomKeyEntry entry : customKeyEntries) {
-                if (!isLinkerBoundCustomEntry(entry)) {
-                    continue;
-                }
-                existingCustomTags.add(entry.toTag(provider));
-            }
-            if (!existingCustomTags.isEmpty()) {
-
-                ContraptionNetworkLinkerData.writeCustomEntryBindings(linker, existingCustomTags);
-                customBindTags = ContraptionNetworkLinkerData.readCustomEntryBindings(linker);
-            }
-        }
-
         clearLinkerBoundCustomEntries();
         if (!customBindTags.isEmpty()) {
             loadLinkerBindings(linker);
@@ -5144,7 +5135,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
 
     // Get the linker sibling output targets
     private ControllerDirectTargetReference[] linkerSiblingOutputTargets(@Nullable ControllerDirectTargetReference directTarget) {
-        if (directTarget == null || !ContraptionNetworkLinkerData.isLinkerFaceOutputTarget(directTarget)) {
+        if (!usesLinkerFanout() || directTarget == null || !ContraptionNetworkLinkerData.isLinkerFaceOutputTarget(directTarget)) {
             return new ControllerDirectTargetReference[0];
         }
         ItemStack insertedLinker = getActiveStoredLinker();
@@ -5867,7 +5858,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
                                                 @Nullable ControllerDirectTargetReference directTarget,
                                                 float outputValue,
                                                 boolean customRoute) {
-        if (directTarget == null || !ContraptionNetworkLinkerData.isLinkerFaceOutputTarget(directTarget)) {
+        if (!usesLinkerFanout() || directTarget == null || !ContraptionNetworkLinkerData.isLinkerFaceOutputTarget(directTarget)) {
             return;
         }
         ItemStack insertedLinker = getActiveStoredLinker();
@@ -5905,6 +5896,10 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
             return;
         }
 
+        List<ContraptionNetworkLinkerData.LinkedTarget> nextTargets = ContraptionNetworkLinkerData.readTargets(linker);
+        boolean targetsChanged = !syncedLinkerTargets.equals(nextTargets);
+        syncedLinkerTargets = List.copyOf(nextTargets);
+
         Map<String, ControllerDirectTargetReference> nextStandardRoutes = new LinkedHashMap<>();
         if (!linker.isEmpty()) {
             Map<String, ContraptionNetworkLinkerData.ChannelBind> binds = ContraptionNetworkLinkerData.readChannelBindings(linker);
@@ -5922,7 +5917,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
             if (!ContraptionNetworkLinkerData.isLinkerFaceOutputTarget(directTarget)) {
                 continue;
             }
-            if (!Objects.equals(directTarget, nextStandardRoutes.get(channelId))) {
+            if (targetsChanged || !Objects.equals(directTarget, nextStandardRoutes.get(channelId))) {
                 clearDirectOutputSignalAndSiblings(directTarget, channelId, false);
             }
         }
@@ -5946,7 +5941,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
             if (entry == null || !ContraptionNetworkLinkerData.isLinkerFaceOutputTarget(entry.directTarget)) {
                 continue;
             }
-            if (!Objects.equals(entry.directTarget, nextCustomRoutes.get(entry.id()))) {
+            if (targetsChanged || !Objects.equals(entry.directTarget, nextCustomRoutes.get(entry.id()))) {
                 clearDirectOutputSignalAndSiblings(entry.directTarget, entry.id(), true);
             }
         }
@@ -5958,6 +5953,10 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
                                                     boolean customRoute) {
         clearDirectOutputSignal(directTarget, routeId, customRoute);
         pushLinkerSiblingOutputSignals(routeId, directTarget, 0.0f, customRoute);
+        if(level != null && !level.isClientSide && routeId != null && !routeId.isBlank()){
+            ControllerRedstoneCompat.clearSource(level,
+                    customRoute ? customSignalSourceId(routeId) : channelSignalSourceId(routeId));
+        }
     }
 
     // Clear the direct output signal
@@ -6197,7 +6196,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     }
 
     // Handle the controller link target
-    private class ControllerLinkTarget implements AnalogueTransmissionTarget, IRedstoneLinkable {
+    private class ControllerLinkTarget implements AnalogueTransmissionTarget, com.rieno.gadgetsandgizmos.lib.control.DistanceIndependentLink {
         // Channel id
         private final String channelId;
         // Binding
@@ -6327,7 +6326,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     }
 
     // Handle the controller link input target
-    private class ControllerLinkInputTarget implements IRedstoneLinkable {
+    private class ControllerLinkInputTarget implements com.rieno.gadgetsandgizmos.lib.control.DistanceIndependentLink {
         // Entry id
         private final String entryId;
         // Binding
@@ -6454,5 +6453,100 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         public BlockPos getLocation() {
             return worldPosition;
         }
+    }
+
+
+    // Let a specialised controller retain its durable SQLite state after a block replacement.
+    protected boolean retainControllerManifestAfterDestroy() {
+        return false;
+    }
+
+
+    // Carry controller graphs through Create's safe schematic writer for every controller version
+    @Override
+    public void writeSafe(CompoundTag tag, HolderLookup.Provider provider){
+        super.writeSafe(tag, provider);
+        CompoundTag physical = new CompoundTag();
+        writeControllerPhysicalState(physical, provider);
+        tag.put(ControllerPhysicalState.TAG_KEY, physical);
+        writeSchematicPayload(tag, provider, SubLevelSchematicSerializationContext.getCurrentContext());
+    }
+
+
+    // Preserve pending imports and serialize live graphs without copying a database identity
+    private void writeSchematicPayload(CompoundTag tag, HolderLookup.Provider provider,
+                                       @Nullable SubLevelSchematicSerializationContext ctx){
+        CompoundTag payload = pendingControllerSchematicPayload == null
+                ? createSchematicData(provider) : pendingControllerSchematicPayload.copy();
+        payload.remove(ControllerSchematicPayload.PLACEMENT_PREPARED_TAG);
+        if(ctx != null){
+            remapSchematicData(payload, ctx);
+            if(ctx.getType() == SubLevelSchematicSerializationContext.Type.PLACE)
+                payload.putBoolean(ControllerSchematicPayload.PLACEMENT_PREPARED_TAG, true);
+        }
+        if(!ControllerSchematicPayload.write(tag, payload))
+            throw new IllegalArgumentException("Controller graph exceeds the schematic payload limit");
+    }
+
+
+    // Restore this controller from a known SQLite manifest identity.
+    protected final boolean restoreControllerManifest(
+            String manifestId,
+            HolderLookup.Provider provider
+    ) {
+        if (level == null || level.isClientSide || manifestId == null || manifestId.isBlank()) {
+            return false;
+        }
+        ControllerManifestStore.ManifestSnapshot snapshot = ControllerManifestStore.loadController(manifestId, level);
+        if (snapshot == null) {
+            return false;
+        }
+        applyControllerManifestSnapshot(snapshot);
+        String manifestKind = snapshot.kind();
+        CompoundTag physical = new CompoundTag();
+        writeControllerPhysicalState(physical, provider);
+        CompoundTag controllerData = snapshot.controllerData();
+        if (!snapshot.draftGraph().isEmpty()) {
+            controllerData.put("AdvancedDraftGraph", snapshot.draftGraph());
+        }
+        if (!snapshot.activeGraph().isEmpty()) {
+            controllerData.put("AdvancedActiveGraph", snapshot.activeGraph());
+        }
+        CompoundTag remappedControllerData = SubLevelSchematicSerializationContext.getCurrentContext() == null
+                ? controllerData
+                : SchematicSubLevelReferenceRemapper.remappedCopy(controllerData);
+        remappedControllerData = ControllerPhysicalState.recoverProgram(remappedControllerData, physical);
+        readControllerBody(remappedControllerData, provider);
+        readAdditionalControllerManifestData(remappedControllerData, provider, manifestKind);
+        invalidateControllerRuntimeProgram();
+        onControllerManifestReloaded();
+        return true;
+    }
+
+
+    // Serialize the backing currently held by this block instead of one retained with a program
+    protected void writeControllerPhysicalState(CompoundTag tag, HolderLookup.Provider provider){
+        if (embeddedSlabState != null || unavailableEmbeddedBlockState != null) {
+            tag.put(EMBEDDED_SLAB_TAG, unavailableEmbeddedBlockState != null
+                    ? unavailableEmbeddedBlockState.copy() : NbtUtils.writeBlockState(embeddedSlabState));
+            if (embeddedSlabMaterial != null) {
+                tag.put(EMBEDDED_SLAB_MATERIAL_TAG, NbtUtils.writeBlockState(embeddedSlabMaterial));
+            }
+            if (embeddedBlockEntityData != null) {
+                tag.put(EMBEDDED_BLOCK_ENTITY_TAG, embeddedBlockEntityData.copy());
+            }
+        }
+    }
+
+
+    // Release a graph route without editing the authoritative linker bindings
+    protected void removeRuntimeCustomKeyEntry(String id){
+        removeCustomKey(id, false, true);
+    }
+
+
+    // Let graph hosts route each selected target independently
+    protected boolean usesLinkerFanout(){
+        return true;
     }
 }

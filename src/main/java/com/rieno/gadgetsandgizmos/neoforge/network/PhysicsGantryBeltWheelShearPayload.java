@@ -20,6 +20,8 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
 import java.util.UUID;
+import com.rieno.gadgetsandgizmos.content.ShipPermissions;
+import com.rieno.gadgetsandgizmos.lib.scm.ShipPermission;
 
 // Select one rendered belt, then validate the shears hit and unlink it on the server.
 public record PhysicsGantryBeltWheelShearPayload(BlockPos first, @Nullable UUID firstLevel,
@@ -48,7 +50,9 @@ public record PhysicsGantryBeltWheelShearPayload(BlockPos first, @Nullable UUID 
                     || !Objects.equals(payload.firstLevel(), SimulatedHelper.getContainingSubLevelId(first))
                     || !Objects.equals(payload.secondLevel(), SimulatedHelper.getContainingSubLevelId(second))
                     || !first.references(payload.second(), payload.secondLevel())
-                    || !second.references(payload.first(), payload.firstLevel())) return;
+                    || !second.references(payload.first(), payload.firstLevel())
+                    || !ShipPermissions.allows(player, first.getLevel(), first.getBlockPos(), ShipPermission.INTERACT)
+                    || !ShipPermissions.allows(player, second.getLevel(), second.getBlockPos(), ShipPermission.INTERACT)) return;
 
             var hit = PhysicsGantryBeltWheelLink.pickBelt(player.getEyePosition(), player.getViewVector(1.0F),
                     player.blockInteractionRange(), first.getWorldAnchorPosition(), second.getWorldAnchorPosition());
@@ -80,4 +84,6 @@ public record PhysicsGantryBeltWheelShearPayload(BlockPos first, @Nullable UUID 
         InteractionHand hand = buffer.readBoolean() ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND;
         return new PhysicsGantryBeltWheelShearPayload(first, firstLevel, second, secondLevel, hand);
     }
+
+
 }

@@ -1,5 +1,10 @@
 package com.rieno.gadgetsandgizmos.content;
 
+import com.rieno.gadgetsandgizmos.lib.power.LongEnergyStorage;
+
+import com.rieno.gadgetsandgizmos.lib.power.EnergyStorageProbe;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerContainerAccess;
+
 /*--------------------------------------------------------##---------------------------------------------------------
 
 =======================================================================================================================
@@ -83,9 +88,9 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
     // Tracks whether fluid handler is available
     private boolean hasFluidHandler;
     // Current energy
-    private int energy;
+    private long energy;
     // Current energy capacity
-    private int energyCapacity;
+    private long energyCapacity;
     // Tracks whether combined manifest is set
     private boolean combinedManifest;
     // Current manual graph text
@@ -153,13 +158,15 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
         }
         BlockState state = getBlockState();
         BlockPos targetPos = ShippingManifestBlock.attachedTargetPos(worldPosition, state);
+        if(!WorkerContainerAccess.isLoaded(level, targetPos)) return;
         Direction targetSide = ShippingManifestBlock.attachedTargetSide(state);
         IItemHandler itemHandler = ShippingManifestBlock.findItemHandler(level, targetPos, targetSide);
         IFluidHandler fluidHandler = ShippingManifestBlock.resolveFluidHandler(level, targetPos, targetSide,
                 combinedManifest);
         IEnergyStorage energyHandler = ShippingManifestBlock.findEnergyHandler(
                 level, targetPos, targetSide);
-        if ((fluidHandler != null || energyHandler != null)
+        LongEnergyStorage longEnergyHandler = ShippingManifestBlock.findLongEnergyHandler(level, targetPos);
+        if ((fluidHandler != null || energyHandler != null || longEnergyHandler != null)
                 && !state.getValue(ShippingManifestBlock.SHOW_BLANK)) {
             level.setBlock(worldPosition, state.setValue(ShippingManifestBlock.SHOW_BLANK, true),
                     net.minecraft.world.level.block.Block.UPDATE_CLIENTS);
@@ -170,8 +177,9 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
         ShippingManifestBlock.FluidContents fluids = fluidHandler == null
                 ? ShippingManifestBlock.FluidContents.EMPTY
                 : ShippingManifestBlock.collectFluids(fluidHandler);
-        int nextEnergy = energyHandler == null ? 0 : energyHandler.getEnergyStored();
-        int nextEnergyCapacity = energyHandler == null ? 0 : energyHandler.getMaxEnergyStored();
+        EnergyStorageProbe.Reading reading = EnergyStorageProbe.read(energyHandler, longEnergyHandler);
+        long nextEnergy = reading.stored();
+        long nextEnergyCapacity = reading.capacity();
 
         int nextItemTypes = items.size();
         int nextFluidTypes = fluids.entries.size();
@@ -195,7 +203,7 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
                     Component.translatable("gui.createthrusters.shipping_manifest.empty_fluids").getString() + " "
                             + compactFluidFill(0L, fluids.totalCapacity)));
         }
-        if (energyHandler != null) {
+        if (energyHandler != null || longEnergyHandler != null) {
             nextDisplayEntries.add(textDisplay(Component.translatable(
                     "gui.createthrusters.shipping_manifest.energy",
                     nextEnergy, nextEnergyCapacity,
@@ -415,8 +423,8 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
         }
         tag.putInt(TAG_ITEM_TYPES, itemTypes);
         tag.putInt(TAG_FLUID_TYPES, fluidTypes);
-        tag.putInt(TAG_ENERGY, energy);
-        tag.putInt(TAG_ENERGY_CAPACITY, energyCapacity);
+        tag.putLong(TAG_ENERGY, energy);
+        tag.putLong(TAG_ENERGY_CAPACITY, energyCapacity);
         tag.putBoolean(TAG_HAS_FLUID_HANDLER, hasFluidHandler);
         ListTag previewTag = new ListTag();
         for (DisplayEntry entry : displayEntries) {
@@ -444,8 +452,8 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
         }
         itemTypes = tag.getInt(TAG_ITEM_TYPES);
         fluidTypes = tag.getInt(TAG_FLUID_TYPES);
-        energy = tag.getInt(TAG_ENERGY);
-        energyCapacity = tag.getInt(TAG_ENERGY_CAPACITY);
+        energy = tag.getLong(TAG_ENERGY);
+        energyCapacity = tag.getLong(TAG_ENERGY_CAPACITY);
         hasFluidHandler = tag.getBoolean(TAG_HAS_FLUID_HANDLER);
         ListTag previewTag = tag.getList(TAG_PREVIEW, Tag.TAG_COMPOUND);
         List<DisplayEntry> loadedEntries = new ArrayList<>(previewTag.size());

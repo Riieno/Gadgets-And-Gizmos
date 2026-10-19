@@ -27,7 +27,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.Map;
 import java.util.Locale;
-import java.util.Comparator;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphPortOrder;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphTextInputs;
+import com.rieno.gadgetsandgizmos.lib.physics.EntityTelemetryApi;
 
 // Define every ACC graph node and the ports exposed to the editor and runtime
 public final class AdvancedGraphCatalog {
@@ -57,7 +59,19 @@ public final class AdvancedGraphCatalog {
     public static final String INLINE_MAP_OUTPUTS_TAG = "InlineMapOutputs";
     /** Maps generated MAP ports to the retained block-data leaf port schemas. */
     public static final String DATA_PORT_GROUPS_TAG = "DataPortGroups";
-    public static final String INLINE_MAP_SOURCE_TAG = "Source";
+    
+    public static final String DATA_TARGETS_TAG = "DataTargets";
+
+    public static final String DATA_TARGET_FACES_TAG = "DataTargetFaces";
+
+    public static final String DATA_TARGET_BINDINGS_TAG = "DataTargetBindings";
+
+    public static final String PORT_SECTIONS_TAG = "PortSections";
+
+    public static final String COLLAPSED_PORT_SECTIONS_TAG = "CollapsedPortSections";
+
+    public static final String MERGE_LIKE_PORTS_TAG = "MergeLikePorts";
+public static final String INLINE_MAP_SOURCE_TAG = "Source";
     public static final String INLINE_MAP_KEY_TAG = "Key";
     public static final String SHIP_SPEED_PERCENT_TAG = "ShipSpeedPercent";
     public static final double DEFAULT_COLLISION_DETECTION_DISTANCE = 64.0D;
@@ -73,7 +87,15 @@ public final class AdvancedGraphCatalog {
     }
 
     private static final GraphNodeRegistry REGISTRY = GraphApi.nodes();
+    private static final Map<String, Definition> EDITOR_DEFINITIONS = new LinkedHashMap<>();
     private static final Map<String, MathGraphNodes.Node> MATH_NODES = mathNodes();
+    private static final List<com.rieno.gadgetsandgizmos.lib.graph.GraphCollectionNodes.Node> COLLECTION_NODES =
+            com.rieno.gadgetsandgizmos.lib.graph.GraphCollectionNodes.nodes("createthrusters");
+
+    public static com.rieno.gadgetsandgizmos.lib.graph.GraphCollectionNodes.Node collectionNode(String type){
+        return COLLECTION_NODES.stream().filter(node -> node.definition().id().equals(type)).findFirst().orElse(null);
+    }
+
 
     // Let this addon own the new node ids while retaining saved rotation ids
     private static Map<String, MathGraphNodes.Node> mathNodes(){
@@ -101,119 +123,134 @@ public final class AdvancedGraphCatalog {
 
     // Initialize the shared state
     static {
-        register("event_tick", "events", Map.of(), Map.of("exec", "exec"), false);
-        register("event_graph_ready", "events", Map.of(),
-                Map.of("exec", "exec", "ready", "boolean"), false);
-        register("event_periodic", "events", Map.of("period", "number"), Map.of("exec", "exec"), true);
-        register("event_value_change", "events", Map.of("value", "any"),
-                Map.of("exec", "exec", "value", "any"), true);
-        register("event_trigger", "events", Map.of(), Map.of("exec", "exec"), false);
-        register("watch_chat", "events", Map.of("start_word", "string", "players", "list", "hide_message", "boolean"),
-                Map.of("exec", "exec", "value", "list"), true);
-        register("send_chat_message", "events", Map.of("exec", "exec", "message", "string", "players", "list"),
-                Map.of("exec", "exec"), false);
-        register("createthrusters:announce", "events", Map.ofEntries(
+        register("event_tick", "events", GraphPortOrder.ports(), GraphPortOrder.ports("exec", "exec"), false);
+        register("camera", "controller", GraphPortOrder.ports(
+                "interact_with_hit", "exec", "target", "target", "max_ray_length", "number", "rays_per_second", "number",
+                "filter", "any", "filter_type", "string", "mode", "string", "orientation_mode", "string",
+                "auto_tracking", "boolean", "lock_target", "boolean"),
+                GraphPortOrder.ports("ray_cast", "list", "hit", "boolean", "hit_x", "number", "hit_y", "number",
+                        "hit_z", "number", "hit_details", "map", "is_sub_level", "boolean"), true);
+        register("control_camera", "controller", GraphPortOrder.ports("exec", "exec", "target", "target"), GraphPortOrder.ports(), true);
+        register("acc_display_camera_source", "hud", GraphPortOrder.ports(
+                "target", "target", "source", "target", "name", "string"), GraphPortOrder.ports(), true);
+        register("event_graph_ready", "events", GraphPortOrder.ports(),
+                GraphPortOrder.ports("exec", "exec", "ready", "boolean"), false);
+        register("event_periodic", "events", GraphPortOrder.ports("period", "number"), GraphPortOrder.ports("exec", "exec"), true);
+        register("event_value_change", "events", GraphPortOrder.ports("value", "any"),
+                GraphPortOrder.ports("exec", "exec", "value", "any"), true);
+        register("event_trigger", "events", GraphPortOrder.ports(), GraphPortOrder.ports("exec", "exec"), false);
+        register("watch_chat", "events", GraphPortOrder.ports("start_word", "string", "players", "list", "hide_message", "boolean"),
+                GraphPortOrder.ports("exec", "exec", "value", "list"), true);
+        register("send_chat_message", "events", GraphPortOrder.ports("exec", "exec", "message", "string", "players", "list"),
+                GraphPortOrder.ports("exec", "exec"), false);
+        register("createthrusters:announce", "events", GraphPortOrder.entries(
                 Map.entry("exec", "exec"), Map.entry("players", "list"), Map.entry("action", "string"),
                 Map.entry("message", "string"), Map.entry("text_format", "string"), Map.entry("color", "color"),
                 Map.entry("color_mode", "string"), Map.entry("bold", "string"), Map.entry("italic", "string"),
                 Map.entry("underlined", "string"), Map.entry("strikethrough", "string"), Map.entry("obfuscated", "string"),
                 Map.entry("fade_in", "number"), Map.entry("stay", "number"), Map.entry("fade_out", "number"),
-                Map.entry("time_unit", "string")), Map.of("exec", "exec"), false);
-        register("event_physical_interaction", "events", Map.of(), physicalInteractionOutputs(), false);
-        register("event_redstone_change", "events", Map.of(), Map.of("exec", "exec", "value", "number"), false);
-        register("event_channel_change", "events", Map.of(), Map.of("exec", "exec", "value", "number"), false);
-        register("event_variable_change", "events", Map.of(), Map.of("exec", "exec", "value", "any"), false);
-        register("event_named_controller", "events", Map.of(),
-                Map.of("exec", "exec", "data", "any"), false);
-        register("event_delta_time", "events", Map.of(), Map.of("delta_time", "number"), false);
+                Map.entry("time_unit", "string")), GraphPortOrder.ports("exec", "exec"), false);
+        register("event_physical_interaction", "events", GraphPortOrder.ports(), physicalInteractionOutputs(), false);
+        register("event_redstone_change", "events", GraphPortOrder.ports(), GraphPortOrder.ports("exec", "exec", "value", "number"), false);
+        register("event_channel_change", "events", GraphPortOrder.ports(), GraphPortOrder.ports("exec", "exec", "value", "number"), false);
+        register("event_variable_change", "events", GraphPortOrder.ports(), GraphPortOrder.ports("exec", "exec", "value", "any"), false);
+        register("event_named_controller", "events", GraphPortOrder.ports(),
+                GraphPortOrder.ports("exec", "exec", "data", "any"), false);
+        register("event_delta_time", "events", GraphPortOrder.ports(), GraphPortOrder.ports("delta_time", "number"), false);
         register("send_named_controller_event", "events",
-                Map.of("exec", "exec", "data", "any", "distance", "number"),
-                Map.of("exec", "exec"), false);
-        register("profiler_fps", "profiler", Map.of(), Map.of("value", "number"), false);
-        register("profiler_mspt", "profiler", Map.of(), Map.of("value", "number"), false);
-        register("profiler_tps", "profiler", Map.of(), Map.of("value", "number"), false);
-        register("profiler_frametime", "profiler", Map.of(), Map.of("value", "number"), false);
-        register("constant_number", "core", Map.of(), Map.of("value", "number"), false);
-        register("constant_boolean", "core", Map.of(), Map.of("value", "boolean"), false);
-        register("constant_string", "core", Map.of(), Map.of("value", "string"), false);
-        register("constant_color", "core", Map.of(), Map.of("value", "color"), false);
-        register("variable_get", "variables", Map.of(), Map.of("value", "any"), false);
-        register("variable_set", "variables", Map.of("exec", "exec", "type", "string", "default", "any", "value", "any"), Map.of("exec", "exec", "value", "any"), true);
-        register("branch", "logic", Map.of("exec", "exec", "condition", "boolean"), Map.of("true", "exec", "false", "exec"), false);
-        register("data_branch", "logic", Map.of("condition", "boolean", "true", "any", "false", "any"), Map.of("value", "any"), false);
-        register("switch", "logic", Map.of("exec", "exec", "selector", "number"),
-                Map.of("default", "exec"), false);
-        register("and", "logic", Map.of("a", "boolean", "b", "boolean"), Map.of("value", "boolean"), false);
-        register("or", "logic", Map.of("a", "boolean", "b", "boolean"), Map.of("value", "boolean"), false);
-        register("not", "logic", Map.of("value", "boolean"), Map.of("value", "boolean"), false);
-        register("compare", "logic", Map.of("a", "any", "b", "any", "operator", "string"), Map.of("value", "boolean"), false);
-        register("latch", "logic", Map.of("exec", "exec", "value", "boolean"), Map.of("exec", "exec", "value", "boolean"), true);
-        register("edge_detector", "logic", Map.of("value", "boolean"), Map.of("rising", "boolean", "falling", "boolean"), true);
-        register("pulse_on_change", "logic", Map.of("value", "any"), Map.of("exec", "exec"), true);
-        register("gate", "logic", Map.of("exec", "exec", "open", "boolean"), Map.of("exec", "exec"), true);
-        register("flip_flop", "logic", Map.of("exec", "exec"), Map.of("exec", "exec", "value", "boolean"), true);
-        register("do_once", "flow", Map.of("exec", "exec", "reset", "boolean"), Map.of("exec", "exec"), true);
-        register("do_n", "flow", Map.of("exec", "exec", "count", "number", "reset", "boolean"), Map.of("exec", "exec", "index", "number"), true);
-        register("count", "flow", Map.of("exec", "exec", "step", "number", "reset", "boolean"), Map.of("exec", "exec", "value", "number"), true);
-        register("bounded_loop", "flow", Map.of("exec", "exec", "iterations", "number"), Map.of("body", "exec", "complete", "exec", "index", "number"), true);
-        register("delay", "flow", Map.of("exec", "exec", "ticks", "number"), Map.of("exec", "exec"), true);
-        register("debounce", "flow", Map.of("exec", "exec", "ticks", "number"), Map.of("exec", "exec"), true);
-        register("timer", "flow", Map.of("start", "exec", "stop", "exec", "duration", "number"), Map.of("complete", "exec", "elapsed", "number"), true);
-        register("parallel_execution", "flow", Map.of("exec", "exec"), Map.of(), false);
-        register("sequenced_execution", "flow", Map.of("exec", "exec"), Map.of(), false);
-        register("exec_combine", "flow", Map.of(), Map.of("exec", "exec"), false);
-        register("add", "math", Map.of("a", "number", "b", "number"), Map.of("value", "number"), false);
-        register("subtract", "math", Map.of("a", "number", "b", "number"), Map.of("value", "number"), false);
-        register("multiply", "math", Map.of("a", "number", "b", "number"), Map.of("value", "number"), false);
-        register("divide", "math", Map.of("a", "number", "b", "number"), Map.of("value", "number"), false);
-        register("modulo", "math", Map.of("a", "number", "b", "number"), Map.of("value", "number"), false);
-        register("min", "math", Map.of("a", "number", "b", "number"), Map.of("value", "number"), false);
-        register("max", "math", Map.of("a", "number", "b", "number"), Map.of("value", "number"), false);
-        register("average", "math", Map.of("a", "number", "b", "number"), Map.of("value", "number"), false);
-        register("absolute", "math", Map.of("value", "number"), Map.of("value", "number"), false);
-        register("lerp", "math", Map.of("exec", "exec", "a", "number", "b", "number", "amount", "number"), Map.of("exec", "exec", "value", "number"), true);
-        register("sin", "math", Map.of("value", "number"), Map.of("value", "number"), false);
-        register("cos", "math", Map.of("value", "number"), Map.of("value", "number"), false);
-        register("-x", "math", Map.of("value", "number"), Map.of("value", "number"), false);
-        register("math_sqrt", "math", Map.of("In", "number"), Map.of("Out", "number"), false);
-        register("math_tan", "math", Map.of("In", "number"), Map.of("Out", "number"), false);
-        register("math_acos", "math", Map.of("In", "number"), Map.of("Out", "number"), false);
-        register("math_asin", "math", Map.of("In", "number"), Map.of("Out", "number"), false);
-        register("math_atan", "math", Map.of("In", "number"), Map.of("Out", "number"), false);
-        register("math_atan2", "math", Map.of("Y", "number", "X", "number"),
-                Map.of("Out", "number"), false);
-        register("math_power", "math", Map.of("Base", "number", "Exp", "number"),
-                Map.of("Result", "number"), false);
-        register("math_exp", "math", Map.of("In", "number"), Map.of("Out", "number"), false);
-        register("math_ln", "math", Map.of("In", "number"), Map.of("Out", "number"), false);
-        register("math_log", "math", Map.of("In", "number", "Base", "number"),
-                Map.of("Out", "number"), false);
-        register("math_average", "math", Map.of("In", "number", "Samples", "number"),
-                Map.of("Average", "number"), true);
-        register("math_delta", "math", Map.of("In", "number"), Map.of("Delta", "number"), true);
-        register("math_peak_tracker", "math", Map.of("In", "number"),
-                Map.of("Min", "number", "Max", "number"), true);
-        register("round", "math", Map.of("value", "number"), Map.of("value", "number"), false);
-        register("floor", "math", Map.of("value", "number"), Map.of("value", "number"), false);
-        register("ceil", "math", Map.of("value", "number"), Map.of("value", "number"), false);
-        register("clamp", "math", Map.of("value", "number", "min", "number", "max", "number"), Map.of("value", "number"), false);
-        register("map_range", "math", Map.of("value", "number", "in_min", "number", "in_max", "number", "out_min", "number", "out_max", "number"), Map.of("value", "number"), false);
+                GraphPortOrder.ports("exec", "exec", "data", "any", "distance", "number"),
+                GraphPortOrder.ports("exec", "exec"), false);
+        register("profiler_fps", "profiler", GraphPortOrder.ports(), GraphPortOrder.ports("value", "number"), false);
+        register("profiler_mspt", "profiler", GraphPortOrder.ports(), GraphPortOrder.ports("value", "number"), false);
+        register("profiler_tps", "profiler", GraphPortOrder.ports(), GraphPortOrder.ports("value", "number"), false);
+        register("profiler_frametime", "profiler", GraphPortOrder.ports(), GraphPortOrder.ports("value", "number"), false);
+        register("constant_number", "core", GraphPortOrder.ports(), GraphPortOrder.ports("value", "number"), false);
+        register("constant_boolean", "core", GraphPortOrder.ports(), GraphPortOrder.ports("value", "boolean"), false);
+        register("constant_string", "core", GraphPortOrder.ports(), GraphPortOrder.ports("value", "string"), false);
+        register("constant_color", "core", GraphPortOrder.ports(), GraphPortOrder.ports("value", "color"), false);
+        register("variable_get", "variables", GraphPortOrder.ports(), GraphPortOrder.ports("value", "any"), false);
+        register("variable_set", "variables", GraphPortOrder.ports("exec", "exec", "type", "string", "default", "any", "value", "any"), GraphPortOrder.ports("exec", "exec", "value", "any"), true);
+        register("branch", "logic", GraphPortOrder.ports("exec", "exec", "condition", "boolean"), GraphPortOrder.ports("true", "exec", "false", "exec"), false);
+        register("data_branch", "logic", GraphPortOrder.ports("condition", "boolean", "true", "any", "false", "any"), GraphPortOrder.ports("value", "any"), false);
+        register("switch", "logic", GraphPortOrder.ports("exec", "exec", "selector", "number"),
+                GraphPortOrder.ports("default", "exec"), false);
+        register("and", "logic", GraphPortOrder.ports("a", "boolean", "b", "boolean"), GraphPortOrder.ports("value", "boolean"), false);
+        register("or", "logic", GraphPortOrder.ports("a", "boolean", "b", "boolean"), GraphPortOrder.ports("value", "boolean"), false);
+        register("not", "logic", GraphPortOrder.ports("value", "boolean"), GraphPortOrder.ports("value", "boolean"), false);
+        register("xor", "logic", GraphPortOrder.ports("a", "boolean", "b", "boolean"), GraphPortOrder.ports("value", "boolean"), false);
+        register("nor", "logic", GraphPortOrder.ports("a", "boolean", "b", "boolean"), GraphPortOrder.ports("value", "boolean"), false);
+        register("nand", "logic", GraphPortOrder.ports("a", "boolean", "b", "boolean"), GraphPortOrder.ports("value", "boolean"), false);
+        register("xnor", "logic", GraphPortOrder.ports("a", "boolean", "b", "boolean"), GraphPortOrder.ports("value", "boolean"), false);
+        register("sr_latch", "logic", GraphPortOrder.ports("set", "exec", "reset", "exec"), GraphPortOrder.ports("exec", "exec", "state", "boolean"), true);
+        register("compare", "logic", GraphPortOrder.ports("a", "any", "operator", "string", "b", "any"), GraphPortOrder.ports("value", "boolean"), false);
+        register("latch", "logic", GraphPortOrder.ports("exec", "exec", "value", "boolean"), GraphPortOrder.ports("exec", "exec", "value", "boolean"), true);
+        register("edge_detector", "logic", GraphPortOrder.ports("value", "boolean"), GraphPortOrder.ports("rising", "boolean", "falling", "boolean"), true);
+        register("pulse_on_change", "logic", GraphPortOrder.ports("value", "any"), GraphPortOrder.ports("exec", "exec"), true);
+        register("gate", "logic", GraphPortOrder.ports("exec", "exec", "open", "boolean"), GraphPortOrder.ports("exec", "exec"), true);
+        register("pulse_if", "events", GraphPortOrder.ports("a", "any", "b", "any"), GraphPortOrder.ports("exec", "exec"), false);
+        register("flip_flop", "logic", GraphPortOrder.ports("exec", "exec", "flip_on", "string"), GraphPortOrder.ports("exec", "exec", "value", "boolean"), true);
+        register("do_once", "flow", GraphPortOrder.ports("exec", "exec", "reset", "boolean"), GraphPortOrder.ports("exec", "exec"), true);
+        register("do_n", "flow", GraphPortOrder.ports("exec", "exec", "count", "number", "reset", "boolean"), GraphPortOrder.ports("exec", "exec", "index", "number"), true);
+        register("count", "flow", GraphPortOrder.ports("exec", "exec", "step", "number", "decrement", "boolean", "reset", "boolean", "remember_count", "boolean"), GraphPortOrder.ports("exec", "exec", "value", "number"), true);
+        register("bounded_loop", "flow", GraphPortOrder.ports("exec", "exec", "iterations", "number"), GraphPortOrder.ports("exec", "exec", "body", "exec", "complete", "exec", "index", "number"), true);
+        register("delay", "flow", GraphPortOrder.ports("exec", "exec", "ticks", "number"), GraphPortOrder.ports("exec", "exec"), true);
+        register("debounce", "flow", GraphPortOrder.ports("exec", "exec", "ticks", "number"), GraphPortOrder.ports("exec", "exec"), true);
+        register("timer", "flow", GraphPortOrder.ports("start", "exec", "stop", "exec", "duration", "number"), GraphPortOrder.ports("complete", "exec", "elapsed", "number"), true);
+        register("parallel_execution", "flow", GraphPortOrder.ports("exec", "exec"), GraphPortOrder.ports(), false);
+        register("sequenced_execution", "flow", GraphPortOrder.ports("exec", "exec"), GraphPortOrder.ports(), false);
+        register("exec_combine", "flow", GraphPortOrder.ports(), GraphPortOrder.ports("exec", "exec"), false);
+        register("add", "math", GraphPortOrder.ports("a", "number", "b", "number"), GraphPortOrder.ports("value", "number"), false);
+        register("subtract", "math", GraphPortOrder.ports("a", "number", "b", "number"), GraphPortOrder.ports("value", "number"), false);
+        register("multiply", "math", GraphPortOrder.ports("a", "number", "b", "number"), GraphPortOrder.ports("value", "number"), false);
+        register("divide", "math", GraphPortOrder.ports("a", "number", "b", "number"), GraphPortOrder.ports("value", "number"), false);
+        register("modulo", "math", GraphPortOrder.ports("a", "number", "b", "number"), GraphPortOrder.ports("value", "number"), false);
+        register("min", "math", GraphPortOrder.ports("a", "number", "b", "number"), GraphPortOrder.ports("value", "number"), false);
+        register("max", "math", GraphPortOrder.ports("a", "number", "b", "number"), GraphPortOrder.ports("value", "number"), false);
+        register("average", "math", GraphPortOrder.ports("a", "number", "b", "number"), GraphPortOrder.ports("value", "number"), false);
+        register("absolute", "math", GraphPortOrder.ports("value", "number"), GraphPortOrder.ports("value", "number"), false);
+        register("lerp", "math", GraphPortOrder.ports("exec", "exec", "a", "number", "b", "number", "amount", "number"), GraphPortOrder.ports("exec", "exec", "value", "number"), true);
+        register("sin", "math", GraphPortOrder.ports("value", "number"), GraphPortOrder.ports("value", "number"), false);
+        register("cos", "math", GraphPortOrder.ports("value", "number"), GraphPortOrder.ports("value", "number"), false);
+        register("-x", "math", GraphPortOrder.ports("value", "number"), GraphPortOrder.ports("value", "number"), false);
+        register("math_sqrt", "math", GraphPortOrder.ports("In", "number"), GraphPortOrder.ports("Out", "number"), false);
+        register("math_tan", "math", GraphPortOrder.ports("In", "number"), GraphPortOrder.ports("Out", "number"), false);
+        register("math_acos", "math", GraphPortOrder.ports("In", "number"), GraphPortOrder.ports("Out", "number"), false);
+        register("math_asin", "math", GraphPortOrder.ports("In", "number"), GraphPortOrder.ports("Out", "number"), false);
+        register("math_atan", "math", GraphPortOrder.ports("In", "number"), GraphPortOrder.ports("Out", "number"), false);
+        register("math_atan2", "math", GraphPortOrder.ports("Y", "number", "X", "number"),
+                GraphPortOrder.ports("Out", "number"), false);
+        register("math_power", "math", GraphPortOrder.ports("Base", "number", "Exp", "number"),
+                GraphPortOrder.ports("Result", "number"), false);
+        register("math_exp", "math", GraphPortOrder.ports("In", "number"), GraphPortOrder.ports("Out", "number"), false);
+        register("math_ln", "math", GraphPortOrder.ports("In", "number"), GraphPortOrder.ports("Out", "number"), false);
+        register("math_log", "math", GraphPortOrder.ports("In", "number", "Base", "number"),
+                GraphPortOrder.ports("Out", "number"), false);
+        register("math_average", "math", GraphPortOrder.ports("In", "number", "Samples", "number"),
+                GraphPortOrder.ports("Average", "number"), true);
+        register("math_delta", "math", GraphPortOrder.ports("In", "number"), GraphPortOrder.ports("Delta", "number"), true);
+        register("math_peak_tracker", "math", GraphPortOrder.ports("In", "number"),
+                GraphPortOrder.ports("Min", "number", "Max", "number"), true);
+        register("round", "math", GraphPortOrder.ports("value", "number"), GraphPortOrder.ports("value", "number"), false);
+        register("floor", "math", GraphPortOrder.ports("value", "number"), GraphPortOrder.ports("value", "number"), false);
+        register("ceil", "math", GraphPortOrder.ports("value", "number"), GraphPortOrder.ports("value", "number"), false);
+        register("clamp", "math", GraphPortOrder.ports("value", "number", "min", "number", "max", "number"), GraphPortOrder.ports("value", "number"), false);
+        register("map_range", "math", GraphPortOrder.ports("value", "number", "in_min", "number", "in_max", "number", "out_min", "number", "out_max", "number"), GraphPortOrder.ports("value", "number"), false);
         register("curve", "math",
-                Map.of("exec", "exec", "value", "number", "min", "number", "max", "number", "speed", "number"),
-                Map.of("exec", "exec", "value", "number"), true);
-        register("ramp", "response", Map.of("exec", "exec", "value", "number", "rise", "number", "fall", "number", "reset_delay", "number"), Map.of("exec", "exec", "value", "number"), true);
-        register("step_response", "response", Map.of("value", "number", "step", "number"), Map.of("value", "number"), true);
+                GraphPortOrder.ports("exec", "exec", "value", "number", "min", "number", "max", "number", "speed", "number"),
+                GraphPortOrder.ports("exec", "exec", "value", "number"), true);
+        register("ramp", "response", GraphPortOrder.ports("exec", "exec", "value", "number", "rise", "number", "fall", "number", "reset_delay", "number"), GraphPortOrder.ports("exec", "exec", "value", "number"), true);
+        register("step_response", "response", GraphPortOrder.ports("value", "number", "step", "number"), GraphPortOrder.ports("value", "number"), true);
         register("deadzone", "response",
-                Map.of("value", "number", "start", "number", "resist", "number"),
-                Map.of("value", "number"), false);
-        register("smoothing", "response", Map.of("exec", "exec", "value", "number", "amount", "number"), Map.of("exec", "exec", "value", "number"), true);
-        register("pid", "response", Map.of("target", "number", "actual", "number", "p", "number", "i", "number", "d", "number", CONTROLLER_RESET_PORT, "boolean"), Map.of("value", "number"), true);
-        register("lqr_controller", "response", Map.of("target", "number", "actual", "number", "gain", "number",
-                "feed_forward", "number", "min", "number", "max", "number"), Map.of("value", "number"), false);
-        register("adrc", "response", Map.of("target", "number", "actual", "number", CONTROLLER_RESET_PORT, "boolean", "delta_time", "number",
+                GraphPortOrder.ports("value", "number", "start", "number", "resist", "number"),
+                GraphPortOrder.ports("value", "number"), false);
+        register("smoothing", "response", GraphPortOrder.ports("exec", "exec", "value", "number", "amount", "number"), GraphPortOrder.ports("exec", "exec", "value", "number"), true);
+        register("pid", "response", GraphPortOrder.ports("target", "number", "actual", "number", "p", "number", "i", "number", "d", "number", CONTROLLER_RESET_PORT, "boolean"), GraphPortOrder.ports("value", "number"), true);
+        register("lqr_controller", "response", GraphPortOrder.ports("target", "number", "actual", "number", "gain", "number",
+                "feed_forward", "number", "min", "number", "max", "number"), GraphPortOrder.ports("value", "number"), false);
+        register("adrc", "response", GraphPortOrder.ports("target", "number", "actual", "number", CONTROLLER_RESET_PORT, "boolean", "delta_time", "number",
                 "controller_bandwidth", "number", "observer_bandwidth", "number", "plant_gain", "number",
-                "output_limit", "number"), Map.of("value", "number", "disturbance", "number"), true);
-        register("adrc_nth_order", "response", Map.ofEntries(
+                "output_limit", "number"), GraphPortOrder.ports("value", "number", "disturbance", "number"), true);
+        register("adrc_nth_order", "response", GraphPortOrder.entries(
                 Map.entry("target", "number"),
                 Map.entry("actual", "number"),
                 Map.entry(CONTROLLER_RESET_PORT, "boolean"),
@@ -223,189 +260,206 @@ public final class AdvancedGraphCatalog {
                 Map.entry("observer_bandwidth", "number"),
                 Map.entry("plant_gain", "number"),
                 Map.entry("output_limit", "number")),
-                Map.of("value", "number", "disturbance", "number"), true);
+                GraphPortOrder.ports("value", "number", "disturbance", "number"), true);
         for(MathGraphNodes.Node math : MATH_NODES.values()){
             REGISTRY.register(math.definition());
             GraphApi.runtimes().register(math.definition().id(), math.executor());
         }
-        register("vector_multiply", "math", Map.of("a", "map", "b", "map"), Map.of("value", "map"), false);
-        register("vector_subtract", "math", Map.of("a", "map", "b", "map"), Map.of("value", "map"), false);
-        register("vector_add", "math", Map.of("a", "map", "b", "map"), Map.of("value", "map"), false);
-        register("vector_invert", "math", Map.of("value", "map"), Map.of("value", "map"), false);
-        register("vector_magnitude", "math", Map.of("value", "map"), Map.of("value", "number"), false);
-        register("vector_difference", "math", Map.of("a", "map", "b", "map"), Map.of("value", "map"), false);
-        register("vector_distance", "math", Map.of("a", "map", "b", "map"), Map.of("value", "number"), false);
-        register("random", "math", Map.of(), Map.of("value", "number"), false);
-        register("random_int", "math", Map.of("max", "number"), Map.of("value", "number"), false);
-        register("random_float_in_range", "math", Map.of("min", "number", "max", "number"), Map.of("value", "number"), false);
-        register("random_int_in_range", "math", Map.of("min", "number", "max", "number"), Map.of("value", "number"), false);
-        register("string_concat", "data", Map.of("a", "string", "b", "string"), Map.of("value", "string"), false);
+        register("vector_multiply", "math", GraphPortOrder.ports("a", "map", "b", "map"), GraphPortOrder.ports("value", "map"), false);
+        register("vector_subtract", "math", GraphPortOrder.ports("a", "map", "b", "map"), GraphPortOrder.ports("value", "map"), false);
+        register("vector_add", "math", GraphPortOrder.ports("a", "map", "b", "map"), GraphPortOrder.ports("value", "map"), false);
+        register("vector_invert", "math", GraphPortOrder.ports("value", "map"), GraphPortOrder.ports("value", "map"), false);
+        register("vector_magnitude", "math", GraphPortOrder.ports("value", "map"), GraphPortOrder.ports("value", "number"), false);
+        register("vector_difference", "math", GraphPortOrder.ports("a", "map", "b", "map"), GraphPortOrder.ports("value", "map"), false);
+        register("vector_distance", "math", GraphPortOrder.ports("a", "map", "b", "map"), GraphPortOrder.ports("value", "number"), false);
+        register("random", "math", GraphPortOrder.ports(), GraphPortOrder.ports("value", "number"), false);
+        register("random_int", "math", GraphPortOrder.ports("max", "number"), GraphPortOrder.ports("value", "number"), false);
+        register("random_float_in_range", "math", GraphPortOrder.ports("min", "number", "max", "number"), GraphPortOrder.ports("value", "number"), false);
+        register("random_int_in_range", "math", GraphPortOrder.ports("min", "number", "max", "number"), GraphPortOrder.ports("value", "number"), false);
+        register("string_concat", "data", GraphPortOrder.ports("a", "string", "b", "string"), GraphPortOrder.ports("value", "string"), false);
         register("split_string", "data",
-                Map.of("string", "string", "delimiter", "string"), Map.of("list", "list"), false);
+                GraphPortOrder.ports("string", "string", "delimiter", "string"), GraphPortOrder.ports("list", "list"), false);
         register("substring", "data",
-                Map.of("string", "string", "start_index", "number", "end_index", "number"),
-                Map.of("value", "string"), false);
+                GraphPortOrder.ports("string", "string", "start_index", "number", "end_index", "number"),
+                GraphPortOrder.ports("value", "string"), false);
         register("find_in_string", "data",
-                Map.of("string", "string", "search", "string"), Map.of("index", "number"), false);
-        register("str_split", "string", Map.of("In", "string", "Split On", "string"),
-                Map.of("Out", "list"), false);
-        register("str_reverse", "string", Map.of("In", "string"), Map.of("Out", "string"), false);
+                GraphPortOrder.ports("string", "string", "search", "string"), GraphPortOrder.ports("index", "number"), false);
+        register("str_split", "string", GraphPortOrder.ports("In", "string", "Split On", "string"),
+                GraphPortOrder.ports("Out", "list"), false);
+        register("str_reverse", "string", GraphPortOrder.ports("In", "string"), GraphPortOrder.ports("Out", "string"), false);
         register("str_append", "string",
-                Map.of("Source", "string", "Text", "string", "Separator", "string"),
-                Map.of("Result", "string"), false);
+                GraphPortOrder.ports("Source", "string", "Text", "string", "Separator", "string"),
+                GraphPortOrder.ports("Result", "string"), false);
         register("str_prepend", "string",
-                Map.of("Source", "string", "Text", "string", "Separator", "string"),
-                Map.of("Result", "string"), false);
-        register("str_trim", "string", Map.of("In", "string"), Map.of("Out", "string"), false);
+                GraphPortOrder.ports("Source", "string", "Text", "string", "Separator", "string"),
+                GraphPortOrder.ports("Result", "string"), false);
+        register("str_trim", "string", GraphPortOrder.ports("In", "string"), GraphPortOrder.ports("Out", "string"), false);
         register("str_replace", "string",
-                Map.of("In", "string", "Find", "string", "Replace", "string"),
-                Map.of("Out", "string"), false);
-        register("str_length", "string", Map.of("In", "string"), Map.of("Length", "number"), false);
-        register("str_contains", "string", Map.of("In", "string", "Search", "string"),
-                Map.of("Result", "boolean"), false);
-        register("str_starts_with", "string", Map.of("In", "string", "Prefix", "string"),
-                Map.of("Result", "boolean"), false);
-        register("str_ends_with", "string", Map.of("In", "string", "Suffix", "string"),
-                Map.of("Result", "boolean"), false);
-        register("str_upper", "string", Map.of("In", "string"), Map.of("Out", "string"), false);
-        register("str_lower", "string", Map.of("In", "string"), Map.of("Out", "string"), false);
-        register("str_parse_array", "string", Map.of("In", "string", "Delimiter", "string"),
-                Map.of("Array", "list"), false);
-        register("str_join_array", "string", Map.of("Array", "list", "Separator", "string"),
-                Map.of("String", "string"), false);
-        register("str_regex", "string", Map.of("In", "string", "Pattern", "string"),
-                Map.of("Matches", "list", "Found", "boolean"), false);
-        register("convert_type", "data", Map.of("value", "any"), Map.of("value", "string"), false);
-        register("createthrusters:length", "data", Map.of("value", "any"), Map.of("length", "number"), false);
+                GraphPortOrder.ports("In", "string", "Find", "string", "Replace", "string"),
+                GraphPortOrder.ports("Out", "string"), false);
+        register("str_length", "string", GraphPortOrder.ports("In", "string"), GraphPortOrder.ports("Length", "number"), false);
+        register("str_contains", "string", GraphPortOrder.ports("In", "string", "Search", "string"),
+                GraphPortOrder.ports("Result", "boolean"), false);
+        register("str_starts_with", "string", GraphPortOrder.ports("In", "string", "Prefix", "string"),
+                GraphPortOrder.ports("Result", "boolean"), false);
+        register("str_ends_with", "string", GraphPortOrder.ports("In", "string", "Suffix", "string"),
+                GraphPortOrder.ports("Result", "boolean"), false);
+        register("str_upper", "string", GraphPortOrder.ports("In", "string"), GraphPortOrder.ports("Out", "string"), false);
+        register("str_lower", "string", GraphPortOrder.ports("In", "string"), GraphPortOrder.ports("Out", "string"), false);
+        register("str_parse_array", "string", GraphPortOrder.ports("In", "string", "Delimiter", "string"),
+                GraphPortOrder.ports("Array", "list"), false);
+        register("str_join_array", "string", GraphPortOrder.ports("Array", "list", "Separator", "string"),
+                GraphPortOrder.ports("String", "string"), false);
+        register("str_regex", "string", GraphPortOrder.ports("In", "string", "Pattern", "string"),
+                GraphPortOrder.ports("Matches", "list", "Found", "boolean"), false);
+        register("convert_type", "data", GraphPortOrder.ports("value", "any"), GraphPortOrder.ports("value", "string"), false);
+        register("createthrusters:length", "data", GraphPortOrder.ports("value", "any"), GraphPortOrder.ports("length", "number"), false);
         GraphApi.runtimes().register("createthrusters:length", (ctx, inputs) ->
                 Map.of("length", GraphValue.number(GraphDataOperations.length(inputs.get("value")))));
-        register("createthrusters:strip_json", "data", Map.of("value", "string"), Map.of("value", "string"), false);
+        register("createthrusters:strip_json", "data", GraphPortOrder.ports("value", "string"), GraphPortOrder.ports("value", "string"), false);
         GraphApi.runtimes().register("createthrusters:strip_json", (ctx, inputs) ->
                 Map.of("value", GraphValue.string(GraphDataOperations.stripJson(
                         inputs.getOrDefault("value", GraphValue.string("")).asString()))));
-        register("list_create", "data", Map.of("value", "any"), Map.of("list", "list"), false);
-        register("list_get", "data", Map.of("list", "list", "index", "number"), Map.of("value", "any"), false);
-        register("map_create", "data", Map.of("key", "string", "value", "any"), Map.of("map", "map"), false);
-        register("map_get", "data", Map.of("map", "map", "key", "string"), Map.of("value", "any"), false);
-        register("arr_get", "list_map", Map.of("Arr", "list", "Index", "number"),
-                Map.of("Item", "any"), false);
-        register("arr_shuffle", "list_map", Map.of("exec", "exec", "Arr", "list"),
-                Map.of("exec", "exec", "Out Arr", "list"), false);
-        register("arr_sort", "list_map", Map.of("exec", "exec", "Arr", "list"),
-                Map.of("exec", "exec", "Out Arr", "list"), false);
-        register("arr_slice", "list_map", Map.of("Arr", "list", "Start", "number", "End", "number"),
-                Map.of("Out Arr", "list"), false);
+        for(var collection : COLLECTION_NODES){
+            REGISTRY.register(collection.definition());
+            GraphApi.runtimes().register(collection.definition().id(), collection.executor());
+        }
+        register("list_create", "data", GraphPortOrder.ports("value", "any"), GraphPortOrder.ports("list", "list"), false);
+        register("list_get", "data", GraphPortOrder.ports("list", "list", "index", "number"), GraphPortOrder.ports("value", "any"), false);
+        register("map_create", "data", GraphPortOrder.ports("key", "string", "value", "any"), GraphPortOrder.ports("map", "map"), false);
+        register("map_get", "data", GraphPortOrder.ports("map", "map", "key", "string"), GraphPortOrder.ports("value", "any"), false);
+        register("arr_get", "list_map", GraphPortOrder.ports("Arr", "list", "Index", "number"),
+                GraphPortOrder.ports("Item", "any"), false);
+        register("arr_shuffle", "list_map", GraphPortOrder.ports("exec", "exec", "Arr", "list"),
+                GraphPortOrder.ports("exec", "exec", "Out Arr", "list"), false);
+        register("arr_sort", "list_map", GraphPortOrder.ports("exec", "exec", "Arr", "list"),
+                GraphPortOrder.ports("exec", "exec", "Out Arr", "list"), false);
+        register("arr_slice", "list_map", GraphPortOrder.ports("Arr", "list", "Start", "number", "End", "number"),
+                GraphPortOrder.ports("Out Arr", "list"), false);
         register("arr_append_arr", "list_map",
-                Map.of("exec", "exec", "Source", "list", "Append", "list"),
-                Map.of("exec", "exec", "Out Arr", "list"), false);
-        register("collection_merge", "list_map", Map.of("A", "any", "B", "any"),
-                Map.of("Result", "any"), false);
-        register("arr_add", "list_map", Map.of("exec", "exec", "Arr", "list", "Item", "any"),
-                Map.of("exec", "exec", "Out Arr", "list"), false);
+                GraphPortOrder.ports("exec", "exec", "Source", "list", "Append", "list"),
+                GraphPortOrder.ports("exec", "exec", "Out Arr", "list"), false);
+        register("collection_merge", "list_map", GraphPortOrder.ports("A", "any", "B", "any"),
+                GraphPortOrder.ports("Result", "any"), false);
+        register("arr_add", "list_map", GraphPortOrder.ports("exec", "exec", "Arr", "list", "Item", "any"),
+                GraphPortOrder.ports("exec", "exec", "Out Arr", "list"), false);
         register("arr_add_unique", "list_map",
-                Map.of("exec", "exec", "Arr", "list", "Item", "any"),
-                Map.of("exec", "exec", "Out Arr", "list"), false);
-        register("arr_insert", "list_map", Map.ofEntries(
+                GraphPortOrder.ports("exec", "exec", "Arr", "list", "Item", "any"),
+                GraphPortOrder.ports("exec", "exec", "Out Arr", "list"), false);
+        register("arr_insert", "list_map", GraphPortOrder.entries(
                         Map.entry("exec", "exec"), Map.entry("Arr", "list"),
                         Map.entry("Item", "any"), Map.entry("Index", "number")),
-                Map.of("exec", "exec", "Out Arr", "list"), false);
-        register("arr_remove", "list_map", Map.of("exec", "exec", "Arr", "list", "Index", "number"),
-                Map.of("exec", "exec", "Out Arr", "list"), false);
-        register("arr_clear", "list_map", Map.of("exec", "exec", "Arr", "list"),
-                Map.of("exec", "exec", "Out Arr", "list"), false);
-        register("arr_find", "list_map", Map.of("Arr", "list", "Item", "any"),
-                Map.of("Index", "number"), false);
-        register("arr_contains", "list_map", Map.of("Arr", "list", "Item", "any"),
-                Map.of("Result", "boolean"), false);
-        register("arr_length", "list_map", Map.of("Arr", "list"), Map.of("Length", "number"), false);
-        register("arr_last_index", "list_map", Map.of("Arr", "list"), Map.of("Index", "number"), false);
-        register("arr_sort_desc", "list_map", Map.of("exec", "exec", "Arr", "list"),
-                Map.of("exec", "exec", "Out Arr", "list"), false);
+                GraphPortOrder.ports("exec", "exec", "Out Arr", "list"), false);
+        register("arr_remove", "list_map", GraphPortOrder.ports("exec", "exec", "Arr", "list", "Index", "number"),
+                GraphPortOrder.ports("exec", "exec", "Out Arr", "list"), false);
+        register("arr_clear", "list_map", GraphPortOrder.ports("exec", "exec", "Arr", "list"),
+                GraphPortOrder.ports("exec", "exec", "Out Arr", "list"), false);
+        register("arr_find", "list_map", GraphPortOrder.ports("Arr", "list", "Item", "any"),
+                GraphPortOrder.ports("Index", "number"), false);
+        register("arr_contains", "list_map", GraphPortOrder.ports("Arr", "list", "Item", "any"),
+                GraphPortOrder.ports("Result", "boolean"), false);
+        register("arr_length", "list_map", GraphPortOrder.ports("Arr", "list"), GraphPortOrder.ports("Length", "number"), false);
+        register("arr_last_index", "list_map", GraphPortOrder.ports("Arr", "list"), GraphPortOrder.ports("Index", "number"), false);
+        register("arr_sort_desc", "list_map", GraphPortOrder.ports("exec", "exec", "Arr", "list"),
+                GraphPortOrder.ports("exec", "exec", "Out Arr", "list"), false);
         register("arr_filter", "list_map",
-                Map.of("Array", "list", "Key", "string", "Value", "any", "Operation", "string"),
-                Map.of("Result", "list"), false);
-        register("split_list", "data", Map.of("value", "any"), Map.of(), false);
-        register("break_out", "data", Map.of("value", "any"), Map.of(), false);
-        register("get_block_data", "data", Map.of("target", "target"), Map.of("data", "map"), false);
-        register("set_block_data", "data", Map.of("exec", "exec", "target", "target",
-                GraphSignalRange.REDSTONE_SIGNAL_PORT, "number"), Map.of("exec", "exec", "success", "boolean"), false);
-        register("hud_element", "hud", Map.of("label", "string", "visible", "boolean"), Map.of(), true);
-        register("advanced_hud_element", "hud", Map.of("label", "string", "visible", "boolean"), Map.of(), true);
-        register("acc_display_widget", "hud", Map.ofEntries(
-                Map.entry("label", "string"), Map.entry("value", "any"),
-                Map.entry("visible", "boolean"), Map.entry("x", "number"),
-                Map.entry("y", "number"), Map.entry("width", "number"),
-                Map.entry("height", "number"), Map.entry("rotation", "number"),
-                Map.entry("scale", "number"), Map.entry("font_size", "number"),
-                Map.entry("color", "color"), Map.entry("background_color", "color"),
-                Map.entry("accent_color", "color"), Map.entry("track_color", "color"),
-                Map.entry("border_color", "color"), Map.entry("border_width", "number"),
-                Map.entry("border_radius", "number"), Map.entry("minimum", "number"),
-                Map.entry("maximum", "number")), Map.of(), true);
-        register("acc_hologram_widget", "hud", Map.ofEntries(
-                Map.entry("label", "string"), Map.entry("value", "any"),
-                Map.entry("visible", "boolean"), Map.entry("x", "number"),
-                Map.entry("y", "number"), Map.entry("width", "number"),
-                Map.entry("height", "number"), Map.entry("rotation", "number"),
-                Map.entry("scale", "number"), Map.entry("font_size", "number"),
-                Map.entry("color", "color"), Map.entry("background_color", "color"),
-                Map.entry("accent_color", "color"), Map.entry("track_color", "color"),
-                Map.entry("border_color", "color"), Map.entry("border_width", "number"),
-                Map.entry("border_radius", "number"), Map.entry("minimum", "number"),
-                Map.entry("maximum", "number")), Map.of(), true);
-        register("acc_display_graph", "hud", Map.of(
-                "visible", "boolean", "x", "number", "y", "number",
+                GraphPortOrder.ports("Array", "list", "Key", "string", "Value", "any", "Operation", "string"),
+                GraphPortOrder.ports("Result", "list"), false);
+        register("split_list", "data", GraphPortOrder.ports("value", "any"), GraphPortOrder.ports(), false);
+        register("break_out", "data", GraphPortOrder.ports("value", "any"), GraphPortOrder.ports(), false);
+        register("get_block_data", "data", GraphPortOrder.ports("target", "target", "merge_like_ports", "boolean"),
+                GraphPortOrder.ports("data", "map"), false);
+        register("set_block_data", "data", GraphPortOrder.ports("exec", "exec", "target", "target",
+                "merge_like_ports", "boolean", GraphSignalRange.REDSTONE_SIGNAL_PORT, "number"),
+                GraphPortOrder.ports("exec", "exec", "success", "boolean"), false);
+        register("hud_element", "hud", GraphPortOrder.ports("label", "string", "visible", "boolean"), GraphPortOrder.ports(), true);
+        register("advanced_hud_element", "hud", GraphPortOrder.ports("label", "string", "visible", "boolean"), GraphPortOrder.ports(), true);
+        register("acc_display_widget", "hud", GraphPortOrder.ports("target", "target", "visible", "boolean"), GraphPortOrder.ports(), true);
+        register("acc_hologram_widget", "hud", GraphPortOrder.entries(
+                Map.entry("target", "target"), Map.entry("visible", "boolean"),
+                Map.entry("offset_x", "number"), Map.entry("offset_y", "number"), Map.entry("offset_z", "number"),
+                Map.entry("size_x", "number"), Map.entry("size_y", "number"), Map.entry("projection_rotation", "number")), GraphPortOrder.ports(), true);
+        register("acc_display_graph", "hud", GraphPortOrder.ports(
+                "target", "target", "visible", "boolean", "x", "number", "y", "number",
                 "width", "number", "height", "number", "scale", "number",
-                "rotation", "number"), Map.of(), true);
-        register("acc_display_plotter", "hud", Map.of(
-                "value", "number", "visible", "boolean", "x", "number", "y", "number",
+                "rotation", "number"), GraphPortOrder.ports(), true);
+        register("acc_display_plotter", "hud", GraphPortOrder.ports(
+                "target", "target", "value", "number", "visible", "boolean", "x", "number", "y", "number",
                 "width", "number", "height", "number", "scale", "number",
-                "rotation", "number"), Map.of(), true);
-        register("acc_display_external", "hud", Map.of(
-                "visible", "boolean", "x", "number", "y", "number",
+                "rotation", "number"), GraphPortOrder.ports(), true);
+        register("acc_display_external", "hud", GraphPortOrder.ports(
+                "target", "target", "source", "target", "name", "string", "visible", "boolean", "x", "number", "y", "number",
                 "width", "number", "height", "number", "scale", "number",
-                "rotation", "number"), Map.of(), true);
-        register("acc_display_crn", "hud", Map.of(
-                "visible", "boolean", "text", "string", "x", "number", "y", "number",
+                "rotation", "number"), GraphPortOrder.ports(), true);
+        register("acc_display_crn", "hud", GraphPortOrder.ports(
+                "target", "target", "visible", "boolean", "text", "string", "x", "number", "y", "number",
                 "width", "number", "height", "number", "scale", "number",
-                "rotation", "number"), Map.of(), true);
+                "rotation", "number"), GraphPortOrder.ports(), true);
+        // Kept separate from the legacy CRN node so new graphs say exactly what
+        // they present while saved graphs retain their existing node id.
+        register("acc_display_shipping_information", "hud", GraphPortOrder.ports(
+                "target", "target", "visible", "boolean", "text", "string", "x", "number", "y", "number",
+                "width", "number", "height", "number", "scale", "number",
+                "rotation", "number"), GraphPortOrder.ports(), true);
+        register("acc_display_scm_information", "hud", GraphPortOrder.entries(
+                Map.entry("target", "target"), Map.entry("visible", "boolean"),
+                Map.entry("show_status", "boolean"),
+                Map.entry("show_ready", "boolean"),
+                Map.entry("show_initialization", "boolean"),
+                Map.entry("show_mass", "boolean"),
+                Map.entry("show_weight", "boolean"),
+                Map.entry("show_facing", "boolean"),
+                Map.entry("show_center_of_mass", "boolean"),
+                Map.entry("show_center_of_lift", "boolean"),
+                Map.entry("show_position", "boolean"),
+                Map.entry("show_velocity", "boolean"),
+                Map.entry("show_speed", "boolean"),
+                Map.entry("show_angular_velocity", "boolean"),
+                Map.entry("show_orientation", "boolean"),
+                Map.entry("show_collision", "boolean"),
+                Map.entry("show_navigation", "boolean"),
+                Map.entry("show_inertia", "boolean")), GraphPortOrder.ports(), true);
         register("acc_display_mode", "hud",
-                Map.of("exec", "exec", "target", "target", "mode", "string"),
-                Map.of("exec", "exec", "mode", "string", "success", "boolean"), false);
-        register("validate_number", "data", Map.of("value", "number"), Map.of("value", "number", "valid", "boolean"), false);
-        register("reroute", "core", Map.of("value", "any"), Map.of("value", "any"), false);
-        register("sticky_note", "core", Map.of(), Map.of(), false);
-        register("image_reference", "core", Map.of(), Map.of(), false);
-        register(AdvancedGraphFunctions.CALL_TYPE, "functions", Map.of(), Map.of(), true);
-        register(AdvancedGraphFunctions.INPUT_TYPE, "functions", Map.of(), Map.of(), false);
-        register(AdvancedGraphFunctions.OUTPUT_TYPE, "functions", Map.of(), Map.of(), false);
-        register("play_sound", "controller", Map.of("exec", "exec", "stop", "exec", "sound", "string",
+                GraphPortOrder.ports("exec", "exec", "target", "target", "mode", "string"),
+                GraphPortOrder.ports("exec", "exec", "mode", "string", "success", "boolean"), false);
+        register("validate_number", "data", GraphPortOrder.ports("value", "number"), GraphPortOrder.ports("value", "number", "valid", "boolean"), false);
+        register("reroute", "core", GraphPortOrder.ports("value", "any"), GraphPortOrder.ports("value", "any"), false);
+        register("sticky_note", "core", GraphPortOrder.ports(), GraphPortOrder.ports(), false);
+        register("image_reference", "core", GraphPortOrder.ports(), GraphPortOrder.ports(), false);
+        register(AdvancedGraphFunctions.CALL_TYPE, "functions", GraphPortOrder.ports(), GraphPortOrder.ports(), true);
+        register(AdvancedGraphFunctions.INPUT_TYPE, "functions", GraphPortOrder.ports(), GraphPortOrder.ports(), false);
+        register(AdvancedGraphFunctions.OUTPUT_TYPE, "functions", GraphPortOrder.ports(), GraphPortOrder.ports(), false);
+        register("play_sound", "controller", GraphPortOrder.ports("exec", "exec", "stop", "exec", "sound", "string",
                 "world", "boolean", "x", "number", "y", "number", "z", "number", "volume", "number",
                 "pitch", "number", "loop", "boolean"),
-                Map.of("exec", "exec"), false);
-        register("controller_channel_input", "controller", Map.of(), Map.of("exec", "exec", "value", "number", "active", "boolean"), false);
-        register("gamepad_input", "controller", Map.of(), Map.of("exec", "exec", "value", "number", "active", "boolean"), false);
-        register("mouse_input", "controller", Map.of("reset_axis", "boolean", "timeout", "number"),
-                Map.of("exec", "exec", "value", "number", "active", "boolean"), false);
-        register("controller_channel_output", "controller", Map.of("exec", "exec", "value", "number"), Map.of("exec", "exec"), false);
-        register("local_redstone_input", "controller", Map.of(), Map.of("exec", "exec", "value", "number", "active", "boolean"), false);
-        register("local_redstone_output", "controller", Map.of("exec", "exec", "value", "number", "face", "direction"), Map.of("exec", "exec"), false);
-        register("wireless_frequency_input", "controller", Map.of("frequency", "frequency"), Map.of("exec", "exec", "value", "number", "active", "boolean"), false);
-        register("wireless_frequency_output", "controller", Map.of("exec", "exec", "frequency", "frequency", "value", "number"), Map.of("exec", "exec"), false);
-        register("discovered_target_input", "controller", Map.of("target", "target"), Map.of("exec", "exec", "value", "number", "active", "boolean"), false);
-        register("direct_target_output", "controller", Map.of("exec", "exec", "target", "target", "value", "number"), Map.of("exec", "exec"), false);
+                GraphPortOrder.ports("exec", "exec"), false);
+        register("controller_channel_input", "controller", GraphPortOrder.ports(), GraphPortOrder.ports("exec", "exec", "value", "number", "active", "boolean"), false);
+        register("gamepad_input", "controller", GraphPortOrder.ports(), GraphPortOrder.ports("exec", "exec", "value", "number", "active", "boolean"), false);
+        register("mouse_input", "controller", GraphPortOrder.ports("reset_axis", "boolean", "timeout", "number"),
+                GraphPortOrder.ports("exec", "exec", "value", "number", "active", "boolean"), false);
+        register("controller_channel_output", "controller", GraphPortOrder.ports("exec", "exec", "value", "number"), GraphPortOrder.ports("exec", "exec"), false);
+        register("local_redstone_input", "controller", GraphPortOrder.ports(), GraphPortOrder.ports("exec", "exec", "value", "number", "active", "boolean"), false);
+        register("local_redstone_output", "controller", GraphPortOrder.ports("exec", "exec", "value", "number", "face", "direction"), GraphPortOrder.ports("exec", "exec"), false);
+        register("wireless_frequency_input", "controller", GraphPortOrder.ports("frequency", "frequency"), GraphPortOrder.ports("exec", "exec", "value", "number", "active", "boolean"), false);
+        register("wireless_frequency_output", "controller", GraphPortOrder.ports("exec", "exec", "frequency", "frequency", "value", "number"), GraphPortOrder.ports("exec", "exec"), false);
+        register("discovered_target_input", "controller", GraphPortOrder.ports("target", "target"), GraphPortOrder.ports("exec", "exec", "value", "number", "active", "boolean"), false);
+        register("direct_target_output", "controller", GraphPortOrder.ports("exec", "exec", "target", "target", "value", "number"), GraphPortOrder.ports("exec", "exec"), false);
         register("desmos_plot_point", "controller",
-                Map.of("exec", "exec", "name", "string", "x", "number", "y", "number", "color", "color",
+                GraphPortOrder.ports("exec", "exec", "name", "string", "x", "number", "y", "number", "color", "color",
                         "x_functionality", "string"),
-                Map.of("exec", "exec"), false);
-        register("desmos_reset_plotter", "controller", Map.of("exec", "exec", "name", "string"),
-                Map.of("exec", "exec"), false);
-        register("linker_face_input", "controller", Map.of("target", "target", "face", "direction"), Map.of("exec", "exec", "value", "number", "active", "boolean"), false);
-        register("linker_face_output", "controller", Map.of("exec", "exec", "target", "target", "face", "direction", "value", "number"), Map.of("exec", "exec"), false);
-        register("controller_tracker", "controller", Map.of(), trackingOutputs(), false);
-        register("portable_tracker", "controller", Map.of(), gogglesTrackingOutputs(), false);
-        register("reset_outputs", "controller", Map.of("exec", "exec"), Map.of("exec", "exec"), false);
-        register("ship_initialize", "ship_control", Map.of(
+                GraphPortOrder.ports("exec", "exec"), false);
+        register("desmos_reset_plotter", "controller", GraphPortOrder.ports("exec", "exec", "name", "string"),
+                GraphPortOrder.ports("exec", "exec"), false);
+        register("linker_face_input", "controller", GraphPortOrder.ports("target", "target", "face", "direction"), GraphPortOrder.ports("exec", "exec", "value", "number", "active", "boolean"), false);
+        register("linker_face_output", "controller", GraphPortOrder.ports("exec", "exec", "target", "target", "face", "direction", "value", "number"), GraphPortOrder.ports("exec", "exec"), false);
+        register("controller_tracker", "controller", GraphPortOrder.ports(), trackingOutputs(), false);
+        register("portable_tracker", "controller", GraphPortOrder.ports(), gogglesTrackingOutputs(), false);
+        register("ship_tracker", "controller", GraphPortOrder.ports("filter", "string", "tracking_distance", "number"),
+                GraphPortOrder.ports("available", "boolean", "distance", "number", "coordinates", "map",
+                        "relative_angle", "map", "ship_name", "string", "sub_level", "string",
+                        "count", "number", "ships", "list"), false);
+        register("reset_outputs", "controller", GraphPortOrder.ports("exec", "exec"), GraphPortOrder.ports("exec", "exec"), false);
+        register("ship_scan_configuration", "ship_control", GraphPortOrder.ports(
                         "exec", "exec",
                         "ship_name", "string",
                         "control_mode", "string",
@@ -413,11 +467,12 @@ public final class AdvancedGraphCatalog {
                         "force_full_initialization", "boolean",
                         "ignore_bearings", "boolean",
                         "ignore_sails", "boolean",
-                        "ignore_thrusters", "boolean"),
+                        "ignore_thrusters", "boolean",
+                        "ignore_docking_connectors", "boolean"),
                 initOutputs(), true);
         register("ship_stop_initialization", "ship_control",
-                Map.of("exec", "exec"), commandOutputs(), false);
-        register("ship_status", "ship_control", Map.of(), Map.ofEntries(
+                GraphPortOrder.ports("exec", "exec"), commandOutputs(), false);
+        register("ship_status", "ship_control", GraphPortOrder.ports(), GraphPortOrder.entries(
                 Map.entry("attached", "boolean"),
                 Map.entry("initialized", "boolean"),
                 Map.entry("initializing", "boolean"),
@@ -427,10 +482,38 @@ public final class AdvancedGraphCatalog {
                 Map.entry("vector_thruster_count", "number"),
                 Map.entry("docking_connector_count", "number"),
                 Map.entry("controllable_count", "number"),
+                Map.entry("mass", "number"),
+                Map.entry("weight", "number"),
+                Map.entry("facing", "string"),
+                Map.entry("center_of_mass_x", "number"),
+                Map.entry("center_of_mass_y", "number"),
+                Map.entry("center_of_mass_z", "number"),
+                Map.entry("center_of_lift_x", "number"),
+                Map.entry("center_of_lift_y", "number"),
+                Map.entry("center_of_lift_z", "number"),
                 Map.entry("inertia_tensor", "map"),
                 Map.entry("status", "string"),
                 Map.entry("map_id", "string")), false);
-        register("ship_coupler_status", "ship_control", Map.of(), Map.of(
+        register("scm_configuration", "ship_control", GraphPortOrder.ports(), GraphPortOrder.entries(
+                Map.entry("configured", "boolean"),
+                Map.entry("scanning", "boolean"),
+                Map.entry("candidate_count", "number"),
+                Map.entry("group_count", "number"),
+                Map.entry("action_binding_count", "number"),
+                Map.entry("excluded_unit_count", "number"),
+                Map.entry("action_groups", "map")), false);
+        register("scm_brain_debug", "ship_control", GraphPortOrder.ports(), GraphPortOrder.entries(
+                Map.entry("scm_brain_available", "boolean"),
+                Map.entry("scm_brain_state", "string"),
+                Map.entry("scm_brain_reason", "string"),
+                Map.entry("scm_brain_vehicle_name", "string"),
+                Map.entry("scm_brain_vehicle_id", "string"),
+                Map.entry("scm_brain_game_time", "number"),
+                Map.entry("scm_brain_anchor_x", "number"),
+                Map.entry("scm_brain_anchor_y", "number"),
+                Map.entry("scm_brain_anchor_z", "number"),
+                Map.entry("scm_brain_data", "map")), false);
+        register("ship_coupler_status", "ship_control", GraphPortOrder.ports(), GraphPortOrder.ports(
                 "coupler_count", "number",
                 "coupled_count", "number",
                 "carriage_count", "number",
@@ -438,34 +521,50 @@ public final class AdvancedGraphCatalog {
                 "all_coupled", "boolean",
                 "coupler_status", "string"), false);
         register("ship_flight_behavior", "ship_control",
-                Map.of("exec", "exec", "behavior", "string"),
+                GraphPortOrder.ports("exec", "exec", "behavior", "string"),
                 commandOutputs(), false);
         register("ship_yaw", "ship_control", amountInputs(), targetCommandOutputs(), true);
+        register("ship_yaw_right", "ship_control", amountInputs(), targetCommandOutputs(), true);
+        register("ship_yaw_left", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_pitch", "ship_control", amountInputs(), targetCommandOutputs(), true);
+        register("ship_pitch_up", "ship_control", amountInputs(), targetCommandOutputs(), true);
+        register("ship_pitch_down", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_pan", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_tilt", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_roll", "ship_control", amountInputs(), targetCommandOutputs(), true);
+        register("ship_roll_right", "ship_control", amountInputs(), targetCommandOutputs(), true);
+        register("ship_roll_left", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_accelerate", "ship_control", amountInputs(), commandOutputs(), false);
         register("ship_forward", "ship_control", amountInputs(), commandOutputs(), false);
         register("ship_reverse", "ship_control", amountInputs(), commandOutputs(), false);
+        register("ship_backward", "ship_control", amountInputs(), commandOutputs(), false);
         register("ship_strafe", "ship_control", amountInputs(), targetCommandOutputs(), true);
+        register("ship_strafe_left", "ship_control", amountInputs(), targetCommandOutputs(), true);
+        register("ship_strafe_right", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_ascend", "ship_control", amountInputs(), commandOutputs(), false);
         register("ship_descend", "ship_control", amountInputs(), commandOutputs(), false);
+        register("ship_jump", "ship_control", amountInputs(), commandOutputs(), false);
+        register("ship_crouch", "ship_control", amountInputs(), commandOutputs(), false);
         register("ship_stabilize", "ship_control",
-                Map.of("exec", "exec", "strength", "number"), commandOutputs(), true);
+                GraphPortOrder.ports("exec", "exec", "strength", "number"), commandOutputs(), true);
         register("ship_decelerate", "ship_control",
-                Map.of("exec", "exec", "strength", "number"), commandOutputs(), true);
+                GraphPortOrder.ports("exec", "exec", "strength", "number"), commandOutputs(), true);
+        register("ship_hold_yaw", "ship_control",
+                GraphPortOrder.ports("exec", "exec", "strength", "number"), commandOutputs(), true);
+        register("ship_brake", "ship_control",
+                GraphPortOrder.ports("exec", "exec", "strength", "number"), commandOutputs(), true);
         register("ship_hover", "ship_control",
-                Map.of("exec", "exec", "strength", "number"), commandOutputs(), true);
+                GraphPortOrder.ports("exec", "exec", "strength", "number"), commandOutputs(), true);
         register("ship_climb", "ship_control",
-                Map.of("exec", "exec", "y", "number", "speed", "number"), targetCommandOutputs(), true);
+                GraphPortOrder.ports("exec", "exec", "y", "number", "speed", "number", "avoid_collisions", "boolean"),
+                targetCommandOutputs(), true);
         register("ship_face", "ship_control",
-                Map.of("exec", "exec", "x", "number", "y", "number", "z", "number", "speed", "number"),
+                GraphPortOrder.ports("exec", "exec", "x", "number", "y", "number", "z", "number", "speed", "number"),
                 targetCommandOutputs(), true);
         register("ship_dock", "ship_control",
-                Map.of("exec", "exec", "dock", "string", "speed", "number"),
+                GraphPortOrder.ports("exec", "exec", "dock", "string", "speed", "number"),
                 targetCommandOutputs(), true);
-        register("ship_navigate", "ship_control", Map.ofEntries(
+        register("ship_navigate", "ship_control", GraphPortOrder.entries(
                         Map.entry("exec", "exec"),
                         Map.entry("offset", "map"),
                         Map.entry("x", "number"),
@@ -483,8 +582,7 @@ public final class AdvancedGraphCatalog {
                         Map.entry("target_up_y", "number"),
                         Map.entry("target_up_z", "number")),
                 targetCommandOutputs(), true);
-
-        register("ship_follow", "ship_control", Map.ofEntries(
+        register("ship_follow", "ship_control", GraphPortOrder.entries(
                         Map.entry("exec", "exec"),
                         Map.entry("x", "number"),
                         Map.entry("y", "number"),
@@ -493,17 +591,17 @@ public final class AdvancedGraphCatalog {
                         Map.entry("follow_distance", "number"),
                         Map.entry("avoid_collisions", "boolean")),
                 commandOutputs(), true);
-        register("ship_stop", "ship_control", Map.of("exec", "exec"), commandOutputs(), false);
+        register("ship_stop", "ship_control", GraphPortOrder.ports("exec", "exec"), commandOutputs(), false);
         register("ship_couple_carriage", "ship_control",
-                Map.of("exec", "exec", "endpoint", "number"),
+                GraphPortOrder.ports("exec", "exec", "endpoint", "number"),
                 targetCommandOutputs(), true);
         register("ship_decouple_carriage", "ship_control",
-                Map.of("exec", "exec", "endpoint", "number"),
+                GraphPortOrder.ports("exec", "exec", "endpoint", "number"),
                 targetCommandOutputs(), true);
         register("ship_telemetry", "ship_control",
-                Map.of(
+                GraphPortOrder.ports(
                         "collision_detection_distance", "number",
-                        "collision_poll_rate", "number"), Map.ofEntries(
+                        "collision_poll_rate", "number"), GraphPortOrder.entries(
                 Map.entry("ready", "boolean"),
                 Map.entry("x", "number"),
                 Map.entry("y", "number"),
@@ -512,9 +610,21 @@ public final class AdvancedGraphCatalog {
                 Map.entry("velocity_y", "number"),
                 Map.entry("velocity_z", "number"),
                 Map.entry("speed", "number"),
+                Map.entry("angular_velocity_x", "number"),
+                Map.entry("angular_velocity_y", "number"),
+                Map.entry("angular_velocity_z", "number"),
                 Map.entry("yaw", "number"),
                 Map.entry("pitch", "number"),
                 Map.entry("roll", "number"),
+                Map.entry("mass", "number"),
+                Map.entry("weight", "number"),
+                Map.entry("facing", "string"),
+                Map.entry("center_of_mass_x", "number"),
+                Map.entry("center_of_mass_y", "number"),
+                Map.entry("center_of_mass_z", "number"),
+                Map.entry("center_of_lift_x", "number"),
+                Map.entry("center_of_lift_y", "number"),
+                Map.entry("center_of_lift_z", "number"),
                 Map.entry("inertia_tensor", "map"),
                 Map.entry("nearest_collision_distance", "number"),
                 Map.entry("collision_distance_forward", "number"),
@@ -525,9 +635,12 @@ public final class AdvancedGraphCatalog {
                 Map.entry("collision_distance_down", "number"),
                 Map.entry("collision_scan_range", "number"),
                 Map.entry("navigation_target_distance", "number")), false);
-        register("shipping_travel_metrics", "ship_control", Map.of(), Map.ofEntries(
+        register("shipping_travel_metrics", "ship_control", GraphPortOrder.ports(), GraphPortOrder.entries(
                 Map.entry("shipping_active", "boolean"),
                 Map.entry("shipping_pilot_present", "boolean"),
+                Map.entry("shipping_seated_players", "number"),
+                Map.entry("shipping_seat_count", "number"),
+                Map.entry("shipping_available_seats", "number"),
                 Map.entry("shipping_docked", "boolean"),
                 Map.entry("shipping_waiting", "boolean"),
                 Map.entry("shipping_diverted", "boolean"),
@@ -563,7 +676,7 @@ public final class AdvancedGraphCatalog {
                 Map.entry("shipping_fuel_reserve", "number"),
                 Map.entry("shipping_fuel_use_per_tick", "number"),
                 Map.entry("shipping_fuel_reserve_seconds", "number")), false);
-        register("shipping_manifest", "ship_control", Map.of(), Map.ofEntries(
+        register("shipping_manifest", "ship_control", GraphPortOrder.ports(), GraphPortOrder.entries(
                 Map.entry("shipping_manifest_title", "string"),
                 Map.entry("shipping_manifest_current_stop", "string"),
                 Map.entry("shipping_manifest_target_stop", "string"),
@@ -573,14 +686,37 @@ public final class AdvancedGraphCatalog {
                 Map.entry("shipping_manifest_next_entry", "number"),
                 Map.entry("shipping_manifest_is_cyclic", "boolean"),
                 Map.entry("shipping_manifest_stops", "list")), false);
-        register("shipping_pause", "shipping_schedule", Map.of("exec", "exec"),
+        register("shipping_start", "shipping_schedule", GraphPortOrder.ports("exec", "exec"),
                 commandOutputs(), false);
-        register("shipping_resume", "shipping_schedule", Map.of("exec", "exec"),
+        register("shipping_pause", "shipping_schedule", GraphPortOrder.ports("exec", "exec"),
                 commandOutputs(), false);
-        register("shipping_restart", "shipping_schedule", Map.of("exec", "exec"),
+        register("shipping_resume", "shipping_schedule", GraphPortOrder.ports("exec", "exec"),
                 commandOutputs(), false);
-        register("shipping_skip", "shipping_schedule", Map.of("exec", "exec"),
+        register("shipping_stop", "shipping_schedule", GraphPortOrder.ports("exec", "exec"),
                 commandOutputs(), false);
+        register("shipping_restart", "shipping_schedule", GraphPortOrder.ports("exec", "exec"),
+                commandOutputs(), false);
+        register("shipping_skip", "shipping_schedule", GraphPortOrder.ports("exec", "exec"),
+                commandOutputs(), false);
+        // ------------------------------------WORKER GRAPH------------------------------------
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
     }
 
     // Initialize the advanced graph catalog
@@ -603,7 +739,7 @@ public final class AdvancedGraphCatalog {
 
     // Get the tracking outputs
     private static Map<String, String> trackingOutputs() {
-        return Map.ofEntries(
+        return GraphPortOrder.entries(
                 Map.entry("available", "boolean"),
                 Map.entry("holding_player", "boolean"),
                 Map.entry("on_lectern", "boolean"),
@@ -627,27 +763,28 @@ public final class AdvancedGraphCatalog {
         Map<String, String> outputs = new LinkedHashMap<>(trackingOutputs());
         outputs.put("player_facing", "map");
         outputs.put("looking_at", "map");
-        return Map.copyOf(outputs);
+        outputs.putAll(EntityTelemetryApi.ports());
+        return GraphPortOrder.copy(outputs);
     }
 
     // Get the amount inputs
     private static Map<String, String> amountInputs() {
-        return Map.of("exec", "exec", "amount", "number");
+        return GraphPortOrder.ports("exec", "exec", "amount", "number");
     }
 
     // Get the command outputs
     private static Map<String, String> commandOutputs() {
-        return Map.of("exec", "exec", "success", "boolean");
+        return GraphPortOrder.ports("exec", "exec", "success", "boolean");
     }
 
     // Get the target command outputs
     private static Map<String, String> targetCommandOutputs() {
-        return Map.of("exec", "exec", "success", "boolean", "complete", "exec");
+        return GraphPortOrder.ports("exec", "exec", "success", "boolean", "complete", "exec");
     }
 
     // Initialize the outputs
     private static Map<String, String> initOutputs() {
-        return Map.ofEntries(
+        return GraphPortOrder.entries(
                 Map.entry("exec", "exec"),
                 Map.entry("success", "boolean"),
                 Map.entry("complete", "exec"),
@@ -663,10 +800,23 @@ public final class AdvancedGraphCatalog {
         return definition == null ? null : fromLibraryDefinition(definition);
     }
 
+    // Include ports generated by defaults when the editor filters or connects a new node
+    public static synchronized Definition editorDefinition(String id){
+        Definition registered = get(id);
+        if(registered == null) return null;
+        return EDITOR_DEFINITIONS.computeIfAbsent(registered.id(), type -> {
+            var node = new AdvancedGraphDocument.Node("", type, "", 0, 0,
+                    AdvancedGraphNodeFactory.createDefaultData(type, null));
+            return new Definition(type, registered.category(), GraphPortOrder.copy(inputs(node)),
+                    GraphPortOrder.copy(outputs(node)), registered.stateful());
+        });
+    }
+
     // Get all advanced graph catalog values
     public static List<Definition> all() {
         return REGISTRY.definitions().stream()
-                .filter(definition -> !"acc_display_mode".equals(definition.id()))
+                .filter(definition -> !"acc_display_mode".equals(definition.id())
+                        && !isRetiredScmActionType(definition.id()))
                 .map(AdvancedGraphCatalog::fromLibraryDefinition)
                 .toList();
     }
@@ -692,13 +842,15 @@ public final class AdvancedGraphCatalog {
     public static boolean isShipControlPassiveType(String type) {
         return "ship_status".equals(type) || "ship_telemetry".equals(type)
                 || "ship_coupler_status".equals(type)
+                || "scm_configuration".equals(type)
+                || "scm_brain_debug".equals(type)
                 || "shipping_travel_metrics".equals(type)
                 || "shipping_manifest".equals(type);
     }
 
     // Get the physical interaction outputs
     private static Map<String, String> physicalInteractionOutputs() {
-        return Map.ofEntries(
+        return GraphPortOrder.entries(
                 Map.entry("exec", "exec"),
                 Map.entry("event", "string"),
                 Map.entry("entered", "boolean"),
@@ -730,8 +882,10 @@ public final class AdvancedGraphCatalog {
 
     // Check if this is a shipping schedule control type
     public static boolean isShippingScheduleControlType(String type) {
-        return "shipping_pause".equals(type)
+        return "shipping_start".equals(type)
+                || "shipping_pause".equals(type)
                 || "shipping_resume".equals(type)
+                || "shipping_stop".equals(type)
                 || "shipping_restart".equals(type)
                 || "shipping_skip".equals(type);
     }
@@ -777,8 +931,7 @@ public final class AdvancedGraphCatalog {
             boolean connected
     ) {
         if (!isShipSpeedPort(node, port)
-                || connected
-                || !node.data().getBoolean(SHIP_SPEED_PERCENT_TAG)) {
+                || !connected && !node.data().getBoolean(SHIP_SPEED_PERCENT_TAG)) {
             return val;
         }
         double percent = Double.isFinite(val)
@@ -831,11 +984,19 @@ public final class AdvancedGraphCatalog {
     public static boolean isShipControlCompletionType(String type) {
         return "ship_initialize".equals(type)
                 || "ship_yaw".equals(type)
+                || "ship_yaw_right".equals(type)
+                || "ship_yaw_left".equals(type)
                 || "ship_pitch".equals(type)
+                || "ship_pitch_up".equals(type)
+                || "ship_pitch_down".equals(type)
                 || "ship_pan".equals(type)
                 || "ship_tilt".equals(type)
                 || "ship_roll".equals(type)
+                || "ship_roll_right".equals(type)
+                || "ship_roll_left".equals(type)
                 || "ship_strafe".equals(type)
+                || "ship_strafe_left".equals(type)
+                || "ship_strafe_right".equals(type)
                 || "ship_climb".equals(type)
                 || "ship_face".equals(type)
                 || "ship_dock".equals(type)
@@ -893,13 +1054,28 @@ public final class AdvancedGraphCatalog {
 
     // Read the configured direction for one retained counter
     public static GraphCounters.Direction countDirection(AdvancedGraphDocument.Node node){
-        return GraphCounters.Direction.fromId(node.data().getString(COUNT_DIRECTION_TAG));
+        CompoundTag defaults = node.data().getCompound("Defaults");
+        return defaults.contains("decrement")
+                ? (AdvancedGraphDocument.Value.fromTag(defaults.getCompound("decrement")).asBoolean()
+                ? GraphCounters.Direction.DECREMENT : GraphCounters.Direction.INCREMENT)
+                : GraphCounters.Direction.fromId(node.data().getString(COUNT_DIRECTION_TAG));
+    }
+
+    // Read the comparison selector without exposing it as a wire input
+    public static String pulseIfOperator(AdvancedGraphDocument.Node node){
+        String operator = com.rieno.gadgetsandgizmos.lib.graph.GraphComparison.normalizeOperator(
+                node.data().getCompound("Defaults").getCompound("operator").getCompound("Payload").getString("Value"));
+        return operator.isBlank() ? "==" : operator;
     }
 
     // Get the inputs
     public static Map<String, String> inputs(AdvancedGraphDocument.Node node) {
         Definition definition = get(node.type());
         CompoundTag dynamicInputs = node.data().getCompound("DynamicInputs");
+        if("acc_display_widget".equals(node.type()) || "acc_hologram_widget".equals(node.type())){
+            dynamicInputs = dynamicInputs.copy();
+            dynamicInputs.remove("label");
+        }
         if("ship_dock".equals(node.type())){
             dynamicInputs = dynamicInputs.copy();
             dynamicInputs.getAllKeys().removeIf(key -> !Set.of("exec", "dock", "speed").contains(key));
@@ -909,9 +1085,30 @@ public final class AdvancedGraphCatalog {
             dynamicInputs.remove("reset");
             dynamicInputs.remove("count");
         }
-        Map<String, String> baseInputs = definition == null ? Map.of() : definition.inputs();
+        Map<String, String> baseInputs = definition == null ? GraphPortOrder.ports() : definition.inputs();
+        if("pulse_if".equals(node.type())){
+            baseInputs = new LinkedHashMap<>(baseInputs);
+            baseInputs.put("b", com.rieno.gadgetsandgizmos.lib.graph.GraphComparison.operandType(
+                    dynamicInputs.getString("b"), node.data().getCompound("Defaults").getCompound("a").getString("Type")));
+            dynamicInputs = dynamicInputs.copy();
+            dynamicInputs.remove("a");
+        }
+        if("flip_flop".equals(node.type())){
+            dynamicInputs = dynamicInputs.copy();
+            if(com.rieno.gadgetsandgizmos.lib.graph.GraphCounters.FlipMode.fromId(
+                    node.data().getCompound("Defaults").getCompound("flip_on").getCompound("Payload").getString("Value"))
+                    == com.rieno.gadgetsandgizmos.lib.graph.GraphCounters.FlipMode.EVERY_NTH_PULSE){
+                dynamicInputs.putString("skip_pulses", "number");
+            }else dynamicInputs.remove("skip_pulses");
+        }
+        if("camera".equals(node.type()) && "Manual".equalsIgnoreCase(
+                node.data().getCompound("Defaults").getCompound("mode").getCompound("Payload").getString("Value"))){
+            baseInputs = new LinkedHashMap<>(baseInputs);
+            baseInputs.put("pan", "number");
+            baseInputs.put("tilt", "number");
+        }
         if ("switch".equals(node.type()) && switchDataMode(node)) {
-            baseInputs = Map.of(
+            baseInputs = GraphPortOrder.ports(
                     "selector", "number",
                     "default", AdvancedGraphPortState.switchCaseType(node, "default"));
             dynamicInputs = dynamicInputs.copy();
@@ -932,7 +1129,7 @@ public final class AdvancedGraphCatalog {
             }
         }
         if (isDynamicConstructor(node)) {
-            baseInputs = Map.of();
+            baseInputs = GraphPortOrder.ports();
         }
         if (("advanced_hud_element".equals(node.type())
                 || "acc_display_widget".equals(node.type())
@@ -959,13 +1156,31 @@ public final class AdvancedGraphCatalog {
             dynamicInputs = dynamicInputs.copy();
             dynamicInputs.remove("text");
         }
-        Map<String, String> ports = mergePorts(baseInputs, dynamicInputs);
+        if("set_block_data".equals(node.type()) && !AdvancedGraphTargetSignals.ports(node).isEmpty()){
+            baseInputs = new LinkedHashMap<>(baseInputs);
+            baseInputs.remove(GraphSignalRange.REDSTONE_SIGNAL_PORT);
+        }
+        Map<String, String> ports = "string_concat".equals(node.type())
+                ? GraphTextInputs.inputs(node.data())
+                : mergePorts(baseInputs, dynamicInputs, node, false);
         if (node.data().getBoolean(COLLAPSE_INPUTS_TO_MAP_TAG)
                 && ports.entrySet().stream().anyMatch(entry -> !"exec".equals(entry.getValue()))) {
             ports = new LinkedHashMap<>(ports);
             ports.put(COLLAPSED_INPUT_MAP_PORT, "map");
         }
-        return ports;
+        if("set_block_data".equals(node.type())){
+            ports = com.rieno.gadgetsandgizmos.lib.graph.GraphInputVisibility.filter(
+                    ports, node.data(), node.data().getCompound(DATA_TARGET_BINDINGS_TAG));
+        }
+        if("pulse_if".equals(node.type()) || "flip_flop".equals(node.type())){
+            Map<String, String> ordered = new LinkedHashMap<>();
+            for(String port : "pulse_if".equals(node.type()) ? List.of("a", "operator", "b") : List.of("exec", "flip_on", "skip_pulses")){
+                if(ports.containsKey(port)) ordered.put(port, ports.get(port));
+            }
+            ports.forEach(ordered::putIfAbsent);
+            ports = ordered;
+        }
+        return com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.orderedInputs(node.type(), ports);
     }
 
     // Check if this is a CRN static text mode
@@ -976,14 +1191,14 @@ public final class AdvancedGraphCatalog {
     // Get the outputs
     public static Map<String, String> outputs(AdvancedGraphDocument.Node node) {
         Definition definition = get(node.type());
-        Map<String, String> baseOutputs = definition == null ? Map.of() : definition.outputs();
+        Map<String, String> baseOutputs = definition == null ? GraphPortOrder.ports() : definition.outputs();
         CompoundTag dynamicOutputs = node.data().getCompound("DynamicOutputs");
         if ("switch".equals(node.type())) {
             if (switchDataMode(node)) {
-                baseOutputs = Map.of("value", "any");
+                baseOutputs = GraphPortOrder.ports("value", "any");
                 dynamicOutputs = new CompoundTag();
             } else {
-                baseOutputs = Map.of("default", "exec");
+                baseOutputs = GraphPortOrder.ports("default", "exec");
                 dynamicOutputs = dynamicOutputs.copy();
                 for (String port : dynamicOutputs.getAllKeys()) {
                     if (port.startsWith("case_")) {
@@ -992,13 +1207,18 @@ public final class AdvancedGraphCatalog {
                 }
             }
         }
-        Map<String, String> ports = mergePorts(baseOutputs, dynamicOutputs);
+        Map<String, String> ports = mergePorts(baseOutputs, dynamicOutputs, node, true);
+        if("bounded_loop".equals(node.type())){
+            Map<String, String> ordered = new LinkedHashMap<>();
+            for(String port : List.of("exec", "body", "complete", "index")) ordered.put(port, ports.get(port));
+            ports = ordered;
+        }
         if (node.data().getBoolean(COLLAPSE_OUTPUTS_TO_MAP_TAG)
                 && ports.entrySet().stream().anyMatch(entry -> !"exec".equals(entry.getValue()))) {
             ports = new LinkedHashMap<>(ports);
             ports.put(COLLAPSED_OUTPUT_MAP_PORT, "map");
         }
-        return ports;
+        return com.rieno.gadgetsandgizmos.lib.graph.HudInteractionPorts.ordered(node.data(), ports);
     }
 
     // Switch the type
@@ -1021,13 +1241,10 @@ public final class AdvancedGraphCatalog {
     }
 
     // Merge the ports
-    private static Map<String, String> mergePorts(Map<String, String> base, CompoundTag dynamic) {
-        Map<String, String> values = new LinkedHashMap<>(base);
-        for (String key : dynamic.getAllKeys()) values.put(key, dynamic.getString(key));
-        Map<String, String> ports = new LinkedHashMap<>();
-        values.entrySet().stream().sorted(Map.Entry.comparingByKey(PORT_ORDER))
-                .forEach(entry -> ports.put(entry.getKey(), entry.getValue()));
-        return ports;
+    private static Map<String, String> mergePorts(Map<String, String> base, CompoundTag dynamic,
+                                                   AdvancedGraphDocument.Node node, boolean output){
+        return GraphPortOrder.merge(base, dynamic, GraphPortOrder.read(node.data(),
+                output ? GraphPortOrder.OUTPUT_ORDER : GraphPortOrder.INPUT_ORDER));
     }
 
     // Check if this is a constructor type
@@ -1050,81 +1267,12 @@ public final class AdvancedGraphCatalog {
         return label.isBlank() ? port : label;
     }
 
-    private static final Comparator<String> PORT_ORDER = (left, right) -> {
-        int group = Integer.compare(portGroup(left), portGroup(right));
-        return group != 0 ? group : naturalCompare(left, right);
-    };
-
-    // Get the port group
-    private static int portGroup(String port) {
-        return switch (port) {
-            case "exec", "start", "pause", "stop", "reset" -> -100;
-            case "target" -> -90;
-            case "label" -> -89;
-            case "visible" -> -88;
-            case "frequency" -> -80;
-            case "condition", "selector" -> -70;
-            case "string" -> -69;
-            case "delimiter", "search" -> -68;
-            case "start_index" -> -67;
-            case "end_index" -> -66;
-            case "a" -> -60;
-            case "operator" -> -59;
-            case "b" -> -58;
-            case "true" -> -50;
-            case "false" -> -49;
-            case "default" -> -40;
-            case "display_text" -> 10;
-            case "display_lines" -> 11;
-            case PID_INTEGRAL_MIN_PORT -> 20;
-            case PID_INTEGRAL_MAX_PORT -> 21;
-            default -> {
-                if (port.startsWith("exec_")) yield -99;
-                if (port.startsWith("display_line_")) yield 12;
-                if (port.startsWith("display_")) yield 13;
-                if (port.startsWith("value_")) yield 80;
-                if (port.startsWith("field_")) yield 81;
-                if (port.startsWith("setting_")) yield 20;
-                if (port.startsWith("state_")) yield 30;
-                if (port.startsWith("item_")) yield 40;
-                if (port.startsWith("fluid_")) yield 50;
-                yield 0;
-            }
-        };
-    }
-
-    // Get the natural compare
-    private static int naturalCompare(String left, String right) {
-        int leftIndex = 0;
-        int rightIndex = 0;
-        while (leftIndex < left.length() && rightIndex < right.length()) {
-            char leftChar = left.charAt(leftIndex);
-            char rightChar = right.charAt(rightIndex);
-            if (Character.isDigit(leftChar) && Character.isDigit(rightChar)) {
-                int leftEnd = leftIndex;
-                int rightEnd = rightIndex;
-                while (leftEnd < left.length() && Character.isDigit(left.charAt(leftEnd))) leftEnd++;
-                while (rightEnd < right.length() && Character.isDigit(right.charAt(rightEnd))) rightEnd++;
-                int num = Integer.compare(Integer.parseInt(left.substring(leftIndex, leftEnd)),
-                        Integer.parseInt(right.substring(rightIndex, rightEnd)));
-                if (num != 0) return num;
-                leftIndex = leftEnd;
-                rightIndex = rightEnd;
-                continue;
-            }
-            int character = Character.compare(Character.toLowerCase(leftChar), Character.toLowerCase(rightChar));
-            if (character != 0) return character;
-            leftIndex++;
-            rightIndex++;
-        }
-        return Integer.compare(left.length(), right.length());
-    }
-
     // Check if the values are compatible
     public static boolean compatible(String from, String to) {
         if (from == null || to == null) return false;
         if ("exec".equals(from) || "exec".equals(to)) return from.equals(to);
         if (from.equals(to) || "any".equals(from) || "any".equals(to)) return true;
+        if("map".equals(from) && "target".equals(to)) return true;
         if ("color".equals(to)) return "number".equals(from) || "string".equals(from);
         return "string".equals(to) && !"exec".equals(from);
     }
@@ -1181,6 +1329,11 @@ public final class AdvancedGraphCatalog {
             case "edge_detector" -> "Edge Detector";
             case "pulse_on_change" -> "Pulse On Change";
             case "flip_flop" -> "Flip-Flop";
+            case "xor" -> "XOR";
+            case "nor" -> "NOR";
+            case "nand" -> "NAND";
+            case "xnor" -> "XNOR";
+            case "sr_latch" -> "SR-Latch";
             case "sticky_note" -> "Sticky Note";
             case "image_reference" -> "Image";
             case "function_call" -> "Function";
@@ -1190,6 +1343,7 @@ public final class AdvancedGraphCatalog {
             case "do_n" -> "Do N";
             case "count" -> "Count";
             case "bounded_loop" -> "Bounded Loop";
+            case "pulse_if" -> "Pulse If";
             case "parallel_execution" -> "Parallel Execution";
             case "sequenced_execution" -> "Sequenced Execution";
             case "exec_combine" -> "Exec Combine";
@@ -1235,6 +1389,10 @@ public final class AdvancedGraphCatalog {
             case "str_regex" -> "Regex";
             case "convert_type" -> "Convert Type";
             case "createthrusters:length" -> "Length";
+            case "createthrusters:collection_push" -> "Push (Map/List)";
+            case "createthrusters:collection_pop" -> "Pop (Map/List)";
+            case "createthrusters:collection_contains" -> "Contains (Map/List)";
+            case "createthrusters:collection_index_of" -> "Index Of (Map/List)";
             case "createthrusters:strip_json" -> "Strip JSON";
             case "list_create" -> "Make List";
             case "list_get" -> "Get List Value";
@@ -1269,7 +1427,12 @@ public final class AdvancedGraphCatalog {
             case "acc_display_graph" -> "ACC Display Node Graph";
             case "acc_display_plotter" -> "ACC Display Function Plotter";
             case "acc_display_external" -> "ACC Display External Source";
+            case "camera" -> "Camera";
+            case "control_camera" -> "Control Camera";
+            case "acc_display_camera_source" -> "ACC Display Camera Source";
             case "acc_display_crn" -> "ACC Display Ship Information";
+            case "acc_display_shipping_information" -> "ACC Display Shipping Information";
+            case "acc_display_scm_information" -> "ACC Display SCM Information";
             case "acc_display_mode" -> "Set Display Mode";
             case "validate_number" -> "Validate Number";
             case "play_sound" -> "Play Sound";
@@ -1288,25 +1451,40 @@ public final class AdvancedGraphCatalog {
             case "linker_face_output" -> "Linker Face Output";
             case "controller_tracker" -> "Controller Tracker";
             case "portable_tracker" -> "Goggles Tracker";
+            case "ship_tracker" -> "Ship Tracker";
             case "reset_outputs" -> "Reset Outputs";
             // ------------------------------------SHIP / SHIPPING------------------------------------
             case "ship_initialize" -> "Initialize Control Module";
             case "ship_stop_initialization" -> "Stop Initialization";
             case "ship_status" -> "Control Module Status";
+            case "scm_brain_debug" -> "SCM Brain Debug";
             case "ship_flight_behavior" -> "Set Flight Behavior";
             case "ship_yaw" -> "Yaw";
+            case "ship_yaw_right" -> "Yaw Right";
+            case "ship_yaw_left" -> "Yaw Left";
             case "ship_pitch" -> "Pitch";
+            case "ship_pitch_up" -> "Pitch Up";
+            case "ship_pitch_down" -> "Pitch Down";
             case "ship_pan" -> "Pan";
             case "ship_tilt" -> "Tilt";
             case "ship_roll" -> "Roll";
+            case "ship_roll_right" -> "Roll Right";
+            case "ship_roll_left" -> "Roll Left";
             case "ship_accelerate" -> "Accelerate";
             case "ship_forward" -> "Forward";
-            case "ship_reverse" -> "Reverse";
+            case "ship_reverse" -> "Reverse (Legacy)";
+            case "ship_backward" -> "Backward";
             case "ship_strafe" -> "Strafe";
+            case "ship_strafe_left" -> "Strafe Left";
+            case "ship_strafe_right" -> "Strafe Right";
             case "ship_ascend" -> "Ascend";
             case "ship_descend" -> "Descend";
+            case "ship_jump" -> "Jump";
+            case "ship_crouch" -> "Crouch";
             case "ship_stabilize" -> "Stabilize";
             case "ship_decelerate" -> "Decelerate";
+            case "ship_hold_yaw" -> "Hold yaw";
+            case "ship_brake" -> "Brake";
             case "ship_hover" -> "Hover";
             case "ship_climb" -> "Climb to Y Level";
             case "ship_face" -> "Face Coordinates";
@@ -1324,8 +1502,10 @@ public final class AdvancedGraphCatalog {
             case "shipping_resume" -> "Resume";
             case "shipping_restart" -> "Restart";
             case "shipping_skip" -> "Skip";
+            // ------------------------------------WORKER GRAPH------------------------------------
             case "adrc_nth_order" -> "ADRC Nth Order";
-            default -> titleCase(id);
+            default -> id.startsWith("createthrusters:flight_control_")
+                    ? titleCase(id.substring("createthrusters:flight_control_".length())) : titleCase(id);
         };
     }
 
@@ -1347,6 +1527,7 @@ public final class AdvancedGraphCatalog {
             case "hud" -> "HUD";
             case "functions" -> "Functions";
             case "ship_control" -> "Ship Control";
+            case "flight_control" -> "Flight Control";
             case "shipping_schedule" -> "Shipping Schedule";
             default -> titleCase(category);
         };
@@ -1368,7 +1549,7 @@ public final class AdvancedGraphCatalog {
             case "controller" -> 0xFF4BBCE8;
             case "hud" -> 0xFFF4D35E;
             case "functions" -> 0xFF8F73D8;
-            case "ship_control" -> 0xFF4FC3C8;
+            case "ship_control", "flight_control" -> 0xFF4FC3C8;
             case "shipping_schedule" -> 0xFFDB8C4B;
             default -> 0xFF7D8A99;
         };
@@ -1384,5 +1565,77 @@ public final class AdvancedGraphCatalog {
             res.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
         }
         return res.toString();
+    }
+
+
+    // Check whether a direct, signed SCM primitive may appear in a reusable
+    // graph function. Route and target commands keep their state in the root
+    // graph so their completion semantics remain unambiguous.
+    public static boolean isScmFunctionPrimitiveType(String type) {
+        return "ship_forward".equals(type)
+                || "ship_backward".equals(type)
+                || "ship_reverse".equals(type)
+                || "ship_ascend".equals(type)
+                || "ship_descend".equals(type)
+                || "ship_jump".equals(type)
+                || "ship_crouch".equals(type)
+                || "ship_yaw".equals(type)
+                || "ship_yaw_left".equals(type)
+                || "ship_yaw_right".equals(type)
+                || "ship_pitch".equals(type)
+                || "ship_pitch_up".equals(type)
+                || "ship_pitch_down".equals(type)
+                || "ship_roll".equals(type)
+                || "ship_roll_left".equals(type)
+                || "ship_roll_right".equals(type)
+                || "ship_strafe".equals(type)
+                || "ship_strafe_left".equals(type)
+                || "ship_strafe_right".equals(type)
+                || "ship_accelerate".equals(type)
+                || "ship_hold_yaw".equals(type)
+                || "ship_brake".equals(type);
+    }
+
+
+    // Check whether a public SCM node may be replaced by its configured action
+    // function at a main-graph call site. Passive data readers retain their direct
+    // behaviour, and function bodies retain explicit SCM nodes to avoid recursion.
+    public static boolean isScmActionDispatchType(String type) {
+        Definition definition = get(type);
+        return definition != null && "ship_control".equals(definition.category())
+                && !isShipControlPassiveType(type)
+                && definition.inputs().containsKey("exec");
+    }
+
+
+    // These commands are preserved only so existing saved graphs and schedule
+    // data remain executable. New graphs expose Forward and Backward instead.
+    public static boolean isRetiredScmActionType(String type) {
+        return "ship_accelerate".equals(type)
+                || "ship_decelerate".equals(type)
+                || "ship_reverse".equals(type);
+    }
+
+
+    // Check whether an SCM action is available for new action-function and
+    // block-group configuration. Retired commands intentionally remain
+    // dispatchable for compatibility with graphs saved before their removal.
+    public static boolean isPublicScmActionDispatchType(String type) {
+        return isScmActionDispatchType(type) && !isRetiredScmActionType(type);
+    }
+
+
+    // Compare numeric fragments without narrowing packed block positions to ints
+    private static int compareNaturalNumber(String left, int leftStart, int leftEnd,
+                                            String right, int rightStart, int rightEnd) {
+        while (leftStart < leftEnd - 1 && left.charAt(leftStart) == '0') leftStart++;
+        while (rightStart < rightEnd - 1 && right.charAt(rightStart) == '0') rightStart++;
+        int length = Integer.compare(leftEnd - leftStart, rightEnd - rightStart);
+        if (length != 0) return length;
+        for (int index = 0; index < leftEnd - leftStart; index++) {
+            int character = Character.compare(left.charAt(leftStart + index), right.charAt(rightStart + index));
+            if (character != 0) return character;
+        }
+        return 0;
     }
 }

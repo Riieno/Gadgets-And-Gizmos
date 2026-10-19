@@ -1,0 +1,187 @@
+{
+  "format_version": "1.9.0",
+  "credit": "Made with Blockbench",
+  "parent": "contraption_camera",
+  "texture_size": [
+    32,
+    32
+  ],
+  "textures": {
+    "1": "createthrusters:block/camera/camera_on",
+    "particle": "createthrusters:block/camera/camera"
+  },
+  "elements": [
+    {
+      "from": [
+        4,
+        4,
+        5
+      ],
+      "to": [
+        12,
+        12,
+        11
+      ],
+      "rotation": {
+        "angle": 0,
+        "axis": "y",
+        "origin": [
+          8,
+          8,
+          6.42225
+        ]
+      },
+      "faces": {
+        "north": {
+          "uv": [
+            7,
+            0,
+            3,
+            4
+          ],
+          "texture": "#1"
+        },
+        "east": {
+          "uv": [
+            7,
+            4,
+            4,
+            8
+          ],
+          "texture": "#1"
+        },
+        "south": {
+          "uv": [
+            7,
+            0,
+            3,
+            4
+          ],
+          "texture": "#1"
+        },
+        "west": {
+          "uv": [
+            7,
+            4,
+            4,
+            8
+          ],
+          "texture": "#1"
+        },
+        "up": {
+          "uv": [
+            4,
+            8,
+            7,
+            4
+          ],
+          "texture": "#1"
+        },
+        "down": {
+          "uv": [
+            4,
+            8,
+            7,
+            4
+          ],
+          "texture": "#1"
+        }
+      }
+    },
+    {
+      "from": [
+        5,
+        5,
+        3
+      ],
+      "to": [
+        11,
+        11,
+        5
+      ],
+      "rotation": {
+        "angle": 0,
+        "axis": "y",
+        "origin": [
+          7,
+          9,
+          6.42225
+        ]
+      },
+      "faces": {
+        "north": {
+          "uv": [
+            0,
+            0,
+            3,
+            3
+          ],
+          "texture": "#1"
+        },
+        "east": {
+          "uv": [
+            0,
+            7,
+            3,
+            8
+          ],
+          "rotation": 270,
+          "texture": "#1"
+        },
+        "south": {
+          "uv": [
+            2.5,
+            3,
+            3,
+            3.5
+          ],
+          "texture": "#1"
+        },
+        "west": {
+          "uv": [
+            0,
+            9,
+            3,
+            8
+          ],
+          "rotation": 270,
+          "texture": "#1"
+        },
+        "up": {
+          "uv": [
+            3,
+            9,
+            0,
+            8
+          ],
+          "texture": "#1"
+        },
+        "down": {
+          "uv": [
+            3,
+            7,
+            0,
+            8
+          ],
+          "texture": "#1"
+        }
+      }
+    }
+  ],
+  "groups": [
+    {
+      "name": "camera",
+      "origin": [
+        7.5,
+        16.5,
+        1
+      ],
+      "scope": 0,
+      "color": 0,
+      "children": [
+        0,
+        1
+      ]
+    }
+  ]
+}

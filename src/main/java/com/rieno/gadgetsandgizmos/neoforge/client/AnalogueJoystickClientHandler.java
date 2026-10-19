@@ -189,6 +189,9 @@ public final class AnalogueJoystickClientHandler {
     }
 
     // Check if this is dragging
+    public static boolean isDragging(){ return activePos != null; }
+    public static void releaseUse(){ if(activePos != null) stopDragging(true); }
+
     public static boolean isDragging(BlockPos pos) {
         return activePos != null && activePos.equals(pos);
     }
@@ -324,6 +327,7 @@ public final class AnalogueJoystickClientHandler {
 
     // Check if this is out of range
     private static boolean isOutOfRange(Minecraft minecraft, LocalPlayer player) {
+        if(com.rieno.gadgetsandgizmos.lib.view.ViewInteractionContext.canUse(player, activePos)) return false;
         double range = player.blockInteractionRange();
         return SimulatedHelper.distanceSquaredWithSubLevels(minecraft.level, player.getEyePosition(), activePos.getCenter()) > range * range;
     }

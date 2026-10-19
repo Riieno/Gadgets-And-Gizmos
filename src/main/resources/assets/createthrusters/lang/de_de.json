@@ -1,6 +1,5 @@
 {
   "itemGroup.createthrusters.main": "Create Gadgets & Gizmos",
-
   "block.createthrusters.thruster": "Triebwerk",
   "block.createthrusters.fuel_oxidizer": "Treibstoffoxidierer",
   "block.createthrusters.fuel_oxidizer.tooltip.summary": "Oxidiert geeigneten Treibstoff. Dadurch liefern Triebwerke bei jedem Luftdruck mehr Schub.",
@@ -16,7 +15,6 @@
   "block.createthrusters.thruster.tooltip.behaviour2": "Nimmt feste Brennstoffe wie Kohle und flüssige Brennstoffe wie Lava an. Der Vorrat bestimmt die Laufzeit.",
   "block.createthrusters.thruster.tooltip.condition3": "Den Schub mit Redstone regeln",
   "block.createthrusters.thruster.tooltip.behaviour3": "Signal 0 stoppt das Triebwerk, Signal 15 liefert vollen Schub. Zwischenwerte werden gleichmäßig skaliert.",
-
   "createthrusters.ponder.thruster_basics.header": "Das Triebwerk verwenden",
   "createthrusters.ponder.thruster_basics.text_1": "Ein Triebwerk beschleunigt seine Konstruktion in Blickrichtung. Die Redstone-Stärke legt den Schub fest.",
   "createthrusters.ponder.thruster_basics.text_2": "Niedrige Signale liefern wenig Schub. Für mehr Leistung das Signal erhöhen.",
@@ -130,7 +128,6 @@
   "createthrusters.ponder.analogue_joystick.controls.text_8": "Stelle Totzone und maximalen Neigungswinkel ein und wähle, ob der Stick zurückfedert oder seine Position hält.",
   "createthrusters.ponder.analogue_joystick.controls.text_9": "Im Modus Momentan springt der Stick beim Loslassen zurück und alle Signale werden 0.",
   "createthrusters.ponder.analogue_joystick.controls.text_10": "Einrastmodus: Der Stick merkt sich seine Position. So kannst du einen Schub einstellen und weggehen.",
-
   "createthrusters.ponder.analogue_contraption_controller.channels.header": "Regler-Kanäle",
   "createthrusters.ponder.analogue_contraption_controller.channels.text_1": "Der Konstruktionsregler bietet 13 Steuerkanäle, die du Tastaturtasten zuweisen kannst. Jeder sendet ein drahtloses Redstone-Signal.",
   "createthrusters.ponder.analogue_contraption_controller.channels.text_2": "Eine Redstone-Verbindung überträgt den gewählten Kanal auf ihrem Frequenzpaar.",
@@ -155,10 +152,8 @@
   "createthrusters.ponder.physics_gantry.basics.text_6": "Das Riemenrad dreht beim Fahren weiter und hält angeschlossene Maschinen versorgt.",
   "createthrusters.ponder.physics_gantry.basics.text_7": "Nach dem Verknüpfen zeigt ein bewegter Riemen die aktive Übertragung an.",
   "createthrusters.ponder.physics_staff.usage.header": "Den Physik-Stab verwenden",
-
   "createthrusters.subtitle.block.thruster.idle": "Triebwerk brüllt",
   "createthrusters.subtitle.block.thruster.heat": "Triebwerk zündet",
-
   "block.createthrusters.thruster_bearing": "Servolager",
   "block.createthrusters.thruster_bearing.tooltip.summary": "Richtet montierte Triebwerke neu aus und lenkt dadurch ihren Schub.",
   "block.createthrusters.thruster_bearing.tooltip.condition1": "Per Rechtsklick den Lenkbereich einstellen",
@@ -181,7 +176,6 @@
   "createthrusters.vector_bearing.direction.south": "Süd",
   "createthrusters.vector_bearing.direction.east": "Ost",
   "createthrusters.vector_bearing.direction.west": "West",
-
   "block.createthrusters.analogue_joystick": "Analoger Joystick",
   "block.createthrusters.analogue_joystick.tooltip.summary": "Gibt für jede Richtung ein eigenes Redstone-Signal passend zum Stichausschlag aus.",
   "block.createthrusters.analogue_joystick.tooltip.condition1": "Mit Rechtsklick ziehen, um den Stick zu bewegen",
@@ -190,7 +184,6 @@
   "block.createthrusters.analogue_joystick.tooltip.behaviour2": "Stellt Totzone, maximalen Ausschlag und das Rückstellverhalten ein.",
   "block.createthrusters.analogue_joystick.tooltip.condition3": "Mit Schleichen + Linksklick zentrieren",
   "block.createthrusters.analogue_joystick.tooltip.behaviour3": "Bringt den Stick in die Mitte und setzt alle vier Ausgänge auf 0.",
-
   "block.createthrusters.analogue_contraption_controller": "Konstruktionsregler",
   "block.createthrusters.analogue_contraption_controller.tooltip.summary": "Stellt 13 frei belegbare Kanäle für Flugsteuerung und andere Maschinen bereit.",
   "block.createthrusters.analogue_contraption_controller.tooltip.condition1": "Mit Schleichen (+ Springen im Flug) + Rechtsklick die Belegung öffnen",
@@ -199,28 +192,24 @@
   "block.createthrusters.analogue_contraption_controller.tooltip.behaviour2": "Signale lassen sich lokal an einer Seite oder drahtlos über einen Redstone Link ausgeben.",
   "block.createthrusters.analogue_contraption_controller.tooltip.condition3": "Ziele mit dem Konstruktionsnetzwerk-Verknüpfer binden",
   "block.createthrusters.analogue_contraption_controller.tooltip.behaviour3": "Mit gehaltenem Verknüpfer auf Blöcke rechtsklicken, um sie direkt anzusteuern.",
-
   "block.createthrusters.gyroscope_link": "Erweiterte Datenverbindung",
   "block.createthrusters.gyroscope_link.tooltip.summary": "Leitet die Daten eines Gimbalsensors oder einer anderen Orientierungsquelle an benachbarte Empfänger weiter.",
   "block.createthrusters.gyroscope_link.tooltip.condition1": "Mit dem Gegenstand auf eine Orientierungsquelle rechtsklicken",
-  "block.createthrusters.gyroscope_link.tooltip.behaviour1": "Unterstützt Gimbalsensoren, Servolager, Regler, Navigationstische und Virtuelle Orientierungsquellen.",
+  "block.createthrusters.gyroscope_link.tooltip.behaviour1": "Unterstützt Gimbalsensoren, Servolager, Regler und Navigationstische.",
   "block.createthrusters.gyroscope_link.tooltip.condition2": "Neben einem kompatiblen Empfänger platzieren",
   "block.createthrusters.gyroscope_link.tooltip.behaviour2": "Versorgt alle kompatiblen Nachbarblöcke fortlaufend mit Orientierungsdaten.",
   "block.createthrusters.gyroscope_link.tooltip.condition3": "Mit Schleichen + Rechtsklick konfigurieren",
   "block.createthrusters.gyroscope_link.tooltip.behaviour3": "Live übernimmt neue Messwerte sofort. Statisch hält den zuletzt empfangenen Wert fest.",
-
   "block.createthrusters.virtual_orientation_source": "Virtuelle Orientierungsquelle",
   "block.createthrusters.virtual_orientation_source.tooltip.summary": "Speist Orientierungswerte aus ComputerCraft in ein Netzwerk aus Erweiterten Datenverbindungen ein.",
   "block.createthrusters.virtual_orientation_source.tooltip.condition1": "Mit ComputerCraft steuern",
   "block.createthrusters.virtual_orientation_source.tooltip.behaviour1": "Über das Peripheriegerät virtual_orientation_source setAngles() oder setDirection() aufrufen.",
   "block.createthrusters.virtual_orientation_source.tooltip.condition2": "Regelmäßig Updates senden",
   "block.createthrusters.virtual_orientation_source.tooltip.behaviour2": "Bleiben Updates zu lange aus, wird die Quelle bis zum nächsten Wert inaktiv.",
-
   "block.createthrusters.gyro_redstone_bridge": "Gyroskop-Redstone-Brücke",
   "block.createthrusters.gyro_redstone_bridge.tooltip.summary": "Wandelt Orientierungsdaten einer Erweiterten Datenverbindung in sechs Redstone-Ausgänge um.",
   "block.createthrusters.gyro_redstone_bridge.tooltip.condition1": "Direkt neben einer Erweiterten Datenverbindung platzieren",
   "block.createthrusters.gyro_redstone_bridge.tooltip.behaviour1": "Nord/Süd und Ost/West geben die beiden Neigungsachsen aus. Oben liegt die Gesamtneigung an, unten der Aktivstatus.",
-
   "block.createthrusters.bidirectional_gearbox": "Smartes Getriebe",
   "block.createthrusters.bidirectional_gearbox.tooltip.summary": "Führt zwei getrennte Rotationsachsen. Im Servo-Modus richtet es angeschlossene Servolager nach Orientierungsdaten aus.",
   "block.createthrusters.bidirectional_gearbox.tooltip.condition1": "Wellen an Ost/West und Nord/Süd anschließen",
@@ -275,7 +264,6 @@
   "createthrusters.physics_gantry_belt_wheel.role_receiver": "Empfänger",
   "createthrusters.physics_gantry_belt_wheel.direction_out": "ausgehend",
   "createthrusters.physics_gantry_belt_wheel.direction_in": "eingehend",
-
   "item.createthrusters.physics_staff": "Physik-Stab",
   "item.createthrusters.physics_staff.tooltip.summary": "Greift, zieht und fixiert Physikbaugruppen direkt in der Welt.",
   "item.createthrusters.physics_staff.tooltip.condition1": "Mit Rechtsklick eine Physikbaugruppe greifen",
@@ -587,7 +575,6 @@
   "createthrusters.analogue_controller.capture.already_added": "Dieses Ziel ist im Regler bereits vorhanden",
   "item.createthrusters.analogue_contraption_controller.stored_targets": "Gespeicherte Ziele: %s",
   "createthrusters.common.clear": "Leeren",
-
   "createthrusters.goggle.thruster.enabled": "Aktiviert",
   "createthrusters.goggle.thruster.throttle_input": "Schub-Eingabe",
   "createthrusters.goggle.thruster.thrust_output": "Schub-Ausgabe",
@@ -600,7 +587,6 @@
   "createthrusters.goggle.thruster.fuel_mode": "Treibstoffmodus",
   "createthrusters.goggle.thruster.beam_requirement": "FE-Bedarf des Strahls",
   "createthrusters.goggle.thruster.beam_calc": "FE-Berechnung des Strahls",
-
   "createthrusters.goggle.bearing.aim_angle": "Zielwinkel",
   "createthrusters.goggle.bearing.steering_arc": "Lenkbogen",
   "createthrusters.goggle.bearing.fwd_rev_signal": "Vorwärts- / Rückwärtssignal",
@@ -608,17 +594,14 @@
   "createthrusters.goggle.bearing.angle_mode": "Lenkmodus",
   "createthrusters.goggle.bearing.inverted": "Umgekehrt",
   "createthrusters.goggle.bearing.servo_request": "Servo-Anforderung",
-
   "createthrusters.goggle.vector_bearing.mode": "Modus",
   "createthrusters.goggle.vector_bearing.active": "Aktive Quelle",
   "createthrusters.goggle.vector_bearing.tilt": "X- / Z-Neigung",
   "createthrusters.goggle.vector_bearing.assembly": "Montierte Baugruppe",
-
   "createthrusters.goggle.gyro_link.status": "Status",
   "createthrusters.goggle.gyro_link.tracking_mode": "Verfolgungsmodus",
   "createthrusters.goggle.gyro_link.source_pos": "Quellenposition",
   "createthrusters.goggle.gyro_link.dimension": "Dimension",
-
   "createthrusters.goggle.gearbox.mode": "Modus",
   "createthrusters.goggle.gearbox.servo_active": "Servo aktiv",
   "createthrusters.goggle.gearbox.lanes": "N-S / O-W Spuren",
@@ -630,7 +613,6 @@
   "createthrusters.goggle.gearbox.face_limits": "Seiten-Grenzen",
   "createthrusters.goggle.gearshift.axis_modes": "Achsenmodi",
   "createthrusters.goggle.gearshift.local_control": "Lokale Steuerung",
-
   "block.createthrusters.alternator": "Industriegenerator",
   "block.createthrusters.alternator.tooltip.summary": "Erzeugt FE aus Rotation. Mehr Drehzahl liefert mehr elektrische Leistung.",
   "block.createthrusters.alternator.tooltip.condition1": "Eine angetriebene Welle anschließen",
@@ -639,14 +621,12 @@
   "block.createthrusters.alternator.tooltip.behaviour2": "Der interne Speicher ist über jede Seite mit einem Kabel erreichbar.",
   "block.createthrusters.alternator.tooltip.condition3": "Zusätzliche Belastung einplanen",
   "block.createthrusters.alternator.tooltip.behaviour3": "Mit der Drehzahl steigt auch die Belastung des Rotationsnetzes.",
-
   "block.createthrusters.andesite_cable": "Andesit-Kabel",
   "block.createthrusters.andesite_cable.tooltip.summary": "Leitet FE zwischen benachbarten Maschinen und Kabeln weiter.",
   "block.createthrusters.andesite_cable.tooltip.condition1": "An einen FE-Verbraucher oder -Erzeuger setzen",
   "block.createthrusters.andesite_cable.tooltip.behaviour1": "Verbindet sich selbstständig und überträgt FE an alle berührenden Anschlüsse.",
   "block.createthrusters.andesite_cable.tooltip.condition2": "Kabel beliebig lang verlegen",
   "block.createthrusters.andesite_cable.tooltip.behaviour2": "Verbundene Kabel transportieren FE ohne Leitungsverlust.",
-
   "block.createthrusters.industrial_motor": "Industriemotor",
   "block.createthrusters.industrial_motor.tooltip.summary": "Verbraucht FE und erzeugt daraus Rotation für ein Wellennetz.",
   "block.createthrusters.industrial_motor.tooltip.condition1": "Über Kabel oder Batterie mit FE versorgen",
@@ -665,7 +645,6 @@
   "block.createthrusters.variable_transmission.tooltip.behaviour3": "Das Variable Getriebe erzeugt selbst keine weitere Belastung.",
   "item.createthrusters.vertical_variable_transmission": "Vertikales Variables Getriebe",
   "createthrusters.industrial_motor.target_rpm": "Ziel-U/min",
-
   "block.createthrusters.navigation_table": "Navigationstisch",
   "block.createthrusters.navigation_table.tooltip.summary": "Liest ein Kartenziel und gibt passende Lenksignale für automatisierten Flug aus.",
   "block.createthrusters.navigation_table.tooltip.condition1": "Ausgefüllte Karten in die Kartenplätze legen",
@@ -692,7 +671,6 @@
   "createthrusters.navigation_table.label.target": "Ziel: %s",
   "createthrusters.navigation_table.label.none": "Keines",
   "createthrusters.navigation_table.hint": "Klicke auf den Kartenplatz, dessen Ziel verwendet werden soll.",
-
   "block.createthrusters.claw": "Klaue",
   "item.createthrusters.entity_launcher": "Entitätswerfer",
   "item.createthrusters.entity_launcher.tooltip.summary": "Verschießt einen Haken, der Entitäten heranzieht oder den Spieler an Oberflächen schwingen lässt.",
@@ -738,7 +716,6 @@
   "createthrusters.goggle.claw.grip": "Griff",
   "createthrusters.goggle.claw.holding": "Hält",
   "createthrusters.goggle.claw.idle": "Leerlauf",
-
   "item.createthrusters.processing_upgrade_smoking_t1": "Verarbeitungsverbesserung: Räuchern Stufe 1",
   "item.createthrusters.processing_upgrade_smoking_t1.tooltip.summary": "Lässt den Abgasstrahl Lebensmittel auf nahen Ablagen räuchern.",
   "item.createthrusters.processing_upgrade_smelting_t1": "Verarbeitungsverbesserung: Schmelzen Stufe 1",
@@ -771,7 +748,6 @@
   "item.createthrusters.propulsion_upgrade_t3.tooltip.summary": "Liefert achtfachen Schub bei entsprechend hohem Verbrauch.",
   "item.createthrusters.propulsion_upgrade_t4": "Antriebsverbesserung Stufe 4",
   "item.createthrusters.propulsion_upgrade_t4.tooltip.summary": "Liefert sechzehnfachen Schub und benötigt die größte Treibstoffmenge.",
-
   "createthrusters.thruster.processing_upgrade.invalid_for_mode": "Diese Verarbeitungsstufe ist im aktuellen Triebwerksmodus nicht verfügbar.",
   "createthrusters.thruster.processing_upgrade.applied": "Verarbeitungsstufe %s für %s eingesetzt",
   "createthrusters.goggle.thruster.fe_stored": "FE gespeichert",
@@ -781,17 +757,14 @@
   "createthrusters.goggle.alternator.generation": "Erzeugung",
   "createthrusters.goggle.alternator.energy": "Gespeicherte Energie",
   "createthrusters.goggle.alternator.stress": "Belastungsauswirkung",
-
   "createthrusters.ponder.industrial_alternator.header": "Mit dem Industriegenerator FE erzeugen",
   "createthrusters.ponder.industrial_alternator.usage.text_1": "Der Industriegenerator wandelt die Rotation seiner Welle in FE um.",
   "createthrusters.ponder.industrial_alternator.usage.text_2": "Mehr Drehzahl erhöht sowohl die FE-Ausgabe als auch die Belastung.",
   "createthrusters.ponder.industrial_alternator.usage.text_3": "Andesit-Kabel verteilen die erzeugte FE an angeschlossene Maschinen.",
-
   "createthrusters.ponder.industrial_motor.header": "Mit FE Rotation erzeugen",
   "createthrusters.ponder.industrial_motor.usage.text_1": "Der Industriemotor verbraucht FE und treibt damit eine Welle an.",
   "createthrusters.ponder.industrial_motor.usage.text_2": "Eine höhere Solldrehzahl benötigt entsprechend mehr FE.",
   "createthrusters.ponder.industrial_motor.usage.text_3": "Per Rechtsklick den Regler auf der Rückseite ziehen und die gewünschte Drehzahl einstellen.",
-
   "block.createthrusters.shipping_manifest": "Frachtmanifest",
   "item.createthrusters.shipping_manifest": "Frachtmanifest",
   "item.createthrusters.player_mannequin": "Spieler-Mannequin",
@@ -1223,7 +1196,7 @@
   "createthrusters.advanced_controller.node.linker_face_output.summary": "Sendet Werte an eine vom Linker zugewiesene Blockfläche.",
   "createthrusters.advanced_controller.node.reset_outputs.summary": "Setzt alle Controller-Ausgänge auf 0 zurück.",
   "createthrusters.advanced_controller.node.controller_tracker.summary": "Gibt Sable-Koordinaten dieses tragbaren Controllers aus und folgt dem Spieler, der ihn hält, oder seinem Lesepult.",
-  "createthrusters.advanced_controller.node.portable_tracker.summary": "Gibt Sable-Koordinaten und Identitätsdaten für den Spieler, das Spieler-Mannequin oder den Rüstungsständer mit der gewählten verknüpften Brille aus.",
+  "createthrusters.advanced_controller.node.portable_tracker.summary": "Gibt Sable-Koordinaten und Identitätsdaten für den Spieler, das Spieler-Mannequin oder den Rüstungsständer mit der gewählten verknüpften Brille aus. Velocity gibt die tatsächliche Bewegung entlang der Weltachsen X/Y/Z in Blöcken pro Sekunde aus; Speed ist der Betrag. Ein stillstehender Träger meldet null.",
   "createthrusters.analogue_controller.discovery.thruster.summary": "Sendet den zugewiesenen Controller-Wert an den Schubregler eines Triebwerks.",
   "createthrusters.analogue_controller.discovery.fan.summary": "Sendet den zugewiesenen Controller-Wert an die Geschwindigkeitssteuerung eines Lüfters.",
   "createthrusters.analogue_controller.discovery.bearing.summary": "Sendet eine Steuerung im oder gegen den Uhrzeigersinn an ein Lager.",
@@ -1343,5 +1316,26 @@
   "createthrusters.ship_coupler.redstone.unpowered_attaches": "Redstone-Modus: Ohne Signal ankuppeln",
   "createthrusters.advanced_controller.node.ship_flight_behavior.summary": "Legt fest, wie die SCM-Navigation dreht und sich bewegt, solange ein Shipping-Schedule-Pilot sitzt.",
   "createthrusters.scm.flight_behavior.direct_vector": "Direkter Vektor",
-  "createthrusters.scm.flight_behavior.prefer_ship_direction": "Schiffsrichtung bevorzugen"
+  "createthrusters.scm.flight_behavior.prefer_ship_direction": "Schiffsrichtung bevorzugen",
+  "item.createthrusters.physics_staff.error.permission_denied": "Du hast keine Berechtigung, den Physikstab auf diesem Schiff zu benutzen.",
+  "block.createthrusters.blackstone_casing": "Blackstone-Gehäuse",
+  "createthrusters.recipe.thruster_smelting": "Triebwerksschmelzen",
+  "createthrusters.recipe.thruster_smoking": "Triebwerksräuchern",
+  "createthrusters.recipe.thruster_haunting": "Triebwerksspuk",
+  "emi.category.createthrusters.thruster_smelting": "Triebwerksschmelzen",
+  "emi.category.createthrusters.thruster_smoking": "Triebwerksräuchern",
+  "emi.category.createthrusters.thruster_haunting": "Triebwerksspuk",
+  "createthrusters.recipe.output_chance": "Ausgabechance: %s%%",
+  "createthrusters.advanced_controller.node.createthrusters:angle_from_coords.summary": "Degrees ist der horizontale X/Z-Winkel von Origin zu Target zwischen 0 und 360 Grad: 0 Süden (+Z), 90 Osten (+X), 180 Norden (-Z), 270 Westen (-X). Die Höhe wird ignoriert; ohne horizontalen Abstand ist Degrees = 0. Euler (ZXZ), Quaternion (XYZW), Tait-Bryan (XYZ), Axis und Angle (Bogenmaß) beschreiben die kürzeste 3D-Drehung von +Z. Gleiche oder ungültige Koordinaten setzen valid auf false.",
+  "createthrusters.advanced_controller.node.createthrusters:degrees_to_radians.summary": "Wandelt eine einzelne Zahl am Anschluss Angle von Grad in Bogenmaß um. Die separaten Angles-Kartenanschlüsse wandeln Zahlenfelder um und erhalten Schlüssel und verschachtelte Karten.",
+  "createthrusters.advanced_controller.node.createthrusters:radians_to_degrees.summary": "Wandelt eine einzelne Zahl am Anschluss Angle von Bogenmaß in Grad um. Die separaten Angles-Kartenanschlüsse wandeln Zahlenfelder um und erhalten Schlüssel und verschachtelte Karten.",
+  "createthrusters.advanced_controller.search.hint": "Graph durchsuchen",
+  "createthrusters.advanced_controller.search.previous": "Vorheriger Treffer",
+  "createthrusters.advanced_controller.search.next": "Nächster Treffer",
+  "createthrusters.advanced_controller.bound_glasses.title": "Verknüpfte Brillen",
+  "createthrusters.advanced_controller.bound_glasses.empty": "Mit diesem Controller sind keine Brillen verknüpft.",
+  "createthrusters.advanced_controller.bound_glasses.unbind": "Trennen",
+  "createthrusters.advanced_controller.node.createthrusters:percentage": "Prozent",
+  "createthrusters.advanced_controller.node.createthrusters:percentage.summary": "Gibt A geteilt durch B mal 100 aus. A = 50 und B = 200 ergibt 25. B = 0 ergibt 0 und Valid = false.",
+  "createthrusters.advanced_controller.node.count.summary": "Jeder Impuls erhöht den Wert um Step, wenn Decrement false ist, oder verringert ihn bei true. Reset setzt den Wert auf null. Remember Count behält den Zähler beim Speichern und Anwenden von Graphänderungen; sonst wird er beim Anwenden zurückgesetzt."
 }

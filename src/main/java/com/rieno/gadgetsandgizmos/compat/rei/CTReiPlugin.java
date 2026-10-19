@@ -1,5 +1,9 @@
 package com.rieno.gadgetsandgizmos.compat.rei;
 
+import com.rieno.gadgetsandgizmos.registry.CTFeatureToggles;
+
+import com.rieno.gadgetsandgizmos.compat.recipe.ThrusterProcessingDisplays;
+
 /*--------------------------------------------------------##---------------------------------------------------------
 
 =======================================================================================================================
@@ -25,20 +29,37 @@ import me.shedaniel.rei.forge.REIPluginClient;
 public class CTReiPlugin implements REIClientPlugin {
     @Override
     public void registerCategories(CategoryRegistry registry){
-        if(!OxidizedSolidFuelRecipes.enabled()) return;
-        var category = new ProcessingTransformationReiCategory(OxidizedSolidFuelRecipes.CATEGORY,
-                OxidizedSolidFuelRecipes.title(), OxidizedSolidFuelRecipes.icon());
-        registry.add(category);
-        for(var workstation : OxidizedSolidFuelRecipes.workstations()){
-            registry.addWorkstations(category.getCategoryIdentifier(), EntryStacks.of(workstation));
+        if(OxidizedSolidFuelRecipes.enabled()){
+            var category = new ProcessingTransformationReiCategory(OxidizedSolidFuelRecipes.CATEGORY,
+                    OxidizedSolidFuelRecipes.title(), OxidizedSolidFuelRecipes.icon());
+            registry.add(category);
+            for(var workstation : OxidizedSolidFuelRecipes.workstations()){
+                registry.addWorkstations(category.getCategoryIdentifier(), EntryStacks.of(workstation));
+            }
+        }
+        if(!CTFeatureToggles.isItemEnabled("thruster")) return;
+        for(ThrusterProcessingDisplays.Mode mode : ThrusterProcessingDisplays.Mode.values()){
+            ThrusterReiCategory category = new ThrusterReiCategory(mode);
+            registry.add(category);
+            for(var catalyst : mode.catalysts()){
+                registry.addWorkstations(category.getCategoryIdentifier(), EntryStacks.of(catalyst));
+            }
         }
     }
 
     @Override
     public void registerDisplays(DisplayRegistry registry){
-        if(Minecraft.getInstance().level == null) return;
-        for(var view : OxidizedSolidFuelRecipes.views(Minecraft.getInstance().level.getRecipeManager())){
-            registry.add(new ProcessingTransformationReiCategory.Display(OxidizedSolidFuelRecipes.CATEGORY, view));
+        if(Minecraft.getInstance().level != null){
+            for(var view : OxidizedSolidFuelRecipes.views(Minecraft.getInstance().level.getRecipeManager())){
+                registry.add(new ProcessingTransformationReiCategory.Display(OxidizedSolidFuelRecipes.CATEGORY, view));
+            }
+        }
+        if(!CTFeatureToggles.isItemEnabled("thruster") || Minecraft.getInstance().level == null) return;
+        var level = Minecraft.getInstance().level;
+        for(ThrusterProcessingDisplays.Mode mode : ThrusterProcessingDisplays.Mode.values()){
+            for(var view : mode.recipes(level)){
+                registry.add(new ThrusterReiDisplay(mode, view));
+            }
         }
     }
 

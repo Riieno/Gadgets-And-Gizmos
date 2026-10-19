@@ -14,13 +14,12 @@ import com.rieno.gadgetsandgizmos.lib.client.render.GuiNineSlice;
 import com.rieno.gadgetsandgizmos.lib.client.render.GuiTextureRegion;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementStyle;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudInteractiveStyles;
-import com.simibubi.create.foundation.gui.AllGuiTextures;
+import com.rieno.gadgetsandgizmos.lib.client.ui.HudControlRenderer;
+import com.rieno.gadgetsandgizmos.lib.display.HudStyleCatalog;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.WidgetSprites;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.util.Mth;
 
 // Draw the Advanced HUD Interactive Style
 public final class AdvancedHudInteractiveStyleRenderer {
@@ -38,11 +37,6 @@ public final class AdvancedHudInteractiveStyleRenderer {
             textInputRegion(0, 0, 18, 5), textInputRegion(20, 0, 17, 5), textInputRegion(39, 0, 20, 5),
             textInputRegion(0, 6, 18, 8), textInputRegion(20, 6, 17, 8), textInputRegion(39, 6, 20, 8),
             textInputRegion(0, 15, 18, 4), textInputRegion(20, 15, 17, 4), textInputRegion(39, 15, 20, 4));
-
-    private static final WidgetSprites MINECRAFT_BUTTON_SPRITES = new WidgetSprites(
-            ResourceLocation.withDefaultNamespace("widget/button"),
-            ResourceLocation.withDefaultNamespace("widget/button_disabled"),
-            ResourceLocation.withDefaultNamespace("widget/button_highlighted"));
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -75,27 +69,15 @@ public final class AdvancedHudInteractiveStyleRenderer {
         RenderSystem.defaultBlendFunc();
         RenderSystem.enableDepthTest();
         String type = elm.getString("Type");
-        if ("slider".equals(type)) {
-            drawSlider(graphics, elm, x, y, width, height, numberValue, hovered);
-            return;
-        }
-
         if("text_input".equals(type)){
             drawTextInput(graphics, font, elm, x, y, width, height, layoutScale);
             return;
         }
-
-        drawButtonBg(graphics, elm, x, y, width, height, toggleActive, hovered);
+        HudControlRenderer.Rect labelBounds = paint(HudControlRenderer.gui(graphics), elm,
+                x, y, width, height, layoutScale, numberValue, toggleActive, hovered);
         String label = elm.getString("Text");
-        if (label.isBlank()) {
-            label = "toggle".equals(type) ? "Toggle" : "Button";
-        }
-        int scaledFontHeight = Math.max(1,
-                (int) Math.round(AdvancedHudElementStyle.fontSize(elm) * layoutScale));
-        int textY = y + Math.max(2, (height - scaledFontHeight) / 2);
-        AdvancedHudElementRenderer.drawText(
-                graphics, font, elm, label, x + 4, textY,
-                Math.max(1, width - 8), Math.max(1, height - 4), layoutScale);
+        if(label.isBlank()) label = "toggle".equals(type) ? "Toggle" : "Button";
+        drawLabel(graphics, font, elm, labelBounds, label, layoutScale, !"toggle".equals(type));
     }
 
     // Draw the text field frame and keep its label clear of the textured caret
@@ -121,154 +103,64 @@ public final class AdvancedHudInteractiveStyleRenderer {
         return new GuiTextureRegion(TEXT_INPUT_TEXTURE, 59, 19, u, v, width, height);
     }
 
-    // Draw the button bg
-    private static void drawButtonBg(GuiGraphics graphics, CompoundTag elm,
-                                             int x, int y, int width, int height,
-                                             boolean toggleActive, boolean hovered) {
-        String style = AdvancedHudInteractiveStyles.style(elm);
-        switch (style) {
-            case AdvancedHudInteractiveStyles.CREATE_ICON ->
-                    drawCreateIconButton(graphics, x, y, width, height, toggleActive, hovered);
-            case AdvancedHudInteractiveStyles.TNT_BRASS -> {
-                CTCreateScreenHelper.renderTntSmallButton(
-                        graphics, net.minecraft.client.Minecraft.getInstance().font,
-                        x, y, width, height, net.minecraft.network.chat.Component.empty(), hovered, true);
-                if (toggleActive) {
-                    graphics.fill(x + 1, y + 1, x + width - 1, y + height - 1, 0x443E8B57);
-                }
-            }
-            case AdvancedHudInteractiveStyles.CONTROLLER_GRAPH ->
-                    AdvancedContraptionControllerScreen.renderNodeOption(
-                            graphics, x, y, width, height,
-                            AdvancedHudElementStyle.color(elm, "Color",
-                                    AdvancedHudElementStyle.DEFAULT_TEXT_COLOR),
-                            toggleActive || hovered);
-            case AdvancedHudInteractiveStyles.MINECRAFT ->
-                    graphics.blitSprite(MINECRAFT_BUTTON_SPRITES.get(true, toggleActive || hovered),
-                            x, y, width, height);
-            default -> {
-                CTCreateScreenHelper.renderTextButton(
-                        graphics, net.minecraft.client.Minecraft.getInstance().font,
-                        x, y, width, height, net.minecraft.network.chat.Component.empty(),
-                        hovered, true, toggleActive);
-                if (toggleActive) {
-                    graphics.fill(x + 1, y + 1, x + width - 1, y + height - 1, 0x443E8B57);
-                }
-            }
-        }
+    // Adapt element data to the library's GUI and world control renderer.
+    public static HudControlRenderer.Palette palette(CompoundTag elm, double scale){
+        return new HudControlRenderer.Palette(
+                AdvancedHudElementStyle.color(elm, "BackgroundColor", AdvancedHudElementStyle.DEFAULT_WIDGET_BACKGROUND_COLOR),
+                AdvancedHudElementStyle.color(elm, "AccentColor", AdvancedHudElementStyle.DEFAULT_WIDGET_ACCENT_COLOR),
+                AdvancedHudElementStyle.color(elm, "GradientColor", AdvancedHudElementStyle.DEFAULT_WIDGET_GRADIENT_COLOR),
+                AdvancedHudElementStyle.color(elm, "TrackColor", AdvancedHudElementStyle.DEFAULT_WIDGET_TRACK_COLOR),
+                AdvancedHudElementStyle.color(elm, "BorderColor", 0xFF527185),
+                AdvancedHudElementStyle.borderWidth(elm) * scale,
+                AdvancedHudElementStyle.borderRadius(elm) * scale, scale);
     }
 
-    // Draw the create icon button
-    private static void drawCreateIconButton(GuiGraphics graphics, int x, int y, int width, int height,
-                                             boolean toggleActive, boolean hovered) {
-        AllGuiTextures texture = hovered ? AllGuiTextures.BUTTON_HOVER
-                : toggleActive ? AllGuiTextures.BUTTON_GREEN : AllGuiTextures.BUTTON;
+    public static HudControlRenderer.Rect paint(HudControlRenderer.Canvas canvas, CompoundTag elm,
+                                                double x, double y, double width, double height, double scale,
+                                                double value, boolean active, boolean hovered){
+        HudControlRenderer.Rect bounds = new HudControlRenderer.Rect(x, y, width, height);
+        HudControlRenderer.Palette palette = palette(elm, scale);
+        String style = AdvancedHudInteractiveStyles.style(elm);
+        return switch(elm.getString("Type")){
+            case "toggle" -> HudControlRenderer.toggle(canvas, bounds, palette, HudStyleCatalog.controlStyle(style),
+                    active, hovered, HudStyleCatalog.checkbox(elm.getString("ToggleShape")));
+            case "slider" -> {
+                HudControlRenderer.slider(canvas, bounds, palette, HudStyleCatalog.controlStyle(style),
+                        HudStyleCatalog.amount(value, elm.getDouble("Min"), elm.getDouble("Max")), hovered);
+                yield new HudControlRenderer.Rect(x, y, 0, 0);
+            }
+            case "progress" -> HudControlRenderer.progress(canvas, bounds, palette, HudStyleCatalog.progressStyle(style),
+                    HudStyleCatalog.amount(value, elm.getDouble("Min"), elm.getDouble("Max")));
+            default -> HudControlRenderer.button(canvas, bounds, palette, HudStyleCatalog.controlStyle(style), active, hovered);
+        };
+    }
+
+    public static void drawProgress(GuiGraphics graphics, Font font, CompoundTag elm,
+                                     int x, int y, int width, int height, double scale, double value){
+        HudControlRenderer.Rect label = paint(HudControlRenderer.gui(graphics), elm,
+                x, y, width, height, scale, value, false, false);
+        String text = elm.getString("Text");
+        if(text.isBlank()) text = Math.round(HudStyleCatalog.amount(value, elm.getDouble("Min"), elm.getDouble("Max")) * 100) + "%";
+        drawLabel(graphics, font, elm, label, text, scale, true);
+    }
+
+    private static void drawLabel(GuiGraphics graphics, Font font, CompoundTag elm,
+                                  HudControlRenderer.Rect bounds, String text, double scale, boolean centered){
+        if(bounds.width() <= 0 || bounds.height() <= 0) return;
         graphics.pose().pushPose();
-        graphics.pose().translate(x, y, 0.0F);
-        graphics.pose().scale(width / 18.0F, height / 18.0F, 1.0F);
-        texture.render(graphics, 0, 0);
-        graphics.pose().popPose();
-    }
-
-    // Draw the slider
-    private static void drawSlider(GuiGraphics graphics, CompoundTag elm,
-                                   int x, int y, int width, int height,
-                                   double val, boolean hovered) {
-        double minimum = elm.getDouble("Min");
-        double maximum = elm.getDouble("Max");
-        if (!(maximum > minimum)) {
-            maximum = minimum + 1.0D;
-        }
-        double amount = Mth.clamp((val - minimum) / (maximum - minimum), 0.0D, 1.0D);
-        int col = AdvancedHudElementStyle.color(
-                elm, "Color", AdvancedHudElementStyle.DEFAULT_TEXT_COLOR);
-        String style = AdvancedHudInteractiveStyles.style(elm);
-        switch (style) {
-            case AdvancedHudInteractiveStyles.TNT_BRASS ->
-                    CTCreateScreenHelper.renderTntHorizontalSlider(
-                            graphics, x, y + Math.max(0, (height - 11) / 2), width, (float) amount, hovered);
-            case AdvancedHudInteractiveStyles.THRUSTER_TRIM ->
-                    drawThrusterTrimSlider(graphics, x, y, width, height, amount, col, hovered);
-            case AdvancedHudInteractiveStyles.AILERON_RANGE ->
-                    drawAileronRangeSlider(graphics, x, y, width, height, amount, hovered);
-            case AdvancedHudInteractiveStyles.POWERED_ZIPLINE ->
-                    drawPoweredZiplineSlider(graphics, x, y, width, height, amount, col, hovered);
-            case AdvancedHudInteractiveStyles.GYROSCOPE_RANGE ->
-                    drawGyroscopeRangeSlider(graphics, x, y, width, height, amount, col, hovered);
-            default -> {
-                AdvancedContraptionControllerScreen.renderNodeOption(
-                        graphics, x, y, width, height, col, hovered);
-                int trackLeft = x + Math.min(7, Math.max(2, width / 8));
-                int trackWidth = Math.max(3, width - (trackLeft - x) * 2);
-                AdvancedContraptionControllerScreen.renderAdvancedSlider(
-                        graphics, trackLeft, y + height / 2, trackWidth, amount, col, hovered);
-            }
+        try{
+            graphics.pose().translate(0, 0, 1);
+            if(centered) AdvancedHudElementRenderer.drawCenteredText(graphics, font, elm, text,
+                    (int)Math.round(bounds.x()), (int)Math.round(bounds.y()),
+                    (int)Math.floor(bounds.width()), (int)Math.floor(bounds.height()), scale);
+            else AdvancedHudElementRenderer.drawText(graphics, font, elm, text,
+                    (int)Math.round(bounds.x()), (int)Math.round(bounds.y() + Math.max(0,
+                            (bounds.height() - AdvancedHudElementStyle.fontSize(elm) * scale) / 2)),
+                    (int)Math.floor(bounds.width()), (int)Math.floor(bounds.height()), scale);
+        }finally{
+            graphics.pose().popPose();
         }
     }
 
-    // Draw the aileron range slider
-    private static void drawAileronRangeSlider(GuiGraphics graphics, int x, int y, int width, int height,
-                                                double amount, boolean hovered) {
-        int inset = Math.min(5, Math.max(2, width / 10));
-        int left = x + inset;
-        int trackWidth = Math.max(4, width - inset * 2);
-        int centerY = y + height / 2;
-        int thumbX = left + (int) Math.round(amount * trackWidth);
-        CTCreateScreenHelper.renderTntHorizontalTrackFill(
-                graphics, left, centerY, trackWidth, left, thumbX);
-        CTCreateScreenHelper.renderTntHorizontalRangeMaxHandle(graphics, thumbX, centerY, hovered);
-    }
 
-    // Draw the thruster trim slider
-    private static void drawThrusterTrimSlider(GuiGraphics graphics, int x, int y, int width, int height,
-                                                double amount, int col, boolean hovered) {
-        CTCreateScreenHelper.renderInset(graphics, x, y, width, height, hovered, false);
-        int centerY = y + height / 2;
-        int trackLeft = x + 8;
-        int trackRight = x + Math.max(8, width - 8);
-        graphics.fill(trackLeft, centerY - 2, trackRight, centerY + 2, 0xFF3D2F20);
-        int fillRight = trackLeft + (int) Math.round(amount * Math.max(0, trackRight - trackLeft));
-        graphics.fill(trackLeft, centerY - 2, fillRight, centerY + 2, opaque(col));
-        int handleWidth = Math.min(17, Math.max(4, width));
-        int handleX = x + (int) Math.round(amount * Math.max(0, width - handleWidth));
-        CTCreateScreenHelper.renderTntRangeMinHandle(
-                graphics, handleX, centerY - 3, hovered);
-    }
-
-    // Draw the powered zipline slider
-    private static void drawPoweredZiplineSlider(GuiGraphics graphics, int x, int y, int width, int height,
-                                                  double amount, int col, boolean hovered) {
-        CTCreateScreenHelper.renderInset(graphics, x, y, width, height, hovered, false);
-        int left = x + 4;
-        int right = x + Math.max(4, width - 4);
-        int trackTop = y + Math.max(2, height / 2 - 2);
-        graphics.fill(left, trackTop, right, trackTop + 4, 0xFF3D2F20);
-        int fillRight = left + (int) Math.round(amount * Math.max(0, right - left));
-        graphics.fill(left, trackTop, fillRight, trackTop + 4, opaque(col));
-        int handleWidth = Math.min(8, Math.max(4, width / 8));
-        int handleX = x + (int) Math.round(amount * Math.max(0, width - handleWidth));
-        CTCreateScreenHelper.renderTextButton(
-                graphics, net.minecraft.client.Minecraft.getInstance().font,
-                handleX, y - 1, handleWidth, height + 2,
-                net.minecraft.network.chat.Component.empty(), hovered, true, false);
-    }
-
-    // Draw the gyroscope range slider
-    private static void drawGyroscopeRangeSlider(GuiGraphics graphics, int x, int y, int width, int height,
-                                                  double amount, int col, boolean hovered) {
-        CTCreateScreenHelper.renderInset(graphics, x, y, width, height, hovered, false);
-        int trackY = y + height / 2 - 1;
-        graphics.fill(x + 2, trackY, x + width - 2, trackY + 2, 0xFF5B4633);
-        int handleX = x + 2 + (int) Math.round(amount * Math.max(0, width - 4));
-        graphics.fill(x + 2, trackY - 1, handleX, trackY + 3, opaque(col));
-        graphics.fill(handleX - 2, y + 1, handleX + 2, y + height - 1, 0xFF2D4A92);
-        if (hovered) {
-            graphics.fill(handleX - 3, y, handleX + 3, y + height, 0x44FFFFFF);
-        }
-    }
-
-    // Get the opaque
-    private static int opaque(int col) {
-        return (col & 0x00FFFFFF) | 0xFF000000;
-    }
 }

@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
+import com.rieno.gadgetsandgizmos.lib.create.ConfigurableKineticScrollValueBehaviour;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.simibubi.create.content.kinetics.base.GeneratingKineticBlockEntity;
 import com.simibubi.create.content.kinetics.base.IRotate;
@@ -40,7 +41,6 @@ public class IndustrialMotorBlockEntity extends GeneratingKineticBlockEntity {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     private static final float REFERENCE_RPM = 256.0f;
-    private static final int MIN_TARGET_SPEED_RPM = 1;
     private static final int DEFAULT_TARGET_SPEED_RPM = 128;
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -99,11 +99,11 @@ public class IndustrialMotorBlockEntity extends GeneratingKineticBlockEntity {
         super.addBehaviours(behaviours);
         ValueBoxTransform backPanel = new CenteredSideValueBoxTransform((state, dir) ->
                 dir == state.getValue(IndustrialMotorBlock.FACING).getOpposite());
-        targetSpeedBehaviour = new ScrollValueBehaviour(
+        targetSpeedBehaviour = new ConfigurableKineticScrollValueBehaviour(
                 Component.translatable("createthrusters.industrial_motor.target_rpm"),
                 this,
                 backPanel)
-            .between(MIN_TARGET_SPEED_RPM, CTConfigs.COMMON.electricMotorRpmRange.get())
+            .between(-CTConfigs.COMMON.electricMotorRpmRange.get(), CTConfigs.COMMON.electricMotorRpmRange.get())
                 .withFormatter(val -> val + " RPM")
                 .withCallback(val -> {
                     if (!active) {
@@ -261,7 +261,7 @@ public class IndustrialMotorBlockEntity extends GeneratingKineticBlockEntity {
         if (targetSpeedBehaviour == null) {
             return DEFAULT_TARGET_SPEED_RPM;
         }
-        return Mth.clamp(targetSpeedBehaviour.getValue(), MIN_TARGET_SPEED_RPM, CTConfigs.COMMON.electricMotorRpmRange.get());
+        return Mth.clamp(targetSpeedBehaviour.getValue(), -CTConfigs.COMMON.electricMotorRpmRange.get(), CTConfigs.COMMON.electricMotorRpmRange.get());
     }
 
     // Expose speed to the ACC
@@ -273,7 +273,7 @@ public class IndustrialMotorBlockEntity extends GeneratingKineticBlockEntity {
 
     public boolean setTargetSpeedRPM(double rpm){
         if(!Double.isFinite(rpm) || targetSpeedBehaviour == null) return false;
-        int next = Mth.clamp((int) Math.round(rpm), MIN_TARGET_SPEED_RPM, CTConfigs.COMMON.electricMotorRpmRange.get());
+        int next = (int) Math.round(Mth.clamp(rpm, -CTConfigs.COMMON.electricMotorRpmRange.get(), CTConfigs.COMMON.electricMotorRpmRange.get()));
         if(targetSpeedBehaviour.getValue() == next) return false;
         targetSpeedBehaviour.setValue(next);
         sendData();

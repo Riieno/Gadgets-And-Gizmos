@@ -100,8 +100,6 @@ public final class CTActionKeys {
             keys = List.of(CONTROLLER_EXIT);
         } else if (item instanceof com.rieno.gadgetsandgizmos.content.PortableContraptionControllerItem) {
             keys = List.of(CONTROLLER_EXIT);
-        } else if (item instanceof ContraptionNetworkLinkerItem) {
-            keys = List.of(LINKER_SCOPE);
         } else {
             return;
         }
@@ -110,4 +108,6 @@ public final class CTActionKeys {
                     Component.translatable(key.mapping().getName()), key.label()).withStyle(ChatFormatting.GRAY));
         }
     }
+
+
 }

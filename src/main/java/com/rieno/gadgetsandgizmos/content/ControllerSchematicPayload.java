@@ -20,6 +20,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
+import com.rieno.gadgetsandgizmos.lib.inventory.ItemStackNbtSanitizer;
 
 // Carry Controller Schematic state between the client and server
 final class ControllerSchematicPayload {
@@ -106,6 +107,7 @@ final class ControllerSchematicPayload {
         CompoundTag envelope = blockEntityTag.getCompound(BLOCK_ENTITY_TAG).copy();
         blockEntityTag.remove(BLOCK_ENTITY_TAG);
         CompoundTag payload = decode(envelope);
+        if(payload != null) payload = ItemStackNbtSanitizer.withoutUnavailableItems(payload);
         discardLegacyPlotPoints(payload);
         return payload;
     }
@@ -168,4 +170,6 @@ final class ControllerSchematicPayload {
             return null;
         }
     }
+
+
 }

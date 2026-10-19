@@ -78,6 +78,8 @@ import net.minecraft.sounds.SoundSource;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import com.rieno.gadgetsandgizmos.content.ShipPermissions;
+import com.rieno.gadgetsandgizmos.lib.scm.ShipPermission;
 
 // Keep player-owned controller, tablet and moving-ship sessions valid across login and dimension changes
 @EventBusSubscriber
@@ -129,6 +131,7 @@ public final class CTPlayerEvents {
     public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer serverPlayer) {
             PortableContraptionControllerRuntime.stopAll(serverPlayer);
+            ShippingRouteOverlayService.forget(serverPlayer.getUUID());
         }
         ContraptionNetworkLinkerSnapshotPayload.clearServerState(event.getEntity().getUUID());
         ARMOR_STAND_POSE_GUI_PREFERENCES.remove(event.getEntity().getUUID());
@@ -203,6 +206,15 @@ public final class CTPlayerEvents {
     // Handle the right click block event
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
+        // Gate direct wrench handlers before they can change a claimed ship
+        if(event.getEntity() instanceof ServerPlayer player
+                && CREATE_WRENCH.equals(BuiltInRegistries.ITEM.getKey(event.getItemStack().getItem()))
+                && !ShipPermissions.allows(player, event.getLevel(), event.getPos(),
+                player.isShiftKeyDown() ? ShipPermission.DESTROY : ShipPermission.INTERACT)){
+            event.setCancellationResult(InteractionResult.FAIL);
+            event.setCanceled(true);
+            return;
+        }
         if (tryHandlePlacedTabletInteraction(event)) {
             return;
         }
@@ -353,10 +365,13 @@ public final class CTPlayerEvents {
         }
         if (event.getLevel().isClientSide()
                 || !(event.getEntity() instanceof ServerPlayer serverPlayer)
-                || !isArmorStandPoseGuiEnabled(serverPlayer)
-                || !canUseArmorStandPoseGui(armorStand)) {
+                ) {
             return;
         }
+
+        
+
+        if (!isArmorStandPoseGuiEnabled(serverPlayer) || !canUseArmorStandPoseGui(armorStand)) return;
 
         if (prefersStrawStatuesPoseGui(serverPlayer)
                 && StrawStatuesPoseGuiCompat.tryOpen(serverPlayer, armorStand)) {
@@ -781,4 +796,6 @@ public final class CTPlayerEvents {
                 && com.rieno.gadgetsandgizmos.CreateThrusters.MOD_ID.equals(itemId.getNamespace())
                 && !CTFeatureToggles.isItemEnabled(itemId.getPath());
     }
+
+
 }

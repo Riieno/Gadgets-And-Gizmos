@@ -19,6 +19,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.List;
+import com.rieno.gadgetsandgizmos.lib.physics.archive.SubLevelConstructionState;
 
 // Protect Sable sub-level Container Removal
 @Mixin(SubLevelContainer.class)
@@ -49,6 +50,7 @@ public abstract class SableSubLevelContainerRemovalSafetyMixin {
         SubLevelContainer container = (SubLevelContainer) (Object) this;
         for (SubLevel subLevel : List.copyOf(container.getAllSubLevels())) {
             if (subLevel instanceof ServerSubLevel serverSubLevel
+                    && !SubLevelConstructionState.isBuilding(serverSubLevel)
                     && !serverSubLevel.isRemoved()
                     && serverSubLevel.getMassTracker() != null
                     && serverSubLevel.getMassTracker().isInvalid()) {
@@ -63,4 +65,6 @@ public abstract class SableSubLevelContainerRemovalSafetyMixin {
         }
         callbackInfo.cancel();
     }
+
+
 }

@@ -1,5 +1,10 @@
 package com.rieno.gadgetsandgizmos.content;
 
+import com.rieno.gadgetsandgizmos.lib.power.LongEnergyStorage;
+
+import com.rieno.gadgetsandgizmos.lib.power.EnergyStorageProbe;
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerContainerAccess;
+
 /*--------------------------------------------------------##---------------------------------------------------------
 
 =======================================================================================================================
@@ -130,10 +135,11 @@ public class ShippingManifestBlock extends FaceAttachedHorizontalDirectionalBloc
         IItemHandler itemHandler = findItemHandler(ctx.getLevel(), targetPos, targetSide);
         IFluidHandler fluidHandler = findFluidHandler(ctx.getLevel(), targetPos, targetSide);
         IEnergyStorage energyHandler = findEnergyHandler(ctx.getLevel(), targetPos, targetSide);
-        if (itemHandler == null && fluidHandler == null && energyHandler == null) {
+        LongEnergyStorage longEnergyHandler = findLongEnergyHandler(ctx.getLevel(), targetPos);
+        if (itemHandler == null && fluidHandler == null && energyHandler == null && longEnergyHandler == null) {
             return null;
         }
-        return state.setValue(SHOW_BLANK, fluidHandler != null || energyHandler != null);
+        return state.setValue(SHOW_BLANK, fluidHandler != null || energyHandler != null || longEnergyHandler != null);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -161,14 +167,15 @@ public class ShippingManifestBlock extends FaceAttachedHorizontalDirectionalBloc
         IFluidHandler fluidHandler = resolveFluidHandler(level, targetPos, targetSide,
                 manifest != null && manifest.isCombinedManifest());
         IEnergyStorage energyHandler = findEnergyHandler(level, targetPos, targetSide);
-        if (itemHandler == null && fluidHandler == null && energyHandler == null) {
+        LongEnergyStorage longEnergyHandler = findLongEnergyHandler(level, targetPos);
+        if (itemHandler == null && fluidHandler == null && energyHandler == null && longEnergyHandler == null) {
             return InteractionResult.PASS;
         }
 
         if (player instanceof ServerPlayer serverPlayer) {
             PacketDistributor.sendToPlayer(serverPlayer,
                     new ShippingManifestOpenPayload(createClipboardContent(
-                            itemHandler, fluidHandler, energyHandler)));
+                            itemHandler, fluidHandler, energyHandler, longEnergyHandler)));
         }
         return InteractionResult.CONSUME;
     }
@@ -237,7 +244,8 @@ public class ShippingManifestBlock extends FaceAttachedHorizontalDirectionalBloc
 
     // Create the clipboard content
     private static ClipboardContent createClipboardContent(@Nullable IItemHandler itemHandler,
-            @Nullable IFluidHandler fluidHandler, @Nullable IEnergyStorage energyHandler) {
+            @Nullable IFluidHandler fluidHandler, @Nullable IEnergyStorage energyHandler,
+            @Nullable LongEnergyStorage longEnergyHandler) {
         List<ManifestEntry> items = itemHandler == null ? List.of() : collectItems(itemHandler);
         FluidContents fluids = fluidHandler == null ? FluidContents.EMPTY : collectFluids(fluidHandler);
         List<List<ClipboardEntry>> pages;
@@ -248,13 +256,14 @@ public class ShippingManifestBlock extends FaceAttachedHorizontalDirectionalBloc
         } else {
             pages = createItemPages(items);
         }
-        if (energyHandler != null) {
+        if (energyHandler != null || longEnergyHandler != null) {
+            EnergyStorageProbe.Reading energy = EnergyStorageProbe.read(energyHandler, longEnergyHandler);
+            long stored = energy.stored();
+            long capacity = energy.capacity();
             pages = new ArrayList<>(pages);
             pages.add(List.of(new ClipboardEntry(false, Component.translatable(
                     "gui.createthrusters.shipping_manifest.energy",
-                    energyHandler.getEnergyStored(), energyHandler.getMaxEnergyStored(),
-                    formatPercent(energyHandler.getEnergyStored(),
-                            energyHandler.getMaxEnergyStored())))));
+                    stored, capacity, formatPercent(stored, capacity)))));
         }
         return new ClipboardContent(ClipboardOverrides.ClipboardType.WRITTEN, pages, true);
     }
@@ -450,8 +459,14 @@ public class ShippingManifestBlock extends FaceAttachedHorizontalDirectionalBloc
     public static @Nullable IEnergyStorage findEnergyHandler(
             Level level, BlockPos pos, Direction side
     ) {
-        return level == null ? null : level.getCapability(
+        if(!WorkerContainerAccess.isLoaded(level, pos)) return null;
+        return level.getCapability(
                 Capabilities.EnergyStorage.BLOCK, pos, side);
+    }
+
+    // Find exact FE storage exposed by the target block entity
+    public static @Nullable LongEnergyStorage findLongEnergyHandler(Level level, BlockPos pos) {
+        return EnergyStorageProbe.findExact(level, pos);
     }
 
     // Collect the items
@@ -568,6 +583,7 @@ public class ShippingManifestBlock extends FaceAttachedHorizontalDirectionalBloc
     // Find the item handler
     @Nullable
     public static IItemHandler findItemHandler(Level level, BlockPos targetPos, Direction targetSide) {
+        if(!WorkerContainerAccess.isLoaded(level, targetPos)) return null;
         BlockState targetState = level.getBlockState(targetPos);
         BlockEntity targetBlockEntity = level.getBlockEntity(targetPos);
         IItemHandler handler = level.getCapability(Capabilities.ItemHandler.BLOCK, targetPos, targetState,
@@ -582,6 +598,7 @@ public class ShippingManifestBlock extends FaceAttachedHorizontalDirectionalBloc
     // Find the fluid handler
     @Nullable
     public static IFluidHandler findFluidHandler(Level level, BlockPos targetPos, Direction targetSide) {
+        if(!WorkerContainerAccess.isLoaded(level, targetPos)) return null;
         BlockState targetState = level.getBlockState(targetPos);
         BlockEntity targetBlockEntity = level.getBlockEntity(targetPos);
         IFluidHandler handler = level.getCapability(Capabilities.FluidHandler.BLOCK, targetPos, targetState,
@@ -597,6 +614,7 @@ public class ShippingManifestBlock extends FaceAttachedHorizontalDirectionalBloc
     @Nullable
     public static IFluidHandler resolveFluidHandler(Level level, BlockPos targetPos, Direction targetSide,
             boolean combinedManifest) {
+        if(!WorkerContainerAccess.isLoaded(level, targetPos)) return null;
         if (combinedManifest) {
             IFluidHandler combinedHandler =
                     CreateDieselGeneratorsManifestCompat.findCombinedHandler(level, targetPos);

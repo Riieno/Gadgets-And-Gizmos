@@ -13,6 +13,7 @@ import com.rieno.gadgetsandgizmos.neoforge.client.particle.ClawMarkerPulsePartic
 import com.rieno.gadgetsandgizmos.neoforge.client.particle.RcsSteamParticle;
 import com.rieno.gadgetsandgizmos.registry.CTParticles;
 import net.neoforged.neoforge.client.event.RegisterParticleProvidersEvent;
+import com.rieno.gadgetsandgizmos.neoforge.client.particle.SoftThrusterPlumeParticle;
 
 // Register the client particles
 public final class CTClientParticles {
@@ -34,4 +35,6 @@ public final class CTClientParticles {
         evt.registerSpriteSet(CTParticles.CLAW_MARKER_PULSE.get(), ClawMarkerPulseParticle.Provider::new);
         evt.registerSpriteSet(CTParticles.RCS_STEAM.get(), RcsSteamParticle.Provider::new);
     }
+
+
 }

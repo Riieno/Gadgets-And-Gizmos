@@ -29,6 +29,15 @@ import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 import java.util.List;
+import com.rieno.gadgetsandgizmos.content.ScmConfigurationProfile;
+import com.rieno.gadgetsandgizmos.content.ShipPermissions;
+import com.rieno.gadgetsandgizmos.lib.scm.ShipPermission;
+import com.rieno.gadgetsandgizmos.lib.access.WorldAccessPolicy;
+import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmOrientation;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
+import net.minecraft.nbt.NbtUtils;
 
 // Apply one validated ACC graph edit against the revision the player actually opened
 public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target, String action, int expectedRevision,
@@ -98,9 +107,26 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                         "Controller is No Longer Available", -1, isSaveAction(payload.action()), false, List.of());
                 return;
             }
+            if(context.player() instanceof ServerPlayer player
+                    && (!ShipPermissions.allows(player, controller, ShipPermission.ACC_GRAPH)
+                    || !WorldAccessPolicy.canAccessLocal(player, player.serverLevel(),
+                    SableLevelApi.containingId(controller), controller.getBlockPos()))){
+                sendGraphActionResult(context, payload.target(), payload.requestId(), false,
+                        "Ship graph permission denied", -1, false, false, List.of());
+                return;
+            }
             boolean persistPortable = false;
+            if(context.player() instanceof ServerPlayer player){
+                com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.author(controller, player);
+            }
             // ------------------------------------DRAFTS / VALIDATION------------------------------------
             switch (payload.action()) {
+                case "unbind_glasses" -> {
+                    java.util.UUID pair = null;
+                    try{ pair = java.util.UUID.fromString(payload.argument()); }
+                    catch(IllegalArgumentException ignored){}
+                    persistPortable = controller.unregisterGogglesTrackerPair(pair);
+                }
                 case "controller_alias" -> {
                     boolean renamed = controller.renameGraphAlias(payload.argument());
                     sendGraphActionResult(context, payload.target(), payload.requestId(), renamed,
@@ -108,8 +134,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                             controller.getDraftGraph().revision(), false, false, List.of());
                 }
                 case "save" -> {
-                    boolean saved = controller.saveDraft(
-                            AdvancedGraphDocument.fromTag(payload.graph()), payload.expectedRevision());
+                    boolean saved = saveControllerDraft(controller, payload, payload.expectedRevision());
                     persistPortable = saved;
                     sendGraphActionResult(context, payload.target(), payload.requestId(), saved,
                             saved ? "Graph Saved" : "Failed to Save Graph",
@@ -133,8 +158,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                             controller.getGraphDiagnostics());
                 }
                 case "save_apply" -> {
-                    boolean saved = controller.saveDraft(
-                            AdvancedGraphDocument.fromTag(payload.graph()), payload.expectedRevision());
+                    boolean saved = saveControllerDraft(controller, payload, payload.expectedRevision());
                     boolean applied = saved && controller.applyDraft();
                     persistPortable = saved;
                     String msg = !saved ? "Failed to Save Graph"
@@ -144,9 +168,8 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                             saved && !applied ? controller.getGraphDiagnostics() : List.of());
                 }
                 case "save_apply_close" -> {
-                    AdvancedGraphDocument closingGraph = AdvancedGraphDocument.fromTag(payload.graph());
                     int currentRevision = controller.getDraftGraph().revision();
-                    boolean saved = controller.saveDraft(closingGraph, currentRevision);
+                    boolean saved = saveControllerDraft(controller, payload, currentRevision);
                     boolean applied = saved && controller.applyDraft();
                     persistPortable = saved;
                     String msg = !saved ? "Failed to Save Graph"
@@ -157,8 +180,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                             saved && !applied ? controller.getGraphDiagnostics() : List.of());
                 }
                 case "apply_save" -> {
-                    boolean saved = controller.saveDraft(
-                            AdvancedGraphDocument.fromTag(payload.graph()), payload.expectedRevision());
+                    boolean saved = saveControllerDraft(controller, payload, payload.expectedRevision());
                     boolean applied = saved && controller.applyDraft();
                     persistPortable = saved;
                     String msg = !saved ? "Failed to Save Graph Before Applying"
@@ -166,6 +188,100 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                     sendGraphActionResult(context, payload.target(), payload.requestId(), saved && applied, msg,
                             controller.getDraftGraph().revision(), true, saved,
                             saved && !applied ? controller.getGraphDiagnostics() : List.of());
+                }
+                // ------------------------------------HIDDEN SCHEDULE SCRATCH GRAPH------------------------------------
+                case "schedule_save" -> {
+                    boolean saved = controller.saveShippingScheduleGraph(
+                            AdvancedGraphDocument.fromTag(payload.graph()), payload.expectedRevision());
+                    persistPortable = saved;
+                    if (saved && context.player() instanceof ServerPlayer player) {
+                        AdvancedControllerGraphSnapshotPayload.send(player, controller.getBlockPos(),
+                                com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper
+                                        .getContainingSubLevelId(controller),
+                                controller.getDraftGraph(), controller.getActiveGraph(),
+                                controller.getShippingScheduleDraftGraph(),
+                                controller.getShippingScheduleActiveGraph());
+                    }
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), saved,
+                            saved ? "Schedule saved" : "Schedule unavailable or changed",
+                            controller.getShippingScheduleDraftGraph().revision(), true, saved, List.of());
+                }
+                case "schedule_read" -> {
+                    boolean read = controller.readShippingScheduleFromPilot();
+                    if (context.player() instanceof ServerPlayer player) {
+                        AdvancedControllerGraphSnapshotPayload.send(player, controller.getBlockPos(),
+                                com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper
+                                        .getContainingSubLevelId(controller),
+                                controller.getDraftGraph(), controller.getActiveGraph(),
+                                controller.getShippingScheduleDraftGraph(),
+                                controller.getShippingScheduleActiveGraph());
+                    }
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), read,
+                            read ? "Read held shipping schedule" : "Pilot is not holding a shipping schedule",
+                            controller.getShippingScheduleDraftGraph().revision(), false, read, List.of());
+                }
+                case "schedule_write" -> {
+                    boolean written = controller.writeShippingScheduleToPilot();
+                    persistPortable = written;
+                    if (written && context.player() instanceof ServerPlayer player) {
+                        AdvancedControllerGraphSnapshotPayload.send(player, controller.getBlockPos(),
+                                com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper
+                                        .getContainingSubLevelId(controller),
+                                controller.getDraftGraph(), controller.getActiveGraph(),
+                                controller.getShippingScheduleDraftGraph(),
+                                controller.getShippingScheduleActiveGraph());
+                    }
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), written,
+                            written ? "Wrote schedule to pilot" : "Could not write schedule to pilot",
+                            controller.getShippingScheduleDraftGraph().revision(), false, written, List.of());
+                }
+                case "schedule_start", "schedule_pause", "schedule_resume", "schedule_stop" -> {
+                    boolean changed = switch (payload.action()) {
+                        case "schedule_start" -> controller.startShippingScheduleGraph();
+                        case "schedule_pause" -> controller.controlShippingScheduleGraph("shipping_pause");
+                        case "schedule_resume" -> controller.controlShippingScheduleGraph("shipping_resume");
+                        case "schedule_stop" -> controller.controlShippingScheduleGraph("shipping_stop");
+                        default -> false;
+                    };
+                    if (context.player() instanceof ServerPlayer player) {
+                        AdvancedControllerGraphSnapshotPayload.send(player, controller.getBlockPos(),
+                                com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper
+                                        .getContainingSubLevelId(controller),
+                                controller.getDraftGraph(), controller.getActiveGraph(),
+                                controller.getShippingScheduleDraftGraph(),
+                                controller.getShippingScheduleActiveGraph());
+                    }
+                    String verb = switch (payload.action()) {
+                        case "schedule_start" -> "started";
+                        case "schedule_pause" -> "paused";
+                        case "schedule_resume" -> "resumed";
+                        default -> "stopped";
+                    };
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), changed,
+                            changed ? "Schedule " + verb : "Could not " + verb + " SCM schedule",
+                            controller.getShippingScheduleDraftGraph().revision(), false, changed, List.of());
+                }
+                case "schedule_precalculate_route" -> {
+                    boolean queued = controller.precalculateShippingScheduleRoute();
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), queued,
+                            queued ? "Schedule route calculation queued" : "Could not queue schedule route calculation",
+                            controller.getShippingScheduleDraftGraph().revision(), false, false, List.of());
+                }
+                case "schedule_delete_route" -> {
+                    boolean deleted = controller.deleteShippingScheduleRoute();
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), deleted,
+                            deleted ? "Schedule route deleted" : "No schedule route to delete",
+                            controller.getShippingScheduleDraftGraph().revision(), false, false, List.of());
+                }
+                case "scm_set_vehicle_name" -> {
+                    controller.setShipName(payload.argument());
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), true,
+                            "Vehicle name updated", controller.getDraftGraph().revision(), false, false, List.of());
+                }
+                case "scm_set_display_progress" -> {
+                    controller.setScmDisplayProgress(payload.graph().getBoolean("DisplayProgress"));
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), true,
+                            "SCM display progress updated", controller.getDraftGraph().revision(), false, false, List.of());
                 }
                 // ------------------------------------HISTORY / RUNTIME------------------------------------
                 case "history" -> sendGraphHistory(context, payload.target(), controller, "", new CompoundTag());
@@ -200,6 +316,91 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                 }
                 case "trigger" -> controller.triggerGraphEvent(payload.argument(),
                         context.player() instanceof ServerPlayer player ? player.getUUID() : null);
+                // ------------------------------------SCM CONFIGURATION------------------------------------
+                case "scm_permissions_open" -> sendScmConfiguration(context, payload.target(), controller, false);
+                case "scm_permissions_access" -> {
+                    boolean changed = context.player() instanceof ServerPlayer player
+                            && payload.graph().contains("Open", Tag.TAG_BYTE)
+                            && ShipPermissions.setOpen(player, controller, payload.graph().getBoolean("Open"));
+                    sendScmConfiguration(context, payload.target(), controller, false);
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), changed,
+                            changed ? "Ship access updated" : "Ship access could not be updated",
+                            controller.getDraftGraph().revision(), false, false, List.of());
+                }
+                case "scm_permissions_transfer" -> {
+                    boolean changed = context.player() instanceof ServerPlayer player
+                            && payload.graph().hasUUID("Player")
+                            && ShipPermissions.transferOwnership(player, controller, payload.graph().getUUID("Player"));
+                    sendScmConfiguration(context, payload.target(), controller, false);
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), changed,
+                            changed ? "Ship ownership transferred" : "Ship ownership could not be transferred",
+                            controller.getDraftGraph().revision(), false, false, List.of());
+                }
+                case "scm_permissions_set" -> {
+                    boolean changed = context.player() instanceof ServerPlayer player
+                            && payload.graph().hasUUID("Player")
+                            && ShipPermissions.set(player, controller, payload.graph().getUUID("Player"),
+                            ShipPermission.fromId(payload.graph().getString("Permission")),
+                            payload.graph().getBoolean("Enabled"));
+                    sendScmConfiguration(context, payload.target(), controller, false);
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), changed,
+                            changed ? "Ship permission updated" : "Ship permission could not be updated",
+                            controller.getDraftGraph().revision(), false, false, List.of());
+                }
+                case "scm_chunk_loading" -> {
+                    boolean changed = controller.setScmChunkLoading(payload.graph().getBoolean("Enabled"));
+                    sendScmConfiguration(context, payload.target(), controller, false);
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), changed,
+                            changed ? "Chunk loading: " + controller.isScmChunkLoading() : "Ship Control Module is unavailable",
+                            controller.getDraftGraph().revision(), false, false, List.of());
+                }
+                case "scm_configuration_open" -> {
+                    // The modal renders the loaded Sable bodies directly. Opening it must
+                    // not crawl, probe, or otherwise initialize the craft merely to make
+                    // blocks selectable.
+                    controller.getScmConfigurationMapId();
+                    sendScmConfiguration(context, payload.target(), controller, true);
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), true,
+                            "SCM configuration loaded", controller.getDraftGraph().revision(),
+                            false, false, List.of());
+                }
+                case "scm_configuration_refresh" ->
+                        sendScmConfiguration(context, payload.target(), controller, false);
+                case "scm_configuration_scan" -> {
+                    boolean started = controller.scanScmConfiguration();
+                    sendScmConfiguration(context, payload.target(), controller, true);
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), started,
+                            started ? "SCM configuration scan started" :
+                                    "Could not start SCM configuration scan",
+                            controller.getDraftGraph().revision(), false, false, List.of());
+                }
+                case "scm_configuration_reinitialize" -> {
+                    boolean validOrientation = !payload.graph().contains("Orientation")
+                            || ScmOrientation.fromTag(payload.graph().getCompound("Orientation")).isPresent();
+                    boolean saved = validOrientation && controller.replaceScmConfigurationProfile(
+                            ScmConfigurationProfile.fromTag(payload.graph()));
+                    boolean started = saved && controller.reinitializeScmConfiguration();
+                    persistPortable = saved;
+                    sendScmConfiguration(context, payload.target(), controller, true);
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), started,
+                            started ? "SCM groups are reinitializing" : !validOrientation
+                                    ? "Forward and up must be valid perpendicular directions"
+                                    : "Could not reinitialize SCM groups",
+                            controller.getDraftGraph().revision(), false, false, List.of());
+                }
+                case "scm_configuration_save" -> {
+                    boolean validOrientation = !payload.graph().contains("Orientation")
+                            || ScmOrientation.fromTag(payload.graph().getCompound("Orientation")).isPresent();
+                    boolean saved = validOrientation && controller.replaceScmConfigurationProfile(
+                            ScmConfigurationProfile.fromTag(payload.graph()));
+                    persistPortable = saved;
+                    sendScmConfiguration(context, payload.target(), controller, true);
+                    sendGraphActionResult(context, payload.target(), payload.requestId(), saved,
+                            saved ? "SCM configuration saved" : !validOrientation
+                                    ? "Forward and up must be valid perpendicular directions"
+                                    : "Could not save SCM configuration",
+                            controller.getDraftGraph().revision(), false, false, List.of());
+                }
                 // ------------------------------------SHARING------------------------------------
                 case "shared_graphs" -> sendSharedGraphs(context, payload.target(), "", "",
                         new CompoundTag());
@@ -248,8 +449,10 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                     sendSharedGraphs(context, payload.target(), res.message(), "", new CompoundTag());
                     persistPortable = res.saved();
                 }
-                case "load_shared_graph" -> {
-                    String msg = controller.loadSharedGraphIntoInsertedLinker(payload.argument());
+                case "load_shared_graph", "load_client_shared_graph" -> {
+                    String msg = "load_client_shared_graph".equals(payload.action())
+                            ? controller.loadClientSharedGraph(AdvancedGraphDocument.fromTag(payload.graph()), payload.argument())
+                            : controller.loadSharedGraphIntoInsertedLinker(payload.argument());
                     CompoundTag loadedGraph = msg.startsWith("Loaded shared graph")
                             ? controller.getDraftGraph().toTag() : new CompoundTag();
                     sendSharedGraphs(context, payload.target(), msg, "", loadedGraph);
@@ -289,7 +492,17 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                 default -> {
                 }
             }
+            // Refresh the active source used by the open editor's retained-value preview
+            if(persistPortable && (isSaveAction(payload.action()) || "apply".equals(payload.action()))
+                    && context.player() instanceof ServerPlayer player){
+                AdvancedControllerGraphSnapshotPayload.send(player, payload.target().pos(), payload.target().subLevelId(),
+                        controller.getDraftGraph(), controller.getActiveGraph(),
+                        controller.getShippingScheduleDraftGraph(), controller.getShippingScheduleActiveGraph());
+            }
             // ------------------------------------PORTABLE STATE------------------------------------
+            if (persistPortable && isSaveAction(payload.action()) && payload.graph().contains("ScmConfiguration")) {
+                sendScmConfiguration(context, payload.target(), controller, false);
+            }
             if (persistPortable && context.player().containerMenu instanceof PortableAdvancedContraptionControllerMenu menu) {
                 menu.savePortableState();
             }
@@ -305,7 +518,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
         PacketDistributor.sendToPlayer(player, new AdvancedControllerSharedGraphsPayload(
                 target.pos(),
                 target.subLevelId(),
-                ControllerManifestStore.listSharedGraphs(),
+                player.getServer().isDedicatedServer() ? ControllerManifestStore.listSharedGraphs() : List.of(),
                 msg,
                 conflictingName,
                 graph));
@@ -405,5 +618,116 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                 graph == null ? new CompoundTag() : graph,
                 buffer.readUtf(),
                 buffer.readLong());
+    }
+
+
+    // Revision validation must succeed before any SCM state is changed by a combined Save.
+    private static boolean saveControllerDraft(AdvancedContraptionControllerBlockEntity controller,
+                                               AdvancedContraptionControllerGraphPayload payload, int revision) {
+        CompoundTag scm = payload.graph().contains("ScmConfiguration")
+                ? payload.graph().getCompound("ScmConfiguration") : null;
+        if (scm != null && (scm.contains("Orientation")
+                && ScmOrientation.fromTag(scm.getCompound("Orientation")).isEmpty()
+                || scm.contains("VehicleType")
+                && !com.rieno.gadgetsandgizmos.lib.scm.ScmVehicleClassifier.isSelection(scm.getString("VehicleType")))) {
+            return false;
+        }
+        if(scm != null && !controller.canApplyScmConfigurationProfile(ScmConfigurationProfile.fromTag(scm))) return false;
+        if (!controller.saveDraft(AdvancedGraphDocument.fromTag(payload.graph()), revision)) return false;
+        return scm == null || controller.replaceScmConfigurationProfile(ScmConfigurationProfile.fromTag(scm));
+    }
+
+
+    // Send the isolated, server-selected block list for the calibration modal.
+    private static void sendScmConfiguration(IPayloadContext ctx, MenuConfigTarget target,
+                                             AdvancedContraptionControllerBlockEntity controller,
+                                             boolean includePreview) {
+        if (!(ctx.player() instanceof ServerPlayer player) || target == null || controller == null) {
+            return;
+        }
+        List<ScmConfigurationProfile.DockingConnectorReference> liveDockingConnectors =
+                controller.getScmConfigurationDockingConnectors();
+        CompoundTag profile = controller.getScmConfigurationProfile().toTag();
+        if (controller.getScmConfigurationMapId() != null) {
+            profile.putUUID("MapId", controller.getScmConfigurationMapId());
+        }
+        CompoundTag candidates = new CompoundTag();
+        candidates.putBoolean("ChunkLoading", controller.isScmChunkLoading());
+        candidates.put("DefaultOrientation", controller.getScmDefaultOrientation().toTag());
+        candidates.putString("DetectedVehicleType", controller.getScmDetectedVehicleType());
+        candidates.putString("DetectedSteeringType", controller.getScmDetectedSteeringType());
+        candidates.putBoolean("HasThrusters", controller.hasScmConfigurationThrusters());
+        ListTag entries = new ListTag();
+        controller.getScmConfigurationCandidates().stream().limit(com.rieno.gadgetsandgizmos.lib.scm.ScmCapacity.MAX_CONTROL_UNITS).forEach(unit -> {
+            entries.add(unit.toTag());
+        });
+        candidates.put("Units", entries);
+        ListTag dockingConnectors = new ListTag();
+        liveDockingConnectors.forEach(reference ->
+                dockingConnectors.add(reference.toTag(
+                        ScmConfigurationProfile.DockingConnectorGroup.ANY)));
+        candidates.put("DockingConnectors", dockingConnectors);
+        ListTag viewSubLevels = new ListTag();
+        controller.getScmConfigurationViewSubLevelIds().forEach(id -> {
+            CompoundTag body = new CompoundTag();
+            body.putUUID("Id", id);
+            viewSubLevels.add(body);
+        });
+        candidates.put("ViewSubLevels", viewSubLevels);
+        if (includePreview) {
+            // Keep SCM usable when a controller menu remains open outside the
+            // craft's normal client tracking range. This detached block scene
+            // is only a renderer/picker fallback; all selected targets are
+            // still checked against the server's current assembled bodies.
+            ListTag previewBlocks = new ListTag();
+            controller.getScmConfigurationPreviewBlocks(com.rieno.gadgetsandgizmos.lib.scm.ScmCapacity.MAX_PREVIEW_BLOCKS).forEach(block -> {
+                CompoundTag entry = new CompoundTag();
+                entry.putUUID("SubLevelId", block.subLevelId());
+                entry.putLong("Position", block.position().asLong());
+                entry.put("State", NbtUtils.writeBlockState(block.state()));
+                entry.putDouble("RootX", block.rootPosition().x);
+                entry.putDouble("RootY", block.rootPosition().y);
+                entry.putDouble("RootZ", block.rootPosition().z);
+                var turn = block.orientation();
+                entry.putFloat("Qx", turn.x); entry.putFloat("Qy", turn.y);
+                entry.putFloat("Qz", turn.z); entry.putFloat("Qw", turn.w);
+                previewBlocks.add(entry);
+            });
+            candidates.put("PreviewBlocks", previewBlocks);
+        }
+        candidates.put("Telemetry", scmTelemetrySnapshot(controller));
+        candidates.put("ShipPermissions", ShipPermissions.snapshot(player, controller));
+        PacketDistributor.sendToPlayer(player, new ScmConfigurationSnapshotPayload(
+                target.pos(), target.subLevelId(), controller.getScmConfigurationRootSubLevelId(),
+                controller.isScmConfigurationScanning(),
+                controller.getScmConfigurationStatus(), profile, candidates));
+    }
+
+
+    // Send the live SCM telemetry which backs the SCM workspace's simulation
+    // sidebar. Keeping it in the existing configuration snapshot avoids a
+    // second client-only authority path and means the rendered values are the
+    // same values graph nodes receive from the server runtime.
+    private static CompoundTag scmTelemetrySnapshot(AdvancedContraptionControllerBlockEntity controller) {
+        CompoundTag telemetry = new CompoundTag();
+        for (String port : List.of(
+                "status", "ready", "attached", "initialized", "initializing", "progress", "map_id",
+                "unit_count", "bearing_count", "vector_thruster_count", "docking_connector_count",
+                "controllable_count", "mass", "weight", "facing", "inertia_tensor",
+                "center_of_mass_x", "center_of_mass_y", "center_of_mass_z",
+                "center_of_lift_x", "center_of_lift_y", "center_of_lift_z",
+                "x", "y", "z", "velocity_x", "velocity_y", "velocity_z", "speed",
+                "angular_velocity_x", "angular_velocity_y", "angular_velocity_z", "yaw", "pitch", "roll",
+                "nearest_collision_distance", "collision_distance_forward",
+                "collision_distance_backward", "collision_distance_left",
+                "collision_distance_right", "collision_distance_up", "collision_distance_down",
+                "collision_scan_range", "navigation_target_distance")) {
+            AdvancedGraphDocument.Value value = controller.getShipControlGraphValue(port);
+            CompoundTag encoded = new CompoundTag();
+            encoded.putString("Type", value.type());
+            encoded.put("Payload", value.payload().copy());
+            telemetry.put(port, encoded);
+        }
+        return telemetry;
     }
 }

@@ -31,6 +31,7 @@ import com.rieno.gadgetsandgizmos.registry.CTSoundEvents;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import dev.simulated_team.simulated.util.extra_kinetics.ExtraKinetics;
 import net.neoforged.bus.api.IEventBus;
+import com.rieno.gadgetsandgizmos.registry.CTCasings;
 
 // Register common addon content and optional integrations
 public final class CreateThrusters {
@@ -80,6 +81,7 @@ public final class CreateThrusters {
         modEventBus.addListener(CTDisplaySources::onCommonSetup);
         modEventBus.addListener(CTDisplayTargets::onCommonSetup);
         modEventBus.addListener(CTCreateContraptionCompat::onCommonSetup);
+        modEventBus.addListener(CTCasings::onCommonSetup);
         CTCreativeTabs.REGISTRAR.register(modEventBus);
     }
 
@@ -96,4 +98,6 @@ public final class CreateThrusters {
         return blockEntity instanceof ExtraKinetics.ExtraKineticsBlockEntity extraKinetics
                 && extraKinetics.getParentBlockEntity() instanceof ThrusterBearingBlockEntity;
     }
+
+
 }

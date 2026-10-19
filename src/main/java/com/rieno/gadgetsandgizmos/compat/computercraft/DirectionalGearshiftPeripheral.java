@@ -24,6 +24,7 @@ import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Locale;
+import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 
 // Expose Directional Gearshift controls and telemetry to ComputerCraft
 @PeripheralTypeDoc("directional_gearshift")
@@ -226,10 +227,18 @@ public class DirectionalGearshiftPeripheral extends GadgetsPeripheral<BlockEntit
             blockEntity.setChanged();
             Level level = blockEntity.getLevel();
             if (level != null && !level.isClientSide) {
-                if (state.getBlock() instanceof DirectionalGearshiftBlockInvoker invoker) {
-                    invoker.ct$detachKinetics(level, blockEntity.getBlockPos(), true);
+                KineticBlockEntity kineticBlockEntity = blockEntity instanceof KineticBlockEntity kinetic
+                        ? kinetic
+                        : null;
+                if (kineticBlockEntity != null) {
+                    kineticBlockEntity.detachKinetics();
                 }
                 level.setBlock(blockEntity.getBlockPos(), state, 2);
+                if (kineticBlockEntity != null && !kineticBlockEntity.isRemoved()) {
+                    kineticBlockEntity.attachKinetics();
+                    kineticBlockEntity.setChanged();
+                    kineticBlockEntity.sendData();
+                }
             }
         }
     }
@@ -307,4 +316,6 @@ public class DirectionalGearshiftPeripheral extends GadgetsPeripheral<BlockEntit
             blockEntity.getLevel().sendBlockUpdated(blockEntity.getBlockPos(), blockEntity.getBlockState(), blockEntity.getBlockState(), 3);
         }
     }
+
+
 }

@@ -157,7 +157,7 @@ public final class AdvancedHudElementBinding {
                 AdvancedHudElementStyle.color(resolved, "Color",
                         AdvancedHudElementStyle.DEFAULT_TEXT_COLOR), values));
         for (String property : java.util.List.of(
-                "BackgroundColor", "AccentColor", "TrackColor", "BorderColor")) {
+                "BackgroundColor", "AccentColor", "GradientColor", "TrackColor", "BorderColor")) {
             if (resolved.contains(property)) {
                 resolved.putInt(property, color(elm, property,
                         resolved.getInt(property), values));

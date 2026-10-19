@@ -271,8 +271,8 @@ public class ThrusterBlock extends CTDirectionalBlock implements EntityBlock, Sp
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
         }
 
-        if (stack.getItem() instanceof ProcessingUpgradeItem) {
-            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
+        if (stack.getItem() instanceof ProcessingUpgradeItem || stack.getItem() instanceof PropulsionUpgradeItem) {
+            return insertUpgrade(level, thruster, player, stack);
         }
 
         if (stack.getItem() instanceof DyeItem dyeItem) {
@@ -476,5 +476,17 @@ public class ThrusterBlock extends CTDirectionalBlock implements EntityBlock, Sp
             return (BlockEntityTicker<T>) (BlockEntityTicker<ThrusterBlockEntity>) ThrusterBlockEntity::tickServer;
         }
         return null;
+    }
+
+
+    // Insert one compatible upgrade into the thruster
+    static ItemInteractionResult insertUpgrade(Level level, ThrusterBlockEntity thruster, Player player,
+            ItemStack stack) {
+        if (level.isClientSide) {
+            return ItemInteractionResult.SUCCESS;
+        }
+        return thruster.tryInsertUpgradeItem(player, stack)
+                ? ItemInteractionResult.SUCCESS
+                : ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION;
     }
 }

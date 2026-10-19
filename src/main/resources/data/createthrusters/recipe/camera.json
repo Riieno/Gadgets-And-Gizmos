@@ -1,0 +1,26 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    " C ",
+    "GSG",
+    "BBB"
+  ],
+  "key": {
+    "G": {
+      "tag": "c:glass_panes"
+    },
+    "C": {
+      "item": "createthrusters:computation_mechanism"
+    },
+    "S": {
+      "item": "minecraft:spyglass"
+    },
+    "B": {
+      "item": "createthrusters:blackstone_alloy"
+    }
+  },
+  "result": {
+    "id": "createthrusters:camera",
+    "count": 1
+  }
+}

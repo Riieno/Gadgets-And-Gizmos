@@ -12,6 +12,8 @@ import com.rieno.gadgetsandgizmos.compat.aeroworks.AeroworksControllerCompat;
 import com.rieno.gadgetsandgizmos.compat.controller.ExternalBlockEntityDirectControlCompat;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.control.AnalogueControlChannel;
+import com.rieno.gadgetsandgizmos.lib.control.BlockRedstoneSignals;
+import com.simibubi.create.content.redstone.link.RedstoneLinkBlockEntity;
 import com.rieno.gadgetsandgizmos.lib.control.ControllerDirectTargetReference;
 import com.rieno.gadgetsandgizmos.lib.control.DirectionalAnalogSnapshot;
 import com.rieno.gadgetsandgizmos.lib.control.DirectionalAnalogSource;
@@ -34,6 +36,7 @@ import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import com.rieno.gadgetsandgizmos.lib.physics.SubLevelBlockTargetApi;
 
 // Read and apply redstone through normal blocks, Sable ships and linked controller targets
 public final class ControllerRedstoneCompat {
@@ -133,7 +136,8 @@ public final class ControllerRedstoneCompat {
         }
         // -----------------------------------------------------STATE SIGNALS-----------------------------------------------------
         String signalPropertyKey = resolveDirectSignalPropKey(resolvedTarget);
-        if (signalPropertyKey != null && !signalPropertyKey.isBlank()) {
+        if (!ContraptionNetworkLinkerData.isFaceProxyId(resolvedTarget.targetId())
+                && signalPropertyKey != null && !signalPropertyKey.isBlank()) {
             Double propertyValue = readNamedSignalProperty(targetLevel.getBlockState(targetPos), signalPropertyKey);
             if (propertyValue != null) {
                 return propertyValue;
@@ -141,9 +145,10 @@ public final class ControllerRedstoneCompat {
         }
         Direction planeFace = ContraptionNetworkLinkerData.resolveFaceFromDirectTarget(resolvedTarget);
         BlockState targetState = targetLevel.getBlockState(targetPos);
+        if(resolvedTarget.face() != null) planeFace = resolveOutputInjectionFace(resolvedTarget, targetLevel, targetPos);
         // ------------------------------------LINKER SIGNALS------------------------------------
-        if (ContraptionNetworkLinkerData.isLinkerFaceTarget(resolvedTarget) && planeFace != null
-                && targetState.getBlock() instanceof ContraptionNetworkLinkerPlaneBlock) {
+        if ((ContraptionNetworkLinkerData.isFaceProxyId(resolvedTarget.targetId())
+                || targetBe instanceof ContraptionNetworkLinkerPlaneBlockEntity) && planeFace != null) {
             return Mth.clamp(samplePlaneInputSignal(
                     targetLevel, resolvedTarget.subLevelId(), targetPos, planeFace, targetBe) / 15.0D,
                     0.0D, 1.0D);
@@ -165,7 +170,7 @@ public final class ControllerRedstoneCompat {
             return adapterSample;
         }
 
-        if (ContraptionNetworkLinkerData.isLinkerFaceTarget(resolvedTarget)) {
+        if (ContraptionNetworkLinkerData.isLinkerFaceTarget(resolvedTarget) || resolvedTarget.face() != null) {
             Direction face = resolveOutputInjectionFace(resolvedTarget, targetLevel, targetPos);
             if (VIRTUAL_BLOCK_REDSTONE.equals(compatMode) || STATE_BACKED_BLOCK.equals(compatMode) || face == null) {
                 Double createLeverValue = readCreateAnalogueLeverValue(targetLevel, targetPos, targetBe);
@@ -185,10 +190,29 @@ public final class ControllerRedstoneCompat {
         if (adapterSample != null) {
             return adapterSample;
         }
-        if (targetBe == null) {
-            return 0.0D;
+        if (targetState.isSignalSource() || targetBe instanceof RedstoneLinkBlockEntity) {
+            return BlockRedstoneSignals.read(targetLevel, targetPos, null) / 15.0D;
         }
+        if (targetBe == null) return 0.0D;
         return scalarTargetValue(targetBe);
+    }
+
+    // Read physical redstone independently of the controller's own output records
+    public static double sampleRedstoneTarget(@Nullable Level ownerLevel,
+                                              @Nullable ControllerDirectTargetReference target){
+        target = resolveMovingTarget(ownerLevel, target);
+        if(ownerLevel == null || target == null || !target.isBound() || target.blockPos() == null) return 0.0D;
+        if(!SubLevelBlockEntityCollector.isTargetLoaded(ownerLevel, target.subLevelId(), target.blockPos())) return 0.0D;
+        BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(ownerLevel, target.subLevelId(), target.blockPos());
+        Level targetLevel = resolveTargetLevel(ownerLevel, target, blockEntity);
+        BlockPos targetPos = resolveTargetPos(target, blockEntity);
+        if(targetLevel == null || targetPos == null) return 0.0D;
+        Direction face = resolveOutputInjectionFace(target, targetLevel, targetPos);
+        if((ContraptionNetworkLinkerData.isFaceProxyId(target.targetId())
+                || blockEntity instanceof ContraptionNetworkLinkerPlaneBlockEntity) && face != null){
+            return samplePlaneInputSignal(targetLevel, target.subLevelId(), targetPos, face, blockEntity) / 15.0D;
+        }
+        return BlockRedstoneSignals.read(targetLevel, targetPos, face) / 15.0D;
     }
 
     // Sample the written target
@@ -245,9 +269,7 @@ public final class ControllerRedstoneCompat {
         } else if (STATE_BACKED_BLOCK.equals(compatMode)) {
             face = Direction.NORTH;
         } else {
-            face = ContraptionNetworkLinkerData.isLinkerFaceOutputTarget(resolvedTarget)
-                    ? resolveOutputInjectionFace(resolvedTarget, targetLevel, targetPos)
-                    : planeFace;
+            face = resolveOutputInjectionFace(resolvedTarget, targetLevel, targetPos);
             if (face == null) face = Direction.NORTH;
         }
         return ContraptionNetworkLinkerSignalBus.sourceSignal(
@@ -310,14 +332,14 @@ public final class ControllerRedstoneCompat {
         value = Float.isNaN(value) ? 0.0f : Mth.clamp(value, 0.0f, 1.0f);
         String optionChannelId = resolveDirectSignalChannelId(sourceId, resolvedTarget);
         // -----------------------------------------------------RCS CHANNELS-----------------------------------------------------
-        if (!redstoneOnly && resolvedTargetBe instanceof RcsThrusterBlockEntity rcsThruster) {
+        if (!redstoneOnly && !ContraptionNetworkLinkerData.isFaceProxyId(resolvedTarget.targetId())
+                && resolvedTargetBe instanceof RcsThrusterBlockEntity rcsThruster) {
             Direction nozzle = RcsThrusterBlockEntity.nozzleFromChannel(optionChannelId);
             if (nozzle != null) {
                 rcsThruster.setControllerThrottle(nozzle, sourceId, value);
             }
             return;
         }
-
         Direction planeFace = ContraptionNetworkLinkerData.resolveFaceFromDirectTarget(resolvedTarget);
         int strength = Mth.clamp(Math.round(value * 15.0f), 0, 15);
         if (ContraptionNetworkLinkerData.isLinkerFaceOutputTarget(resolvedTarget) && planeFace != null) {
@@ -331,10 +353,12 @@ public final class ControllerRedstoneCompat {
             return;
         }
 
+
+
         // -----------------------------------------------------COMPAT MODES-----------------------------------------------------
         String compatMode = resolvedTarget.compatModeId();
         if (redstoneOnly && (DIRECT_ADAPTER.equals(compatMode) || resolvedTargetBe instanceof RcsThrusterBlockEntity)) {
-            compatMode = VIRTUAL_BLOCK_REDSTONE;
+            compatMode = resolvedTarget.face() == null ? VIRTUAL_BLOCK_REDSTONE : VIRTUAL_FACE_REDSTONE;
         }
         if (DIRECT_ADAPTER.equals(compatMode)
                 && AeroworksControllerCompat.applyDirectSignal(resolvedTargetBe, optionChannelId, sourceId, value)) {
@@ -372,9 +396,7 @@ public final class ControllerRedstoneCompat {
             return;
         }
 
-        Direction face = ContraptionNetworkLinkerData.isLinkerFaceOutputTarget(resolvedTarget)
-                ? resolveOutputInjectionFace(resolvedTarget, targetLevel, targetPos)
-                : ContraptionNetworkLinkerData.resolveFaceFromDirectTarget(resolvedTarget);
+        Direction face = resolveOutputInjectionFace(resolvedTarget, targetLevel, targetPos);
         if (face == null) {
             face = Direction.NORTH;
         }
@@ -406,6 +428,7 @@ public final class ControllerRedstoneCompat {
         if (target == null || !target.isBound()) {
             return "";
         }
+        if(ContraptionNetworkLinkerData.isFaceProxyId(target.targetId())) return VIRTUAL_FACE_REDSTONE;
         if (targetBe instanceof RcsThrusterBlockEntity) {
             return DIRECT_ADAPTER;
         }
@@ -421,6 +444,8 @@ public final class ControllerRedstoneCompat {
         if (AeroworksControllerCompat.isDirectAdapter(targetBe)) {
             return DIRECT_ADAPTER;
         }
+
+        if(target.face() != null) return VIRTUAL_FACE_REDSTONE;
 
         if (ContraptionNetworkLinkerData.isLinkerFaceTarget(target)) {
             return ContraptionNetworkLinkerData.resolveFaceFromDirectTarget(target) == null
@@ -486,6 +511,9 @@ public final class ControllerRedstoneCompat {
                                                                   @Nullable Level targetLevel,
                                                                   @Nullable BlockPos targetPos) {
         Direction mappedFace = ContraptionNetworkLinkerData.resolveFaceFromDirectTarget(directTarget);
+        if(directTarget != null && directTarget.targetId().startsWith("scm_picker:")){
+            mappedFace = SubLevelBlockTargetApi.resolveFace(targetLevel, directTarget);
+        }
         if (directTarget == null || targetLevel == null || targetPos == null) {
             return mappedFace;
         }
@@ -527,6 +555,7 @@ public final class ControllerRedstoneCompat {
         if (ownerLevel == null || target == null || !target.isBound() || ownerLevel.getServer() == null) {
             return target;
         }
+        if(target.targetId().startsWith("scm_picker:")) return SubLevelBlockTargetApi.resolve(ownerLevel, target);
         return ContraptionNetworkLinkerTracker.get(ownerLevel.getServer()).resolveTargetReference(ownerLevel, target);
     }
 
@@ -594,9 +623,7 @@ public final class ControllerRedstoneCompat {
             }
             return directionalValue;
         }
-        BlockState targetState = targetLevel.getBlockState(targetPos);
-        int signal = sampleFaceOutputSignal(targetLevel, targetPos, targetState, face);
-        signal = Math.max(signal, targetLevel.getSignal(targetPos.relative(face), face));
+        int signal = BlockRedstoneSignals.read(targetLevel, targetPos, face);
         signal = Math.max(signal, ContraptionNetworkLinkerSignalBus.getInjectedSignal(targetLevel, targetPos, face));
         return Mth.clamp(signal / 15.0D, 0.0D, 1.0D);
     }
@@ -606,12 +633,7 @@ public final class ControllerRedstoneCompat {
         if (targetLevel == null || targetPos == null) {
             return 0.0D;
         }
-        BlockState state = targetLevel.getBlockState(targetPos);
-        int maxSignal = 0;
-        for (Direction dir : Direction.values()) {
-            maxSignal = Math.max(maxSignal, state.getSignal(targetLevel, targetPos, dir));
-            maxSignal = Math.max(maxSignal, state.getDirectSignal(targetLevel, targetPos, dir));
-        }
+        int maxSignal = BlockRedstoneSignals.read(targetLevel, targetPos, null);
         maxSignal = Math.max(maxSignal, ContraptionNetworkLinkerSignalBus.getBestNeighborSignal(targetLevel, targetPos));
         return Mth.clamp(maxSignal / 15.0D, 0.0D, 1.0D);
     }
@@ -647,10 +669,7 @@ public final class ControllerRedstoneCompat {
         if (level == null || sourcePos == null || sourceState == null || outputFace == null) {
             return 0;
         }
-        Direction queryDirection = redstoneQueryDirectionForOutputFace(outputFace);
-        int signal = Math.max(sourceState.getSignal(level, sourcePos, queryDirection),
-                sourceState.getDirectSignal(level, sourcePos, queryDirection));
-        return Mth.clamp(signal, 0, 15);
+        return BlockRedstoneSignals.readFace(level, sourcePos, sourceState, outputFace);
     }
 
     // Get the redstone query direction for output face
@@ -669,21 +688,7 @@ public final class ControllerRedstoneCompat {
         if (!CREATE_ANALOG_LEVER_BLOCK_ID.equals(blockId) && !CREATE_ANALOGUE_LEVER_BLOCK_ID.equals(blockId)) {
             return null;
         }
-        if (target != null) {
-            Object stateValue = invokeNoArgNumber(target, "getState");
-            if (stateValue instanceof Number num) {
-                return Mth.clamp(num.doubleValue() / 15.0D, 0.0D, 1.0D);
-            }
-            stateValue = invokeNoArgNumber(target, "getSignal");
-            if (stateValue instanceof Number num) {
-                return Mth.clamp(num.doubleValue() / 15.0D, 0.0D, 1.0D);
-            }
-        }
-        BlockState state = targetLevel.getBlockState(targetPos);
-        if (state.hasProperty(BlockStateProperties.POWER)) {
-            return Mth.clamp(state.getValue(BlockStateProperties.POWER) / 15.0D, 0.0D, 1.0D);
-        }
-        return null;
+        return BlockRedstoneSignals.read(targetLevel, targetPos, null) / 15.0D;
     }
 
     // Read the directional prop value
@@ -833,4 +838,6 @@ public final class ControllerRedstoneCompat {
         }
         return target == null ? null : target.blockPos();
     }
+
+
 }

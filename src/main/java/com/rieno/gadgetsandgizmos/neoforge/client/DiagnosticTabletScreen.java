@@ -1859,6 +1859,16 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     // Handle mouse clicked
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int btn) {
+        if(btn == 0 && "redstone_editor".equals(editingAction) && !redstoneFrequencyModal
+                && inside(mouseX, mouseY, contentLeft() + 320, top + 190, 126, 25)){
+            saveRedstoneEditor();
+            return true;
+        }
+        if(btn == 0 && "redstone_editor".equals(editingAction) && actionInput.visible
+                && actionInput.mouseClicked(mouseX, mouseY, btn)){
+            setFocused(actionInput);
+            return true;
+        }
         if (btn == 1 && "redstone_editor".equals(editingAction) && redstoneFrequencyModal) {
             if (inside(mouseX, mouseY, contentLeft() + REDSTONE_MODAL_FIRST_SLOT_X,
                     top + REDSTONE_MODAL_FIRST_SLOT_Y, 20, 20)) {
@@ -2289,18 +2299,8 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
                         (mouseX - contentLeft) / 300.0D)) * 15.0D);
                 return true;
             }
-            if (inside(mouseX, mouseY, contentLeft + 320, top + 190, 126, 25)
-                    && !redstoneFirstGhost.isEmpty() && !redstoneSecondGhost.isEmpty()) {
-                String name = actionInput.getValue().isBlank() ? "Redstone control" : actionInput.getValue().strip();
-                String encoded = BuiltInRegistries.ITEM.getKey(redstoneFirstGhost.getItem()) + "|"
-                        + redstoneColor(redstoneFirstGhost) + "|"
-                        + BuiltInRegistries.ITEM.getKey(redstoneSecondGhost.getItem()) + "|"
-                        + redstoneColor(redstoneSecondGhost) + "|"
-                        + redstoneMode + "|" + redstoneStrength + "|" + name;
-                if (redstoneEditingId.isBlank()) send("channel_create", encoded);
-                else send("channel_update", redstoneEditingId + "|" + encoded);
-                stopEditing();
-                redstoneEditingId = "";
+            if (inside(mouseX, mouseY, contentLeft + 320, top + 190, 126, 25)) {
+                saveRedstoneEditor();
                 return true;
             }
             return false;
@@ -2795,6 +2795,28 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         actionInput.setHint(Component.literal("Channel name"));
         actionInput.setVisible(true);
         setInitialFocus(actionInput);
+    }
+
+    // Use the same save path for the editor button and keyboard submission
+    private void saveRedstoneEditor(){
+        if(redstoneFrequencyModal) return;
+        if(redstoneFirstGhost.isEmpty() || redstoneSecondGhost.isEmpty()){
+            if(minecraft != null && minecraft.player != null) minecraft.player.displayClientMessage(
+                    Component.literal("Choose both frequency items before saving the control"), true);
+            return;
+        }
+        String name = actionInput.getValue().isBlank() ? "Redstone control" : actionInput.getValue().strip();
+        String encoded = BuiltInRegistries.ITEM.getKey(redstoneFirstGhost.getItem()) + "|"
+                + redstoneColor(redstoneFirstGhost) + "|"
+                + BuiltInRegistries.ITEM.getKey(redstoneSecondGhost.getItem()) + "|"
+                + redstoneColor(redstoneSecondGhost) + "|"
+                + redstoneMode + "|" + redstoneStrength + "|" + name;
+        PacketDistributor.sendToServer(new DiagnosticTabletActionPayload(placed, hand,
+                tabletPos, tabletSubLevelId, sourceTabletId, DiagnosticTabletData.appId("redstone_link"),
+                "devices", redstoneEditingId.isBlank() ? "channel_create" : "channel_update",
+                redstoneEditingId.isBlank() ? encoded : redstoneEditingId + "|" + encoded));
+        stopEditing();
+        redstoneEditingId = "";
     }
 
     // Begin the redstone editor
@@ -3434,6 +3456,10 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     // Handle key pressed
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if ("redstone_editor".equals(editingAction) && (keyCode == 257 || keyCode == 335)) {
+            saveRedstoneEditor();
+            return true;
+        }
         if (!editingAction.isBlank() && (keyCode == 257 || keyCode == 335)) {
             send(editingAction, editingValuePrefix + actionInput.getValue().trim());
             stopEditing();

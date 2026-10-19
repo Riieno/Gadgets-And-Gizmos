@@ -296,7 +296,9 @@ public class PhysicsGantryBeltWheelBlock extends RotatedPillarKineticBlock
     @Override
     public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean isMoving) {
         if (!isMoving && !state.is(newState.getBlock())) {
-            withBlockEntityDo(level, pos, be -> be.breakLink(true, true));
+            withBlockEntityDo(level, pos, be -> {
+                if(!be.isAssemblyTransferInProgress()) be.breakLink(true, true);
+            });
         }
         super.onRemove(state, level, pos, newState, isMoving);
     }

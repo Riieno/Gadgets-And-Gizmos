@@ -92,7 +92,7 @@ public final class PortableContraptionControllerRuntime {
         if (state == null) {
             return;
         }
-        state.controller.handleControllerKeyInput(channelId, pressed);
+        runPlayerInput(state, player, () -> state.controller.handleControllerKeyInput(channelId, pressed));
         tickActiveController(player, state);
     }
 
@@ -104,7 +104,7 @@ public final class PortableContraptionControllerRuntime {
         if (state == null || !(state.controller instanceof AdvancedContraptionControllerBlockEntity controller)) {
             return;
         }
-        controller.handleMouseInput(input, val, active);
+        controller.handleMouseInput(player, input, val, active);
         tickActiveController(player, state);
     }
 
@@ -118,7 +118,7 @@ public final class PortableContraptionControllerRuntime {
         if (state == null) {
             return;
         }
-        state.controller.applyHardwareControllerInput(values);
+        runPlayerInput(state, player, () -> state.controller.applyHardwareControllerInput(values));
         tickActiveController(player, state);
     }
 
@@ -169,7 +169,7 @@ public final class PortableContraptionControllerRuntime {
         if (state == null || state.advanced != advanced) {
             return;
         }
-        state.controller.handleControllerKeyInput(channelId, pressed);
+        runPlayerInput(state, player, () -> state.controller.handleControllerKeyInput(channelId, pressed));
         tickActiveLectern(player.level(), pos, state);
     }
 
@@ -183,7 +183,7 @@ public final class PortableContraptionControllerRuntime {
                 || !(state.controller instanceof AdvancedContraptionControllerBlockEntity controller)) {
             return;
         }
-        controller.handleMouseInput(input, val, active);
+        controller.handleMouseInput(player, input, val, active);
         tickActiveLectern(player.level(), pos, state);
     }
 
@@ -198,7 +198,7 @@ public final class PortableContraptionControllerRuntime {
         if (state == null || state.advanced != advanced) {
             return;
         }
-        state.controller.applyHardwareControllerInput(values);
+        runPlayerInput(state, player, () -> state.controller.applyHardwareControllerInput(values));
         tickActiveLectern(player.level(), pos, state);
     }
 
@@ -751,5 +751,12 @@ public final class PortableContraptionControllerRuntime {
             this.controller = controller;
             this.portableStack = portableStack;
         }
+    }
+
+
+    // Retain the holder's identity while the portable controller queues input events
+    private static void runPlayerInput(State state, ServerPlayer player, Runnable action){
+        if(state.controller instanceof AdvancedContraptionControllerBlockEntity controller) controller.runGraphInteraction(player, action);
+        else action.run();
     }
 }

@@ -424,9 +424,7 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
     protected void renderSlot(GuiGraphics guiGraphics, Slot slot) {
         scalableGui.pushFromOrigin(guiGraphics, leftPos, topPos);
         try {
-            if (!ContraptionNetworkLinkerSlotRenderer.renderControllerSlot(guiGraphics, slot)) {
-                super.renderSlot(guiGraphics, slot);
-            }
+            super.renderSlot(guiGraphics, slot);
         } finally {
             scalableGui.pop(guiGraphics);
         }
@@ -5130,4 +5128,6 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
             this.label = label;
         }
     }
+
+
 }

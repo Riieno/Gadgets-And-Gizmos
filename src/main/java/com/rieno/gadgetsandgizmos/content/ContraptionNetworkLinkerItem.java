@@ -12,6 +12,8 @@ import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityLookupApi;
 import com.rieno.gadgetsandgizmos.neoforge.network.ContraptionNetworkLinkerSnapshotPayload;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
+import com.rieno.gadgetsandgizmos.registry.CTItems;
+import com.rieno.gadgetsandgizmos.lib.item.ItemFoilRenderScope;
 import com.rieno.gadgetsandgizmos.util.CTInteractionGestures;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.ChatFormatting;
@@ -76,6 +78,8 @@ public class ContraptionNetworkLinkerItem extends Item {
     // Check if this is foil
     @Override
     public boolean isFoil(ItemStack stack) {
+        Boolean renderFoil = ItemFoilRenderScope.overrideFor(this);
+        if(renderFoil != null) return renderFoil;
         return !ContraptionNetworkLinkerData.readClientTargets(stack).isEmpty()
                 || ContraptionNetworkLinkerData.clientHasBindings(stack);
     }
@@ -403,5 +407,10 @@ public class ContraptionNetworkLinkerItem extends Item {
             clientClass.getMethod("openScreen", InteractionHand.class, ItemStack.class).invoke(null, hand, stack);
         } catch (ReflectiveOperationException ignored) {
         }
+    }
+
+    // Render the scanner without covering its display with the foil effect
+    public static void renderWithoutFoil(Runnable render) {
+        ItemFoilRenderScope.withoutFoil(CTItems.CONTRAPTION_NETWORK_LINKER.get(), render);
     }
 }

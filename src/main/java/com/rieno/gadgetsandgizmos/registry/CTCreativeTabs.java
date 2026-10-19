@@ -119,6 +119,7 @@ public final class CTCreativeTabs {
         blockCount += accept(displayItems, searchItems, CTItems.RCS_THRUSTER);
         blockCount += accept(displayItems, searchItems, CTItems.CREATIVE_RCS_THRUSTER);
         blockCount += accept(displayItems, searchItems, CTItems.BLACKSTONE_ALLOY_BLOCK);
+        blockCount += accept(displayItems, searchItems, CTItems.BLACKSTONE_CASING);
         blockCount += accept(displayItems, searchItems, CTItems.FUEL_OXIDIZER);
         blockCount += accept(displayItems, searchItems, CTItems.ALTERNATOR);
         blockCount += accept(displayItems, searchItems, CTItems.ANDESITE_CABLE);
@@ -137,10 +138,10 @@ public final class CTCreativeTabs {
         blockCount += accept(displayItems, searchItems, CTItems.GYROSCOPE_LINK);
         blockCount += accept(displayItems, searchItems, CTItems.DOUBLE_BUTTON);
         blockCount += accept(displayItems, searchItems, CTItems.COPYCAT_DOUBLE_BUTTON);
-        blockCount += accept(displayItems, searchItems, CTItems.VIRTUAL_ORIENTATION_SOURCE);
-        blockCount += accept(displayItems, searchItems, CTItems.GYRO_REDSTONE_BRIDGE);
         blockCount += accept(displayItems, searchItems, CTItems.BIDIRECTIONAL_GEARBOX);
         blockCount += accept(displayItems, searchItems, CTItems.BI_DIRECTIONAL_GEARSHIFT);
+        blockCount += accept(displayItems, searchItems, CTItems.RATCHET_COGWHEEL);
+        blockCount += accept(displayItems, searchItems, CTItems.LARGE_RATCHET_COGWHEEL);
         blockCount += accept(displayItems, searchItems, CTItems.VERTICAL_BIDIRECTIONAL_GEARBOX);
         blockCount += accept(displayItems, searchItems, CTItems.ANALOGUE_JOYSTICK);
         blockCount += accept(displayItems, searchItems, CTItems.ANALOGUE_CONTRAPTION_CONTROLLER);
@@ -148,6 +149,7 @@ public final class CTCreativeTabs {
         blockCount += accept(displayItems, searchItems, CTItems.SHIP_CONTROL_MODULE);
         blockCount += accept(displayItems, searchItems, CTItems.SHIP_COUPLER);
         blockCount += accept(displayItems, searchItems, CTItems.ACC_DISPLAY);
+        blockCount += accept(displayItems, searchItems, CTItems.CAMERA);
         blockCount += accept(displayItems, searchItems, CTItems.ACC_DISPLAY_BLOCK);
         blockCount += accept(displayItems, searchItems, CTItems.ACC_DISPLAY_PANEL);
         blockCount += accept(displayItems, searchItems, CTItems.ACC_DISPLAY_HALF_PANEL);
@@ -157,6 +159,10 @@ public final class CTCreativeTabs {
         blockCount += accept(displayItems, searchItems, CTItems.ADVANCED_NAVIGATION_TABLE);
         blockCount += accept(displayItems, searchItems, CTItems.DIAGNOSTIC_TABLET);
         blockCount += accept(displayItems, searchItems, CTItems.SHIPPING_MANIFEST);
+        blockCount += accept(displayItems, searchItems, CTItems.SMART_VAULT);
+        blockCount += accept(displayItems, searchItems, CTItems.SMART_BATTERY);
+        blockCount += accept(displayItems, searchItems, CTItems.SMART_TANK);
+        
         row = padSection(displayItems, row, blockCount);
 
         // -----------------------------------------------------ITEMS-----------------------------------------------------
@@ -193,6 +199,7 @@ public final class CTCreativeTabs {
         itemCount += accept(displayItems, searchItems, CTItems.PROPULSION_UPGRADE_T3);
         itemCount += accept(displayItems, searchItems, CTItems.PROPULSION_UPGRADE_T4);
         itemCount += accept(displayItems, searchItems, CTItems.PHYSICS_GOGGLES);
+        itemCount += accept(displayItems, searchItems, CTItems.PILOT_CAP);
         itemCount += accept(displayItems, searchItems, CTItems.PHYSICS_STAFF);
         row = padSection(displayItems, row, itemCount);
 
@@ -320,4 +327,6 @@ public final class CTCreativeTabs {
     // Initialize the CT creative tabs
     private CTCreativeTabs() {
     }
+
+
 }

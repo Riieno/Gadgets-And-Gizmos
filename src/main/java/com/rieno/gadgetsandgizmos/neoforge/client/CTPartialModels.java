@@ -24,7 +24,14 @@ public final class CTPartialModels {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     public static final PartialModel PHYSICS_STAFF_CORE_GLOW = item("physics_staff/core_glow");
-    public static final PartialModel PHYSICS_STAFF_CORE = item("physics_staff/core");
+    
+    public static final PartialModel CAMERA_STAND = block("camera/contraption_camera_stand");
+
+    public static final PartialModel CAMERA_HEAD = block("camera/contraption_camera");
+
+    public static final PartialModel PILOT_CAP = PartialModel.of(ResourceLocation.fromNamespaceAndPath(
+            CreateThrusters.MOD_ID, "entity/pilot_cap"));
+public static final PartialModel PHYSICS_STAFF_CORE = item("physics_staff/core");
     public static final PartialModel PHYSICS_STAFF_RING = item("physics_staff/ring");
     public static final PartialModel PHYSICS_STAFF_SIGMA = item("physics_staff/sigma");
     public static final PartialModel PHYSICS_STAFF_INNER_CUBE = item("physics_staff/inner_cube");
@@ -63,7 +70,19 @@ public final class CTPartialModels {
     public static final PartialModel PHYSICS_GANTRY_BELT_SEGMENT = block("physics_gantry_belt_wheel/belt_segment");
 
     public static final PartialModel ANALOGUE_JOYSTICK_HANDLE = block("analogue_joystick/handle");
-    public static final PartialModel DOUBLE_BUTTON_TOP = block("double_button/button_top");
+    
+    public static final PartialModel ANALOGUE_JOYSTICK_STICK = block("joystick_v2/stick");
+
+    public static final PartialModel ANALOGUE_JOYSTICK_SKIRT = block("joystick_v2/skirt");
+
+    public static final PartialModel RATCHET_COGWHEEL_GEAR = block("ratchet_cogwheel/gear");
+
+    public static final PartialModel RATCHET_COGWHEEL_SHAFT = block("ratchet_cogwheel/shaft");
+
+    public static final PartialModel LARGE_RATCHET_COGWHEEL_GEAR = block("large_ratchet_cogwheel/gear");
+
+    public static final PartialModel LARGE_RATCHET_COGWHEEL_SHAFT = block("large_ratchet_cogwheel/shaft");
+public static final PartialModel DOUBLE_BUTTON_TOP = block("double_button/button_top");
     public static final PartialModel DOUBLE_BUTTON_BOTTOM = block("double_button/button_bottom");
 
     public static final PartialModel CLAW_JAW_LEFT  = block("claw/left");
@@ -177,5 +196,7 @@ public final class CTPartialModels {
     private static PartialModel item(String path) {
         return PartialModel.of(ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID, "item/" + path));
     }
+
+
 
 }

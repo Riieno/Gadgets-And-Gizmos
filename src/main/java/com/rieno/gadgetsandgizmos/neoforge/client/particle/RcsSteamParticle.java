@@ -16,9 +16,14 @@ import net.minecraft.client.particle.ParticleRenderType;
 import net.minecraft.client.particle.SpriteSet;
 import net.minecraft.client.particle.TextureSheetParticle;
 import net.minecraft.util.Mth;
+import com.rieno.gadgetsandgizmos.content.PlumeRainbow;
 
 // Animate the short directional steam plume produced by an RCS nozzle
-public class RcsSteamParticle extends TextureSheetParticle {
+public class RcsSteamParticle extends TextureSheetParticle {    // Active rainbow cycle
+    private final PlumeRainbow.Mode rainbowMode;
+    // Active color palette
+    private final PlumeRainbow.Palette rainbowPalette;
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -68,6 +73,8 @@ public class RcsSteamParticle extends TextureSheetParticle {
         this.rCol = opts.red();
         this.gCol = opts.green();
         this.bCol = opts.blue();
+        this.rainbowMode = opts.rainbowMode();
+        this.rainbowPalette = opts.rainbowPalette();
         this.baseSize = 0.22F * opts.scale();
         this.quadSize = baseSize * 0.4F;
         this.alpha = 0.52F;
@@ -75,6 +82,7 @@ public class RcsSteamParticle extends TextureSheetParticle {
                 * opts.scale()));
         this.roll = random.nextFloat() * Mth.TWO_PI;
         this.oRoll = roll;
+        updateRainbowColor();
         setSpriteFromAge(sprites);
     }
 
@@ -117,6 +125,7 @@ public class RcsSteamParticle extends TextureSheetParticle {
         }
         float progress = Mth.clamp(age / (float) Math.max(1, lifetime), 0.0F, 1.0F);
         alpha = 0.52F * (float) Math.pow(1.0F - progress, 1.25D);
+        updateRainbowColor();
         oRoll = roll;
         roll += 0.08F;
         setSpriteFromAge(sprites);
@@ -146,5 +155,17 @@ public class RcsSteamParticle extends TextureSheetParticle {
         ) {
             return new RcsSteamParticle(level, x, y, z, xd, yd, zd, opts, sprites);
         }
+    }
+
+
+    // Move the rainbow gradient along the short RCS exhaust
+    private void updateRainbowColor() {
+        if (rainbowMode == PlumeRainbow.Mode.OFF) return;
+        float progress = Mth.clamp(age / (float) Math.max(1, lifetime), 0.0F, 1.0F);
+        int color = PlumeRainbow.color(rainbowMode, rainbowPalette,
+                level.getGameTime(), progress, age);
+        rCol = (color >> 16 & 0xFF) / 255.0F;
+        gCol = (color >> 8 & 0xFF) / 255.0F;
+        bCol = (color & 0xFF) / 255.0F;
     }
 }

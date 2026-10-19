@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:camera",
+  "properties": {
+    "sable:mass": 0.01
+  }
+}

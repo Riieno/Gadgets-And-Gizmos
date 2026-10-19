@@ -116,7 +116,8 @@ public class ShipDockBlock extends HorizontalDirectionalBlock implements IBE<Shi
     // Handle the remove event
     @Override
     public void onRemove(BlockState state, Level level, BlockPos pos, BlockState newState, boolean movedByPiston) {
-        if (state.getBlock() != newState.getBlock() && level.getBlockEntity(pos) instanceof ShipDockBlockEntity dock) {
+        if (!movedByPiston && state.getBlock() != newState.getBlock()
+                && level.getBlockEntity(pos) instanceof ShipDockBlockEntity dock) {
             if (!level.isClientSide) {
                 dock.clearLinkedConnectorBindings();
                 for (ItemStack stack : dock.bufferedItems()) {
@@ -158,4 +159,6 @@ public class ShipDockBlock extends HorizontalDirectionalBlock implements IBE<Shi
     public @Nullable BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
         return new ShipDockBlockEntity(pos, state);
     }
+
+
 }

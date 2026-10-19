@@ -29,9 +29,35 @@ import net.minecraft.world.level.block.state.properties.DirectionProperty;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import org.jetbrains.annotations.Nullable;
+import dev.ryanhcode.sable.api.block.BlockSubLevelAssemblyListener;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.EntityBlock;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.Level;
+import java.util.HashSet;
+import java.util.Set;
 
 // Mount the half-height panel used to control a nearby ship
-public class ShipControlModuleBlock extends Block implements IWrenchable {
+public class ShipControlModuleBlock extends Block implements IWrenchable, EntityBlock, BlockSubLevelAssemblyListener {    // The horizontal facing rotates the controls around their mounting face;
+    // mount_face identifies the sturdy block face which physically supports
+    // the half-height module.
+    public static final DirectionProperty MOUNT_FACE = DirectionProperty.create("mount_face");
+
+    private static final VoxelShape FLOOR_SHAPE = Block.box(0, 0, 0, 16, 8, 16);
+
+    private static final VoxelShape CEILING_SHAPE = Block.box(0, 8, 0, 16, 16, 16);
+
+    private static final VoxelShape NORTH_SHAPE = Block.box(0, 0, 0, 16, 16, 8);
+
+    private static final VoxelShape SOUTH_SHAPE = Block.box(0, 0, 8, 16, 16, 16);
+
+    private static final VoxelShape WEST_SHAPE = Block.box(0, 0, 0, 8, 16, 16);
+
+    private static final VoxelShape EAST_SHAPE = Block.box(8, 0, 0, 16, 16, 16);
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -40,7 +66,9 @@ public class ShipControlModuleBlock extends Block implements IWrenchable {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    public static final MapCodec<ShipControlModuleBlock> CODEC = simpleCodec(ShipControlModuleBlock::new);
+    
+    private static final ThreadLocal<Set<BlockPos>> MOVING = ThreadLocal.withInitial(HashSet::new);
+public static final MapCodec<ShipControlModuleBlock> CODEC = simpleCodec(ShipControlModuleBlock::new);
     public static final DirectionProperty FACING = BlockStateProperties.HORIZONTAL_FACING;
     private static final VoxelShape SHAPE = Block.box(0, 0, 0, 16, 8, 16);
 
@@ -55,7 +83,9 @@ public class ShipControlModuleBlock extends Block implements IWrenchable {
     // Initialize the ship control module block
     public ShipControlModuleBlock(BlockBehaviour.Properties properties) {
         super(properties);
-        registerDefaultState(defaultBlockState().setValue(FACING, Direction.NORTH));
+        registerDefaultState(defaultBlockState()
+                .setValue(FACING, Direction.NORTH)
+                .setValue(MOUNT_FACE, Direction.DOWN));
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -69,25 +99,24 @@ public class ShipControlModuleBlock extends Block implements IWrenchable {
     // Create the block state definition
     @Override
     protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder) {
-        builder.add(FACING);
+        builder.add(FACING, MOUNT_FACE);
     }
 
     // Get the state for placement
     @Nullable
     @Override
     public BlockState getStateForPlacement(BlockPlaceContext ctx) {
-        if (ctx.getClickedFace() != Direction.UP) {
-            return null;
-        }
         BlockState placed = defaultBlockState()
-                .setValue(FACING, ctx.getHorizontalDirection().getOpposite());
+                .setValue(FACING, ctx.getHorizontalDirection().getOpposite())
+                .setValue(MOUNT_FACE, ctx.getClickedFace().getOpposite());
         return placed.canSurvive(ctx.getLevel(), ctx.getClickedPos()) ? placed : null;
     }
 
     // Check if this can survive
     @Override
     public boolean canSurvive(BlockState state, LevelReader level, BlockPos pos) {
-        BlockPos supportPos = pos.below();
+        Direction mountFace = mountFace(state);
+        BlockPos supportPos = pos.relative(mountFace);
         BlockState supportState = level.getBlockState(supportPos);
         if (supportState.getBlock() instanceof SlabBlock
                 || supportState.getBlock() instanceof ShipControlModuleBlock) {
@@ -100,14 +129,14 @@ public class ShipControlModuleBlock extends Block implements IWrenchable {
                 return false;
             }
         }
-        return supportState.isFaceSturdy(level, supportPos, Direction.UP);
+        return supportState.isFaceSturdy(level, supportPos, mountFace.getOpposite());
     }
 
     // Update the shape
     @Override
     public BlockState updateShape(BlockState state, Direction dir, BlockState neighborState,
                                   LevelAccessor level, BlockPos pos, BlockPos neighborPos) {
-        if (dir == Direction.DOWN && !state.canSurvive(level, pos)) {
+        if (dir == mountFace(state) && !state.canSurvive(level, pos)) {
             return Blocks.AIR.defaultBlockState();
         }
         return super.updateShape(state, dir, neighborState, level, pos, neighborPos);
@@ -117,19 +146,30 @@ public class ShipControlModuleBlock extends Block implements IWrenchable {
     @Override
     protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos,
                                   CollisionContext ctx) {
-        return SHAPE;
+        return switch (mountFace(state)) {
+            case UP -> CEILING_SHAPE;
+            case NORTH -> NORTH_SHAPE;
+            case SOUTH -> SOUTH_SHAPE;
+            case WEST -> WEST_SHAPE;
+            case EAST -> EAST_SHAPE;
+            case DOWN -> FLOOR_SHAPE;
+        };
     }
 
     // Rotate the ship control module block
     @Override
     public BlockState rotate(BlockState state, Rotation rotation) {
-        return state.setValue(FACING, rotation.rotate(state.getValue(FACING)));
+        return state
+                .setValue(FACING, rotation.rotate(state.getValue(FACING)))
+                .setValue(MOUNT_FACE, rotation.rotate(mountFace(state)));
     }
 
     // Mirror the ship control module block
     @Override
     public BlockState mirror(BlockState state, Mirror mirror) {
-        return state.setValue(FACING, mirror.mirror(state.getValue(FACING)));
+        return state
+                .setValue(FACING, mirror.mirror(state.getValue(FACING)))
+                .setValue(MOUNT_FACE, mirror.mirror(mountFace(state)));
     }
 
     // Get the rotated block state
@@ -142,5 +182,61 @@ public class ShipControlModuleBlock extends Block implements IWrenchable {
     @Override
     public MapCodec<? extends Block> codec() {
         return CODEC;
+    }
+
+
+    // Record the player who placed this module before an assembly moves it
+    @Override
+    public void setPlacedBy(Level level, BlockPos pos, BlockState state, @Nullable LivingEntity placer, ItemStack stack) {
+        super.setPlacedBy(level, pos, state, placer, stack);
+        if(!level.isClientSide && placer instanceof Player player
+                && level.getBlockEntity(pos) instanceof ShipControlModuleBlockEntity module){
+            module.setPlacerId(player.getUUID());
+        }
+    }
+
+
+    @Override
+    public @Nullable BlockEntity newBlockEntity(BlockPos pos, BlockState state){
+        return new ShipControlModuleBlockEntity(pos, state);
+    }
+
+
+    @Override
+    public void beforeMove(ServerLevel originLevel, ServerLevel resultingLevel, BlockState state,
+                           BlockPos oldPos, BlockPos newPos){
+        MOVING.get().add(oldPos);
+    }
+
+
+    @Override
+    public void afterMove(ServerLevel originLevel, ServerLevel resultingLevel, BlockState state,
+                          BlockPos oldPos, BlockPos newPos){
+        MOVING.get().remove(oldPos);
+    }
+
+
+    // Destroying a module releases its ship permission claim
+    @Override
+    protected void onRemove(BlockState state, Level level, BlockPos pos, BlockState next, boolean isMoving){
+        if(!level.isClientSide && state.getBlock() != next.getBlock() && !isMoving
+                && !MOVING.get().contains(pos)
+                && !(next.getBlock() instanceof AdvancedContraptionControllerBlock)){
+            ShipPermissions.unclaim(level, pos);
+        }
+        super.onRemove(state, level, pos, next, isMoving);
+    }
+
+
+    // Return the physical support-facing direction. Older schematic states
+    // did not record mount_face and were always floor-mounted.
+    private static Direction mountFace(BlockState state) {
+        return state.hasProperty(MOUNT_FACE) ? state.getValue(MOUNT_FACE) : Direction.DOWN;
+    }
+
+
+    // Return the exposed face where an ACC can be embedded into this module.
+    public static Direction exposedFace(BlockState state) {
+        return mountFace(state).getOpposite();
     }
 }

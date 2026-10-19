@@ -135,4 +135,7 @@ public final class CTClientScreens {
         if (CTMenuTypes.POWERED_ZIPLINE != null) evt.register(CTMenuTypes.POWERED_ZIPLINE.get(), PoweredZiplineScreen::new);
         evt.register(CTMenuTypes.NAVIGATION_TABLE.get(), NavigationTableScreen::new);
     }
+
+
+    // Open the shipping manifest
 }

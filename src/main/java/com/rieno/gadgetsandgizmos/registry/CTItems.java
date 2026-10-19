@@ -43,6 +43,10 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Supplier;
+import com.rieno.gadgetsandgizmos.content.SmartTankBlockItem;
+import com.rieno.gadgetsandgizmos.content.SmartVaultBlockItem;
+import com.rieno.gadgetsandgizmos.content.PilotCapItem;
+import com.simibubi.create.content.kinetics.simpleRelays.CogwheelBlockItem;
 
 // Register addon items
 public final class CTItems {
@@ -56,7 +60,10 @@ public final class CTItems {
 
     public static final DeferredRegister.Items REGISTRAR = DeferredRegister.createItems(CreateThrusters.MOD_ID);
 
-    @Nullable
+    
+    public static final DeferredItem<BlockItem> CAMERA = register("camera",
+            () -> new CTTooltipBlockItem(CTBlocks.CAMERA.get(), new Item.Properties()));
+@Nullable
     public static final DeferredItem<BlockItem> THRUSTER = register("thruster",
         () -> new CTTooltipBlockItem(CTBlocks.THRUSTER.get(), new Item.Properties()));
     @Nullable
@@ -81,7 +88,11 @@ public final class CTItems {
     public static final DeferredItem<BlockItem> BLACKSTONE_ALLOY_BLOCK =
             register("blackstone_alloy_block",
                     () -> new BlockItem(CTBlocks.BLACKSTONE_ALLOY_BLOCK.get(), new Item.Properties()));
+    
     @Nullable
+    public static final DeferredItem<BlockItem> BLACKSTONE_CASING = register("blackstone_casing",
+            () -> new BlockItem(CTBlocks.BLACKSTONE_CASING.get(), new Item.Properties()));
+@Nullable
     public static final DeferredItem<BlockItem> SMALL_THRUSTER = register("small_thruster",
         () -> new SmallThrusterBlockItem(CTBlocks.THRUSTER.get(), new Item.Properties()));
     @Nullable
@@ -124,7 +135,15 @@ public final class CTItems {
     @Nullable
     public static final DeferredItem<BlockItem> BI_DIRECTIONAL_GEARSHIFT = register("bi_directional_gearshift",
         () -> new CTTooltipBlockItem(CTBlocks.BI_DIRECTIONAL_GEARSHIFT.get(), new Item.Properties()));
+    
     @Nullable
+    public static final DeferredItem<BlockItem> RATCHET_COGWHEEL = register("ratchet_cogwheel",
+            () -> new CogwheelBlockItem(CTBlocks.RATCHET_COGWHEEL.get(), new Item.Properties()));
+
+    @Nullable
+    public static final DeferredItem<BlockItem> LARGE_RATCHET_COGWHEEL = register("large_ratchet_cogwheel",
+            () -> new CogwheelBlockItem(CTBlocks.LARGE_RATCHET_COGWHEEL.get(), new Item.Properties()));
+@Nullable
     public static final DeferredItem<BlockItem> VERTICAL_BIDIRECTIONAL_GEARBOX = register("vertical_bidirectional_gearbox",
         () -> new VerticalAxisVariantBlockItem(CTBlocks.BIDIRECTIONAL_GEARBOX.get(), new Item.Properties(), "item.createthrusters.vertical_bidirectional_gearbox"));
     @Nullable
@@ -272,7 +291,19 @@ public final class CTItems {
     @Nullable
     public static final DeferredItem<BlockItem> SHIPPING_MANIFEST = register("shipping_manifest",
             () -> new ShippingManifestBlockItem(CTBlocks.SHIPPING_MANIFEST.get(), new Item.Properties().stacksTo(16)));
+    
     @Nullable
+    public static final DeferredItem<BlockItem> SMART_VAULT = register("smart_vault",
+            () -> new SmartVaultBlockItem(CTBlocks.SMART_VAULT.get(), new Item.Properties()));
+
+    @Nullable
+    public static final DeferredItem<BlockItem> SMART_BATTERY = register("smart_battery",
+            () -> new SmartVaultBlockItem(CTBlocks.SMART_BATTERY.get(), new Item.Properties()));
+
+    @Nullable
+    public static final DeferredItem<BlockItem> SMART_TANK = register("smart_tank",
+            () -> new SmartTankBlockItem(CTBlocks.SMART_TANK.get(), new Item.Properties()));
+@Nullable
     public static final DeferredItem<ShippingScheduleItem> SHIPPING_SCHEDULE = register("shipping_schedule",
             () -> new ShippingScheduleItem(new Item.Properties().stacksTo(1)));
     @Nullable
@@ -281,7 +312,10 @@ public final class CTItems {
     @Nullable
     public static final DeferredItem<PhysicsGogglesItem> PHYSICS_GOGGLES = register("physics_goggles",
             () -> new PhysicsGogglesItem(new Item.Properties().stacksTo(1).rarity(Rarity.UNCOMMON)));
-    @Nullable
+    
+    public static final DeferredItem<PilotCapItem> PILOT_CAP = register("pilot_cap",
+            () -> new PilotCapItem(new Item.Properties().stacksTo(1).rarity(Rarity.UNCOMMON)));
+@Nullable
     public static final DeferredItem<Item> OXIDIZED_CREATIVE_BLAZE_CAKE = register("oxidized_creative_blaze_cake",
             () -> new Item(new Item.Properties().stacksTo(1).rarity(Rarity.EPIC).fireResistant()));
     @Nullable
@@ -361,4 +395,6 @@ public final class CTItems {
     // Initialize the CT items
     private CTItems() {
     }
+
+
 }

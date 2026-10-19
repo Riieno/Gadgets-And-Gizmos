@@ -13,6 +13,7 @@ import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerData;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerItem;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.multiblock.MultiblockOutlineTargets;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Camera;
@@ -155,8 +156,9 @@ public final class ContraptionNetworkLinkerFaceRenderer {
             }
             TargetColor col = colorFor(target);
             for (ContraptionNetworkLinkerData.LinkedFace face : target.faces()) {
-                Direction plateSide = face.face().getOpposite();
-                Vec3[] corners = transformCorners(renderTarget, plateCorners(target.blockPos(), plateSide));
+                Direction plateSide = visiblePlateSide(minecraft, target, face);
+                Vec3[] corners = transformCorners(renderTarget, visiblePlateCorners(target.blockPos(),
+                        plateSide, face.face()));
                 Vec3 normal = transformDirection(renderTarget, directionVector(plateSide));
                 renderTexturedPlate(poseStack, plate, corners, normal,
                         col.red(), col.green(), col.blue(), 0.2f);
@@ -181,8 +183,16 @@ public final class ContraptionNetworkLinkerFaceRenderer {
                 continue;
             }
             for (ContraptionNetworkLinkerData.LinkedFace face : target.faces()) {
-                Direction plateSide = face.face().getOpposite();
-                Vec3[] corners = transformCorners(renderTarget, plateCorners(target.blockPos(), plateSide));
+                var targetLevel = SubLevelBlockEntityCollector.resolveTargetLevel(minecraft.level, target.subLevelId());
+                BlockPos support = target.blockPos().relative(face.face().getOpposite());
+                List<BlockPos> blocks = MultiblockOutlineTargets.positions(targetLevel, support);
+                if (blocks.size() > 1) {
+                    renderBlockOutline(poseStack, lines, renderTarget, MultiblockOutlineTargets.outlineCorners(blocks),
+                            col.red(), col.green(), col.blue(), 1.0f);
+                }
+                Direction plateSide = visiblePlateSide(minecraft, target, face);
+                Vec3[] corners = transformCorners(renderTarget, visiblePlateCorners(target.blockPos(),
+                        plateSide, face.face()));
                 renderPlateOutline(poseStack, lines, corners,
                         col.red(), col.green(), col.blue(), 1.0f);
             }
@@ -231,15 +241,7 @@ public final class ContraptionNetworkLinkerFaceRenderer {
     // Draw the block outline
     private static void renderBlockOutline(PoseStack poseStack, VertexConsumer consumer, RenderTarget target,
                                            BlockPos pos, float red, float green, float blue, float alpha) {
-        Vec3[] corners = transformCorners(target, blockCorners(pos));
-        int[][] edges = {
-                {0, 1}, {1, 2}, {2, 3}, {3, 0},
-                {4, 5}, {5, 6}, {6, 7}, {7, 4},
-                {0, 4}, {1, 5}, {2, 6}, {3, 7}
-        };
-        for (int[] edge : edges) {
-            addLine(poseStack, consumer, corners[edge[0]], corners[edge[1]], red, green, blue, alpha);
-        }
+        renderBlockOutline(poseStack, consumer, target, blockCorners(pos), red, green, blue, alpha);
     }
 
     // Get the block corners
@@ -426,5 +428,37 @@ public final class ContraptionNetworkLinkerFaceRenderer {
 
     // Store the target color
     private record TargetColor(float red, float green, float blue) {
+    }
+
+    private static Direction visiblePlateSide(Minecraft minecraft, ContraptionNetworkLinkerData.LinkedTarget target,
+                                              ContraptionNetworkLinkerData.LinkedFace face){
+        var targetLevel = SubLevelBlockEntityCollector.resolveTargetLevel(minecraft.level, target.subLevelId());
+        if(targetLevel != null && targetLevel.isLoaded(target.blockPos())){
+            var state = targetLevel.getBlockState(target.blockPos());
+            if(!state.isAir() && !(state.getBlock() instanceof
+                    com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerPlaneBlock)) return face.face();
+        }
+        return face.face().getOpposite();
+    }
+
+    private static Vec3[] visiblePlateCorners(BlockPos pos, Direction plateSide, Direction linkedFace){
+        Vec3[] corners = plateCorners(pos, plateSide);
+        if(plateSide != linkedFace) return corners;
+        Vec3 offset = directionVector(plateSide).scale(0.004D);
+        for(int idx = 0; idx < corners.length; idx++) corners[idx] = corners[idx].add(offset);
+        return corners;
+    }
+
+    private static void renderBlockOutline(PoseStack poseStack, VertexConsumer consumer, RenderTarget target,
+                                           Vec3[] localCorners, float red, float green, float blue, float alpha) {
+        Vec3[] corners = transformCorners(target, localCorners);
+        int[][] edges = {
+                {0, 1}, {1, 2}, {2, 3}, {3, 0},
+                {4, 5}, {5, 6}, {6, 7}, {7, 4},
+                {0, 4}, {1, 5}, {2, 6}, {3, 7}
+        };
+        for (int[] edge : edges) {
+            addLine(poseStack, consumer, corners[edge[0]], corners[edge[1]], red, green, blue, alpha);
+        }
     }
 }

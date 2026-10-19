@@ -190,4 +190,10 @@ public final class GraphV2ThemeData {
             int primaryActionText,
             int danger) {
     }
+
+
+    // Update the client copy after the authoritative palette is synchronized.
+    public static void setCurrent(Palette palette) {
+        current = palette == null ? DEFAULT : palette;
+    }
 }

@@ -7,6 +7,9 @@
   "localChanges": [
     "Replace the built-in node registry with the Advanced Contraption Controller catalog",
     "Remove the Debugger view selector",
-    "Remove the Logic Performance Profiler control"
+    "Remove the Logic Performance Profiler control",
+    "Consume the shared Gadgets Graph browser schema API and experimental node defaults",
+    "Render dropdowns, conditional ports, structured inputs, function interfaces and precise values",
+    "Preserve source port names and collection insertion order"
   ]
 }

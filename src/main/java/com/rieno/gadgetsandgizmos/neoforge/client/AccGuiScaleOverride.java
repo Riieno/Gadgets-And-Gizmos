@@ -14,27 +14,43 @@ final class AccGuiScaleOverride {
     }
 
     // Apply GUI scale two and rebuild the active screen at the new dimensions
-    static boolean apply() {
+    static boolean apply(){ return apply(0); }
+
+    static boolean apply(int minimumWidth) {
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft == null) return false;
+        if (minecraft == null) {
+            return false;
+        }
+        int scale = com.rieno.gadgetsandgizmos.lib.client.GuiViewportScale.forWidth(
+                ACC_GUI_SCALE, minecraft.getWindow().getWidth(), minimumWidth);
         restoreQueued = false;
         if (playerGuiScale == null) {
             playerGuiScale = minecraft.options.guiScale().get();
         }
-        if (minecraft.options.guiScale().get() == ACC_GUI_SCALE) return false;
-        minecraft.options.guiScale().set(ACC_GUI_SCALE);
-        minecraft.resizeDisplay();
-        return true;
+        if (minecraft.options.guiScale().get() != scale) {
+            minecraft.options.guiScale().set(scale);
+            minecraft.resizeDisplay();
+            return true;
+        }
+        return false;
     }
 
     // Restore after Minecraft has installed the next screen
     static void restoreAfterExit() {
         Minecraft minecraft = Minecraft.getInstance();
-        if (minecraft == null || playerGuiScale == null || restoreQueued) return;
+        if (minecraft == null || playerGuiScale == null || restoreQueued) {
+            return;
+        }
         restoreQueued = true;
+        // execute(...) runs inline when this is already the client thread,
+        // which is exactly where Screen#removed is called. Queue the work
+        // instead so Minecraft/NeoForge first installs the replacement screen
+        // (or finishes popping the final GUI layer).
         minecraft.tell(() -> {
             restoreQueued = false;
-            if (playerGuiScale == null || isAccEditor(minecraft.screen)) return;
+            if (playerGuiScale == null || isAccEditor(minecraft.screen)) {
+                return;
+            }
             int scale = playerGuiScale;
             playerGuiScale = null;
             if (minecraft.options.guiScale().get() != scale) {
@@ -49,4 +65,6 @@ final class AccGuiScaleOverride {
         return screen instanceof AdvancedContraptionControllerScreen
                 || screen instanceof FunctionPlotterScreen;
     }
+
+
 }

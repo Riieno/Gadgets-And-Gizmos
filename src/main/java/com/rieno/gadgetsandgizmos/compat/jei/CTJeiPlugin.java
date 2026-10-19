@@ -1,5 +1,9 @@
 package com.rieno.gadgetsandgizmos.compat.jei;
 
+import java.util.EnumMap;
+
+import com.rieno.gadgetsandgizmos.compat.recipe.ThrusterProcessingDisplays;
+
 /*--------------------------------------------------------##---------------------------------------------------------
 
 =======================================================================================================================
@@ -87,6 +91,8 @@ public class CTJeiPlugin implements IModPlugin {
     private static final ResourceLocation ID = ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID, "jei");
     private static final Logger CT_LOGGER = LogUtils.getLogger();
     private static ProcessingTransformationJeiCategory fuelCategory;
+    private static final Map<ThrusterProcessingDisplays.Mode, ThrusterJeiCategory> THRUSTER_CATEGORIES =
+            new EnumMap<>(ThrusterProcessingDisplays.Mode.class);
     // Keep removed JEI entries ready for feature toggle changes
     private static final Map<ResourceLocation, List<ItemStack>> KNOWN_ITEM_STACKS = new LinkedHashMap<>();
     private static final Map<ResourceLocation, List<ItemStack>> REMOVED_ITEM_STACKS = new LinkedHashMap<>();
@@ -277,18 +283,33 @@ public class CTJeiPlugin implements IModPlugin {
     @Override
     public void registerCategories(IRecipeCategoryRegistration registration){
         fuelCategory = null;
-        if(!OxidizedSolidFuelRecipes.enabled()) return;
-        fuelCategory = new ProcessingTransformationJeiCategory(OxidizedSolidFuelRecipes.CATEGORY,
-                OxidizedSolidFuelRecipes.title(), OxidizedSolidFuelRecipes.icon(),
-                registration.getJeiHelpers().getGuiHelper());
-        registration.addRecipeCategories(fuelCategory);
+        if(OxidizedSolidFuelRecipes.enabled()){
+            fuelCategory = new ProcessingTransformationJeiCategory(OxidizedSolidFuelRecipes.CATEGORY,
+                    OxidizedSolidFuelRecipes.title(), OxidizedSolidFuelRecipes.icon(),
+                    registration.getJeiHelpers().getGuiHelper());
+            registration.addRecipeCategories(fuelCategory);
+        }
+        THRUSTER_CATEGORIES.clear();
+        if(!CTFeatureToggles.isItemEnabled("thruster")) return;
+        for(ThrusterProcessingDisplays.Mode mode : ThrusterProcessingDisplays.Mode.values()){
+            ThrusterJeiCategory category = new ThrusterJeiCategory(mode,
+                    registration.getJeiHelpers().getGuiHelper());
+            registration.addRecipeCategories(category);
+            THRUSTER_CATEGORIES.put(mode, category);
+        }
     }
 
     @Override
     public void registerRecipeCatalysts(IRecipeCatalystRegistration registration){
-        if(fuelCategory == null) return;
-        for(var workstation : OxidizedSolidFuelRecipes.workstations()){
-            registration.addRecipeCatalyst(workstation, fuelCategory.getRecipeType());
+        if(fuelCategory != null){
+            for(var workstation : OxidizedSolidFuelRecipes.workstations()){
+                registration.addRecipeCatalyst(workstation, fuelCategory.getRecipeType());
+            }
+        }
+        for(var entry : THRUSTER_CATEGORIES.entrySet()){
+            for(ItemStack stack : entry.getKey().catalysts()){
+                registration.addRecipeCatalyst(stack, entry.getValue().getRecipeType());
+            }
         }
     }
 
@@ -307,6 +328,12 @@ public class CTJeiPlugin implements IModPlugin {
         if(fuelCategory != null && Minecraft.getInstance().level != null){
             registration.addRecipes(fuelCategory.getRecipeType(),
                     OxidizedSolidFuelRecipes.views(Minecraft.getInstance().level.getRecipeManager()));
+        }
+        if(Minecraft.getInstance().level != null){
+            for(var entry : THRUSTER_CATEGORIES.entrySet()){
+                registration.addRecipes(entry.getValue().getRecipeType(),
+                        entry.getKey().recipes(Minecraft.getInstance().level));
+            }
         }
     }
 

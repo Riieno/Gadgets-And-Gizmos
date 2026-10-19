@@ -176,6 +176,7 @@ final class ControllerRuntimeObserver {
             }
             BoundTarget target = new BoundTarget(subLevelId, pos);
             for (EquippedPlayer equipped : cache.boundPlayers.getOrDefault(target, List.of())) {
+                if(equipped.pairId() != null && (pairIds == null || !pairIds.contains(equipped.pairId()))) continue;
                 observers.putIfAbsent(equipped.player().getUUID(),
                         new GraphObserver(equipped.player(), -1, equipped.pairId()));
             }
@@ -212,7 +213,7 @@ final class ControllerRuntimeObserver {
     }
 
     // Get the worn goggles
-    private static ItemStack wornGoggles(LivingEntity wearer) {
+    static ItemStack wornGoggles(LivingEntity wearer) {
         ItemStack head = wearer.getItemBySlot(EquipmentSlot.HEAD);
         if (PhysicsGogglesItem.isFunctionalGoggles(head)) {
             return head;
@@ -260,7 +261,8 @@ final class ControllerRuntimeObserver {
             }
             ItemStack res = findCurio(inventoryValue, CTItems.PHYSICS_GOGGLES == null
                     ? null : CTItems.PHYSICS_GOGGLES.get());
-            return res;
+            return res.isEmpty() ? findCurio(inventoryValue, CTItems.PILOT_CAP == null
+                    ? null : CTItems.PILOT_CAP.get()) : res;
         } catch (ReflectiveOperationException ignored) {
             return ItemStack.EMPTY;
         }
@@ -279,7 +281,8 @@ final class ControllerRuntimeObserver {
             }
             ItemStack res = findAccessory(capability, CTItems.PHYSICS_GOGGLES == null
                     ? null : CTItems.PHYSICS_GOGGLES.get());
-            return res;
+            return res.isEmpty() ? findAccessory(capability, CTItems.PILOT_CAP == null
+                    ? null : CTItems.PILOT_CAP.get()) : res;
         } catch (ReflectiveOperationException ignored) {
             return ItemStack.EMPTY;
         }
@@ -470,4 +473,6 @@ final class ControllerRuntimeObserver {
             wearerTick = tick;
         }
     }
+
+
 }

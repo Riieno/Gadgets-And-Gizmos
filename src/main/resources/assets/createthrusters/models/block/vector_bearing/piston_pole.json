@@ -1,12 +1,13 @@
 {
-  "credit": "Adapted from Aeronautics gyroscopic propeller bearing",
+  "credit": "Made with Blockbench",
   "texture_size": [
-    32,
-    32
+    128,
+    128
   ],
   "textures": {
     "2": "createthrusters:block/vector_bearing",
-    "particle": "createthrusters:block/vector_bearing_side"
+    "particle": "createthrusters:block/vector_bearing",
+    "1": "createthrusters:block/vector_bearing"
   },
   "elements": [
     {
@@ -24,69 +25,68 @@
         "angle": 0,
         "axis": "y",
         "origin": [
-          8,
-          0,
-          8
+          -9,
+          -6,
+          -2
         ]
       },
       "faces": {
         "north": {
           "uv": [
-            11,
-            1,
-            11.5,
-            4.5
+            3.75,
+            4.875,
+            3.875,
+            5.75
           ],
-          "texture": "#2"
+          "texture": "#1"
         },
         "east": {
           "uv": [
-            11,
-            1,
-            12,
-            4.5
+            3.5,
+            4.875,
+            3.75,
+            5.75
           ],
-          "texture": "#2"
+          "texture": "#1"
         },
         "south": {
           "uv": [
-            11,
-            1,
-            11.5,
-            4.5
+            4.125,
+            4.875,
+            4.25,
+            5.75
           ],
-          "texture": "#2"
+          "texture": "#1"
         },
         "west": {
           "uv": [
-            11,
-            1,
-            12,
-            4.5
+            3.875,
+            4.875,
+            4.125,
+            5.75
           ],
-          "texture": "#2"
+          "texture": "#1"
         },
         "up": {
           "uv": [
-            11,
-            1,
-            12,
-            1.5
+            3.875,
+            4.875,
+            3.75,
+            4.625
           ],
-          "rotation": 90,
-          "texture": "#2"
+          "texture": "#1"
         },
         "down": {
           "uv": [
-            11,
-            1,
-            12,
-            1.5
+            4,
+            4.625,
+            3.875,
+            4.875
           ],
-          "rotation": 270,
-          "texture": "#2"
+          "texture": "#1"
         }
       }
     }
-  ]
+  ],
+  "format_version": "1.9.0"
 }

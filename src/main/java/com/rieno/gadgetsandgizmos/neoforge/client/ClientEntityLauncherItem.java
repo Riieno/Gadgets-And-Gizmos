@@ -30,8 +30,11 @@ public class ClientEntityLauncherItem extends EntityLauncherItem {
     }
 
     // Initialize the client
+    @SuppressWarnings("removal")
     @Override
     public void initializeClient(Consumer<IClientItemExtensions> consumer) {
         consumer.accept(SimpleCustomRenderer.create(this, new EntityLauncherItemRenderer()));
     }
+
+
 }

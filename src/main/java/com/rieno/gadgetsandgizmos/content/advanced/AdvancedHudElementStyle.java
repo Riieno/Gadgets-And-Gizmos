@@ -28,9 +28,10 @@ public final class AdvancedHudElementStyle {
     public static final int DEFAULT_TEXT_COLOR = 0xFFE8F7FF;
     public static final int DEFAULT_BOX_BACKGROUND_COLOR = 0x88263746;
     public static final int DEFAULT_BOX_BORDER_COLOR = 0xFFE8F7FF;
-    public static final int DEFAULT_WIDGET_BACKGROUND_COLOR = 0xE61B2732;
-    public static final int DEFAULT_WIDGET_ACCENT_COLOR = 0xFF4DA7D1;
-    public static final int DEFAULT_WIDGET_TRACK_COLOR = 0xFF2B3D49;
+    public static final int DEFAULT_WIDGET_BACKGROUND_COLOR = 0xE6202B30;
+    public static final int DEFAULT_WIDGET_ACCENT_COLOR = 0xFF59C58B;
+    public static final int DEFAULT_WIDGET_GRADIENT_COLOR = 0xFF62B6E8;
+    public static final int DEFAULT_WIDGET_TRACK_COLOR = 0xFF34454D;
     public static final int DEFAULT_FONT_SIZE = 9;
     public static final int MIN_FONT_SIZE = 4;
     public static final int MAX_FONT_SIZE = 64;
@@ -95,6 +96,7 @@ public final class AdvancedHudElementStyle {
             putIntIfMissing(elm, "BackgroundColor", DEFAULT_WIDGET_BACKGROUND_COLOR);
             putIntIfMissing(elm, "AccentColor", DEFAULT_WIDGET_ACCENT_COLOR);
             putIntIfMissing(elm, "TrackColor", DEFAULT_WIDGET_TRACK_COLOR);
+            putIntIfMissing(elm, "GradientColor", DEFAULT_WIDGET_GRADIENT_COLOR);
             putIntIfMissing(elm, "BorderColor", 0xFF527185);
             putIntIfMissing(elm, "BorderWidth", 1);
             putIntIfMissing(elm, "BorderRadius", 4);

@@ -40,6 +40,13 @@ import net.neoforged.neoforge.client.event.RegisterParticleProvidersEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import com.mojang.logging.LogUtils;
 import org.slf4j.Logger;
+import com.rieno.gadgetsandgizmos.lib.client.render.ClientParticleRange;
+import com.rieno.gadgetsandgizmos.lib.client.render.ClientParticleScreenCoverage;
+import com.rieno.gadgetsandgizmos.lib.client.render.ParticleRenderOrdering;
+import com.rieno.gadgetsandgizmos.lib.client.render.SoftParticleRenderTypes;
+import com.rieno.gadgetsandgizmos.particle.worldspace.WorldSpaceParticleEmitter;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.neoforged.fml.ModList;
 
 // Register the client screens, renderers, input handlers and overlays
 public final class CTClientBootstrap {
@@ -66,6 +73,16 @@ public final class CTClientBootstrap {
 
     // Register the CT client bootstrap
     public static void register(IEventBus modEventBus, ModContainer modContainer) {
+        ParticleRenderOrdering.registerAfterClouds(SoftParticleRenderTypes.fastAlphaEmissiveMetaballBillboard());
+        ParticleRenderOrdering.registerAfterClouds(SoftParticleRenderTypes.fastAlphaEmissiveStreakBillboard());
+        WorldSpaceParticleEmitter.installViewDistanceSpawner((level, options, position, velocity) -> {
+            if (level instanceof ClientLevel clientLevel) {
+                ClientParticleRange.addWithinViewDistance(clientLevel, options, position, velocity);
+            }
+        });
+        WorldSpaceParticleEmitter.installViewCoverageProbe((level, start, end, radius) ->
+                level instanceof ClientLevel clientLevel
+                        ? ClientParticleScreenCoverage.projectedWidth(clientLevel, start, end, radius) : 0.0D);
         AdvancedControllerGraphSnapshotPayload.installClientHandler(
                 AnalogueContraptionControllerClientHandler::applyAdvancedGraphSnapshot);
         ZiplineRidingController.install(new ZiplineRidingControllerImpl());
@@ -73,10 +90,24 @@ public final class CTClientBootstrap {
         CTPartialModels.init();
         modEventBus.addListener((FMLClientSetupEvent evt) -> {
             evt.enqueueWork(() -> {
+                com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer.setMinimumRefreshRate(
+                        () -> com.rieno.gadgetsandgizmos.config.CTConfigs.CLIENT.cameraMinimumRefreshRate.get());
+                com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer.setResolution(
+                        () -> com.rieno.gadgetsandgizmos.config.CTConfigs.CLIENT.cameraFeedResolution.get());
+                if (ModList.get().isLoaded("veil")) VeilColoredLightBackend.install();
+                SoftParticleRenderTypes.setShaderPackActiveSupplier(ShaderPackClientCompat::isActive);
+                if (ShaderPackClientCompat.canBindWorldTarget()) {
+                    SoftParticleRenderTypes.setShaderPackWorldTargetBinder(ShaderPackClientCompat::bindWorldTarget);
+                }
                 TabletAppClientRegistry.registerIfAbsent(DiagnosticTabletData.appId("app_store"), new AppStore());
+                
+                BlackstoneCasingConnectedTextures.register();
                 AccDisplayConnectedTextures.register();
+                SmartStorageConnectedTextures.register();
                 registerAccDisplayRenderLayers();
                 registerIonThrusterItemModel();
+                if(net.neoforged.fml.ModList.get().isLoaded("curios"))
+                    com.rieno.gadgetsandgizmos.compat.curios.client.CuriosHeadwearCompat.register();
                 CTClientRenderers.registerVisualizers();
             });
         });
@@ -115,6 +146,7 @@ public final class CTClientBootstrap {
         ItemBlockRenderTypes.setRenderLayer(CTBlocks.ACC_DISPLAY_PANEL.get(), RenderType.cutoutMipped());
         ItemBlockRenderTypes.setRenderLayer(CTBlocks.ACC_DISPLAY_HALF_PANEL.get(), RenderType.cutoutMipped());
         ItemBlockRenderTypes.setRenderLayer(CTBlocks.ACC_DISPLAY_SLAB.get(), RenderType.cutoutMipped());
+        ItemBlockRenderTypes.setRenderLayer(CTBlocks.SMART_TANK.get(), RenderType.cutoutMipped());
     }
 
     // Select the focused-engine model for Thrusters with an installed Lens
@@ -165,19 +197,29 @@ public final class CTClientBootstrap {
         FtbLibraryScreenCompat.registerAdvancedControllerScreenBlacklist();
 
         NeoForge.EVENT_BUS.addListener(CTClientCommands::registerClientCommands);
+        if(net.neoforged.fml.ModList.get().isLoaded("create_flight_control")){
+            NeoForge.EVENT_BUS.addListener(com.rieno.gadgetsandgizmos.compat.flightcontrol.client.FlightControlClient::onRenderWorld);
+        }
         NeoForge.EVENT_BUS.addListener(CTPhysicsStaffOverlayRenderer::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(PortableContraptionControllerItemRenderer::onRenderHand);
         NeoForge.EVENT_BUS.addListener(SupporterHeadClientEvents::onItemTooltip);
 
         NeoForge.EVENT_BUS.addListener(CTGantryAnchorDebugRenderer::onRenderWorld);
+        NeoForge.EVENT_BUS.addListener(CTPathfinderDebugRenderer::onRenderWorld);
+        NeoForge.EVENT_BUS.addListener(ShippingRouteSplineClient::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(ShippingManifestRenderer::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(PoweredZiplinePlacementHandler::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(PoweredZiplineHandoffRenderer::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(ContraptionNetworkLinkerFaceRenderer::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(PoweredZiplinePlacementHandler::onInteractionKeyMappingTriggered);
         NeoForge.EVENT_BUS.addListener(PhysicsGantryBeltWheelShearsClient::onInteractionKeyMappingTriggered);
+        NeoForge.EVENT_BUS.addListener(ShippingRouteSplineClient::onInteractionKeyMappingTriggered);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletClientInteraction::onInteractionKeyMappingTriggered);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletClientInteraction::onKeyInput);
+        
+        
+        
+        
         NeoForge.EVENT_BUS.addListener(EntityLauncherClientInputHandler::onInteractionKeyMappingTriggered);
         NeoForge.EVENT_BUS.addListener(EntityLauncherClientInputHandler::onRenderGui);
         NeoForge.EVENT_BUS.addListener(CTActionKeys::onItemTooltip);
@@ -185,6 +227,9 @@ public final class CTClientBootstrap {
         NeoForge.EVENT_BUS.addListener(ShippingManifestClientHandler::onMouseScrolling);
         NeoForge.EVENT_BUS.addListener(AccDisplayGuiProjection::onMouseScrolling);
         NeoForge.EVENT_BUS.addListener(AccDisplayGuiProjection::onClientTick);
+        NeoForge.EVENT_BUS.addListener(AccHologramWidgetClient::onInteraction);
+        NeoForge.EVENT_BUS.addListener(AccHologramWidgetClient::onClientTick);
+        NeoForge.EVENT_BUS.addListener(ShippingRouteSplineClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletGuiProjection::onClientTick);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletGuiProjection::onRenderFrame);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletLandingZoneClient::onRenderWorld);
@@ -227,4 +272,6 @@ public final class CTClientBootstrap {
             CT_LOGGER.error("[CT][Ponder] Failed to ensure ponder registration state", throwable);
         }
     }
+
+
 }

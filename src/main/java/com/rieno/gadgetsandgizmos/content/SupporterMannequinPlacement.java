@@ -300,4 +300,6 @@ public final class SupporterMannequinPlacement {
             stack.shrink(1);
         }
     }
+
+
 }

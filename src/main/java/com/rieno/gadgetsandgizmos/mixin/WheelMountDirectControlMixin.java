@@ -32,11 +32,20 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.Locale;
+import com.rieno.gadgetsandgizmos.compat.offroad.WheelMountTerrainRaycastCompatibility;
+import com.rieno.gadgetsandgizmos.lib.scm.ScmControlAxes;
+import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyTopologyCache;
+import dev.ryanhcode.sable.mixinterface.clip_overwrite.ClipContextExtension;
+import dev.ryanhcode.sable.sublevel.SubLevel;
 
 // Route Wheel Mount Direct Control through the addon's direct-control API
 @Mixin(targets = "dev.ryanhcode.offroad.content.blocks.wheel_mount.WheelMountBlockEntity")
 public abstract class WheelMountDirectControlMixin extends SmartBlockEntity
-        implements IDirectControlReceiver, WheelMountControlBridge {
+        implements IDirectControlReceiver, WheelMountControlBridge, WheelMountTerrainRaycastCompatibility {    // Cached connected assembly used to keep suspension terrain casts off the mounting vehicle
+    @Unique
+    private final SableAssemblyTopologyCache ct$wheelMountTerrainTopology =
+            new SableAssemblyTopologyCache();
+
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -149,8 +158,8 @@ public abstract class WheelMountDirectControlMixin extends SmartBlockEntity
             return;
         }
 
-        int left = Math.max(lastServerSteeringSignalLeft, ct$toRedstone(ct$leftOverride));
-        int right = Math.max(lastServerSteeringSignalRight, ct$toRedstone(ct$rightOverride));
+        int left = Math.max(lastServerSteeringSignalLeft, ScmControlAxes.steeringSignal(ct$leftOverride, 15));
+        int right = Math.max(lastServerSteeringSignalRight, ScmControlAxes.steeringSignal(ct$rightOverride, 15));
         int blended = left - right;
 
         boolean changed = blended != lastServerSteeringSignal
@@ -275,5 +284,30 @@ public abstract class WheelMountDirectControlMixin extends SmartBlockEntity
                 new Vec3(ct$cumulativeImpulseX,
                         ct$cumulativeImpulseY,
                         ct$cumulativeImpulseZ));
+    }
+
+
+    // Keep the suspension from treating its connected bearing assembly as terrain
+    @Redirect(
+            method = "computeMaxExtensionToTerrain",
+            at = @At(
+                    value = "INVOKE",
+                    target = "Ldev/ryanhcode/sable/mixinterface/clip_overwrite/ClipContextExtension;sable$setIgnoredSubLevel(Ldev/ryanhcode/sable/sublevel/SubLevel;)V",
+                    remap = false
+            ),
+            require = 1,
+            remap = false
+    )
+    private void ct$ignoreConnectedAssemblyTerrain(
+            ClipContextExtension context, SubLevel wheelSubLevel
+    ) {
+        ct$configureWheelMountTerrainCast(context, wheelSubLevel);
+    }
+
+
+    // Get the terrain topology cache
+    @Override
+    public SableAssemblyTopologyCache ct$getWheelMountTerrainTopology() {
+        return ct$wheelMountTerrainTopology;
     }
 }

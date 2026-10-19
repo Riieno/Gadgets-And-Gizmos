@@ -45,6 +45,8 @@ repositories {
 }
 
 def libsDir = file('libs')
+def flightControlJar = providers.gradleProperty('flight_control_jar')
+        .orElse('G:/Minecraft/Instances/Addon Dev/mods/create_flight_control-neoforge-0.7.7.jar')
 def requiredSableJar = file("libs/sable-neoforge-${minecraft_version}-${sable_version}.jar")
 def propulsionNightlyJar = file('libs/createpropulsion-nightly-1.1.5-c89a53e7.jar')
 def propulsionReleaseJar = file('libs/createpropulsion-1.1.5.jar')
@@ -64,22 +66,32 @@ def selectedLocalJars = propulsionNightlyJar.isFile()
         ? localJars.minus(files(propulsionReleaseJar)) : localJars
 def selectedLocalRuntimeJars = propulsionNightlyJar.isFile()
         ? localRuntimeJars.minus(files(propulsionReleaseJar)) : localRuntimeJars
+def containerGameTests = providers.gradleProperty('containerGameTests').map { it.toBoolean() }.getOrElse(false)
+if(containerGameTests){
+    selectedLocalRuntimeJars = selectedLocalRuntimeJars.filter { jar ->
+        jar.name.startsWith('create-') || jar.name.startsWith('ponder-')
+                || jar.name.startsWith('createpropulsion-')
+                || jar.name.startsWith('dev.simulated_team.simulated.simulated-')
+                || jar.name.startsWith('dev.eriksonn.aeronautics.aeronautics-')
+                || jar.name.startsWith('sable-companion-')
+    }
+}
 def libraryProjectDir = file(library_project_dir)
 def librarySourceDir = new File(libraryProjectDir, 'src')
 def librarySourceAvailable = librarySourceDir.isDirectory()
 def siblingLibraryJarFile = new File(libraryProjectDir,
-        "build/libs/${library_archive_name}-${artifact_version}.jar")
+        "build/libs/${library_archive_name}-${library_artifact_version}.jar")
 def fallbackLibraryJars = fileTree(libsDir) {
     include "${library_archive_name}-*.jar"
     exclude '*-sources.jar'
     exclude '*-javadoc.jar'
 }.files.sort { first, second -> first.name <=> second.name }
 def fallbackLibraryJar = fallbackLibraryJars.find {
-    it.name == "${library_archive_name}-${artifact_version}.jar"
+    it.name == "${library_archive_name}-${library_artifact_version}.jar"
 } ?: fallbackLibraryJars.find()
 def libraryJarFile = librarySourceAvailable
         ? siblingLibraryJarFile
-        : fallbackLibraryJar ?: new File(libsDir, "${library_archive_name}-${artifact_version}.jar")
+        : fallbackLibraryJar ?: new File(libsDir, "${library_archive_name}-${library_artifact_version}.jar")
 def addonReplaceProperties = [
     mod_group_id: mod_group_id,
     mod_id: mod_id,
@@ -90,6 +102,7 @@ def addonReplaceProperties = [
     mod_description: mod_description,
     library_mod_id: library_mod_id,
     library_mod_name: library_mod_name,
+    library_mod_version: library_mod_version,
     bundled_mod_id: bundled_mod_id,
     bundled_mod_name: bundled_mod_name,
     bundled_mod_description: bundled_mod_description,
@@ -108,6 +121,7 @@ def bundledReplaceProperties = [
     mod_description: mod_description,
     library_mod_id: library_mod_id,
     library_mod_name: library_mod_name,
+    library_mod_version: library_mod_version,
     bundled_mod_id: bundled_mod_id,
     bundled_mod_name: bundled_mod_name,
     bundled_mod_description: bundled_mod_description,
@@ -116,8 +130,15 @@ def bundledReplaceProperties = [
     flywheel_version: flywheel_version,
     sable_version: sable_version,
     addon_nested_jar_path: "META-INF/jarjar/${mod_id}-${mod_version}.jar",
-    library_nested_jar_path: "META-INF/jarjar/${library_mod_id}-${mod_version}.jar"
+    library_nested_jar_path: "META-INF/jarjar/${library_mod_id}-${library_mod_version}.jar"
 ]
+
+sourceSets {
+    containerGameTest {
+        compileClasspath += sourceSets.main.output + configurations.compileClasspath
+        runtimeClasspath += sourceSets.main.output + configurations.runtimeClasspath
+    }
+}
 
 neoForge {
     version = neoforge_version
@@ -130,10 +151,17 @@ neoForge {
     mods {
         "${mod_id}" {
             sourceSet(sourceSets.main)
+            if(containerGameTests) sourceSet(sourceSets.containerGameTest)
         }
     }
 
     runs {
+        containerGameTest {
+            type = 'gameTestServer'
+            sourceSet = sourceSets.containerGameTest
+            gameDirectory = file('.gradle/container-gametest')
+            systemProperty 'neoforge.enabledGameTestNamespaces', mod_id
+        }
         configureEach {
             systemProperty 'forge.logging.console.level', 'debug'
             systemProperty 'mixin.env.remapRefMap', 'true'
@@ -169,14 +197,14 @@ def buildLibrary = tasks.register('buildLibrary', Exec) {
     if (System.getProperty('os.name').toLowerCase().contains('windows')) {
         commandLine 'cmd', '/c', new File(libraryProjectDir, 'gradlew.bat').absolutePath,
                 'clean', 'build',
-                "-Pmod_version=${mod_version}",
-                "-Partifact_version=${artifact_version}",
+                "-Pmod_version=${library_mod_version}",
+                "-Partifact_version=${library_artifact_version}",
                 '--no-daemon', '--console=plain'
     } else {
         commandLine new File(libraryProjectDir, 'gradlew').absolutePath,
                 'clean', 'build',
-                "-Pmod_version=${mod_version}",
-                "-Partifact_version=${artifact_version}",
+                "-Pmod_version=${library_mod_version}",
+                "-Partifact_version=${library_artifact_version}",
                 '--no-daemon', '--console=plain'
     }
 
@@ -239,9 +267,16 @@ def validateMixinConfig = tasks.register('validateMixinConfig') {
 
 dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testImplementation 'org.mockito:mockito-core:5.14.2'
+    testRuntimeOnly fileTree(libsDir) { include 'veil-neoforge-*.jar' }
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
     bundledSqlite 'org.xerial:sqlite-jdbc:3.46.1.3'
     compileOnly selectedLocalJars
+    compileOnly fileTree(libsDir) { include 'aeroclaims-*.jar' }
+    compileOnly files(selectedLocalJars.files.findAll { it.name.startsWith('create-') }.collect { jar ->
+        zipTree(jar).matching { include 'META-INF/jarjar/Registrate-*.jar' }
+    })
+    compileOnly files(flightControlJar.get())
     compileOnly files(requiredSableJar)
     compileOnly files(libraryJarFile)
     compileOnly 'mezz.jei:jei-1.21.1-neoforge-api:19.27.0.340'
@@ -280,6 +315,17 @@ tasks.named('compileDocgenJava') {
     dependsOn tasks.named('classes')
 }
 
+tasks.register('generateGraphWebCatalog', JavaExec) {
+    group = 'documentation'
+    description = 'Exports resolved graph nodes and the library browser API for the website.'
+    dependsOn tasks.named('docgenClasses')
+    dependsOn tasks.named('prepareScheduleTestLibraries')
+    classpath = sourceSets.docgen.output + tasks.named('test').get().classpath
+    mainClass = 'com.rieno.gadgetsandgizmos.neoforge.GenerateGraphWebCatalog'
+    args providers.gradleProperty('web_catalog_output').getOrElse(
+            layout.projectDirectory.dir('src/main/resources/assets/createthrusters/web/graph-editor').asFile.absolutePath)
+}
+
 tasks.register('generateComputerCraftDocs', JavaExec) {
     group = 'documentation'
     description = 'Regenerates the checked-in CC:Tweaked Lua documentation catalogue.'
@@ -291,6 +337,7 @@ tasks.register('generateComputerCraftDocs', JavaExec) {
 }
 
 tasks.register('verifyComputerCraftDocs', JavaExec) {
+    mustRunAfter tasks.named('generateComputerCraftDocs')
     group = 'verification'
     description = 'Fails when CC:Tweaked documentation is missing or stale.'
     dependsOn tasks.named('docgenClasses')
@@ -339,7 +386,7 @@ tasks.register('bundledJar', Jar) {
     }
     from(libraryJarFile) {
         into 'META-INF/jarjar'
-        rename { "${library_mod_id}-${mod_version}.jar" }
+        rename { "${library_mod_id}-${library_mod_version}.jar" }
     }
 }
 tasks.named('build') {
@@ -357,3 +404,15 @@ processResources {
         expand addonReplaceProperties
     }
 }
+
+// Expose Create's nested libraries to the standalone shipping regressions
+ def scheduleTestLibraries = layout.buildDirectory.dir('schedule-test-libraries')
+ tasks.register('prepareScheduleTestLibraries', Copy) {
+     from zipTree(localJars.find { it.name.startsWith("create-${minecraft_version}-") })
+     include 'META-INF/jarjar/*.jar'
+     into scheduleTestLibraries
+ }
+ tasks.named('test') {
+     dependsOn tasks.named('prepareScheduleTestLibraries')
+     classpath += fileTree(scheduleTestLibraries) { include '**/*.jar' }
+ }

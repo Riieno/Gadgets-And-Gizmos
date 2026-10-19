@@ -15,6 +15,7 @@ import com.rieno.gadgetsandgizmos.lib.control.AnalogueControlChannel;
 import com.rieno.gadgetsandgizmos.lib.control.ControllerDirectTargetReference;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryKind;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode;
+import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryService;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmTarget;
 import com.simibubi.create.Create;
 import net.minecraft.core.component.DataComponents;
@@ -192,6 +193,11 @@ public final class ContraptionNetworkLinkerData {
         // Get the id
         public String id() {
             return id;
+        }
+
+        // Get the discovery kind
+        public String translationKey() {
+            return "item.createthrusters.contraption_network_linker.mode." + id;
         }
 
         // Get the discovery kind
@@ -1155,7 +1161,7 @@ public final class ContraptionNetworkLinkerData {
                 CompoundTag targetTag = targets.getCompound(idx);
                 ControllerDiscoveryNode node = ControllerDiscoveryNode.fromTag(targetTag);
                 boolean remove = node != null
-                        && (matchesBlock(node.blockPos(), node.subLevelId(), blockPos, subLevelId)
+                        && (!isFaceProxyId(node.nodeId()) && matchesBlock(node.blockPos(), node.subLevelId(), blockPos, subLevelId)
                         || removals.contains(baseNodeIdFromTargetId(node.nodeId())));
                 if (remove) {
                     targetsChanged = true;
@@ -1230,7 +1236,8 @@ public final class ContraptionNetworkLinkerData {
                                             BlockPos blockPos,
                                             @Nullable UUID subLevelId,
                                             Set<String> removedNodeIds) {
-        return reference != null && (matchesBlock(reference.blockPos(), reference.subLevelId(), blockPos, subLevelId)
+        return reference != null && (!isFaceProxyId(reference.targetId())
+                && matchesBlock(reference.blockPos(), reference.subLevelId(), blockPos, subLevelId)
                 || removedNodeIds.contains(baseNodeIdFromTargetId(reference.targetId())));
     }
 
@@ -1506,6 +1513,36 @@ public final class ContraptionNetworkLinkerData {
         return nodes;
     }
 
+    // Resolve renamed blocks and faces only from this linker's own bindings
+    public static @Nullable ControllerDiscoveryNode findNamedTarget(List<LinkedTarget> targets, String name){
+        List<ControllerDiscoveryNode> matches = findNamedTargets(targets, name);
+        return matches.isEmpty() ? null : matches.getFirst();
+    }
+
+    // Preserve all distinct bound blocks and face aliases sharing a name
+    public static List<ControllerDiscoveryNode> findNamedTargets(List<LinkedTarget> targets, String name){
+        if(name == null || name.isBlank()) return List.of();
+        List<ControllerDiscoveryNode> candidates = new ArrayList<>();
+        for(LinkedTarget target : sortTargets(targets)){
+            LinkedTarget readable = target.mode() == LinkMode.SCM
+                    ? new LinkedTarget(target.blockPos(), target.subLevelId(), target.blockId(), target.label(),
+                    LinkMode.OUTPUT, target.scope(), target.faces()) : target;
+            List<ControllerDiscoveryNode> nodes = toDiscoveryNodes(List.of(readable));
+            if(nodes.isEmpty()) continue;
+            ControllerDiscoveryNode base = nodes.getFirst();
+            candidates.add(base);
+            if(!target.scope().usesFaces()) continue;
+            for(LinkedFace face : sortFaces(target.faces())){
+                if(face.label().isBlank()) continue;
+                ControllerDirectTargetReference reference = directTargetForFace(base, face.face());
+                if(reference == null) continue;
+                candidates.add(new ControllerDiscoveryNode(reference.targetId(), base.kind(), base.groupId(),
+                        base.blockId(), face.label(), base.subLevelId(), base.blockPos()));
+            }
+        }
+        return ControllerDiscoveryService.allNamed(candidates, name);
+    }
+
     // Get the node id for target
     public static String nodeIdForTarget(LinkedTarget target) {
         List<LinkedFace> faces = target == null ? List.of() : sortFaces(target.faces());
@@ -1660,6 +1697,7 @@ public final class ContraptionNetworkLinkerData {
         if (directTarget == null) {
             return null;
         }
+        if (directTarget.face() != null) return directTarget.face();
         String targetId = directTarget.targetId();
         int optionIndex = targetId.indexOf(DIRECT_TARGET_OPTION_PREFIX);
         if (optionIndex < 0) {
@@ -1682,8 +1720,9 @@ public final class ContraptionNetworkLinkerData {
         }
         ControllerDirectTargetReference base = node.asDirectTargetReference();
         boolean rcsThruster = isRcsThrusterBlockId(node.blockId());
-        if (face == null || !isLinkerFaceTarget(base) && !rcsThruster) {
-            return base;
+        if (face == null) return base;
+        if (!isLinkerFaceTarget(base) && !rcsThruster) {
+            return base.withFace(face);
         }
         for (FaceOption option : faceOptionsForNode(node)) {
             if (option.face() != face || option.targetChannelId() == null
@@ -1741,6 +1780,11 @@ public final class ContraptionNetworkLinkerData {
         }
         String normalized = targetId.trim().toLowerCase(Locale.ROOT);
         return normalized.startsWith((NODE_PREFIX + ":" + LinkMode.OUTPUT.id() + "@").toLowerCase(Locale.ROOT));
+    }
+
+    // Face proxies belong to their supports, independently of the block occupying the proxy cell
+    static boolean isFaceProxyId(@Nullable String targetId){
+        return isLinkerTargetId(targetId) && parseScopeFromNodeId(targetId).usesFaces();
     }
 
     // Check if this is a linker target ID
@@ -3512,5 +3556,19 @@ public final class ContraptionNetworkLinkerData {
     // Normalize the contraption network linker data
     private static String normalize(String val) {
         return val == null ? "" : val.trim();
+    }
+
+    // Resolve the action selected by an exact SCM face binding
+    public static String scmTargetActionId(@Nullable ScmTarget target) {
+        if (target == null || !target.usesFaceControl()) {
+            return "";
+        }
+        AnalogueControlChannel explicit = AnalogueControlChannel.byId(
+                target.controlChannelId());
+        if (explicit != null) {
+            return explicit.id();
+        }
+        AnalogueControlChannel fallback = FACE_TO_OPTION.get(target.signalFace());
+        return fallback == null ? "" : fallback.id();
     }
 }

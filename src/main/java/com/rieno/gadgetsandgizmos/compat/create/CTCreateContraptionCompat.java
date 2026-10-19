@@ -112,10 +112,6 @@ public final class CTCreateContraptionCompat {
                 (blockEntity, state) -> resetDoubleButtonState(state));
         SchematicStateFilterRegistry.REGISTRY.register(CTBlocks.COPYCAT_DOUBLE_BUTTON.get(),
                 (blockEntity, state) -> resetDoubleButtonState(state));
-        SchematicStateFilterRegistry.REGISTRY.register(CTBlocks.ANALOGUE_CONTRAPTION_CONTROLLER.get(),
-                (blockEntity, state) -> state.setValue(AnalogueContraptionControllerBlock.EMBEDDED_SLAB, false));
-        SchematicStateFilterRegistry.REGISTRY.register(CTBlocks.ADVANCED_CONTRAPTION_CONTROLLER.get(),
-                (blockEntity, state) -> state.setValue(AnalogueContraptionControllerBlock.EMBEDDED_SLAB, false));
         SchematicStateFilterRegistry.REGISTRY.register(CTBlocks.SHIPPING_MANIFEST.get(),
                 (blockEntity, state) -> state
                         .setValue(ShippingManifestBlock.SHOW_BLANK, false)

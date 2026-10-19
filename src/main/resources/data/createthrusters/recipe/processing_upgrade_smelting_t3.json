@@ -2,15 +2,17 @@
   "type": "minecraft:crafting_shaped",
   "category": "misc",
   "pattern": [
-    " M ",
-    "PBP",
-    " X "
+    " B ",
+    "BPB",
+    " B "
   ],
   "key": {
-    "M": { "item": "minecraft:lava_bucket" },
-    "P": { "item": "createthrusters:processing_upgrade_smelting_t2" },
-    "B": { "item": "create:brass_sheet" },
-    "X": { "item": "create:precision_mechanism" }
+    "P": {
+      "item": "createthrusters:processing_upgrade_smelting_t2"
+    },
+    "B": {
+      "item": "createthrusters:blackstone_alloy"
+    }
   },
   "result": {
     "id": "createthrusters:processing_upgrade_smelting_t3",

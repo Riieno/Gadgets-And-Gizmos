@@ -963,6 +963,7 @@ final class ControllerSqliteStore {
         Set<String> linkerIds = new LinkedHashSet<>();
         Set<String> controllerIds = new LinkedHashSet<>();
         for (IndexedOwner owner : owners) {
+            if(ContraptionNetworkLinkerData.isFaceProxyId(owner.nodeId())) continue;
             if (!owner.nodeId().isBlank()) {
                 removedNodeIds.add(ContraptionNetworkLinkerData.baseNodeIdFromTargetId(owner.nodeId()));
             }
@@ -2527,4 +2528,113 @@ final class ControllerSqliteStore {
             String createdAt,
             String updatedAt) {
     }
+
+    record ScmPersistenceBinding(UUID scmId, String manifestId) {
+    }
+
+    static synchronized @Nullable ScmPersistenceBinding findScmPersistence(
+            @Nullable Level level,
+            @Nullable UUID subLevelId,
+            @Nullable UUID scmId
+    ) {
+        Connection connection = connection(level);
+        if (connection == null) {
+            return null;
+        }
+        try {
+            ensureScmPersistenceSchema(connection);
+            if (scmId != null) {
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        SELECT scm_uuid, manifest_id
+                        FROM scm_persistence
+                        WHERE scm_uuid = ?
+                        """)) {
+                    statement.setString(1, scmId.toString());
+                    try (ResultSet res = statement.executeQuery()) {
+                        if (res.next()) {
+                            UUID storedId = parseUuid(res.getString("scm_uuid"));
+                            String manifestId = res.getString("manifest_id");
+                            if (storedId != null && manifestId != null && !manifestId.isBlank()) {
+                                return new ScmPersistenceBinding(storedId, manifestId);
+                            }
+                        }
+                    }
+                }
+            }
+            if (subLevelId == null) {
+                return null;
+            }
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    SELECT scm_uuid, manifest_id
+                    FROM scm_persistence
+                    WHERE sublevel_id = ?
+                    ORDER BY updated_at DESC
+                    LIMIT 2
+                    """)) {
+                statement.setString(1, subLevelId.toString());
+                try (ResultSet res = statement.executeQuery()) {
+                    if (!res.next()) {
+                        return null;
+                    }
+                    UUID storedId = parseUuid(res.getString("scm_uuid"));
+                    String manifestId = res.getString("manifest_id");
+                    // More than one SCM on a hull is ambiguous; never restore
+                    // another module's graph merely because it was most recent.
+                    if (res.next() || storedId == null || manifestId == null || manifestId.isBlank()) {
+                        return null;
+                    }
+                    return new ScmPersistenceBinding(storedId, manifestId);
+                }
+            }
+        } catch (SQLException err) {
+            Create.LOGGER.warn("Failed to find SCM persistence in SQLite", err);
+            return null;
+        }
+    }
+
+    static synchronized boolean saveScmPersistence(
+            @Nullable Level level,
+            @Nullable UUID subLevelId,
+            @Nullable UUID scmId,
+            String manifestId
+    ) {
+        if (subLevelId == null || scmId == null || manifestId == null || manifestId.isBlank()) {
+            return false;
+        }
+        Connection connection = connection(level);
+        if (connection == null) {
+            return false;
+        }
+        try{
+            ensureScmPersistenceSchema(connection);
+        }catch(SQLException err){
+            Create.LOGGER.warn("Failed to initialize SCM persistence in SQLite", err);
+            return false;
+        }
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO scm_persistence(scm_uuid, sublevel_id, manifest_id, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(scm_uuid) DO UPDATE SET
+                    sublevel_id = excluded.sublevel_id,
+                    manifest_id = excluded.manifest_id,
+                    updated_at = excluded.updated_at
+                """)) {
+            statement.setString(1, scmId.toString());
+            statement.setString(2, subLevelId.toString());
+            statement.setString(3, manifestId);
+            statement.setString(4, Instant.now().toString());
+            return statement.executeUpdate() > 0;
+        } catch (SQLException err) {
+            Create.LOGGER.warn("Failed to save SCM persistence to SQLite", err);
+            return false;
+        }
+    }
+    // Create the SCM identity binding alongside the existing controller database
+    private static void ensureScmPersistenceSchema(Connection connection) throws SQLException{
+        try(java.sql.Statement statement = connection.createStatement()){
+            statement.executeUpdate("CREATE TABLE IF NOT EXISTS scm_persistence (scm_uuid TEXT PRIMARY KEY, sublevel_id TEXT NOT NULL, manifest_id TEXT NOT NULL, updated_at TEXT NOT NULL)");
+            statement.executeUpdate("CREATE INDEX IF NOT EXISTS scm_persistence_sublevel ON scm_persistence(sublevel_id, updated_at DESC)");
+        }
+    }
+
 }

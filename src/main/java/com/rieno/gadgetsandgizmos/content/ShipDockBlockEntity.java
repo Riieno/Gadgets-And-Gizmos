@@ -46,6 +46,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 
 // Hold the docking target, schedule identity and transfer state used by nearby ship pilots
 public class ShipDockBlockEntity extends SmartBlockEntity {
@@ -225,9 +226,10 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
                         isLandingZoneAirborne(zone),
                         pos -> SimulatedHelper.toGlobalWorldPosition(this, pos)))
                 .toList();
+        var rootLevel = SableLevelApi.serverLevel(level);
         return new ShipDockRegistry.Dock(
                 dockId,
-                level.dimension().location(),
+                (rootLevel == null ? level : rootLevel).dimension().location(),
                 subLevelId,
                 worldPosition,
                 resolvedPosition == null ? worldPosition.getCenter() : resolvedPosition,
@@ -589,7 +591,7 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
         normalizeConnectorSelections();
         storageChanged();
         if (level != null && level.getServer() != null) {
-            ShipDockRegistry.get(level.getServer()).update(this);
+            ShipDockRegistry.get(level.getServer()).update(this, true);
         }
         refreshLinkedConnectorBindings();
         return true;
@@ -607,7 +609,7 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
         storageChanged();
         refreshLinkedConnectorBindings();
         if (updateRegistry && level != null && level.getServer() != null) {
-            ShipDockRegistry.get(level.getServer()).update(this);
+            ShipDockRegistry.get(level.getServer()).update(this, true);
         }
         return true;
     }
@@ -768,7 +770,7 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
             // An item-applied connector list is an explicit edit, including an intentional
             // empty list. Normal load-time registry refreshes retain persisted links until their
             // linked sublevels finish restoring.
-            ShipDockRegistry.get(level.getServer()).update(this);
+            ShipDockRegistry.get(level.getServer()).update(this, true);
         }
     }
 
@@ -1117,5 +1119,14 @@ public class ShipDockBlockEntity extends SmartBlockEntity {
         private void setStored(int amount) {
             energy = Math.max(0, Math.min(capacity, amount));
         }
+    }
+
+
+    // Replace a copied placement identity without disturbing the original dock's bindings.
+    void replaceDuplicateDockId(UUID replacement) {
+        if (replacement == null || replacement.equals(dockId)) return;
+        dockId = replacement;
+        storageChanged();
+        refreshLinkedConnectorBindings();
     }
 }

@@ -27,6 +27,8 @@ import com.rieno.gadgetsandgizmos.lib.chat.ServerChatApi;
 import com.rieno.gadgetsandgizmos.lib.chat.ServerTitleApi;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphComparison;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphCounters;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphSaveState;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphBoundedLoop;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphDataDependencies;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphInteractionOutputs;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphApi;
@@ -37,6 +39,7 @@ import com.rieno.gadgetsandgizmos.lib.graph.GraphServiceKey;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphValueMirrors;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphEvaluationState;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphEvaluationCache;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphPreviewPlan;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ByteTag;
@@ -60,6 +63,11 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphTextInputs;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphLogic;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphPlayerScopePlan;
+import com.rieno.gadgetsandgizmos.lib.graph.PlayerScopedMap;
+import net.minecraft.resources.ResourceLocation;
 
 // Run the live ACC graph and keep delayed work, SCM commands and output state bounded per tick
 public final class GraphRuntime {
@@ -100,9 +108,24 @@ public final class GraphRuntime {
     private final GraphEventScheduler<RuntimeEvent> eventScheduler =
             new GraphEventScheduler<>(MAX_EVENTS_PER_TICK, MAX_SCHEDULED_EVENTS);
     // Tracked graph state
-    private final GraphEvaluationState<AdvancedGraphDocument.Value> state = new GraphEvaluationState<>(new LinkedHashMap<>());
+        // Tracked graph state
+    private GraphPlayerScopePlan playerScopes = new GraphPlayerScopePlan(Set.of(), Set.of());
+
+    private final PlayerScopedMap<AdvancedGraphDocument.Value> playerState = new PlayerScopedMap<>(
+            () -> this.currentEventPlayerId, key -> playerScopes.containsStateKey(key));
+private final GraphEvaluationState<AdvancedGraphDocument.Value> state = new GraphEvaluationState<>(playerState);
     // Tracked binding states
-    private final Map<String, Boolean> bindingStates = new LinkedHashMap<>();
+    
+    private final Map<String, UUID> bindingPlayers = new LinkedHashMap<>();
+
+    private final Map<String, UUID> changedBindingPlayers = new LinkedHashMap<>();
+
+    private final Map<String, Long> bindingChangeTicks = new LinkedHashMap<>();
+
+    private final Map<String, Set<String>> bindingSources = new LinkedHashMap<>();
+
+    private final Map<String, com.rieno.gadgetsandgizmos.lib.interaction.InteractionOrigin> pendingOutputOrigins = new LinkedHashMap<>();
+private final Map<String, Boolean> bindingStates = new LinkedHashMap<>();
     // Submitted UI outputs available to ordinary graph evaluation
     private final GraphInteractionOutputs<AdvancedGraphDocument.Value> interactionOutputs = new GraphInteractionOutputs<>();
     // Tracked live inputs
@@ -126,7 +149,9 @@ public final class GraphRuntime {
     // Current event player id
     private @Nullable UUID currentEventPlayerId;
     // Current game time
-    private long currentGameTime;
+    
+    private boolean samplingPlayerHud;
+private long currentGameTime;
     // Last game time
     private long lastGameTime = Long.MIN_VALUE;
     // Current delta time in seconds
@@ -159,6 +184,7 @@ public final class GraphRuntime {
     private AdvancedGraphDocument previewSourceGraph;
     private int previewSourceFingerprint;
     private int previewPlanFingerprint;
+    private long activePreviewRevision = Long.MIN_VALUE;
     // Current function preview source
     private AdvancedGraphDocument functionPreviewSource;
     // Current function preview id
@@ -299,12 +325,7 @@ public final class GraphRuntime {
 
     // Queue the named controller event
     public void enqueueNamedControllerEvent(String name, AdvancedGraphDocument.Value data) {
-        if (shutdownPrepared || name == null || name.isBlank()
-                || eventScheduler.immediateSize() >= MAX_EVENTS_PER_TICK) {
-            return;
-        }
-        eventScheduler.enqueue(new RuntimeEvent("named:" + name.trim(),
-                data == null ? AdvancedGraphDocument.Value.number(0) : data, null));
+        enqueueNamedControllerEvent(name, data, currentEventPlayerId);
     }
 
     // Queue the HUD interaction
@@ -332,6 +353,15 @@ public final class GraphRuntime {
                 new RuntimeEvent(eventId, AdvancedGraphDocument.Value.bool(false), currentEventPlayerId));
     }
 
+    // Keep a click visible to data evaluation for at least one server tick before releasing it
+    public boolean enqueueHudButtonRelease(String nodeId, String interactionId, long serverGameTime){
+        if(shutdownPrepared || nodeId == null || nodeId.isBlank()
+                || interactionId == null || interactionId.isBlank()) return false;
+        return eventScheduler.schedule(serverGameTime + 1L, new RuntimeEvent(
+                "hud:" + nodeId + ":" + interactionId,
+                AdvancedGraphDocument.Value.bool(false), currentEventPlayerId));
+    }
+
     // Queue an authoritative HUD toggle operation
     public boolean enqueueHudToggleInteraction(String nodeId, String interactionId) {
         if (shutdownPrepared || nodeId == null || nodeId.isBlank()
@@ -345,15 +375,8 @@ public final class GraphRuntime {
 
     // Check if the set binding is active
     public boolean setBindingActive(String bindingId, boolean active) {
-        if (shutdownPrepared || bindingId == null || bindingId.isBlank()) {
-            return false;
-        }
-        Boolean prev = bindingStates.put(bindingId, active);
-        if (prev != null && prev == active) {
-            return false;
-        }
-        enqueue("input:" + bindingId + ":" + (active ? "active" : "inactive"));
-        return true;
+        return setBindingActive(bindingId, active, currentEventPlayerId == null
+                ? bindingInteractionPlayer(bindingId, !active) : currentEventPlayerId);
     }
 
     // Check if this has pending work
@@ -437,15 +460,19 @@ public final class GraphRuntime {
         }
         pollShipControlCommands(program);
         Frame samplingFrame = null;
-        if (sampleUnconnectedPassiveOutputs) {
+        if(program.cameraNodes.length > 0 && !simulationOnly){
             samplingFrame = new Frame(program);
+            updateCameraConfigurations(program, samplingFrame);
+        }
+        if (sampleUnconnectedPassiveOutputs) {
+            if(samplingFrame == null) samplingFrame = new Frame(program);
             updatePassiveOutputs(program, true, samplingFrame);
         }
         if (program.profilerNodes().length > 0) {
             if (samplingFrame == null) samplingFrame = new Frame(program);
             updateProfilerOutputs(program, samplingFrame);
         }
-        if (sampleUnconnectedPassiveOutputs && program.needsHudInputSampling()) {
+        if (program.needsHudInputSampling()) {
             if (samplingFrame == null) samplingFrame = new Frame(program);
             updateHudInputs(program, samplingFrame);
         }
@@ -453,10 +480,59 @@ public final class GraphRuntime {
 
     // Compile the graph
     public void compile(AdvancedGraphDocument graph) {
+        activePreviewRevision = Long.MIN_VALUE;
         if (lifecycleManagedGraph) {
             compiledGraph = null;
         }
         programFor(graph);
+    }
+
+    // Retain variables and opted-in counters while resetting execution for an edited graph
+    public void clearForGraphSave(AdvancedGraphDocument graph){
+        CompiledProgram next = CompiledProgram.compile(graph, AdvancedGraphFunctions.expandForRuntime(graph));
+        UUID prevPlayer = currentEventPlayerId;
+        Map<String, AdvancedGraphDocument.Value> prevVariables = previewVariables;
+        Map<String, AdvancedGraphDocument.Value> shared;
+        Map<UUID, Map<String, AdvancedGraphDocument.Value>> players = new LinkedHashMap<>();
+        try{
+            previewVariables = graph.variables();
+            currentEventPlayerId = null;
+            shared = retainedSaveState(next, playerState.sharedSnapshot());
+            for(var entry : playerState.playerSnapshot().entrySet()){
+                currentEventPlayerId = entry.getKey();
+                Map<String, AdvancedGraphDocument.Value> values = new LinkedHashMap<>(playerState.sharedSnapshot());
+                values.putAll(entry.getValue());
+                Map<String, AdvancedGraphDocument.Value> retained = retainedSaveState(next, values);
+                retained.keySet().retainAll(entry.getValue().keySet());
+                if(!retained.isEmpty()) players.put(entry.getKey(), retained);
+            }
+        }finally{
+            currentEventPlayerId = prevPlayer;
+            previewVariables = prevVariables;
+        }
+        clear();
+        currentEventPlayerId = null;
+        playerState.putAll(shared);
+        players.forEach(playerState::restorePlayer);
+        currentEventPlayerId = prevPlayer;
+    }
+
+    // Evaluate replacement inputs without changing the running graph's state or live ports
+    private Map<String, AdvancedGraphDocument.Value> retainedSaveState(
+            CompiledProgram next, Map<String, AdvancedGraphDocument.Value> values){
+        return state.evaluate(new LinkedHashMap<>(values), () -> {
+            Set<String> keys = new HashSet<>();
+            next.graph().variables().keySet().forEach(variable -> keys.add(variableStateKey(variable)));
+            Frame frame = new Frame(next, false);
+            int[] operations = frame.resetOperations();
+            for(NodeInstruction node : next.nodes().values()){
+                if("count".equals(node.type()) && frame.value(node, "remember_count", operations).asBoolean()){
+                    keys.add(node.id() + ":value");
+                }
+            }
+            return GraphSaveState.retain(values, keys::contains,
+                    val -> new AdvancedGraphDocument.Value(val.type(), val.payload(), val.entryOrder()));
+        });
     }
 
     // Clear the graph
@@ -466,6 +542,10 @@ public final class GraphRuntime {
         state.clear();
         interactionOutputs.clear();
         bindingStates.clear();
+        bindingPlayers.clear();
+        changedBindingPlayers.clear();
+        bindingChangeTicks.clear();
+        bindingSources.clear();
         if (!liveInputs.isEmpty() || !liveOutputs.isEmpty() || !executionPulses.isEmpty()) {
             liveValueRevision++;
         }
@@ -516,8 +596,11 @@ public final class GraphRuntime {
     public CompoundTag createShutdownSnapshot() {
         CompoundTag snapshot = new CompoundTag();
         CompoundTag runtimeState = new CompoundTag();
-        state.forEach((key, val) -> runtimeState.put(key, val.toTag()));
+        playerState.sharedSnapshot().forEach((key, val) -> runtimeState.put(key, val.toTag()));
         snapshot.put("State", runtimeState);
+        CompoundTag playerState = new CompoundTag();
+        this.playerState.playerSnapshot().forEach((id, values) -> playerState.put(id.toString(), valueMapTag(values)));
+        snapshot.put("PlayerState", playerState);
         CompoundTag bindings = new CompoundTag();
         bindingStates.forEach(bindings::putBoolean);
         snapshot.put("Bindings", bindings);
@@ -576,6 +659,15 @@ public final class GraphRuntime {
                         runtimeState.getCompound(key)));
             }
         }
+        CompoundTag playerState = snapshot.getCompound("PlayerState");
+        for(String id : playerState.getAllKeys()){
+            try{
+                Map<String, AdvancedGraphDocument.Value> values = new LinkedHashMap<>();
+                CompoundTag tags = playerState.getCompound(id);
+                for(String key : tags.getAllKeys()) values.put(key, AdvancedGraphDocument.Value.fromTag(tags.getCompound(key)));
+                this.playerState.restorePlayer(UUID.fromString(id), values);
+            }catch(IllegalArgumentException ignored){}
+        }
         bindingStates.clear();
         CompoundTag bindings = snapshot.getCompound("Bindings");
         for (String key : bindings.getAllKeys()) {
@@ -606,8 +698,7 @@ public final class GraphRuntime {
         for (int idx = 0; idx < queuedEvents.size(); idx++) {
             CompoundTag entry = queuedEvents.getCompound(idx);
             eventScheduler.enqueue(new RuntimeEvent(entry.getString("Id"),
-                    AdvancedGraphDocument.Value.fromTag(entry.getCompound("Data")),
-                    entry.hasUUID("Player") ? entry.getUUID("Player") : null));
+                    AdvancedGraphDocument.Value.fromTag(entry.getCompound("Data")), entry.hasUUID("Player") ? entry.getUUID("Player") : null));
         }
         ListTag scheduledEvents = snapshot.getList("Scheduled", Tag.TAG_COMPOUND);
         for (int idx = 0; idx < scheduledEvents.size(); idx++) {
@@ -750,6 +841,19 @@ public final class GraphRuntime {
 
     // Begin the preview sample
     public void beginPreviewSample(AdvancedGraphDocument graph) {
+        if(lifecycleManagedGraph && graph != null && graph == compiledGraph
+                && compiledRevision == graph.revision()
+                && compiledNodeCount == graph.nodes().size() && compiledEdgeCount == graph.edges().size()){
+            if(previewPlan == null || previewSourceGraph != graph || activePreviewRevision != compiledRevision){
+                beginPreviewSample(graph, graph, Map.of(), Map.of());
+                activePreviewRevision = compiledRevision;
+            }else{
+                previewVariables = Map.of();
+                previewOutputs = Map.of();
+                resetPreviewSample(graph);
+            }
+            return;
+        }
         if(compiledGraph != null && graph != null){
             beginPreviewSample(graph, compiledGraph, Map.of(), Map.of());
             return;
@@ -765,6 +869,7 @@ public final class GraphRuntime {
     public void beginPreviewSample(AdvancedGraphDocument graph, AdvancedGraphDocument source,
                                    Map<String, AdvancedGraphDocument.Value> variables,
                                    Map<String, AdvancedGraphDocument.Value> outputs){
+        activePreviewRevision = Long.MIN_VALUE;
         int sourceFingerprint = source.programFingerprint();
         int fingerprint = graph.programFingerprint();
         if(previewPlan == null || previewSourceGraph != source
@@ -794,6 +899,10 @@ public final class GraphRuntime {
 
     // Get the live input
     public AdvancedGraphDocument.Value liveInput(String nodeId, String port) {
+        if(currentEventPlayerId != null && playerScopes.nodes().contains(nodeId)){
+            AdvancedGraphDocument.Value val = playerHudValues(currentEventPlayerId).inputs().get(nodeId + ":" + port);
+            if(val != null) return val;
+        }
         return liveInputs.get(nodeId + ":" + port);
     }
 
@@ -841,14 +950,16 @@ public final class GraphRuntime {
 
     // Export complete variables in the observer's scope for editor evaluation
     public Map<String, AdvancedGraphDocument.Value> previewVariables(UUID playerId){
-
-        Map<String, AdvancedGraphDocument.Value> values = new LinkedHashMap<>();
-        for(String key : compiledProgram.graph().variables().keySet()){
-            AdvancedGraphDocument.Value val = variableValue(compiledProgram, key);
-            values.put(key, new AdvancedGraphDocument.Value(val.type(), val.payload()));
-        }
-        return Map.copyOf(values);
-
+        UUID prev = currentEventPlayerId;
+        currentEventPlayerId = playerId;
+        try{
+            Map<String, AdvancedGraphDocument.Value> values = new LinkedHashMap<>();
+            for(String key : compiledProgram.graph().variables().keySet()){
+                AdvancedGraphDocument.Value val = variableValue(compiledProgram, key);
+                values.put(key, new AdvancedGraphDocument.Value(val.type(), val.payload(), val.entryOrder()));
+            }
+            return Map.copyOf(values);
+        }finally{ currentEventPlayerId = prev; }
     }
 
     // Get the execution pulses
@@ -863,9 +974,15 @@ public final class GraphRuntime {
     }
 
     // Get the split list outputs
+    public static Map<String, String> splitListOutputTypesFor(AdvancedGraphDocument.Value val){
+        Map<String, String> types = new LinkedHashMap<>();
+        splitListEntries(val).forEach((key, entry) -> types.put(key, entry.type()));
+        return com.rieno.gadgetsandgizmos.lib.graph.GraphPortOrder.copy(types);
+    }
+
     public static CompoundTag splitListOutputsFor(AdvancedGraphDocument.Value val) {
         CompoundTag outputs = new CompoundTag();
-        splitListEntries(val).forEach((key, entry) -> outputs.putString(key, entry.type()));
+        splitListOutputTypesFor(val).forEach(outputs::putString);
         return outputs;
     }
 
@@ -917,9 +1034,29 @@ public final class GraphRuntime {
         compiledTopologyHash = topologyHash;
         invalidatePreviewFrame();
         AdvancedGraphDocument expanded = AdvancedGraphFunctions.expandForRuntime(graph);
+        Map<String, AdvancedGraphDocument.Node> scopeNodes = new HashMap<>();
+        expanded.nodes().forEach(node -> scopeNodes.put(node.id(), node));
+        playerScopes = GraphPlayerScopePlan.analyze(expanded,
+                node -> "hud_element".equals(node.type()) || "advanced_hud_element".equals(node.type()),
+                node -> "control_camera".equals(node.type()),
+                node -> "variable_get".equals(node.type()) ? node.data().getString("Variable") : "",
+                node -> "variable_set".equals(node.type()) ? node.data().getString("Variable") : "",
+                edge -> scopeNodes.containsKey(edge.fromNode()) && "exec".equals(
+                        AdvancedGraphCatalog.outputs(scopeNodes.get(edge.fromNode())).get(edge.fromPort())),
+                node -> switch(node.type()){
+                    case "event_key", "controller_channel_input", "event_channel_change", "gamepad_input",
+                         "mouse_input", "portable_tracker" -> true;
+                    default -> false;
+                });
         compiledProgram = CompiledProgram.compile(graph, expanded);
+        reconcileBindingSources();
+        playerState.prunePlayers();
+        bindingPlayers.keySet().retainAll(compiledProgram.polledBindings());
+        changedBindingPlayers.keySet().retainAll(compiledProgram.polledBindings());
+        bindingChangeTicks.keySet().retainAll(compiledProgram.polledBindings());
         graphReadyPending = compiledProgram.graphReadyNodes().length > 0;
         passiveSampleCursor = 0;
+        reconcileLivePorts(compiledProgram);
         dataDependencies = GraphDataDependencies.compile(expanded, edge -> {
             NodeInstruction source = compiledProgram.node(edge.fromNode());
             return source != null && !"exec".equals(source.outputTypes().get(edge.fromPort()));
@@ -964,6 +1101,12 @@ public final class GraphRuntime {
                 }
             }
         }
+    }
+
+    // Discard compiled editor values after an authored value changes
+    public void invalidatePreview(){
+        invalidatePreviewFrame();
+        functionPreviewFrame = null;
     }
 
     // Get the preview frame
@@ -1143,7 +1286,7 @@ public final class GraphRuntime {
                 }
             }
             if (pendingReset || hasPendingOutputs()) {
-                controller.setGraphBindingValues(pendingOutputsOrEmpty(), pendingReset);
+                commitBindingOutputs();
                 AdvancedGraphOutputDelta.invalidateSamples(controller);
             }
         } catch (RuntimeException err) {
@@ -1159,15 +1302,19 @@ public final class GraphRuntime {
     private void queueBindingOutput(String binding, double val) {
         if (pendingOutputs == null) {
             pendingOutputs = new LinkedHashMap<>();
+            pendingOutputOrigins.clear();
         }
         pendingOutputs.put(binding, val);
+        pendingOutputOrigins.put(binding, interactionOrigin());
     }
 
     // Queue the binding output if absent
     private void queueBindingOutputIfAbsent(String binding, double val) {
         if (pendingOutputs == null) {
             pendingOutputs = new LinkedHashMap<>();
+            pendingOutputOrigins.clear();
         }
+        if(!pendingOutputs.containsKey(binding)) pendingOutputOrigins.put(binding, interactionOrigin());
         pendingOutputs.putIfAbsent(binding, val);
     }
 
@@ -1200,6 +1347,9 @@ public final class GraphRuntime {
                 textParameters.put(port, frame.value(node, port, operations).asString());
             }
         });
+        if(AdvancedGraphCatalog.isShipSpeedNode(node.type())){
+            parameters.put("speed_fraction", 1.0D);
+        }
         return simulationOnly || controller != null
                 && controller.executeShipControlGraphCommand(
                         currentEventPlayerId, node.id(), node.type(), parameters, textParameters);
@@ -1225,6 +1375,7 @@ public final class GraphRuntime {
         String eventId = evt.id();
         currentEventId = eventId;
         currentEventPlayerId = evt.triggeringPlayerId();
+        if(currentEventPlayerId != null) liveValueRevision++;
         diagnostics.clear();
         pendingOutputs = null;
         pendingReset = false;
@@ -1234,7 +1385,12 @@ public final class GraphRuntime {
             // ------------------------------------TICK EVENTS------------------------------------
             if ("tick".equals(eventId)) {
                 for (NodeInstruction node : program.tickNodes()) {
+                    if("pulse_if".equals(node.type()) && !compare(frame.value(node, "a", operations),
+                            frame.value(node, "b", operations), AdvancedGraphCatalog.pulseIfOperator(node.source()))) continue;
+                    UUID prevPlayer = currentEventPlayerId;
+                    if("pulse_if".equals(node.type())) currentEventPlayerId = frame.inputPlayer(node, "a");
                     followExec(frame, node, "exec", operations);
+                    currentEventPlayerId = prevPlayer;
                 }
                 for (NodeInstruction node : program.periodicNodes()) {
                     if (controller == null || controller.getLevel() == null
@@ -1251,7 +1407,11 @@ public final class GraphRuntime {
                     String key = node.id() + ":observed";
                     AdvancedGraphDocument.Value prev = state.put(key, val);
                     if (prev != null && !sameValue(prev, val)) {
+                        UUID prevPlayer = currentEventPlayerId;
+                        currentEventPlayerId = frame.inputPlayer(node, "value");
+                        if(currentEventPlayerId != null) liveValueRevision++;
                         followExec(frame, node, "exec", operations);
+                        currentEventPlayerId = prevPlayer;
                     }
                 }
             }
@@ -1348,6 +1508,9 @@ public final class GraphRuntime {
                 if (node != null) {
                     followExec(frame, node, "exec", operations);
                 }
+            } else if(eventId.startsWith("loop:")){
+                NodeInstruction node = program.node(eventId.substring("loop:".length()));
+                if(node != null && "bounded_loop".equals(node.type())) executeNode(frame, node, "loop_continue", operations);
             } else if (eventId.startsWith("timer:")) {
                 NodeInstruction node = program.node(eventId.substring("timer:".length()));
                 if (node != null) {
@@ -1376,7 +1539,7 @@ public final class GraphRuntime {
 
             // ------------------------------------OUTPUT COMMIT------------------------------------
             if (!simulationOnly && (pendingReset || hasPendingOutputs())) {
-                controller.setGraphBindingValues(pendingOutputsOrEmpty(), pendingReset);
+                commitBindingOutputs();
                 AdvancedGraphOutputDelta.invalidateSamples(controller);
             }
         } catch (RuntimeException err) {
@@ -1514,19 +1677,62 @@ public final class GraphRuntime {
                 interactionValue = AdvancedGraphDocument.Value.bool(
                         !previous.asBoolean());
             }
+            String outputType = AdvancedGraphCatalog.outputs(node.source()).get(valuePort);
+            AdvancedGraphDocument.Value previousValue = state.getOrDefault(node.id() + ":hud:" + valuePort,
+                    "boolean".equals(outputType) ? AdvancedGraphDocument.Value.bool(false)
+                    : "string".equals(outputType) ? AdvancedGraphDocument.Value.string("")
+                    : AdvancedGraphDocument.Value.number(0));
+            boolean changed = com.rieno.gadgetsandgizmos.lib.graph.HudInteractionPorts.changed(
+                    previousValue.toTag(), interactionValue.toTag());
             if (!valuePort.isBlank()) {
                 state.put(node.id() + ":hud:" + valuePort, interactionValue);
                 interactionOutputs.submit(node.portKey(valuePort), interactionValue, currentEventPlayerId);
                 frame.seedOutput(node, valuePort, interactionValue);
             }
-            boolean buttonRelease = "button".equals(elm.getString("Type"))
-                    && "boolean".equals(interactionValue.type())
-                    && !interactionValue.asBoolean();
-            if (!buttonRelease && !execPort.isBlank()) {
+            if (changed && !execPort.isBlank()) {
                 followExec(frame, node, execPort, operations);
             }
             return;
         }
+    }
+
+    // Keep loop ownership until its final body and Complete callbacks have returned
+    private void executeBoundedLoop(Frame frame, NodeInstruction node, String incomingPort, int[] operations){
+        GraphBoundedLoop.State run = new GraphBoundedLoop.State(
+                GraphCounters.wholeCount(state.getOrDefault(node.id() + ":loop_total", AdvancedGraphDocument.Value.number(0)).asNumber()),
+                GraphCounters.wholeCount(state.getOrDefault(node.id() + ":loop_completed", AdvancedGraphDocument.Value.number(0)).asNumber()),
+                state.getOrDefault(node.id() + ":loop_running", AdvancedGraphDocument.Value.bool(false)).asBoolean());
+        if(!"loop_continue".equals(incomingPort)){
+            if(run.running()) return;
+            run = GraphBoundedLoop.start(run, frame.value(node, "iterations", operations).asNumber(), MAX_LOOP_ITERATIONS);
+            storeBoundedLoop(node, run);
+            state.put(node.id() + ":index", AdvancedGraphDocument.Value.number(0));
+            frame.seedCounterOutput(node, "index", AdvancedGraphDocument.Value.number(0));
+            followExec(frame, node, "exec", operations);
+        }
+        GraphBoundedLoop.Step step = GraphBoundedLoop.advance(run);
+        if(step.iteration()){
+            AdvancedGraphDocument.Value index = AdvancedGraphDocument.Value.number(step.index());
+            state.put(node.id() + ":index", index);
+            frame.seedCounterOutput(node, "index", index);
+            followExec(frame, node, "body", operations);
+        }
+        if(step.complete()) followExec(frame, node, "complete", operations);
+        storeBoundedLoop(node, step.state());
+        if(step.state().running()){
+            try{
+                schedule(node.id(), 1, "loop:");
+            }catch(RuntimeException err){
+                storeBoundedLoop(node, new GraphBoundedLoop.State(run.iterations(), step.state().completed(), false));
+                throw err;
+            }
+        }
+    }
+
+    private void storeBoundedLoop(NodeInstruction node, GraphBoundedLoop.State run){
+        state.put(node.id() + ":loop_total", AdvancedGraphDocument.Value.number(run.iterations()));
+        state.put(node.id() + ":loop_completed", AdvancedGraphDocument.Value.number(run.completed()));
+        state.put(node.id() + ":loop_running", AdvancedGraphDocument.Value.bool(run.running()));
     }
 
     // Follow the exec flow
@@ -1559,415 +1765,8 @@ public final class GraphRuntime {
 
     // Run the node
     private void executeNode(Frame frame, NodeInstruction node, String incomingPort, int[] operations) {
-        if (node == null) {
-            return;
-        }
-        requireOperation(operations);
-        if (!frame.beginExecution(node)) {
-            diagnostics.add(new AdvancedGraphValidator.Diagnostic(
-                    "error", "recursive_execution_path",
-                    "Recursive execution path stopped at " + node.type(), node.id()));
-            return;
-        }
-        try {
-            // ------------------------------------COMMANDS------------------------------------
-            if (AdvancedGraphCatalog.isShippingScheduleControlType(node.type())) {
-                boolean success = executeShippingScheduleCommand(node);
-                frame.seedOutput(node, "success", AdvancedGraphDocument.Value.bool(success));
-                followExec(frame, node, "exec", operations);
-                return;
-            }
-            if (AdvancedGraphCatalog.isShipControlType(node.type())
-                    && !AdvancedGraphCatalog.isShipControlPassiveType(node.type())) {
-                if ("ship_initialize".equals(node.type())
-                        && shipControlInitActive()
-                        && state.getOrDefault(shipCommandPendingKey(node),
-                        AdvancedGraphDocument.Value.bool(false)).asBoolean()) {
-                    return;
-                }
-                boolean retained = "ship_follow".equals(node.type());
-                boolean success = executeShipControlCommand(frame, node, operations);
-                boolean complete = success && !simulationOnly && controller != null
-                        && controller.isShipControlGraphCommandComplete(node.id(), node.type());
-                state.put(shipCommandPendingKey(node),
-                        AdvancedGraphDocument.Value.bool(success && !complete));
-                state.put(shipCommandSuccessKey(node),
-                        AdvancedGraphDocument.Value.bool(retained ? success : complete));
-                frame.seedOutput(node, "success",
-                        AdvancedGraphDocument.Value.bool(retained ? success : complete));
-                if (shipControlInitActive()) {
-                    return;
-                }
-                followExec(frame, node, "exec", operations);
-                if (complete && node.hasExecOutput("complete")) {
-                    followExec(frame, node, "complete", operations);
-                }
-                return;
-            }
-            if (AdvancedGraphFunctions.CALL_TYPE.equals(node.type())) {
-                if (AdvancedGraphFunctions.isReturnPort(incomingPort)) {
-                    followExec(frame, node, AdvancedGraphFunctions.externalPort(incomingPort), operations);
-                } else {
-                    followExec(frame, node, AdvancedGraphFunctions.entryPort(incomingPort), operations);
-                }
-                return;
-            }
-            // ------------------------------------NODE LOGIC------------------------------------
-            switch (node.type()) {
-            case "reroute" -> followExec(frame, node, "value", operations);
-            case "desmos_plot_point" -> {
-                String name = frame.value(node, "name", operations).asString();
-                double x = frame.value(node, "x", operations).asNumber();
-                double y = frame.value(node, "y", operations).asNumber();
-                AdvancedGraphDocument.Value colorValue = frame.value(node, "color", operations);
-                int color = "number".equals(colorValue.type())
-                        ? (int) colorValue.asNumber()
-                        : com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline.parseColor(colorValue.asString());
-                String xFunctionality = frame.value(node, "x_functionality", operations).asString();
-                com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline.XMode mode =
-                        com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline.XMode.fromId(xFunctionality);
-                if (!simulationOnly && controller != null) {
-                    controller.recordPlotPoint(name, x, y, color, mode);
-                }
-                followExec(frame, node, "exec", operations);
-            }
-            case "desmos_reset_plotter" -> {
-                if (!simulationOnly && controller != null) {
-                    controller.resetPlotPoints(frame.value(node, "name", operations).asString());
-                }
-                followExec(frame, node, "exec", operations);
-            }
-            case "createthrusters:announce" -> {
-                if(!simulationOnly && controller != null){
-                    ServerTitleApi.Action action = ServerTitleApi.Action.parse(frame.value(node, "action", operations).asString());
-                    ServerTitleApi.Text text = new ServerTitleApi.Text(frame.value(node, "message", operations).asString(),
-                            "json".equalsIgnoreCase(frame.value(node, "text_format", operations).asString()),
-                            (int)frame.value(node, "color", operations).asNumber(),
-                            !"message".equalsIgnoreCase(frame.value(node, "color_mode", operations).asString()),
-                            frame.value(node, "bold", operations).asString(), frame.value(node, "italic", operations).asString(),
-                            frame.value(node, "underlined", operations).asString(), frame.value(node, "strikethrough", operations).asString(),
-                            frame.value(node, "obfuscated", operations).asString());
-                    ServerTitleApi.Animation animation = ServerTitleApi.Animation.of(
-                            frame.value(node, "fade_in", operations).asNumber(), frame.value(node, "stay", operations).asNumber(),
-                            frame.value(node, "fade_out", operations).asNumber(),
-                            ServerTitleApi.TimeUnit.parse(frame.value(node, "time_unit", operations).asString()));
-                    controller.announceGraphTitle(ChatPlayers.identifiers(toLibraryValue(frame.value(node, "players", operations))),
-                            currentEventPlayerId, action, text, animation);
-                }
-                followExec(frame, node, "exec", operations);
-            }
-            case "send_chat_message" -> {
-                String message = frame.value(node, "message", operations).asString();
-                if(!simulationOnly && controller != null){
-                    controller.sendGraphChatMessage(message, AdvancedGraphCatalog.chatBroadcastNearby(node.source()),
-                            currentEventPlayerId,
-                            ChatPlayers.identifiers(toLibraryValue(frame.value(node, "players", operations))));
-                }
-                followExec(frame, node, "exec", operations);
-            }
-            case "send_named_controller_event" -> {
-                AdvancedGraphDocument.Value data = frame.value(node, "data", operations);
-                int distance = (int) Math.round(frame.value(node, "distance", operations).asNumber());
-                if (!simulationOnly && controller != null) {
-                    controller.publishNamedControllerEvent(node.triggerEvent().trim(), data, distance);
-                }
-                followExec(frame, node, "exec", operations);
-            }
-            case "controller_channel_output" -> {
-                double val = frame.value(node, "value", operations).asNumber();
-                double clampedValue = GraphSignalRange.toDirectControl(node.source(), val);
-                queueBindingOutput(node.bindingId(), clampedValue);
-                triggerConfiguredKeyOutput(node.bindingId(), clampedValue);
-                followExec(frame, node, "exec", operations);
-            }
-            case "direct_target_output" -> {
-                double val = frame.value(node, "value", operations).asNumber();
-                double clampedValue = GraphSignalRange.toDirectControl(node.source(), val);
-                if (!node.bindingId().isBlank()) {
-                    queueBindingOutput(node.bindingId(), clampedValue);
-                }
-                Map<String, AdvancedGraphDocument.Value> desiredValues = new LinkedHashMap<>();
-                for (String port : node.targetWritePorts()) {
-                    desiredValues.put(port, "direct_signal".equals(port)
-                            ? AdvancedGraphDocument.Value.number(clampedValue)
-                            : frame.value(node, port, operations));
-                }
-                desiredValues.put(AdvancedContraptionControllerBlockEntity.GRAPH_RAW_DIRECT_SIGNAL_PORT,
-                        AdvancedGraphDocument.Value.number(Double.isFinite(val) ? val : GraphSignalRange.outputStrength(node.source(), val)));
-                if (!simulationOnly) {
-                    Set<String> changedPorts = AdvancedGraphOutputDelta.changedPorts(
-                            controller, node.source(), desiredValues);
-                    if (!changedPorts.isEmpty()
-                            && controller.setGraphTargetData(node.source(), changedPorts, desiredValues::get)) {
-                        AdvancedGraphOutputDelta.recordApplied(
-                                controller, node.source(), changedPorts, desiredValues);
-                    }
-                }
-                followExec(frame, node, "exec", operations);
-            }
-            case "linker_face_output" -> {
-                double val = frame.value(node, "value", operations).asNumber();
-                double normalizedValue = GraphSignalRange.toNormalizedRedstone(node.source(), val);
-                if (!node.bindingId().isBlank()) {
-                    queueBindingOutput(node.bindingId(), normalizedValue);
-                }
-                Map<String, AdvancedGraphDocument.Value> desiredValues = new LinkedHashMap<>();
-                for (String port : node.targetWritePorts()) {
-                    desiredValues.put(port, "direct_signal".equals(port)
-                            ? AdvancedGraphDocument.Value.number(normalizedValue)
-                            : frame.value(node, port, operations));
-                }
-                desiredValues.put(AdvancedContraptionControllerBlockEntity.GRAPH_RAW_DIRECT_SIGNAL_PORT,
-                        AdvancedGraphDocument.Value.number(Double.isFinite(val) ? val : GraphSignalRange.outputStrength(node.source(), val)));
-                if (!simulationOnly) {
-                    Set<String> changedPorts = AdvancedGraphOutputDelta.changedPorts(
-                            controller, node.source(), desiredValues);
-                    if (!changedPorts.isEmpty()
-                            && controller.setGraphTargetData(node.source(), changedPorts, desiredValues::get)) {
-                        AdvancedGraphOutputDelta.recordApplied(
-                                controller, node.source(), changedPorts, desiredValues);
-                    }
-                }
-                followExec(frame, node, "exec", operations);
-            }
-            case "local_redstone_output", "wireless_frequency_output" -> {
-                double val = frame.value(node, "value", operations).asNumber();
-                queueBindingOutput(node.bindingId(), GraphSignalRange.toNormalizedRedstone(node.source(), val));
-                followExec(frame, node, "exec", operations);
-            }
-            case "set_block_data" -> {
-                Map<String, AdvancedGraphDocument.Value> desiredValues = new LinkedHashMap<>();
-                Set<String> changedPorts = new LinkedHashSet<>();
-                for (String port : node.targetWritePorts()) {
-                    AdvancedGraphDocument.Value desired = frame.value(node, port, operations);
-                    desiredValues.put(port, desired);
-                }
-                changedPorts.addAll(AdvancedGraphOutputDelta.changedPorts(
-                        controller, node.source(), desiredValues));
-                changedPorts.addAll(setDataForceWritePorts(node.source()));
-                changedPorts.addAll(CreateRotationSpeedControllerGraphCompat.portsRequiringWrite(
-                        node.source(), node.targetWritePorts()));
-                boolean success = simulationOnly || changedPorts.isEmpty()
-                        || controller.setGraphTargetData(node.source(), changedPorts, desiredValues::get);
-                if (!simulationOnly && success && !changedPorts.isEmpty()) {
-                    AdvancedGraphOutputDelta.recordApplied(
-                            controller, node.source(), changedPorts, desiredValues);
-                }
-                frame.seedOutput(node, "success", AdvancedGraphDocument.Value.bool(success));
-                followExec(frame, node, "exec", operations);
-            }
-            case "play_sound" -> {
-                if ("stop".equals(incomingPort)) {
-                    if (!simulationOnly) {
-                        controller.playGraphSound(node.id(), "", false,
-                                0.0D, 0.0D, 0.0D, 0.0D, 1.0D, false, true);
-                    }
-                    followExec(frame, node, "exec", operations);
-                    return;
-                }
-                String sound = frame.value(node, "sound", operations).asString();
-                boolean world = frame.value(node, "world", operations).asBoolean();
-                double x = frame.value(node, "x", operations).asNumber();
-                double y = frame.value(node, "y", operations).asNumber();
-                double z = frame.value(node, "z", operations).asNumber();
-                double volume = frame.value(node, "volume", operations).asNumber();
-                double pitch = frame.value(node, "pitch", operations).asNumber();
-                boolean loop = frame.value(node, "loop", operations).asBoolean();
-                if (!simulationOnly) {
-                    controller.playGraphSound(node.id(), sound, world, x, y, z, volume, pitch, loop, false);
-                }
-                followExec(frame, node, "exec", operations);
-            }
-            // ------------------------------------STATE / FLOW------------------------------------
-            case "variable_set" -> {
-                AdvancedGraphDocument.Value val = node.hasInput("value")
-                        ? frame.value(node, "value", operations)
-                        : frame.value(node, "default", operations);
-                AdvancedGraphDocument.Value prev = variableValue(frame.program(), node.variable());
-                boolean changed = !Objects.equals(prev, val);
-                if (simulationOnly) {
-                    if (changed) {
-                        state.put(variableStateKey(node.variable()), val);
-                    }
-                } else {
-                    if (changed) {
-                        frame.program().graph().variables().put(node.variable(), val);
-                    }
-                }
-                frame.seedOutput(node, "value", val);
-                putLiveOutput(node.id() + ":value", val);
-                if (changed) {
-                    if (simulationOnly) {
-                        enqueue("variable:" + node.variable());
-                    } else {
-                        controller.markGraphRuntimeChanged(node.variable());
-                    }
-                }
-                followExec(frame, node, "exec", operations);
-            }
-            case "acc_display_mode" -> {
-                String requestedMode = frame.value(node, "mode", operations).asString();
-                boolean success = simulationOnly || controller != null
-                        && controller.setGraphDisplayMode(node.source(), requestedMode);
-                String actualMode = simulationOnly || controller == null
-                        ? AccDisplayBlockEntity.normalizeDisplayMode(requestedMode)
-                        : controller.getGraphTargetData(node.source(), "display_mode").asString();
-                frame.seedOutput(node, "mode", AdvancedGraphDocument.Value.string(actualMode));
-                frame.seedOutput(node, "success", AdvancedGraphDocument.Value.bool(success));
-                followExec(frame, node, "exec", operations);
-            }
-            case "flip_flop" -> {
-                String key = node.id() + ":value";
-                AdvancedGraphDocument.Value val = AdvancedGraphDocument.Value.bool(
-                        !state.getOrDefault(key, AdvancedGraphDocument.Value.bool(false)).asBoolean());
-                state.put(key, val);
-                frame.seedOutput(node, "value", val);
-                followExec(frame, node, "exec", operations);
-            }
-            case "latch" -> {
-                AdvancedGraphDocument.Value val = frame.value(node, "value", operations);
-                state.put(node.id() + ":value", val);
-                frame.seedOutput(node, "value", val);
-                followExec(frame, node, "exec", operations);
-            }
-            case "gate" -> {
-                if (frame.value(node, "open", operations).asBoolean()) {
-                    followExec(frame, node, "exec", operations);
-                }
-            }
-            case "switch" -> {
-                if (!AdvancedGraphCatalog.switchDataMode(node.source())) {
-                    int selector = (int) Math.floor(frame.value(node, "selector", operations).asNumber());
-                    String output = node.hasExecOutput("case_" + selector) ? "case_" + selector : "default";
-                    followExec(frame, node, output, operations);
-                }
-            }
-            case "do_once" -> {
-                String key = node.id() + ":done";
-                boolean legacyResetPulse = "reset".equals(incomingPort);
-                boolean reset = legacyResetPulse || frame.value(node, "reset", operations).asBoolean();
-                if (reset) {
-                    state.put(key, AdvancedGraphDocument.Value.bool(false));
-                }
-                if (!legacyResetPulse
-                        && !state.getOrDefault(key, AdvancedGraphDocument.Value.bool(false)).asBoolean()) {
-                    state.put(key, AdvancedGraphDocument.Value.bool(true));
-                    followExec(frame, node, "exec", operations);
-                }
-            }
-            case "do_n" -> {
-                String key = node.id() + ":count";
-                boolean resetOnly = "reset".equals(incomingPort);
-                boolean reset = resetOnly || frame.value(node, "reset", operations).asBoolean();
-                int count = GraphCounters.wholeCount(state.getOrDefault(key,
-                        AdvancedGraphDocument.Value.number(0)).asNumber());
-                int limit = GraphCounters.wholeCount(frame.value(node, "count", operations).asNumber());
-                GraphCounters.LimitedPulse pulse = resetOnly
-                        ? new GraphCounters.LimitedPulse(0, false)
-                        : GraphCounters.limitedPulse(count, limit, reset);
-                AdvancedGraphDocument.Value val = AdvancedGraphDocument.Value.number(pulse.count());
-                state.put(key, val);
-                state.put(node.id() + ":index", val);
-                frame.seedCounterOutput(node, "index", val);
-                if(pulse.passed()) followExec(frame, node, "exec", operations);
-            }
-            case "count" -> {
-                String key = node.id() + ":value";
-                double previous = state.getOrDefault(key,
-                        persistentOutputOr(node, "value", AdvancedGraphDocument.Value.number(0))).asNumber();
-                double next = GraphCounters.step(previous, frame.value(node, "step", operations).asNumber(),
-                        AdvancedGraphCatalog.countDirection(node.source()), frame.value(node, "reset", operations).asBoolean());
-                AdvancedGraphDocument.Value val = AdvancedGraphDocument.Value.number(next);
-                state.put(key, val);
-                frame.seedCounterOutput(node, "value", val);
-                followExec(frame, node, "exec", operations);
-            }
-            // ------------------------------------TIMING------------------------------------
-            case "timer" -> {
-                eventScheduler.removeScheduledIf(evt -> evt.id().equals("timer:" + node.id()));
-                if ("stop".equals(incomingPort)) {
-                    state.put(node.id() + ":elapsed", AdvancedGraphDocument.Value.number(timerElapsed(node)));
-                    state.put(node.id() + ":running", AdvancedGraphDocument.Value.bool(false));
-                } else {
-                    int duration = Math.max(1, (int) frame.value(node, "duration", operations).asNumber());
-                    state.put(node.id() + ":running", AdvancedGraphDocument.Value.bool(true));
-                    state.put(node.id() + ":start", AdvancedGraphDocument.Value.number(gameTime()));
-                    state.put(node.id() + ":duration", AdvancedGraphDocument.Value.number(duration));
-                    schedule(node.id(), duration, "timer:");
-                }
-            }
-            case "parallel_execution", "sequenced_execution" -> {
-                for (String output : node.execOutputPorts()) {
-                    followExec(frame, node, output, operations);
-                }
-            }
-            case "exec_combine" -> followExec(frame, node, "exec", operations);
-            case "curve" -> executeCurvePulse(frame, node, operations);
-            case "lerp", "ramp", "smoothing" -> {
-                boolean activePulse = !currentEventId.endsWith(":inactive")
-                        && !currentEventId.endsWith(":released") && !currentEventId.startsWith("reset:");
-                if (activePulse) {
-                    state.put(node.id() + ":last_pulse", AdvancedGraphDocument.Value.number(gameTime()));
-                } else if (currentEventId.startsWith("reset:")) {
-                    state.put(node.id() + ":last_pulse", AdvancedGraphDocument.Value.number(Long.MIN_VALUE));
-                    if ("smoothing".equals(node.type())) {
-                        state.put(node.id() + ":smooth", AdvancedGraphDocument.Value.number(0));
-                    }
-                } else {
-                    scheduleReset(node);
-                }
-                followExec(frame, node, "exec", operations);
-                if (currentEventId.startsWith("reset:") && "ramp".equals(node.type())
-                        && Math.abs(state.getOrDefault(node.id() + ":ramp", AdvancedGraphDocument.Value.number(0)).asNumber()) > 0.0001) {
-                    schedule(node.id(), 1, "reset:");
-                }
-            }
-            case "branch" -> {
-                String selectedPort = frame.value(node, "condition", operations).asBoolean() ? "true" : "false";
-                node.inactiveBranchOutputBindings(selectedPort)
-                        .forEach(binding -> queueBindingOutputIfAbsent(binding, 0.0D));
-                followExec(frame, node, selectedPort, operations);
-            }
-            case "bounded_loop" -> {
-                int iterations = Mth.clamp((int) frame.value(node, "iterations", operations).asNumber(),
-                        0, MAX_LOOP_ITERATIONS);
-                for (int idx = 0; idx < iterations; idx++) {
-                    state.put(node.id() + ":index", AdvancedGraphDocument.Value.number(idx));
-                    followExec(frame, node, "body", operations);
-                }
-                followExec(frame, node, "complete", operations);
-            }
-            case "delay", "debounce" -> {
-                int ticks = Math.max(1, (int) frame.value(node, "ticks", operations).asNumber());
-                if (eventScheduler.scheduledSize() >= MAX_SCHEDULED_EVENTS) {
-                    throw new IllegalStateException("Graph exceeded the 1024 scheduled event limit");
-                }
-                if ("debounce".equals(node.type())) {
-                    eventScheduler.removeScheduledIf(evt -> evt.id().equals("delayed:" + node.id()));
-                }
-                eventScheduler.schedule(gameTime() + ticks,
-                        new RuntimeEvent("delayed:" + node.id(),
-                                AdvancedGraphDocument.Value.number(0), currentEventPlayerId));
-            }
-            case "reset_outputs" -> {
-                pendingReset = true;
-                if (pendingOutputs != null) {
-                    pendingOutputs.clear();
-                }
-                if (!simulationOnly && controller != null) {
-                    controller.resetGraphTargetOutputs();
-                    AdvancedGraphOutputDelta.invalidateSamples(controller);
-                }
-                followExec(frame, node, "exec", operations);
-            }
-                default -> {
-                    executeLibraryNode(frame, node, null, operations);
-                    followExec(frame, node, "exec", operations);
-                }
-            }
-        } finally {
-            frame.endExecution(node);
-        }
+        com.rieno.gadgetsandgizmos.lib.interaction.InteractionContext.run(interactionOrigin(),
+                () -> executeNodeWithOrigin(frame, node, incomingPort, operations));
     }
 
     // Check if the ship control init is active
@@ -1987,6 +1786,12 @@ public final class GraphRuntime {
     private AdvancedGraphDocument.Value outputFor(Frame frame, NodeInstruction node, String port, int[] operations) {
         if (node == null) {
             return AdvancedGraphDocument.Value.number(0);
+        }
+        if(node.data().getCompound(AdvancedGraphPortState.OUTPUT_DEFAULTS_TAG).contains(port, Tag.TAG_COMPOUND)){
+            AdvancedGraphDocument.Value value = AdvancedGraphPortState.outputDefault(
+                    node.source(), port, node.outputTypes().getOrDefault(port, "any"));
+            frame.seedOutput(node, port, value);
+            return value;
         }
         AdvancedGraphDocument.Value cached = frame.cachedOutput(node, port);
         if (cached != null) {
@@ -2057,13 +1862,13 @@ public final class GraphRuntime {
                 if (!"value".equals(port) && !"active".equals(port)) {
                     yield controller.getGraphTargetData(node.source(), port);
                 }
-                yield graphBindingValue(node.bindingId(), port, false);
+                yield graphTargetInputValue(node, port, false);
             }
             case "linker_face_input" -> {
                 if (!"value".equals(port) && !"active".equals(port)) {
                     yield controller.getGraphTargetData(node.source(), port);
                 }
-                yield graphBindingValue(node.bindingId(), port, true);
+                yield graphTargetInputValue(node, port, true);
             }
             case "local_redstone_input", "wireless_frequency_input" -> graphBindingValue(node.bindingId(), port, true);
             case "mouse_input" -> {
@@ -2091,7 +1896,7 @@ public final class GraphRuntime {
             case "watch_chat" -> {
                 AdvancedGraphDocument.Value fallback = state.getOrDefault(node.id() + ":value",
                         persistentOutputOr(node, "value", AdvancedGraphDocument.Value.list(new CompoundTag())));
-                yield interactionOutputs.valueOrDefault(node.portKey("value"), fallback);
+                yield currentEventPlayerId == null ? interactionOutputs.valueOrDefault(node.portKey("value"), fallback) : fallback;
             }
             case "event_named_controller" -> {
                 AdvancedGraphDocument.Value val = frame.cachedOutput(node, "data");
@@ -2117,8 +1922,16 @@ public final class GraphRuntime {
                         : "string".equals(type) ? AdvancedGraphDocument.Value.string("")
                         : AdvancedGraphDocument.Value.number(0);
                 AdvancedGraphDocument.Value val = state.getOrDefault(node.id() + ":hud:" + port, fallback);
-                yield interactionOutputs.valueOrDefault(node.portKey(port), val);
+                yield currentEventPlayerId == null
+                        ? interactionOutputs.valueOrDefault(node.portKey(port), val) : val;
             }
+            case "ship_tracker" -> controller == null
+                    ? defaultShipTrackingValue(port)
+                    : controller.getShipTrackingValue(node.id(),
+                            frame.value(node, "filter", operations).asString(),
+                            frame.value(node, "tracking_distance", operations).asNumber(), port);
+            case "camera" -> CameraGraphNodes.value(controller, node.source(), port,
+                    key -> frame.value(node, key, operations), simulationOnly);
             case "portable_tracker" -> controller == null
                     ? defaultPortableTrackingValue(port)
                     : controller.getGogglesTrackingValue(node.data().getString("GogglesPair"), port);
@@ -2149,12 +1962,21 @@ public final class GraphRuntime {
                         ? AdvancedGraphDocument.Value.bool(false)
                         : AdvancedGraphDocument.Value.string("");
             }
+            
             // ------------------------------------LOGIC / MATH------------------------------------
             case "not" -> AdvancedGraphDocument.Value.bool(!frame.value(node, "value", operations).asBoolean());
             case "and" -> AdvancedGraphDocument.Value.bool(frame.value(node, "a", operations).asBoolean()
                     && frame.value(node, "b", operations).asBoolean());
             case "or" -> AdvancedGraphDocument.Value.bool(frame.value(node, "a", operations).asBoolean()
                     || frame.value(node, "b", operations).asBoolean());
+            case "xor" -> AdvancedGraphDocument.Value.bool(GraphLogic.xor(
+                    frame.value(node, "a", operations).asBoolean(), frame.value(node, "b", operations).asBoolean()));
+            case "nor" -> AdvancedGraphDocument.Value.bool(GraphLogic.nor(
+                    frame.value(node, "a", operations).asBoolean(), frame.value(node, "b", operations).asBoolean()));
+            case "nand" -> AdvancedGraphDocument.Value.bool(GraphLogic.nand(
+                    frame.value(node, "a", operations).asBoolean(), frame.value(node, "b", operations).asBoolean()));
+            case "xnor" -> AdvancedGraphDocument.Value.bool(GraphLogic.xnor(
+                    frame.value(node, "a", operations).asBoolean(), frame.value(node, "b", operations).asBoolean()));
             case "compare" -> AdvancedGraphDocument.Value.bool(compare(
                     frame.value(node, "a", operations),
                     frame.value(node, "b", operations),
@@ -2292,14 +2114,16 @@ public final class GraphRuntime {
             case "map_create" -> {
                 if (AdvancedGraphCatalog.isDynamicConstructor(node.source())) {
                     CompoundTag values = new CompoundTag();
+                    List<String> order = new ArrayList<>();
                     for (Map.Entry<String, String> input : AdvancedGraphCatalog.inputs(node.source()).entrySet()) {
                         if ("exec".equals(input.getValue())) {
                             continue;
                         }
                         String key = AdvancedGraphCatalog.constructorInputLabel(node.source(), input.getKey());
                         values.put(key, frame.value(node, input.getKey(), operations).toTag());
+                        order.add(key);
                     }
-                    yield AdvancedGraphDocument.Value.map(values);
+                    yield AdvancedGraphDocument.Value.map(values, order);
                 }
                 CompoundTag values = new CompoundTag();
                 values.put(frame.value(node, "key", operations).asString(),
@@ -2313,8 +2137,8 @@ public final class GraphRuntime {
                     structuredValue(frame.value(node, "value", operations), port);
             // ------------------------------------TEXT------------------------------------
             case "string_concat" -> AdvancedGraphDocument.Value.string(
-                    valueText(frame.value(node, "a", operations))
-                            + valueText(frame.value(node, "b", operations)));
+                    node.textJoin.join(
+                            input -> valueText(frame.value(node, input, operations))));
             case "split_string" -> splitString(
                     frame.value(node, "string", operations).asString(),
                     frame.value(node, "delimiter", operations).asString());
@@ -2370,7 +2194,7 @@ public final class GraphRuntime {
             case "find_in_string" -> AdvancedGraphDocument.Value.number(findInString(
                     frame.value(node, "string", operations).asString(),
                     frame.value(node, "search", operations).asString()));
-            case "convert_type" -> convertValue(
+            case "convert_type" -> convertNodeValue(
                     frame.value(node, "value", operations),
                     node.data().getString("OutputType"));
             case "validate_number" -> {
@@ -2452,6 +2276,8 @@ public final class GraphRuntime {
                                 AdvancedGraphDocument.Value.number(0)).asNumber(),
                         val, minimum, maximum));
             }
+            case "sr_latch" -> state.getOrDefault(node.id() + ":state",
+                    persistentOutputOr(node, "state", AdvancedGraphDocument.Value.bool(false)));
             case "flip_flop", "latch" -> state.getOrDefault(node.id() + ":value",
                     persistentOutputOr(node, "value", AdvancedGraphDocument.Value.bool(false)));
             case "count" -> state.getOrDefault(node.id() + ":value",
@@ -2535,6 +2361,7 @@ public final class GraphRuntime {
             // Update the graph
             @Override public long tick() { return gameTime(); }
             @Override public boolean executionTriggered(){ return requestedPort == null; }
+            @Override public String nodeId(){ return node.id(); }
             // Get the state
             @Override public GraphValue state(String key) {
                 return toLibraryValue(state.get(statePrefix + key));
@@ -2545,6 +2372,11 @@ public final class GraphRuntime {
             }
             // Get the service
             @Override public <T> Optional<T> service(GraphServiceKey<T> key) {
+                if(controller != null && GraphHostServices.NODE_OUTPUTS.equals(key)){
+                    com.rieno.gadgetsandgizmos.lib.graph.GraphNodeOutputs outputs = id ->
+                            com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.outputs(controller, id);
+                    return Optional.of(key.type().cast(outputs));
+                }
                 if (simulationOnly || !frame.recordLiveValues || controller == null || !GraphHostServices.BLOCK_ENTITY.equals(key)) {
                     return Optional.empty();
                 }
@@ -2565,7 +2397,7 @@ public final class GraphRuntime {
             case "boolean" -> GraphValue.bool(val.asBoolean());
             case "string", "direction" -> GraphValue.string(val.asString());
             case "list" -> GraphValue.list(toLibraryList(val.payload()));
-            case "map" -> GraphValue.map(toLibraryMap(val.payload()));
+            case "map" -> GraphValue.map(toLibraryMap(val));
             case "target", "frequency" -> new GraphValue(val.type(), toLibraryRawMap(val.payload()));
             default -> new GraphValue(val.type(), val.payload().toString());
         };
@@ -2580,7 +2412,8 @@ public final class GraphRuntime {
             case "direction" -> AdvancedGraphDocument.Value.direction(val.asString());
             case "string" -> AdvancedGraphDocument.Value.string(val.asString());
             case "list" -> AdvancedGraphDocument.Value.list(fromLibraryList(val.value()));
-            case "map" -> AdvancedGraphDocument.Value.map(fromLibraryMap(val.value()));
+            case "map" -> AdvancedGraphDocument.Value.map(fromLibraryMap(val.value()),
+                    val.value() instanceof Map<?, ?> map ? map.keySet().stream().map(String::valueOf).toList() : List.of());
             case "target" -> AdvancedGraphDocument.Value.target(fromLibraryRawMap(val.value()));
             case "frequency" -> AdvancedGraphDocument.Value.frequency(fromLibraryRawMap(val.value()));
             default -> AdvancedGraphDocument.Value.string(val.asString());
@@ -2598,10 +2431,10 @@ public final class GraphRuntime {
     }
 
     // Convert the graph to library map
-    private static Map<String, Object> toLibraryMap(CompoundTag payload) {
+    private static Map<String, Object> toLibraryMap(AdvancedGraphDocument.Value val){
         Map<String, Object> res = new LinkedHashMap<>();
-        for (String key : payload.getAllKeys()) res.put(key, toLibraryEntry(payload.get(key)));
-        return Map.copyOf(res);
+        for(String key : val.entryOrder()) res.put(key, toLibraryEntry(val.payload().get(key)));
+        return com.rieno.gadgetsandgizmos.lib.graph.GraphPortOrder.copy(res);
     }
 
     // Convert the graph to library entry
@@ -2655,7 +2488,7 @@ public final class GraphRuntime {
         if (val instanceof GraphValue graphValue) return fromLibraryValue(graphValue);
         if (val instanceof Boolean bool) return AdvancedGraphDocument.Value.bool(bool);
         if (val instanceof Number num) return AdvancedGraphDocument.Value.number(num.doubleValue());
-        if (val instanceof Map<?, ?>) return AdvancedGraphDocument.Value.map(fromLibraryMap(val));
+        if (val instanceof Map<?, ?> map) return fromLibraryValue(GraphValue.map(map));
         if (val instanceof Iterable<?>) return AdvancedGraphDocument.Value.list(fromLibraryList(val));
         return AdvancedGraphDocument.Value.string(val == null ? "" : String.valueOf(val));
     }
@@ -2737,7 +2570,8 @@ public final class GraphRuntime {
                 compiledProgram.graph().variables(), variable, key -> program != compiledProgram,
                 () -> program.graph().variables().getOrDefault(variable, AdvancedGraphDocument.Value.number(0)));
         if(state.evaluating()) initial = previewVariables.getOrDefault(variable, initial);
-        return simulationOnly ? state.getOrDefault(variableStateKey(variable), initial) : initial;
+        return simulationOnly || currentEventPlayerId != null && playerScopes.variables().contains(variable)
+                ? state.getOrDefault(variableStateKey(variable), initial) : initial;
     }
 
     // Keep execution-owned outputs available when a preview follows their data wires
@@ -2752,6 +2586,7 @@ public final class GraphRuntime {
     private static boolean snapshotPreviewNode(NodeInstruction node){
         AdvancedGraphCatalog.Definition definition = AdvancedGraphCatalog.get(node.type());
         if(definition != null && definition.stateful()) return true;
+        if(definition != null && "flight_control".equals(definition.category())) return true;
         if(AdvancedGraphCatalog.isShipControlPassiveType(node.type())) return true;
         return node.type().startsWith("event_") && !"event_value_change".equals(node.type())
                 || node.type().endsWith("_input") || node.type().endsWith("_tracker")
@@ -2769,7 +2604,7 @@ public final class GraphRuntime {
 
     private static CompoundTag previewNodeData(AdvancedGraphDocument.Node node){
         CompoundTag data = node.data().copy();
-        for(String key : List.of("EditorCollapsed", "PersistentPortValues", "InputLabels", "OutputLabels",
+        for(String key : List.of(com.rieno.gadgetsandgizmos.lib.graph.GraphNumberDisplay.PRECISE_VALUES_TAG, "EditorCollapsed", "PersistentPortValues", "InputLabels", "OutputLabels",
                 "FunctionPortLabels", "FunctionInputLabels", "FunctionOutputLabels")) data.remove(key);
         return data;
     }
@@ -2794,8 +2629,38 @@ public final class GraphRuntime {
         return node.id() + ":named_controller_event:" + node.triggerEvent();
     }
 
+    // Sample the selected physical target before a draft has any runtime binding
+    private AdvancedGraphDocument.Value graphTargetInputValue(NodeInstruction node, String port, boolean redstone){
+        if(controller == null || !canSampleBinding(node.bindingId())){
+            return "active".equals(port) ? AdvancedGraphDocument.Value.bool(false) : AdvancedGraphDocument.Value.number(0);
+        }
+        AdvancedGraphDocument.Value val = controller.getGraphTargetData(node.source(),
+                redstone ? GraphSignalRange.REDSTONE_SIGNAL_PORT : "value");
+        if(val == null) val = AdvancedGraphDocument.Value.number(0);
+        return "active".equals(port) ? AdvancedGraphDocument.Value.bool(val.asNumber() > 1.0E-4D) : val;
+    }
+
+    // Keep physical and channel samples within the owning player's HUD
+    private boolean canSampleBinding(String bindingId){
+        if(samplingPlayerHud && controller != null){
+            Set<UUID> owners = new HashSet<>();
+            UUID activeOwner = bindingPlayers.get(bindingId);
+            if(activeOwner != null) owners.add(activeOwner);
+            else for(NodeInstruction node : compiledProgram.nodes().values()){
+                if(!bindingId.equals(node.bindingId())) continue;
+                UUID id = controller.graphInputPlayer(node.source(), false);
+                if(id != null) owners.add(id);
+            }
+            return owners.isEmpty() || owners.size() == 1 && owners.contains(currentEventPlayerId);
+        }
+        return true;
+    }
+
     // Get the graph binding value
     private AdvancedGraphDocument.Value graphBindingValue(String bindingId, String port, boolean redstone) {
+        if(!canSampleBinding(bindingId)){
+            return "active".equals(port) ? AdvancedGraphDocument.Value.bool(false) : AdvancedGraphDocument.Value.number(0);
+        }
         if ("active".equals(port)) {
             return AdvancedGraphDocument.Value.bool(isBindingActive(bindingId));
         }
@@ -3115,7 +2980,7 @@ public final class GraphRuntime {
         if (eventScheduler.scheduledSize() >= MAX_SCHEDULED_EVENTS) {
             throw new IllegalStateException("Graph exceeded the 1024 scheduled event limit");
         }
-        eventScheduler.removeScheduledIf(evt -> evt.id().equals(prefix + nodeId));
+        eventScheduler.removeScheduledIf(evt -> evt.id().equals(prefix + nodeId) && sameScheduledPlayer(evt, nodeId));
         eventScheduler.schedule(gameTime() + Math.max(1, ticks),
                 new RuntimeEvent(prefix + nodeId, AdvancedGraphDocument.Value.number(0), currentEventPlayerId));
     }
@@ -3132,6 +2997,7 @@ public final class GraphRuntime {
         return writablePorts.contains(port)
                 && !"exec".equals(port)
                 && !"target".equals(port)
+                && !"merge_like_ports".equals(port)
                 && !"face".equals(port)
                 && !"state_waterlogged".equals(port);
     }
@@ -3348,7 +3214,7 @@ public final class GraphRuntime {
         val = inferBodyOverride(val);
         if ("map".equals(val.type()) || "list".equals(val.type())) {
             CompoundTag payload = val.payload();
-            for (String key : payload.getAllKeys()) entries.put(key, dataValue(payload, key));
+            for (String key : val.entryOrder()) entries.put(key, dataValue(payload, key));
             return entries;
         }
         if ("string".equals(val.type())) {
@@ -3418,7 +3284,10 @@ public final class GraphRuntime {
     // Get the JSON value
     private static AdvancedGraphDocument.Value jsonValue(JsonElement elm) {
         if (elm == null || elm.isJsonNull()) return AdvancedGraphDocument.Value.string("");
-        if (elm.isJsonObject()) return AdvancedGraphDocument.Value.map(jsonPayload(jsonEntries(elm)));
+        if(elm.isJsonObject()){
+            Map<String, AdvancedGraphDocument.Value> entries = jsonEntries(elm);
+            return AdvancedGraphDocument.Value.map(jsonPayload(entries), List.copyOf(entries.keySet()));
+        }
         if (elm.isJsonArray()) return AdvancedGraphDocument.Value.list(jsonPayload(jsonEntries(elm)));
         if (elm.isJsonPrimitive()) {
             var primitive = elm.getAsJsonPrimitive();
@@ -3501,6 +3370,15 @@ public final class GraphRuntime {
         return AdvancedGraphDocument.Value.string(raw);
     }
 
+    // Named target lookup belongs to the node and its host, not implicit wire conversions
+    private AdvancedGraphDocument.Value convertNodeValue(AdvancedGraphDocument.Value val, String targetType){
+        if(controller != null && "target".equals(targetType) && val != null
+                && ("string".equals(val.type()) || "any".equals(val.type()) && val.payload().contains("Value", Tag.TAG_STRING))){
+            return controller.findNamedGraphTarget(val.asString());
+        }
+        return convertValue(val, targetType);
+    }
+
     // Convert a graph value to the requested port type
     static AdvancedGraphDocument.Value convertValue(
             AdvancedGraphDocument.Value val,
@@ -3525,7 +3403,8 @@ public final class GraphRuntime {
             case "boolean" -> AdvancedGraphDocument.Value.bool(booleanValue(val));
             case "direction" -> AdvancedGraphDocument.Value.direction(directionValue(val));
             case "frequency" -> AdvancedGraphDocument.Value.frequency(new CompoundTag());
-            case "target" -> AdvancedGraphDocument.Value.target(new CompoundTag());
+            case "target" -> AdvancedGraphDocument.Value.target(
+                    com.rieno.gadgetsandgizmos.lib.discovery.ControllerTargetMap.first(val.payload()));
             case "list", "map" -> structuredConversion(val, targetType);
             default -> AdvancedGraphDocument.Value.string("");
         };
@@ -3622,7 +3501,8 @@ public final class GraphRuntime {
         // Program
         private final CompiledProgram program;
         // Tracked outputs
-        private final Map<String, AdvancedGraphDocument.Value> outputs = new HashMap<>();
+        private final Map<String, AdvancedGraphDocument.Value> outputs =
+                new GraphEvaluationCache<>(() -> currentEventPlayerId);
         // Tracked evaluating outputs
         private final Set<String> evaluatingOutputs = new HashSet<>();
         // Executing nodes
@@ -3647,10 +3527,10 @@ public final class GraphRuntime {
                 this.previewState = null;
             }else if(simulationOnly && compiledGraph == null){
                 if(simulationPreviewState == null) simulationPreviewState = state.snapshot(
-                        val -> new AdvancedGraphDocument.Value(val.type(), val.payload()));
+                        val -> new AdvancedGraphDocument.Value(val.type(), val.payload(), val.entryOrder()));
                 this.previewState = simulationPreviewState;
             }else{
-                this.previewState = state.snapshot(val -> new AdvancedGraphDocument.Value(val.type(), val.payload()));
+                this.previewState = state.snapshot(val -> new AdvancedGraphDocument.Value(val.type(), val.payload(), val.entryOrder()));
             }
         }
 
@@ -3674,6 +3554,7 @@ public final class GraphRuntime {
 
         // Get the value
         private AdvancedGraphDocument.Value value(NodeInstruction node, String port, int[] operations) {
+            if(!"target".equals(port)) bindTarget(node, operations);
             String key = node.portKey(port);
             AdvancedGraphDocument.Value val = node.input(port).evaluate(this, operations);
             if (!node.hasInput(port)
@@ -3702,8 +3583,61 @@ public final class GraphRuntime {
                 }
             }
             val = inlineMapInput(this, node, port, val, operations);
+            if("strength".equals(port) && AdvancedGraphCatalog.isShipControlType(node.type())){
+                val = AdvancedGraphDocument.Value.number(com.rieno.gadgetsandgizmos.lib.scm.ScmControlInputs.strength(val.asNumber()));
+            }
             recordLiveInput(node, key, port, val);
             return val;
+        }
+
+        // Resolve wired targets before evaluating data ports or executing side effects
+        private void bindTarget(NodeInstruction node, int[] operations){
+            if(controller == null || node.resolvingTarget || !node.hasInput("target")
+                    || !"target".equals(node.inputTypes().get("target"))) return;
+            node.resolvingTarget = true;
+            try{
+                AdvancedGraphDocument.Value value = value(node, "target", operations);
+                if(Objects.equals(value, node.boundTargetValue) && !node.data().getBoolean("WiredTargetSchemaPending")) return;
+                node.boundTargetValue = value;
+                List<AdvancedGraphDocument.Edge> edges = node.targetEdges;
+                if(!AdvancedGraphTargets.apply(controller.getLevel(), node.source(), value, edges)) return;
+                node.inputTypes.clear();node.inputTypes.putAll(AdvancedGraphCatalog.inputs(node.source()));
+                node.outputTypes.clear();node.outputTypes.putAll(AdvancedGraphCatalog.outputs(node.source()));
+                node.inputPorts = node.inputTypes.keySet().toArray(String[]::new);
+                node.inputs.clear();node.defaults.clear();node.connectedPorts.clear();
+                List<AdvancedGraphDocument.Edge> incoming = edges.stream().filter(edge -> node.id().equals(edge.toNode())).toList();
+                CompiledProgram.compileInputs(node, program.nodes, incoming);
+                node.compileConnectedInputPorts();node.targetWritePorts.clear();
+                CompiledProgram.compileTargetWrites(node, incoming);
+                outputs.keySet().removeIf(key -> key.startsWith(node.id() + ":"));
+            }finally{
+                node.resolvingTarget = false;
+            }
+        }
+
+        // Trace interaction ownership through scalar and map expressions without adding visible ports
+        private @Nullable UUID inputPlayer(NodeInstruction node, String port){
+            Set<UUID> players = new HashSet<>();
+            ValueExpression input = node.input(port);
+            if(input instanceof EdgeExpression edge) collectPlayers(edge.from, edge.fromPort, players, new HashSet<>());
+            return players.size() == 1 ? players.iterator().next() : null;
+        }
+        private void collectPlayers(NodeInstruction node, String port, Set<UUID> players, Set<String> visited){
+            if(!visited.add(node.portKey(port))) return;
+            if(isInteractiveOutput(node.portKey(port))){
+                var submission = interactionOutputs.submission(node.portKey(port));
+                if(submission != null && submission.playerId() != null) players.add(submission.playerId());
+                return;
+            }
+            UUID id = controller == null ? null : controller.graphInputPlayer(node.source());
+            if(id == null && currentGameTime - bindingChangeTicks.getOrDefault(node.bindingId(), Long.MIN_VALUE / 2) <= 4){
+                id = changedBindingPlayers.get(node.bindingId());
+            }
+            if(id != null) players.add(id);
+            for(String inputPort : node.connectedInputPorts()){
+                ValueExpression input = node.input(inputPort);
+                if(input instanceof EdgeExpression edge) collectPlayers(edge.from, edge.fromPort, players, visited);
+            }
         }
 
         // Combine explicitly supplied inline fields into their parent MAP input.
@@ -3744,15 +3678,23 @@ public final class GraphRuntime {
 
         // Get the output
         private AdvancedGraphDocument.Value output(NodeInstruction node, String port, int[] operations) {
+            bindTarget(node, operations);
             if(!recordLiveValues){
                 return state.evaluate(previewState, () -> {
                     java.util.function.Supplier<AdvancedGraphDocument.Value> evaluate = () ->
                             GraphValueMirrors.sample(liveOutputs, node.portKey(port),
-                                    key -> retainedPreviewOutput(node, port),
+                                    key -> (currentEventPlayerId == null || !playerScopes.nodes().contains(node.id())) && retainedPreviewOutput(node, port),
                                     () -> outputFor(this, node, port, operations));
                     return GraphValueMirrors.sample(previewOutputs, node.portKey(port),
                             key -> previewPlan != null && previewPlan.unchanged(node.id()) && snapshotPreviewNode(node), evaluate);
                 });
+            }
+            if(currentEventPlayerId == null && playerScopes.nodes().contains(node.id())){
+                AdvancedGraphCatalog.Definition definition = AdvancedGraphCatalog.get(node.type());
+                if(definition != null && definition.stateful()){
+                    return GraphValueMirrors.sample(liveOutputs, node.portKey(port), key -> true,
+                            () -> outputFor(this, node, port, operations));
+                }
             }
             return outputFor(this, node, port, operations);
         }
@@ -3882,6 +3824,9 @@ public final class GraphRuntime {
         private final Map<String, String> inputTypes;
         // Output types
         private final Map<String, String> outputTypes;
+        private AdvancedGraphDocument.Value boundTargetValue;
+        private boolean resolvingTarget;
+        private List<AdvancedGraphDocument.Edge> targetEdges = List.of();
         // Tracked inputs
         private final Map<String, ValueExpression> inputs = new HashMap<>();
         // Tracked defaults
@@ -3901,7 +3846,9 @@ public final class GraphRuntime {
         // Tracked port keys
         private final Map<String, String> portKeys = new HashMap<>();
         // Input ports
-        private final String[] inputPorts;
+        private String[] inputPorts;
+        // Prepared text input order
+        private final GraphTextInputs.CompiledJoin textJoin;
         // Current connected input ports
         private String[] connectedInputPorts = NO_PORTS;
 
@@ -3914,9 +3861,10 @@ public final class GraphRuntime {
             this.bindingId = bindingId;
             this.variable = variable;
             this.triggerEvent = triggerEvent;
-            this.inputTypes = Map.copyOf(inputTypes);
-            this.outputTypes = Map.copyOf(outputTypes);
+            this.inputTypes = new LinkedHashMap<>(inputTypes);
+            this.outputTypes = new LinkedHashMap<>(outputTypes);
             this.inputPorts = this.inputTypes.keySet().toArray(String[]::new);
+            this.textJoin = "string_concat".equals(src.type()) ? GraphTextInputs.compileJoin(src.data()) : null;
             for (String port : this.inputTypes.keySet()) {
                 portKeys.put(port, src.id() + ":" + port);
             }
@@ -4090,6 +4038,8 @@ public final class GraphRuntime {
         private final NodeInstruction[] hudNodes;
         // Passive nodes
         private final NodeInstruction[] passiveNodes;
+        // Camera controls run even when their output values are not sampled
+        private final NodeInstruction[] cameraNodes;
         // Ship command nodes
         private final NodeInstruction[] shipCommandNodes;
         // Tracked trigger nodes
@@ -4153,6 +4103,8 @@ public final class GraphRuntime {
             this.profilerNodes = profilerNodes;
             this.hudNodes = hudNodes;
             this.passiveNodes = passiveNodes;
+            this.cameraNodes = java.util.Arrays.stream(passiveNodes)
+                    .filter(node -> "camera".equals(node.type())).toArray(NodeInstruction[]::new);
             this.shipCommandNodes = shipCommandNodes;
             this.triggerNodes = Map.copyOf(triggerNodes);
             this.keyNodes = Map.copyOf(keyNodes);
@@ -4229,6 +4181,8 @@ public final class GraphRuntime {
                         AdvancedGraphCatalog.outputs(src));
                 nodes.put(src.id(), node);
                 if ("variable_get".equals(src.type())
+                        || "camera".equals(src.type())
+                        || "ship_tracker".equals(src.type())
                         || "portable_tracker".equals(src.type())
                         || "controller_tracker".equals(src.type())
                         || AdvancedGraphCatalog.isShipControlPassiveType(src.type())) {
@@ -4240,7 +4194,7 @@ public final class GraphRuntime {
                     graphOwnedBindings.add(binding);
                 }
                 switch (src.type()) {
-                    case "event_tick" -> tickNodes.add(node);
+                    case "event_tick", "pulse_if" -> tickNodes.add(node);
                     case "event_graph_ready" -> graphReadyNodes.add(node);
                     case "event_periodic" -> periodicNodes.add(node);
                     case "event_trigger" -> add(triggerNodes, node.triggerEvent(), node);
@@ -4281,7 +4235,9 @@ public final class GraphRuntime {
                             profilerNodes.add(node);
                     case "hud_element", "advanced_hud_element", "acc_display_widget", "acc_hologram_widget",
                             "acc_display_graph", "acc_display_plotter", "acc_display_external",
-                            "acc_display_crn" ->
+                            "acc_display_camera_source",
+                            "acc_display_crn", "acc_display_shipping_information",
+                            "acc_display_scm_information" ->
                             hudNodes.add(node);
                     default -> {
                     }
@@ -4303,6 +4259,7 @@ public final class GraphRuntime {
 
             // ------------------------------------PASSIVE NODES------------------------------------
             for (NodeInstruction node : nodes.values()) {
+                node.targetEdges = executionGraph.edges();
                 compileInputs(node, nodes, incoming.getOrDefault(node.id(), List.of()));
                 node.compileConnectedInputPorts();
                 compileExecOutputs(node, nodes, outgoing);
@@ -4357,7 +4314,8 @@ public final class GraphRuntime {
             if (edge != null) {
                 NodeInstruction from = nodes.get(edge.fromNode());
                 if (from != null) {
-                    return new EdgeExpression(from, edge.fromPort(), node.inputTypes.get(port));
+                    return new EdgeExpression(from, edge.fromPort(),
+                            "target".equals(port) && AdvancedGraphTargets.multiple(node.source()) ? "any" : node.inputTypes.get(port));
                 }
             }
             AdvancedGraphDocument.Value defaultValue = defaultValue(node.source(), port);
@@ -4561,8 +4519,9 @@ public final class GraphRuntime {
         // Check if this needs regular tick
         private boolean needsRegularTick(boolean samplePassiveOutputs) {
             return hasAutomaticEventNodes() || profilerNodes.length > 0
-                    || samplePassiveOutputs && needsHudInputSampling()
+                    || needsHudInputSampling()
                     || samplePassiveOutputs && passiveNodes.length > 0
+                    || cameraNodes.length > 0
                     || shipCommandNodes.length > 0;
         }
 
@@ -4697,6 +4656,8 @@ public final class GraphRuntime {
 
     // Create the default portable tracking value
     private static AdvancedGraphDocument.Value defaultPortableTrackingValue(String port) {
+        var extra = com.rieno.gadgetsandgizmos.lib.physics.EntityTelemetryApi.unavailable().get(port == null ? "" : port);
+        if (extra != null) return fromLibraryValue(extra);
         return switch (port == null ? "" : port) {
             case "available", "holding_player", "on_lectern", "is_player", "is_mannequin",
                  "is_armor_stand" -> AdvancedGraphDocument.Value.bool(false);
@@ -4746,6 +4707,10 @@ public final class GraphRuntime {
                     AdvancedGraphDocument.Value.bool(false);
             case "status", "map_id", "coupler_status" ->
                     AdvancedGraphDocument.Value.string("");
+            case "scm_brain_available" -> AdvancedGraphDocument.Value.bool(false);
+            case "scm_brain_state", "scm_brain_reason", "scm_brain_vehicle_name",
+                 "scm_brain_vehicle_id" -> AdvancedGraphDocument.Value.string("");
+            case "scm_brain_data" -> AdvancedGraphDocument.Value.map(new CompoundTag());
             case "shipping_active", "shipping_pilot_present", "shipping_docked",
                  "shipping_waiting", "shipping_diverted", "shipping_needs_refuel",
                  "shipping_target_has_connector", "shipping_manifest_is_cyclic" ->
@@ -4761,5 +4726,620 @@ public final class GraphRuntime {
                     AdvancedGraphDocument.Value.number(collisionDetectionDistance);
             default -> AdvancedGraphDocument.Value.number(0.0D);
         };
+    }
+
+    // Preserve interaction ownership across a controller-to-controller event
+    public void enqueueNamedControllerEvent(String name, AdvancedGraphDocument.Value data, @Nullable UUID playerId){
+        if (shutdownPrepared || name == null || name.isBlank()
+                || eventScheduler.immediateSize() >= MAX_EVENTS_PER_TICK) {
+            return;
+        }
+        eventScheduler.enqueue(new RuntimeEvent("named:" + name.trim(),
+                data == null ? AdvancedGraphDocument.Value.number(0) : data, playerId));
+    }
+
+    // Retain pulse ownership until an input releases, including automatic button releases
+    public boolean setBindingActive(String bindingId, boolean active, @Nullable UUID playerId){
+        if (shutdownPrepared || bindingId == null || bindingId.isBlank()) {
+            return false;
+        }
+        if(playerId != null){
+            changedBindingPlayers.put(bindingId, playerId);
+            bindingChangeTicks.put(bindingId, gameTime());
+        }else{
+            changedBindingPlayers.remove(bindingId);
+            bindingChangeTicks.remove(bindingId);
+        }
+        if(active && playerId != null) bindingPlayers.put(bindingId, playerId);
+        else bindingPlayers.remove(bindingId);
+        Boolean prev = bindingStates.put(bindingId, active);
+        if (prev != null && prev == active) {
+            return false;
+        }
+        enqueue("input:" + bindingId + ":" + (active ? "active" : "inactive"), playerId);
+        return true;
+    }
+
+    // Resolve only the input responsible for a new signal, retaining ownership for release
+    public @Nullable UUID bindingInteractionPlayer(String bindingId, boolean releasing){
+        Set<UUID> players = new HashSet<>();
+        if(controller != null && compiledProgram != null){
+            for(NodeInstruction node : compiledProgram.nodes().values()){
+                if(!bindingId.equals(node.bindingId())) continue;
+                UUID id = controller.graphInputPlayer(node.source());
+                if(id != null) players.add(id);
+            }
+        }
+        if(players.size() > 1) return null;
+        if(!players.isEmpty()) return players.iterator().next();
+        return releasing ? bindingPlayers.get(bindingId) : null;
+    }
+
+    // Sample personal UI state without overwriting the graph's shared live values
+    public PlayerHudValues playerHudValues(UUID playerId){
+        Map<String, AdvancedGraphDocument.Value> inputs = new LinkedHashMap<>();
+        Map<String, AdvancedGraphDocument.Value> outputs = new LinkedHashMap<>();
+        UUID prevPlayer = currentEventPlayerId;
+        boolean prevSampling = samplingPlayerHud;
+        currentEventPlayerId = playerId;
+        samplingPlayerHud = true;
+        try{
+            Frame frame = new Frame(compiledProgram, false);
+            int[] operations = frame.resetOperations();
+            for(NodeInstruction node : compiledProgram.hudNodes()){
+                if(!"hud_element".equals(node.type()) && !"advanced_hud_element".equals(node.type())) continue;
+                try{
+                    for(String port : node.inputPorts()) inputs.put(node.portKey(port), frame.value(node, port, operations));
+                    for(var entry : node.outputTypes().entrySet()){
+                        if(!"exec".equals(entry.getValue())) outputs.put(node.portKey(entry.getKey()), frame.output(node, entry.getKey(), operations));
+                    }
+                }catch(RuntimeException err){
+                    String msg = "Personal HUD sample failed: " + err.getMessage();
+                    if(diagnostics.stream().noneMatch(diag -> node.id().equals(diag.nodeId()) && msg.equals(diag.message()))){
+                        diagnostics.add(new AdvancedGraphValidator.Diagnostic("warning", "personal_hud", msg, node.id()));
+                    }
+                }
+            }
+        }finally{
+            currentEventPlayerId = prevPlayer;
+            samplingPlayerHud = prevSampling;
+        }
+        return new PlayerHudValues(Map.copyOf(inputs), Map.copyOf(outputs));
+    }
+
+
+    public record PlayerHudValues(Map<String, AdvancedGraphDocument.Value> inputs,
+                                  Map<String, AdvancedGraphDocument.Value> outputs){}
+
+
+    // Retain release ownership across role changes, clearing it when the physical input changes
+    private void reconcileBindingSources(){
+        Map<String, Set<String>> next = new LinkedHashMap<>();
+        for(NodeInstruction node : compiledProgram.nodes().values()){
+            String binding = node.bindingId();
+            if(binding == null || binding.isBlank()) continue;
+            CompoundTag data = node.source().data();
+            String face = data.getCompound("Defaults").getCompound("face").getCompound("Payload").getString("Value");
+            if(face.isBlank()) face = data.getString("Face");
+            var target = com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode.fromTag(data.getCompound("TargetData"));
+            String source = target == null ? node.type() + ":" + face
+                    : target.subLevelId() + ":" + target.blockPos() + ":" + face;
+            next.computeIfAbsent(binding, ignored -> new HashSet<>()).add(source);
+        }
+        next.forEach((binding, sources) -> {
+            Set<String> prev = bindingSources.get(binding);
+            if(prev == null || prev.equals(sources)) return;
+            bindingPlayers.remove(binding);
+            changedBindingPlayers.remove(binding);
+            bindingChangeTicks.remove(binding);
+        });
+        bindingSources.clear();
+        bindingSources.putAll(next);
+    }
+
+
+    // Stop publishing values from nodes and ports removed from the compiled graph
+    private void reconcileLivePorts(CompiledProgram program){
+        Set<String> inputs = new HashSet<>();
+        Set<String> outputs = new HashSet<>();
+        for(NodeInstruction node : program.nodes().values()){
+            node.inputTypes().keySet().forEach(port -> inputs.add(node.id() + ":" + port));
+            node.outputTypes().keySet().forEach(port -> outputs.add(node.id() + ":" + port));
+        }
+        boolean changed = liveInputs.keySet().removeIf(key -> !inputs.contains(key));
+        changed |= liveOutputs.keySet().removeIf(key -> !outputs.contains(key));
+        if(changed) liveValueRevision++;
+    }
+
+
+    // Apply camera controls independently of output sampling and graph observers
+    private void updateCameraConfigurations(CompiledProgram program, Frame frame){
+        int[] operations = frame.resetOperations();
+        for(NodeInstruction node : program.cameraNodes){
+            try{
+                CameraGraphNodes.configure(controller, node.source(),
+                        port -> frame.value(node, port, operations), simulationOnly);
+            }catch(RuntimeException err){
+                diagnostics.add(new AdvancedGraphValidator.Diagnostic("warning", "camera_configuration",
+                        "Could not update camera controls: " + err.getMessage(), node.id()));
+            }
+        }
+    }
+
+    // Preserve per-binding players even when scalar pulses restore their temporary execution context
+    private void commitBindingOutputs(){
+        com.rieno.gadgetsandgizmos.lib.interaction.InteractionContext.runOutputs(pendingOutputOrigins,
+                () -> com.rieno.gadgetsandgizmos.lib.interaction.InteractionContext.run(interactionOrigin(),
+                        () -> controller.setGraphBindingValues(pendingOutputsOrEmpty(), pendingReset)));
+        pendingOutputOrigins.clear();
+    }
+
+    // Resolve an online actor without inventing a nearby or observing player
+    private com.rieno.gadgetsandgizmos.lib.interaction.InteractionOrigin interactionOrigin(){
+        if(currentEventPlayerId == null || controller == null || controller.getLevel() == null
+                || controller.getLevel().getServer() == null) return null;
+        ServerPlayer player = controller.getLevel().getServer().getPlayerList().getPlayer(currentEventPlayerId);
+        return player == null ? null : com.rieno.gadgetsandgizmos.lib.interaction.InteractionOrigin.of(player);
+    }
+
+    // Keep one player's timer or debounce from cancelling another player's pending action
+    private boolean sameScheduledPlayer(RuntimeEvent evt, String nodeId){
+        return !playerScopes.nodes().contains(nodeId) || Objects.equals(evt.triggeringPlayerId(), currentEventPlayerId);
+    }
+
+
+    // Create the default ship tracking value
+    public static AdvancedGraphDocument.Value defaultShipTrackingValue(String port) {
+        return switch (port == null ? "" : port) {
+            case "available" -> AdvancedGraphDocument.Value.bool(false);
+            case "ship_name", "sub_level" -> AdvancedGraphDocument.Value.string("");
+            case "coordinates" -> fromLibraryValue(
+                    com.rieno.gadgetsandgizmos.lib.physics.EntityTelemetryApi.vector(Vec3.ZERO));
+            case "relative_angle" -> fromLibraryValue(
+                    com.rieno.gadgetsandgizmos.lib.physics.EntityTelemetryApi.angles(
+                            new com.rieno.gadgetsandgizmos.lib.physics.TrackingGeometry.Angles(0, 0)));
+            case "ships" -> AdvancedGraphDocument.Value.list(new CompoundTag());
+            default -> AdvancedGraphDocument.Value.number(0);
+        };
+    }
+
+    private void executeNodeWithOrigin(Frame frame, NodeInstruction node, String incomingPort, int[] operations){
+        if (node == null) {
+            return;
+        }
+        if("bounded_loop".equals(node.type()) && !"loop_continue".equals(incomingPort)
+                && state.getOrDefault(node.id() + ":loop_running", AdvancedGraphDocument.Value.bool(false)).asBoolean()) return;
+        requireOperation(operations);
+        // A function return continues its caller; it is not a recursive invocation
+        if(AdvancedGraphFunctions.CALL_TYPE.equals(node.type()) && AdvancedGraphFunctions.isReturnPort(incomingPort)){
+            followExec(frame, node, AdvancedGraphFunctions.externalPort(incomingPort), operations);
+            return;
+        }
+        if (!frame.beginExecution(node)) {
+            diagnostics.add(new AdvancedGraphValidator.Diagnostic(
+                    "error", "recursive_execution_path",
+                    "Recursive execution path stopped at " + node.type(), node.id()));
+            return;
+        }
+        try {
+            frame.bindTarget(node, operations);
+            // ------------------------------------COMMANDS------------------------------------
+            if (AdvancedGraphCatalog.isShippingScheduleControlType(node.type())) {
+                boolean success = executeShippingScheduleCommand(node);
+                frame.seedOutput(node, "success", AdvancedGraphDocument.Value.bool(success));
+                followExec(frame, node, "exec", operations);
+                return;
+            }
+            if (AdvancedGraphCatalog.isShipControlType(node.type())
+                    && !AdvancedGraphCatalog.isShipControlPassiveType(node.type())) {
+                if ("ship_initialize".equals(node.type())
+                        && shipControlInitActive()
+                        && state.getOrDefault(shipCommandPendingKey(node),
+                        AdvancedGraphDocument.Value.bool(false)).asBoolean()) {
+                    return;
+                }
+                boolean retained = "ship_follow".equals(node.type());
+                boolean success = executeShipControlCommand(frame, node, operations);
+                boolean complete = success && !simulationOnly && controller != null
+                        && controller.isShipControlGraphCommandComplete(node.id(), node.type());
+                state.put(shipCommandPendingKey(node),
+                        AdvancedGraphDocument.Value.bool(success && !complete));
+                state.put(shipCommandSuccessKey(node),
+                        AdvancedGraphDocument.Value.bool(retained ? success : complete));
+                frame.seedOutput(node, "success",
+                        AdvancedGraphDocument.Value.bool(retained ? success : complete));
+                if (shipControlInitActive()) {
+                    return;
+                }
+                followExec(frame, node, "exec", operations);
+                if (complete && node.hasExecOutput("complete")) {
+                    followExec(frame, node, "complete", operations);
+                }
+                return;
+            }
+            if (AdvancedGraphFunctions.CALL_TYPE.equals(node.type())) {
+                followExec(frame, node, AdvancedGraphFunctions.entryPort(incomingPort), operations);
+                return;
+            }
+            // ------------------------------------NODE LOGIC------------------------------------
+            switch (node.type()) {
+            case "camera" -> {
+                if("interact_with_hit".equals(incomingPort) && !simulationOnly && controller != null){
+                    CameraGraphNodes.configure(controller, node.source(), port -> frame.value(node, port, operations), false);
+                    controller.interactGraphCamera(node.source(), frame.value(node, "target", operations), currentEventPlayerId);
+                }
+            }
+            case "control_camera" -> {
+                if(!simulationOnly && controller != null){
+                    controller.controlGraphCamera(node.source(), frame.value(node, "target", operations), currentEventPlayerId);
+                }
+            }
+            case "reroute" -> followExec(frame, node, "value", operations);
+            case "desmos_plot_point" -> {
+                String name = frame.value(node, "name", operations).asString();
+                double x = frame.value(node, "x", operations).asNumber();
+                double y = frame.value(node, "y", operations).asNumber();
+                AdvancedGraphDocument.Value colorValue = frame.value(node, "color", operations);
+                int color = "number".equals(colorValue.type())
+                        ? (int) colorValue.asNumber()
+                        : com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline.parseColor(colorValue.asString());
+                String xFunctionality = frame.value(node, "x_functionality", operations).asString();
+                com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline.XMode mode =
+                        com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline.XMode.fromId(xFunctionality);
+                if (!simulationOnly && controller != null) {
+                    controller.recordPlotPoint(name, x, y, color, mode);
+                }
+                followExec(frame, node, "exec", operations);
+            }
+            case "desmos_reset_plotter" -> {
+                if (!simulationOnly && controller != null) {
+                    controller.resetPlotPoints(frame.value(node, "name", operations).asString());
+                }
+                followExec(frame, node, "exec", operations);
+            }
+            case "createthrusters:announce" -> {
+                if(!simulationOnly && controller != null){
+                    ServerTitleApi.Action action = ServerTitleApi.Action.parse(frame.value(node, "action", operations).asString());
+                    ServerTitleApi.Text text = new ServerTitleApi.Text(frame.value(node, "message", operations).asString(),
+                            "json".equalsIgnoreCase(frame.value(node, "text_format", operations).asString()),
+                            (int)frame.value(node, "color", operations).asNumber(),
+                            !"message".equalsIgnoreCase(frame.value(node, "color_mode", operations).asString()),
+                            frame.value(node, "bold", operations).asString(), frame.value(node, "italic", operations).asString(),
+                            frame.value(node, "underlined", operations).asString(), frame.value(node, "strikethrough", operations).asString(),
+                            frame.value(node, "obfuscated", operations).asString());
+                    ServerTitleApi.Animation animation = ServerTitleApi.Animation.of(
+                            frame.value(node, "fade_in", operations).asNumber(), frame.value(node, "stay", operations).asNumber(),
+                            frame.value(node, "fade_out", operations).asNumber(),
+                            ServerTitleApi.TimeUnit.parse(frame.value(node, "time_unit", operations).asString()));
+                    controller.announceGraphTitle(ChatPlayers.identifiers(toLibraryValue(frame.value(node, "players", operations))),
+                            currentEventPlayerId, action, text, animation);
+                }
+                followExec(frame, node, "exec", operations);
+            }
+            case "send_chat_message" -> {
+                String message = frame.value(node, "message", operations).asString();
+                if(!simulationOnly && controller != null){
+                    controller.sendGraphChatMessage(message, AdvancedGraphCatalog.chatBroadcastNearby(node.source()),
+                            currentEventPlayerId == null ? frame.inputPlayer(node, "message") : currentEventPlayerId,
+                            ChatPlayers.identifiers(toLibraryValue(frame.value(node, "players", operations))));
+                }
+                followExec(frame, node, "exec", operations);
+            }
+            case "send_named_controller_event" -> {
+                AdvancedGraphDocument.Value data = frame.value(node, "data", operations);
+                int distance = (int) Math.round(frame.value(node, "distance", operations).asNumber());
+                if (!simulationOnly && controller != null) {
+                    controller.publishNamedControllerEvent(node.triggerEvent().trim(), data, distance);
+                }
+                followExec(frame, node, "exec", operations);
+            }
+            case "controller_channel_output" -> {
+                double val = frame.value(node, "value", operations).asNumber();
+                double clampedValue = GraphSignalRange.toDirectControl(node.source(), val);
+                queueBindingOutput(node.bindingId(), clampedValue);
+                triggerConfiguredKeyOutput(node.bindingId(), clampedValue);
+                followExec(frame, node, "exec", operations);
+            }
+            case "direct_target_output" -> {
+                double val = frame.value(node, "value", operations).asNumber();
+                double clampedValue = GraphSignalRange.toDirectControl(node.source(), val);
+                if (!node.bindingId().isBlank()) {
+                    queueBindingOutput(node.bindingId(), clampedValue);
+                }
+                Map<String, AdvancedGraphDocument.Value> desiredValues = new LinkedHashMap<>();
+                for (String port : node.targetWritePorts()) {
+                    desiredValues.put(port, "direct_signal".equals(port)
+                            ? AdvancedGraphDocument.Value.number(clampedValue)
+                            : frame.value(node, port, operations));
+                }
+                desiredValues.put(AdvancedContraptionControllerBlockEntity.GRAPH_RAW_DIRECT_SIGNAL_PORT,
+                        AdvancedGraphDocument.Value.number(Double.isFinite(val) ? val : GraphSignalRange.outputStrength(node.source(), val)));
+                if (!simulationOnly) {
+                    Set<String> changedPorts = AdvancedGraphOutputDelta.changedPorts(
+                            controller, node.source(), desiredValues);
+                    if (!changedPorts.isEmpty()
+                            && controller.setGraphTargetData(node.source(), changedPorts, desiredValues::get)) {
+                        AdvancedGraphOutputDelta.recordApplied(
+                                controller, node.source(), changedPorts, desiredValues);
+                    }
+                }
+                followExec(frame, node, "exec", operations);
+            }
+            case "linker_face_output" -> {
+                double val = frame.value(node, "value", operations).asNumber();
+                double normalizedValue = GraphSignalRange.toNormalizedRedstone(node.source(), val);
+                if (!node.bindingId().isBlank()) {
+                    queueBindingOutput(node.bindingId(), normalizedValue);
+                }
+                Map<String, AdvancedGraphDocument.Value> desiredValues = new LinkedHashMap<>();
+                for (String port : node.targetWritePorts()) {
+                    desiredValues.put(port, "direct_signal".equals(port)
+                            ? AdvancedGraphDocument.Value.number(normalizedValue)
+                            : frame.value(node, port, operations));
+                }
+                desiredValues.put(AdvancedContraptionControllerBlockEntity.GRAPH_RAW_DIRECT_SIGNAL_PORT,
+                        AdvancedGraphDocument.Value.number(Double.isFinite(val) ? val : GraphSignalRange.outputStrength(node.source(), val)));
+                if (!simulationOnly) {
+                    Set<String> changedPorts = AdvancedGraphOutputDelta.changedPorts(
+                            controller, node.source(), desiredValues);
+                    if (!changedPorts.isEmpty()
+                            && controller.setGraphTargetData(node.source(), changedPorts, desiredValues::get)) {
+                        AdvancedGraphOutputDelta.recordApplied(
+                                controller, node.source(), changedPorts, desiredValues);
+                    }
+                }
+                followExec(frame, node, "exec", operations);
+            }
+            case "local_redstone_output", "wireless_frequency_output" -> {
+                double val = frame.value(node, "value", operations).asNumber();
+                queueBindingOutput(node.bindingId(), GraphSignalRange.toNormalizedRedstone(node.source(), val));
+                followExec(frame, node, "exec", operations);
+            }
+            case "set_block_data" -> {
+                Map<String, AdvancedGraphDocument.Value> desiredValues = new LinkedHashMap<>();
+                Set<String> changedPorts = new LinkedHashSet<>();
+                for (String port : node.targetWritePorts()) {
+                    AdvancedGraphDocument.Value desired = frame.value(node, port, operations);
+                    desiredValues.put(port, desired);
+                }
+                changedPorts.addAll(AdvancedGraphOutputDelta.changedPorts(
+                        controller, node.source(), desiredValues));
+                changedPorts.addAll(setDataForceWritePorts(node.source()));
+                changedPorts.addAll(CreateRotationSpeedControllerGraphCompat.portsRequiringWrite(
+                        node.source(), node.targetWritePorts()));
+                boolean success = simulationOnly || changedPorts.isEmpty()
+                        || controller.setGraphTargetData(node.source(), changedPorts, desiredValues::get);
+                if (!simulationOnly && success && !changedPorts.isEmpty()) {
+                    AdvancedGraphOutputDelta.recordApplied(
+                            controller, node.source(), changedPorts, desiredValues);
+                }
+                frame.seedOutput(node, "success", AdvancedGraphDocument.Value.bool(success));
+                followExec(frame, node, "exec", operations);
+            }
+            case "play_sound" -> {
+                if ("stop".equals(incomingPort)) {
+                    if (!simulationOnly) {
+                        controller.playGraphSound(node.id(), "", false,
+                                0.0D, 0.0D, 0.0D, 0.0D, 1.0D, false, true);
+                    }
+                    followExec(frame, node, "exec", operations);
+                    return;
+                }
+                String sound = frame.value(node, "sound", operations).asString();
+                boolean world = frame.value(node, "world", operations).asBoolean();
+                double x = frame.value(node, "x", operations).asNumber();
+                double y = frame.value(node, "y", operations).asNumber();
+                double z = frame.value(node, "z", operations).asNumber();
+                double volume = frame.value(node, "volume", operations).asNumber();
+                double pitch = frame.value(node, "pitch", operations).asNumber();
+                boolean loop = frame.value(node, "loop", operations).asBoolean();
+                if (!simulationOnly) {
+                    controller.playGraphSound(node.id(), sound, world, x, y, z, volume, pitch, loop, false);
+                }
+                followExec(frame, node, "exec", operations);
+            }
+            // ------------------------------------WORKER BRIDGE------------------------------------
+            
+            
+            // ------------------------------------STATE / FLOW------------------------------------
+            case "variable_set" -> {
+                String input = com.rieno.gadgetsandgizmos.lib.graph.GraphInputDefaults.selectPort(
+                        node.data(), "value", "default", node.hasInput("value"));
+                AdvancedGraphDocument.Value val = frame.value(node, input, operations);
+                AdvancedGraphDocument.Value prev = variableValue(frame.program(), node.variable());
+                boolean changed = !Objects.equals(prev, val);
+                boolean personal = currentEventPlayerId != null && playerScopes.variables().contains(node.variable());
+                if (simulationOnly || personal) {
+                    if (changed) {
+                        state.put(variableStateKey(node.variable()), val);
+                    }
+                } else {
+                    if (changed) {
+                        frame.program().graph().variables().put(node.variable(), val);
+                    }
+                }
+                frame.seedOutput(node, "value", val);
+                putLiveOutput(node.id() + ":value", val);
+                if (changed) {
+                    if (simulationOnly || personal) {
+                        enqueue("variable:" + node.variable());
+                    } else {
+                        controller.markGraphRuntimeChanged(node.variable());
+                    }
+                }
+                followExec(frame, node, "exec", operations);
+            }
+            case "acc_display_mode" -> {
+                String requestedMode = frame.value(node, "mode", operations).asString();
+                boolean success = simulationOnly || controller != null
+                        && controller.setGraphDisplayMode(node.source(), requestedMode);
+                String actualMode = simulationOnly || controller == null
+                        ? AccDisplayBlockEntity.normalizeDisplayMode(requestedMode)
+                        : controller.getGraphTargetData(node.source(), "display_mode").asString();
+                frame.seedOutput(node, "mode", AdvancedGraphDocument.Value.string(actualMode));
+                frame.seedOutput(node, "success", AdvancedGraphDocument.Value.bool(success));
+                followExec(frame, node, "exec", operations);
+            }
+            case "flip_flop" -> {
+                String key = node.id() + ":value";
+                GraphCounters.FlipPulse pulse = GraphCounters.flipPulse(
+                        state.getOrDefault(key, AdvancedGraphDocument.Value.bool(false)).asBoolean(),
+                        GraphCounters.wholeCount(state.getOrDefault(node.id() + ":skipped", AdvancedGraphDocument.Value.number(0)).asNumber()),
+                        GraphCounters.FlipMode.fromId(frame.value(node, "flip_on", operations).asString()),
+                        frame.value(node, "skip_pulses", operations).asNumber());
+                AdvancedGraphDocument.Value val = AdvancedGraphDocument.Value.bool(pulse.value());
+                state.put(node.id() + ":skipped", AdvancedGraphDocument.Value.number(pulse.skipped()));
+                state.put(key, val);
+                frame.seedCounterOutput(node, "value", val);
+                followExec(frame, node, "exec", operations);
+            }
+            case "sr_latch" -> {
+                if(!"set".equals(incomingPort) && !"reset".equals(incomingPort)) return;
+                boolean current = state.getOrDefault(node.id() + ":state",
+                        persistentOutputOr(node, "state", AdvancedGraphDocument.Value.bool(false))).asBoolean();
+                var val = AdvancedGraphDocument.Value.bool(GraphLogic.srLatch(current,
+                        "set".equals(incomingPort), "reset".equals(incomingPort)));
+                state.put(node.id() + ":state", val);
+                frame.seedCounterOutput(node, "state", val);
+                followExec(frame, node, "exec", operations);
+            }
+            case "latch" -> {
+                AdvancedGraphDocument.Value val = frame.value(node, "value", operations);
+                state.put(node.id() + ":value", val);
+                frame.seedOutput(node, "value", val);
+                followExec(frame, node, "exec", operations);
+            }
+            case "gate" -> {
+                if (frame.value(node, "open", operations).asBoolean()) {
+                    followExec(frame, node, "exec", operations);
+                }
+            }
+            case "switch" -> {
+                if (!AdvancedGraphCatalog.switchDataMode(node.source())) {
+                    int selector = (int) Math.floor(frame.value(node, "selector", operations).asNumber());
+                    String output = node.hasExecOutput("case_" + selector) ? "case_" + selector : "default";
+                    followExec(frame, node, output, operations);
+                }
+            }
+            case "do_once" -> {
+                String key = node.id() + ":done";
+                boolean legacyResetPulse = "reset".equals(incomingPort);
+                boolean reset = legacyResetPulse || frame.value(node, "reset", operations).asBoolean();
+                if (reset) {
+                    state.put(key, AdvancedGraphDocument.Value.bool(false));
+                }
+                if (!legacyResetPulse
+                        && !state.getOrDefault(key, AdvancedGraphDocument.Value.bool(false)).asBoolean()) {
+                    state.put(key, AdvancedGraphDocument.Value.bool(true));
+                    followExec(frame, node, "exec", operations);
+                }
+            }
+            case "do_n" -> {
+                String key = node.id() + ":count";
+                boolean resetOnly = "reset".equals(incomingPort);
+                boolean reset = resetOnly || frame.value(node, "reset", operations).asBoolean();
+                int count = GraphCounters.wholeCount(state.getOrDefault(key,
+                        AdvancedGraphDocument.Value.number(0)).asNumber());
+                int limit = GraphCounters.wholeCount(frame.value(node, "count", operations).asNumber());
+                GraphCounters.LimitedPulse pulse = resetOnly
+                        ? new GraphCounters.LimitedPulse(0, false)
+                        : GraphCounters.limitedPulse(count, limit, reset);
+                AdvancedGraphDocument.Value val = AdvancedGraphDocument.Value.number(pulse.count());
+                state.put(key, val);
+                state.put(node.id() + ":index", val);
+                frame.seedCounterOutput(node, "index", val);
+                if(pulse.passed()) followExec(frame, node, "exec", operations);
+            }
+            case "count" -> {
+                String key = node.id() + ":value";
+                double previous = state.getOrDefault(key,
+                        persistentOutputOr(node, "value", AdvancedGraphDocument.Value.number(0))).asNumber();
+                double next = GraphCounters.step(previous, frame.value(node, "step", operations).asNumber(),
+                        frame.value(node, "decrement", operations).asBoolean(), frame.value(node, "reset", operations).asBoolean());
+                AdvancedGraphDocument.Value val = AdvancedGraphDocument.Value.number(next);
+                state.put(key, val);
+                frame.seedCounterOutput(node, "value", val);
+                followExec(frame, node, "exec", operations);
+            }
+            // ------------------------------------TIMING------------------------------------
+            case "timer" -> {
+                eventScheduler.removeScheduledIf(evt -> evt.id().equals("timer:" + node.id()) && sameScheduledPlayer(evt, node.id()));
+                if ("stop".equals(incomingPort)) {
+                    state.put(node.id() + ":elapsed", AdvancedGraphDocument.Value.number(timerElapsed(node)));
+                    state.put(node.id() + ":running", AdvancedGraphDocument.Value.bool(false));
+                } else {
+                    int duration = Math.max(1, (int) frame.value(node, "duration", operations).asNumber());
+                    state.put(node.id() + ":running", AdvancedGraphDocument.Value.bool(true));
+                    state.put(node.id() + ":start", AdvancedGraphDocument.Value.number(gameTime()));
+                    state.put(node.id() + ":duration", AdvancedGraphDocument.Value.number(duration));
+                    schedule(node.id(), duration, "timer:");
+                }
+            }
+            case "parallel_execution", "sequenced_execution" -> {
+                for (String output : node.execOutputPorts()) {
+                    followExec(frame, node, output, operations);
+                }
+            }
+            case "exec_combine" -> followExec(frame, node, "exec", operations);
+            case "curve" -> executeCurvePulse(frame, node, operations);
+            case "lerp", "ramp", "smoothing" -> {
+                boolean activePulse = !currentEventId.endsWith(":inactive")
+                        && !currentEventId.endsWith(":released") && !currentEventId.startsWith("reset:");
+                if (activePulse) {
+                    state.put(node.id() + ":last_pulse", AdvancedGraphDocument.Value.number(gameTime()));
+                } else if (currentEventId.startsWith("reset:")) {
+                    state.put(node.id() + ":last_pulse", AdvancedGraphDocument.Value.number(Long.MIN_VALUE));
+                    if ("smoothing".equals(node.type())) {
+                        state.put(node.id() + ":smooth", AdvancedGraphDocument.Value.number(0));
+                    }
+                } else {
+                    scheduleReset(node);
+                }
+                followExec(frame, node, "exec", operations);
+                if (currentEventId.startsWith("reset:") && "ramp".equals(node.type())
+                        && Math.abs(state.getOrDefault(node.id() + ":ramp", AdvancedGraphDocument.Value.number(0)).asNumber()) > 0.0001) {
+                    schedule(node.id(), 1, "reset:");
+                }
+            }
+            case "branch" -> {
+                String selectedPort = frame.value(node, "condition", operations).asBoolean() ? "true" : "false";
+                node.inactiveBranchOutputBindings(selectedPort)
+                        .forEach(binding -> queueBindingOutputIfAbsent(binding, 0.0D));
+                followExec(frame, node, selectedPort, operations);
+            }
+            case "bounded_loop" -> {
+                executeBoundedLoop(frame, node, incomingPort, operations);
+            }
+            case "delay", "debounce" -> {
+                int ticks = Math.max(1, (int) frame.value(node, "ticks", operations).asNumber());
+                if (eventScheduler.scheduledSize() >= MAX_SCHEDULED_EVENTS) {
+                    throw new IllegalStateException("Graph exceeded the 1024 scheduled event limit");
+                }
+                if ("debounce".equals(node.type())) {
+                    eventScheduler.removeScheduledIf(evt -> evt.id().equals("delayed:" + node.id()) && sameScheduledPlayer(evt, node.id()));
+                }
+                eventScheduler.schedule(gameTime() + ticks,
+                        new RuntimeEvent("delayed:" + node.id(),
+                                AdvancedGraphDocument.Value.number(0), currentEventPlayerId));
+            }
+            case "reset_outputs" -> {
+                pendingReset = true;
+                if (pendingOutputs != null) {
+                    pendingOutputs.clear();
+                }
+                if (!simulationOnly && controller != null) {
+                    controller.resetGraphTargetOutputs();
+                    AdvancedGraphOutputDelta.invalidateSamples(controller);
+                }
+                followExec(frame, node, "exec", operations);
+            }
+                default -> {
+                    executeLibraryNode(frame, node, null, operations);
+                    followExec(frame, node, "exec", operations);
+                }
+            }
+        } finally {
+            frame.endExecution(node);
+        }
     }
 }

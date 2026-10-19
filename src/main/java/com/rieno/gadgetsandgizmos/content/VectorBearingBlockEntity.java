@@ -92,11 +92,13 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import com.rieno.gadgetsandgizmos.lib.control.PropellerForceGeometry;
+import com.rieno.gadgetsandgizmos.lib.physics.SableTransformApi;
 
 // Control two-axis bearing movement and expose the same target to linked and graph controls
 public class VectorBearingBlockEntity extends KineticBlockEntity implements MenuProvider, OrientationTarget,
         IDirectControlReceiver, AdvancedGraphDataProvider, IHaveGoggleInformation,
-        BlockEntitySubLevelActor, BlockEntityPropeller {
+        BlockEntitySubLevelActor, BlockEntityPropeller, PropellerForceGeometry {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -848,6 +850,16 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         return resolveHeadDirection(command.direction());
     }
 
+    // Resolve a control angle without moving the mounted head.
+    Vec3 scmHeadDirection(double x, double z){
+        return resolveHeadDirection(TiltCommand.fromDegrees(x, z, maxTiltDegrees, ControlMode.COMPUTER, true).direction());
+    }
+
+    @Override public double maximumPropellerThrust(){
+        return Math.abs(propellerThrust(mountedSailPower, AllConfigs.server().kinetics.maxRotationSpeed.get(),
+                getPropellerThrustScale()) * getCurrentAirPressure());
+    }
+
     // Get the control mode
     public ControlMode getControlMode() {
         return controlMode;
@@ -1005,6 +1017,8 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         data.put("control_mode", "string");
         data.put("active_control_mode", "string");
         data.put("propulsion_direction", "string");
+        data.put("stabilize_axis", "string");
+        data.put("keep_stable", "boolean");
         data.put("mounted", "boolean");
         data.put("mounted_sublevel", "string");
         return data;
@@ -1018,6 +1032,8 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         data.put("tilt_z", "number");
         data.put("stabilize_axis", "string");
         data.put("keep_stable", "boolean");
+        data.put("max_tilt", "number");
+        data.put("control_mode", "string");
         data.put("propulsion_direction", "string");
         return data;
     }
@@ -2518,5 +2534,41 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
     // Store the mounted sail sample
     private record MountedSailSample(double power, double radius) {
         private static final MountedSailSample EMPTY = new MountedSailSample(0.0D, 0.0D);
+    }
+
+
+    // Resolve the physical propeller link in its current mounted head
+    private @Nullable SubLevel propellerHead(){
+        if(level == null || mountedSubLevelId == null || mountedLocalPos == null) return null;
+        SubLevelContainer container = SubLevelContainer.getContainer(level);
+        SubLevel head = container == null ? null : container.getSubLevel(mountedSubLevelId);
+        return head == null || head.isRemoved() ? null : head;
+    }
+
+
+    // Use the same application point as the mounted propeller actor
+    @Override public Vec3 propellerForcePosition(){
+        SubLevel head = propellerHead();
+        SubLevel host = SableLevelApi.containing(this);
+        if(head == null || host == null) return worldPosition.getCenter();
+        return SableTransformApi.transformPositionBetween(host.logicalPose(), head.logicalPose(), mountedLocalPos.getCenter());
+    }
+
+
+    // Follow the actual head orientation rather than the stationary drive shaft
+    @Override public Vec3 propellerForceDirection(){
+        SubLevel head = propellerHead();
+        SubLevel host = SableLevelApi.containing(this);
+        if(head != null && host != null){
+            BlockState state = head.getLevel().getBlockState(mountedLocalPos);
+            if(state.hasProperty(VectorBearingLinkBlock.FACING)){
+                Vec3 axis = Vec3.atLowerCornerOf(state.getValue(VectorBearingLinkBlock.FACING).getNormal());
+                return SableTransformApi.transformDirectionBetween(host.logicalPose(), head.logicalPose(), axis).normalize();
+            }
+        }
+        Vec3 dir = getInterpolatedHeadDirection(1.0F);
+        Vector3d axis = new Quaterniond().rotationTo(new Vector3d(0.0D, 1.0D, 0.0D),
+                directionVector(getBearingFacing())).transform(new Vector3d(dir.x, dir.y, dir.z));
+        return new Vec3(axis.x, axis.y, axis.z).normalize();
     }
 }

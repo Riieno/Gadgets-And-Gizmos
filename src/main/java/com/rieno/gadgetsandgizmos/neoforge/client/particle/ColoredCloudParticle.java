@@ -17,9 +17,17 @@ import net.minecraft.client.particle.SpriteSet;
 import net.minecraft.client.particle.TextureSheetParticle;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
+import com.rieno.gadgetsandgizmos.content.PlumeRainbow;
+import com.rieno.gadgetsandgizmos.config.CTConfigs;
 
 // Draw a tinted cloud particle with configurable scale and lifetime
 public class ColoredCloudParticle extends TextureSheetParticle {
+    private final PlumeRainbow.Mode rainbowMode;
+
+    private final PlumeRainbow.Palette rainbowPalette;
+
+    private final float plumeProgress;
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -82,6 +90,9 @@ public class ColoredCloudParticle extends TextureSheetParticle {
         this.rCol = opts.red();
         this.gCol = opts.green();
         this.bCol = opts.blue();
+        this.rainbowMode = opts.rainbowMode();
+        this.rainbowPalette = opts.rainbowPalette();
+        this.plumeProgress = opts.plumeProgress();
         this.baseAlpha = 0.88F + this.random.nextFloat() * 0.08F;
         this.alpha = 0.0F;
         this.lifetime = 18 + this.random.nextInt(8);
@@ -135,6 +146,7 @@ public class ColoredCloudParticle extends TextureSheetParticle {
         }
 
         if (this.age < this.smokeTransitionAge) {
+            updateRainbowColor();
             float plume = this.age / (float) this.smokeTransitionAge;
             this.alpha = this.baseAlpha * Mth.clamp(plume * 3.5F, 0.0F, 1.0F);
             this.quadSize = this.baseSize * (0.45F + plume * 1.15F);
@@ -200,7 +212,22 @@ public class ColoredCloudParticle extends TextureSheetParticle {
         public Particle createParticle(ColoredCloudParticleOptions opts, ClientLevel level,
                                        double x, double y, double z,
                                        double xd, double yd, double zd) {
+            if (CTConfigs.CLIENT.useThrusterPlumeV2Renderer.get()) {
+                if (SoftThrusterPlumeParticle.isHiddenFromCamera(level, x, y, z)) return null;
+                return new SoftThrusterPlumeParticle(level, x, y, z, xd, yd, zd, opts);
+            }
             return new ColoredCloudParticle(level, x, y, z, xd, yd, zd, opts, sprites);
         }
+    }
+
+
+    // Follow the selected color cycle while the particle is luminous exhaust
+    private void updateRainbowColor() {
+        if (this.rainbowMode == PlumeRainbow.Mode.OFF) return;
+        int color = PlumeRainbow.color(this.rainbowMode, this.rainbowPalette,
+                this.level.getGameTime(), this.plumeProgress, this.age);
+        this.rCol = (color >> 16 & 0xFF) / 255.0F;
+        this.gCol = (color >> 8 & 0xFF) / 255.0F;
+        this.bCol = (color & 0xFF) / 255.0F;
     }
 }

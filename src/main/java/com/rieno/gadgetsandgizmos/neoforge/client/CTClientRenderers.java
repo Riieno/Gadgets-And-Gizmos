@@ -20,6 +20,11 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.ModelEvent;
+import com.simibubi.create.content.fluids.tank.FluidTankRenderer;
+import com.simibubi.create.content.kinetics.base.ShaftRenderer;
+import com.simibubi.create.content.kinetics.simpleRelays.encased.EncasedCogRenderer;
+import com.simibubi.create.content.kinetics.simpleRelays.encased.EncasedCogVisual;
+import com.simibubi.create.content.kinetics.base.SingleAxisRotatingVisual;
 
 // Register the client renderers
 public final class CTClientRenderers {
@@ -37,6 +42,12 @@ public final class CTClientRenderers {
 
     // Register the visualizers
     public static void registerVisualizers() {
+        SimpleBlockEntityVisualizer.builder(CTBlockEntities.BLACKSTONE_ENCASED_SHAFT.get())
+                .factory(SingleAxisRotatingVisual::shaft).apply();
+        SimpleBlockEntityVisualizer.builder(CTBlockEntities.BLACKSTONE_ENCASED_COGWHEEL.get())
+                .factory(EncasedCogVisual::small).apply();
+        SimpleBlockEntityVisualizer.builder(CTBlockEntities.BLACKSTONE_ENCASED_LARGE_COGWHEEL.get())
+                .factory(EncasedCogVisual::large).apply();
         if (CTBlockEntities.THRUSTER_BEARING != null) {
             SimpleBlockEntityVisualizer.builder(CTBlockEntities.THRUSTER_BEARING.get())
                     .factory(ThrusterBearingVisual::new)
@@ -76,12 +87,21 @@ public final class CTClientRenderers {
                     .factory(RcsThrusterVisual::new)
                     .apply();
         }
+        if (CTBlockEntities.RATCHET_COGWHEEL != null) {
+            SimpleBlockEntityVisualizer.builder(CTBlockEntities.RATCHET_COGWHEEL.get())
+                    .factory(RatchetCogwheelVisual::new)
+                    .apply();
+        }
 
     }
 
     // Register the renderers
     public static void registerRenderers(EntityRenderersEvent.RegisterRenderers evt) {
         CTPartialModels.init();
+        evt.registerBlockEntityRenderer(CTBlockEntities.BLACKSTONE_ENCASED_SHAFT.get(), ShaftRenderer::new);
+        evt.registerBlockEntityRenderer(CTBlockEntities.BLACKSTONE_ENCASED_COGWHEEL.get(), EncasedCogRenderer::small);
+        evt.registerBlockEntityRenderer(CTBlockEntities.BLACKSTONE_ENCASED_LARGE_COGWHEEL.get(), EncasedCogRenderer::large);
+        evt.registerBlockEntityRenderer(CTBlockEntities.CAMERA.get(), CameraRenderer::new);
         if (CTEntityTypes.LAUNCHED_CLAW != null) {
             evt.registerEntityRenderer(CTEntityTypes.LAUNCHED_CLAW.get(), EntityLauncherClawRenderer::new);
         }
@@ -94,6 +114,7 @@ public final class CTClientRenderers {
         if (CTBlockEntities.VARIABLE_TRANSMISSION != null) evt.registerBlockEntityRenderer(CTBlockEntities.VARIABLE_TRANSMISSION.get(), VariableTransmissionRenderer::new);
         if (CTBlockEntities.BIDIRECTIONAL_GEARBOX != null) evt.registerBlockEntityRenderer(CTBlockEntities.BIDIRECTIONAL_GEARBOX.get(), BiDirectionalGearboxRenderer::new);
         if (CTBlockEntities.BI_DIRECTIONAL_GEARSHIFT != null) evt.registerBlockEntityRenderer(cast(CTBlockEntities.BI_DIRECTIONAL_GEARSHIFT.get()), BiDirectionalGearboxRenderer::new);
+        if (CTBlockEntities.RATCHET_COGWHEEL != null) evt.registerBlockEntityRenderer(CTBlockEntities.RATCHET_COGWHEEL.get(), RatchetCogwheelRenderer::new);
         if (CTBlockEntities.VECTOR_BEARING != null) evt.registerBlockEntityRenderer(CTBlockEntities.VECTOR_BEARING.get(), VectorBearingRenderer::new);
         if (CTBlockEntities.AILERON_BEARING != null) evt.registerBlockEntityRenderer(CTBlockEntities.AILERON_BEARING.get(), AileronBearingRenderer::new);
         if (CTBlockEntities.SCISSOR_PISTON != null) evt.registerBlockEntityRenderer(CTBlockEntities.SCISSOR_PISTON.get(), ScissorPistonRenderer::new);
@@ -117,6 +138,8 @@ public final class CTClientRenderers {
         if (CTBlockEntities.PHYSICS_GANTRY_BELT_WHEEL != null) evt.registerBlockEntityRenderer(CTBlockEntities.PHYSICS_GANTRY_BELT_WHEEL.get(), PhysicsGantryBeltWheelRenderer::new);
         if (CTBlockEntities.RCS_THRUSTER != null) evt.registerBlockEntityRenderer(CTBlockEntities.RCS_THRUSTER.get(), RcsThrusterRenderer::new);
         if (CTBlockEntities.PHYSICS_STAFF_ANCHOR != null) evt.registerBlockEntityRenderer(CTBlockEntities.PHYSICS_STAFF_ANCHOR.get(), PhysicsStaffAnchorRenderer::new);
+        if (CTBlockEntities.SMART_TANK != null) evt.registerBlockEntityRenderer(
+                cast(CTBlockEntities.SMART_TANK.get()), FluidTankRenderer::new);
         evt.registerBlockEntityRenderer(BlockEntityType.LECTERN, PortableLecternControllerRenderer::new);
 
         BuiltInRegistries.BLOCK_ENTITY_TYPE.getOptional(ResourceLocation.parse("simulated:swivel_bearing_link_block"))
@@ -154,7 +177,18 @@ public final class CTClientRenderers {
             }
             return new DockingConnectorRetexturedModel(model);
         });
+        BlackstoneCasingConnectedTextures.register();
+        if (CTBlocks.BLACKSTONE_CASING != null) {
+            evt.getModels().replaceAll((location, model) -> {
+                net.minecraft.world.level.block.Block block = BuiltInRegistries.BLOCK.get(location.id());
+                if (ModelResourceLocation.INVENTORY_VARIANT.equals(location.getVariant())) {
+                    return model;
+                }
+                return BlackstoneCasingConnectedTextures.wrap(model, block);
+            });
+        }
         AccDisplayConnectedTextures.register();
+        SmartStorageConnectedTextures.register();
         if (CTBlocks.ACC_DISPLAY != null) {
             evt.getModels().replaceAll((location, model) -> {
                 net.minecraft.world.level.block.Block block = BuiltInRegistries.BLOCK.get(location.id());
@@ -168,6 +202,17 @@ public final class CTClientRenderers {
                 return model;
             });
         }
+        if (CTBlocks.SMART_VAULT != null) {
+            evt.getModels().replaceAll((location, model) -> {
+                net.minecraft.world.level.block.Block block = BuiltInRegistries.BLOCK.get(location.id());
+                if (block == CTBlocks.SMART_VAULT.get()
+                        || block == CTBlocks.SMART_BATTERY.get()
+                        || block == CTBlocks.SMART_TANK.get()) {
+                    return SmartStorageConnectedTextures.wrap(block, model);
+                }
+                return model;
+            });
+        }
     }
 
     // Get the cast
@@ -175,4 +220,6 @@ public final class CTClientRenderers {
     private static <T extends BlockEntity> BlockEntityType<T> cast(BlockEntityType<?> type) {
         return (BlockEntityType<T>) type;
     }
+
+
 }

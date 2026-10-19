@@ -163,6 +163,24 @@ class GraphEditorSimulationTest{
                 preview.previewOutput(draft, node(draft, "split"), "1"));
     }
 
+    @Test void externalReadOnlyProvidersUseServerSnapshotsInTheExperimentalEditor(){
+        String type = "createthrusters:preview_external_source";
+        com.rieno.gadgetsandgizmos.lib.graph.GraphApi.nodes().register(type, "flight_control",
+                Map.of(), Map.of("value", "number"), false);
+        com.rieno.gadgetsandgizmos.lib.graph.GraphApi.runtimes().register(type, (ctx, inputs) -> {
+            throw new AssertionError("An editor must use the complete server snapshot for an external provider");
+        });
+        var source = new AdvancedGraphDocument();
+        source.nodes().add(create("source", type));
+        source.nodes().add(create("result", "multiply"));
+        defaults(node(source, "result"), Map.of("b", 3.0));
+        source.edges().add(edge("source", "value", "result", "a"));
+        var draft = source.copy();
+        var preview = new GraphRuntime(null, true);
+        preview.beginPreviewSample(draft, source, Map.of(), Map.of("source:value", value(12)));
+        assertEquals(36, preview.previewOutput(draft, node(draft, "result"), "value").asNumber());
+    }
+
     private static AdvancedGraphDocument graph(){
         var graph = new AdvancedGraphDocument();
         graph.variables().put("debug", value(0));

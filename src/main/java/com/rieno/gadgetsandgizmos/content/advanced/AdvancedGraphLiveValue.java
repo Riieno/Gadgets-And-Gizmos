@@ -40,8 +40,8 @@ public record AdvancedGraphLiveValue(String type, double numberValue,
         type = type == null ? "" : type;
         textValue = truncate(textValue == null ? "" : textValue);
         entryCount = Math.max(0, entryCount);
-        entryTypes = entryTypes == null ? Map.of() : Map.copyOf(entryTypes);
-        value = value == null ? null : new AdvancedGraphDocument.Value(value.type(), value.payload());
+        entryTypes = entryTypes == null ? Map.of() : com.rieno.gadgetsandgizmos.lib.graph.GraphPortOrder.copy(entryTypes);
+        value = value == null ? null : new AdvancedGraphDocument.Value(value.type(), value.payload(), value.entryOrder());
     }
 
     public AdvancedGraphLiveValue(String type, double numberValue, boolean booleanValue, String textValue,
@@ -56,7 +56,7 @@ public record AdvancedGraphLiveValue(String type, double numberValue,
     }
 
     @Override public AdvancedGraphDocument.Value value(){
-        return value == null ? null : new AdvancedGraphDocument.Value(value.type(), value.payload());
+        return value == null ? null : new AdvancedGraphDocument.Value(value.type(), value.payload(), value.entryOrder());
     }
 
     public AdvancedGraphLiveValue withValue(AdvancedGraphDocument.Value val){
@@ -96,13 +96,13 @@ public record AdvancedGraphLiveValue(String type, double numberValue,
 
     // Get the entry types
     private static Map<String, String> entryTypes(AdvancedGraphDocument.Value val) {
-        CompoundTag outputs = GraphRuntime.splitListOutputsFor(val);
+        Map<String, String> outputs = GraphRuntime.splitListOutputTypesFor(val);
         Map<String, String> res = new LinkedHashMap<>();
-        for (String key : outputs.getAllKeys()) {
+        for (String key : outputs.keySet()) {
             if (res.size() >= MAX_ENTRY_TYPES) {
                 break;
             }
-            res.put(truncate(key), truncate(outputs.getString(key)));
+            res.put(truncate(key), truncate(outputs.get(key)));
         }
         return res;
     }

@@ -49,7 +49,6 @@ public final class CTClientEvents {
         EntityLauncherClientInputHandler.tick();
         PhysicsStaffActionClient.tick();
         DiagnosticTabletClientInteraction.tick();
-        ContraptionNetworkLinkerClient.tick();
         ArmorStandPoseClientState.tick();
         PoweredZiplinePlacementHandler.clientTick();
         PoweredZiplineRidingHandler.clientTick();
@@ -75,13 +74,18 @@ public final class CTClientEvents {
         ContraptionNetworkLinkerSnapshotPayload.clearClientState();
         AdvancedHudImageClient.clearServerImages();
         AccDisplayGuiProjection.clear();
+        AccHologramWidgetClient.clear();
         DiagnosticTabletGuiProjection.clear();
         DiagnosticTabletClientAppData.clear();
+        
         DoubleButtonClientHandler.reset();
         ArmorStandPoseClientState.reset();
         PhysicsGantryBeltWheelConnectionParticles.clear();
         PhysicsGantryBeltWheelShearsClient.clear();
         PoweredZiplineHandoffRenderer.clear();
+        ShippingRouteSplineClient.clear();
         CTFeatureToggles.clearServerOverrides();
     }
+
+
 }

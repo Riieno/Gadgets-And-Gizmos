@@ -96,7 +96,9 @@ public final class FunctionPlotterScreen extends Screen {
     private PlotPointExport.Format pendingExportFormat;
     private boolean exportReady;
     private boolean exportMenuOpen;
-    private int projectionFramebufferWidth;
+    
+    private boolean appliedAccGuiScale;
+private int projectionFramebufferWidth;
     private int projectionFramebufferHeight;
     private final Set<String> hiddenSampleNames = new HashSet<>();
     private int sampleFilterScroll;
@@ -222,6 +224,10 @@ public final class FunctionPlotterScreen extends Screen {
 
     @Override
     public void tick() {
+        if (minecraft != null && minecraft.screen == this) {
+            applyAccGuiScale();
+            appliedAccGuiScale = true;
+        }
         super.tick();
         if (requestedServerData && ++sampleRefreshTicks >= 20) {
             sampleRefreshTicks = 0;
@@ -1700,4 +1706,21 @@ public final class FunctionPlotterScreen extends Screen {
     private record ActionButton(Action action, Rect bounds, Component label, boolean active) {
     }
 
+
+
+    private void applyAccGuiScale() {
+        AccGuiScaleOverride.apply();
+    }
+
+
+    private void restoreAccGuiScale() {
+        AccGuiScaleOverride.restoreAfterExit();
+    }
+
+
+    @Override
+    public void removed() {
+        if (appliedAccGuiScale) restoreAccGuiScale();
+        super.removed();
+    }
 }

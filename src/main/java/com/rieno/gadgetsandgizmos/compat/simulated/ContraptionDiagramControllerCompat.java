@@ -413,10 +413,6 @@ public final class ContraptionDiagramControllerCompat {
         addVectorPorts(ports, "world_center_of_mass");
         addVectorPorts(ports, "position");
         ports.put("orientation", "map");
-        ports.put("orientation_x", "number");
-        ports.put("orientation_y", "number");
-        ports.put("orientation_z", "number");
-        ports.put("orientation_w", "number");
         addVectorPorts(ports, "linear_velocity");
         ports.put("speed", "number");
         addVectorPorts(ports, "angular_velocity");
@@ -434,12 +430,9 @@ public final class ContraptionDiagramControllerCompat {
         return Collections.unmodifiableMap(ports);
     }
 
-    // Add the vector ports
+    // Expose vector components through their map
     private static void addVectorPorts(Map<String, String> ports, String name) {
         ports.put(name, "map");
-        ports.put(name + "_x", "number");
-        ports.put(name + "_y", "number");
-        ports.put(name + "_z", "number");
     }
 
     // Copy the contraption diagram controller compat

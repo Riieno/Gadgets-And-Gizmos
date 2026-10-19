@@ -1,0 +1,107 @@
+{
+  "format_version": "1.9.0",
+  "credit": "Made with Blockbench",
+  "parent": "contraption_camera",
+  "texture_size": [
+    32,
+    32
+  ],
+  "textures": {
+    "1": "createthrusters:block/camera/camera_on",
+    "particle": "createthrusters:block/camera/camera"
+  },
+  "elements": [
+    {
+      "from": [
+        2,
+        0,
+        2
+      ],
+      "to": [
+        14,
+        1,
+        14
+      ],
+      "rotation": {
+        "angle": 0,
+        "axis": "y",
+        "origin": [
+          8,
+          1,
+          8
+        ]
+      },
+      "faces": {
+        "north": {
+          "uv": [
+            7,
+            6.5,
+            13,
+            7
+          ],
+          "texture": "#1"
+        },
+        "east": {
+          "uv": [
+            7,
+            6.5,
+            13,
+            7
+          ],
+          "texture": "#1"
+        },
+        "south": {
+          "uv": [
+            7,
+            6.5,
+            13,
+            7
+          ],
+          "texture": "#1"
+        },
+        "west": {
+          "uv": [
+            7,
+            6.5,
+            13,
+            7
+          ],
+          "texture": "#1"
+        },
+        "up": {
+          "uv": [
+            7,
+            0,
+            13,
+            6
+          ],
+          "texture": "#1"
+        },
+        "down": {
+          "uv": [
+            7,
+            0,
+            13,
+            6
+          ],
+          "texture": "#1"
+        }
+      }
+    }
+  ],
+  "groups": [
+    {
+      "name": "Base",
+      "origin": [
+        8,
+        1,
+        8
+      ],
+      "scope": 0,
+      "color": 0,
+      "children": [
+        0
+      ]
+    }
+  ]
+}

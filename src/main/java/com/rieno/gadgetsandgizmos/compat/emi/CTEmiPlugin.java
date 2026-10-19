@@ -1,5 +1,7 @@
 package com.rieno.gadgetsandgizmos.compat.emi;
 
+import com.rieno.gadgetsandgizmos.compat.recipe.ThrusterProcessingDisplays;
+
 /*--------------------------------------------------------##---------------------------------------------------------
 
 =======================================================================================================================
@@ -110,6 +112,7 @@ public class CTEmiPlugin implements EmiPlugin {
             registerIonThruster(registry);
             registerMechanicalCrafting(registry);
             registerOxidizedSolidFuel(registry);
+            registerThrusterProcessing(registry);
             registry.removeEmiStacks(CTEmiPlugin::isDisabledModStack);
             registry.removeRecipes(CTEmiPlugin::hasDisabledOutput);
         } catch (Throwable throwable) {
@@ -151,10 +154,7 @@ public class CTEmiPlugin implements EmiPlugin {
 
     // Add the addon's Create mechanical crafting recipes to EMI
     private static void registerMechanicalCrafting(EmiRegistry registry) {
-        var connection = Minecraft.getInstance().getConnection();
-        HolderLookup.Provider registries = Minecraft.getInstance().level != null
-                ? Minecraft.getInstance().level.registryAccess()
-                : connection == null ? null : connection.registryAccess();
+        HolderLookup.Provider registries = recipeRegistries();
         EmiRecipeCategory category = MechanicalCraftingEmiRecipe.createCategory(
                 ResourceLocation.fromNamespaceAndPath(CreateThrusters.MOD_ID, "mechanical_crafting"),
                 EmiStack.of(new ItemStack(BuiltInRegistries.ITEM.get(
@@ -168,6 +168,29 @@ public class CTEmiPlugin implements EmiPlugin {
                     || !CreateThrusters.MOD_ID.equals(holder.id().getNamespace())) continue;
             registry.addRecipe(new MechanicalCraftingEmiRecipe(category,
                     new RecipeHolder<>(holder.id(), recipe), registries));
+        }
+    }
+
+    private static HolderLookup.Provider recipeRegistries() {
+        var minecraft = Minecraft.getInstance();
+        if (minecraft.level != null) return minecraft.level.registryAccess();
+        var connection = minecraft.getConnection();
+        return connection == null ? null : connection.registryAccess();
+    }
+
+    private static void registerThrusterProcessing(EmiRegistry registry){
+        if(!CTFeatureToggles.isItemEnabled("thruster")) return;
+        HolderLookup.Provider registries = recipeRegistries();
+        for(ThrusterProcessingDisplays.Mode mode : ThrusterProcessingDisplays.Mode.values()){
+            EmiRecipeCategory category = new EmiRecipeCategory(mode.id(), EmiStack.of(mode.icon()));
+            registry.addCategory(category);
+            for(ItemStack catalyst : mode.catalysts()){
+                registry.addWorkstation(category, EmiStack.of(catalyst));
+            }
+            if(registries == null) continue;
+            for(var view : mode.recipes(registry.getRecipeManager(), registries)){
+                registry.addRecipe(new ThrusterEmiRecipe(category, mode, view));
+            }
         }
     }
 

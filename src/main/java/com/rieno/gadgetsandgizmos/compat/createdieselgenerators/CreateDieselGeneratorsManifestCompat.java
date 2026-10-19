@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.compat.createdieselgenerators;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.worker.WorkerContainerAccess;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -58,29 +59,33 @@ public final class CreateDieselGeneratorsManifestCompat {
 
     // Check if this is a distillation tank
     public static boolean isDistillationTank(Level level, BlockPos pos) {
+        if(!ModList.get().isLoaded(MOD_ID) || !WorkerContainerAccess.isLoaded(level, pos)) return false;
         BlockEntity blockEntity = level.getBlockEntity(pos);
-        return ModList.get().isLoaded(MOD_ID)
-                && blockEntity != null
+        return blockEntity != null
                 && DISTILLATION_TANK_BE.equals(blockEntity.getClass().getName());
     }
 
     // Find the combined handler
     @Nullable
     public static IFluidHandler findCombinedHandler(Level level, BlockPos attachedLevelPos) {
+        if(!ModList.get().isLoaded(MOD_ID)
+                || !WorkerContainerAccess.isLoaded(level, attachedLevelPos)) return null;
         TowerLevel attachedLevel = getTowerLevel(level.getBlockEntity(attachedLevelPos));
         if (attachedLevel == null) {
             return null;
         }
 
         BlockPos bottomPos = attachedLevelPos;
-        while (isSameTowerLevel(level.getBlockEntity(bottomPos.below()), attachedLevel)) {
+        while (WorkerContainerAccess.isLoaded(level, bottomPos.below())
+                && isSameTowerLevel(level.getBlockEntity(bottomPos.below()), attachedLevel)) {
             bottomPos = bottomPos.below();
         }
 
         List<IFluidHandler> handlers = new ArrayList<>();
         Set<BlockPos> controllerPositions = new HashSet<>();
         for (BlockPos currentPos = bottomPos;
-             isSameTowerLevel(level.getBlockEntity(currentPos), attachedLevel);
+             WorkerContainerAccess.isLoaded(level, currentPos)
+                     && isSameTowerLevel(level.getBlockEntity(currentPos), attachedLevel);
              currentPos = currentPos.above()) {
             TowerLevel towerLevel = getTowerLevel(level.getBlockEntity(currentPos));
             if (towerLevel == null || !controllerPositions.add(towerLevel.controllerPos)) {
@@ -117,6 +122,7 @@ public final class CreateDieselGeneratorsManifestCompat {
             Method getController = blockEntity.getClass().getMethod("getController");
             Method getControllerBE = blockEntity.getClass().getMethod("getControllerBE");
             BlockPos controllerPos = (BlockPos) getController.invoke(blockEntity);
+            if(!WorkerContainerAccess.isLoaded(blockEntity.getLevel(), controllerPos)) return null;
             Object controllerBE = getControllerBE.invoke(blockEntity);
             if (controllerPos == null || controllerBE == null) {
                 return null;

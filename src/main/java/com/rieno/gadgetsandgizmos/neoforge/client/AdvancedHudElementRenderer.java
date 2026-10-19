@@ -89,6 +89,25 @@ public final class AdvancedHudElementRenderer {
         graphics.pose().popPose();
     }
 
+    // Center a fitted, styled label within the control's available text area.
+    public static void drawCenteredText(GuiGraphics graphics, Font font, CompoundTag elm, String text,
+                                        int x, int y, int width, int height, double layoutScale){
+        if(text == null || text.isBlank() || width <= 0 || height <= 0) return;
+        float scale = (float)Math.max(0.05, Math.min(height / (double)font.lineHeight,
+                AdvancedHudElementStyle.fontSize(elm) / (double)AdvancedHudElementStyle.DEFAULT_FONT_SIZE * layoutScale));
+        Component fitted = fitText(font, elm, text, Math.max(1, (int)Math.floor(width / scale)));
+        graphics.pose().pushPose();
+        try{
+            graphics.pose().translate(x + (width - font.width(fitted) * scale) / 2,
+                    y + (height - font.lineHeight * scale) / 2, 0);
+            graphics.pose().scale(scale, scale, 1);
+            graphics.drawString(font, fitted, 0, 0, AdvancedHudElementStyle.color(elm, "Color",
+                    AdvancedHudElementStyle.DEFAULT_TEXT_COLOR), false);
+        }finally{
+            graphics.pose().popPose();
+        }
+    }
+
     // Get the fit text
     private static Component fitText(Font font, CompoundTag elm, String text, int availableWidth) {
         Component full = styledText(elm, text);

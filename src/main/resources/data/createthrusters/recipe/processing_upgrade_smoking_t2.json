@@ -2,15 +2,17 @@
   "type": "minecraft:crafting_shaped",
   "category": "misc",
   "pattern": [
-    " M ",
-    "PBP",
-    " X "
+    " B ",
+    "BPB",
+    " B "
   ],
   "key": {
-    "M": { "item": "minecraft:smoker" },
-    "P": { "item": "createthrusters:processing_upgrade_smoking_t1" },
-    "B": { "item": "create:brass_sheet" },
-    "X": { "item": "create:brass_sheet" }
+    "P": {
+      "item": "createthrusters:processing_upgrade_smoking_t1"
+    },
+    "B": {
+      "item": "createthrusters:blackstone_alloy"
+    }
   },
   "result": {
     "id": "createthrusters:processing_upgrade_smoking_t2",

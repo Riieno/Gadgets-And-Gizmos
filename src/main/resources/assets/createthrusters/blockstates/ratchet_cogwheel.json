@@ -1,0 +1,17 @@
+{
+  "variants": {
+    "axis=x": {
+      "model": "createthrusters:block/ratchet_cogwheel/block",
+      "x": 90,
+      "y": 90
+    },
+    "axis=y": {
+      "model": "createthrusters:block/ratchet_cogwheel/block"
+    },
+    "axis=z": {
+      "model": "createthrusters:block/ratchet_cogwheel/block",
+      "x": 90,
+      "y": 180
+    }
+  }
+}

@@ -152,7 +152,8 @@ public final class ShipControlMapStore {
                     loadBearings(connection, mapId),
                     loadDockingConnectors(connection, mapId),
                     loadCrnDisplays(connection, mapId),
-                    loadAccDisplays(connection, mapId), header.updatedAt());
+                    loadAccDisplays(connection, mapId),
+                    loadSeats(connection, mapId), header.updatedAt());
         } catch (IOException | SQLException err) {
             LOGGER.log(System.Logger.Level.ERROR, "Could not load ship control map " + mapId, err);
             return null;
@@ -261,7 +262,7 @@ public final class ShipControlMapStore {
                 header.controllerPosition(), header.centerOfMass(), loadUnits(connection, mapId),
                 loadBearings(connection, mapId), loadDockingConnectors(connection, mapId),
                 loadCrnDisplays(connection, mapId), loadAccDisplays(connection, mapId),
-                header.updatedAt());
+                loadSeats(connection, mapId), header.updatedAt());
     }
 
     // Store the map cache
@@ -370,6 +371,17 @@ public final class ShipControlMapStore {
                         FOREIGN KEY (map_id) REFERENCES ship_maps(map_id) ON DELETE CASCADE
                     )
                     """);
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS control_seats (
+                        map_id TEXT NOT NULL,
+                        sublevel_id TEXT NOT NULL,
+                        block_x INTEGER NOT NULL,
+                        block_y INTEGER NOT NULL,
+                        block_z INTEGER NOT NULL,
+                        PRIMARY KEY (map_id, sublevel_id, block_x, block_y, block_z),
+                        FOREIGN KEY (map_id) REFERENCES ship_maps(map_id) ON DELETE CASCADE
+                    )
+                    """);
             // ------------------------------------BEARING MAPS------------------------------------
             statement.execute("""
                     CREATE TABLE IF NOT EXISTS control_bearings (
@@ -468,6 +480,8 @@ public final class ShipControlMapStore {
                     + "ON control_crn_displays(sublevel_id)");
             statement.execute("CREATE INDEX IF NOT EXISTS control_acc_displays_sublevel "
                     + "ON control_acc_displays(sublevel_id)");
+            statement.execute("CREATE INDEX IF NOT EXISTS control_seats_sublevel "
+                    + "ON control_seats(sublevel_id)");
             statement.execute("CREATE INDEX IF NOT EXISTS control_bearings_host ON control_bearings(host_sublevel_id)");
             statement.execute("CREATE INDEX IF NOT EXISTS control_bearing_children_sublevel "
                     + "ON control_bearing_children(child_sublevel_id)");
@@ -481,6 +495,7 @@ public final class ShipControlMapStore {
                 "REAL NOT NULL DEFAULT 0.0");
         ensureColumn(connection, "control_bearing_poses", "max_aerodynamic_torque",
                 "REAL NOT NULL DEFAULT 0.0");
+        ensureColumn(connection, "control_bearings", "geometry_frame", "TEXT");
     }
 
     // Ensure the column
@@ -533,6 +548,11 @@ public final class ShipControlMapStore {
 
     // Replace the units
     private static void replaceUnits(Connection connection, ShipControlMap map) throws SQLException {
+        try (PreparedStatement delete = connection.prepareStatement(
+                "DELETE FROM control_seats WHERE map_id = ?")) {
+            delete.setString(1, map.id().toString());
+            delete.executeUpdate();
+        }
         try (PreparedStatement delete = connection.prepareStatement(
                 "DELETE FROM control_acc_displays WHERE map_id = ?")) {
             delete.setString(1, map.id().toString());
@@ -617,6 +637,7 @@ public final class ShipControlMapStore {
         insertDockingConnectors(connection, map);
         insertCrnDisplays(connection, map);
         insertAccDisplays(connection, map);
+        insertSeats(connection, map);
         insertBearings(connection, map);
     }
 
@@ -695,8 +716,8 @@ public final class ShipControlMapStore {
         try (PreparedStatement bearingStatement = connection.prepareStatement("""
                 INSERT INTO control_bearings (
                     map_id, bearing_index, host_sublevel_id, block_x, block_y, block_z,
-                    block_id, adapter, min_x, max_x, min_z, max_z
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    block_id, adapter, min_x, max_x, min_z, max_z, geometry_frame
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """);
              PreparedStatement childStatement = connection.prepareStatement("""
                 INSERT INTO control_bearing_children (
@@ -738,6 +759,8 @@ public final class ShipControlMapStore {
                 bearingStatement.setDouble(10, bearing.maxX());
                 bearingStatement.setDouble(11, bearing.minZ());
                 bearingStatement.setDouble(12, bearing.maxZ());
+                bearingStatement.setString(13, bearing.calibrationFrame() == null
+                        ? null : bearing.calibrationFrame().write().toString());
                 bearingStatement.addBatch();
 
                 // ------------------------------------CHILD SUB-LEVELS------------------------------------
@@ -883,7 +906,7 @@ public final class ShipControlMapStore {
         List<ShipControlMap.BearingUnit> bearings = new ArrayList<>();
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT bearing_index, host_sublevel_id, block_x, block_y, block_z,
-                       block_id, adapter, min_x, max_x, min_z, max_z
+                       block_id, adapter, min_x, max_x, min_z, max_z, geometry_frame
                 FROM control_bearings WHERE map_id = ? ORDER BY bearing_index
                 """)) {
             statement.setString(1, mapId.toString());
@@ -898,7 +921,7 @@ public final class ShipControlMapStore {
                             loadBearingChildren(connection, mapId, bearingIndex),
                             res.getDouble(8), res.getDouble(9),
                             res.getDouble(10), res.getDouble(11),
-                            loadBearingPoses(connection, mapId, bearingIndex)));
+                            loadBearingPoses(connection, mapId, bearingIndex), readGeometryFrame(res.getString(12))));
                 }
             }
         }
@@ -1080,5 +1103,60 @@ public final class ShipControlMapStore {
             }
         }
         return surfaces;
+    }
+
+
+    // Insert the mapped seats
+    private static void insertSeats(Connection connection, ShipControlMap map)
+            throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO control_seats (
+                    map_id, sublevel_id, block_x, block_y, block_z
+                ) VALUES (?, ?, ?, ?, ?)
+                """)) {
+            for (ShipControlMap.Seat seat : map.seats()) {
+                statement.setString(1, map.id().toString());
+                statement.setString(2, seat.subLevelId().toString());
+                statement.setInt(3, seat.blockPosition().getX());
+                statement.setInt(4, seat.blockPosition().getY());
+                statement.setInt(5, seat.blockPosition().getZ());
+                statement.addBatch();
+            }
+            statement.executeBatch();
+        }
+    }
+
+
+    // Load an optional calibration frame while preserving older map rows
+    private static com.rieno.gadgetsandgizmos.lib.scm.ScmGeometryFrame readGeometryFrame(String val){
+        if(val == null || val.isBlank()) return null;
+        try{
+            return com.rieno.gadgetsandgizmos.lib.scm.ScmGeometryFrame.read(net.minecraft.nbt.TagParser.parseTag(val));
+        }catch(com.mojang.brigadier.exceptions.CommandSyntaxException err){
+            return null;
+        }
+    }
+
+
+    // Load the mapped seats
+    private static List<ShipControlMap.Seat> loadSeats(
+            Connection connection, UUID mapId
+    ) throws SQLException {
+        List<ShipControlMap.Seat> seats = new ArrayList<>();
+        try (PreparedStatement statement = connection.prepareStatement("""
+                SELECT sublevel_id, block_x, block_y, block_z
+                FROM control_seats
+                WHERE map_id = ? ORDER BY sublevel_id, block_x, block_y, block_z
+                """)) {
+            statement.setString(1, mapId.toString());
+            try (ResultSet res = statement.executeQuery()) {
+                while (res.next()) {
+                    seats.add(new ShipControlMap.Seat(
+                            UUID.fromString(res.getString(1)),
+                            new BlockPos(res.getInt(2), res.getInt(3), res.getInt(4))));
+                }
+            }
+        }
+        return seats;
     }
 }

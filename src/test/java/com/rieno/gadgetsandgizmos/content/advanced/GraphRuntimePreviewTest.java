@@ -9,6 +9,42 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 class GraphRuntimePreviewTest{
+    @Test void activePreviewHashesOnlyWhenTheGraphRevisionChanges(){
+        var controller=org.mockito.Mockito.mock(com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEntity.class);
+        var graph=org.mockito.Mockito.spy(variableGraph());
+        GraphRuntime runtime=new GraphRuntime(controller);
+        runtime.compile(graph);
+        runtime.beginPreviewSample(graph);
+        org.mockito.Mockito.clearInvocations(graph);
+        for(int i=0;i<20;i++) runtime.beginPreviewSample(graph);
+        org.mockito.Mockito.verify(graph,org.mockito.Mockito.never()).programFingerprint();
+        graph.setRevision(graph.revision()+1);
+        runtime.beginPreviewSample(graph);
+        org.mockito.Mockito.verify(graph,org.mockito.Mockito.atLeastOnce()).programFingerprint();
+        org.mockito.Mockito.clearInvocations(graph);
+        runtime.compile(graph);
+        runtime.beginPreviewSample(graph);
+        org.mockito.Mockito.verify(graph,org.mockito.Mockito.atLeastOnce()).programFingerprint();
+    }
+
+    @Test void trackerPreviewPreservesTelemetryTypesWithoutAController(){
+        for(String type : java.util.List.of("portable_tracker", "controller_tracker")){
+            AdvancedGraphDocument graph = new AdvancedGraphDocument();
+            AdvancedGraphDocument.Node tracker = createNode("tracker", type);
+            graph.nodes().add(tracker);
+            GraphRuntime runtime = new GraphRuntime(null);
+            runtime.beginPreviewSample(graph);
+            assertEquals(AdvancedGraphDocument.Value.bool(false),
+                    runtime.previewOutput(graph, tracker, "on_ground"));
+            assertEquals(AdvancedGraphDocument.Value.string(""),
+                    runtime.previewOutput(graph, tracker, "main_hand"));
+            AdvancedGraphDocument.Value position = runtime.previewOutput(graph, tracker, "position");
+            assertEquals("map", position.type());
+            assertEquals(0.0D, position.payload().getDouble("x"));
+            assertEquals("map", runtime.previewOutput(graph, tracker, "relative_angle").type());
+        }
+    }
+
     @Test void draftPreviewPropagatesLiveVariablesThroughDataWires(){
         AdvancedGraphDocument active = variableGraph();
         AdvancedGraphDocument draft = active.copy();

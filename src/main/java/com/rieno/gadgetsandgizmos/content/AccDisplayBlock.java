@@ -134,10 +134,14 @@ public class AccDisplayBlock extends HorizontalDirectionalBlock
                     : ctx.getClickLocation().z - ctx.getClickedPos().getZ();
             double depthFromFacing = facing.getAxisDirection() == Direction.AxisDirection.NEGATIVE
                     ? axisPosition : 1.0D - axisPosition;
-            z = ctx.getClickedFace() == facing || depthFromFacing < 1.0D / 3.0D
-                    ? Alignment.NEGATIVE
-                    : ctx.getClickedFace() == facing.getOpposite() || depthFromFacing > 2.0D / 3.0D
-                    ? Alignment.POSITIVE : Alignment.CENTER;
+            // A wall click places the display in the adjacent block space.
+            // Its thin model must therefore occupy the face opposite the
+            // clicked side (the supporting wall), not the outward face.
+            z = ctx.getClickedFace() == facing ? Alignment.POSITIVE
+                    : ctx.getClickedFace() == facing.getOpposite() ? Alignment.NEGATIVE
+                    : depthFromFacing < 1.0D / 3.0D ? Alignment.NEGATIVE
+                    : depthFromFacing > 2.0D / 3.0D ? Alignment.POSITIVE
+                    : Alignment.CENTER;
         }
         BlockState placement = defaultBlockState().setValue(FACING, facing)
                 .setValue(Y_ALIGNMENT, y).setValue(Z_ALIGNMENT, z);
@@ -182,6 +186,7 @@ public class AccDisplayBlock extends HorizontalDirectionalBlock
             return InteractionResult.SUCCESS;
         }
         if (display.isComputerCraftDisplaySource()) {
+            display.selectDisplaySource(player, hit);
             return InteractionResult.CONSUME;
         }
         return display.interact(player, hit, 1) ? InteractionResult.CONSUME : InteractionResult.PASS;
@@ -240,7 +245,7 @@ public class AccDisplayBlock extends HorizontalDirectionalBlock
         return switch (displayType) {
             case BLOCK -> Block.box(0, 0, 0, 16, 16, 16);
             case SLAB -> verticalShape(state.getValue(Y_ALIGNMENT), 8.0D, 16.0D);
-            case HALF_PANEL -> panelShape(state, 8.0D);
+            case HALF_PANEL -> panelShape(state, 3.0D);
             case BOARD -> panelShape(state,
                     state.getValue(Z_ALIGNMENT) == Alignment.CENTER ? 10.0D : 8.0D);
             case PANEL -> panelShape(state, 3.0D);
@@ -291,6 +296,13 @@ public class AccDisplayBlock extends HorizontalDirectionalBlock
     @Override
     public @Nullable BlockEntity newBlockEntity(BlockPos pos, BlockState state) {
         return new AccDisplayBlockEntity(pos, state);
+    }
+
+    // Invalidate panel dimensions when block updates arrive on either side
+    @Override
+    protected void onPlace(BlockState state, Level level, BlockPos pos, BlockState oldState, boolean isMoving){
+        super.onPlace(state, level, pos, oldState, isMoving);
+        if(state != oldState) AccDisplayBlockEntity.displayTopologyChanged(level, pos);
     }
 
     // Handle block placement
@@ -373,4 +385,6 @@ public class AccDisplayBlock extends HorizontalDirectionalBlock
             return serializedName;
         }
     }
+
+
 }

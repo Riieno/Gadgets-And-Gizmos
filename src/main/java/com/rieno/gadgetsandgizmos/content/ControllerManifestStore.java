@@ -319,10 +319,21 @@ public final class ControllerManifestStore {
 
     // Load the shared graph
     public static @Nullable ManifestSnapshot loadSharedGraph(String manifestId) {
+        return loadSharedGraph(sharedGraphsDir(), manifestId);
+    }
+
+    static @Nullable ManifestSnapshot loadSharedGraph(Path dir, String manifestId){
         if (manifestId == null || manifestId.isBlank()) {
             return null;
         }
-        return readManifest(sharedGraphPath(manifestId), true);
+        try{
+            Path root = dir.toAbsolutePath().normalize();
+            Path requested = root.resolve(manifestId + ".json").normalize();
+            if(!root.equals(requested.getParent())) return null;
+            return readManifest(Files.isRegularFile(requested) ? requested : sharedGraphPath(root, manifestId), true);
+        }catch(java.nio.file.InvalidPathException err){
+            return null;
+        }
     }
 
     // Read the shared graph JSON
@@ -382,7 +393,10 @@ public final class ControllerManifestStore {
 
     // Get the list shared graphs
     public static List<SharedGraphEntry> listSharedGraphs() {
-        Path dir = sharedGraphsDir();
+        return listSharedGraphs(sharedGraphsDir());
+    }
+
+    static List<SharedGraphEntry> listSharedGraphs(Path dir){
         if (!Files.isDirectory(dir)) {
             return List.of();
         }
@@ -393,10 +407,7 @@ public final class ControllerManifestStore {
                     .forEach(path -> {
                         try {
                             JsonObject root = JsonParser.parseString(Files.readString(path, StandardCharsets.UTF_8)).getAsJsonObject();
-                            String id = string(root, "linkerManifestId");
-                            if (id.isBlank()) {
-                                id = stripJsonSuffix(path.getFileName().toString());
-                            }
+                            String id = stripJsonSuffix(path.getFileName().toString());
                             String name = string(root, "displayName");
                             entries.add(new SharedGraphEntry(id, name.isBlank() ? id : name));
                         } catch (Exception err) {
@@ -563,6 +574,13 @@ public final class ControllerManifestStore {
             CompoundTag draftGraph = compound(root, "draftGraph");
             CompoundTag activeGraph = compound(root, "activeGraph");
             CompoundTag linkerData = compound(root, "linkerData");
+            if(!linkerData.contains("StoredGraphs") && root.has("storedGraphs") && !root.get("storedGraphs").isJsonNull()){
+                JsonElement stored = root.get("storedGraphs");
+                Tag graphs = stored.isJsonPrimitive()
+                        ? TagParser.parseTag("{StoredGraphs:" + stored.getAsString() + "}").get("StoredGraphs")
+                        : JsonOps.INSTANCE.convertTo(NbtOps.INSTANCE, stored);
+                if(graphs instanceof net.minecraft.nbt.ListTag) linkerData.put("StoredGraphs", graphs);
+            }
             hydrateSharedGraphImages(root, linkerData);
             ManifestSnapshot snapshot = new ManifestSnapshot(id, revision, hash, storageVersion, kind,
                     controllerData, draftGraph, activeGraph, linkerData);

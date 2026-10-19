@@ -127,4 +127,49 @@ public final class TransientThrusterControlSync {
             throttle = active ? Mth.clamp(throttle, 0.0F, 1.0F) : 0.0F;
         }
     }
+
+
+    // Write the live ship throttle command
+    public static void writeShipThrottle(
+            CompoundTag tag,
+            boolean clientPacket,
+            @Nullable ShipThrottle throttle
+    ) {
+        if (!clientPacket || throttle == null) {
+            return;
+        }
+        tag.putString(SHIP_CHANNEL_TAG, throttle.channelId());
+        tag.putFloat(SHIP_MAXIMUM_TAG, throttle.maximum());
+        tag.putFloat(SHIP_THROTTLE_TAG, throttle.throttle());
+    }
+
+
+    // Read the live ship throttle command
+    public static @Nullable ShipThrottle readShipThrottle(
+            CompoundTag tag,
+            boolean clientPacket
+    ) {
+        if (!clientPacket || !tag.contains(SHIP_THROTTLE_TAG)) {
+            return null;
+        }
+        return new ShipThrottle(
+                tag.getString(SHIP_CHANNEL_TAG),
+                tag.getFloat(SHIP_MAXIMUM_TAG),
+                tag.getFloat(SHIP_THROTTLE_TAG));
+    }
+
+
+    // Store the live ship throttle command
+    public record ShipThrottle(
+            String channelId,
+            float maximum,
+            float throttle
+    ) {
+        // Initialize the live ship throttle command
+        public ShipThrottle {
+            channelId = channelId == null ? "" : channelId;
+            maximum = Mth.clamp(maximum, 0.0F, 1.0F);
+            throttle = Mth.clamp(throttle, 0.0F, 1.0F);
+        }
+    }
 }

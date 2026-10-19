@@ -63,6 +63,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicIntegerArray;
+import com.rieno.gadgetsandgizmos.config.SeasonalPlumeEffects;
 
 // Split one kinetic RCS block into four independently controlled physical nozzles
 public class RcsThrusterBlockEntity extends KineticBlockEntity
@@ -564,8 +565,11 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
                 .add(randomPerpendicular(particleDirection, 0.009D));
         float shade = 0.72F + level.random.nextFloat() * 0.23F;
         float scale = particleScale * (0.55F + level.random.nextFloat() * 0.30F + throttle * 0.20F);
+        SeasonalPlumeEffects.Selection colors = SeasonalPlumeEffects.current(
+                PlumeRainbow.Mode.OFF, PlumeRainbow.Palette.NORMAL);
         WorldSpaceParticleEmitter.addParticle(this,
-                new RcsSteamParticleOptions(shade, shade, Math.min(1.0F, shade + 0.025F), scale),
+                new RcsSteamParticleOptions(shade, shade, Math.min(1.0F, shade + 0.025F), scale,
+                        colors.mode(), colors.palette()),
                 localEmitter, localMotion);
     }
 
@@ -1138,4 +1142,6 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
             return getReceiverLocation();
         }
     }
+
+
 }

@@ -159,6 +159,7 @@ public record DiagnosticTabletActionPayload(boolean placed, InteractionHand hand
                         blockTablet != null, state.tabletId(),
                         blockTablet == null ? null : payload.tabletSubLevelId(),
                         blockTablet == null ? null : payload.tabletPos());
+                if(!res.message().getString().isBlank()) player.displayClientMessage(res.message(), true);
             }
             if ("select".equals(payload.actionId()) || homeId.equals(payload.appId())) {
                 DiagnosticTabletApps.dispatch(player, stack, state,

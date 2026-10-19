@@ -28,9 +28,11 @@ import net.minecraft.world.level.block.state.properties.DirectionProperty;
 import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
+import com.rieno.gadgetsandgizmos.lib.physics.SubLevelAttachmentApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SubLevelBlockAttachment;
 
 // Add selectable linker faces which relay their configured redstone signal
-public class ContraptionNetworkLinkerPlaneBlock extends Block implements IBE<ContraptionNetworkLinkerPlaneBlockEntity> {
+public class ContraptionNetworkLinkerPlaneBlock extends Block implements IBE<ContraptionNetworkLinkerPlaneBlockEntity>, SubLevelBlockAttachment {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -160,6 +162,7 @@ public class ContraptionNetworkLinkerPlaneBlock extends Block implements IBE<Con
     @Override
     protected void neighborChanged(BlockState state, Level level, BlockPos pos, Block block, BlockPos fromPos,
                                    boolean isMoving) {
+        if(SubLevelAttachmentApi.isMoving(level, pos) || SubLevelAttachmentApi.isMoving(level, fromPos)) return;
         if (level.isClientSide || !(level.getBlockEntity(pos) instanceof ContraptionNetworkLinkerPlaneBlockEntity plane)) {
             return;
         }
@@ -248,5 +251,12 @@ public class ContraptionNetworkLinkerPlaneBlock extends Block implements IBE<Con
     @Override
     public BlockEntityType<? extends ContraptionNetworkLinkerPlaneBlockEntity> getBlockEntityType() {
         return CTBlockEntities.CONTRAPTION_NETWORK_LINKER_PLANE.get();
+    }
+
+
+    // Carry each configured face with its supporting neighbor
+    @Override
+    public boolean isAttachedTo(BlockState state, Direction supportDir){
+        return hasPlane(state, supportDir.getOpposite());
     }
 }

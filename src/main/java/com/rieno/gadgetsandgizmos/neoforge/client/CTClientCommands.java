@@ -17,6 +17,7 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
+import com.rieno.gadgetsandgizmos.neoforge.client.particle.SoftThrusterPlumeParticle;
 
 // Provide client commands for graph, render and physics diagnostics
 public final class CTClientCommands {
@@ -35,7 +36,11 @@ public final class CTClientCommands {
     // Register the client commands
     public static void registerClientCommands(RegisterClientCommandsEvent evt) {
         CommandDispatcher<CommandSourceStack> dispatcher = evt.getDispatcher();
-        dispatcher.register(Commands.literal("thrusters")
+        dispatcher.register(Commands.literal("gizmos")
+                .then(Commands.literal("plume_culling")
+                        .executes(ctx -> setPlumeCulling(ctx.getSource(), null))
+                        .then(Commands.literal("on").executes(ctx -> setPlumeCulling(ctx.getSource(), true)))
+                        .then(Commands.literal("off").executes(ctx -> setPlumeCulling(ctx.getSource(), false))))
                 .then(Commands.literal("clawmarker")
                         .executes(ctx -> {
                             ctx.getSource().sendSystemMessage(Component.literal("Claw marker is disabled"));
@@ -91,6 +96,15 @@ public final class CTClientCommands {
                 ? "Gantry anchor debug enabled"
                 : "Gantry anchor debug disabled";
         src.sendSystemMessage(Component.literal(msg + " (anchors: " + CTGantryAnchorDebugRenderer.getLastAnchorCount() + ")"));
+        return Command.SINGLE_SUCCESS;
+    }
+
+
+    // Toggle view occlusion for thruster plume particles
+    private static int setPlumeCulling(CommandSourceStack src, Boolean enabled) {
+        boolean state = enabled == null ? !SoftThrusterPlumeParticle.isOcclusionCullingEnabled() : enabled;
+        SoftThrusterPlumeParticle.setOcclusionCullingEnabled(state);
+        src.sendSystemMessage(Component.literal("Plume culling " + (state ? "enabled" : "disabled")));
         return Command.SINGLE_SUCCESS;
     }
 }

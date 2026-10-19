@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:smart_battery",
+  "properties": {
+    "sable:mass": 1.0
+  }
+}

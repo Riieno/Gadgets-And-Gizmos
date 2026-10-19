@@ -54,9 +54,9 @@ public class AnalogueContraptionControllerBlockItem extends CTTooltipBlockItem {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     private static final String STORED_TARGETS_TAG = "StoredTargets";
-    private static final String EMBEDDED_SLAB_TAG = "EmbeddedSlab";
-    private static final String EMBEDDED_SLAB_MATERIAL_TAG = "EmbeddedSlabMaterial";
-    private static final String EMBEDDED_BLOCK_ENTITY_TAG = "EmbeddedBlockEntity";
+    private static final String EMBEDDED_SLAB_TAG = ControllerPhysicalState.EMBEDDED_BLOCK;
+    private static final String EMBEDDED_SLAB_MATERIAL_TAG = ControllerPhysicalState.EMBEDDED_MATERIAL;
+    private static final String EMBEDDED_BLOCK_ENTITY_TAG = ControllerPhysicalState.EMBEDDED_BLOCK_ENTITY;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -141,6 +141,8 @@ public class AnalogueContraptionControllerBlockItem extends CTTooltipBlockItem {
         BlockPos pos = ctx.getClickedPos();
         BlockState supportState = level.getBlockState(pos);
         BlockEntity supportBlockEntity = level.getBlockEntity(pos);
+        UUID modulePlacerId = supportBlockEntity instanceof ShipControlModuleBlockEntity module
+                ? module.placerId() : null;
         EmbeddedCopycatBlockSnapshot.Snapshot backingSnapshot = supportBlockEntity == null
                 ? null
                 : EmbeddedCopycatBlockSnapshot.capture(level, supportBlockEntity);
@@ -175,6 +177,10 @@ public class AnalogueContraptionControllerBlockItem extends CTTooltipBlockItem {
                         supportState,
                         backingSnapshot == null ? null : backingSnapshot.material(),
                         backingSnapshot == null ? null : backingSnapshot.blockEntityData());
+                if(controller instanceof AdvancedContraptionControllerBlockEntity advanced
+                        && supportState.getBlock() instanceof ShipControlModuleBlock){
+                    advanced.setShipPermissionModulePlacerId(modulePlacerId);
+                }
             }
         } else if (backingSnapshot != null) {
             BlockEntity remaining = level.getBlockEntity(pos);
@@ -233,9 +239,15 @@ public class AnalogueContraptionControllerBlockItem extends CTTooltipBlockItem {
         boolean changed = blockEntityTag.contains(EMBEDDED_SLAB_TAG)
                 || blockEntityTag.contains(EMBEDDED_SLAB_MATERIAL_TAG)
                 || blockEntityTag.contains(EMBEDDED_BLOCK_ENTITY_TAG);
+        boolean physicalSnapshot = blockEntityTag.contains(ControllerPhysicalState.TAG_KEY)
+                || ControllerManifestStore.hasControllerMetadata(blockEntityTag);
         blockEntityTag.remove(EMBEDDED_SLAB_TAG);
         blockEntityTag.remove(EMBEDDED_SLAB_MATERIAL_TAG);
         blockEntityTag.remove(EMBEDDED_BLOCK_ENTITY_TAG);
+        if(physicalSnapshot){
+            blockEntityTag.put(ControllerPhysicalState.TAG_KEY, new CompoundTag());
+            changed = true;
+        }
         return changed;
     }
 
@@ -357,4 +369,6 @@ public class AnalogueContraptionControllerBlockItem extends CTTooltipBlockItem {
         String groupId = subLevelId == null ? "world" : "sublevel:" + subLevelId;
         return ControllerDiscoveryService.classify(blockEntity, subLevelId, groupId);
     }
+
+
 }

@@ -64,6 +64,16 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Supplier;
+import com.rieno.gadgetsandgizmos.lib.create.encasing.CustomEncasedShaftBlock;
+import com.rieno.gadgetsandgizmos.lib.create.encasing.CustomEncasedCogwheelBlock;
+import com.rieno.gadgetsandgizmos.content.CameraBlock;
+import com.rieno.gadgetsandgizmos.content.SmartBatteryBlock;
+import com.rieno.gadgetsandgizmos.content.SmartTankBlock;
+import com.rieno.gadgetsandgizmos.content.SmartVaultBlock;
+import com.rieno.gadgetsandgizmos.content.PlumeLightBlock;
+import com.rieno.gadgetsandgizmos.content.RatchetCogwheelBlock;
+import com.simibubi.create.content.decoration.encasing.CasingBlock;
+import net.minecraft.world.level.block.Blocks;
 
 // Register addon blocks
 public final class CTBlocks {
@@ -77,11 +87,20 @@ public final class CTBlocks {
 
     public static final DeferredRegister.Blocks REGISTRAR = DeferredRegister.createBlocks(CreateThrusters.MOD_ID);
 
-    @Nullable
+    
+    public static final DeferredBlock<CameraBlock> CAMERA = register("camera",
+            () -> new CameraBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
+                    .strength(2.0F).sound(SoundType.METAL).noOcclusion().dynamicShape()));
+@Nullable
     public static final DeferredBlock<ThrusterBlock> THRUSTER = register("thruster",
             () -> new ThrusterBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(3.0f).requiresCorrectToolForDrops().noOcclusion()));
 
-    @Nullable
+    
+    public static final DeferredBlock<PlumeLightBlock> PLUME_LIGHT = register("plume_light",
+            () -> new PlumeLightBlock(BlockBehaviour.Properties.of().mapColor(MapColor.NONE)
+                    .noCollission().noOcclusion().replaceable().noLootTable()
+                    .lightLevel(state -> 15).pushReaction(PushReaction.DESTROY)));
+@Nullable
     public static final DeferredBlock<RcsThrusterBlock> RCS_THRUSTER = register("rcs_thruster",
             () -> new RcsThrusterBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
                     .strength(3.0f).sound(SoundType.NETHERITE_BLOCK)
@@ -100,7 +119,27 @@ public final class CTBlocks {
                             .mapColor(MapColor.COLOR_BLACK).strength(5.0f, 8.0f)
                             .sound(SoundType.NETHERITE_BLOCK).requiresCorrectToolForDrops()));
 
+    
     @Nullable
+    public static final DeferredBlock<CasingBlock> BLACKSTONE_CASING = register("blackstone_casing",
+            () -> new CasingBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.ANDESITE)
+                    .mapColor(MapColor.COLOR_BLACK).sound(SoundType.WOOD)));
+
+    public static final DeferredBlock<CustomEncasedShaftBlock> BLACKSTONE_ENCASED_SHAFT = register("blackstone_encased_shaft",
+            () -> new CustomEncasedShaftBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.ANDESITE)
+                    .mapColor(MapColor.COLOR_BLACK).noOcclusion(), BLACKSTONE_CASING::get,
+                    () -> CTBlockEntities.BLACKSTONE_ENCASED_SHAFT.get()));
+
+    public static final DeferredBlock<CustomEncasedCogwheelBlock> BLACKSTONE_ENCASED_COGWHEEL = register("blackstone_encased_cogwheel",
+            () -> new CustomEncasedCogwheelBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.ANDESITE)
+                    .mapColor(MapColor.COLOR_BLACK).noOcclusion(), false, BLACKSTONE_CASING::get,
+                    () -> CTBlockEntities.BLACKSTONE_ENCASED_COGWHEEL.get()));
+
+    public static final DeferredBlock<CustomEncasedCogwheelBlock> BLACKSTONE_ENCASED_LARGE_COGWHEEL = register("blackstone_encased_large_cogwheel",
+            () -> new CustomEncasedCogwheelBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.ANDESITE)
+                    .mapColor(MapColor.COLOR_BLACK).noOcclusion(), true, BLACKSTONE_CASING::get,
+                    () -> CTBlockEntities.BLACKSTONE_ENCASED_LARGE_COGWHEEL.get()));
+@Nullable
     public static final DeferredBlock<FuelOxidizerBlock> FUEL_OXIDIZER = register("fuel_oxidizer",
             () -> new FuelOxidizerBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(3.0f).requiresCorrectToolForDrops().noOcclusion()));
 
@@ -168,7 +207,17 @@ public final class CTBlocks {
     public static final DeferredBlock<BiDirectionalGearshiftBlock> BI_DIRECTIONAL_GEARSHIFT = register("bi_directional_gearshift",
             () -> new BiDirectionalGearshiftBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(3.0f).requiresCorrectToolForDrops().noOcclusion()));
 
+    
     @Nullable
+    public static final DeferredBlock<RatchetCogwheelBlock> RATCHET_COGWHEEL = register("ratchet_cogwheel",
+            () -> new RatchetCogwheelBlock(false, BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
+                    .strength(3.0f).requiresCorrectToolForDrops().noOcclusion()));
+
+    @Nullable
+    public static final DeferredBlock<RatchetCogwheelBlock> LARGE_RATCHET_COGWHEEL = register("large_ratchet_cogwheel",
+            () -> new RatchetCogwheelBlock(true, BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
+                    .strength(3.0f).requiresCorrectToolForDrops().noOcclusion()));
+@Nullable
     public static final DeferredBlock<AnalogueJoystickBlock> ANALOGUE_JOYSTICK = register("analogue_joystick",
             () -> new AnalogueJoystickBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(2.0f).requiresCorrectToolForDrops().noOcclusion()));
 
@@ -235,7 +284,22 @@ public final class CTBlocks {
     public static final DeferredBlock<ShippingManifestBlock> SHIPPING_MANIFEST = register("shipping_manifest",
             () -> new ShippingManifestBlock(BlockBehaviour.Properties.of().mapColor(MapColor.WOOD).strength(0.5f).noCollission().noOcclusion()));
 
+    
     @Nullable
+    public static final DeferredBlock<SmartVaultBlock> SMART_VAULT = register("smart_vault",
+            () -> new SmartVaultBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
+                    .strength(3.0f).requiresCorrectToolForDrops()));
+
+    @Nullable
+    public static final DeferredBlock<SmartBatteryBlock> SMART_BATTERY = register("smart_battery",
+            () -> new SmartBatteryBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
+                    .strength(3.0f).requiresCorrectToolForDrops()));
+
+    @Nullable
+    public static final DeferredBlock<SmartTankBlock> SMART_TANK = register("smart_tank",
+            () -> new SmartTankBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
+                    .strength(3.0f).requiresCorrectToolForDrops().noOcclusion()));
+@Nullable
     public static final DeferredBlock<AlternatorBlock> ALTERNATOR = register("alternator",
             () -> new AlternatorBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(3.0f).requiresCorrectToolForDrops().noOcclusion()));
 
@@ -319,4 +383,6 @@ public final class CTBlocks {
     // Initialize the CT blocks
     private CTBlocks() {
     }
+
+
 }

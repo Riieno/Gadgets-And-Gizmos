@@ -170,11 +170,17 @@ public final class AccDisplayGuiProjection {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Handle the ACC display GUI projection
+    public static boolean isDragging(){ return activeInteraction != null || computerInteraction != null; }
+
     public static boolean interact(AccDisplayBlockEntity clicked, BlockHitResult hit,
                                    int mouseButton) {
         AccDisplayBlockEntity root = clicked == null ? null : clicked.networkRoot();
         if (root == null || hit == null) {
             return false;
+        }
+        if(root.displayedCamera() != null){
+            ScreenPoint point = contentPoint(root, screenPoint(root, clicked, hit));
+            return point != null && AccDisplayCameraProjection.interact(root, point.x, point.y, mouseButton);
         }
         if ("diagnostic_tablet".equals(root.displayFrame().getString("ActiveSource"))) {
             ScreenPoint point = contentPoint(root, screenPoint(root, clicked, hit));
@@ -226,6 +232,11 @@ public final class AccDisplayGuiProjection {
 
     // Handle the client tick event
     public static void onClientTick(ClientTickEvent.Pre evt) {
+        DisplayHit cameraHit = currentDisplayHit();
+        ScreenPoint cameraPoint = cameraHit == null ? null
+                : contentPoint(cameraHit.root, screenPoint(cameraHit.root, cameraHit.clicked, cameraHit.hit));
+        if(cameraPoint == null) AccDisplayCameraProjection.release();
+        else AccDisplayCameraProjection.updatePointer(cameraHit.root, cameraPoint.x, cameraPoint.y);
         long now = Util.getMillis();
         for (Session visible : new ArrayList<>(SESSIONS.values())) {
             if (now - visible.lastUse <= 250L) {
@@ -281,7 +292,7 @@ public final class AccDisplayGuiProjection {
             return;
         }
         Minecraft minecraft = Minecraft.getInstance();
-        boolean held = GLFW.glfwGetMouseButton(minecraft.getWindow().getWindow(),
+        boolean held = com.rieno.gadgetsandgizmos.lib.client.view.ViewInteractionClient.held() || GLFW.glfwGetMouseButton(minecraft.getWindow().getWindow(),
                 interaction.mouseButton) == GLFW.GLFW_PRESS;
         DisplayHit hit = currentDisplayHit();
         if (!held || hit == null || hit.root != interaction.display) {
@@ -844,4 +855,6 @@ public final class AccDisplayGuiProjection {
                               AccDisplayBlockEntity clicked,
                               BlockHitResult hit) {
     }
+
+
 }

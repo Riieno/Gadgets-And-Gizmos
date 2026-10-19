@@ -53,9 +53,7 @@ public class PhysicsGogglesItem extends BaseArmorItem {
 
     // Initialize the physics goggles item
     public PhysicsGogglesItem(Item.Properties properties) {
-        super(ArmorMaterials.LEATHER, TYPE, properties, TEXTURE);
-        GogglesItem.addIsWearingPredicate(player ->
-                isFunctionalGoggles(player.getItemBySlot(EquipmentSlot.HEAD)));
+        this(properties, TEXTURE);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -121,8 +119,10 @@ public class PhysicsGogglesItem extends BaseArmorItem {
         if (stack == null || stack.isEmpty()) {
             return false;
         }
-        return com.rieno.gadgetsandgizmos.registry.CTItems.PHYSICS_GOGGLES != null
-                && stack.is(com.rieno.gadgetsandgizmos.registry.CTItems.PHYSICS_GOGGLES.get());
+        return (com.rieno.gadgetsandgizmos.registry.CTItems.PHYSICS_GOGGLES != null
+                && stack.is(com.rieno.gadgetsandgizmos.registry.CTItems.PHYSICS_GOGGLES.get()))
+                || (com.rieno.gadgetsandgizmos.registry.CTItems.PILOT_CAP != null
+                && stack.is(com.rieno.gadgetsandgizmos.registry.CTItems.PILOT_CAP.get()));
     }
 
     // Get the linked pair label
@@ -151,5 +151,13 @@ public class PhysicsGogglesItem extends BaseArmorItem {
                 ? binding.getUUID(
                         AnalogueContraptionControllerMenu.GOGGLES_BIND_PAIR_ID).toString()
                 : label;
+    }
+
+
+    // Initialize goggles with a different worn texture
+    protected PhysicsGogglesItem(Item.Properties properties, ResourceLocation texture) {
+        super(ArmorMaterials.LEATHER, TYPE, properties, texture);
+        GogglesItem.addIsWearingPredicate(player ->
+                isFunctionalGoggles(player.getItemBySlot(EquipmentSlot.HEAD)));
     }
 }

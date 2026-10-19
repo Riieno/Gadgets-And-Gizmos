@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:plume_light",
+  "properties": {
+    "sable:mass": 0.0
+  }
+}

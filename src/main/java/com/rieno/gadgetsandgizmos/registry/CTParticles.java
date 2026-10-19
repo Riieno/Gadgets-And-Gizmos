@@ -19,6 +19,7 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.neoforged.neoforge.registries.DeferredHolder;
 import net.neoforged.neoforge.registries.DeferredRegister;
+import net.minecraft.core.particles.SimpleParticleType;
 
 // Register addon particles
 public final class CTParticles {
@@ -88,4 +89,6 @@ public final class CTParticles {
     // Initialize the CT particles
     private CTParticles() {
     }
+
+
 }

@@ -22,9 +22,17 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.List;
 import java.util.Map;
+import com.rieno.gadgetsandgizmos.lib.display.DisplayTextScale;
+import com.rieno.gadgetsandgizmos.neoforge.network.AccDisplayTextScalePayload;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
 
 // Select an ACC display mode and preview its current frame before saving
-public final class AccDisplayModeScreen extends Screen {
+public final class AccDisplayModeScreen extends Screen {    // Text size affects linked content independently of the selected schedule layout
+    private double linkedTextScale;
+
+    private Button textScaleButton;
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -85,15 +93,27 @@ public final class AccDisplayModeScreen extends Screen {
 
     // Initialize the ACC display mode
     public AccDisplayModeScreen(MenuConfigTarget target, String selectedMode, CompoundTag currentFrame) {
-        super(Component.literal("ACC Display Mode"));
-        this.target = target;
-        this.selectedMode = AccDisplayBlockEntity.normalizeDisplayMode(selectedMode);
-        this.currentFrame = currentFrame == null ? new CompoundTag() : currentFrame.copy();
+        this(target, selectedMode, currentFrame, DisplayTextScale.read(currentFrame));
     }
 
     // Initialize the ACC display mode
     @Override
     protected void init() {
+        int left = (width - PANEL_WIDTH) / 2;
+        int top = (height - PANEL_HEIGHT) / 2;
+        Button decrease = addRenderableWidget(Button.builder(Component.literal("-"),
+                btn -> changeTextScale(linkedTextScale - DisplayTextScale.STEP))
+                .bounds(left + 124, top + 192, 20, 18).build());
+        textScaleButton = addRenderableWidget(Button.builder(textScaleLabel(),
+                btn -> changeTextScale(DisplayTextScale.DEFAULT))
+                .bounds(left + 148, top + 192, 66, 18).build());
+        Button increase = addRenderableWidget(Button.builder(Component.literal("+"),
+                btn -> changeTextScale(linkedTextScale + DisplayTextScale.STEP))
+                .bounds(left + 218, top + 192, 20, 18).build());
+        Tooltip tip = Tooltip.create(Component.translatable("createthrusters.acc_display.text_scale.tooltip"));
+        decrease.setTooltip(tip);
+        increase.setTooltip(tip);
+        textScaleButton.setTooltip(Tooltip.create(Component.translatable("createthrusters.acc_display.text_scale.reset")));
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -156,6 +176,8 @@ public final class AccDisplayModeScreen extends Screen {
         drawPreview(graphics, previewLeft + 3, previewTop + 3, previewWidth - 6);
         graphics.drawWordWrap(font, Component.literal(DESCRIPTIONS.get(selectedMode)),
                 previewLeft + 3, top + 143, previewWidth - 6, 0xFFCDD2D5);
+        graphics.drawString(font, Component.translatable("createthrusters.acc_display.text_scale"),
+                left + 124, top + 179, 0xFFCDD2D5, false);
         super.render(graphics, mouseX, mouseY, partialTick);
     }
 
@@ -271,5 +293,28 @@ public final class AccDisplayModeScreen extends Screen {
         scrollRow = Mth.clamp(scrollRow - (int) Math.signum(scrollY),
                 0, Math.max(0, MODES.size() - visibleRows));
         return true;
+    }
+
+
+    public AccDisplayModeScreen(MenuConfigTarget target, String selectedMode, CompoundTag currentFrame,
+                                double linkedTextScale){
+        super(Component.literal("ACC Display Mode"));
+        this.target = target;
+        this.selectedMode = AccDisplayBlockEntity.normalizeDisplayMode(selectedMode);
+        this.currentFrame = currentFrame == null ? new CompoundTag() : currentFrame.copy();
+        this.linkedTextScale = DisplayTextScale.normalize(linkedTextScale);
+    }
+
+
+    // Save text size immediately without forcing the ship-information source to take focus
+    private void changeTextScale(double scale){
+        linkedTextScale = DisplayTextScale.normalize(scale);
+        textScaleButton.setMessage(textScaleLabel());
+        PacketDistributor.sendToServer(new AccDisplayTextScalePayload(target, linkedTextScale));
+    }
+
+
+    private Component textScaleLabel(){
+        return Component.literal(Math.round(linkedTextScale * 100.0D) + "%");
     }
 }

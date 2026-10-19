@@ -1,0 +1,6 @@
+{
+  "selector": "createthrusters:smart_tank",
+  "properties": {
+    "sable:mass": 1.0
+  }
+}

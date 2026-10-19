@@ -1,12 +1,32 @@
 {
-  "type": "minecraft:crafting_shapeless",
-  "category": "redstone",
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
   "ingredients": [
-    { "item": "simulated:throttle_lever" },
-    { "item": "simulated:throttle_lever" }
+    {
+      "item": "simulated:throttle_lever"
+    },
+    {
+      "item": "simulated:throttle_lever"
+    }
   ],
   "result": {
     "id": "createthrusters:analogue_joystick",
     "count": 1
+  },
+  "pattern": [
+    " S ",
+    " P ",
+    " L "
+  ],
+  "key": {
+    "S": {
+      "item": "create:brass_sheet"
+    },
+    "P": {
+      "item": "create:precision_mechanism"
+    },
+    "L": {
+      "tag": "c:stripped_logs"
+    }
   }
 }
