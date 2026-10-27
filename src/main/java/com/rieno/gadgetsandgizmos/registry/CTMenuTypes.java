@@ -32,6 +32,7 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Supplier;
+import com.rieno.gadgetsandgizmos.content.ThrusterDyeMenu;
 
 // Register addon menu types
 public final class CTMenuTypes {
@@ -97,6 +98,12 @@ public final class CTMenuTypes {
     @Nullable
     public static final DeferredHolder<MenuType<?>, MenuType<PoweredZiplineMenu>> POWERED_ZIPLINE = register("powered_zipline",
             "powered_zipline", () -> IMenuTypeExtension.create(PoweredZiplineMenu::new));
+
+    public static final DeferredHolder<MenuType<?>, MenuType<com.rieno.gadgetsandgizmos.content.SmartContainerMenu>> SMART_CONTAINER = REGISTRAR.register(
+            "smart_container", () -> IMenuTypeExtension.create(com.rieno.gadgetsandgizmos.content.SmartContainerMenu::new));
+
+    public static final DeferredHolder<MenuType<?>, MenuType<ThrusterDyeMenu>> THRUSTER_DYE = REGISTRAR.register(
+            "thruster_dye", () -> IMenuTypeExtension.create(ThrusterDyeMenu::new));
 
     public static final DeferredHolder<MenuType<?>, MenuType<NavigationTableMenu>> NAVIGATION_TABLE = REGISTRAR.register(
             "navigation_table", () -> IMenuTypeExtension.create(NavigationTableMenu::new));

@@ -1,5 +1,6 @@
 package com.rieno.gadgetsandgizmos.neoforge.client;
 
+
 /*--------------------------------------------------------##---------------------------------------------------------
 
 =======================================================================================================================
@@ -8,8 +9,15 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.client.render.HologramRenderScope;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.rieno.gadgetsandgizmos.lib.client.render.RenderVisibilityGate;
+import com.rieno.gadgetsandgizmos.lib.client.render.RenderGeometryCache;
+import com.rieno.gadgetsandgizmos.lib.client.render.ClientRenderDistance;
+import com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRequests;
+import com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer;
+import com.rieno.gadgetsandgizmos.lib.client.view.ViewFeedRenderer;
 import com.rieno.gadgetsandgizmos.content.AccDisplayBlock;
 import com.rieno.gadgetsandgizmos.content.AccDisplayBlockEntity;
 import com.rieno.gadgetsandgizmos.content.AccDisplayWidgetGeometry;
@@ -84,6 +92,8 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
 
     // Font
     private final Font font;
+    private final RenderVisibilityGate<AccDisplayBlockEntity> visibility = new RenderVisibilityGate<>();
+    private final Map<AccDisplayBlockEntity, RetainedDisplay> retained = new WeakHashMap<>();
     // Tracked plot samples
     private final Map<AccDisplayBlockEntity, Map<String, ArrayDeque<Double>>> plotSamples =
             Collections.synchronizedMap(new WeakHashMap<>());
@@ -114,10 +124,37 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
     public void render(AccDisplayBlockEntity blockEntity, float partialTick,
                        PoseStack poseStack, MultiBufferSource buffer,
                        int packedLight, int packedOverlay) {
+        if(HologramRenderScope.isActive()) return;
         // ------------------------------------DISPLAY CHECKS------------------------------------
         if (!blockEntity.isNetworkRoot()) {
             return;
         }
+        var pos = blockEntity.getBlockPos();
+        if(!ViewSceneRenderer.isCapturing() && !visibility.shouldRender(blockEntity, null, poseStack, buffer,
+                getRenderBoundingBox(blockEntity).move(-pos.getX(), -pos.getY(), -pos.getZ()))) return;
+        if(ViewSceneRenderer.isCapturing()){
+            renderContent(blockEntity, partialTick, poseStack, buffer);
+            return;
+        }
+        RetainedDisplay display = retained.computeIfAbsent(blockEntity, ignored -> new RetainedDisplay());
+        boolean refresh = ClientRenderDistance.within(blockEntity, 12D * 16);
+        display.geometry.render(poseStack, buffer, refresh, target -> display.feeds.record(
+                () -> renderContent(blockEntity, partialTick, new PoseStack(), target)));
+        display.feeds.retain();
+        if(!refresh){
+            AccDisplayGuiProjection.retain(blockEntity);
+            DiagnosticTabletGuiProjection.retainAccDisplay(blockEntity.diagnosticTabletSource());
+        }
+    }
+
+    private static final class RetainedDisplay{
+        private final RenderGeometryCache geometry = new RenderGeometryCache();
+        private final ViewSceneRequests feeds = new ViewSceneRequests();
+    }
+
+    // Keep the original layers and layout in the display's local coordinates
+    private void renderContent(AccDisplayBlockEntity blockEntity, float partialTick,
+                               PoseStack poseStack, MultiBufferSource buffer){
         AccHologramWidgetClient.record(blockEntity);
         CompoundTag frame = blockEntity.displayFrame();
         String state = frame.getString("State");
@@ -539,7 +576,7 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
         if("camera".equals(frame.getString("Format"))){
             if(com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer.isCapturing()) return;
             var ref = com.rieno.gadgetsandgizmos.lib.view.ViewReference.fromTag(frame.getCompound("ViewSource"));
-            if(ref == null || !com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer.draw(
+            if(ref == null || !com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer.drawVisible(
                     ref, width, height, CONTENT_Z, poseStack, buffer)){
                 drawCentered("Waiting for camera", width, height / 2, 0xFFADC3D4, poseStack, buffer);
             }
@@ -896,6 +933,20 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
                 poseStack.mulPose(com.mojang.math.Axis.ZP.rotationDegrees(rotation));
                 poseStack.scale(elementScale, elementScale, 1.0F);
                 poseStack.translate(-elementWidth * 0.5F, -elementHeight * 0.5F, 0.0F);
+                if("camera_source".equals(type)){
+                    var ref = blockEntity.widgetCamera(node.id(), elm.getString("InteractionId"));
+                    if(!ViewFeedRenderer.drawSurface(ref, elementWidth, elementHeight, CONTENT_Z, poseStack, buffer)){
+                        fill(0, 0, elementWidth, elementHeight, 0xFF101A20, poseStack, buffer);
+                        if(elementHeight >= font.lineHeight) drawCentered(font.plainSubstrByWidth(
+                                ref == null ? "Camera unavailable" : "Waiting for camera", elementWidth),
+                                elementWidth, (elementHeight - font.lineHeight) / 2, 0xFFB2C7D0, poseStack, buffer);
+                    }
+                    CameraWidgetClient.renderSurface(blockEntity, node.id(), elm.getString("InteractionId"),
+                            hologram, ref, font, elementWidth, elementHeight, CONTENT_Z, poseStack, buffer);
+                    poseStack.popPose();
+                    rendered = true;
+                    continue;
+                }
                 if ("image".equals(type)) {
                     String src = blockEntity.value(node.id(), "image").asString();
                     if (src.isBlank()) {

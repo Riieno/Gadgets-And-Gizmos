@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
+import com.rieno.gadgetsandgizmos.lib.geometry.VoxelShapeCache;
 import com.simibubi.create.content.equipment.wrench.IWrenchable;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -26,7 +27,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.StateDefinition;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.phys.shapes.CollisionContext;
-import net.minecraft.world.phys.shapes.Shapes;
 import net.minecraft.world.phys.shapes.VoxelShape;
 import net.neoforged.neoforge.capabilities.Capabilities;
 import org.jetbrains.annotations.Nullable;
@@ -48,6 +48,8 @@ public class AndesiteCableBlock extends Block implements EntityBlock, IWrenchabl
     private static final VoxelShape ARM_SOUTH = box(6.0D, 6.0D, 11.0D, 10.0D, 10.0D, 16.0D);
     private static final VoxelShape ARM_WEST = box(0.0D, 6.0D, 6.0D, 5.0D, 10.0D, 10.0D);
     private static final VoxelShape ARM_EAST = box(11.0D, 6.0D, 6.0D, 16.0D, 10.0D, 10.0D);
+    private static final java.util.function.IntFunction<VoxelShape> CONNECTION_SHAPES =
+            VoxelShapeCache.combinations(CORE, ARM_DOWN, ARM_UP, ARM_NORTH, ARM_SOUTH, ARM_WEST, ARM_EAST);
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -121,26 +123,13 @@ public class AndesiteCableBlock extends Block implements EntityBlock, IWrenchabl
     // Get the shape
     @Override
     protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos, CollisionContext ctx) {
-        VoxelShape shape = CORE;
-        if (state.getValue(PipeBlock.DOWN)) {
-            shape = Shapes.or(shape, ARM_DOWN);
-        }
-        if (state.getValue(PipeBlock.UP)) {
-            shape = Shapes.or(shape, ARM_UP);
-        }
-        if (state.getValue(PipeBlock.NORTH)) {
-            shape = Shapes.or(shape, ARM_NORTH);
-        }
-        if (state.getValue(PipeBlock.SOUTH)) {
-            shape = Shapes.or(shape, ARM_SOUTH);
-        }
-        if (state.getValue(PipeBlock.WEST)) {
-            shape = Shapes.or(shape, ARM_WEST);
-        }
-        if (state.getValue(PipeBlock.EAST)) {
-            shape = Shapes.or(shape, ARM_EAST);
-        }
-        return shape;
+        int mask = (state.getValue(PipeBlock.DOWN) ? 1 : 0)
+                | (state.getValue(PipeBlock.UP) ? 2 : 0)
+                | (state.getValue(PipeBlock.NORTH) ? 4 : 0)
+                | (state.getValue(PipeBlock.SOUTH) ? 8 : 0)
+                | (state.getValue(PipeBlock.WEST) ? 16 : 0)
+                | (state.getValue(PipeBlock.EAST) ? 32 : 0);
+        return CONNECTION_SHAPES.apply(mask);
     }
 
     // Check if the shared cable face should be skipped

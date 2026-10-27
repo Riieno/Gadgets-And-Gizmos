@@ -227,6 +227,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
             if (level != null && !level.isClientSide) {
                 ContraptionNetworkLinkerData.ensureStoredIdentity(getStackInSlot(0));
                 ContraptionNetworkLinkerData.migrateLegacyStorage(getStackInSlot(0));
+                com.rieno.gadgetsandgizmos.lib.inventory.ContainerStorageNetworks.invalidate();
                 syncFromInsertedLinker();
                 if (!pendingAssemblyBindingRemap) {
                     replayCurrentOutputs();
@@ -3061,7 +3062,8 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
             return;
         }
         writeControllerBody(tag, provider);
-        writeAdditionalControllerManifestData(tag, provider);
+        if(clientPacket) writeAdditionalControllerClientData(tag, provider);
+        else writeAdditionalControllerManifestData(tag, provider);
         SchematicSubLevelReferenceRemapper.remapInPlace(tag);
     }
 
@@ -3175,6 +3177,11 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
 
     // Write the additional controller manifest data
     protected void writeAdditionalControllerManifestData(CompoundTag tag, HolderLookup.Provider provider) {
+    }
+
+    // Preserve full updates for controllers without a separate client payload
+    protected void writeAdditionalControllerClientData(CompoundTag tag, HolderLookup.Provider provider){
+        writeAdditionalControllerManifestData(tag, provider);
     }
 
     // Read the additional controller manifest data
@@ -3922,7 +3929,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     }
 
     // Get the active stored linker
-    private ItemStack getActiveStoredLinker() {
+    protected ItemStack getActiveStoredLinker() {
         ItemStack stack = getStoredLinker();
         ServerLevel serverLevel = SableLevelApi.serverLevel(level);
         if (stack.isEmpty() || serverLevel == null) {
@@ -3938,6 +3945,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         if (level == null || level.isClientSide) {
             return;
         }
+        com.rieno.gadgetsandgizmos.lib.inventory.ContainerStorageNetworks.invalidate();
         syncFromInsertedLinker();
 
         if (!pendingAssemblyBindingRemap) {
@@ -3966,7 +3974,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     }
 
     // Get the linker discovery nodes
-    private List<ControllerDiscoveryNode> linkerDiscoveryNodes() {
+    protected List<ControllerDiscoveryNode> linkerDiscoveryNodes() {
         ItemStack linker = getActiveStoredLinker();
         if (linker.isEmpty()) {
             return List.of();
@@ -4492,7 +4500,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     }
 
     // Remap the moved linker target
-    private List<ContraptionNetworkLinkerData.LinkedTarget> remapMovedLinkerTarget(
+    protected List<ContraptionNetworkLinkerData.LinkedTarget> remapMovedLinkerTarget(
             ContraptionNetworkLinkerData.LinkedTarget target,
             @Nullable UUID sourceSubLevelId,
             @Nullable UUID destinationSubLevelId,

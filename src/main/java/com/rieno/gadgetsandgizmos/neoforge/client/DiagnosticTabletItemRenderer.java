@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.rieno.gadgetsandgizmos.lib.client.render.HologramRenderScope;
 import com.simibubi.create.foundation.item.render.CustomRenderedItemModel;
 import com.simibubi.create.foundation.item.render.CustomRenderedItemModelRenderer;
 import com.simibubi.create.foundation.item.render.PartialItemModelRenderer;
@@ -36,6 +37,7 @@ public final class DiagnosticTabletItemRenderer extends CustomRenderedItemModelR
                           PoseStack poseStack, MultiBufferSource buffer,
                           int light, int overlay) {
         renderer.render(model.getOriginalModel(), light);
+        if(HologramRenderScope.isActive()) return;
         InteractionHand hand = interactionHand(ctx);
         if (hand != null) {
             DiagnosticTabletGuiProjection.renderItem(hand, stack, poseStack, buffer);

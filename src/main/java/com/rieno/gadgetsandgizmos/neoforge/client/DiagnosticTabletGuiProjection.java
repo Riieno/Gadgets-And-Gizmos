@@ -8,9 +8,13 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.client.render.HologramRenderScope;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.lib.client.render.FramebufferGuiRenderer;
+import com.rieno.gadgetsandgizmos.lib.client.render.RenderSurfaceVisibility;
+import com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer;
+import com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRequests;
 import com.rieno.gadgetsandgizmos.content.CTDirectionalBlock;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletBlockEntity;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletData;
@@ -53,6 +57,7 @@ public final class DiagnosticTabletGuiProjection {
     private static final AtomicInteger TEXTURE_IDS = new AtomicInteger();
     private static final Map<DiagnosticTabletBlockEntity, Session> BLOCK_SESSIONS =
             new IdentityHashMap<>();
+    private static final Map<net.minecraft.world.level.block.entity.BlockEntity, Session> CONTAINER_SESSIONS = new IdentityHashMap<>();
     private static final Map<InteractionHand, Session> ITEM_SESSIONS =
             new EnumMap<>(InteractionHand.class);
 
@@ -79,31 +84,57 @@ public final class DiagnosticTabletGuiProjection {
     // Draw the block
     public static boolean renderBlock(DiagnosticTabletBlockEntity tablet, float partialTick,
                                       PoseStack poseStack, MultiBufferSource buffers) {
+        if(HologramRenderScope.isActive()) return false;
         Minecraft minecraft = Minecraft.getInstance();
         if (tablet == null || minecraft.player == null || minecraft.level == null) return false;
         Session session = BLOCK_SESSIONS.computeIfAbsent(tablet, ignored -> new Session());
+        Direction facing = tablet.getBlockState().getValue(CTDirectionalBlock.FACING);
+        if(session.lastFrame != 0L && !session.visibility.isVisible()){
+            return draw(session, DiagnosticTabletSurface.screen(facing), false, poseStack, buffers);
+        }
         int fingerprint = DiagnosticTabletData.toTag(tablet.state()).toString().hashCode();
         if (!session.prepare(() -> DiagnosticTabletScreen.projectionBlock(tablet),
                 fingerprint, tablet)) return false;
-        Direction facing = tablet.getBlockState().getValue(CTDirectionalBlock.FACING);
         return draw(session, DiagnosticTabletSurface.screen(facing), false, poseStack, buffers);
+    }
+
+    // Project the dedicated manifest onto a partial attached to a smart multiblock
+    public static boolean renderContainer(net.minecraft.world.level.block.entity.BlockEntity target,
+            DiagnosticTabletSurface.Surface surface, PoseStack poses, MultiBufferSource buffers){
+        if(HologramRenderScope.isActive()) return false;
+        Session session = CONTAINER_SESSIONS.computeIfAbsent(target, ignored -> new Session());
+        if(session.lastFrame != 0L && !session.visibility.isVisible()) return draw(session, surface, false, poses, buffers);
+        if(!session.prepare(() -> DiagnosticTabletScreen.containerScreen(target, true), com.rieno.gadgetsandgizmos.content.SmartContainerTablets.state(target).tab().hashCode(), target)) return false;
+        return draw(session, surface, false, poses, buffers);
+    }
+
+    public static boolean interactContainer(net.minecraft.world.level.block.entity.BlockEntity target, double x, double y){
+        Session session = CONTAINER_SESSIONS.computeIfAbsent(target, ignored -> new Session());
+        if(!session.prepare(() -> DiagnosticTabletScreen.containerScreen(target, true), com.rieno.gadgetsandgizmos.content.SmartContainerTablets.state(target).tab().hashCode(), target)) return false;
+        session.lastUse = Util.getMillis();
+        boolean handled = session.screen.mouseClicked(x * DiagnosticTabletScreen.projectionWidth(),
+                y * DiagnosticTabletScreen.projectionHeight(), 0);
+        if(handled) session.lastFrame = 0L;
+        return handled;
     }
 
     // Draw the ACC display
     public static boolean renderAccDisplay(DiagnosticTabletBlockEntity tablet, int width, int height,
                                            float partialTick, PoseStack poseStack,
                                            MultiBufferSource buffers) {
+        if(HologramRenderScope.isActive()) return false;
         Minecraft minecraft = Minecraft.getInstance();
         if (tablet == null || minecraft.player == null || minecraft.level == null) return false;
         Session session = BLOCK_SESSIONS.computeIfAbsent(tablet, ignored -> new Session());
-        int fingerprint = DiagnosticTabletData.toTag(tablet.state()).toString().hashCode();
-        if (!session.prepare(() -> DiagnosticTabletScreen.projectionBlock(tablet), fingerprint, tablet)) {
-            return false;
+        if(session.lastFrame == 0L || session.visibility.isVisible()){
+            int fingerprint = DiagnosticTabletData.toTag(tablet.state()).toString().hashCode();
+            if(!session.prepare(() -> DiagnosticTabletScreen.projectionBlock(tablet), fingerprint, tablet)) return false;
         }
         long now = Util.getMillis();
         session.lastUse = now;
         if (session.texture == null) return false;
-        var vertices = buffers.getBuffer(RenderType.text(session.texture));
+        RenderType type = RenderType.text(session.texture);
+        var vertices = buffers.getBuffer(ViewSceneRenderer.isCapturing() ? type : session.visibility.track(type));
         Matrix4f matrix = poseStack.last().pose();
         vertices.addVertex(matrix, 0.0F, 0.0F, -0.20F).setColor(0xFFFFFFFF).setUv(0.0F, 1.0F)
                 .setLight(0x00F000F0);
@@ -114,6 +145,12 @@ public final class DiagnosticTabletGuiProjection {
         vertices.addVertex(matrix, width, 0.0F, -0.20F).setColor(0xFFFFFFFF).setUv(1.0F, 1.0F)
                 .setLight(0x00F000F0);
         return true;
+    }
+
+    // Keep the last projected image when a distant ACC display presents it without refresh demand
+    static void retainAccDisplay(DiagnosticTabletBlockEntity tablet){
+        Session session = BLOCK_SESSIONS.get(tablet);
+        if(session != null) session.lastUse = Util.getMillis();
     }
 
     // Handle the ACC display
@@ -137,9 +174,13 @@ public final class DiagnosticTabletGuiProjection {
     // Draw the item
     public static boolean renderItem(InteractionHand hand, ItemStack stack,
                                      PoseStack poseStack, MultiBufferSource buffers) {
+        if(HologramRenderScope.isActive()) return false;
         Minecraft minecraft = Minecraft.getInstance();
         if (hand == null || stack == null || stack.isEmpty() || minecraft.player == null) return false;
         Session session = ITEM_SESSIONS.computeIfAbsent(hand, ignored -> new Session());
+        if(session.lastFrame != 0L && !session.visibility.isVisible()){
+            return draw(session, DiagnosticTabletSurface.screen(Direction.UP), true, poseStack, buffers);
+        }
         DiagnosticTabletData.State state = DiagnosticTabletData.read(stack);
         int fingerprint = DiagnosticTabletData.toTag(state).toString().hashCode();
         if (!session.prepare(() -> DiagnosticTabletScreen.projectionItem(hand, stack),
@@ -186,6 +227,7 @@ public final class DiagnosticTabletGuiProjection {
         long now = Util.getMillis();
         tick(BLOCK_SESSIONS, now);
         tick(ITEM_SESSIONS, now);
+        tick(CONTAINER_SESSIONS, now);
         purge(now);
     }
 
@@ -196,6 +238,7 @@ public final class DiagnosticTabletGuiProjection {
         long now = Util.getMillis();
         renderFrames(BLOCK_SESSIONS, now,
                 evt.getPartialTick().getGameTimeDeltaPartialTick(true));
+        renderFrames(CONTAINER_SESSIONS, now, evt.getPartialTick().getGameTimeDeltaPartialTick(true));
         renderFrames(ITEM_SESSIONS, now,
                 evt.getPartialTick().getGameTimeDeltaPartialTick(true));
     }
@@ -203,7 +246,8 @@ public final class DiagnosticTabletGuiProjection {
     // Update the diagnostic tablet gui projection
     private static <K> void tick(Map<K, Session> sessions, long now) {
         for (Session session : new ArrayList<>(sessions.values())) {
-            if (session.screen != null && now - session.lastUse <= SESSION_TIMEOUT_MILLIS) {
+            if(session.screen != null && now - session.lastUse <= SESSION_TIMEOUT_MILLIS
+                    && (session.lastFrame == 0L || session.visibility.isVisible())){
                 session.screen.tick();
             }
         }
@@ -212,10 +256,13 @@ public final class DiagnosticTabletGuiProjection {
     // Draw the frames
     private static <K> void renderFrames(Map<K, Session> sessions, long now, float partialTick) {
         for (Session session : new ArrayList<>(sessions.values())) {
-            if (session.screen != null && now - session.lastUse <= SESSION_TIMEOUT_MILLIS
-                    && (session.projection == null || !session.projection.isReady() || now - session.lastFrame >= FRAME_INTERVAL_MILLIS)) {
-                session.renderFrame(partialTick);
-                session.lastFrame = now;
+            if(session.screen != null && now - session.lastUse <= SESSION_TIMEOUT_MILLIS
+                    && (session.lastFrame == 0L || session.visibility.isVisible())){
+                session.feeds.refresh();
+                if(session.projection == null || !session.projection.isReady() || now - session.lastFrame >= FRAME_INTERVAL_MILLIS){
+                    session.renderFrame(partialTick);
+                    session.lastFrame = now;
+                }
             }
         }
     }
@@ -233,7 +280,8 @@ public final class DiagnosticTabletGuiProjection {
         Vec3 bottomLeft = surface.bottomLeft().add(offset);
         Vec3 bottomRight = surface.bottomRight().add(offset);
         Vec3 topRight = surface.topRight().add(offset);
-        var vertices = buffers.getBuffer(RenderType.textPolygonOffset(session.texture));
+        RenderType type = RenderType.textPolygonOffset(session.texture);
+        var vertices = buffers.getBuffer(ViewSceneRenderer.isCapturing() ? type : session.visibility.track(type));
         Matrix4f matrix = poseStack.last().pose();
         vertex(vertices, matrix, topLeft, 0.0F, 1.0F);
         vertex(vertices, matrix, bottomLeft, 0.0F, 0.0F);
@@ -253,6 +301,7 @@ public final class DiagnosticTabletGuiProjection {
     private static void purge(long now) {
         purge(BLOCK_SESSIONS, now);
         purge(ITEM_SESSIONS, now);
+        purge(CONTAINER_SESSIONS, now);
     }
 
     // Purge the diagnostic tablet gui projection
@@ -270,12 +319,16 @@ public final class DiagnosticTabletGuiProjection {
     public static void clear() {
         BLOCK_SESSIONS.values().forEach(Session::close);
         ITEM_SESSIONS.values().forEach(Session::close);
+        CONTAINER_SESSIONS.values().forEach(Session::close);
+        CONTAINER_SESSIONS.clear();
         BLOCK_SESSIONS.clear();
         ITEM_SESSIONS.clear();
     }
 
     // Track the active session
     private static final class Session {
+        private final RenderSurfaceVisibility visibility = new RenderSurfaceVisibility();
+        private final ViewSceneRequests feeds = new ViewSceneRequests();
         // Current screen
         private DiagnosticTabletScreen screen;
         // Current fingerprint
@@ -317,12 +370,13 @@ public final class DiagnosticTabletGuiProjection {
                         "diagnostic_tablet_projection/" + TEXTURE_IDS.incrementAndGet());
                 projection = new FramebufferGuiRenderer(texture);
             }
-            projection.render(width, height, width, height,
-                    graphics -> screen.render(graphics, -10000, -10000, partialTick));
+            feeds.record(() -> projection.render(width, height, width, height,
+                    graphics -> screen.render(graphics, -10000, -10000, partialTick)));
         }
 
         // Release the projected app and its owned render surface
         private void close(){
+            visibility.close();
             if(screen != null){
                 screen.removed();
                 screen = null;

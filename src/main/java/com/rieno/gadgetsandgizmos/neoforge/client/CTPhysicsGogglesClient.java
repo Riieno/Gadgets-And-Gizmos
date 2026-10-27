@@ -21,6 +21,8 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphCatalog;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphLiveValue;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementBinding;
+import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudCameraSource;
+import com.rieno.gadgetsandgizmos.lib.client.view.ViewFeedRenderer;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementStyle;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudImageSource;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudInteractions;
@@ -690,6 +692,15 @@ public final class CTPhysicsGogglesClient {
             graphics.pose().scale((float) elementScale, (float) elementScale, 1.0F);
             graphics.pose().translate(-(x + w / 2.0D), -(y + h / 2.0D), 0.0D);
             switch (elm.getString("Type")) {
+                case "camera_source" -> {
+                    var live = controller.getGraphLiveInput(node.id(), AdvancedHudCameraSource.runtimePort(elm));
+                    var val = live == null ? null : live.value();
+                    var ref = val == null ? null : com.rieno.gadgetsandgizmos.lib.view.ViewReference.fromTag(val.payload());
+                    ViewFeedRenderer.draw(graphics, Minecraft.getInstance().font, ref, x, y, w, h);
+                    CameraWidgetClient.renderGui(new CameraWidgetClient.Key(binding.target(), binding.pairId(),
+                                    node.id(), elm.getString("InteractionId")),
+                            graphics, Minecraft.getInstance().font, ref, x, y, w, h);
+                }
                 case "box" -> AdvancedHudElementRenderer.drawBox(
                         graphics, elm, x, y, w, h, layoutScale);
                 case "image" -> drawAdvancedHudImage(graphics, elm,
@@ -1645,6 +1656,17 @@ public final class CTPhysicsGogglesClient {
             return new DisplayWidgetProjection.Bounds(
                     rect.x(), rect.y(), rect.width(), rect.height());
         }
+
+        private CameraWidgetClient.Key cameraKey(){
+            return new CameraWidgetClient.Key(target, pairId, nodeId, interactionId);
+        }
+
+        private boolean cameraPointer(double mouseX, double mouseY, boolean drag){
+            var point = DisplayWidgetProjection.unproject(projectionBounds(), mouseX, mouseY, scale, rotation);
+            double x = point.x() / Math.max(1, rect.width()), y = point.y() / Math.max(1, rect.height());
+            if(drag){ CameraWidgetClient.drag(cameraKey(), x, y); return true; }
+            return CameraWidgetClient.click(cameraKey(), x, y, GLFW.GLFW_MOUSE_BUTTON_LEFT);
+        }
     }
 
     // Store the rect
@@ -1783,6 +1805,10 @@ public final class CTPhysicsGogglesClient {
                             sendHudBoolean(target, true);
                         }
                         case "toggle" -> sendHudBoolean(target, true);
+                        case "camera_source" -> {
+                            releaseHudButton();
+                            if(target.cameraPointer(mouseX, mouseY, false)) pressedHudInteraction = target;
+                        }
                         case "slider" -> {
                             pressedHudInteraction = target;
                             sendHudSlider(target, mouseX, mouseY);
@@ -1875,6 +1901,10 @@ public final class CTPhysicsGogglesClient {
         @Override
         public boolean mouseDragged(double mouseX, double mouseY, int btn, double dragX, double dragY) {
             if (mode == OverlayMode.DIAGRAM) {
+                if(btn == GLFW.GLFW_MOUSE_BUTTON_LEFT && pressedHudInteraction != null
+                        && "camera_source".equals(pressedHudInteraction.type())){
+                    return pressedHudInteraction.cameraPointer(mouseX, mouseY, true);
+                }
                 if (btn == GLFW.GLFW_MOUSE_BUTTON_LEFT && pressedHudInteraction != null
                         && "slider".equals(pressedHudInteraction.type())) {
                     sendHudSlider(pressedHudInteraction, mouseX, mouseY);
@@ -1930,7 +1960,9 @@ public final class CTPhysicsGogglesClient {
         public boolean mouseReleased(double mouseX, double mouseY, int btn) {
             if (mode == OverlayMode.DIAGRAM) {
                 if (btn == GLFW.GLFW_MOUSE_BUTTON_LEFT && pressedHudInteraction != null) {
-                    if ("slider".equals(pressedHudInteraction.type())) {
+                    if("camera_source".equals(pressedHudInteraction.type())){
+                        CameraWidgetClient.release(pressedHudInteraction.cameraKey());
+                    }else if ("slider".equals(pressedHudInteraction.type())) {
                         sendHudSlider(pressedHudInteraction, mouseX, mouseY);
                     } else {
                         releaseHudButton();
@@ -2133,6 +2165,7 @@ public final class CTPhysicsGogglesClient {
         @Override
         public void removed() {
             releaseHudButton();
+            CameraWidgetClient.releaseHud();
             super.removed();
             saveOverlayLayout();
         }
@@ -2146,6 +2179,10 @@ public final class CTPhysicsGogglesClient {
         }
 
         private void releaseHudButton(){
+            if(pressedHudInteraction != null && "camera_source".equals(pressedHudInteraction.type())){
+                CameraWidgetClient.release(pressedHudInteraction.cameraKey());
+                pressedHudInteraction = null;
+            }
             if(pressedHudInteraction == null || !"button".equals(pressedHudInteraction.type())) return;
             if(Minecraft.getInstance().getConnection() != null) sendHudBoolean(pressedHudInteraction, false);
             pressedHudInteraction = null;

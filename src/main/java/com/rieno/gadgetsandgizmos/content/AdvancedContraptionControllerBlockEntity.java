@@ -16,6 +16,7 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphPortState;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphProfilerMath;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDataProvider;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementBinding;
+import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudCameraSource;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementStyle;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudInteractions;
 import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
@@ -49,6 +50,8 @@ import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataAccessPolicy;
 import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataAdapterRegistry;
 import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityDataPortGroups;
 import com.rieno.gadgetsandgizmos.lib.probe.BlockStateDataAccess;
+import com.rieno.gadgetsandgizmos.lib.probe.ContainerData;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphDynamicPortSchema;
 import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyBoundsApi;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.rieno.gadgetsandgizmos.lib.control.DirectionalAnalogSnapshot;
@@ -122,6 +125,9 @@ import com.rieno.gadgetsandgizmos.lib.physics.SubLevelTrackingApi;
 import com.rieno.gadgetsandgizmos.lib.physics.SableTransformApi;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
 import com.rieno.gadgetsandgizmos.lib.display.AccDisplaySourceRegistry;
+import com.rieno.gadgetsandgizmos.lib.display.DisplayLinkData;
+import com.rieno.gadgetsandgizmos.lib.display.DisplayLinkInbox;
+import com.rieno.gadgetsandgizmos.content.advanced.AdvancedControllerDisplayLinks;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerAssignmentRanker;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerEndpointSnapshot;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerFailureReason;
@@ -153,7 +159,6 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.capabilities.Capabilities;
-import net.neoforged.neoforge.energy.IEnergyStorage;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.crafting.SizedFluidIngredient;
@@ -174,7 +179,6 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.ArrayList;
-import java.util.Queue;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import java.util.Set;
@@ -235,6 +239,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Draft graph
+    private final ControllerStoredTargets controllerStoredTargets = new ControllerStoredTargets();
+    private boolean editingStoredTargets;
+
     private AdvancedGraphDocument draftGraph = new AdvancedGraphDocument();
     // The alias graph is shared; the controller manifest and its physical bindings remain individual.
     private int graphAliasRevision = -1;
@@ -255,6 +262,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private AdvancedGraphDocument shippingScheduleActiveGraph = new AdvancedGraphDocument();
     // Graph runtime
     private final GraphRuntime graphRuntime = new GraphRuntime(this);
+    private final DisplayLinkInbox displayLinkInbox = new DisplayLinkInbox();
     private ServerChatApi.Subscription chatSubscription;
     private final com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline plotPoints =
             new com.rieno.gadgetsandgizmos.lib.plot.PlotPointTimeline();
@@ -396,6 +404,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     private int accDisplayStructureRevision = Integer.MIN_VALUE;
     // Controls whether to publish ship information
     private boolean publishesShipInformation;
+    // Cache display nodes and compare only their effective target bindings
+    private List<AdvancedGraphDocument.Node> accDisplayTargetNodes = List.of();
+    private Map<String, CompoundTag> accDisplayTargetBindings = Map.of();
     // Tracked client graph live inputs
     private Map<String, AdvancedGraphLiveValue> clientGraphLiveInputs = new LinkedHashMap<>();
     // Tracked client graph live outputs
@@ -2078,11 +2089,13 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Update the advanced contraption controller
     @Override
     public void tick() {
+        com.rieno.gadgetsandgizmos.lib.inventory.ContainerStorageNetworks.track(this, SmartContainerManifest::linkedStorage);
         if (AccDisplayControllerRegistry.isStopping(getLevel())
                 || serverShutdownPrepared || !isControllerRuntimeLoaded()) {
             return;
         }
         super.tick();
+        if(level != null && !level.isClientSide && !isRemoved()) scmLogistics.tick();
         Level currentLevel = getLevel();
         ensureChatListener();
         if (legacyPlotCleanupPending && currentLevel != null && !currentLevel.isClientSide) {
@@ -2097,6 +2110,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         if (currentLevel != null && !currentLevel.isClientSide
                 && Math.floorMod(currentLevel.getGameTime() + getBlockPos().asLong(),
                 GRAPH_DATA_SCHEMA_REFRESH_INTERVAL) == 0L) {
+            pruneDisplayLinks();
             refreshChangedGraphDataSchemas();
         }
         restoreScmPersistenceIfAvailable();
@@ -2267,6 +2281,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     }
 
     // Get the persisted SCM configuration profile
+    private final ScmLogisticsRuntime scmLogistics = new ScmLogisticsRuntime(this);
+
+    public ScmLogisticsRuntime logistics(){ return scmLogistics; }
+
     public ScmConfigurationProfile getScmConfigurationProfile() {
         return scmConfigurationProfile;
     }
@@ -2275,6 +2293,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // server-side configuration workflow.
     public void setScmConfigurationProfile(ScmConfigurationProfile profile) {
         scmConfigurationProfile = profile == null ? ScmConfigurationProfile.empty() : profile;
+        scmLogistics.invalidate();
         setChanged();
         sendData();
     }
@@ -2408,6 +2427,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                             (first, second) -> second, LinkedHashMap::new));
         }
         sanitized.replaceDockingConnectorGroups(dockingConnectorGroups);
+        sanitized.setLogistics(requested.logistics().filtered(endpoint ->
+                shipControlRuntime.isConfigurationTarget(new ScmConfigurationProfile.UnitReference(
+                        endpoint.subLevelId(), endpoint.position(), "", endpoint.face()))));
         sanitized.replace(targetMapId, groups, actions,
                 requested.excludedUnits().stream().filter(shipControlRuntime::isConfigurationTarget)
                         .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new)));
@@ -2417,7 +2439,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         nextBindings.remove("Orientation");
         previousBindings.remove("MapId");
         nextBindings.remove("MapId");
+        previousBindings.remove("Logistics");
+        nextBindings.remove("Logistics");
         setScmConfigurationProfile(sanitized);
+        scmLogistics.invalidate();
         shipControlRuntime.refreshVehicleType();
         // A profile is the live control declaration, not deferred calibration
         // UI state. Rebuild the allocator map immediately so newly assigned
@@ -2478,6 +2503,11 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Release the ship control after load
     void releaseShipControlAfterLoad() {
         shipControlRuntime.requestPostLoadPoseRelease();
+    }
+
+    // Check whether the restored schedule still owes the SCM its first control command
+    boolean isShipControlWaitingForScheduleAfterLoad(){
+        return shipControlRuntime.isWaitingForScheduleAfterLoad();
     }
 
     // Force the shipping schedule resume after load
@@ -2816,6 +2846,47 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         return accepted;
     }
+
+    // Supply the owning schedule with a stable traffic-aware network route
+    List<Vec3> selectShipApproachRoute(String id, ShipDockRegistry.Dock dock, boolean departing, Vec3 reference){
+        return shipControlRuntime.selectApproachRoute(id, dock, departing, reference);
+    }
+
+    // Exchange ship-specific clearance and berth preference with the dock allocator
+    com.rieno.gadgetsandgizmos.lib.shipping.ShipDockScheduler.AccessReport assessShipDockApproach(ShipDockRegistry.Dock dock){
+        return shipControlRuntime.assessDockApproach(dock);
+    }
+
+    // Follow confirmed approach controls through the SCM navigation adapter
+    boolean executeShipApproachSpline(String id, Map<String, Double> values, Map<String, String> text, List<Vec3> controls, boolean captureAtEntry, UUID corridorId){
+        return shipControlRuntime.executeApproachSpline(id, values, text, controls, captureAtEntry, corridorId);
+    }
+
+    boolean prepareShipDockManeuver(ShipDockRegistry.Dock dock, int connectorIdx){
+        return shipControlRuntime.prepareDockManeuver(dock, connectorIdx);
+    }
+
+    boolean prepareShipDockManeuver(ShipDockRegistry.Dock dock, int connectorIdx, double speed){
+        return shipControlRuntime.prepareDockManeuver(dock, connectorIdx, getShippingSchedulePilotId(), speed);
+    }
+
+    boolean prepareShipDockDeparture(ShipDockRegistry.Dock dock, int connectorIdx){
+        return shipControlRuntime.prepareDockDeparture(dock, connectorIdx);
+    }
+
+    ShipControlModuleRuntime.DockDepartureTarget shipDockDepartureTarget(ShipDockRegistry.Dock dock, int connectorIdx){
+        return shipControlRuntime.dockDepartureTarget(dock, connectorIdx);
+    }
+
+    boolean beginShipDockDeparture(String id, ShipDockRegistry.Dock dock, int connectorIdx){
+        return shipControlRuntime.beginDockDeparture(id, dock, connectorIdx);
+    }
+
+    boolean isShipDockDepartureComplete(String id){ return shipControlRuntime.dockDepartureComplete(id); }
+
+    boolean isShipApproachCaptured(String id){ return shipControlRuntime.approachCaptured(id); }
+
+    boolean isShipDockMovementBlocked(String id){ return shipControlRuntime.dockingMovementBlocked(id); }
 
     // Check if the ship control graph command is pending
     public boolean isShipControlGraphCommandPending(String commandId, String nodeType) {
@@ -3230,7 +3301,9 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             var personal = graphRuntime.playerHudValues(observer.player().getUUID());
             Map<String, AdvancedGraphLiveValue> playerInputs = new LinkedHashMap<>(liveInputs);
             Map<String, AdvancedGraphLiveValue> playerOutputs = new LinkedHashMap<>(liveOutputs);
-            playerInputs.putAll(graphLiveValues(personal.inputs()));
+            Map<String, AdvancedGraphDocument.Value> hudInputs = new LinkedHashMap<>(personal.inputs());
+            AdvancedHudCameraSource.addHudReferences(this, activeGraph, hudInputs);
+            playerInputs.putAll(graphLiveValues(hudInputs));
             playerOutputs.putAll(graphLiveValues(personal.outputs()));
             Map<UUID, String> trackerPairs = trackerPairsForObserver(
                     gogglesTrackerPairs,
@@ -3277,6 +3350,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         Map<String, AdvancedGraphDocument.Value> playerOutputs = new LinkedHashMap<>(graphRuntime.liveOutputs());
         playerInputs.putAll(personal.inputs());
         playerOutputs.putAll(personal.outputs());
+        AdvancedHudCameraSource.addHudReferences(this, activeGraph, playerInputs);
         PacketDistributor.sendToPlayer(player, new AdvancedControllerRuntimePayload(
                 getBlockPos(), SimulatedHelper.getContainingSubLevelId(this), containerId,
                 getGogglesTrackerPairLabels(),
@@ -3565,7 +3639,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Resolve a dynamic Target through the stored linker's authoritative names and face aliases
     public AdvancedGraphDocument.Value findNamedGraphTarget(String name){
         List<ControllerDiscoveryNode> targets = ContraptionNetworkLinkerData.findNamedTargets(
-                ContraptionNetworkLinkerData.readTargets(getStoredLinker()), name);
+                getLinkedTargets(), name);
         if(targets.size() > 1) return AdvancedGraphDocument.Value.map(
                 com.rieno.gadgetsandgizmos.lib.discovery.ControllerTargetMap.encode(targets));
         return AdvancedGraphDocument.Value.target(targets.isEmpty() ? new CompoundTag() : targets.getFirst().toTag());
@@ -3833,6 +3907,11 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Get the share graph to inserted linker
     public SharedGraphShareResult shareGraphToInsertedLinker(AdvancedGraphDocument graph, String requestedName,
                                                               ControllerManifestStore.SharedGraphSaveMode saveMode) {
+        return shareGraphToInsertedLinker(graph, requestedName, saveMode, null);
+    }
+
+    public SharedGraphShareResult shareGraphToInsertedLinker(AdvancedGraphDocument graph, String requestedName,
+            ControllerManifestStore.SharedGraphSaveMode saveMode, com.rieno.gadgetsandgizmos.lib.storage.SharedDocumentMetadata metadata){
         if (getLevel() == null || getLevel().isClientSide) {
             return new SharedGraphShareResult(false, false, "");
         }
@@ -3843,7 +3922,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         graphToStore.removeUnusedVariables();
         CompoundTag sharedRoot = ContraptionNetworkLinkerData.sharedRootWithGraph(requestedName, graphToStore);
         ControllerManifestStore.SharedGraphSaveResult res =
-                ControllerManifestStore.saveSharedGraph(requestedName, sharedRoot, saveMode);
+                ControllerManifestStore.saveSharedGraph(ControllerManifestStore.sharedGraphsDirectory(), requestedName, sharedRoot, saveMode, metadata);
         if (res.status() == ControllerManifestStore.SharedGraphSaveStatus.EXISTS) {
             return new SharedGraphShareResult(false, true,
                     "A shared graph named " + requestedName.trim() + " already exists");
@@ -5370,7 +5449,19 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     }
     public boolean handleHudElementInteraction(ServerPlayer player, String nodeId, String interactionId, AdvancedGraphDocument.Value value){
         com.rieno.gadgetsandgizmos.lib.interaction.BlockInteractionTracker.record(getLevel(), getBlockPos(), player);
-        return graphRuntime.withInteractionPlayer(player.getUUID(), () -> handleHudElementInteraction(nodeId, interactionId, value));
+        return graphRuntime.withInteractionPlayer(player.getUUID(), () -> {
+            for(var node : activeGraph.nodes()){
+                if(!node.id().equals(nodeId) || !"advanced_hud_element".equals(node.type())) continue;
+                for(Tag raw : node.data().getList("WidgetElements", Tag.TAG_COMPOUND)){
+                    CompoundTag elm = (CompoundTag)raw;
+                    if(!interactionId.equals(elm.getString("InteractionId"))
+                            || !AdvancedHudCameraSource.TYPE.equals(elm.getString("Type"))) continue;
+                    return AdvancedHudCameraSource.handle(this, player, node, elm,
+                            port -> previewActiveGraphInput(node, port), value);
+                }
+            }
+            return handleHudElementInteraction(nodeId, interactionId, value);
+        });
     }
     public boolean handleHudButtonInteraction(ServerPlayer player, String nodeId, String interactionId){
         return graphRuntime.withInteractionPlayer(player.getUUID(), () -> handleHudButtonInteraction(nodeId, interactionId));
@@ -5767,23 +5858,35 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         }
         int graphRevision = getActiveGraphRevision();
         long runtimeRevision = graphRuntime.liveValueRevision();
-        if (graphRevision != accDisplayStructureRevision) {
+        if (graphRevision != accDisplayStructureRevision || accDisplayTargetsDirty) {
             publishesShipInformation = false;
+            List<AdvancedGraphDocument.Node> targetNodes = new ArrayList<>();
             for (AdvancedGraphDocument.Node node : activeGraph.nodes()) {
-                if (AccDisplayBlockEntity.isShippingInformationNode(node)) {
-                    publishesShipInformation = true;
-                    break;
-                }
+                if (node == null) continue;
+                if (node.type().startsWith("acc_display_") || "acc_hologram_widget".equals(node.type())) targetNodes.add(node);
+                if (AccDisplayBlockEntity.isShippingInformationNode(node)) publishesShipInformation = true;
             }
+            accDisplayTargetNodes = List.copyOf(targetNodes);
             accDisplayStructureRevision = graphRevision;
         }
         boolean graphChanged = graphRevision != lastAccDisplayGraphRevision;
+        boolean runtimeChanged = runtimeRevision != lastAccDisplayRuntimeRevision;
+        Map<String, AdvancedGraphDocument.Value> inputs = getAccDisplayRuntimeInputsSnapshot();
+        boolean bindingsChanged = false;
+        if (graphChanged || accDisplayTargetsDirty || runtimeChanged) {
+            Map<String, CompoundTag> bindings = new LinkedHashMap<>();
+            for (AdvancedGraphDocument.Node node : accDisplayTargetNodes) {
+                bindings.put(node.id(), AccDisplayBlockEntity.targetData(node, inputs.get(node.id() + ":target")));
+            }
+            bindingsChanged = !bindings.equals(accDisplayTargetBindings);
+            accDisplayTargetBindings = Map.copyOf(bindings);
+        }
         long gameTime = level.getGameTime();
         boolean retryTargets = accDisplayTargetsUnavailable
                 && (lastAccDisplayTargetRetryTick == Long.MIN_VALUE
                 || gameTime < lastAccDisplayTargetRetryTick
                 || gameTime - lastAccDisplayTargetRetryTick >= ACC_DISPLAY_TARGET_RETRY_INTERVAL);
-        boolean refreshTargets = graphChanged || accDisplayTargetsDirty || retryTargets;
+        boolean refreshTargets = graphChanged || bindingsChanged || accDisplayTargetsDirty || retryTargets;
 
         if (refreshTargets) {
             Set<AccDisplayBlockEntity> currentTargets = directAccDisplayTargets();
@@ -5801,7 +5904,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         boolean updateDue = lastAccDisplayUpdateTick == Long.MIN_VALUE
                 || gameTime < lastAccDisplayUpdateTick
                 || gameTime - lastAccDisplayUpdateTick >= ACC_DISPLAY_UPDATE_INTERVAL;
-        boolean runtimeChanged = runtimeRevision != lastAccDisplayRuntimeRevision;
         if (!graphChanged && !refreshTargets && !accDisplayFramesDirty
                 && !runtimeChanged && !updateDue) {
             return;
@@ -5821,7 +5923,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             return;
         }
 
-        Map<String, AdvancedGraphDocument.Value> inputs = getAccDisplayRuntimeInputsSnapshot();
         Map<String, AdvancedGraphDocument.Value> outputs = getAccDisplayRuntimeOutputsSnapshot();
         publishDisplayUpdates(inputs, outputs);
         for (AccDisplayBlockEntity display : List.copyOf(publishedAccDisplays)) {
@@ -5903,28 +6004,37 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Get the display adapter
     private @Nullable UniversalDisplayAdapterBlockEntity displayAdapter(AdvancedGraphDocument.Node node) {
-        TargetAccess target = cachedGraphTarget(node);
+        TargetAccess target = displayTarget(node);
         if(target == null) return null;
         BlockEntity blockEntity = target.level().getBlockEntity(target.pos());
         return blockEntity instanceof UniversalDisplayAdapterBlockEntity adapter
                 ? adapter : null;
     }
 
+    // Resolve the current display binding without replacing the graph's saved picker selection
+    private @Nullable TargetAccess displayTarget(AdvancedGraphDocument.Node node) {
+        CompoundTag binding = accDisplayTargetBindings.get(node.id());
+        if (binding == null) binding = AccDisplayBlockEntity.targetData(node, graphRuntime.liveInput(node.id(), "target"));
+        if (!binding.contains("BlockPos")) return null;
+        if (binding.equals(node.data().getCompound("TargetData"))) return cachedGraphTarget(node);
+        CompoundTag data = node.data().copy();
+        data.put("TargetData", binding.copy());
+        data.putString("Target", binding.getString("NodeId"));
+        return resolveGraphTarget(new AdvancedGraphDocument.Node(node.id(), node.type(), node.label(), node.x(), node.y(), data));
+    }
+
     // Get the direct ACC display targets
     private Set<AccDisplayBlockEntity> directAccDisplayTargets() {
         Set<AccDisplayBlockEntity> targets = Collections.newSetFromMap(new IdentityHashMap<>());
         accDisplayTargetsUnavailable = false;
-        for (AdvancedGraphDocument.Node node : activeGraph.nodes()) {
+        for (AdvancedGraphDocument.Node node : accDisplayTargetNodes) {
             if (node == null || (!node.type().startsWith("acc_display_")
                     && !"acc_hologram_widget".equals(node.type()))) {
                 continue;
             }
-            ControllerDiscoveryNode target = ControllerDiscoveryNode.fromTag(
-                    node.data().getCompound("TargetData"));
-            if (target == null || target.blockPos() == null) {
-                continue;
-            }
-            TargetAccess access = cachedGraphTarget(node);
+            CompoundTag binding = accDisplayTargetBindings.get(node.id());
+            if (binding == null || !binding.contains("BlockPos")) continue;
+            TargetAccess access = displayTarget(node);
             BlockEntity blockEntity = access == null ? null : access.level().getBlockEntity(access.pos());
             if (!(blockEntity instanceof AccDisplayBlockEntity display) || display.isRemoved()) {
                 if(blockEntity == null || blockEntity.isRemoved()) accDisplayTargetsUnavailable = true;
@@ -6056,8 +6166,16 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         CompoundTag groupedPorts = dataPortGroup(node, port);
         if (!groupedPorts.isEmpty()) {
             CompoundTag values = new CompoundTag();
+            ContainerData.Snapshot storage = null;
+            if(groupedPorts.getAllKeys().stream().anyMatch(ContainerData::isDataPort)){
+                var target = cachedGraphTarget(node);
+                if(target != null) storage = ContainerData.capture(
+                        target.level().getBlockEntity(target.pos()), target.side());
+            }
             for (String field : groupedPorts.getAllKeys()) {
-                values.put(field, graphValueTag(getGraphTargetData(node, field)));
+                GraphValue reading = storage != null && storage.readableData().containsKey(field) ? storage.read(field) : null;
+                values.put(field, graphValueTag(reading == null ? getGraphTargetData(node, field)
+                        : GraphRuntime.fromLibraryValue(reading)));
             }
             return AdvancedGraphDocument.Value.map(values);
         }
@@ -6109,6 +6227,10 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         // Read native and provider backed values
         AdvancedGraphDocument.Value navigationTableValue = NavigationTableGraphCompat.read(blockEntity, port);
         if (navigationTableValue != null) return navigationTableValue;
+        if(ContainerData.isDataPort(port)){
+            var storage = ContainerData.capture(blockEntity, target.side());
+            if(storage.readableData().containsKey(port)) return GraphRuntime.fromLibraryValue(storage.read(port));
+        }
         GraphValue registeredValue = BlockEntityDataAdapterRegistry.read(blockEntity, port);
         if (registeredValue != null) {
             return GraphRuntime.fromLibraryValue(registeredValue);
@@ -6221,24 +6343,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                     target.level(), target.pos(), blockEntity).z);
             case "redstone_power" -> AdvancedGraphDocument.Value.number(graphRedstonePower(node, target, state));
             case "state_properties" -> AdvancedGraphDocument.Value.map(stateProperties(state));
-            case "items" -> AdvancedGraphDocument.Value.list(itemSummary(
-                    target.level(), target.pos(), state, blockEntity, target.side()).entries());
-            case "item_count" -> AdvancedGraphDocument.Value.number(itemSummary(
-                    target.level(), target.pos(), state, blockEntity, target.side()).amount());
-            case "item_capacity" -> AdvancedGraphDocument.Value.number(itemSummary(
-                    target.level(), target.pos(), state, blockEntity, target.side()).capacity());
-            case "item_fill" -> AdvancedGraphDocument.Value.number(itemSummary(
-                    target.level(), target.pos(), state, blockEntity, target.side()).fill());
-            case "fluids" -> AdvancedGraphDocument.Value.list(fluidSummary(target.level(), target.pos(), state, blockEntity).entries());
-            case "fluid_amount" -> AdvancedGraphDocument.Value.number(fluidSummary(target.level(), target.pos(), state, blockEntity).amount());
-            case "fluid_capacity" -> AdvancedGraphDocument.Value.number(fluidSummary(target.level(), target.pos(), state, blockEntity).capacity());
-            case "fluid_fill" -> AdvancedGraphDocument.Value.number(fluidSummary(target.level(), target.pos(), state, blockEntity).fill());
-            case "energy" -> AdvancedGraphDocument.Value.number(energySummary(target.level(), target.pos(), state, blockEntity)[0]);
-            case "energy_capacity" -> AdvancedGraphDocument.Value.number(energySummary(target.level(), target.pos(), state, blockEntity)[1]);
-            case "energy_fill" -> {
-                double[] energy = energySummary(target.level(), target.pos(), state, blockEntity);
-                yield AdvancedGraphDocument.Value.number(energy[1] <= 0 ? 0 : energy[0] / energy[1]);
-            }
             default -> AdvancedGraphDocument.Value.number(0);
         };
     }
@@ -6724,6 +6828,51 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         return List.of();
     }
 
+    // Retain every incoming display sender and update saved graph sections before queuing its pulse
+    public void acceptDisplayLink(DisplayLinkData.Snapshot snapshot){
+        if(level == null || level.isClientSide || !displayLinkInbox.accept(snapshot)) return;
+        boolean activeChanged = synchronizeDisplayLinkNodes(activeGraph);
+        boolean draftChanged = synchronizeDisplayLinkNodes(draftGraph);
+        if(activeChanged){ activeGraph.setRevision(activeGraph.revision() + 1); graphRuntime.compile(activeGraph); }
+        if(activeChanged || draftChanged) invalidateGraphPresentationCaches();
+        graphRuntime.enqueueDisplayLink(snapshot);
+        setChanged();
+        sendData();
+    }
+
+    public boolean configureDisplayLinkNode(AdvancedGraphDocument.Node node){
+        return AdvancedControllerDisplayLinks.synchronize(node, displayLinkInbox);
+    }
+
+    public AdvancedGraphDocument.Value readDisplayLinkInput(AdvancedGraphDocument.Node node, String port){
+        return AdvancedControllerDisplayLinks.read(node, displayLinkInbox, port);
+    }
+
+    private boolean synchronizeDisplayLinkNodes(AdvancedGraphDocument graph){
+        boolean changed = false;
+        for(var node : graphNodesIncludingFunctions(graph)){
+            if(!AdvancedControllerDisplayLinks.synchronize(node, displayLinkInbox)) continue;
+            changed = true;
+            var outputs = AdvancedGraphCatalog.outputs(node);
+            graphEdgesForNode(graph, node).removeIf(edge -> edge.fromNode().equals(node.id()) && !outputs.containsKey(edge.fromPort()));
+        }
+        return changed;
+    }
+
+    // Remove confirmed broken or retargeted senders while retaining unloaded links
+    private void pruneDisplayLinks(){
+        if(!displayLinkInbox.removeIf(snapshot -> {
+            if(!level.isLoaded(snapshot.linkPos())) return false;
+            BlockEntity sender = level.getBlockEntity(snapshot.linkPos());
+            return !(sender instanceof DisplayLinkBlockEntity link) || !link.getTargetPosition().equals(getBlockPos());
+        })) return;
+        boolean activeChanged = synchronizeDisplayLinkNodes(activeGraph);
+        boolean draftChanged = synchronizeDisplayLinkNodes(draftGraph);
+        if(activeChanged){ activeGraph.setRevision(activeGraph.revision() + 1); graphRuntime.compile(activeGraph); }
+        if(activeChanged || draftChanged) invalidateGraphPresentationCaches();
+        setChanged(); sendData();
+    }
+
     // Refresh graph data schemas whose target provider changed
     private void refreshChangedGraphDataSchemas() {
         boolean activeChanged = graphDataSchemaChanged(activeGraph);
@@ -6761,6 +6910,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Refresh the data ports
     private void refreshDataPorts(AdvancedGraphDocument graph) {
+        synchronizeDisplayLinkNodes(graph);
         for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)) {
             boolean getData = "get_block_data".equals(node.type());
             boolean setData = "set_block_data".equals(node.type());
@@ -6898,13 +7048,16 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             return;
         }
         CompoundTag previousPorts = node.data().getCompound(dynamicPortsKey);
+        Map<String, String> base = new LinkedHashMap<>();
+        ports.getAllKeys().forEach(id -> base.put(id, ports.getString(id)));
+        Map<String, GraphDynamicPortSchema.InlinePort> fields = new LinkedHashMap<>();
         CompoundTag retainedMappings = new CompoundTag();
         for (String inlinePort : mappings.getAllKeys()) {
             CompoundTag mapping = mappings.getCompound(inlinePort);
             String source = mapping.getString(AdvancedGraphCatalog.INLINE_MAP_SOURCE_TAG);
             String key = mapping.getString(AdvancedGraphCatalog.INLINE_MAP_KEY_TAG);
             if (inlinePort.isBlank() || source.isBlank() || key.isBlank()
-                    || inlinePort.equals(source) || !"map".equals(ports.getString(source))) {
+                    || inlinePort.equals(source)) {
                 continue;
             }
             String type = dataPortGroup(node, source).getString(key);
@@ -6914,8 +7067,14 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             if (type.isBlank() || "exec".equals(type)) {
                 continue;
             }
-            ports.putString(inlinePort, type);
-            retainedMappings.put(inlinePort, mapping.copy());
+            fields.put(inlinePort, new GraphDynamicPortSchema.InlinePort(source, type));
+        }
+        var resolved = GraphDynamicPortSchema.resolveInlinePorts(base, fields);
+        resolved.forEach(ports::putString);
+        for(String inlinePort : fields.keySet()){
+            if(!base.containsKey(inlinePort) && resolved.containsKey(inlinePort)){
+                retainedMappings.put(inlinePort, mappings.getCompound(inlinePort).copy());
+            }
         }
         if (retainedMappings.isEmpty()) {
             node.data().remove(mappingsKey);
@@ -7416,23 +7575,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         ports.putString("z", "number");
         ports.putString("redstone_power", "number");
         addDoubleButtonDataPorts(ports, blockEntity);
-        if (hasMultiblockItemHandler(level, pos, state, blockEntity)) {
-            ports.putString("items", "list");
-            ports.putString("item_count", "number");
-            ports.putString("item_capacity", "number");
-            ports.putString("item_fill", "number");
-        }
-        if (hasMultiblockFluidHandler(level, pos, state, blockEntity)) {
-            ports.putString("fluids", "list");
-            ports.putString("fluid_amount", "number");
-            ports.putString("fluid_capacity", "number");
-            ports.putString("fluid_fill", "number");
-        }
-        if (energySummary(level, pos, state, blockEntity)[1] > 0) {
-            ports.putString("energy", "number");
-            ports.putString("energy_capacity", "number");
-            ports.putString("energy_fill", "number");
-        }
+        ContainerData.readableData(blockEntity).forEach(ports::putString);
         if (blockEntity instanceof NavTableBlockEntity) {
             ports.putString("distance_to_target", "number");
             ports.putString("target_coordinates", "map");
@@ -7764,13 +7907,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Get the display text
     private static String displayText(DisplayLinkBlockEntity displayLink) {
-        ListTag lines = displayLink.getSourceConfig().getList("ComputerSourceList", net.minecraft.nbt.Tag.TAG_STRING);
-        StringBuilder text = new StringBuilder();
-        for (int idx = 0; idx < lines.size(); idx++) {
-            if (!text.isEmpty()) text.append('\n');
-            text.append(lines.getString(idx));
-        }
-        return text.toString();
+        return String.join("\n", DisplayLinkData.lines(displayLink));
     }
 
     // Get the clipboard text
@@ -8185,7 +8322,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         ControllerDiscoveryNode fallback = null;
         boolean linked = isLinkerGraphTarget(stale);
         List<ControllerDiscoveryNode> candidates = linked
-                ? ContraptionNetworkLinkerData.toDiscoveryNodes(getStoredLinker()) : getAssignableTargets();
+                ? linkerDiscoveryNodes() : getAssignableTargets();
         for (ControllerDiscoveryNode candidate : candidates) {
             if (!linked && !graphTargetExists(candidate)) continue;
             if (candidate.nodeId().equals(stale.nodeId())) {
@@ -8260,7 +8397,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Keep a face target bound to its support when the replaceable plane cell is occupied
     private boolean linkedFaceSupportPresent(ControllerDiscoveryNode discovery){
         if(discovery == null || discovery.blockPos() == null || level == null) return false;
-        for(var linked : ContraptionNetworkLinkerData.readTargets(getStoredLinker())){
+        for(var linked : getLinkedTargets()){
             if(!linked.scope().usesFaces() || !ContraptionNetworkLinkerData.nodeIdForTarget(linked).equals(discovery.nodeId()))
                 continue;
             Level targetLevel = SubLevelBlockEntityCollector.resolveTargetLevel(level, linked.subLevelId());
@@ -8360,8 +8497,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Reconcile the graph targets
     private boolean reconcileGraphTargets(AdvancedGraphDocument graph) {
-        if(getStoredLinker().isEmpty()) return false;
-        List<ControllerDiscoveryNode> linkerTargets = graphLinkerTargets(getStoredLinker());
+        if(getStoredLinker().isEmpty() && controllerStoredTargets.targets().isEmpty() && !editingStoredTargets) return false;
+        List<ControllerDiscoveryNode> linkerTargets = graphLinkerTargets(getLinkedTargets());
         boolean changed = false;
         for (AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(graph)) {
             ControllerDiscoveryNode source = ControllerDiscoveryNode.fromTag(node.data().getCompound("SourceData"));
@@ -8471,7 +8608,11 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Include SCM membership when retaining selections while keeping signal discovery unchanged
     private static List<ControllerDiscoveryNode> graphLinkerTargets(ItemStack linker){
-        return ContraptionNetworkLinkerData.toDiscoveryNodes(ContraptionNetworkLinkerData.readTargets(linker).stream()
+        return graphLinkerTargets(ContraptionNetworkLinkerData.readTargets(linker));
+    }
+
+    private static List<ControllerDiscoveryNode> graphLinkerTargets(List<ContraptionNetworkLinkerData.LinkedTarget> targets){
+        return ContraptionNetworkLinkerData.toDiscoveryNodes(targets.stream()
                 .map(target -> target.mode() == ContraptionNetworkLinkerData.LinkMode.SCM
                         ? new ContraptionNetworkLinkerData.LinkedTarget(target.blockPos(), target.subLevelId(),
                         target.blockId(), target.label(), ContraptionNetworkLinkerData.LinkMode.OUTPUT,
@@ -8579,6 +8720,75 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+    // Keep controller-owned copies available when the removable linker is absent
+    public CompoundTag getStoredTargetSnapshot(){
+        return controllerStoredTargets.snapshot();
+    }
+
+    public List<ContraptionNetworkLinkerData.LinkedTarget> getLinkedTargets(){
+        ItemStack linker = getActiveStoredLinker();
+        if(linker.isEmpty()) return controllerStoredTargets.targets();
+        return ControllerStoredTargets.merge(controllerStoredTargets.targets(),
+                ContraptionNetworkLinkerData.readTargets(linker));
+    }
+
+    public List<com.rieno.gadgetsandgizmos.lib.scm.ScmTarget> getLinkedScmTargets(){
+        return ContraptionNetworkLinkerData.scmTargets(getLinkedTargets());
+    }
+
+    public List<ContraptionNetworkLinkerData.LinkedArea> getLinkedAreas(){
+        return com.rieno.gadgetsandgizmos.lib.discovery.TargetBindingCopies.merge(
+                controllerStoredTargets.areas(), ContraptionNetworkLinkerData.readAreas(getActiveStoredLinker()),
+                ContraptionNetworkLinkerData.LinkedArea::id, (saved, incoming) -> saved);
+    }
+
+    @Override
+    protected List<ControllerDiscoveryNode> linkerDiscoveryNodes(){
+        return ContraptionNetworkLinkerData.toDiscoveryNodes(getLinkedTargets());
+    }
+
+    public boolean copyLinkerTargets(boolean pull){
+        ItemStack linker = getActiveStoredLinker();
+        if(level == null || level.isClientSide || linker.isEmpty()
+                || !ContraptionNetworkLinkerData.readAuthoritativeTargets(linker).authoritative()) return false;
+        if(pull){
+            if(controllerStoredTargets.pull(linker)) storedTargetsChanged();
+        }else{
+            controllerStoredTargets.push(linker);
+            ContraptionNetworkLinkerData.ensureClientSnapshot(linker);
+            onTrackedLinkerDataUpdated();
+            saveControllerManifestNow();
+        }
+        return true;
+    }
+
+    public boolean editStoredTargets(CompoundTag edited, int expectedRevision){
+        if(level == null || level.isClientSide || !controllerStoredTargets.edit(edited, expectedRevision)) return false;
+        storedTargetsChanged();
+        return true;
+    }
+
+    // Recompile affected routes and persist the independent collection with the controller manifest
+    private void storedTargetsChanged(){
+        com.rieno.gadgetsandgizmos.lib.inventory.ContainerStorageNetworks.invalidate();
+        graphTargetAccessCache.clear();
+        missingGraphTargetAccessCache.clear();
+        graphTargetAccessCacheTick = Long.MIN_VALUE;
+        invalidateWorkerRoutinePlans();
+        editingStoredTargets = true;
+        try{ reconcileGraphTargets(activeGraph); }
+        finally{ editingStoredTargets = false; }
+        refreshDataPorts(activeGraph);
+        applyGraphBindings(activeGraph);
+        graphRuntime.compile(activeGraph);
+        invalidateControllerRuntimeProgram();
+        shipControlRuntime.invalidateForAssemblyTransfer();
+        queueGraphBindingSync();
+        saveControllerManifestNow();
+        setChanged();
+        sendData();
+    }
+
     // Handle the inserted linker synchronized event
     @Override
     protected void onInsertedLinkerSynchronized(ItemStack linker) {
@@ -8596,7 +8806,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         graphTargetAccessCacheTick = Long.MIN_VALUE;
         invalidateWorkerRoutinePlans();
         for(AdvancedGraphDocument.Node node : graphNodesIncludingFunctions(activeGraph)){
-            if(hasUnavailableLinkerGraphTarget(node, linker.isEmpty())){
+            if(hasUnavailableLinkerGraphTarget(node, linker.isEmpty() && controllerStoredTargets.targets().isEmpty())){
                 clearGraphTargetSignals(node);
             }
         }
@@ -8778,6 +8988,11 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     protected boolean onAssemblyTransferCompleted(@Nullable UUID sourceSubLevelId,
                                                   @Nullable UUID destinationSubLevelId,
                                                   BlockPos offset) {
+        List<ContraptionNetworkLinkerData.LinkedTarget> movedTargets = new ArrayList<>();
+        for(var target : controllerStoredTargets.targets()){
+            movedTargets.addAll(remapMovedLinkerTarget(target, sourceSubLevelId, destinationSubLevelId, offset));
+        }
+        boolean storedChanged = controllerStoredTargets.replaceTargets(movedTargets);
         boolean draftChanged = remapGraphTargetsForAssembly(draftGraph, sourceSubLevelId, destinationSubLevelId, offset);
         boolean activeChanged = remapGraphTargetsForAssembly(activeGraph, sourceSubLevelId, destinationSubLevelId, offset);
         if (draftChanged) {
@@ -8792,7 +9007,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         refreshGraphRuntime(true);
         graphRuntime.enqueue("assembly_transfer");
         shipControlRuntime.invalidateForAssemblyTransfer();
-        return draftChanged || activeChanged;
+        return storedChanged || draftChanged || activeChanged;
     }
 
     // Remap the graph targets for assembly
@@ -9267,7 +9482,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             "north_signal", "east_signal", "south_signal", "west_signal");
     private static final String DOUBLE_BUTTON_TOP_REDSTONE_POWER = "top_redstone_power";
     private static final String DOUBLE_BUTTON_BOTTOM_REDSTONE_POWER = "bottom_redstone_power";
-    private static final int MULTIBLOCK_SCAN_LIMIT = 128;
 
     // Get the gimbal signal direction
     private static @Nullable Direction gimbalSignalDirection(String port) {
@@ -9311,7 +9525,8 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
                 soundPosition.x, soundPosition.y, soundPosition.z, radius,
                 new GraphSoundPayload(playbackId, id.toString(),
                         soundPosition.x, soundPosition.y, soundPosition.z,
-                        clampedVolume, clampedPitch, loop, false));
+                        clampedVolume, clampedPitch, loop, false, subLevelId,
+                        localPosition.x, localPosition.y, localPosition.z));
     }
 
     // Check if this supports axis control
@@ -9342,27 +9557,12 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
             data.putDouble("angle_to_target", navigationTable.getRelativeAngle());
         }
         putDoubleButtonData(data, blockEntity);
-        if (hasMultiblockItemHandler(level, pos, state, blockEntity)) {
-            Summary items = itemSummary(level, pos, state, blockEntity, targetSide);
-            data.put("items", items.entries());
-            data.putInt("item_count", items.amount());
-            data.putInt("item_capacity", items.capacity());
-            data.putDouble("item_fill", items.fill());
-        }
-        if (hasMultiblockFluidHandler(level, pos, state, blockEntity)) {
-            Summary fluids = fluidSummary(level, pos, state, blockEntity);
-            data.put("fluids", fluids.entries());
-            data.putInt("fluid_amount", fluids.amount());
-            data.putInt("fluid_capacity", fluids.capacity());
-            data.putDouble("fluid_fill", fluids.fill());
-        }
-        double[] energy = energySummary(level, pos, state, blockEntity);
-        if (energy[1] > 0) {
-            data.putDouble("energy", energy[0]);
-            data.putDouble("energy_capacity", energy[1]);
-            data.putDouble("energy_fill", energy[0] / energy[1]);
+        var storage = ContainerData.capture(blockEntity, targetSide);
+        for(String field : storage.readableData().keySet()){
+            putGraphValue(data, field, GraphRuntime.fromLibraryValue(storage.read(field)));
         }
         for (String field : BlockEntityDataAdapterRegistry.readableData(blockEntity).keySet()) {
+            if(storage.readableData().containsKey(field)) continue;
             GraphValue value = BlockEntityDataAdapterRegistry.read(blockEntity, field);
             if (value != null) {
                 putGraphValue(data, field, GraphRuntime.fromLibraryValue(value));
@@ -9469,136 +9669,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         };
     }
 
-    // Get the item summary
-    private static Summary itemSummary(Level level, BlockPos pos, BlockState state, BlockEntity blockEntity,
-                                       @Nullable Direction targetSide) {
-        CompoundTag entries = new CompoundTag();
-        int amount = 0;
-        int capacity = 0;
-        int outputEntry = 0;
-        Set<IItemHandler> seenHandlers = Collections.newSetFromMap(new IdentityHashMap<>());
-        for (BlockPos candidate : connectedCapabilityPositions(level, pos, state, true)) {
-            BlockState candidateState = level.getBlockState(candidate);
-            BlockEntity candidateBlockEntity = level.getBlockEntity(candidate);
-            IItemHandler handler = findItemHandler(level, candidate, candidateState, candidateBlockEntity,
-                    candidate.equals(pos) ? targetSide : null);
-            if (handler == null || !seenHandlers.add(handler)) continue;
-            Summary summary = itemSummary(handler, outputEntry);
-            entries.merge(summary.entries());
-            amount += summary.amount();
-            capacity += summary.capacity();
-            outputEntry += summary.entries().size();
-        }
-        return new Summary(entries, amount, capacity);
-    }
-
-    // Get the fluid summary
-    private static Summary fluidSummary(Level level, BlockPos pos, BlockState state, BlockEntity blockEntity) {
-        CompoundTag entries = new CompoundTag();
-        int amount = 0;
-        int capacity = 0;
-        int outputTank = 0;
-        Set<IFluidHandler> seenHandlers = Collections.newSetFromMap(new IdentityHashMap<>());
-        Set<String> seenSnapshots = new HashSet<>();
-        for (BlockPos candidate : connectedCapabilityPositions(level, pos, state, false)) {
-            BlockState candidateState = level.getBlockState(candidate);
-            BlockEntity candidateBlockEntity = level.getBlockEntity(candidate);
-            IFluidHandler handler = findFluidHandler(level, candidate, candidateState, candidateBlockEntity);
-            if (handler == null || !seenHandlers.add(handler)) continue;
-            Summary summary = fluidSummary(handler, outputTank);
-            String snapshot = summary.capacity() + ":" + summary.amount() + ":" + summary.entries();
-            if (!seenSnapshots.add(snapshot)) continue;
-            entries.merge(summary.entries());
-            amount += summary.amount();
-            capacity += summary.capacity();
-            outputTank += handler.getTanks();
-        }
-        return new Summary(entries, amount, capacity);
-    }
-
-    // Get the item summary
-    private static Summary itemSummary(IItemHandler handler, int offset) {
-        CompoundTag entries = new CompoundTag();
-        int entry = offset;
-        ShippingManifestBlock.ItemContents contents = ShippingManifestBlock.inspectItems(handler);
-        for (ShippingManifestBlock.ManifestEntry item : contents.entries()) {
-            entries.putString(Integer.toString(entry++),
-                    BuiltInRegistries.ITEM.getKey(item.stack.getItem()) + " x" + item.amount);
-        }
-        return new Summary(entries, saturatedInt(contents.totalAmount()), saturatedInt(contents.totalCapacity()));
-    }
-
-    // Get the saturated int
-    private static int saturatedInt(long val) {
-        return val <= 0L ? 0 : val >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) val;
-    }
-
-    // Get the fluid summary
-    private static Summary fluidSummary(IFluidHandler handler, int offset) {
-        CompoundTag entries = new CompoundTag();
-        int amount = 0;
-        int capacity = 0;
-        for (int tank = 0; tank < handler.getTanks(); tank++) {
-            var stack = handler.getFluidInTank(tank);
-            capacity += handler.getTankCapacity(tank);
-            amount += stack.getAmount();
-            if (!stack.isEmpty()) entries.putString(Integer.toString(offset + tank),
-                    BuiltInRegistries.FLUID.getKey(stack.getFluid()) + " x" + stack.getAmount());
-        }
-        return new Summary(entries, amount, capacity);
-    }
-
-    // Check if this has multiblock item handler
-    private static boolean hasMultiblockItemHandler(Level level, BlockPos pos, BlockState state, BlockEntity blockEntity) {
-        return findItemHandler(level, pos, state, blockEntity) != null
-                || connectedCapabilityPositions(level, pos, state, true).size() > 1;
-    }
-
-    // Check if this has multiblock fluid handler
-    private static boolean hasMultiblockFluidHandler(Level level, BlockPos pos, BlockState state, BlockEntity blockEntity) {
-        return findFluidHandler(level, pos, state, blockEntity) != null
-                || connectedCapabilityPositions(level, pos, state, false).size() > 1;
-    }
-
-    // Get the connected capability positions
-    private static List<BlockPos> connectedCapabilityPositions(Level level, BlockPos start, BlockState startState, boolean items) {
-        if (level == null || start == null || startState == null || !level.isLoaded(start)) return List.of();
-        List<BlockPos> positions = new ArrayList<>();
-        Queue<BlockPos> queue = new ArrayDeque<>();
-        Set<BlockPos> visited = new HashSet<>();
-        queue.add(start);
-        visited.add(start);
-        while (!queue.isEmpty() && positions.size() < MULTIBLOCK_SCAN_LIMIT) {
-            BlockPos current = queue.remove();
-            if (!level.isLoaded(current)) continue;
-            BlockState state = level.getBlockState(current);
-            if (state.getBlock() != startState.getBlock()) continue;
-            BlockEntity blockEntity = level.getBlockEntity(current);
-            boolean hasCapability = items
-                    ? findItemHandler(level, current, state, blockEntity) != null
-                    : findFluidHandler(level, current, state, blockEntity) != null;
-            if (hasCapability) positions.add(current);
-            for (Direction dir : Direction.values()) {
-                BlockPos next = current.relative(dir);
-                if (visited.size() >= MULTIBLOCK_SCAN_LIMIT || !visited.add(next) || !level.isLoaded(next)) continue;
-                if (level.getBlockState(next).getBlock() == startState.getBlock()) queue.add(next);
-            }
-        }
-        return positions.isEmpty() && level.isLoaded(start) ? List.of(start) : positions;
-    }
-
-    // Get the energy summary
-    private static double[] energySummary(Level level, BlockPos pos, BlockState state, BlockEntity blockEntity) {
-        IEnergyStorage storage = level.getCapability(Capabilities.EnergyStorage.BLOCK, pos, state, blockEntity, null);
-        if (storage == null) {
-            for (Direction dir : Direction.values()) {
-                storage = level.getCapability(Capabilities.EnergyStorage.BLOCK, pos, state, blockEntity, dir);
-                if (storage != null) break;
-            }
-        }
-        return storage == null ? new double[]{0, 0} : new double[]{storage.getEnergyStored(), storage.getMaxEnergyStored()};
-    }
-
     // Find the item handler
     private static IItemHandler findItemHandler(Level level, BlockPos pos, BlockState state,
                                                 BlockEntity blockEntity) {
@@ -9608,32 +9678,14 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Find the item handler
     private static IItemHandler findItemHandler(Level level, BlockPos pos, BlockState state,
                                                 BlockEntity blockEntity, @Nullable Direction targetSide) {
-        IItemHandler attachedHandler = null;
-        if (targetSide != null) {
-            attachedHandler = ShippingManifestBlock.findItemHandler(level, pos, targetSide);
-        }
-        List<IItemHandler> handlers = new ArrayList<>();
-        Set<IItemHandler> seenHandlers = Collections.newSetFromMap(new IdentityHashMap<>());
-        for (Direction dir : Direction.values()) {
-            IItemHandler handler = ShippingManifestBlock.findItemHandler(level, pos, dir);
-            if (handler == null || !seenHandlers.add(handler)) {
-                continue;
-            }
-            handlers.add(handler);
-        }
-        return ContainerItemAccess.select(attachedHandler, handlers,
-                handler -> ShippingManifestBlock.inspectItems(handler).totalAmount());
+        var items = ContainerData.resources(blockEntity, targetSide).items();
+        return items.isEmpty() ? null : items.getFirst();
     }
 
-    // Find the fluid handler
-    private static IFluidHandler findFluidHandler(Level level, BlockPos pos, BlockState state, BlockEntity blockEntity) {
-        IFluidHandler handler = level.getCapability(Capabilities.FluidHandler.BLOCK, pos, state, blockEntity, null);
-        if (handler != null) return handler;
-        for (Direction dir : Direction.values()) {
-            handler = level.getCapability(Capabilities.FluidHandler.BLOCK, pos, state, blockEntity, dir);
-            if (handler != null) return handler;
-        }
-        return null;
+    // Find the complete fluid handler without scanning adjacent containers
+    private static IFluidHandler findFluidHandler(Level level, BlockPos pos, BlockState state, BlockEntity blockEntity){
+        var fluids = ContainerData.resources(blockEntity, null).fluids();
+        return fluids.isEmpty() ? null : fluids.getFirst();
     }
 
     // Expose target
@@ -9642,16 +9694,6 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
 
     // Expose one resolved data target
     public record GraphDataTarget(Level level, BlockPos pos, @Nullable Direction side) {
-    }
-
-    // Store the summary
-    private record Summary(CompoundTag entries, int amount, int capacity) {
-        private static final Summary EMPTY = new Summary(new CompoundTag(), 0, 0);
-
-        // Fill the summary
-        private double fill() {
-            return capacity <= 0 ? 0 : amount / (double) capacity;
-        }
     }
 
     // Get the controller manifest kind
@@ -9753,12 +9795,26 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     // Write the additional controller manifest data
     @Override
     protected void writeAdditionalControllerManifestData(CompoundTag tag, HolderLookup.Provider provider) {
-        tag.put("AdvancedDraftGraph", draftGraph.toTag());
-        tag.put("AdvancedActiveGraph", activeGraph.toTag());
+        writeAdditionalControllerData(tag, provider, false);
+    }
+
+    // Keep graph documents and history on the existing graph synchronization channel
+    @Override
+    protected void writeAdditionalControllerClientData(CompoundTag tag, HolderLookup.Provider provider){
+        writeAdditionalControllerData(tag, provider, true);
+    }
+
+    // Write the shared controller fields without building discarded client graph tags
+    private void writeAdditionalControllerData(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket){
+        tag.put("ControllerStoredTargets", controllerStoredTargets.snapshot());
+        if(!clientPacket){
+            tag.put("AdvancedDraftGraph", draftGraph.toTag());
+            tag.put("AdvancedActiveGraph", activeGraph.toTag());
+            tag.put(SHIPPING_SCHEDULE_DRAFT_GRAPH_TAG, shippingScheduleDraftGraph.toTag());
+            tag.put(SHIPPING_SCHEDULE_ACTIVE_GRAPH_TAG, shippingScheduleActiveGraph.toTag());
+            tag.put(GRAPH_VERSIONS_TAG, graphVersions.toTag());
+        }
         tag.remove("PlotPoints");
-        tag.put(SHIPPING_SCHEDULE_DRAFT_GRAPH_TAG, shippingScheduleDraftGraph.toTag());
-        tag.put(SHIPPING_SCHEDULE_ACTIVE_GRAPH_TAG, shippingScheduleActiveGraph.toTag());
-        tag.put(GRAPH_VERSIONS_TAG, graphVersions.toTag());
         ListTag trackerPairs = new ListTag();
         gogglesTrackerPairs.forEach((id, label) -> {
             CompoundTag pair = new CompoundTag();
@@ -9904,6 +9960,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     @Override
     protected void readAdditionalControllerManifestData(CompoundTag tag, HolderLookup.Provider provider,
                                                         String manifestKind) {
+        controllerStoredTargets.read(tag.getCompound("ControllerStoredTargets"));
         plotPoints.clear();
         if (tag.contains("PlotPoints")) {
             tag.remove("PlotPoints");
@@ -9990,6 +10047,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
     @Override
     protected void write(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.write(tag, provider, clientPacket);
+        tag.put("DisplayLinkInbox", displayLinkInbox.save());
         tag.put("FlightControl", com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.save(this));
         if (!clientPacket) {
             shipControlRuntime.writePersistentCouplerState(tag);
@@ -10028,6 +10086,7 @@ public class AdvancedContraptionControllerBlockEntity extends AnalogueContraptio
         boolean previousClientUpdateRead = readingClientUpdatePacket;
         readingClientUpdatePacket = clientPacket;
         try {
+            displayLinkInbox.load(tag.getList("DisplayLinkInbox", Tag.TAG_COMPOUND));
             super.read(tag, provider, clientPacket);
             com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.load(this, tag.getCompound("FlightControl"));
         } finally {

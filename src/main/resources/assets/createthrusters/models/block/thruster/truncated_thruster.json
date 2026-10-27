@@ -3,7 +3,9 @@
 	"credit": "Made with Blockbench",
 	"render_type": "minecraft:cutout_mipped",
 	"textures": {
-		"0": "createthrusters:block/thruster/truncated_thruster_unpowered"
+		"0": "createthrusters:block/thruster/truncated_thruster_unpowered",
+		
+		"particle": "createthrusters:block/thruster/thruster_solid_powered"
 	},
 	"elements": [
 		{

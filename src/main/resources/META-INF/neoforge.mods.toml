@@ -165,3 +165,10 @@ type="optional"
 versionRange="[0,)"
 ordering="AFTER"
 side="BOTH"
+
+[[dependencies.${mod_id}]]
+modId="powergrid"
+type="optional"
+versionRange="[0.6.2,0.7)"
+ordering="AFTER"
+side="BOTH"

@@ -19,6 +19,7 @@ import com.rieno.gadgetsandgizmos.lib.control.ControllerDirectTargetReference;
 import com.rieno.gadgetsandgizmos.lib.control.CustomKeyEntry;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget;
+import com.rieno.gadgetsandgizmos.lib.client.ui.GuiControlPreviews;
 import com.rieno.gadgetsandgizmos.neoforge.network.AnalogueContraptionControllerConfigPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AnalogueContraptionControllerCustomKeyPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AnalogueContraptionControllerDiscoveryNodePayload;
@@ -38,7 +39,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
@@ -74,49 +74,37 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
     private static final String DIRECT_TARGET_OPTION_PREFIX = "::opt:";
     private static final String DIRECT_TARGET_PROPERTY_PREFIX = "::prop:";
     private static final String STEP_DOWN_KEY_SUFFIX = "#step_down";
-    private static final ResourceLocation TYPEWRITER_TEX =
-            ResourceLocation.fromNamespaceAndPath("createthrusters", "textures/gui/linked_typewriter/linked_typewriter.png");
-    private static final ResourceLocation TYPEWRITER_KEYS_TEX =
-            ResourceLocation.fromNamespaceAndPath("createthrusters", "textures/gui/linked_typewriter/linked_typewriter_keys.png");
-
     private static final int MAIN_W = 296;
     private static final int MAIN_H = 320;
-        private static final int KEYBOARD_W = 246;
-        private static final int KEYBOARD_X = (MAIN_W - KEYBOARD_W) / 2;
-    private static final int MAIN_KEYS_BG_H = 127;
+    private static final int KEYBOARD_X = CTAnalogueControllerAppearance.ATLAS_X;
     private static final int KEY_MENU_W = 312;
-    private static final int KEY_MENU_H = 220;
+    private static final int KEY_MENU_H = 240;
     private static final int KEY_ENTRY_W = 288;
     private static final int KEY_ENTRY_H = 24;
     private static final int MODIFY_PANEL_W = 296;
-    private static final int MODIFY_PANEL_H = 236;
+    private static final int MODIFY_PANEL_H = 284;
 
-    private static final int KEY_START_U = 60;
-    private static final int KEY_MID_U = 66;
-    private static final int KEY_END_U = 68;
-    private static final int KEY_INACTIVE_START_U = 73;
-    private static final int KEY_INACTIVE_MID_U = 79;
-    private static final int KEY_INACTIVE_END_U = 81;
-    private static final int KEY_V = 127;
     private static final int KEY_H = 14;
-    private static final int KEY_START_W = 6;
-    private static final int KEY_MID_W = 2;
-    private static final int KEY_END_W = 6;
 
     private static final int MAIN_KEYS_X = 8;
     private static final int MAIN_KEYS_Y = 21;
     private static final int MAIN_ROW_STEP = 14;
-    private static final int FOOTER_Y = 190;
+    private static final int FOOTER_Y = 200;
     private static final int RESET_BUTTON_W = 56;
-    private static final int FOOTER_BUTTON_GAP = 6;
     private static final int FOOTER_RIGHT_BUTTON_W = 40;
     private static final int MAIN_INPUTS_PANEL_X = KEYBOARD_X;
-    private static final int MAIN_INPUTS_PANEL_Y = 94;
-    private static final int MAIN_INPUTS_PANEL_W = KEYBOARD_W;
-    private static final int MAIN_INPUTS_PANEL_H = 86;
-    private static final int MAIN_INPUTS_X = MAIN_INPUTS_PANEL_X + 4;
-    private static final int MAIN_INPUTS_Y = MAIN_INPUTS_PANEL_Y + 18;
-    private static final int MAIN_INPUTS_W = (MAIN_INPUTS_PANEL_W - 12) / 2;
+    private static final int MAIN_INPUTS_PANEL_Y = 96;
+    private static final int MAIN_INPUTS_X = MAIN_INPUTS_PANEL_X + 11;
+    private static final int MAIN_INPUTS_Y = 124;
+    private static final int MAIN_INPUTS_W = 110;
+    private static final int MAIN_SCROLL_X = KEYBOARD_X + 110;
+    private static final int MAIN_BOUND_SCROLL_X = KEYBOARD_X + 222;
+    private static final int MAIN_SCROLL_UP_Y = 136;
+    private static final int MAIN_SCROLL_DOWN_Y = 160;
+    private static final int MAIN_SCROLL_SIZE = 10;
+    private static final int MAIN_RESET_X = KEYBOARD_X + 152;
+    private static final int MAIN_RESET_W = 50;
+    private static final int MAIN_DONE_W = 18;
     private static final int MAIN_INPUTS_H = 56;
     private static final int MAIN_INPUTS_ROW_H = 14;
     private static final int MAIN_INPUTS_VISIBLE_ROWS = 4;
@@ -130,27 +118,27 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
     private static final int LIST_VISIBLE_ROWS = 4;
 
     private static final int MODIFY_PANEL_X = 11;
-    private static final int MODIFY_PANEL_Y = -56;
+    private static final int MODIFY_PANEL_Y = -80;
     private static final int MODIFY_TAB_Y = 24;
-    private static final int MODIFY_ROW1_Y = 52;
+    private static final int MODIFY_FOOTER_Y = MODIFY_PANEL_H - 13;
+    private static final int MODIFY_ROW1_Y = 80;
     private static final int MODIFY_ROW_STEP = 16;
     private static final int MODIFY_LEFT_X = 14;
     private static final int MODIFY_FULL_ROW_W = 268;
-    private static final int DISCOVERY_LIST_Y = 89;
+    private static final int DISCOVERY_LIST_Y = 105;
     private static final int DISCOVERY_LIST_TOP_OFFSET = 22;
     private static final int DISCOVERY_OUTPUT_VISIBLE_ROWS = 6;
     private static final int TAB_W = 72;
-    private static final int BUTTON_H = 18;
+    private static final int BUTTON_H = 12;
     private static final int SMALL_BUTTON_H = 14;
     private static final int SMALL_BUTTON_W = 16;
     private static final int ROUTING_TARGETS_X = 8;
-    private static final int ROUTING_TARGETS_Y = 106;
+    private static final int ROUTING_TARGETS_Y = 132;
     private static final int ROUTING_TARGETS_W = 276;
-    private static final int ROUTING_TARGETS_H = 66;
+    private static final int ROUTING_TARGETS_H = 80;
     private static final int ROUTING_TARGETS_VISIBLE_ROWS = 5;
     private static final int EDIT_BUTTON_W = 34;
     private static final int CLEAR_BUTTON_W = 34;
-    private static final int INACTIVE_TAB_TEXT_COLOR = 0x6A6A6A;
     private static final Direction[] SIDE_OPTIONS = {null, Direction.NORTH, Direction.SOUTH, Direction.EAST, Direction.WEST, Direction.UP, Direction.DOWN};
     private static final String[] PRESET_OPTIONS = {"none", "yaw", "roll", "pitch", "throttle"};
 
@@ -533,7 +521,7 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
             if (modifier.tab == ModifierTab.DISCOVERY) {
                 int toggleW = 12;
                 int sidebarW = 92;
-                int sidebarH = 108;
+                int sidebarH = 128;
                 int sidebarY = panelY + DISCOVERY_LIST_Y - 18;
                 int toggleX = panelX - toggleW - 2;
                 bounds.include(toggleX, sidebarY, toggleW, SMALL_BUTTON_H);
@@ -654,26 +642,10 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
         int x = leftPos;
         int y = topPos;
         List<Component> hoveredInputTooltip = null;
-        guiGraphics.blit(TYPEWRITER_TEX, x + KEYBOARD_X, y, 0, 0, KEYBOARD_W, MAIN_KEYS_BG_H, 256, 256);
-
-        int inputsPanelX = x + MAIN_INPUTS_PANEL_X;
+        CTAnalogueControllerAppearance.FRAME.draw(guiGraphics, x + KEYBOARD_X, y);
         int inputsPanelY = y + MAIN_INPUTS_PANEL_Y;
-        CTCreateScreenHelper.renderPanel(guiGraphics, inputsPanelX, inputsPanelY, MAIN_INPUTS_PANEL_W, MAIN_INPUTS_PANEL_H);
-
-        // ------------------------------------INVENTORY AND LINKER------------------------------------
-        renderPlayerInventory(guiGraphics,
-            leftPos + AnalogueContraptionControllerMenu.PLAYER_SLOTS_X - 8,
-            topPos + AnalogueContraptionControllerMenu.PLAYER_SLOTS_Y - 18);
-        int linkerSlotX = leftPos + AnalogueContraptionControllerMenu.LINKER_SLOT_X;
-        int linkerSlotY = topPos + AnalogueContraptionControllerMenu.LINKER_SLOT_Y;
-        CTCreateScreenHelper.renderItemSlot(guiGraphics, linkerSlotX - 1, linkerSlotY - 1);
-        Component linkerLabel = Component.literal("Linker");
-        guiGraphics.drawString(font, linkerLabel,
-                linkerSlotX + 8 - font.width(linkerLabel) / 2,
-                linkerSlotY - 10,
-                CTCreateScreenHelper.LABEL_COLOR, false);
-
-        guiGraphics.drawCenteredString(font, title, x + MAIN_W / 2, y + 4, CTCreateScreenHelper.BANNER_TITLE_COLOR);
+        guiGraphics.drawCenteredString(font, title, x + KEYBOARD_X + 119, y + 4,
+                CTAnalogueControllerAppearance.BANNER_TITLE_COLOR);
 
         // -----------------------------------------------------KEYBOARD-----------------------------------------------------
         for (int rowIndex = 0; rowIndex < keyRows.size(); rowIndex++) {
@@ -683,24 +655,14 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
         int inputsX = x + MAIN_INPUTS_X;
         int inputsY = y + MAIN_INPUTS_Y;
         int inputsButtonW = MAIN_INPUTS_W - SMALL_BUTTON_W - 2;
-        int inputRenameW = 24;
-        int inputBindW = Math.max(36, inputsButtonW - inputRenameW - 2);
         int boundX = inputsX + MAIN_INPUTS_W + 4;
         int boundButtonW = MAIN_INPUTS_W - SMALL_BUTTON_W - 2;
-        int boundDeleteW = 24;
-        int boundRenameW = 24;
-        int boundEntryW = boundButtonW - boundDeleteW - boundRenameW - 4;
         guiGraphics.drawString(font,
             Component.literal("Inputs"),
-            inputsX, inputsPanelY + 6, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
+            inputsX, inputsPanelY + 6, CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
         guiGraphics.drawString(font,
             Component.literal("Bound Inputs"),
-            boundX, inputsPanelY + 6, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
-
-        CTCreateScreenHelper.renderInset(guiGraphics, inputsX, inputsY, inputsButtonW, MAIN_INPUTS_H,
-                inside(mouseX, mouseY, inputsX, inputsY, inputsButtonW, MAIN_INPUTS_H), false);
-        CTCreateScreenHelper.renderInset(guiGraphics, boundX, inputsY, boundButtonW, MAIN_INPUTS_H,
-            inside(mouseX, mouseY, boundX, inputsY, boundButtonW, MAIN_INPUTS_H), false);
+            boundX, inputsPanelY + 6, CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
 
         // -----------------------------------------------------INPUT LISTS-----------------------------------------------------
         List<MainInputRow> opts = getMainInputRows();
@@ -709,8 +671,9 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
         boundInputsScroll = Mth.clamp(boundInputsScroll, 0, maxBoundInputsScroll(boundOptions));
 
         if (opts.isEmpty()) {
-            guiGraphics.drawString(font, Component.literal("No detected inputs"),
-                    inputsX + 4, inputsY + 4, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
+            GuiControlPreviews.drawFittedText(guiGraphics, font, Component.literal("No detected inputs"),
+                    inputsX + 2, inputsY + 3, inputsButtonW - 4, 10, 1,
+                    CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
         } else {
             for (int row = 0; row < MAIN_INPUTS_VISIBLE_ROWS; row++) {
                 int idx = mainInputsScroll + row;
@@ -733,11 +696,10 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
                         Component.literal(trimToWidth(prefix + clippedLabel, rowW - 8)),
                         mouseX, mouseY, true);
                 } else {
-                    renderSmallButton(guiGraphics, rowX, by, rowW,
-                        Component.literal(clippedLabel),
-                        mouseX, mouseY, true);
-                        renderOverlayIcon(guiGraphics, renameIconX, by - 1,
-                            AllIcons.I_CONFIG_OPEN, mouseX, mouseY);
+                    renderSmallButton(guiGraphics, rowX, by, rowW, Component.empty(), mouseX, mouseY, true);
+                    GuiControlPreviews.drawFittedText(guiGraphics, font, Component.literal(clippedLabel),
+                            rowX + 3, by + 2, rowW - 24, 10, 1, CTAnalogueControllerAppearance.LABEL_COLOR, false);
+                    renderOverlayIcon(guiGraphics, renameIconX, by, AllIcons.I_CONFIG_OPEN, mouseX, mouseY);
                 }
                 if (hoveredInputTooltip == null
                         && inside(mouseX, mouseY, rowX, by, rowW, SMALL_BUTTON_H)) {
@@ -747,8 +709,9 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
         }
 
         if (boundOptions.isEmpty()) {
-            guiGraphics.drawString(font, Component.literal("No bound inputs"),
-                    boundX + 4, inputsY + 4, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
+            GuiControlPreviews.drawFittedText(guiGraphics, font, Component.literal("No bound inputs"),
+                    boundX + 2, inputsY + 3, boundButtonW - 4, 10, 1,
+                    CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
         } else {
             for (int row = 0; row < MAIN_BOUND_INPUTS_VISIBLE_ROWS; row++) {
                 int idx = boundInputsScroll + row;
@@ -762,12 +725,12 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
                 int deleteIconX = boundX + rowW - 17;
                 int renameIconX = deleteIconX - 16;
                 String clippedLabel = trimToWidth(label, rowW - 40);
-                renderSmallButton(guiGraphics, boundX, by, rowW,
-                    Component.literal(clippedLabel),
-                    mouseX, mouseY, true);
-                renderOverlayIcon(guiGraphics, renameIconX, by - 1,
+                renderSmallButton(guiGraphics, boundX, by, rowW, Component.empty(), mouseX, mouseY, true);
+                GuiControlPreviews.drawFittedText(guiGraphics, font, Component.literal(clippedLabel),
+                        boundX + 3, by + 2, rowW - 38, 10, 1, CTAnalogueControllerAppearance.LABEL_COLOR, false);
+                renderOverlayIcon(guiGraphics, renameIconX, by,
                     AllIcons.I_CONFIG_OPEN, mouseX, mouseY);
-                renderOverlayIcon(guiGraphics, deleteIconX, by - 1,
+                renderOverlayIcon(guiGraphics, deleteIconX, by,
                     AllIcons.I_TRASH, mouseX, mouseY);
                 if (hoveredInputTooltip == null
                         && inside(mouseX, mouseY, boundX, by, rowW, SMALL_BUTTON_H)) {
@@ -786,25 +749,43 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
             }
         }
 
-        // ------------------------------------SCROLL CONTROLS------------------------------------
-        boolean canScrollUp = mainInputsScroll > 0;
-        boolean canScrollDown = mainInputsScroll < maxMainInputsScroll(opts);
-        renderSmallButton(guiGraphics, inputsX + inputsButtonW + 2, inputsY, SMALL_BUTTON_W,
-                Component.literal("^"), mouseX, mouseY, canScrollUp);
-        renderSmallButton(guiGraphics, inputsX + inputsButtonW + 2, inputsY + SMALL_BUTTON_H + 2, SMALL_BUTTON_W,
-                Component.literal("v"), mouseX, mouseY, canScrollDown);
-        boolean canBoundScrollUp = boundInputsScroll > 0;
-        boolean canBoundScrollDown = boundInputsScroll < maxBoundInputsScroll(boundOptions);
-        renderSmallButton(guiGraphics, boundX + boundButtonW + 2, inputsY, SMALL_BUTTON_W,
-                Component.literal("^"), mouseX, mouseY, canBoundScrollUp);
-        renderSmallButton(guiGraphics, boundX + boundButtonW + 2, inputsY + SMALL_BUTTON_H + 2, SMALL_BUTTON_W,
-                Component.literal("v"), mouseX, mouseY, canBoundScrollDown);
-
-        renderTextButton(guiGraphics, x + KEYBOARD_X + 8, y + FOOTER_Y, RESET_BUTTON_W, Component.literal("Reset"), mouseX, mouseY);
-        renderTextButton(guiGraphics, footerDoneX(), y + FOOTER_Y, FOOTER_RIGHT_BUTTON_W, Component.literal("Done"), mouseX, mouseY);
+        // Keep the painted arrows and footer controls aligned with the atlas
+        renderMainScrollControl(guiGraphics, x + MAIN_SCROLL_X, y + MAIN_SCROLL_UP_Y,
+                mouseX, mouseY, mainInputsScroll > 0);
+        renderMainScrollControl(guiGraphics, x + MAIN_SCROLL_X, y + MAIN_SCROLL_DOWN_Y,
+                mouseX, mouseY, mainInputsScroll < maxMainInputsScroll(opts));
+        renderMainScrollControl(guiGraphics, x + MAIN_BOUND_SCROLL_X, y + MAIN_SCROLL_UP_Y,
+                mouseX, mouseY, boundInputsScroll > 0);
+        renderMainScrollControl(guiGraphics, x + MAIN_BOUND_SCROLL_X, y + MAIN_SCROLL_DOWN_Y,
+                mouseX, mouseY, boundInputsScroll < maxBoundInputsScroll(boundOptions));
+        guiGraphics.drawCenteredString(font, Component.literal("Reset"), x + MAIN_RESET_X + MAIN_RESET_W / 2,
+                y + FOOTER_Y + 5, CTAnalogueControllerAppearance.LABEL_COLOR);
+        if(inside(mouseX, mouseY, x + MAIN_RESET_X, y + FOOTER_Y, MAIN_RESET_W, 18)){
+            guiGraphics.fill(x + MAIN_RESET_X, y + FOOTER_Y, x + MAIN_RESET_X + MAIN_RESET_W, y + FOOTER_Y + 18, 0x22FFFFFF);
+        }
+        if(inside(mouseX, mouseY, footerDoneX(), y + FOOTER_Y, MAIN_DONE_W, 18)){
+            guiGraphics.fill(footerDoneX(), y + FOOTER_Y, footerDoneX() + MAIN_DONE_W, y + FOOTER_Y + 18, 0x22FFFFFF);
+        }
+        if(!modifier.modifying){
+            for(int idx = 0; idx < keyRows.size(); idx++){
+                MainKey key = keyRows.get(idx).findHit(mouseX, mouseY, x + KEYBOARD_X + MAIN_KEYS_X,
+                        y + MAIN_KEYS_Y + idx * MAIN_ROW_STEP);
+                if(key == null) continue;
+                hoveredInputTooltip = List.of(InputConstants.getKey(key.keyCode, -1).getDisplayName());
+                break;
+            }
+        }
 
         if (!modifier.modifying && hoveredInputTooltip != null) {
             guiGraphics.renderTooltip(font, hoveredInputTooltip, java.util.Optional.empty(), mouseX, mouseY);
+        }
+    }
+
+    // Shade the baked scroll control when its direction is unavailable
+    private void renderMainScrollControl(GuiGraphics guiGraphics, int x, int y, int mouseX, int mouseY, boolean active){
+        if(!active) guiGraphics.fill(x, y, x + MAIN_SCROLL_SIZE, y + MAIN_SCROLL_SIZE, 0x77000000);
+        else if(inside(mouseX, mouseY, x, y, MAIN_SCROLL_SIZE, MAIN_SCROLL_SIZE)){
+            guiGraphics.fill(x, y, x + MAIN_SCROLL_SIZE, y + MAIN_SCROLL_SIZE, 0x33FFFFFF);
         }
     }
 
@@ -826,7 +807,6 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
         int inputsX = x + MAIN_INPUTS_X;
         int inputsY = y + MAIN_INPUTS_Y;
         int inputsButtonW = MAIN_INPUTS_W - SMALL_BUTTON_W - 2;
-        int inputBindW = Math.max(36, inputsButtonW);
         int boundX = inputsX + MAIN_INPUTS_W + 4;
         int boundButtonW = MAIN_INPUTS_W - SMALL_BUTTON_W - 2;
         List<MainInputRow> opts = getMainInputRows();
@@ -834,26 +814,26 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
         mainInputsScroll = Mth.clamp(mainInputsScroll, 0, maxMainInputsScroll(opts));
         boundInputsScroll = Mth.clamp(boundInputsScroll, 0, maxBoundInputsScroll(boundOptions));
 
-        if (inside(mouseX, mouseY, inputsX + inputsButtonW + 2, inputsY, SMALL_BUTTON_W, SMALL_BUTTON_H)) {
+        if (inside(mouseX, mouseY, x + MAIN_SCROLL_X, y + MAIN_SCROLL_UP_Y, MAIN_SCROLL_SIZE, MAIN_SCROLL_SIZE)) {
             if (mainInputsScroll > 0) {
                 mainInputsScroll--;
             }
             return true;
         }
-        if (inside(mouseX, mouseY, inputsX + inputsButtonW + 2, inputsY + SMALL_BUTTON_H + 2, SMALL_BUTTON_W, SMALL_BUTTON_H)) {
+        if (inside(mouseX, mouseY, x + MAIN_SCROLL_X, y + MAIN_SCROLL_DOWN_Y, MAIN_SCROLL_SIZE, MAIN_SCROLL_SIZE)) {
             int maxScroll = maxMainInputsScroll(opts);
             if (mainInputsScroll < maxScroll) {
                 mainInputsScroll++;
             }
             return true;
         }
-        if (inside(mouseX, mouseY, boundX + boundButtonW + 2, inputsY, SMALL_BUTTON_W, SMALL_BUTTON_H)) {
+        if (inside(mouseX, mouseY, x + MAIN_BOUND_SCROLL_X, y + MAIN_SCROLL_UP_Y, MAIN_SCROLL_SIZE, MAIN_SCROLL_SIZE)) {
             if (boundInputsScroll > 0) {
                 boundInputsScroll--;
             }
             return true;
         }
-        if (inside(mouseX, mouseY, boundX + boundButtonW + 2, inputsY + SMALL_BUTTON_H + 2, SMALL_BUTTON_W, SMALL_BUTTON_H)) {
+        if (inside(mouseX, mouseY, x + MAIN_BOUND_SCROLL_X, y + MAIN_SCROLL_DOWN_Y, MAIN_SCROLL_SIZE, MAIN_SCROLL_SIZE)) {
             int maxScroll = maxBoundInputsScroll(boundOptions);
             if (boundInputsScroll < maxScroll) {
                 boundInputsScroll++;
@@ -872,10 +852,8 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
             int rowX = inputsX + nestedInset;
             int rowW = inputsButtonW - nestedInset;
             int renameIconX = rowX + rowW - 17;
-            if (inside(mouseX, mouseY, renameIconX, by - 1, 16, 16)) {
-                if (!option.group()) {
-                    renameMainInputOption(option.option());
-                }
+            if(!option.group() && inside(mouseX, mouseY, renameIconX, by, SMALL_BUTTON_H, SMALL_BUTTON_H)){
+                renameMainInputOption(option.option());
                 return true;
             }
             if (inside(mouseX, mouseY, rowX, by, rowW, SMALL_BUTTON_H)) {
@@ -904,12 +882,12 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
             int rowW = boundButtonW;
             int deleteIconX = boundX + rowW - 17;
             int renameIconX = deleteIconX - 16;
-            if (inside(mouseX, mouseY, deleteIconX, by - 1, 16, 16)) {
+            if (inside(mouseX, mouseY, deleteIconX, by, SMALL_BUTTON_H, SMALL_BUTTON_H)) {
                 removeBoundInputGroup(entry);
                 boundInputsScroll = Mth.clamp(boundInputsScroll, 0, maxBoundInputsScroll(getBoundMainInputEntries()));
                 return true;
             }
-            if (inside(mouseX, mouseY, renameIconX, by - 1, 16, 16)) {
+            if (inside(mouseX, mouseY, renameIconX, by, SMALL_BUTTON_H, SMALL_BUTTON_H)) {
                 renameBoundInputEntry(entry);
                 return true;
             }
@@ -920,11 +898,11 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
         }
 
         // -----------------------------------------------------FOOTER-----------------------------------------------------
-        if (inside(mouseX, mouseY, x + KEYBOARD_X + 8, y + FOOTER_Y, RESET_BUTTON_W, BUTTON_H)) {
+        if (inside(mouseX, mouseY, x + MAIN_RESET_X, y + FOOTER_Y, MAIN_RESET_W, 18)) {
             clearAllKeyAssignments();
             return true;
         }
-        if (inside(mouseX, mouseY, footerDoneX(), y + FOOTER_Y, FOOTER_RIGHT_BUTTON_W, BUTTON_H)) {
+        if (inside(mouseX, mouseY, footerDoneX(), y + FOOTER_Y, MAIN_DONE_W, 18)) {
             onClose();
             return true;
         }
@@ -1828,50 +1806,52 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
 
     // Draw the text button
     private void renderTextButton(GuiGraphics guiGraphics, int x, int y, int width, Component label, int mouseX, int mouseY) {
-        CTCreateScreenHelper.renderTextButton(guiGraphics, font, x, y, width, BUTTON_H, label,
+        CTAnalogueControllerAppearance.STYLE.renderTextButton(guiGraphics, font, x, y, width, BUTTON_H, label,
                 inside(mouseX, mouseY, x, y, width, BUTTON_H), true, false);
     }
 
     // Draw the small button
     private void renderSmallButton(GuiGraphics guiGraphics, int x, int y, int width, Component label, int mouseX, int mouseY, boolean active) {
-        CTCreateScreenHelper.renderTextButton(guiGraphics, font, x, y, width, SMALL_BUTTON_H, label,
+        CTAnalogueControllerAppearance.STYLE.renderTextButton(guiGraphics, font, x, y, width, SMALL_BUTTON_H, label,
                 inside(mouseX, mouseY, x, y, width, SMALL_BUTTON_H), active, false);
     }
 
     // Draw the small icon button
     private void renderSmallIconButton(GuiGraphics guiGraphics, int x, int y, AllIcons icon, int mouseX, int mouseY, boolean active) {
-        CTCreateScreenHelper.renderIconButton(guiGraphics, x, y, icon,
+        CTAnalogueControllerAppearance.STYLE.renderButton(guiGraphics, x, y, SMALL_BUTTON_H, SMALL_BUTTON_H,
                 inside(mouseX, mouseY, x, y, SMALL_BUTTON_H, SMALL_BUTTON_H), active, false);
+        guiGraphics.pose().pushPose();
+        guiGraphics.pose().translate(x + 1, y + 1, 0);
+        guiGraphics.pose().scale(0.75F, 0.75F, 1);
+        icon.render(guiGraphics, 0, 0);
+        guiGraphics.pose().popPose();
     }
 
     // Draw the overlay icon
     private void renderOverlayIcon(GuiGraphics guiGraphics, int x, int y, AllIcons icon, int mouseX, int mouseY) {
-        icon.render(guiGraphics, x, y);
-        if (inside(mouseX, mouseY, x, y, 16, 16)) {
-            guiGraphics.fill(x, y, x + 16, y + 16, 0x22FFFFFF);
-        }
+        renderSmallIconButton(guiGraphics, x, y, icon, mouseX, mouseY, true);
     }
 
     // Draw the tab button
     private void renderTabButton(GuiGraphics guiGraphics, int x, int y, Component label, int mouseX, int mouseY, boolean active) {
 
-        CTCreateScreenHelper.renderTextButton(guiGraphics, font, x, y, TAB_W, SMALL_BUTTON_H, label,
-                inside(mouseX, mouseY, x, y, TAB_W, SMALL_BUTTON_H), active, false,
-            0xF3EEE4, INACTIVE_TAB_TEXT_COLOR, false);
+        CTAnalogueControllerAppearance.STYLE.renderTextButton(guiGraphics, font, x, y, TAB_W, SMALL_BUTTON_H, label,
+                inside(mouseX, mouseY, x, y, TAB_W, SMALL_BUTTON_H), true, active);
     }
 
     // Draw the action row
     private void renderActionRow(GuiGraphics guiGraphics, Component label, Component val, int x, int y,
                                  int width, int mouseX, int mouseY, boolean promptActive) {
-        guiGraphics.drawString(font, label, x, y + 4, CTCreateScreenHelper.LABEL_COLOR, false);
+        guiGraphics.drawString(font, label, x, y + 4, CTAnalogueControllerAppearance.LABEL_COLOR, false);
         int valueX = x + 76;
         int setWidth = 30;
         int clearWidth = 24;
         int setX = x + width - setWidth;
         int clearX = setX - clearWidth - 4;
         int valueWidth = Math.max(36, clearX - valueX - 4);
-        CTCreateScreenHelper.renderInset(guiGraphics, valueX, y, valueWidth, SMALL_BUTTON_H, false, false);
-        guiGraphics.drawCenteredString(font, val, valueX + valueWidth / 2, y + 3, CTCreateScreenHelper.VALUE_COLOR);
+        CTAnalogueControllerAppearance.STYLE.renderInset(guiGraphics, valueX, y, valueWidth, SMALL_BUTTON_H, false, false);
+        GuiControlPreviews.drawFittedText(guiGraphics, font, val, valueX + 3, y + 1, valueWidth - 6,
+                SMALL_BUTTON_H - 2, 1, CTAnalogueControllerAppearance.VALUE_COLOR, true);
         renderSmallButton(guiGraphics, clearX, y, clearWidth, Component.literal("Clr"), mouseX, mouseY, true);
         renderSmallButton(guiGraphics, setX, y, setWidth, promptActive ? Component.literal("Press") : Component.literal("Set"), mouseX, mouseY, true);
     }
@@ -1879,58 +1859,51 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
     // Draw the read only action row
     private void renderReadOnlyActionRow(GuiGraphics guiGraphics, Component label, Component val, int x, int y,
                                          int width) {
-        guiGraphics.drawString(font, label, x, y + 4, CTCreateScreenHelper.LABEL_COLOR, false);
+        guiGraphics.drawString(font, label, x, y + 4, CTAnalogueControllerAppearance.LABEL_COLOR, false);
         int valueX = x + 76;
         int valueWidth = Math.max(36, width - 76);
-        CTCreateScreenHelper.renderInset(guiGraphics, valueX, y, valueWidth, SMALL_BUTTON_H, false, false);
-        guiGraphics.drawCenteredString(font, val, valueX + valueWidth / 2, y + 3, CTCreateScreenHelper.VALUE_COLOR);
+        CTAnalogueControllerAppearance.STYLE.renderInset(guiGraphics, valueX, y, valueWidth, SMALL_BUTTON_H, false, false);
+        GuiControlPreviews.drawFittedText(guiGraphics, font, val, valueX + 3, y + 1, valueWidth - 6,
+                SMALL_BUTTON_H - 2, 1, CTAnalogueControllerAppearance.VALUE_COLOR, true);
     }
 
     // Draw the cycle row
     private void renderCycleRow(GuiGraphics guiGraphics, Component label, Component val, int x, int y, int width, int mouseX, int mouseY) {
-        guiGraphics.drawString(font, label, x, y + 4, CTCreateScreenHelper.LABEL_COLOR, false);
+        guiGraphics.drawString(font, label, x, y + 4, CTAnalogueControllerAppearance.LABEL_COLOR, false);
         renderSmallButton(guiGraphics, x + 54, y, SMALL_BUTTON_W, Component.literal("<"), mouseX, mouseY, true);
         int valueX = x + 74;
         int rightX = x + width - SMALL_BUTTON_W;
         int valueWidth = Math.max(28, rightX - valueX - 4);
-        CTCreateScreenHelper.renderInset(guiGraphics, valueX, y, valueWidth, SMALL_BUTTON_H, false, false);
-        guiGraphics.drawCenteredString(font, val, valueX + valueWidth / 2, y + 3, CTCreateScreenHelper.VALUE_COLOR);
+        CTAnalogueControllerAppearance.STYLE.renderInset(guiGraphics, valueX, y, valueWidth, SMALL_BUTTON_H, false, false);
+        GuiControlPreviews.drawFittedText(guiGraphics, font, val, valueX + 3, y + 1, valueWidth - 6,
+                SMALL_BUTTON_H - 2, 1, CTAnalogueControllerAppearance.VALUE_COLOR, true);
         renderSmallButton(guiGraphics, x + width - SMALL_BUTTON_W, y, SMALL_BUTTON_W, Component.literal(">"), mouseX, mouseY, true);
     }
 
     // Draw the numeric row
     private void renderNumericRow(GuiGraphics guiGraphics, Component label, Component val, int x, int y, int width, int mouseX, int mouseY) {
-        guiGraphics.drawString(font, label, x, y + 4, CTCreateScreenHelper.LABEL_COLOR, false);
+        guiGraphics.drawString(font, label, x, y + 4, CTAnalogueControllerAppearance.LABEL_COLOR, false);
         renderSmallButton(guiGraphics, x + 54, y, SMALL_BUTTON_W, Component.literal("-"), mouseX, mouseY, true);
         int valueX = x + 74;
         int rightX = x + width - SMALL_BUTTON_W;
         int valueWidth = Math.max(28, rightX - valueX - 4);
-        CTCreateScreenHelper.renderInset(guiGraphics, valueX, y, valueWidth, SMALL_BUTTON_H, false, false);
-        guiGraphics.drawCenteredString(font, val, valueX + valueWidth / 2, y + 3, CTCreateScreenHelper.VALUE_COLOR);
+        CTAnalogueControllerAppearance.STYLE.renderInset(guiGraphics, valueX, y, valueWidth, SMALL_BUTTON_H, false, false);
+        GuiControlPreviews.drawFittedText(guiGraphics, font, val, valueX + 3, y + 1, valueWidth - 6,
+                SMALL_BUTTON_H - 2, 1, CTAnalogueControllerAppearance.VALUE_COLOR, true);
         renderSmallButton(guiGraphics, x + width - SMALL_BUTTON_W, y, SMALL_BUTTON_W, Component.literal("+"), mouseX, mouseY, true);
     }
 
     // Draw the preview slot
     private void renderPreviewSlot(GuiGraphics guiGraphics, ItemStack stack, int x, int y, boolean secondFrequency) {
-        CTCreateScreenHelper.renderFrequencyGhostSlot(guiGraphics, x + 1, y + 1, false, secondFrequency);
+        (secondFrequency ? CTAnalogueControllerAppearance.SECOND_FREQUENCY : CTAnalogueControllerAppearance.FIRST_FREQUENCY).draw(guiGraphics, x - 1, y - 1);
         if (!stack.isEmpty()) {
-            guiGraphics.renderItem(stack, x + 1, y + 1);
+            guiGraphics.renderItem(stack, x, y);
         }
     }
 
     // Draw the key
     private void renderKey(GuiGraphics guiGraphics, int x, int y, int width, boolean active, boolean hovered) {
-        int startU = active ? KEY_START_U : KEY_INACTIVE_START_U;
-        int midU = active ? KEY_MID_U : KEY_INACTIVE_MID_U;
-        int endU = active ? KEY_END_U : KEY_INACTIVE_END_U;
-        int renderY = y + (hovered ? 2 : 0);
-        guiGraphics.blit(TYPEWRITER_TEX, x, renderY, startU, KEY_V, KEY_START_W, KEY_H, 256, 256);
-        int middleWidth = Math.max(0, width - KEY_START_W - KEY_END_W);
-        for (int offset = 0; offset < middleWidth; offset += KEY_MID_W) {
-            int renderWidth = Math.min(KEY_MID_W, middleWidth - offset);
-            guiGraphics.blit(TYPEWRITER_TEX, x + KEY_START_W + offset, renderY, midU, KEY_V, renderWidth, KEY_H, 256, 256);
-        }
-        guiGraphics.blit(TYPEWRITER_TEX, x + width - KEY_END_W, renderY, endU, KEY_V, KEY_END_W, KEY_H, 256, 256);
+        CTAnalogueControllerAppearance.renderKey(guiGraphics, x, y, width, active, hovered);
     }
 
     // Get the mode label
@@ -2037,7 +2010,7 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
 
     // Get the footer done x
     private int footerDoneX() {
-        return leftPos + KEYBOARD_X + KEYBOARD_W - 8 - FOOTER_RIGHT_BUTTON_W;
+        return leftPos + KEYBOARD_X + 213;
     }
 
     // Handle the controller key editor
@@ -2056,16 +2029,15 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
         void renderBackground(GuiGraphics guiGraphics, int mouseX, int mouseY) {
             int x = leftPos + LIST_X;
             int y = topPos + LIST_Y;
-            CTCreateScreenHelper.renderPanel(guiGraphics, x, y, KEY_MENU_W, KEY_MENU_H);
-            renderPlayerInventory(guiGraphics,
-                    leftPos + AnalogueContraptionControllerMenu.PLAYER_SLOTS_X - 8,
-                    topPos + AnalogueContraptionControllerMenu.PLAYER_SLOTS_Y - 18);
+            CTAnalogueControllerAppearance.STYLE.renderPanel(guiGraphics, x, y, KEY_MENU_W, KEY_MENU_H);
+            CTAnalogueControllerAppearance.renderInventory(guiGraphics, leftPos, topPos);
             guiGraphics.drawCenteredString(font,
                 Component.translatable("createthrusters.analogue_controller.config.bindings_title"),
-                x + KEY_MENU_W / 2, y + 6, CTCreateScreenHelper.BANNER_TITLE_COLOR);
-            guiGraphics.drawString(font,
-                Component.literal("Select a binding, then configure its key, routing, or direct target."),
-                x + 12, y + 28, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
+                x + KEY_MENU_W / 2, y + 6, CTAnalogueControllerAppearance.BANNER_TITLE_COLOR);
+            GuiControlPreviews.drawFittedText(guiGraphics, font,
+                    Component.literal("Select a binding to configure its key, routing, or target."),
+                    x + 12, y + 26, KEY_MENU_W - 24, 10, 1, CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
+            CTAnalogueControllerAppearance.STYLE.renderSeparator(guiGraphics, x + 12, y + 39, KEY_MENU_W - 24);
 
             int nChannels = AnalogueControlChannel.values().length;
             for (int visible = 0; visible < LIST_VISIBLE_ROWS; visible++) {
@@ -2079,23 +2051,23 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
                     AnalogueControlChannel channel = AnalogueControlChannel.values()[idx];
                     EditableChannelConfig config = channelConfigs.get(channel);
                     boolean hovered = inside(mouseX, mouseY, rowX, rowY, KEY_ENTRY_W, KEY_ENTRY_H);
-                    CTCreateScreenHelper.renderInset(guiGraphics, rowX, rowY, KEY_ENTRY_W, KEY_ENTRY_H, hovered, false);
+                    CTAnalogueControllerAppearance.STYLE.renderInset(guiGraphics, rowX, rowY, KEY_ENTRY_W, KEY_ENTRY_H, hovered, false);
                     guiGraphics.drawString(font, trimToWidth(Component.translatable(channel.translationKey()).getString(), 120), rowX + 8, rowY + 4, 16777215, false);
-                    guiGraphics.drawString(font, trimToWidth(config == null ? "Unbound" : keyBindingLabel(config.keyCode, false).getString(), 120), rowX + 8, rowY + 14, CTCreateScreenHelper.VALUE_COLOR, false);
-                    guiGraphics.drawString(font, trimToWidth(entrySummary(channel), 52), rowX + 128, rowY + 14, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
+                    guiGraphics.drawString(font, trimToWidth(config == null ? "Unbound" : keyBindingLabel(config.keyCode, false).getString(), 120), rowX + 8, rowY + 14, CTAnalogueControllerAppearance.VALUE_COLOR, false);
+                    guiGraphics.drawString(font, trimToWidth(entrySummary(channel), 52), rowX + 128, rowY + 14, CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
                     renderSmallButton(guiGraphics, rowX + KEY_ENTRY_W - (CLEAR_BUTTON_W + EDIT_BUTTON_W + 8), rowY + 5, EDIT_BUTTON_W, Component.literal("Edit"), mouseX, mouseY, true);
                     renderSmallButton(guiGraphics, rowX + KEY_ENTRY_W - (CLEAR_BUTTON_W + 4), rowY + 5, CLEAR_BUTTON_W, Component.literal("Clear"), mouseX, mouseY, true);
                 } else if (idx == nChannels) {
 
-                    guiGraphics.drawString(font, Component.literal("— Custom Keys"), rowX + 8, rowY + 8, CTCreateScreenHelper.LABEL_COLOR, false);
+                    guiGraphics.drawString(font, Component.literal("— Custom Keys"), rowX + 8, rowY + 8, CTAnalogueControllerAppearance.LABEL_COLOR, false);
                 } else if (idx <= nChannels + customEntryConfigs.size()) {
 
                     int entryIdx = idx - nChannels - 1;
                     EditableCustomKeyEntry ec = customEntryConfigs.get(entryIdx);
                     boolean hovered = inside(mouseX, mouseY, rowX, rowY, KEY_ENTRY_W, KEY_ENTRY_H);
-                    CTCreateScreenHelper.renderInset(guiGraphics, rowX, rowY, KEY_ENTRY_W, KEY_ENTRY_H, hovered, false);
+                    CTAnalogueControllerAppearance.STYLE.renderInset(guiGraphics, rowX, rowY, KEY_ENTRY_W, KEY_ENTRY_H, hovered, false);
                     guiGraphics.drawString(font, trimToWidth(ec.label == null || ec.label.isBlank() ? "Custom " + (entryIdx + 1) : ec.label, 120), rowX + 8, rowY + 4, 16777215, false);
-                    guiGraphics.drawString(font, trimToWidth(customKeyBindingLabel(ec), 120), rowX + 8, rowY + 14, CTCreateScreenHelper.VALUE_COLOR, false);
+                    guiGraphics.drawString(font, trimToWidth(customKeyBindingLabel(ec), 120), rowX + 8, rowY + 14, CTAnalogueControllerAppearance.VALUE_COLOR, false);
                     renderSmallIconButton(guiGraphics, rowX + KEY_ENTRY_W - (CLEAR_BUTTON_W + EDIT_BUTTON_W + 8), rowY + 5,
                         AllIcons.I_CONFIG_OPEN, mouseX, mouseY, true);
                     renderSmallIconButton(guiGraphics, rowX + KEY_ENTRY_W - (CLEAR_BUTTON_W + 4), rowY + 5,
@@ -2103,16 +2075,16 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
                 } else {
 
                     boolean hovered = inside(mouseX, mouseY, rowX, rowY, KEY_ENTRY_W, KEY_ENTRY_H);
-                    CTCreateScreenHelper.renderInset(guiGraphics, rowX, rowY, KEY_ENTRY_W, KEY_ENTRY_H, hovered, false);
-                    guiGraphics.drawCenteredString(font, Component.literal("+ Add Custom Key"), rowX + KEY_ENTRY_W / 2, rowY + 8, CTCreateScreenHelper.LABEL_COLOR);
+                    CTAnalogueControllerAppearance.STYLE.renderInset(guiGraphics, rowX, rowY, KEY_ENTRY_W, KEY_ENTRY_H, hovered, false);
+                    guiGraphics.drawCenteredString(font, Component.literal("+ Add Custom Key"), rowX + KEY_ENTRY_W / 2, rowY + 8, CTAnalogueControllerAppearance.LABEL_COLOR);
                 }
             }
 
-            renderTextButton(guiGraphics, x + 8, y + KEY_MENU_H - 24, RESET_BUTTON_W, Component.literal("Reset"), mouseX, mouseY);
-            renderTextButton(guiGraphics, x + KEY_MENU_W - 8 - FOOTER_RIGHT_BUTTON_W, y + KEY_MENU_H - 24, FOOTER_RIGHT_BUTTON_W, Component.literal("Back"), mouseX, mouseY);
+            renderTextButton(guiGraphics, x + 8, y + KEY_MENU_H - 15, RESET_BUTTON_W, Component.literal("Reset"), mouseX, mouseY);
+            renderTextButton(guiGraphics, x + KEY_MENU_W - 8 - FOOTER_RIGHT_BUTTON_W, y + KEY_MENU_H - 15, FOOTER_RIGHT_BUTTON_W, Component.literal("Back"), mouseX, mouseY);
 
-            int linksY = y + KEY_MENU_H - 48;
-            guiGraphics.drawString(font, Component.literal("Links (TX)"), x + 12, linksY, CTCreateScreenHelper.LABEL_COLOR, false);
+            int linksY = y + KEY_MENU_H - 60;
+            guiGraphics.drawString(font, Component.literal("Links (TX)"), x + 12, linksY, CTAnalogueControllerAppearance.LABEL_COLOR, false);
             List<ControllerDiscoveryNode> transmitLinks = getTransmitLinkNodesDeduped();
             for (int i = 0; i < Math.min(2, transmitLinks.size()); i++) {
                 ControllerDiscoveryNode node = transmitLinks.get(i);
@@ -2123,7 +2095,7 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
 
             guiGraphics.drawString(font,
                     Component.literal("Bind target: " + Component.translatable(quickBindChannel.translationKey()).getString()),
-                    x + 12, y + KEY_MENU_H - 40, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
+                    x + 12, y + KEY_MENU_H - 40, CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
         }
 
         // Draw the foreground
@@ -2189,7 +2161,7 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
                 }
             }
 
-            int linksY = y + KEY_MENU_H - 48;
+            int linksY = y + KEY_MENU_H - 60;
             List<ControllerDiscoveryNode> transmitLinks = getTransmitLinkNodesDeduped();
             for (int i = 0; i < Math.min(2, transmitLinks.size()); i++) {
                 int bx = x + 56 + i * 92;
@@ -2199,11 +2171,11 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
                 }
             }
 
-            if (inside(mouseX, mouseY, x + 8, y + KEY_MENU_H - 24, RESET_BUTTON_W, BUTTON_H)) {
+            if (inside(mouseX, mouseY, x + 8, y + KEY_MENU_H - 15, RESET_BUTTON_W, BUTTON_H)) {
                 clearAllKeyAssignments();
                 return true;
             }
-            if (inside(mouseX, mouseY, x + KEY_MENU_W - 8 - FOOTER_RIGHT_BUTTON_W, y + KEY_MENU_H - 24, FOOTER_RIGHT_BUTTON_W, BUTTON_H)) {
+            if (inside(mouseX, mouseY, x + KEY_MENU_W - 8 - FOOTER_RIGHT_BUTTON_W, y + KEY_MENU_H - 15, FOOTER_RIGHT_BUTTON_W, BUTTON_H)) {
                 viewMode = ViewMode.MAIN;
                 updateSlotVisibility();
                 return true;
@@ -2473,26 +2445,22 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
             if (tab == ModifierTab.DISCOVERY) {
                 renderDiscoveryFilterSidebar(guiGraphics, mouseX, mouseY, panelX, panelY);
             }
-            CTCreateScreenHelper.renderPanel(guiGraphics, panelX, panelY, MODIFY_PANEL_W, MODIFY_PANEL_H);
-            renderPlayerInventory(guiGraphics,
-                    leftPos + AnalogueContraptionControllerMenu.PLAYER_SLOTS_X - 8,
-                    topPos + AnalogueContraptionControllerMenu.PLAYER_SLOTS_Y - 18);
+            CTAnalogueControllerAppearance.STYLE.renderPanel(guiGraphics, panelX, panelY, MODIFY_PANEL_W, MODIFY_PANEL_H);
+            CTAnalogueControllerAppearance.renderInventory(guiGraphics, leftPos, topPos);
 
-            guiGraphics.drawCenteredString(font,
-                    Component.literal("Configure Binding"),
-                    panelX + MODIFY_PANEL_W / 2, panelY + 6, CTCreateScreenHelper.BANNER_TITLE_COLOR);
-                EditableCustomKeyEntry editingCustomEntry = findEditingCustomEntry();
-                Component bindingTitle = editingCustomEntry != null
+            EditableCustomKeyEntry editingCustomEntry = findEditingCustomEntry();
+            Component bindingTitle = editingCustomEntry != null
                     ? Component.literal(trimToWidth(editingCustomEntry.label == null || editingCustomEntry.label.isBlank() ? "Custom" : editingCustomEntry.label, 130))
                     : Component.translatable(selectedChannel.translationKey());
-                guiGraphics.drawCenteredString(font, bindingTitle, panelX + 8 + TAB_W / 2, panelY + 18,
-                    CTCreateScreenHelper.LABEL_COLOR);
+            GuiControlPreviews.drawFittedText(guiGraphics, font, Component.literal("Configure Binding: ").append(bindingTitle),
+                    panelX + 8, panelY + 1, MODIFY_PANEL_W - 16, 11, 1,
+                    CTAnalogueControllerAppearance.BANNER_TITLE_COLOR, true);
 
-                renderTabButton(guiGraphics, panelX + 8, panelY + MODIFY_TAB_Y, Component.literal("Config"), mouseX, mouseY,
+            renderTabButton(guiGraphics, panelX + 8, panelY + MODIFY_TAB_Y, Component.literal("Config"), mouseX, mouseY,
                     tab == ModifierTab.CONFIG);
-                renderTabButton(guiGraphics, panelX + 86, panelY + MODIFY_TAB_Y, Component.literal("Routing"), mouseX, mouseY,
+            renderTabButton(guiGraphics, panelX + 86, panelY + MODIFY_TAB_Y, Component.literal("Routing"), mouseX, mouseY,
                     tab == ModifierTab.ROUTING);
-                renderTabButton(guiGraphics, panelX + 164, panelY + MODIFY_TAB_Y, Component.literal("Discovery"), mouseX, mouseY,
+            renderTabButton(guiGraphics, panelX + 164, panelY + MODIFY_TAB_Y, Component.literal("Discovery"), mouseX, mouseY,
                     tab == ModifierTab.DISCOVERY);
 
             if (tab == ModifierTab.CONFIG) {
@@ -2503,9 +2471,9 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
                 renderDiscoveryTab(guiGraphics, mouseX, mouseY, panelX, panelY);
             }
 
-            renderTextButton(guiGraphics, panelX + 8, panelY + MODIFY_PANEL_H - 24, 48, Component.literal("Clear"), mouseX, mouseY);
-            renderTextButton(guiGraphics, panelX + MODIFY_PANEL_W - 104, panelY + MODIFY_PANEL_H - 24, 44, Component.literal("Back"), mouseX, mouseY);
-            renderTextButton(guiGraphics, panelX + MODIFY_PANEL_W - 56, panelY + MODIFY_PANEL_H - 24, 48, Component.literal("Save"), mouseX, mouseY);
+            renderTextButton(guiGraphics, panelX + 8, panelY + MODIFY_FOOTER_Y, 48, Component.literal("Clear"), mouseX, mouseY);
+            renderTextButton(guiGraphics, panelX + MODIFY_PANEL_W - 104, panelY + MODIFY_FOOTER_Y, 44, Component.literal("Back"), mouseX, mouseY);
+            renderTextButton(guiGraphics, panelX + MODIFY_PANEL_W - 56, panelY + MODIFY_FOOTER_Y, 48, Component.literal("Save"), mouseX, mouseY);
             guiGraphics.pose().popPose();
         }
 
@@ -2560,15 +2528,15 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
                 return true;
             }
 
-            if (inside(mouseX, mouseY, panelX + 8, panelY + MODIFY_PANEL_H - 24, 48, BUTTON_H)) {
+            if (inside(mouseX, mouseY, panelX + 8, panelY + MODIFY_FOOTER_Y, 48, BUTTON_H)) {
                 clearCurrentBindingAndClose();
                 return true;
             }
-            if (inside(mouseX, mouseY, panelX + MODIFY_PANEL_W - 104, panelY + MODIFY_PANEL_H - 24, 44, BUTTON_H)) {
+            if (inside(mouseX, mouseY, panelX + MODIFY_PANEL_W - 104, panelY + MODIFY_FOOTER_Y, 44, BUTTON_H)) {
                 disable();
                 return true;
             }
-            if (inside(mouseX, mouseY, panelX + MODIFY_PANEL_W - 56, panelY + MODIFY_PANEL_H - 24, 48, BUTTON_H)) {
+            if (inside(mouseX, mouseY, panelX + MODIFY_PANEL_W - 56, panelY + MODIFY_FOOTER_Y, 48, BUTTON_H)) {
                 finish();
                 return true;
             }
@@ -2584,7 +2552,7 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
         private void renderDiscoveryFilterSidebar(GuiGraphics guiGraphics, int mouseX, int mouseY, int panelX, int panelY) {
             int toggleW = 12;
             int sidebarW = 92;
-            int sidebarH = 108;
+            int sidebarH = 128;
             int sidebarY = panelY + DISCOVERY_LIST_Y - 18;
             int toggleX = panelX - toggleW - 2;
             int sidebarX = panelX - sidebarW - 2;
@@ -2595,9 +2563,9 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
                 return;
             }
 
-            CTCreateScreenHelper.renderPanel(guiGraphics, sidebarX, sidebarY, sidebarW, sidebarH);
+            CTAnalogueControllerAppearance.STYLE.renderPanel(guiGraphics, sidebarX, sidebarY, sidebarW, sidebarH);
             guiGraphics.drawCenteredString(font, Component.literal("Filters"),
-                    sidebarX + sidebarW / 2, sidebarY + 7, CTCreateScreenHelper.BANNER_TITLE_COLOR);
+                    sidebarX + sidebarW / 2, sidebarY + 4, CTAnalogueControllerAppearance.BANNER_TITLE_COLOR);
 
             int rowY = sidebarY + 22;
             for (DiscoveryFilter filter : DiscoveryFilter.values()) {
@@ -2795,7 +2763,7 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
                 renderNumericRow(guiGraphics, Component.literal("Smooth"), formatPercent(ec == null ? 0.2 : ec.smoothing), x + MODIFY_LEFT_X, row, MODIFY_FULL_ROW_W, mouseX, mouseY);
                 guiGraphics.drawString(font,
                     (!inputBoundCustom && bindingPromptActive) ? Component.literal("Press any key to bind this entry.") : Component.literal(""),
-                    x + 14, y + 42, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
+                    x + 14, y + MODIFY_PANEL_H - 38, CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
                 return;
             }
             EditableChannelConfig config = channelConfigs.get(selectedChannel);
@@ -2812,7 +2780,7 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
             renderNumericRow(guiGraphics, Component.literal("Smooth"), formatPercent(config.smoothing), x + MODIFY_LEFT_X, row1 + MODIFY_ROW_STEP * 8, MODIFY_FULL_ROW_W, mouseX, mouseY);
             guiGraphics.drawString(font,
                 bindingPromptActive ? Component.literal("Press any key to bind this entry.") : Component.literal(""),
-                x + 14, y + 42, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
+                x + 14, y + MODIFY_PANEL_H - 38, CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
         }
 
         // Draw the routing tab
@@ -2839,7 +2807,7 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
                 inputFirst = ItemStack.EMPTY;
                 inputSecond = ItemStack.EMPTY;
             }
-            int row1 = y + MODIFY_ROW1_Y;
+            int row1 = y + MODIFY_ROW1_Y - MODIFY_ROW_STEP;
             renderCycleRow(guiGraphics, Component.literal("Local"), localSideLabel(localSide), x + MODIFY_LEFT_X, row1, MODIFY_FULL_ROW_W, mouseX, mouseY);
 
             int liveSlotY = topPos + AnalogueContraptionControllerMenu.GHOST_SLOTS_Y;
@@ -2847,10 +2815,8 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
             int outSecondX = leftPos + AnalogueContraptionControllerMenu.GHOST_SLOT_OUTPUT_SECOND_X;
             int inFirstX = leftPos + AnalogueContraptionControllerMenu.GHOST_SLOT_INPUT_FIRST_X;
             int inSecondX = leftPos + AnalogueContraptionControllerMenu.GHOST_SLOT_INPUT_SECOND_X;
-            CTCreateScreenHelper.renderBlockSlots(guiGraphics, outFirstX - 10, liveSlotY - 2, 2);
-            CTCreateScreenHelper.renderBlockSlots(guiGraphics, inFirstX - 10, liveSlotY - 2, 2);
-            guiGraphics.drawString(font, Component.literal("Output Link"), outFirstX - 24, liveSlotY - 10, CTCreateScreenHelper.LABEL_COLOR, false);
-            guiGraphics.drawString(font, Component.literal("Input Link"), inFirstX - 18, liveSlotY - 10, CTCreateScreenHelper.LABEL_COLOR, false);
+            guiGraphics.drawString(font, Component.literal("Output Link"), outFirstX - 24, liveSlotY - 10, CTAnalogueControllerAppearance.LABEL_COLOR, false);
+            guiGraphics.drawString(font, Component.literal("Input Link"), inFirstX - 18, liveSlotY - 10, CTAnalogueControllerAppearance.LABEL_COLOR, false);
             renderPreviewSlot(guiGraphics, outputFirst, outFirstX, liveSlotY, false);
             renderPreviewSlot(guiGraphics, outputSecond, outSecondX, liveSlotY, true);
             renderPreviewSlot(guiGraphics, inputFirst, inFirstX, liveSlotY, false);
@@ -2858,7 +2824,7 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
 
             int summaryY = y + ROUTING_TARGETS_Y;
             int summaryX = x + ROUTING_TARGETS_X;
-            CTCreateScreenHelper.renderInset(guiGraphics, summaryX, summaryY, ROUTING_TARGETS_W, ROUTING_TARGETS_H, false, false);
+            CTAnalogueControllerAppearance.STYLE.renderInset(guiGraphics, summaryX, summaryY, ROUTING_TARGETS_W, ROUTING_TARGETS_H, false, false);
                 List<RoutingTargetRow> rows = routingActionRows();
                 int maxScroll = Math.max(0, rows.size() - ROUTING_TARGETS_VISIBLE_ROWS);
             routingTargetsScroll = Mth.clamp(routingTargetsScroll, 0, maxScroll);
@@ -2868,11 +2834,11 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
                     break;
                 }
                 RoutingTargetRow row = rows.get(rowIndex);
-                int rowY = summaryY + 4 + i * 12;
-                int unbindX = summaryX + ROUTING_TARGETS_W - 98;
-                int changeX = summaryX + ROUTING_TARGETS_W - 48;
-                guiGraphics.drawString(font, Component.literal(trimToWidth(row.label(), ROUTING_TARGETS_W - 152)),
-                    summaryX + 4, rowY + 1, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
+                int rowY = summaryY + 3 + i * 15;
+                int unbindX = summaryX + ROUTING_TARGETS_W - 120;
+                int changeX = summaryX + ROUTING_TARGETS_W - 70;
+                guiGraphics.drawString(font, Component.literal(trimToWidth(row.label(), ROUTING_TARGETS_W - 174)),
+                    summaryX + 4, rowY + 1, CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
                 renderSmallButton(guiGraphics, unbindX, rowY, 48, Component.literal("Unbind"), mouseX, mouseY, true);
                 renderSmallButton(guiGraphics, changeX, rowY, 48, Component.literal("Change"), mouseX, mouseY,
                     row.changeable());
@@ -2935,20 +2901,20 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
             }
             List<DiscoveryRow> rows = discoveryRowsForTab(expandedDiscoveryGroupIds);
             discoveryScroll = Mth.clamp(discoveryScroll, 0, Math.max(0, rows.size() - DISCOVERY_OUTPUT_VISIBLE_ROWS));
-            guiGraphics.drawString(font, Component.literal("Bind discovered outputs."), x + 8, y + 46, CTCreateScreenHelper.LABEL_COLOR, false);
+            guiGraphics.drawString(font, Component.literal("Bind discovered outputs."), x + 8, y + 60, CTAnalogueControllerAppearance.LABEL_COLOR, false);
 
             int selectedDiscoveryCount = selectedDiscoveryRowKeys.size();
-            renderSmallButton(guiGraphics, x + 8, y + 70, 38, Component.literal("Scan"), mouseX, mouseY, true);
-            renderSmallButton(guiGraphics, x + 50, y + 70, 40, Component.literal("Bind"), mouseX, mouseY,
+            renderSmallButton(guiGraphics, x + 8, y + 80, 38, Component.literal("Scan"), mouseX, mouseY, true);
+            renderSmallButton(guiGraphics, x + 50, y + 80, 40, Component.literal("Bind"), mouseX, mouseY,
                     selectedDiscoveryCount > 0);
-            renderSmallButton(guiGraphics, x + 94, y + 70, 42, Component.literal("Unbind"), mouseX, mouseY,
+            renderSmallButton(guiGraphics, x + 94, y + 80, 42, Component.literal("Unbind"), mouseX, mouseY,
                     selectedDiscoveryCount > 0);
             guiGraphics.drawString(font,
                     Component.literal(selectedDiscoveryCount + " selected"),
-                    x + 8, y + 86, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
+                    x + 8, y + 98, CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
             guiGraphics.drawString(font,
                     Component.literal(rows.size() + " outputs"),
-                    x + 104, y + 86, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
+                    x + 104, y + 98, CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
 
             // ------------------------------------OUTPUT LIST------------------------------------
             int contentX = x + 8;
@@ -2960,8 +2926,8 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
             int listH = listVisibleRows * MAIN_INPUTS_ROW_H;
 
             guiGraphics.drawString(font, Component.literal("Outputs"), listX, listY - 12,
-                    CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
-            CTCreateScreenHelper.renderInset(guiGraphics, listX, listY, listW, listH,
+                    CTAnalogueControllerAppearance.SUBTLE_TEXT_COLOR, false);
+            CTAnalogueControllerAppearance.STYLE.renderInset(guiGraphics, listX, listY, listW, listH,
                     inside(mouseX, mouseY, listX, listY, listW, listH), false);
 
             List<Component> discoveryRowTooltip = null;
@@ -3002,7 +2968,7 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
 
                     guiGraphics.fill(rowX, rowY, rowX + rowW, rowY + SMALL_BUTTON_H, 0x22FFAA33);
                 }
-                guiGraphics.drawString(font, Component.literal(rowLabel), rowX + 4, rowY + 3, CTCreateScreenHelper.LABEL_COLOR, false);
+                guiGraphics.drawString(font, Component.literal(rowLabel), rowX + 4, rowY + 3, CTAnalogueControllerAppearance.LABEL_COLOR, false);
 
                 if (hovered && discoveryRowTooltip == null) {
                     String fullLabel = row.group() ? row.node().label() : row.option().label();
@@ -3022,7 +2988,7 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
             // ------------------------------------ROUTING / TOOLTIPS------------------------------------
             if (pendingRoutingChangeEntryId != null) {
                 guiGraphics.drawString(font, Component.literal("Select an output and click Bind to change target."),
-                        x + 8, y + MODIFY_PANEL_H - 38, CTCreateScreenHelper.VALUE_COLOR, false);
+                        x + 8, y + MODIFY_PANEL_H - 38, CTAnalogueControllerAppearance.VALUE_COLOR, false);
             }
 
             if (discoveryRowTooltip != null) {
@@ -3255,7 +3221,7 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
     }
         // Handle the routing click
         private boolean clickRouting(double mouseX, double mouseY, int x, int y) {
-            int row1 = y + MODIFY_ROW1_Y;
+            int row1 = y + MODIFY_ROW1_Y - MODIFY_ROW_STEP;
             int summaryX = x + ROUTING_TARGETS_X;
             int summaryY = y + ROUTING_TARGETS_Y;
             List<RoutingTargetRow> routeRows = routingActionRows();
@@ -3266,9 +3232,9 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
                 if (rowIndex >= routeRows.size()) {
                     break;
                 }
-                int rowY = summaryY + 4 + i * 12;
-                int unbindX = summaryX + ROUTING_TARGETS_W - 98;
-                int changeX = summaryX + ROUTING_TARGETS_W - 48;
+                int rowY = summaryY + 3 + i * 15;
+                int unbindX = summaryX + ROUTING_TARGETS_W - 120;
+                int changeX = summaryX + ROUTING_TARGETS_W - 70;
                 RoutingTargetRow row = routeRows.get(rowIndex);
                 if (inside(mouseX, mouseY, unbindX, rowY, 48, SMALL_BUTTON_H)) {
                     unbindRouteRow(row);
@@ -3304,16 +3270,16 @@ public class AnalogueContraptionControllerConfigScreen extends AbstractSimiConta
             // ------------------------------------DISCOVERY ACTIONS------------------------------------
             List<DiscoveryRow> rows = discoveryRowsForTab(expandedDiscoveryGroupIds);
             boolean ctrlDown = Screen.hasControlDown();
-            if (inside(mouseX, mouseY, x + 8, y + 70, 38, SMALL_BUTTON_H)) {
+            if (inside(mouseX, mouseY, x + 8, y + 80, 38, SMALL_BUTTON_H)) {
                 refreshDiscovery();
                 return true;
             }
-            if (inside(mouseX, mouseY, x + 50, y + 70, 40, SMALL_BUTTON_H)) {
+            if (inside(mouseX, mouseY, x + 50, y + 80, 40, SMALL_BUTTON_H)) {
                 bindAllSelectedDiscoveryRows();
                 return true;
             }
 
-            if (inside(mouseX, mouseY, x + 94, y + 70, 42, SMALL_BUTTON_H)) {
+            if (inside(mouseX, mouseY, x + 94, y + 80, 42, SMALL_BUTTON_H)) {
                 unbindAllSelectedDiscoveryRows();
                 return true;
             }

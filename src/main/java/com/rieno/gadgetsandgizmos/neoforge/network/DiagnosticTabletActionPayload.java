@@ -96,6 +96,10 @@ public record DiagnosticTabletActionPayload(boolean placed, InteractionHand hand
     public static void handle(DiagnosticTabletActionPayload payload, IPayloadContext ctx) {
         ctx.enqueueWork(() -> {
             if (!(ctx.player() instanceof ServerPlayer player)) return;
+            if(com.rieno.gadgetsandgizmos.content.SmartContainerManifest.ID.equals(payload.appId())){
+                com.rieno.gadgetsandgizmos.content.SmartContainerManifest.handle(player, payload);
+                return;
+            }
             if (!CTFeatureToggles.isItemEnabled("diagnostic_tablet")) return;
             ItemStack stack = payload.placed() ? ItemStack.EMPTY : player.getItemInHand(payload.hand());
             DiagnosticTabletBlockEntity blockTablet = payload.placed()

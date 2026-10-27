@@ -48,6 +48,7 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.function.Supplier;
+import com.rieno.gadgetsandgizmos.content.ThrusterDyeItem;
 
 // Register addon items
 public final class CTItems {
@@ -61,12 +62,21 @@ public final class CTItems {
 
     public static final DeferredRegister.Items REGISTRAR = DeferredRegister.createItems(CreateThrusters.MOD_ID);
 
+    public static final DeferredItem<BlockItem> WORLD_HOLOGRAM_PROJECTOR = register("world_hologram_projector",
+            () -> new CTTooltipBlockItem(CTBlocks.WORLD_HOLOGRAM_PROJECTOR.get(), new Item.Properties()));
+
     public static final DeferredItem<BlockItem> CAMERA = register("camera",
             () -> new CTTooltipBlockItem(CTBlocks.CAMERA.get(), new Item.Properties()));
 
     @Nullable
+    public static final DeferredItem<Item> THRUSTER_DYE = register("thruster_dye",
+            () -> new ThrusterDyeItem(new Item.Properties()));
+
     public static final DeferredItem<BlockItem> THRUSTER = register("thruster",
         () -> new CTTooltipBlockItem(CTBlocks.THRUSTER.get(), new Item.Properties()));
+
+    public static final DeferredItem<BlockItem> CELEBRATION_THRUSTER = register("celebration_thruster",
+            () -> new CTTooltipBlockItem(CTBlocks.CELEBRATION_THRUSTER.get(), new Item.Properties()));
     @Nullable
     public static final DeferredItem<BlockItem> RCS_THRUSTER = register("rcs_thruster",
             () -> new CTTooltipBlockItem(CTBlocks.RCS_THRUSTER.get(), new Item.Properties()));

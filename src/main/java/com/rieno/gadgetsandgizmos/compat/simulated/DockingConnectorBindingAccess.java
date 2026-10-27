@@ -7,6 +7,7 @@ public interface DockingConnectorBindingAccess {
     void createthrusters$setShipDockBinding(UUID dockId, String dockName, int connectorIndex);
     void createthrusters$clearShipDockBinding(UUID dockId);
     boolean createthrusters$hasShipDockBinding();
+    default UUID createthrusters$getShipDockId(){ return null; }
     String createthrusters$getShipDockName();
     int createthrusters$getShipDockConnectorIndex();
     void createthrusters$setShipControlModuleBinding(String shipName, int connectorIndex);

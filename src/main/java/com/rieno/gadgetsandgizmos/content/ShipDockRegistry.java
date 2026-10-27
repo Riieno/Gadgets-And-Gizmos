@@ -28,6 +28,8 @@ import net.minecraft.world.phys.Vec3;
 import dev.ryanhcode.sable.sublevel.SubLevel;
 import org.jetbrains.annotations.Nullable;
 
+import com.rieno.gadgetsandgizmos.lib.navigation.DockingApproachPath;
+
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -53,7 +55,6 @@ public final class ShipDockRegistry {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     private static final Map<MinecraftServer, ShipDockRegistry> INSTANCES = new WeakHashMap<>();
-    private static final double APPROACH_DISTANCE = 10.0D;
     private static final long SHIP_TELEMETRY_TTL_MILLIS = 15_000L;
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -748,7 +749,7 @@ public final class ShipDockRegistry {
                 target.subLevelId(), target.pos(),
                 worldTip == null ? target.worldPosition() : worldTip,
                 worldFacing == null ? target.facing() : worldFacing,
-                worldUp == null ? target.up() : worldUp);
+                worldUp == null ? target.up() : worldUp, target.approachPath());
     }
 
     // Check if this is a docking connector
@@ -1026,9 +1027,25 @@ public final class ShipDockRegistry {
         public Vec3 approach() {
             if (connectorWorldPosition != null && connectorFacing != null
                     && connectorFacing.lengthSqr() > 1.0E-9D) {
-                return connectorWorldPosition.add(connectorFacing.scale(APPROACH_DISTANCE));
+                if(approachPath().configured()){
+                    List<Vec3> controls = approachRoute(false);
+                    if(!controls.isEmpty()) return controls.getLast();
+                }
+                return approachPath().target(connectorWorldPosition, connectorFacing);
             }
             return worldPosition.add(facing.scale(4.0D)).add(0.0D, 1.5D, 0.0D);
+        }
+
+        // Get the selected connector's authored corridor
+        public DockingApproachPath approachPath(){
+            return connectorTargets.stream().filter(target -> Objects.equals(target.subLevelId(), connectorSubLevelId)
+                    && target.pos().equals(connectorPos)).map(ConnectorTarget::approachPath)
+                    .findFirst().orElse(DockingApproachPath.DEFAULT);
+        }
+
+        public List<Vec3> approachRoute(boolean departing){
+            return !hasDockingConnector() ? List.of() : approachPath().route(
+                    connectorWorldPosition, connectorFacing, connectorUp, departing);
         }
 
         // Get the docking target
@@ -1207,10 +1224,16 @@ public final class ShipDockRegistry {
             BlockPos pos,
             Vec3 worldPosition,
             Vec3 facing,
-            Vec3 up
+            Vec3 up,
+            DockingApproachPath approachPath
     ) {
+        public ConnectorTarget(UUID subLevelId, BlockPos pos, Vec3 worldPosition, Vec3 facing, Vec3 up){
+            this(subLevelId, pos, worldPosition, facing, up, DockingApproachPath.DEFAULT);
+        }
+
         // Initialize the connector target
         public ConnectorTarget {
+            approachPath = approachPath == null ? DockingApproachPath.DEFAULT : approachPath;
             pos = pos == null ? BlockPos.ZERO : pos.immutable();
             worldPosition = worldPosition == null ? pos.getCenter() : worldPosition;
             facing = Dock.normalize(facing, new Vec3(0.0D, 0.0D, -1.0D));

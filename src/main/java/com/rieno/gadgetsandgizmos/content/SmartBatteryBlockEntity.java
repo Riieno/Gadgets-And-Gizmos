@@ -1,8 +1,18 @@
 package com.rieno.gadgetsandgizmos.content;
 
+import com.rieno.gadgetsandgizmos.lib.inventory.ContainerNetworkAccess;
+import com.rieno.gadgetsandgizmos.lib.inventory.ContainerDataSource;
+import com.rieno.gadgetsandgizmos.lib.inventory.ContainerStorageNetworks;
+import com.rieno.gadgetsandgizmos.lib.inventory.LocalResourceStorage;
+import com.rieno.gadgetsandgizmos.lib.inventory.ResourceRouting;
 import com.rieno.gadgetsandgizmos.lib.create.ConnectedVaultBlockEntity;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.lib.power.LongEnergyStorage;
+import com.rieno.gadgetsandgizmos.lib.inventory.TransferMeter;
+import com.rieno.gadgetsandgizmos.lib.inventory.TransferTrackedStorage;
+import com.rieno.gadgetsandgizmos.lib.power.ConnectorOutputLimits;
+import com.rieno.gadgetsandgizmos.lib.power.ElectricalStorage;
+import com.rieno.gadgetsandgizmos.lib.power.powergrid.PowerGridDeviceConnectors;
 import com.simibubi.create.content.logistics.vault.ItemVaultBlock;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -17,21 +27,112 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import com.rieno.gadgetsandgizmos.lib.tablet.MountedTabletState;
+import com.rieno.gadgetsandgizmos.lib.power.EnergyItemInventory;
+import net.minecraft.world.Containers;
+import net.minecraft.world.phys.AABB;
 
 // Store FE across a vault-shaped multiblock without exposing an item inventory
-public class SmartBatteryBlockEntity extends ConnectedVaultBlockEntity implements LongEnergyStorage {
+public class SmartBatteryBlockEntity extends ConnectedVaultBlockEntity implements LongEnergyStorage, MountedTabletState.Host, LocalResourceStorage, TransferTrackedStorage, ElectricalStorage, ContainerDataSource {
+    @Override public List<BlockEntity> dataContainers(){
+        return level != null && level.isClientSide ? List.of(this) : ContainerStorageNetworks.connected(this);
+    }
+
+    private final ConnectorOutputLimits connectorOutputLimits = new ConnectorOutputLimits();
+
+    @Override public LongEnergyStorage electricalStorage(){ return controller(); }
+    @Override public List<SmartBatteryBlockEntity> electricalMembers(){ return controller().members(); }
+    @Override public ConnectorOutputLimits connectorOutputLimits(){ return connectorOutputLimits; }
+    private final TransferMeter transferMeter = new TransferMeter(() -> level == null ? 0 : level.getGameTime());
+
+    @Override public TransferMeter.Rates transferRates(){ return controller().transferMeter.rates(); }
+    private final ContainerNetworkAccess networkResources = new ContainerNetworkAccess(this);
+
+    // Expose only the resource capability registered for this block's automation port
+    public ContainerNetworkAccess networkResources(){ return networkResources; }
+
+    @Override public ResourceRouting.Pool localResources(){
+        return new ResourceRouting.Pool(java.util.List.of(), java.util.List.of(), java.util.List.of(getEnergyHandler()));
+    }
+
     private static final String ENERGY_TAG = "Energy";
     private static final long SINGLE_CAPACITY = 10_000_000L;
     private static final long FULL_CAPACITY = 5_000_000_000L;
     private static final int FULL_BLOCKS = 81;
 
+    private final EnergyItemInventory chargingItems =
+            new EnergyItemInventory(this::setChanged);
+
+    public EnergyItemInventory chargingItems(){ return controller().chargingItems; }
+
+    public void dropChargingItems(){
+        if(level == null || level.isClientSide) return;
+        for(int slot = 0; slot < chargingItems.getSlots(); slot++){
+            var stack = chargingItems.extractItem(slot, Integer.MAX_VALUE, false);
+            if(!stack.isEmpty()) Containers.dropItemStack(level, worldPosition.getX() + .5,
+                    worldPosition.getY() + .5, worldPosition.getZ() + .5, stack);
+        }
+    }
+
+    @Override public void tick(){
+        super.tick();
+        if(level == null || level.isClientSide) return;
+        // Saved controller links can be resolved after the members have a world
+        synchronizePowerGrid();
+        SmartBatteryBlockEntity root = controller();
+        if(root != this){
+            // Preserve row direction and retain overflow locally until a controller slot becomes available
+            for(int slot = 0; slot < chargingItems.getSlots(); slot++){
+                var stack = chargingItems.getStackInSlot(slot);
+                if(stack.isEmpty()) continue;
+                for(int dest = slot < 9 ? 0 : 9; dest < (slot < 9 ? 9 : 18); dest++){
+                    var rest = root.chargingItems.insertItem(dest, stack, false);
+                    if(rest.getCount() == stack.getCount()) continue;
+                    chargingItems.setStackInSlot(slot, rest);
+                    stack = rest;
+                    if(stack.isEmpty()) break;
+                }
+            }
+        }
+        chargingItems.tick(getEnergyHandler());
+        com.rieno.gadgetsandgizmos.lib.power.EnergyTransfer.supplyAdjacent(level, worldPosition, getEnergyHandler());
+    }
+
     private long energy;
     private final IEnergyStorage energyHandler = new CombinedEnergyStorage();
+
+    private final MountedTabletState tabletState = new MountedTabletState();
+
+    @Override public MountedTabletState mountedTabletState(){ return tabletState; }
 
     // Initialize the smart battery block entity
     public SmartBatteryBlockEntity(BlockPos pos, BlockState state) {
         super(CTBlockEntities.SMART_BATTERY.get(), pos, state);
     }
+
+    public void addPowerGridSnapshot(CompoundTag data){
+        if(powerGridInstalled()) PowerGridDeviceConnectors.snapshot(this, data);
+    }
+
+    public boolean setPowerGridOutput(BlockPos member, Direction face, double watts){
+        return powerGridInstalled() && PowerGridDeviceConnectors.setOutput(this, member, face, watts);
+    }
+
+    public boolean setPowerGridVoltage(BlockPos member, Direction face, double volts){
+        return powerGridInstalled() && PowerGridDeviceConnectors.setVoltage(this, member, face, volts);
+    }
+
+    public boolean setPowerGridPolarity(BlockPos member, Direction face, int sign){
+        return powerGridInstalled() && PowerGridDeviceConnectors.setPolarity(this, member, face, sign);
+    }
+
+    private static boolean powerGridInstalled(){
+        var mods = net.neoforged.fml.ModList.get();
+        return mods != null && mods.isLoaded("powergrid");
+    }
+
+    private void synchronizePowerGrid(){ if(powerGridInstalled()) PowerGridDeviceConnectors.synchronize(this); }
+    private void refreshPowerGrid(){ if(powerGridInstalled()) PowerGridDeviceConnectors.refresh(this); }
 
     // Get the complete multiblock energy handler
     public IEnergyStorage getEnergyHandler() {
@@ -95,6 +196,9 @@ public class SmartBatteryBlockEntity extends ConnectedVaultBlockEntity implement
     protected void read(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.read(tag, provider, clientPacket);
         energy = Math.max(0L, tag.getLong(ENERGY_TAG));
+        connectorOutputLimits.read(tag.getCompound("PowerGridOutputs"));
+        tabletState.read(tag);
+        if(tag.contains("ChargingItems")) chargingItems.deserializeNBT(provider, tag.getCompound("ChargingItems"));
     }
 
     // Write the battery data
@@ -102,6 +206,9 @@ public class SmartBatteryBlockEntity extends ConnectedVaultBlockEntity implement
     protected void write(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.write(tag, provider, clientPacket);
         tag.putLong(ENERGY_TAG, energy);
+        tag.put("PowerGridOutputs", connectorOutputLimits.write());
+        tabletState.write(tag);
+        tag.put("ChargingItems", chargingItems.serializeNBT(provider));
     }
 
     // Keep Create's vault visual state in sync for this custom multiblock
@@ -109,6 +216,7 @@ public class SmartBatteryBlockEntity extends ConnectedVaultBlockEntity implement
     public void notifyMultiUpdated() {
         updateLargeState(getWidth() > 2, 6);
         super.notifyMultiUpdated();
+        if(powerGridInstalled()) PowerGridDeviceConnectors.invalidate(this);
     }
 
     // Reset the custom large-model state when the multiblock is split
@@ -116,6 +224,7 @@ public class SmartBatteryBlockEntity extends ConnectedVaultBlockEntity implement
     public void removeController(boolean keepContents) {
         super.removeController(keepContents);
         updateLargeState(false, 22);
+        if(powerGridInstalled()) PowerGridDeviceConnectors.invalidate(this);
     }
 
     // The battery uses vault connectivity but never exposes an item inventory
@@ -187,6 +296,7 @@ public class SmartBatteryBlockEntity extends ConnectedVaultBlockEntity implement
     // Receive FE without NeoForge's integer capability limit
     private long receiveExactEnergy(long maximum, boolean simulate) {
         if (maximum <= 0L) return 0L;
+        if(!simulate) synchronizePowerGrid();
         List<SmartBatteryBlockEntity> members = members();
         long totalCapacity = capacity(members.size());
         long accepted = Math.min(maximum, Math.max(0L, totalCapacity - storedEnergy()));
@@ -202,12 +312,16 @@ public class SmartBatteryBlockEntity extends ConnectedVaultBlockEntity implement
             changed(member);
             if (remaining == 0L) break;
         }
-        return accepted - remaining;
+        long inserted = accepted - remaining;
+        transferMeter.record(inserted, 0);
+        refreshPowerGrid();
+        return inserted;
     }
 
     // Extract FE without NeoForge's integer capability limit
     private long extractExactEnergy(long maximum, boolean simulate) {
         if (maximum <= 0L) return 0L;
+        if(!simulate) synchronizePowerGrid();
         List<SmartBatteryBlockEntity> members = members();
         long extracted = Math.min(maximum, storedEnergy());
         if (simulate || extracted <= 0L) return extracted;
@@ -220,7 +334,10 @@ public class SmartBatteryBlockEntity extends ConnectedVaultBlockEntity implement
             changed(member);
             if (remaining == 0L) break;
         }
-        return extracted - remaining;
+        long removed = extracted - remaining;
+        transferMeter.record(0, removed);
+        refreshPowerGrid();
+        return removed;
     }
 
     // Expose the controller's distributed FE storage
@@ -254,5 +371,10 @@ public class SmartBatteryBlockEntity extends ConnectedVaultBlockEntity implement
         public boolean canReceive() {
             return true;
         }
+    }
+    // Include decorative panels spanning the edge of their owning member
+    @Override
+    public AABB getRenderBoundingBox(){
+        return super.getRenderBoundingBox().inflate(1.0D);
     }
 }

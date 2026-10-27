@@ -8,11 +8,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
-import com.rieno.gadgetsandgizmos.compat.aeroworks.AeroworksControllerCompat;
-import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
-import com.rieno.gadgetsandgizmos.content.navigation.NavigationTableExtensionAccess;
-import com.rieno.gadgetsandgizmos.lib.control.LinkedOrientationSource;
 import com.simibubi.create.AllDataComponents;
 import com.simibubi.create.content.redstone.displayLink.ClickToLinkBlockItem;
 import net.minecraft.ChatFormatting;
@@ -77,13 +73,7 @@ public class GyroscopeLinkBlockItem extends ClickToLinkBlockItem {
             return false;
         }
         BlockEntity blockEntity = level.getBlockEntity(pos);
-        return SimulatedHelper.isGimbalSensor(blockEntity)
-                || SimulatedHelper.isSteeringWheel(blockEntity)
-                || AeroworksControllerCompat.isAdvancedDataLinkSource(blockEntity)
-                || blockEntity instanceof LinkedOrientationSource src && src.isOrientationSourceActive()
-                || blockEntity instanceof AnalogueContraptionControllerBlockEntity
-                || blockEntity instanceof NavigationTableExtensionAccess
-                || blockEntity instanceof UniversalDisplayAdapterBlockEntity;
+        return GyroscopeLinkBlockEntity.isValidLinkTarget(blockEntity);
     }
 
     // Get the max distance from selection

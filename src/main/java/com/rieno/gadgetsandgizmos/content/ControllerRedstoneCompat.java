@@ -258,7 +258,7 @@ public final class ControllerRedstoneCompat {
         }
         String compatMode = resolvedTarget.compatModeId();
         if (redstoneOnly && (DIRECT_ADAPTER.equals(compatMode) || targetBe instanceof RcsThrusterBlockEntity)) {
-            compatMode = VIRTUAL_BLOCK_REDSTONE;
+            compatMode = resolvedTarget.face() == null ? VIRTUAL_BLOCK_REDSTONE : VIRTUAL_FACE_REDSTONE;
         }
         if (!redstoneOnly && (DIRECT_ADAPTER.equals(compatMode) || targetBe instanceof RcsThrusterBlockEntity)) {
             return sampleTarget(ownerLevel, sourceId, resolvedTarget);

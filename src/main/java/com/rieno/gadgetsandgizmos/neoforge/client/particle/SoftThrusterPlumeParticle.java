@@ -23,6 +23,7 @@ import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.core.particles.SimpleParticleType;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
+import com.rieno.gadgetsandgizmos.lib.color.ColorEffectPreset;
 
 // Animate directed thruster exhaust and archive smoke
 public final class SoftThrusterPlumeParticle extends SoftBillboardParticle {
@@ -57,6 +58,7 @@ public final class SoftThrusterPlumeParticle extends SoftBillboardParticle {
     private final PlumeRainbow.Mode rainbowMode;
     private final PlumeRainbow.Palette rainbowPalette;
     private final float plumeProgress;
+    private ColorEffectPreset colorEffect = ColorEffectPreset.DEFAULT;
     private final ColorGradient lifecycleColors;
 
     // Control view occlusion for plume particles on this client
@@ -85,6 +87,8 @@ public final class SoftThrusterPlumeParticle extends SoftBillboardParticle {
                 CTConfigs.CLIENT.usePlumeMetaballRendering.get(),
                 opts.rainbowMode(), opts.rainbowPalette(), opts.plumeProgress(),
                 opts.plumeTintColor(), opts.plumeTintBlend());
+        colorEffect = opts.colorEffect();
+        updatePlumeColor();
     }
 
     // Reuse the soft plume for a neutral archive smoke burst
@@ -192,8 +196,8 @@ public final class SoftThrusterPlumeParticle extends SoftBillboardParticle {
     private void updatePlumeColor(){
         if(!this.collidesWithBlocks) return;
         int color = this.rainbowMode == PlumeRainbow.Mode.OFF
-                ? this.lifecycleColors.sample(this.age / (float) this.lifetime,
-                        FLAME_PROGRESS, SMOKE_PROGRESS)
+                ? (colorEffect.active() ? colorEffect.sample(this.level.getGameTime(), this.plumeProgress, this.age)
+                        : this.lifecycleColors.sample(this.age / (float) this.lifetime, FLAME_PROGRESS, SMOKE_PROGRESS))
                 : PlumeRainbow.color(this.rainbowMode, this.rainbowPalette,
                         this.level.getGameTime(), this.plumeProgress, this.age);
         this.rCol = (color >> 16 & 0xFF) / 255.0F;
@@ -213,10 +217,10 @@ public final class SoftThrusterPlumeParticle extends SoftBillboardParticle {
         return this.collidesWithBlocks;
     }
 
-    // Keep the V2 exhaust bright without adding its color to the background
+    // Keep the current plume blend unless its preset selects additive blending
     @Override
     protected boolean usesAlphaEmissiveBlend() {
-        return this.collidesWithBlocks;
+        return this.collidesWithBlocks && !this.colorEffect.additive();
     }
 
     // Align the active exhaust with its travel direction

@@ -102,6 +102,7 @@ public final class CTClientRenderers {
         evt.registerBlockEntityRenderer(CTBlockEntities.BLACKSTONE_ENCASED_COGWHEEL.get(), EncasedCogRenderer::small);
         evt.registerBlockEntityRenderer(CTBlockEntities.BLACKSTONE_ENCASED_LARGE_COGWHEEL.get(), EncasedCogRenderer::large);
         evt.registerBlockEntityRenderer(CTBlockEntities.CAMERA.get(), CameraRenderer::new);
+        evt.registerBlockEntityRenderer(CTBlockEntities.WORLD_HOLOGRAM_PROJECTOR.get(), WorldHologramProjectorRenderer::new);
         if (CTEntityTypes.LAUNCHED_CLAW != null) {
             evt.registerEntityRenderer(CTEntityTypes.LAUNCHED_CLAW.get(), EntityLauncherClawRenderer::new);
         }
@@ -139,7 +140,11 @@ public final class CTClientRenderers {
         if (CTBlockEntities.RCS_THRUSTER != null) evt.registerBlockEntityRenderer(CTBlockEntities.RCS_THRUSTER.get(), RcsThrusterRenderer::new);
         if (CTBlockEntities.PHYSICS_STAFF_ANCHOR != null) evt.registerBlockEntityRenderer(CTBlockEntities.PHYSICS_STAFF_ANCHOR.get(), PhysicsStaffAnchorRenderer::new);
         if (CTBlockEntities.SMART_TANK != null) evt.registerBlockEntityRenderer(
-                cast(CTBlockEntities.SMART_TANK.get()), FluidTankRenderer::new);
+                cast(CTBlockEntities.SMART_TANK.get()), SmartContainerTabletRenderer.Tank::new);
+        if (CTBlockEntities.SMART_VAULT != null) evt.registerBlockEntityRenderer(
+                cast(CTBlockEntities.SMART_VAULT.get()), SmartContainerTabletRenderer.Vault::new);
+        if (CTBlockEntities.SMART_BATTERY != null) evt.registerBlockEntityRenderer(
+                cast(CTBlockEntities.SMART_BATTERY.get()), SmartContainerTabletRenderer.Vault::new);
         evt.registerBlockEntityRenderer(BlockEntityType.LECTERN, PortableLecternControllerRenderer::new);
 
         BuiltInRegistries.BLOCK_ENTITY_TYPE.getOptional(ResourceLocation.parse("simulated:swivel_bearing_link_block"))

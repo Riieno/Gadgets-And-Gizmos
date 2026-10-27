@@ -41,6 +41,7 @@ import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -101,6 +102,10 @@ public final class ControllerGraphWebServer {
     private static ExecutorService executor;
     // Shared bound port
     private static int boundPort;
+    private static boolean clientOwned;
+    private static boolean clientShutdownHook;
+    private static java.nio.file.Path clientDirectory;
+    private static java.util.function.Supplier<com.rieno.gadgetsandgizmos.lib.storage.SharedDocumentMetadata> clientMetadata;
     private static final AtomicReference<PublishedOpenGraph> PUBLISHED_OPEN_GRAPH = new AtomicReference<>();
     private static final Map<String, PendingRemoteImport> PENDING_REMOTE_IMPORTS = new LinkedHashMap<>();
 
@@ -126,11 +131,13 @@ public final class ControllerGraphWebServer {
 
     // Handle the server started event
     public static synchronized void onServerStarted(ServerStartedEvent evt) {
+        if(clientOwned) return;
         start();
     }
 
     // Handle the server stopped event
     public static synchronized void onServerStopped(ServerStoppedEvent evt) {
+        if(clientOwned) return;
         stop();
     }
 
@@ -141,6 +148,31 @@ public final class ControllerGraphWebServer {
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
+
+    // Start the controller graph web server
+    public static synchronized boolean startClient(java.nio.file.Path directory,
+            java.util.function.Supplier<com.rieno.gadgetsandgizmos.lib.storage.SharedDocumentMetadata> metadata){
+        clientDirectory = directory.toAbsolutePath().normalize();
+        clientMetadata = metadata;
+        clientOwned = true;
+        if(!clientShutdownHook){
+            Runtime.getRuntime().addShutdownHook(new Thread(ControllerGraphWebServer::stopClient, "gng-graph-bridge-shutdown"));
+            clientShutdownHook = true;
+        }
+        return start();
+    }
+
+    public static synchronized void stopClient(){
+        if(!clientOwned) return;
+        stop();
+        clientOwned = false;
+        clientDirectory = null;
+        clientMetadata = null;
+    }
+
+    private static java.nio.file.Path sharedDirectory(){
+        return clientDirectory == null ? ControllerManifestStore.sharedGraphsDirectory() : clientDirectory;
+    }
 
     // Start the controller graph web server
     static synchronized boolean start() {
@@ -158,7 +190,14 @@ public final class ControllerGraphWebServer {
             });
             created.createContext("/", ControllerGraphWebServer::handle);
             created.setExecutor(createdExecutor);
-            created.start();
+            if(clientOwned){
+                // The client bridge must not keep the game process alive after its window closes
+                CompletableFuture.runAsync(created::start, task -> {
+                    Thread thread = new Thread(task, "gng-graph-web-start");
+                    thread.setDaemon(true);
+                    thread.start();
+                }).join();
+            }else created.start();
             server = created;
             executor = createdExecutor;
             boundPort = created.getAddress().getPort();
@@ -313,7 +352,7 @@ public final class ControllerGraphWebServer {
             if (id.isBlank()) {
                 sendJsonError(exchange, 400, "A manifest id is required");
             } else if ("GET".equals(method)) {
-                String json = ControllerManifestStore.readSharedGraphJson(id);
+                String json = ControllerManifestStore.readSharedGraphJson(sharedDirectory(), id);
                 if (json == null) sendJsonError(exchange, 404, "Manifest not found");
                 else send(exchange, 200, "application/json; charset=utf-8",
                         json.getBytes(StandardCharsets.UTF_8));
@@ -341,8 +380,12 @@ public final class ControllerGraphWebServer {
             sendJsonError(exchange, 413, "Manifest is larger than 2 MiB");
             return;
         }
-        PublicGraphShareService.ShareResult res = PublicGraphShareService.upload(
-                new String(body, StandardCharsets.UTF_8)).join();
+        JsonObject manifest;
+        try{
+            manifest = JsonParser.parseString(new String(body, StandardCharsets.UTF_8)).getAsJsonObject();
+            if(clientMetadata != null) clientMetadata.get().apply(manifest);
+        }catch(RuntimeException ex){ sendJsonError(exchange, 400, "Invalid graph manifest"); return; }
+        PublicGraphShareService.ShareResult res = PublicGraphShareService.upload(GSON.toJson(manifest)).join();
         if (!res.shared()) {
             sendJsonError(exchange, 503, res.message());
             return;
@@ -383,7 +426,7 @@ public final class ControllerGraphWebServer {
         try {
             String manifest = PublicGraphShareService.download(id).get(7, TimeUnit.SECONDS);
             ControllerManifestStore.SharedGraphSaveResult res = ControllerManifestStore.importSharedGraph(
-                    id, manifest, ControllerManifestStore.SharedGraphSaveMode.INCREMENT);
+                    sharedDirectory(), "", manifest, ControllerManifestStore.SharedGraphSaveMode.INCREMENT);
             if (!res.saved()) {
                 sendHtml(exchange, 400, importResultPage(false,
                         "The graph could not be added to this Minecraft instance", ""));
@@ -469,7 +512,7 @@ public final class ControllerGraphWebServer {
             return;
         }
         ControllerManifestStore.SharedGraphSaveResult res = ControllerManifestStore.importSharedGraph(
-                name, new String(body, StandardCharsets.UTF_8), mode);
+                sharedDirectory(), name, new String(body, StandardCharsets.UTF_8), mode);
         JsonObject resp = new JsonObject();
         resp.addProperty("status", res.status().name().toLowerCase(Locale.ROOT));
         resp.addProperty("id", res.id());
@@ -488,7 +531,11 @@ public final class ControllerGraphWebServer {
         root.addProperty("schemaVersion", 2);
         root.addProperty("graphVersion", AdvancedGraphDocument.CURRENT_VERSION);
         JsonArray definitions = new JsonArray();
-        for(AdvancedGraphCatalog.Definition definition : AdvancedGraphCatalog.all()){
+        var visible = AdvancedGraphCatalog.all().stream().map(AdvancedGraphCatalog.Definition::id).collect(java.util.stream.Collectors.toSet());
+        for(var registered : AdvancedGraphCatalog.registry().definitions()){
+            boolean legacy = com.rieno.gadgetsandgizmos.lib.graph.math.AngleConversionNode.supersedes(registered.id());
+            if(!visible.contains(registered.id()) && !legacy) continue;
+            var definition = AdvancedGraphCatalog.get(registered.id());
             var data = com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphNodeFactory.createDefaultData(definition.id(), null);
             var sample = new AdvancedGraphDocument.Node("", definition.id(), "", 0, 0, data);
             JsonObject node = com.rieno.gadgetsandgizmos.lib.graph.GraphWebCatalog.node(
@@ -504,6 +551,26 @@ public final class ControllerGraphWebServer {
                 node.getAsJsonObject("properties").getAsJsonObject("SignalValueType").add("options", values);
             }
             JsonArray variants = new JsonArray();
+            node.addProperty("hiddenFromLibrary", legacy);
+            if("createthrusters:convert_unit".equals(definition.id())){
+                com.rieno.gadgetsandgizmos.lib.graph.math.UnitConversionNode.addWebMetadata(node);
+            }
+            if("createthrusters:convert_angle".equals(definition.id())){
+                for(String selector : List.of(com.rieno.gadgetsandgizmos.lib.graph.math.AngleConversionNode.INPUT_TYPE,
+                        com.rieno.gadgetsandgizmos.lib.graph.math.AngleConversionNode.OUTPUT_TYPE)){
+                    JsonArray choices = new JsonArray();
+                    for(var format : com.rieno.gadgetsandgizmos.lib.graph.math.AngleConversionNode.Format.values()){
+                        choices.add(format.id());
+                        JsonObject variant = new JsonObject();variant.addProperty("selector", selector);variant.addProperty("value", format.id());
+                        boolean input = com.rieno.gadgetsandgizmos.lib.graph.math.AngleConversionNode.INPUT_TYPE.equals(selector);
+                        variant.add(input ? "inputs" : "outputs", com.rieno.gadgetsandgizmos.lib.graph.GraphWebCatalog.ports(input
+                                ? com.rieno.gadgetsandgizmos.lib.graph.math.AngleConversionNode.inputs(format)
+                                : com.rieno.gadgetsandgizmos.lib.graph.math.AngleConversionNode.outputs(format)));
+                        variants.add(variant);
+                    }
+                    node.getAsJsonObject("properties").getAsJsonObject(selector).add("options", choices);
+                }
+            }
             var options = data.getCompound("InputOptions");
             for(String selector : options.getAllKeys()){
                 JsonArray choices = new JsonArray();
@@ -552,7 +619,7 @@ public final class ControllerGraphWebServer {
         resp.addProperty("fingerprint", published != null
                 ? published.fingerprint() : graph.simulationFingerprint());
         resp.add("manifest", JsonParser.parseString(
-                ControllerManifestStore.sharedGraphJson(name, graph)));
+                ControllerManifestStore.sharedGraphJson(name, graph, clientMetadata == null ? null : clientMetadata.get())));
         JsonObject runtime = new JsonObject();
         JsonObject liveInputs = new JsonObject();
         JsonObject liveOutputs = new JsonObject();
@@ -628,7 +695,7 @@ public final class ControllerGraphWebServer {
     private static JsonObject manifestListJson() {
         JsonObject root = new JsonObject();
         JsonArray manifests = new JsonArray();
-        for (ControllerManifestStore.SharedGraphEntry entry : ControllerManifestStore.listSharedGraphs()) {
+        for (ControllerManifestStore.SharedGraphEntry entry : ControllerManifestStore.listSharedGraphs(sharedDirectory())) {
             JsonObject manifest = new JsonObject();
             manifest.addProperty("id", entry.id());
             manifest.addProperty("name", entry.name());

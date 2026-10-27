@@ -2,6 +2,7 @@ package com.rieno.gadgetsandgizmos.mixin;
 
 import com.rieno.gadgetsandgizmos.compat.simulated.DockingConnectorBindingAccess;
 import com.rieno.gadgetsandgizmos.content.CTTooltipHelper;
+import com.rieno.gadgetsandgizmos.content.ShipControlModuleRuntime;
 import com.simibubi.create.api.equipment.goggles.IHaveGoggleInformation;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import dev.simulated_team.simulated.content.blocks.docking_connector.DockingConnectorBlockEntity;
@@ -33,11 +34,19 @@ public abstract class ShippingDockingConnectorMixin implements DockingConnectorB
     private static final String SCM_CONNECTOR_TAG = "ScmConnector";
 
     @Unique private UUID createthrusters$shipDockId;
+
+    @Override public UUID createthrusters$getShipDockId(){ return createthrusters$shipDockId; }
     @Unique private String createthrusters$shipDockName = "";
     @Unique private int createthrusters$shipDockConnectorIndex = -1;
     @Unique private boolean createthrusters$shipControlModuleBound;
     @Unique private String createthrusters$shipControlModuleName = "";
     @Unique private int createthrusters$shipControlModuleConnectorIndex = -1;
+
+    // Close the SCM's dock entrances before the native connector releases its physical joint
+    @Inject(method = "unDock", at = @At("HEAD"))
+    private void createthrusters$closeDockDoors(CallbackInfo ci){
+        ShipControlModuleRuntime.closeDockDoorsBeforeUndocking((DockingConnectorBlockEntity)(Object)this);
+    }
 
     @Override
     public void createthrusters$setShipDockBinding(UUID dockId, String dockName, int connectorIndex) {

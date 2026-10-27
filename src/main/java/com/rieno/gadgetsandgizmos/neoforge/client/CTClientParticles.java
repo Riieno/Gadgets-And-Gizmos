@@ -13,6 +13,7 @@ import com.rieno.gadgetsandgizmos.neoforge.client.particle.ClawMarkerPulsePartic
 import com.rieno.gadgetsandgizmos.neoforge.client.particle.RcsSteamParticle;
 import com.rieno.gadgetsandgizmos.neoforge.client.particle.SoftThrusterPlumeParticle;
 import com.rieno.gadgetsandgizmos.registry.CTParticles;
+import com.rieno.gadgetsandgizmos.lib.client.render.TumblingSpriteParticle;
 import net.neoforged.neoforge.client.event.RegisterParticleProvidersEvent;
 
 // Register the client particles
@@ -35,5 +36,7 @@ public final class CTClientParticles {
         evt.registerSpecial(CTParticles.DIGISABLE_SMOKE.get(), new SoftThrusterPlumeParticle.SmokeProvider());
         evt.registerSpriteSet(CTParticles.CLAW_MARKER_PULSE.get(), ClawMarkerPulseParticle.Provider::new);
         evt.registerSpriteSet(CTParticles.RCS_STEAM.get(), RcsSteamParticle.Provider::new);
+        evt.registerSpriteSet(CTParticles.CELEBRATION_CONFETTI.get(),
+                sprites -> new TumblingSpriteParticle.Provider(sprites, 0.3F, 60));
     }
 }

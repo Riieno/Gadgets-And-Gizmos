@@ -45040,7 +45040,7 @@ var RieStatCdnPluginStudio = (() => {
           value: value ?? options[0], disabled, title: portName,
           className: "w-full input-bg border border-theme h-7 px-1 rounded text-xs mono",
           onMouseDown: (event) => event.stopPropagation(), onChange: (event) => onChange(event.target.value),
-          children: options.map((option) => (0, import_jsx_runtime17.jsx)("option", { value: option, children: option }, option))
+          children: options.map((option) => (0, import_jsx_runtime17.jsx)("option", { value: option, children: globalThis.GadgetsGraphNodes?.inputOptionLabel?.(Nodes.get(node.type)?.createThrustersSchema, node.data, portName, option) ?? option }, option))
         });
         if (node.type === "flip_flop" && portName === "skip_pulses" || node.type === "bounded_loop" && portName === "iterations") {
           return (0, import_jsx_runtime17.jsx)("input", { type: "number", min: 0, step: 1, value: value ?? 0,
@@ -359764,6 +359764,9 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
     };
   }
   function executeCreateThrustersNode(definition, inputs, outputs, context) {
+    if (definition.unitConversions) {
+      Object.assign(outputs, globalThis.GadgetsGraphNodes.convertUnit(definition, inputs));return;
+    }
     const id = definition.id;
     const number = (key, fallback = 0) => {
       const value = inputs[key];
@@ -360186,7 +360189,7 @@ setInterval(tick, getVar('refreshMs') ?? 1000);
   function syncCreateThrustersNode(node, connections = [], nodes = []) {
     const definition = Nodes.get(node.type)?.createThrustersSchema;
     if (!definition) return node;
-    let data = node.data || {};
+    let data = globalThis.GadgetsGraphNodes.synchronizeInputOptions(definition, node.data || {});
     if (definition.matchingInputs) {
       data = { ...data, DynamicInputs: { ...data.DynamicInputs } };
       for (const source of Object.values(definition.matchingInputs)) {

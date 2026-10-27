@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.registry;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.content.WorldHologramProjectorBlock;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.lib.create.encasing.CustomEncasedShaftBlock;
 import com.rieno.gadgetsandgizmos.lib.create.encasing.CustomEncasedCogwheelBlock;
@@ -86,6 +87,10 @@ public final class CTBlocks {
 
     public static final DeferredRegister.Blocks REGISTRAR = DeferredRegister.createBlocks(CreateThrusters.MOD_ID);
 
+    public static final DeferredBlock<WorldHologramProjectorBlock> WORLD_HOLOGRAM_PROJECTOR = register("world_hologram_projector",
+            () -> new WorldHologramProjectorBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
+                    .strength(2.5F).sound(SoundType.METAL).lightLevel(state -> 12).noOcclusion()));
+
     public static final DeferredBlock<CameraBlock> CAMERA = register("camera",
             () -> new CameraBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL)
                     .strength(2.0F).sound(SoundType.METAL).noOcclusion().dynamicShape()));
@@ -93,6 +98,10 @@ public final class CTBlocks {
     @Nullable
     public static final DeferredBlock<ThrusterBlock> THRUSTER = register("thruster",
             () -> new ThrusterBlock(BlockBehaviour.Properties.of().mapColor(MapColor.METAL).strength(3.0f).requiresCorrectToolForDrops().noOcclusion()));
+
+    public static final DeferredBlock<ThrusterBlock> CELEBRATION_THRUSTER = register("celebration_thruster",
+            () -> new ThrusterBlock(BlockBehaviour.Properties.of().mapColor(MapColor.GOLD)
+                    .strength(3.0F).requiresCorrectToolForDrops().noOcclusion()));
 
     public static final DeferredBlock<PlumeLightBlock> PLUME_LIGHT = register("plume_light",
             () -> new PlumeLightBlock(BlockBehaviour.Properties.of().mapColor(MapColor.NONE)

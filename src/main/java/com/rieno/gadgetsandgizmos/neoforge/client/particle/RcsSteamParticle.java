@@ -14,9 +14,11 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleProvider;
 import net.minecraft.client.particle.ParticleRenderType;
+import com.rieno.gadgetsandgizmos.lib.client.render.SoftParticleRenderTypes;
 import net.minecraft.client.particle.SpriteSet;
 import net.minecraft.client.particle.TextureSheetParticle;
 import net.minecraft.util.Mth;
+import com.rieno.gadgetsandgizmos.lib.color.ColorEffectPreset;
 
 // Animate the short directional steam plume produced by an RCS nozzle
 public class RcsSteamParticle extends TextureSheetParticle {
@@ -35,6 +37,7 @@ public class RcsSteamParticle extends TextureSheetParticle {
     // Base size
     private final float baseSize;
     // Active rainbow cycle
+    private final ColorEffectPreset colorEffect;
     private final PlumeRainbow.Mode rainbowMode;
     // Active color palette
     private final PlumeRainbow.Palette rainbowPalette;
@@ -74,6 +77,7 @@ public class RcsSteamParticle extends TextureSheetParticle {
         this.gCol = opts.green();
         this.bCol = opts.blue();
         this.rainbowMode = opts.rainbowMode();
+        this.colorEffect = opts.colorEffect();
         this.rainbowPalette = opts.rainbowPalette();
         this.baseSize = 0.22F * opts.scale();
         this.quadSize = baseSize * 0.4F;
@@ -97,7 +101,8 @@ public class RcsSteamParticle extends TextureSheetParticle {
     // Get the render type
     @Override
     public ParticleRenderType getRenderType() {
-        return ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT;
+        return colorEffect.additive() ? SoftParticleRenderTypes.additiveParticleSheet()
+                : ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT;
     }
 
     // Get the quad size
@@ -133,10 +138,10 @@ public class RcsSteamParticle extends TextureSheetParticle {
 
     // Move the rainbow gradient along the short RCS exhaust
     private void updateRainbowColor() {
-        if (rainbowMode == PlumeRainbow.Mode.OFF) return;
+        if(rainbowMode == PlumeRainbow.Mode.OFF && !colorEffect.active()) return;
         float progress = Mth.clamp(age / (float) Math.max(1, lifetime), 0.0F, 1.0F);
-        int color = PlumeRainbow.color(rainbowMode, rainbowPalette,
-                level.getGameTime(), progress, age);
+        int color = rainbowMode == PlumeRainbow.Mode.OFF ? colorEffect.sample(level.getGameTime(), progress, age)
+                : PlumeRainbow.color(rainbowMode, rainbowPalette, level.getGameTime(), progress, age);
         rCol = (color >> 16 & 0xFF) / 255.0F;
         gCol = (color >> 8 & 0xFF) / 255.0F;
         bCol = (color & 0xFF) / 255.0F;

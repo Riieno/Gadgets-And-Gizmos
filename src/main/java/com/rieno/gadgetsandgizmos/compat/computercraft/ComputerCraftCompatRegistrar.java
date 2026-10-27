@@ -23,6 +23,8 @@ import com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity;
 import com.rieno.gadgetsandgizmos.content.UniversalDisplayAdapterBlockEntity;
 import com.rieno.gadgetsandgizmos.content.VectorBearingBlockEntity;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
+import com.rieno.gadgetsandgizmos.lib.compat.computercraft.ContainerDataPeripheral;
+import dan200.computercraft.api.ComputerCraftAPI;
 import dan200.computercraft.api.peripheral.PeripheralCapability;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -47,7 +49,10 @@ public final class ComputerCraftCompatRegistrar {
 
     // Register the capabilities
     public static void registerCapabilities(RegisterCapabilitiesEvent evt) {
+        ComputerCraftAPI.registerGenericSource(new ContainerDataPeripheral(
+                ResourceLocation.fromNamespaceAndPath("createthrusters", "container_data")));
         ComputerCraftRednetEventBridge.install();
+        ComputerCraftPeripheralBridge.install();
         registerDisplays(evt);
         registerPropulsion(evt);
         registerBearings(evt);

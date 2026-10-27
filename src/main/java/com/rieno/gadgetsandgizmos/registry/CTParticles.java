@@ -51,6 +51,9 @@ public final class CTParticles {
     public static final DeferredHolder<ParticleType<?>, SimpleParticleType> DIGISABLE_SMOKE =
             REGISTRAR.register("digisable_smoke", () -> new SimpleParticleType(false));
 
+    public static final DeferredHolder<ParticleType<?>, SimpleParticleType> CELEBRATION_CONFETTI =
+            REGISTRAR.register("celebration_confetti", () -> new SimpleParticleType(false));
+
     public static final DeferredHolder<ParticleType<?>, ParticleType<ClawMarkerPulseParticleOptions>> CLAW_MARKER_PULSE =
             REGISTRAR.register("claw_marker_pulse", () -> new ParticleType<ClawMarkerPulseParticleOptions>(false) {
                 // Get the codec

@@ -1776,8 +1776,13 @@ public final class ContraptionNetworkLinkerData {
 
     // Get the SCM targets
     public static List<ScmTarget> scmTargets(ItemStack stack) {
+        return scmTargets(readTargets(stack));
+    }
+
+    // Resolve SCM bindings from an independent controller collection
+    public static List<ScmTarget> scmTargets(List<LinkedTarget> targets) {
         List<ScmTarget> res = new ArrayList<>();
-        for (LinkedTarget target : readTargets(stack)) {
+        for (LinkedTarget target : targets) {
             if (target.mode() != LinkMode.SCM) {
                 continue;
             }
@@ -1818,8 +1823,13 @@ public final class ContraptionNetworkLinkerData {
 
     // Get the SCM discovery nodes
     public static List<ControllerDiscoveryNode> scmDiscoveryNodes(ItemStack stack) {
+        return scmDiscoveryNodes(readTargets(stack));
+    }
+
+    // Expose stored SCM targets to graph selectors without manufacturing a linker item
+    public static List<ControllerDiscoveryNode> scmDiscoveryNodes(List<LinkedTarget> targets) {
         List<ControllerDiscoveryNode> nodes = new ArrayList<>();
-        for (ScmTarget target : scmTargets(stack)) {
+        for (ScmTarget target : scmTargets(targets)) {
             String blockId = target.blockId().isBlank() ? "minecraft:air" : target.blockId();
             String label = target.label().isBlank() ? fallbackLabel(blockId) : target.label();
             String groupId = target.subLevelId() == null

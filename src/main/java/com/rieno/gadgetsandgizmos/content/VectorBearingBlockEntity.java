@@ -15,11 +15,11 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.lib.control.AnalogueControlChannel;
 import com.rieno.gadgetsandgizmos.lib.control.FrequencyBinding;
 import com.rieno.gadgetsandgizmos.lib.control.IDirectControlReceiver;
-import com.rieno.gadgetsandgizmos.lib.control.OrientationMath;
 import com.rieno.gadgetsandgizmos.lib.control.OrientationPayload;
 import com.rieno.gadgetsandgizmos.lib.control.OrientationTarget;
 import com.rieno.gadgetsandgizmos.lib.control.PropellerForceGeometry;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.inventory.AssemblyResourceAccess;
 import com.rieno.gadgetsandgizmos.lib.kinetics.KineticAngleHelper;
 import com.rieno.gadgetsandgizmos.lib.kinetics.PropellerDirectionBehaviour;
 import com.rieno.gadgetsandgizmos.lib.kinetics.PropellerThrustDirection;
@@ -29,7 +29,6 @@ import com.rieno.gadgetsandgizmos.lib.physics.SableAssemblyTopologyInvalidation;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
 import com.rieno.gadgetsandgizmos.lib.physics.SableTransformApi;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
-import com.rieno.gadgetsandgizmos.util.OxidizedFuelStorageAccess;
 import com.mojang.logging.LogUtils;
 import com.simibubi.create.AllTags;
 import com.simibubi.create.Create;
@@ -66,16 +65,13 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.energy.IEnergyStorage;
-import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import org.joml.Quaterniond;
 import org.joml.Vector3d;
@@ -83,11 +79,8 @@ import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.lang.reflect.Field;
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.EnumMap;
-import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -96,7 +89,7 @@ import java.util.Set;
 import java.util.UUID;
 
 // Control two-axis bearing movement and expose the same target to linked and graph controls
-public class VectorBearingBlockEntity extends KineticBlockEntity implements MenuProvider, OrientationTarget,
+public class VectorBearingBlockEntity extends KineticBlockEntity implements AssemblyResourceAccess, MenuProvider, OrientationTarget,
         IDirectControlReceiver, AdvancedGraphDataProvider, IHaveGoggleInformation,
         BlockEntitySubLevelActor, BlockEntityPropeller, PropellerForceGeometry {
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -115,7 +108,6 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
     private static final long DIRECT_INPUT_TIMEOUT_TICKS = 20L;
     private static final long WIRELESS_SIGNAL_SAMPLE_INTERVAL_TICKS = 5L;
     private static final long SAIL_POWER_SAMPLE_INTERVAL_TICKS = 5L;
-    private static final long ASSEMBLY_FUEL_REDISTRIBUTION_INTERVAL_TICKS = 10L;
     private static final long NESTED_ASSEMBLY_RETRY_DELAY_TICKS = 4L;
     private static final double DEGREES_PER_TICK_PER_RPM = 3.0D / 10.0D;
     private static final double MIN_TILT_BLEND = 0.18D;
@@ -151,10 +143,11 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
 
     // Mounted assembly
     private final VectorBearingMountedAssembly mountedAssembly = new VectorBearingMountedAssembly();
-    // Assembly fluid handler
-    private final IFluidHandler assemblyFluidHandler = new AssemblyFluidDistributor(this);
-    // Assembly energy handler
-    private final IEnergyStorage assemblyEnergyHandler = new AssemblyEnergyDistributor(this);
+    // Shared mounted-thruster controls and resource inputs
+    private final BearingAssembly bearingAssembly = new BearingAssembly(this, "vector_bearing",
+            () -> getMountedSubLevelId() == null ? List.of() : List.of(getMountedSubLevelId()),
+            () -> getMountedSubLevelId() == null ? List.of(getMountedBlockPos()) : List.of(), new LinkedHashMap<>());
+
     // Tracked frequency bindings
     private final EnumMap<Direction, FrequencyBinding> frequencyBindings = createFrequencyBindings();
     // Last signals
@@ -1272,12 +1265,12 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
 
     // Get the assembly fluid handler
     public IFluidHandler getAssemblyFluidHandler() {
-        return assemblyFluidHandler;
+        return bearingAssembly.resources().getAssemblyFluidHandler();
     }
 
     // Get the assembly energy handler
     public IEnergyStorage getAssemblyEnergyHandler() {
-        return assemblyEnergyHandler;
+        return bearingAssembly.resources().getAssemblyEnergyHandler();
     }
 
     // Check if this can accept assembly fluid from the source
@@ -1291,13 +1284,8 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
     }
 
     // Check if this can accept assembly input from the source
-    private boolean canAcceptAssemblyInputFrom(Direction side) {
-        if (side == null) {
-            return true;
-        }
-
-        Direction inputFace = getBearingFacing();
-        return side == inputFace || side == inputFace.getOpposite();
+    private boolean canAcceptAssemblyInputFrom(Direction side){
+        return side == null || side != getBearingFacing();
     }
 
     // Get the bearing facing
@@ -1609,273 +1597,14 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         return convertToAngular(getSpeed());
     }
 
-    // Collect the attached fluid handlers
-    private List<IFluidHandler> collectAttachedFluidHandlers(FluidStack requestedFluid) {
-        if (level == null) {
-            return List.of();
-        }
+    // Get the library adapters for this bearing
+    public BearingAssembly getBearingAssembly(){ return bearingAssembly; }
 
-        List<IFluidHandler> targets = new ArrayList<>();
-        Set<IFluidHandler> seenHandlers = Collections.newSetFromMap(new IdentityHashMap<>());
-        Object mountedSubLevel = getMountedSubLevelHandle();
-
-        if (mountedSubLevel != null) {
-            for (BlockEntity blockEntity : SubLevelBlockEntityCollector.getBlockEntities(mountedSubLevel)) {
-                addAttachedFluidHandler(targets, seenHandlers, blockEntity, requestedFluid);
-            }
-        }
-
-        if (targets.isEmpty()) {
-            addAttachedFluidHandler(targets, seenHandlers, level.getBlockEntity(getMountedBlockPos()), requestedFluid);
-        }
-
-        return targets;
-    }
-
-    // Collect the attached energy handlers
-    private List<IEnergyStorage> collectAttachedEnergyHandlers() {
-        if (level == null) {
-            return List.of();
-        }
-
-        List<IEnergyStorage> targets = new ArrayList<>();
-        Set<IEnergyStorage> seenHandlers = Collections.newSetFromMap(new IdentityHashMap<>());
-        Object mountedSubLevel = getMountedSubLevelHandle();
-
-        if (mountedSubLevel != null) {
-            for (BlockEntity blockEntity : SubLevelBlockEntityCollector.getBlockEntities(mountedSubLevel)) {
-                addAttachedEnergyHandler(targets, seenHandlers, blockEntity);
-            }
-        }
-
-        if (targets.isEmpty()) {
-            addAttachedEnergyHandler(targets, seenHandlers, level.getBlockEntity(getMountedBlockPos()));
-        }
-
-        return targets;
-    }
-
-    // Get the mounted sublevel block entities
-    private List<BlockEntity> getMountedSubLevelBlockEntities() {
-        Object mountedSubLevel = getMountedSubLevelHandle();
-        if (mountedSubLevel == null) {
-            return List.of();
-        }
-        return SubLevelBlockEntityCollector.getBlockEntities(mountedSubLevel);
-    }
-
-    // Add the attached fluid handler
-    private void addAttachedFluidHandler(List<IFluidHandler> targets, Set<IFluidHandler> seenHandlers,
-            BlockEntity blockEntity, FluidStack requestedFluid) {
-        if (blockEntity == null || blockEntity.isRemoved() || blockEntity == this
-                || blockEntity instanceof VectorBearingBlockEntity) {
-            return;
-        }
-
-        IFluidHandler handler = findFluidHandler(blockEntity);
-        if (handler == null) {
-            return;
-        }
-
-        if (!requestedFluid.isEmpty()
-                && OxidizedFuelStorageAccess.allow(() ->
-                        handler.fill(requestedFluid.copyWithAmount(1), IFluidHandler.FluidAction.SIMULATE)) <= 0) {
-            return;
-        }
-
-        if (seenHandlers.add(handler)) {
-            targets.add(handler);
-        }
-    }
-
-    // Add the attached energy handler
-    private void addAttachedEnergyHandler(List<IEnergyStorage> targets, Set<IEnergyStorage> seenHandlers,
-            BlockEntity blockEntity) {
-        if (blockEntity == null || blockEntity.isRemoved() || blockEntity == this
-                || blockEntity instanceof VectorBearingBlockEntity) {
-            return;
-        }
-
-        IEnergyStorage handler;
-        if (blockEntity instanceof ThrusterBlockEntity thruster) {
-            handler = thruster.isFocusedMode() ? thruster.getFocusInput() : null;
-        } else {
-            handler = findEnergyHandler(blockEntity);
-        }
-
-        if (handler == null || !handler.canReceive() || handler.receiveEnergy(1, true) <= 0) {
-            return;
-        }
-
-        if (seenHandlers.add(handler)) {
-            targets.add(handler);
-        }
-    }
-
-    // Collect the mounted thrusters
-    private List<ThrusterBlockEntity> collectMountedThrusters() {
-        return collectMountedThrusters(getMountedSubLevelBlockEntities());
-    }
-
-    // Collect the mounted thrusters
-    private List<ThrusterBlockEntity> collectMountedThrusters(List<BlockEntity> blockEntities) {
-        List<ThrusterBlockEntity> thrusters = new ArrayList<>();
-        for (BlockEntity blockEntity : blockEntities) {
-            if (blockEntity instanceof ThrusterBlockEntity thruster && !thruster.isRemoved()) {
-                thrusters.add(thruster);
-            }
-        }
-        return thrusters;
-    }
-
-    // Collect the assembly fuel storers
-    private List<BlockEntity> collectAssemblyFuelStorers() {
-        return collectAssemblyFuelStorers(getMountedSubLevelBlockEntities());
-    }
-
-    // Collect the assembly fuel storers
-    private List<BlockEntity> collectAssemblyFuelStorers(List<BlockEntity> blockEntities) {
-        List<BlockEntity> storers = new ArrayList<>();
-        for (BlockEntity blockEntity : blockEntities) {
-            if (blockEntity == null || blockEntity.isRemoved() || blockEntity == this
-                    || blockEntity instanceof VectorBearingBlockEntity
-                    || blockEntity instanceof ThrusterBearingBlockEntity
-                    || blockEntity instanceof ThrusterBlockEntity) {
-                continue;
-            }
-            if (findFluidHandler(blockEntity) != null) {
-                storers.add(blockEntity);
-            }
-        }
-        return storers;
-    }
-
-    // Redistribute the assembly fuel from storage
-    private void redistributeAssemblyFuelFromStorage() {
-        if (level == null || level.isClientSide
-                || level.getGameTime() % ASSEMBLY_FUEL_REDISTRIBUTION_INTERVAL_TICKS != 0L) {
-            return;
-        }
-
-        List<BlockEntity> mountedBlockEntities = getMountedSubLevelBlockEntities();
-        List<BlockEntity> storers = collectAssemblyFuelStorers(mountedBlockEntities);
-        if (storers.isEmpty()) {
-            return;
-        }
-
-        for (ThrusterBlockEntity thruster : collectMountedThrusters(mountedBlockEntities)) {
-            refillThrusterFromStorers(thruster, storers);
-        }
-    }
-
-    // Refill the thruster from storers
-    private void refillThrusterFromStorers(ThrusterBlockEntity thruster, List<BlockEntity> storers) {
-        IFluidHandler consumer = thruster.getFuelTank();
-        int remaining = consumer.getTankCapacity(0) - consumer.getFluidInTank(0).getAmount();
-        if (remaining <= 0) {
-            return;
-        }
-
-        FluidStack desiredFuel = consumer.getFluidInTank(0);
-        for (BlockEntity storageBlockEntity : storers) {
-            IFluidHandler storage = findFluidHandler(storageBlockEntity);
-            if (storage == null) {
-                continue;
-            }
-
-            for (int tankIndex = 0; tankIndex < storage.getTanks() && remaining > 0; tankIndex++) {
-                FluidStack storedFuel = storage.getFluidInTank(tankIndex);
-                if (storedFuel.isEmpty()) {
-                    continue;
-                }
-                if (!desiredFuel.isEmpty() && !FluidStack.isSameFluidSameComponents(desiredFuel, storedFuel)) {
-                    continue;
-                }
-
-                FluidStack drainedPreview = storage.drain(
-                        storedFuel.copyWithAmount(Math.min(remaining, storedFuel.getAmount())),
-                        IFluidHandler.FluidAction.SIMULATE);
-                if (drainedPreview.isEmpty()) {
-                    continue;
-                }
-
-                int fillable = consumer.fill(drainedPreview.copy(), IFluidHandler.FluidAction.SIMULATE);
-                if (fillable <= 0) {
-                    continue;
-                }
-
-                FluidStack transferred = storage.drain(drainedPreview.copyWithAmount(fillable),
-                        IFluidHandler.FluidAction.EXECUTE);
-                if (transferred.isEmpty()) {
-                    continue;
-                }
-
-                int filled = consumer.fill(transferred, IFluidHandler.FluidAction.EXECUTE);
-                if (filled <= 0) {
-                    continue;
-                }
-
-                if (desiredFuel.isEmpty()) {
-                    desiredFuel = transferred.copyWithAmount(1);
-                }
-
-                remaining -= filled;
-                thruster.setChanged();
-                storageBlockEntity.setChanged();
-            }
-        }
-    }
-
-    // Find the fluid handler
-    private IFluidHandler findFluidHandler(BlockEntity blockEntity) {
-        Level blockEntityLevel = blockEntity.getLevel();
-        if (blockEntityLevel == null) {
-            return null;
-        }
-
-        BlockPos blockEntityPos = blockEntity.getBlockPos();
-        BlockState blockEntityState = blockEntity.getBlockState();
-        IFluidHandler handler = Capabilities.FluidHandler.BLOCK.getCapability(blockEntityLevel, blockEntityPos,
-                blockEntityState, blockEntity, null);
-        if (handler != null) {
-            return handler;
-        }
-
-        for (Direction dir : Direction.values()) {
-            handler = Capabilities.FluidHandler.BLOCK.getCapability(blockEntityLevel, blockEntityPos,
-                    blockEntityState, blockEntity, dir);
-            if (handler != null) {
-                return handler;
-            }
-        }
-
-        return null;
-    }
-
-    // Find the energy handler
-    private IEnergyStorage findEnergyHandler(BlockEntity blockEntity) {
-        Level blockEntityLevel = blockEntity.getLevel();
-        if (blockEntityLevel == null) {
-            return null;
-        }
-
-        BlockPos blockEntityPos = blockEntity.getBlockPos();
-        BlockState blockEntityState = blockEntity.getBlockState();
-        IEnergyStorage handler = Capabilities.EnergyStorage.BLOCK.getCapability(blockEntityLevel, blockEntityPos,
-                blockEntityState, blockEntity, null);
-        if (handler != null) {
-            return handler;
-        }
-
-        for (Direction dir : Direction.values()) {
-            handler = Capabilities.EnergyStorage.BLOCK.getCapability(blockEntityLevel, blockEntityPos,
-                    blockEntityState, blockEntity, dir);
-            if (handler != null) {
-                return handler;
-            }
-        }
-
-        return null;
+    // Refill thrusters from storage on the mounted body
+    private void redistributeAssemblyFuelFromStorage(){
+        if(level == null || level.isClientSide) return;
+        if(bearingAssembly.controls().refreshBindings()) setChanged();
+        if(level.getGameTime() % 5L == 0L) bearingAssembly.resources().refillConsumers();
     }
 
     // Roll back the mounted assembly
@@ -1943,6 +1672,7 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
     @Override
     public void writeSafe(CompoundTag tag, HolderLookup.Provider provider) {
         super.writeSafe(tag, provider);
+        bearingAssembly.controls().write(tag);
         tag.putString("ControlMode", controlMode.name());
         tag.putString("StabilizeAxis", stabilizeAxis.name());
         tag.putBoolean("KeepStable", keepStable);
@@ -1956,6 +1686,7 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
     @Override
     protected void write(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.write(tag, provider, clientPacket);
+        bearingAssembly.controls().write(tag);
         tag.putString("ControlMode", controlMode.name());
         tag.putString("StabilizeAxis", stabilizeAxis.name());
         tag.putBoolean("KeepStable", keepStable);
@@ -2012,6 +1743,7 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
     @Override
     protected void read(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.read(tag, provider, clientPacket);
+        bearingAssembly.controls().read(tag);
         controlMode = readEnum(tag, "ControlMode", ControlMode.AUTO);
         stabilizeAxis = StabilizeAxis.fromSerializedName(tag.getString("StabilizeAxis"), StabilizeAxis.XZ);
         keepStable = tag.getBoolean("KeepStable");
@@ -2218,237 +1950,6 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         tooltip.add(CTTooltipHelper.line(Component.translatable("createthrusters.goggle.vector_bearing.assembly"),
                 CTTooltipHelper.linked(isMountedAssemblyPresent())));
         return true;
-    }
-
-    // Handle the assembly fluid distributor
-    private static class AssemblyFluidDistributor implements IFluidHandler {
-        // Bearing
-        private final VectorBearingBlockEntity bearing;
-
-        // Initialize the assembly fluid distributor
-        public AssemblyFluidDistributor(VectorBearingBlockEntity bearing) {
-            this.bearing = bearing;
-        }
-
-        // Get the tanks
-        @Override
-        public int getTanks() {
-            return 1;
-        }
-
-        // Get the fluid in tank
-        @Override
-        public FluidStack getFluidInTank(int tank) {
-            if (tank != 0) {
-                return FluidStack.EMPTY;
-            }
-
-            FluidStack aggregate = FluidStack.EMPTY;
-            for (IFluidHandler handler : bearing.collectAttachedFluidHandlers(FluidStack.EMPTY)) {
-                for (int idx = 0; idx < handler.getTanks(); idx++) {
-                    FluidStack fluidInTank = handler.getFluidInTank(idx);
-                    if (fluidInTank.isEmpty()) {
-                        continue;
-                    }
-
-                    if (aggregate.isEmpty()) {
-                        aggregate = fluidInTank.copy();
-                        continue;
-                    }
-
-                    if (!FluidStack.isSameFluidSameComponents(aggregate, fluidInTank)) {
-                        return FluidStack.EMPTY;
-                    }
-
-                    aggregate.setAmount(aggregate.getAmount() + fluidInTank.getAmount());
-                }
-            }
-
-            return aggregate;
-        }
-
-        // Get the tank capacity
-        @Override
-        public int getTankCapacity(int tank) {
-            if (tank != 0) {
-                return 0;
-            }
-
-            int totalCapacity = 0;
-            for (IFluidHandler handler : bearing.collectAttachedFluidHandlers(FluidStack.EMPTY)) {
-                for (int idx = 0; idx < handler.getTanks(); idx++) {
-                    totalCapacity += handler.getTankCapacity(idx);
-                }
-            }
-            return totalCapacity;
-        }
-
-        // Check if the fluid is valid
-        @Override
-        public boolean isFluidValid(int tank, FluidStack stack) {
-            if (tank != 0 || stack.isEmpty()) {
-                return false;
-            }
-
-            for (IFluidHandler handler : bearing.collectAttachedFluidHandlers(stack)) {
-                if (OxidizedFuelStorageAccess.allow(() ->
-                        handler.fill(stack.copyWithAmount(1), FluidAction.SIMULATE)) > 0) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        // Fill the assembly fluid distributor
-        @Override
-        public int fill(FluidStack resource, FluidAction action) {
-            if (resource.isEmpty()) {
-                return 0;
-            }
-
-            List<IFluidHandler> activeTargets = new ArrayList<>(bearing.collectAttachedFluidHandlers(resource));
-            if (activeTargets.isEmpty()) {
-                return 0;
-            }
-
-            int remaining = resource.getAmount();
-            while (remaining > 0 && !activeTargets.isEmpty()) {
-                int share = Math.max(1, Mth.ceil((double) remaining / (double) activeTargets.size()));
-                List<IFluidHandler> nextTargets = new ArrayList<>(activeTargets.size());
-                boolean movedFluid = false;
-
-                for (IFluidHandler handler : activeTargets) {
-                    if (remaining <= 0) {
-                        break;
-                    }
-
-                    FluidStack req = resource.copyWithAmount(Math.min(share, remaining));
-                    int filled = OxidizedFuelStorageAccess.allow(() -> handler.fill(req, action));
-                    if (filled > 0) {
-                        remaining -= filled;
-                        movedFluid = true;
-                    }
-
-                    if (OxidizedFuelStorageAccess.allow(() ->
-                            handler.fill(resource.copyWithAmount(1), FluidAction.SIMULATE)) > 0) {
-                        nextTargets.add(handler);
-                    }
-                }
-
-                if (!movedFluid) {
-                    break;
-                }
-
-                activeTargets = nextTargets;
-            }
-
-            return resource.getAmount() - remaining;
-        }
-
-        // Drain the assembly fluid distributor
-        @Override
-        public FluidStack drain(FluidStack resource, FluidAction action) {
-            return FluidStack.EMPTY;
-        }
-
-        // Drain the assembly fluid distributor
-        @Override
-        public FluidStack drain(int maxDrain, FluidAction action) {
-            return FluidStack.EMPTY;
-        }
-    }
-
-    // Handle the assembly energy distributor
-    private static class AssemblyEnergyDistributor implements IEnergyStorage {
-        // Bearing
-        private final VectorBearingBlockEntity bearing;
-
-        // Initialize the assembly energy distributor
-        public AssemblyEnergyDistributor(VectorBearingBlockEntity bearing) {
-            this.bearing = bearing;
-        }
-
-        // Receive the energy
-        @Override
-        public int receiveEnergy(int maxReceive, boolean simulate) {
-            if (maxReceive <= 0) {
-                return 0;
-            }
-
-            List<IEnergyStorage> activeTargets = new ArrayList<>(bearing.collectAttachedEnergyHandlers());
-            if (activeTargets.isEmpty()) {
-                return 0;
-            }
-
-            int remaining = maxReceive;
-            while (remaining > 0 && !activeTargets.isEmpty()) {
-                int share = Math.max(1, Mth.ceil((double) remaining / (double) activeTargets.size()));
-                List<IEnergyStorage> nextTargets = new ArrayList<>(activeTargets.size());
-                boolean movedEnergy = false;
-
-                for (IEnergyStorage handler : activeTargets) {
-                    if (remaining <= 0) {
-                        break;
-                    }
-
-                    int accepted = handler.receiveEnergy(Math.min(share, remaining), simulate);
-                    if (accepted > 0) {
-                        remaining -= accepted;
-                        movedEnergy = true;
-                    }
-
-                    if (handler.canReceive() && handler.receiveEnergy(1, true) > 0) {
-                        nextTargets.add(handler);
-                    }
-                }
-
-                if (!movedEnergy) {
-                    break;
-                }
-
-                activeTargets = nextTargets;
-            }
-
-            return maxReceive - remaining;
-        }
-
-        // Extract the energy
-        @Override
-        public int extractEnergy(int maxExtract, boolean simulate) {
-            return 0;
-        }
-
-        // Get the energy stored
-        @Override
-        public int getEnergyStored() {
-            int total = 0;
-            for (IEnergyStorage handler : bearing.collectAttachedEnergyHandlers()) {
-                total += handler.getEnergyStored();
-            }
-            return total;
-        }
-
-        // Get the max energy stored
-        @Override
-        public int getMaxEnergyStored() {
-            int total = 0;
-            for (IEnergyStorage handler : bearing.collectAttachedEnergyHandlers()) {
-                total += handler.getMaxEnergyStored();
-            }
-            return total;
-        }
-
-        // Check if this can extract
-        @Override
-        public boolean canExtract() {
-            return false;
-        }
-
-        // Check if this can receive
-        @Override
-        public boolean canReceive() {
-            return true;
-        }
     }
 
     // Get the frequency key

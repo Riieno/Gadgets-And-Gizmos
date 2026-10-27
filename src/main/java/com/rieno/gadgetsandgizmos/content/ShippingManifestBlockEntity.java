@@ -15,6 +15,9 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDataProvider;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
 import com.rieno.gadgetsandgizmos.lib.power.LongEnergyStorage;
+import com.rieno.gadgetsandgizmos.lib.inventory.ContainerDataSource;
+import com.rieno.gadgetsandgizmos.lib.probe.ContainerData;
+import com.rieno.gadgetsandgizmos.content.advanced.GraphRuntime;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
 import com.simibubi.create.api.equipment.goggles.IHaveGoggleInformation;
@@ -31,6 +34,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import net.neoforged.neoforge.items.IItemHandler;
@@ -38,10 +42,11 @@ import net.neoforged.neoforge.energy.IEnergyStorage;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 // Define one named cargo endpoint and expose its live contents to schedules and graphs
-public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHaveGoggleInformation, AdvancedGraphDataProvider {
+public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHaveGoggleInformation, AdvancedGraphDataProvider, ContainerDataSource {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -395,6 +400,16 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
                 ShippingManifestBlock.attachedTargetSide(state));
     }
 
+    // Resolve the attached container or its complete Smart storage network
+    @Override public List<BlockEntity> dataContainers(){
+        if(level == null) return List.of();
+        var pos = ShippingManifestBlock.attachedTargetPos(worldPosition, getBlockState());
+        if(!WorkerContainerAccess.isLoaded(level, pos)) return List.of();
+        return ContainerData.containers(level.getBlockEntity(pos));
+    }
+
+    @Override public Direction dataSide(){ return ShippingManifestBlock.attachedTargetSide(getBlockState()); }
+
     // Detect the default resource uses from the attached storage capabilities
     private static int detectedResourceUses(
             IItemHandler items,
@@ -647,14 +662,16 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
     // Get the graph readable data
     @Override
     public Map<String, String> graphReadableData() {
-        return Map.of(
+        Map<String, String> ports = new LinkedHashMap<>(Map.of(
                 "display_text", "string",
                 "item_types", "number",
                 "fluid_types", "number",
                 "energy", "number",
                 "energy_capacity", "number",
                 "energy_fill", "number",
-                "combined_manifest", "boolean");
+                "combined_manifest", "boolean"));
+        ports.putAll(ContainerData.readableData(this));
+        return ports;
     }
 
     // Get the graph writable data
@@ -669,6 +686,9 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
     // Read the graph data
     @Override
     public AdvancedGraphDocument.Value readGraphData(String field) {
+        if(ContainerData.readableData(this).containsKey(field)){
+            return GraphRuntime.fromLibraryValue(ContainerData.capture(this, dataSide()).read(field));
+        }
         return switch (field) {
             case "display_text" -> AdvancedGraphDocument.Value.string(displayText());
             case "item_types" -> AdvancedGraphDocument.Value.number(itemTypes);
@@ -726,7 +746,7 @@ public class ShippingManifestBlockEntity extends SmartBlockEntity implements IHa
         StringBuilder builder = new StringBuilder();
         for (DisplayEntry entry : displayEntries) {
             if (!builder.isEmpty()) {
-                builder.append('\n');
+                builder.append(", ");
             }
             if (!entry.text.isEmpty()) {
                 builder.append(entry.text);

@@ -114,6 +114,7 @@ public final class CTCreativeTabs {
         row = addSectionBanner(displayItems, BLOCKS_SECTION, row);
         int blockCount = 0;
         blockCount += accept(displayItems, searchItems, CTItems.THRUSTER);
+        blockCount += accept(displayItems, searchItems, CTItems.CELEBRATION_THRUSTER);
         blockCount += acceptStack(displayItems, searchItems, IonThrusterStacks.create());
         blockCount += accept(displayItems, searchItems, CTItems.SMALL_THRUSTER);
         blockCount += accept(displayItems, searchItems, CTItems.RCS_THRUSTER);
@@ -150,6 +151,7 @@ public final class CTCreativeTabs {
         blockCount += accept(displayItems, searchItems, CTItems.SHIP_COUPLER);
         blockCount += accept(displayItems, searchItems, CTItems.ACC_DISPLAY);
         blockCount += accept(displayItems, searchItems, CTItems.CAMERA);
+        blockCount += accept(displayItems, searchItems, CTItems.WORLD_HOLOGRAM_PROJECTOR);
         blockCount += accept(displayItems, searchItems, CTItems.ACC_DISPLAY_BLOCK);
         blockCount += accept(displayItems, searchItems, CTItems.ACC_DISPLAY_PANEL);
         blockCount += accept(displayItems, searchItems, CTItems.ACC_DISPLAY_HALF_PANEL);
@@ -178,6 +180,7 @@ public final class CTCreativeTabs {
         itemCount += accept(displayItems, searchItems, CTItems.ENTITY_LAUNCHER);
         itemCount += accept(displayItems, searchItems, CTItems.SHIPPING_SCHEDULE);
         itemCount += accept(displayItems, searchItems, CTItems.THRUSTER_LENSE);
+        itemCount += accept(displayItems, searchItems, CTItems.THRUSTER_DYE);
         itemCount += accept(displayItems, searchItems, CTItems.SCISSOR_ARMS);
         itemCount += accept(displayItems, searchItems, CTItems.OXIDIZED_CREATIVE_BLAZE_CAKE);
         itemCount += accept(displayItems, searchItems, CTItems.OXIDIZED_SOLID_FUEL);

@@ -125,6 +125,16 @@ public class RcsThrusterBlock extends DirectionalKineticBlock
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+    @Override
+    protected net.minecraft.world.ItemInteractionResult useItemOn(net.minecraft.world.item.ItemStack stack, BlockState state,
+            Level level, BlockPos pos, Player player, net.minecraft.world.InteractionHand hand, BlockHitResult hit){
+        if(stack.getItem() instanceof ThrusterDyeItem dye){
+            var result = dye.useOn(new net.minecraft.world.item.context.UseOnContext(player, hand, hit));
+            return result.consumesAction() ? net.minecraft.world.ItemInteractionResult.sidedSuccess(level.isClientSide) : net.minecraft.world.ItemInteractionResult.FAIL;
+        }
+        return super.useItemOn(stack, state, level, pos, player, hand, hit);
+    }
+
     // Handle RCS thruster block use without an item
     @Override
     protected InteractionResult useWithoutItem(

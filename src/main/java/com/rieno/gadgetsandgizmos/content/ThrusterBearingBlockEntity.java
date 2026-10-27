@@ -14,6 +14,8 @@ import com.rieno.gadgetsandgizmos.config.CTConfigs;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDataProvider;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.inventory.AssemblyResourceAccess;
+import com.rieno.gadgetsandgizmos.lib.control.AssemblyThrusterControl;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
 import com.rieno.gadgetsandgizmos.lib.control.IDirectControlReceiver;
 import com.rieno.gadgetsandgizmos.lib.control.LinkedOrientationSource;
@@ -26,7 +28,6 @@ import com.rieno.gadgetsandgizmos.lib.physics.SableConstraintApi;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.rieno.gadgetsandgizmos.util.CTPropulsionTelemetry;
-import com.rieno.gadgetsandgizmos.util.OxidizedFuelStorageAccess;
 import com.simibubi.create.content.contraptions.AssemblyException;
 import com.simibubi.create.content.kinetics.base.IRotate;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
@@ -90,16 +91,12 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.fml.loading.FMLEnvironment;
-import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.energy.IEnergyStorage;
-import net.neoforged.neoforge.fluids.FluidStack;
 import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 
 import java.lang.reflect.Field;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -115,7 +112,7 @@ import org.joml.Vector3d;
 import org.joml.Vector3dc;
 
 // Aim attached thrusters from SCM and direct controls
-public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity implements INamedBlockEntity,
+public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity implements AssemblyResourceAccess, INamedBlockEntity,
         IDirectControlReceiver, LinkedOrientationSource, OrientationTarget, AdvancedGraphDataProvider,
         SmartGearboxServoAngleAcceptor {
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -157,12 +154,6 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
     // Bodies attached to the current rotary joint
     private ServerSubLevel servoJointParent;
     private ServerSubLevel servoJointChild;
-
-    // Assembly fluid handler
-    private final IFluidHandler assemblyFluidHandler = new AssemblyFluidDistributor(this);
-
-    // Assembly energy handler
-    private final IEnergyStorage assemblyEnergyHandler = new AssemblyEnergyDistributor(this);
 
     // Current forward signal
     private int forwardSignal;
@@ -234,6 +225,11 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
     private AngleMode lastSyncedAngleMode;
     // Tracked thruster aliases
     private final Map<String, String> thrusterAliases = new LinkedHashMap<>();
+    // Shared mounted-thruster controls and resource inputs
+    private final BearingAssembly bearingAssembly = new BearingAssembly(this, "thruster_bearing",
+            () -> getSubLevelID() == null ? List.of() : List.of(getSubLevelID()),
+            () -> getSubLevelID() == null ? List.of(worldPosition.relative(getFacing())) : List.of(), thrusterAliases);
+
     // Current custom name
     @org.jetbrains.annotations.Nullable
     private String customName;
@@ -2030,12 +2026,12 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
 
     // Get the assembly fluid handler
     public IFluidHandler getAssemblyFluidHandler() {
-        return assemblyFluidHandler;
+        return bearingAssembly.resources().getAssemblyFluidHandler();
     }
 
     // Get the assembly energy handler
     public IEnergyStorage getAssemblyEnergyHandler() {
-        return assemblyEnergyHandler;
+        return bearingAssembly.resources().getAssemblyEnergyHandler();
     }
 
     // Check if this can accept assembly fluid from the source
@@ -2296,7 +2292,7 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
             }
         }
 
-        if (thrusters.isEmpty()) {
+        if (thrusters.isEmpty() && getSubLevelID() == null) {
             ThrusterBlockEntity attachedThruster = getAttachedThruster();
             if (attachedThruster != null) {
                 String thrusterId = getThrusterId(attachedThruster);
@@ -2321,9 +2317,8 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
     }
 
     // Get the thruster id
-    public String getThrusterId(ThrusterBlockEntity thruster) {
-        return UUID.nameUUIDFromBytes(("thruster:" + thruster.getBlockPos().asLong())
-                .getBytes(StandardCharsets.UTF_8)).toString();
+    public String getThrusterId(ThrusterBlockEntity thruster){
+        return AssemblyThrusterControl.targetId("thruster", thruster.getBlockPos());
     }
 
     // Get the thruster alias
@@ -2332,9 +2327,8 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
     }
 
     // Get the RCS thruster id
-    public String getRcsThrusterId(RcsThrusterBlockEntity thruster) {
-        return UUID.nameUUIDFromBytes(("rcs_thruster:" + thruster.getBlockPos().asLong())
-                .getBytes(StandardCharsets.UTF_8)).toString();
+    public String getRcsThrusterId(RcsThrusterBlockEntity thruster){
+        return AssemblyThrusterControl.targetId("rcs_thruster", thruster.getBlockPos());
     }
 
     // Get the RCS thruster alias
@@ -2385,103 +2379,27 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
         return CTPropulsionTelemetry.getAttachedThrusterLiftCapacities(this);
     }
 
-    // Get the attached thrusters by pos
-    private Map<BlockPos, ThrusterBlockEntity> attachedThrustersByPos() {
-        Map<BlockPos, ThrusterBlockEntity> currentThrusters = new LinkedHashMap<>();
-        Set<ThrusterBlockEntity> seenThrusters = Collections.newSetFromMap(new IdentityHashMap<>());
-        Object attachedSubLevel = getAttachedSubLevelHandle();
-
-        if (attachedSubLevel != null) {
-            for (BlockEntity blockEntity : getAttachedBlockEntities(attachedSubLevel)) {
-                if (blockEntity instanceof ThrusterBlockEntity thruster && seenThrusters.add(thruster)) {
-                    currentThrusters.put(thruster.getBlockPos().immutable(), thruster);
-                }
-            }
-        }
-
-        if (currentThrusters.isEmpty()) {
-            ThrusterBlockEntity attachedThruster = getAttachedThruster();
-            if (attachedThruster != null) {
-                currentThrusters.put(attachedThruster.getBlockPos().immutable(), attachedThruster);
-            }
-        }
-
-        return currentThrusters;
+    // Get the native thrusters for the existing graph API
+    private Map<BlockPos, ThrusterBlockEntity> attachedThrustersByPos(){
+        Map<BlockPos, ThrusterBlockEntity> res = new LinkedHashMap<>();
+        for(ThrusterBlockEntity thruster : bearingAssembly.thrusters()) res.put(thruster.getBlockPos(), thruster);
+        return res;
     }
 
-    // Get the attached RCS thrusters by position
-    private Map<BlockPos, RcsThrusterBlockEntity> attachedRcsThrustersByPos() {
-        Map<BlockPos, RcsThrusterBlockEntity> currentThrusters = new LinkedHashMap<>();
-        Set<RcsThrusterBlockEntity> seenThrusters = Collections.newSetFromMap(new IdentityHashMap<>());
-        Object attachedSubLevel = getAttachedSubLevelHandle();
-        if (attachedSubLevel != null) {
-            for (BlockEntity blockEntity : getAttachedBlockEntities(attachedSubLevel)) {
-                if (blockEntity instanceof RcsThrusterBlockEntity thruster && seenThrusters.add(thruster)) {
-                    currentThrusters.put(thruster.getBlockPos().immutable(), thruster);
-                }
-            }
-        }
-        return currentThrusters;
+    // Get the native RCS thrusters for the existing graph API
+    private Map<BlockPos, RcsThrusterBlockEntity> attachedRcsThrustersByPos(){
+        Map<BlockPos, RcsThrusterBlockEntity> res = new LinkedHashMap<>();
+        for(RcsThrusterBlockEntity thruster : bearingAssembly.rcsThrusters()) res.put(thruster.getBlockPos(), thruster);
+        return res;
     }
 
-    // Get the next thruster alias
-    private String nextThrusterAlias(String prefix) {
-        Set<String> usedAliases = new java.util.HashSet<>(thrusterAliases.values());
-        int idx = 0;
-        while (usedAliases.contains(prefix + idx)) {
-            idx++;
-        }
-        return prefix + idx;
+    // Refresh the mounted thruster IDs and aliases
+    private boolean refreshThrusterBindings(){
+        return bearingAssembly.controls().refreshBindings();
     }
 
-    // Refresh the thruster bindings
-    private boolean refreshThrusterBindings() {
-        boolean changed = false;
-        Set<String> currentThrusterIds = new java.util.HashSet<>();
-        for (Map.Entry<BlockPos, ThrusterBlockEntity> entry : attachedThrustersByPos().entrySet()) {
-            ThrusterBlockEntity thruster = entry.getValue();
-            String thrusterId = getThrusterId(thruster);
-            currentThrusterIds.add(thrusterId);
-            String alias = thrusterAliases.get(thrusterId);
-            if (alias == null || alias.isBlank()) {
-                alias = nextThrusterAlias("thruster_");
-                thrusterAliases.put(thrusterId, alias);
-                changed = true;
-            }
-            String previousId = thruster.getCcId();
-            String previousAlias = thruster.getAssemblyComputerCraftAlias();
-            thruster.setCcId(thrusterId);
-            thruster.setAssemblyComputerCraftAlias(alias);
-            if (!thrusterId.equals(previousId)) {
-                changed = true;
-            }
-            if (!alias.equals(previousAlias)) {
-                changed = true;
-            }
-        }
-
-        for (Map.Entry<BlockPos, RcsThrusterBlockEntity> entry : attachedRcsThrustersByPos().entrySet()) {
-            RcsThrusterBlockEntity thruster = entry.getValue();
-            String thrusterId = getRcsThrusterId(thruster);
-            currentThrusterIds.add(thrusterId);
-            String alias = thrusterAliases.get(thrusterId);
-            if (alias == null || alias.isBlank()) {
-                alias = nextThrusterAlias("rcs_thruster_");
-                thrusterAliases.put(thrusterId, alias);
-                changed = true;
-            }
-            String previousId = thruster.getCcId();
-            String previousAlias = thruster.getAssemblyComputerCraftAlias();
-            thruster.setCcId(thrusterId);
-            thruster.setAssemblyComputerCraftAlias(alias);
-            if (!thrusterId.equals(previousId) || !alias.equals(previousAlias)) changed = true;
-        }
-
-        if (thrusterAliases.keySet().removeIf(id -> !currentThrusterIds.contains(id))) {
-            changed = true;
-        }
-        return changed;
-    }
+    // Get the library adapters for this bearing
+    public BearingAssembly getBearingAssembly(){ return bearingAssembly; }
 
     // Get the attached sublevel handle
     private Object getAttachedSubLevelHandle() {
@@ -2492,255 +2410,10 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
         return SubLevelBlockEntityCollector.getSubLevel(level, getSubLevelID());
     }
 
-    // Collect the attached fuel handlers
-    private List<IFluidHandler> collectAttachedFuelHandlers(FluidStack requestedFluid) {
-        if (level == null) {
-            return List.of();
-        }
-
-        List<IFluidHandler> targets = new ArrayList<>();
-        Set<IFluidHandler> seenHandlers = Collections.newSetFromMap(new IdentityHashMap<>());
-        Object attachedSubLevel = getAttachedSubLevelHandle();
-
-        if (attachedSubLevel != null) {
-            for (BlockEntity blockEntity : getAttachedBlockEntities(attachedSubLevel)) {
-                addAttachedFuelHandler(targets, seenHandlers, blockEntity, requestedFluid);
-            }
-        }
-
-        if (targets.isEmpty()) {
-            addAttachedFuelHandler(targets, seenHandlers, getAttachedThruster(), requestedFluid);
-        }
-
-        return targets;
-    }
-
-    // Collect the attached energy handlers
-    private List<IEnergyStorage> collectAttachedEnergyHandlers() {
-        if (level == null) {
-            return List.of();
-        }
-
-        List<IEnergyStorage> targets = new ArrayList<>();
-        Set<IEnergyStorage> seenHandlers = Collections.newSetFromMap(new IdentityHashMap<>());
-        Object attachedSubLevel = getAttachedSubLevelHandle();
-
-        if (attachedSubLevel != null) {
-            for (BlockEntity blockEntity : getAttachedBlockEntities(attachedSubLevel)) {
-                addAttachedEnergyHandler(targets, seenHandlers, blockEntity);
-            }
-        }
-
-        if (targets.isEmpty()) {
-            addAttachedEnergyHandler(targets, seenHandlers, getAttachedThruster());
-        }
-
-        return targets;
-    }
-
-    // Get the attached block entities
-    private List<BlockEntity> getAttachedBlockEntities(Object attachedSubLevel) {
-        return SubLevelBlockEntityCollector.getBlockEntities(attachedSubLevel);
-    }
-
-    // Add the attached fuel handler
-    private void addAttachedFuelHandler(List<IFluidHandler> targets, Set<IFluidHandler> seenHandlers,
-            BlockEntity blockEntity, FluidStack requestedFluid) {
-        if (blockEntity == null || blockEntity.isRemoved() || blockEntity == this
-            || blockEntity instanceof ThrusterBearingBlockEntity) {
-            return;
-        }
-
-        IFluidHandler handler;
-        if (blockEntity instanceof ThrusterBlockEntity thruster) {
-            handler = thruster.getFuelTank();
-        } else {
-            handler = findFluidHandler(blockEntity);
-        }
-
-        if (handler == null) {
-            return;
-        }
-
-        if (!requestedFluid.isEmpty()
-                && OxidizedFuelStorageAccess.allow(() ->
-                        handler.fill(requestedFluid.copyWithAmount(1), IFluidHandler.FluidAction.SIMULATE)) <= 0) {
-            return;
-        }
-
-        if (seenHandlers.add(handler)) {
-            targets.add(handler);
-        }
-    }
-
-    // Add the attached energy handler
-    private void addAttachedEnergyHandler(List<IEnergyStorage> targets, Set<IEnergyStorage> seenHandlers,
-            BlockEntity blockEntity) {
-        if (blockEntity == null || blockEntity.isRemoved() || blockEntity == this
-            || blockEntity instanceof ThrusterBearingBlockEntity) {
-            return;
-        }
-
-        IEnergyStorage handler;
-        if (blockEntity instanceof ThrusterBlockEntity thruster) {
-
-            handler = thruster.isFocusedMode() ? thruster.getFocusInput() : null;
-        } else {
-            handler = findEnergyHandler(blockEntity);
-        }
-
-        if (handler == null || !handler.canReceive() || handler.receiveEnergy(1, true) <= 0) {
-            return;
-        }
-
-        if (seenHandlers.add(handler)) {
-            targets.add(handler);
-        }
-    }
-
-    // Collect the assembly fuel storers
-    private List<BlockEntity> collectAssemblyFuelStorers() {
-        List<BlockEntity> storers = new ArrayList<>();
-        Object attachedSubLevel = getAttachedSubLevelHandle();
-        if (attachedSubLevel == null) {
-            return storers;
-        }
-
-        for (BlockEntity blockEntity : getAttachedBlockEntities(attachedSubLevel)) {
-                if (blockEntity == null || blockEntity.isRemoved() || blockEntity == this
-                    || blockEntity instanceof ThrusterBearingBlockEntity
-                    || blockEntity instanceof ThrusterBlockEntity) {
-                continue;
-            }
-            if (findFluidHandler(blockEntity) != null) {
-                storers.add(blockEntity);
-            }
-        }
-        return storers;
-    }
-
-    // Redistribute the assembly fuel
-    private void redistributeAssemblyFuel() {
-        if (level == null || level.isClientSide || level.getGameTime() % 5L != 0L) {
-            return;
-        }
-
-        List<BlockEntity> storers = collectAssemblyFuelStorers();
-        if (storers.isEmpty()) {
-            return;
-        }
-
-        for (ThrusterBlockEntity thruster : getAttachedThrustersById().values()) {
-            refillThrusterFromStorers(thruster, storers);
-        }
-    }
-
-    // Refill the thruster from storers
-    private void refillThrusterFromStorers(ThrusterBlockEntity thruster, List<BlockEntity> storers) {
-        IFluidHandler consumer = thruster.getFuelTank();
-        int remaining = consumer.getTankCapacity(0) - consumer.getFluidInTank(0).getAmount();
-        if (remaining <= 0) {
-            return;
-        }
-
-        FluidStack desiredFuel = consumer.getFluidInTank(0);
-        for (BlockEntity storageBlockEntity : storers) {
-            IFluidHandler storage = findFluidHandler(storageBlockEntity);
-            if (storage == null) {
-                continue;
-            }
-
-            for (int tankIndex = 0; tankIndex < storage.getTanks() && remaining > 0; tankIndex++) {
-                FluidStack storedFuel = storage.getFluidInTank(tankIndex);
-                if (storedFuel.isEmpty()) {
-                    continue;
-                }
-                if (!desiredFuel.isEmpty() && !FluidStack.isSameFluidSameComponents(desiredFuel, storedFuel)) {
-                    continue;
-                }
-
-                FluidStack drainedPreview = storage.drain(storedFuel.copyWithAmount(Math.min(remaining, storedFuel.getAmount())),
-                        IFluidHandler.FluidAction.SIMULATE);
-                if (drainedPreview.isEmpty()) {
-                    continue;
-                }
-
-                int fillable = consumer.fill(drainedPreview.copy(), IFluidHandler.FluidAction.SIMULATE);
-                if (fillable <= 0) {
-                    continue;
-                }
-
-                FluidStack transferred = storage.drain(drainedPreview.copyWithAmount(fillable), IFluidHandler.FluidAction.EXECUTE);
-                if (transferred.isEmpty()) {
-                    continue;
-                }
-
-                int filled = consumer.fill(transferred, IFluidHandler.FluidAction.EXECUTE);
-                if (filled <= 0) {
-                    continue;
-                }
-
-                if (desiredFuel.isEmpty()) {
-                    desiredFuel = transferred.copyWithAmount(1);
-                }
-
-                remaining -= filled;
-                thruster.setChanged();
-                storageBlockEntity.setChanged();
-            }
-        }
-    }
-
-    // Find the fluid handler
-    private IFluidHandler findFluidHandler(BlockEntity blockEntity) {
-        Level blockEntityLevel = blockEntity.getLevel();
-        if (blockEntityLevel == null) {
-            return null;
-        }
-
-        BlockPos blockEntityPos = blockEntity.getBlockPos();
-        BlockState blockEntityState = blockEntity.getBlockState();
-        IFluidHandler handler = Capabilities.FluidHandler.BLOCK.getCapability(blockEntityLevel, blockEntityPos,
-                blockEntityState, blockEntity, null);
-        if (handler != null) {
-            return handler;
-        }
-
-        for (Direction dir : Direction.values()) {
-            handler = Capabilities.FluidHandler.BLOCK.getCapability(blockEntityLevel, blockEntityPos,
-                    blockEntityState, blockEntity, dir);
-            if (handler != null) {
-                return handler;
-            }
-        }
-
-        return null;
-    }
-
-    // Find the energy handler
-    private IEnergyStorage findEnergyHandler(BlockEntity blockEntity) {
-        Level blockEntityLevel = blockEntity.getLevel();
-        if (blockEntityLevel == null) {
-            return null;
-        }
-
-        BlockPos blockEntityPos = blockEntity.getBlockPos();
-        BlockState blockEntityState = blockEntity.getBlockState();
-        IEnergyStorage handler = Capabilities.EnergyStorage.BLOCK.getCapability(blockEntityLevel, blockEntityPos,
-                blockEntityState, blockEntity, null);
-        if (handler != null) {
-            return handler;
-        }
-
-        for (Direction dir : Direction.values()) {
-            handler = Capabilities.EnergyStorage.BLOCK.getCapability(blockEntityLevel, blockEntityPos,
-                    blockEntityState, blockEntity, dir);
-            if (handler != null) {
-                return handler;
-            }
-        }
-
-        return null;
+    // Refill thrusters from storage on the mounted body
+    private void redistributeAssemblyFuel(){
+        if(level == null || level.isClientSide || level.getGameTime() % 5L != 0L) return;
+        bearingAssembly.resources().refillConsumers();
     }
 
     // Add the tooltip
@@ -2833,237 +2506,6 @@ public class ThrusterBearingBlockEntity extends SwivelBearingBlockEntity impleme
     // Check if this is thruster too fast for tooltip
     private boolean isThrusterTooFastForTooltip() {
         return Math.abs(getExtraKinetics().getSpeed()) > THRUSTER_TOO_FAST_TOOLTIP_RPM;
-    }
-
-    // Handle the assembly fluid distributor
-    private static class AssemblyFluidDistributor implements IFluidHandler {
-        // Bearing
-        private final ThrusterBearingBlockEntity bearing;
-
-        // Initialize the assembly fluid distributor
-        public AssemblyFluidDistributor(ThrusterBearingBlockEntity bearing) {
-            this.bearing = bearing;
-        }
-
-        // Get the tanks
-        @Override
-        public int getTanks() {
-            return 1;
-        }
-
-        // Get the fluid in tank
-        @Override
-        public FluidStack getFluidInTank(int tank) {
-            if (tank != 0) {
-                return FluidStack.EMPTY;
-            }
-
-            FluidStack aggregate = FluidStack.EMPTY;
-            for (IFluidHandler handler : bearing.collectAttachedFuelHandlers(FluidStack.EMPTY)) {
-                for (int idx = 0; idx < handler.getTanks(); idx++) {
-                    FluidStack fluidInTank = handler.getFluidInTank(idx);
-                    if (fluidInTank.isEmpty()) {
-                        continue;
-                    }
-
-                    if (aggregate.isEmpty()) {
-                        aggregate = fluidInTank.copy();
-                        continue;
-                    }
-
-                    if (!FluidStack.isSameFluidSameComponents(aggregate, fluidInTank)) {
-                        return FluidStack.EMPTY;
-                    }
-
-                    aggregate.setAmount(aggregate.getAmount() + fluidInTank.getAmount());
-                }
-            }
-
-            return aggregate;
-        }
-
-        // Get the tank capacity
-        @Override
-        public int getTankCapacity(int tank) {
-            if (tank != 0) {
-                return 0;
-            }
-
-            int totalCapacity = 0;
-            for (IFluidHandler handler : bearing.collectAttachedFuelHandlers(FluidStack.EMPTY)) {
-                for (int idx = 0; idx < handler.getTanks(); idx++) {
-                    totalCapacity += handler.getTankCapacity(idx);
-                }
-            }
-            return totalCapacity;
-        }
-
-        // Check if the fluid is valid
-        @Override
-        public boolean isFluidValid(int tank, FluidStack stack) {
-            if (tank != 0 || stack.isEmpty()) {
-                return false;
-            }
-
-            for (IFluidHandler handler : bearing.collectAttachedFuelHandlers(stack)) {
-                if (OxidizedFuelStorageAccess.allow(() ->
-                        handler.fill(stack.copyWithAmount(1), FluidAction.SIMULATE)) > 0) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        // Fill the assembly fluid distributor
-        @Override
-        public int fill(FluidStack resource, FluidAction action) {
-            if (resource.isEmpty()) {
-                return 0;
-            }
-
-            List<IFluidHandler> activeTargets = new ArrayList<>(bearing.collectAttachedFuelHandlers(resource));
-            if (activeTargets.isEmpty()) {
-                return 0;
-            }
-
-            int remaining = resource.getAmount();
-            while (remaining > 0 && !activeTargets.isEmpty()) {
-                int share = Math.max(1, Mth.ceil((double) remaining / (double) activeTargets.size()));
-                List<IFluidHandler> nextTargets = new ArrayList<>(activeTargets.size());
-                boolean movedFluid = false;
-
-                for (IFluidHandler handler : activeTargets) {
-                    if (remaining <= 0) {
-                        break;
-                    }
-
-                    FluidStack req = resource.copyWithAmount(Math.min(share, remaining));
-                    int filled = OxidizedFuelStorageAccess.allow(() -> handler.fill(req, action));
-                    if (filled > 0) {
-                        remaining -= filled;
-                        movedFluid = true;
-                    }
-
-                    if (OxidizedFuelStorageAccess.allow(() ->
-                            handler.fill(resource.copyWithAmount(1), FluidAction.SIMULATE)) > 0) {
-                        nextTargets.add(handler);
-                    }
-                }
-
-                if (!movedFluid) {
-                    break;
-                }
-
-                activeTargets = nextTargets;
-            }
-
-            return resource.getAmount() - remaining;
-        }
-
-        // Drain the assembly fluid distributor
-        @Override
-        public FluidStack drain(FluidStack resource, FluidAction action) {
-            return FluidStack.EMPTY;
-        }
-
-        // Drain the assembly fluid distributor
-        @Override
-        public FluidStack drain(int maxDrain, FluidAction action) {
-            return FluidStack.EMPTY;
-        }
-    }
-
-    // Handle the assembly energy distributor
-    private static class AssemblyEnergyDistributor implements IEnergyStorage {
-        // Bearing
-        private final ThrusterBearingBlockEntity bearing;
-
-        // Initialize the assembly energy distributor
-        public AssemblyEnergyDistributor(ThrusterBearingBlockEntity bearing) {
-            this.bearing = bearing;
-        }
-
-        // Receive the energy
-        @Override
-        public int receiveEnergy(int maxReceive, boolean simulate) {
-            if (maxReceive <= 0) {
-                return 0;
-            }
-
-            List<IEnergyStorage> activeTargets = new ArrayList<>(bearing.collectAttachedEnergyHandlers());
-            if (activeTargets.isEmpty()) {
-                return 0;
-            }
-
-            int remaining = maxReceive;
-            while (remaining > 0 && !activeTargets.isEmpty()) {
-                int share = Math.max(1, Mth.ceil((double) remaining / (double) activeTargets.size()));
-                List<IEnergyStorage> nextTargets = new ArrayList<>(activeTargets.size());
-                boolean movedEnergy = false;
-
-                for (IEnergyStorage handler : activeTargets) {
-                    if (remaining <= 0) {
-                        break;
-                    }
-
-                    int accepted = handler.receiveEnergy(Math.min(share, remaining), simulate);
-                    if (accepted > 0) {
-                        remaining -= accepted;
-                        movedEnergy = true;
-                    }
-
-                    if (handler.canReceive() && handler.receiveEnergy(1, true) > 0) {
-                        nextTargets.add(handler);
-                    }
-                }
-
-                if (!movedEnergy) {
-                    break;
-                }
-
-                activeTargets = nextTargets;
-            }
-
-            return maxReceive - remaining;
-        }
-
-        // Extract the energy
-        @Override
-        public int extractEnergy(int maxExtract, boolean simulate) {
-            return 0;
-        }
-
-        // Get the energy stored
-        @Override
-        public int getEnergyStored() {
-            int total = 0;
-            for (IEnergyStorage handler : bearing.collectAttachedEnergyHandlers()) {
-                total += handler.getEnergyStored();
-            }
-            return total;
-        }
-
-        // Get the max energy stored
-        @Override
-        public int getMaxEnergyStored() {
-            int total = 0;
-            for (IEnergyStorage handler : bearing.collectAttachedEnergyHandlers()) {
-                total += handler.getMaxEnergyStored();
-            }
-            return total;
-        }
-
-        // Check if this can extract
-        @Override
-        public boolean canExtract() {
-            return false;
-        }
-
-        // Check if this can receive
-        @Override
-        public boolean canReceive() {
-            return true;
-        }
     }
 
     // Handle the angle range screen behaviour

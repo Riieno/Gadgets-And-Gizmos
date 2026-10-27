@@ -8,9 +8,11 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.content.WorldHologramProjectorBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ShipDockBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ThrusterMenu;
+import com.rieno.gadgetsandgizmos.content.SmartContainerMenu;
 import com.rieno.gadgetsandgizmos.content.WorkerInventoryMenu;
 import com.rieno.gadgetsandgizmos.content.DoubleButtonBlockEntity;
 import com.rieno.gadgetsandgizmos.content.GyroscopeLinkBlockEntity;
@@ -81,6 +83,11 @@ public final class CTClientScreens {
                 Component.translatable("createthrusters.gyroscope_link.config.title")));
     }
 
+    // Open the world hologram projector controls
+    public static void openWorldHologramProjector(WorldHologramProjectorBlockEntity projector){
+        ScreenOpener.open(new WorldHologramProjectorScreen(projector));
+    }
+
     // Open the double button mode screen
     public static void openDoubleButtonModeScreen(DoubleButtonBlockEntity blockEntity) {
         ScreenOpener.open(new DoubleButtonModeScreen(blockEntity));
@@ -138,6 +145,8 @@ public final class CTClientScreens {
         if (CTMenuTypes.AILERON_BEARING != null) evt.register(CTMenuTypes.AILERON_BEARING.get(), AileronBearingScreen::new);
         if (CTMenuTypes.POWERED_ZIPLINE != null) evt.register(CTMenuTypes.POWERED_ZIPLINE.get(), PoweredZiplineScreen::new);
         if (CTMenuTypes.WORKER_INVENTORY != null) evt.register(CTMenuTypes.WORKER_INVENTORY.get(), WorkerInventoryScreen::new);
+        evt.<SmartContainerMenu, DiagnosticTabletScreen<SmartContainerMenu>>register(CTMenuTypes.SMART_CONTAINER.get(), DiagnosticTabletScreen::containerScreen);
+        evt.register(CTMenuTypes.THRUSTER_DYE.get(), ThrusterDyeScreen::new);
         evt.register(CTMenuTypes.NAVIGATION_TABLE.get(), NavigationTableScreen::new);
     }
 }

@@ -14,6 +14,9 @@ import com.rieno.gadgetsandgizmos.lib.client.render.ClientParticleScreenCoverage
 import com.rieno.gadgetsandgizmos.lib.client.render.ParticleRenderOrdering;
 import com.rieno.gadgetsandgizmos.lib.client.render.SoftParticleRenderTypes;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientRegistry;
+import com.rieno.gadgetsandgizmos.lib.client.ui.SoundCatalog;
+import com.rieno.gadgetsandgizmos.lib.client.ui.ItemPickerScreen;
+import com.rieno.gadgetsandgizmos.lib.client.ui.PaintedSelectionModal;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletData;
 import com.rieno.gadgetsandgizmos.content.IonThrusterStacks;
 import com.rieno.gadgetsandgizmos.content.ZiplineRidingController;
@@ -21,6 +24,7 @@ import com.rieno.gadgetsandgizmos.particle.worldspace.WorldSpaceParticleEmitter;
 import com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps.AppStore;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
+import com.rieno.gadgetsandgizmos.registry.CTSoundEvents;
 import com.rieno.gadgetsandgizmos.ponder.CTPonderPlugin;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphSnapshotPayload;
 import com.simibubi.create.foundation.block.render.ReducedDestroyEffects;
@@ -30,6 +34,7 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.item.ItemProperties;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
 import com.simibubi.create.content.decoration.copycat.CopycatBlock;
 import net.createmod.ponder.foundation.PonderIndex;
 import net.neoforged.bus.api.IEventBus;
@@ -73,8 +78,15 @@ public final class CTClientBootstrap {
 
     // Register the CT client bootstrap
     public static void register(IEventBus modEventBus, ModContainer modContainer) {
+        com.rieno.gadgetsandgizmos.neoforge.network.WorldHologramDataPayload.installClientHandler(WorldHologramClient::accept);
+        modEventBus.addListener(WorldHologramClient::registerReloadListeners);
+        NeoForge.EVENT_BUS.addListener(WorldHologramClient::onClientTick);
+        com.rieno.gadgetsandgizmos.lib.physics.ClientEffectGate.installRange(
+                owner -> com.rieno.gadgetsandgizmos.lib.client.render.ClientRenderDistance.within(owner, Double.MAX_VALUE));
         ParticleRenderOrdering.registerAfterClouds(SoftParticleRenderTypes.fastAlphaEmissiveMetaballBillboard());
         ParticleRenderOrdering.registerAfterClouds(SoftParticleRenderTypes.fastAlphaEmissiveStreakBillboard());
+        ParticleRenderOrdering.registerAfterClouds(SoftParticleRenderTypes.fastEmissiveMetaballBillboard());
+        ParticleRenderOrdering.registerAfterClouds(SoftParticleRenderTypes.fastEmissiveStreakBillboard());
         WorldSpaceParticleEmitter.installViewDistanceSpawner((level, options, position, velocity) -> {
             if (level instanceof ClientLevel clientLevel) {
                 ClientParticleRange.addWithinViewDistance(clientLevel, options, position, velocity);
@@ -90,6 +102,12 @@ public final class CTClientBootstrap {
         CTPartialModels.init();
         modEventBus.addListener((FMLClientSetupEvent evt) -> {
             evt.enqueueWork(() -> {
+                ItemPickerScreen.setDefaultAppearance(PaintedSelectionModal.Appearance.standard("createthrusters"));
+                if(CTItems.RATCHET_COGWHEEL != null) SoundCatalog.registerIcon(CTSoundEvents.RATCHET_GEAR_CLICK.getId(),
+                        () -> new ItemStack(CTItems.RATCHET_COGWHEEL.get()));
+                ClientDocumentation.start();
+                com.rieno.gadgetsandgizmos.neoforge.ControllerGraphWebServer.startClient(
+                        ClientSharedGraphs.directory(), ClientSharedGraphs::metadata);
                 com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer.setMinimumRefreshRate(
                         () -> com.rieno.gadgetsandgizmos.config.CTConfigs.CLIENT.cameraMinimumRefreshRate.get());
                 com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer.setResolution(
@@ -162,6 +180,8 @@ public final class CTClientBootstrap {
     // Register the client extensions
     private static void registerClientExtensions(RegisterClientExtensionsEvent evt) {
         evt.registerItem(PhysicsGogglesHeightClient.armorExtensions(), CTItems.PHYSICS_GOGGLES.get());
+        evt.registerItem(SimpleCustomRenderer.create(CTItems.THRUSTER_DYE.get(), new ThrusterDyeItemRenderer()),
+                CTItems.THRUSTER_DYE.get());
         evt.registerBlock(
                 new ReducedDestroyEffects(),
                 CTBlocks.ANALOGUE_CONTRAPTION_CONTROLLER.get(),
@@ -206,6 +226,9 @@ public final class CTClientBootstrap {
 
         NeoForge.EVENT_BUS.addListener(CTGantryAnchorDebugRenderer::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(CTPathfinderDebugRenderer::onRenderWorld);
+        NeoForge.EVENT_BUS.addListener(ShipDockApproachClient::onRenderWorld);
+        NeoForge.EVENT_BUS.addListener(ShipDockApproachClient::onRenderGui);
+        NeoForge.EVENT_BUS.addListener(ShipDockApproachClient::onMouseScrolling);
         NeoForge.EVENT_BUS.addListener(ShippingRouteSplineClient::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(ShippingManifestRenderer::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(PoweredZiplinePlacementHandler::onRenderWorld);
@@ -214,6 +237,7 @@ public final class CTClientBootstrap {
         NeoForge.EVENT_BUS.addListener(ContraptionNetworkLinkerFaceRenderer::onMouseScrolling);
         NeoForge.EVENT_BUS.addListener(PoweredZiplinePlacementHandler::onInteractionKeyMappingTriggered);
         NeoForge.EVENT_BUS.addListener(PhysicsGantryBeltWheelShearsClient::onInteractionKeyMappingTriggered);
+        NeoForge.EVENT_BUS.addListener(ShipDockApproachClient::onInteractionKeyMappingTriggered);
         NeoForge.EVENT_BUS.addListener(ShippingRouteSplineClient::onInteractionKeyMappingTriggered);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletClientInteraction::onInteractionKeyMappingTriggered);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletClientInteraction::onKeyInput);
@@ -230,6 +254,7 @@ public final class CTClientBootstrap {
         NeoForge.EVENT_BUS.addListener(AccDisplayGuiProjection::onClientTick);
         NeoForge.EVENT_BUS.addListener(AccHologramWidgetClient::onInteraction);
         NeoForge.EVENT_BUS.addListener(AccHologramWidgetClient::onClientTick);
+        NeoForge.EVENT_BUS.addListener(ShipDockApproachClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(ShippingRouteSplineClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletGuiProjection::onClientTick);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletGuiProjection::onRenderFrame);

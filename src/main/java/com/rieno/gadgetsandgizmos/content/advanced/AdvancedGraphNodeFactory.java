@@ -11,6 +11,8 @@ package com.rieno.gadgetsandgizmos.content.advanced;
 import com.rieno.gadgetsandgizmos.content.AccDisplayBlockEntity;
 import com.rieno.gadgetsandgizmos.lib.control.hardware.HardwareControllerBindings;
 import com.rieno.gadgetsandgizmos.lib.display.ShipInformationDisplayModes;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphVariableTypes;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphStringOperations;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
@@ -34,9 +36,6 @@ public final class AdvancedGraphNodeFactory {
             List.of("==", ">", "<", ">=", "<=", "!=");
     private static final List<String> FILTER_OPERATION_OPTIONS =
             List.of("==", "!=", ">", "<", "contains", "starts_with");
-    private static final List<String> VARIABLE_TYPE_OPTIONS = List.of(
-            "boolean", "integer", "float", "string", "direction",
-            "frequency", "target", "list", "map");
 
     private AdvancedGraphNodeFactory() {
     }
@@ -72,6 +71,14 @@ public final class AdvancedGraphNodeFactory {
     public static CompoundTag createDefaultData(String type, Context context) {
         Context safeContext = context == null ? Context.EMPTY : context;
         CompoundTag data = new CompoundTag();
+        if("createthrusters:convert_angle".equals(type)){
+            data.putString(com.rieno.gadgetsandgizmos.lib.graph.math.AngleConversionNode.INPUT_TYPE, "radians");
+            data.putString(com.rieno.gadgetsandgizmos.lib.graph.math.AngleConversionNode.OUTPUT_TYPE, "degrees");
+        }
+        if(AdvancedGraphCatalog.usesAngleUnit(type)){
+            data.putString(AdvancedGraphCatalog.ANGLE_UNIT_TAG,
+                    com.rieno.gadgetsandgizmos.lib.control.math.AngleUnit.RADIANS.id());
+        }
         if(GraphSignalRange.usesValueType(type)){
             data.putString(GraphSignalRange.VALUE_TYPE_TAG,
                     com.rieno.gadgetsandgizmos.lib.control.SignalValueType.REDSTONE.id());
@@ -222,6 +229,11 @@ public final class AdvancedGraphNodeFactory {
             defaults.put("string", graphDefault("string", ""));
             if ("split_string".equals(type)) {
                 defaults.put("delimiter", graphDefault("string", ","));
+                defaults.put("mode", graphDefault("string",
+                        GraphStringOperations.SplitMode.DELIMITER.id()));
+                CompoundTag options = data.getCompound("InputOptions");
+                putOptions(options, "mode", GraphStringOperations.SplitMode.optionIds());
+                data.put("InputOptions", options);
             } else if ("substring".equals(type)) {
                 defaults.put("start_index", graphDefault("number", 0.0D));
                 defaults.put("end_index", graphDefault("number", 0.0D));
@@ -626,9 +638,14 @@ public final class AdvancedGraphNodeFactory {
         if(math != null){
             CompoundTag defaults = data.getCompound("Defaults");
             math.defaults().forEach((port, val) -> {
-                if(math.definition().inputs().containsKey(port)) defaults.put(port, GraphRuntime.fromLibraryValue(val).toTag());
+                if(math.definition().inputs().containsKey(port) || "createthrusters:convert_angle".equals(type)){
+                    defaults.put(port, GraphRuntime.fromLibraryValue(val).toTag());
+                }
             });
             data.put("Defaults", defaults);
+        }
+        if("createthrusters:convert_unit".equals(type)){
+            com.rieno.gadgetsandgizmos.lib.graph.math.UnitConversionNode.synchronize(data);
         }
         putScmInputDefaults(type, data);
         return data;
@@ -782,14 +799,13 @@ public final class AdvancedGraphNodeFactory {
         return entry;
     }
 
-    public static void putVariableTypeOptions(CompoundTag data) {
-        CompoundTag inputOptions = data.getCompound("InputOptions");
-        ListTag values = new ListTag();
-        for (String option : VARIABLE_TYPE_OPTIONS) {
-            values.add(StringTag.valueOf(option));
-        }
-        inputOptions.put("type", values);
-        data.put("InputOptions", inputOptions);
+    // Get the variable choices from the published graph types
+    public static List<String> variableTypeOptions(){
+        return GraphVariableTypes.options(AdvancedGraphCatalog.registry());
+    }
+
+    public static void putVariableTypeOptions(CompoundTag data){
+        GraphVariableTypes.putOptions(data, variableTypeOptions());
     }
 
     // Keep legacy SCM nodes armed when no explicit input value was saved
@@ -799,6 +815,17 @@ public final class AdvancedGraphNodeFactory {
         if(AdvancedGraphCatalog.get(type).inputs().containsKey("strength")
                 && !defaults.contains("strength") && !data.contains("Strength")){
             defaults.put("strength", graphDefault("number", 1.0D));
+        }
+        if(AdvancedGraphCatalog.isShipRotationModeNode(type)){
+            if(!defaults.contains("mode")) defaults.put("mode", graphDefault("string", "Free"));
+            if(!defaults.contains("angle")) defaults.put("angle", graphDefault("number", 0.0D));
+            if(!defaults.contains("reference")) defaults.put("reference", graphDefault("string", "North Relative"));
+            CompoundTag options = data.getCompound("InputOptions");
+            ListTag modes = new ListTag();
+            com.rieno.gadgetsandgizmos.lib.scm.ScmAngleControl.Mode.options().forEach(mode -> modes.add(StringTag.valueOf(mode)));
+            options.put("mode", modes);
+            putOptions(options, "reference", com.rieno.gadgetsandgizmos.lib.scm.ScmAngleControl.Reference.options());
+            data.put("InputOptions", options);
         }
         if("ship_hold_yaw".equals(type)){
             defaults.remove("hold");

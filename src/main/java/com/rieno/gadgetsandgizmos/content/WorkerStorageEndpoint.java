@@ -214,7 +214,7 @@ public final class WorkerStorageEndpoint implements WorkerEndpoint {
         if (controller == null || controller.getLevel() == null) return List.of();
         Map<UUID, WorkerStorageEndpoint> endpoints = new LinkedHashMap<>();
         for (ContraptionNetworkLinkerData.LinkedTarget target
-                : ContraptionNetworkLinkerData.readTargets(controller.getStoredLinker())) {
+                : controller.getLinkedTargets()) {
             if (target.mode() != ContraptionNetworkLinkerData.LinkMode.SCM) continue;
             List<LinkedPosition> positions = linkedPositions(controller.getLevel(), target);
             if (includeMachines) positions = expandProcessingPositions(positions);
@@ -238,7 +238,7 @@ public final class WorkerStorageEndpoint implements WorkerEndpoint {
             }
         }
         for(ContraptionNetworkLinkerData.LinkedArea area
-                : ContraptionNetworkLinkerData.readAreas(controller.getStoredLinker())){
+                : controller.getLinkedAreas()){
             if(area.kind() == ContraptionNetworkLinkerData.AreaKind.NO_ENTRY) continue;
             Level targetLevel = SubLevelBlockEntityCollector.resolveTargetLevel(controller.getLevel(), area.subLevelId());
             if(targetLevel == null) continue;

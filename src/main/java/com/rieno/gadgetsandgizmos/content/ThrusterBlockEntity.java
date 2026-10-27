@@ -36,6 +36,7 @@ import com.rieno.gadgetsandgizmos.particle.ColoredCloudParticleOptions;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
+import com.rieno.gadgetsandgizmos.registry.CTParticles;
 import com.rieno.gadgetsandgizmos.util.CTPropulsionTelemetry;
 import com.rieno.gadgetsandgizmos.util.MobHauntingConversions;
 import com.rieno.gadgetsandgizmos.util.ThrusterFuelData;
@@ -117,9 +118,11 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import com.rieno.gadgetsandgizmos.lib.color.ColorEffectPreset;
+import com.rieno.gadgetsandgizmos.lib.color.ColorEffectTarget;
 
 // Handle thrust, fuel, fan processing and throttle control
-public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntitySubLevelPropellerActor,
+public class ThrusterBlockEntity extends SmartBlockEntity implements ColorEffectTarget, BlockEntitySubLevelPropellerActor,
         BlockEntityPropeller, IHaveGoggleInformation, IAirCurrentSource, MenuProvider,
         WorkerAirProcessingSource,
         com.rieno.gadgetsandgizmos.lib.discovery.INamedBlockEntity,
@@ -395,6 +398,19 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
     private ColoredLightBridge.Light emitterLight;
     private final Map<BlockPos, ColoredLightBridge.Light> plumeColorLights = new LinkedHashMap<>();
     // Current V2 plume color cycle
+    private ColorEffectPreset colorEffect = ColorEffectPreset.DEFAULT;
+
+    @Override public ColorEffectPreset colorEffect(){ return colorEffect; }
+
+    @Override public void applyColorEffect(ColorEffectPreset preset){
+        colorEffect = preset;
+        beamColor = preset.active() ? preset.color() : DEFAULT_BEAM_COLOR;
+        plumeRainbowMode = PlumeRainbow.Mode.OFF;
+        plumeRainbowPalette = PlumeRainbow.Palette.NORMAL;
+        setChanged();
+        if(level != null && !level.isClientSide) level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+    }
+
     private PlumeRainbow.Mode plumeRainbowMode = PlumeRainbow.Mode.OFF;
     private PlumeRainbow.Palette plumeRainbowPalette = PlumeRainbow.Palette.NORMAL;
     // Tracks whether infinite solid fuel is set
@@ -440,6 +456,8 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
     private long exhaustOcclusionCacheTime = Long.MIN_VALUE;
     // Last client plume sample time
     private long lastPlumeSampleTick = Long.MIN_VALUE;
+    private long plumeVisibilityTick = Long.MIN_VALUE;
+    private boolean plumeOutputClear;
     // Current exhaust occlusion requested distance
     private double exhaustOcclusionRequestedDistance = -1.0D;
     // Current exhaust occlusion distance
@@ -556,7 +574,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
     // Match invisible world lights to the visible plume's reach
     private void updatePlumeLightBeam() {
         if (!CTConfigs.CLIENT.thrustersEmitLight.get() || !CTConfigs.CLIENT.plumesEmitLight.get()
-                || !isActive() || focusedMode || isParticleFiltered()
+                || !isActive() || focusedMode || isCelebrationThruster() || isParticleFiltered()
                 || !CTConfigs.SERVER.enableThrusterParticles.get()) {
             clearPlumeLightBeam();
             return;
@@ -635,6 +653,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         if (colors.mode() != PlumeRainbow.Mode.OFF) {
             return PlumeRainbow.color(colors.mode(), colors.palette(), level.getGameTime(), progress, age);
         }
+        if(colorEffect.active()) return colorEffect.sample(level.getGameTime(), progress, age);
         if (focusedMode) return beamColor;
         ExhaustParticleStyle style = getExhaustStyle();
         float red = 0.12F;
@@ -752,6 +771,12 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
             clearOcclusionCache();
         }
 
+        if(clientSide && isCelebrationThruster()){
+            if(isActive() && CTConfigs.SERVER.enableThrusterParticles.get()
+                    && getLocalParticleScale() > 0.0D && !isParticleFiltered()) spawnCelebrationConfetti();
+            return;
+        }
+
         if (clientSide && isActive() && CTConfigs.SERVER.enableThrusterParticles.get()) {
             if (getLocalParticleScale() <= 0.0D) {
                 return;
@@ -792,6 +817,25 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+    // Launch celebration pieces from the nozzle instead of fuel or processing plumes
+    private void spawnCelebrationConfetti(){
+        if(level == null || !isClientPlumeVisible()) return;
+        Vec3 dir = getVisualEffectDirection().normalize();
+        if(dir.lengthSqr() < 1.0E-6D) return;
+        double intensity = Math.max(0.0D, CTConfigs.SERVER.thrusterParticleIntensity.get()) * getLocalParticleScale();
+        if(intensity <= 0.0D) return;
+        float throttle = Mth.clamp(getAppliedThrottle(), 0.0F, 1.0F);
+        int count = Math.min(64, Mth.ceil((2.0F + throttle * 6.0F) * (float) intensity));
+        Vec3 start = Vec3.atCenterOf(worldPosition).add(dir.scale(1.15D));
+        for(int idx = 0; idx < count; idx++){
+            Vec3 pos = start.add(randomExhaustSpread(level, dir, 0.2D));
+            Vec3 velocity = dir.scale((0.2D + throttle * 0.45D) * (0.7D + level.random.nextDouble() * 0.6D))
+                    .add(randomExhaustSpread(level, dir, 0.12D));
+            WorldSpaceParticleEmitter.addParticleWithinViewDistance(this,
+                    CTParticles.CELEBRATION_CONFETTI.get(), pos, velocity);
+        }
+    }
+
     // Spawn the processing trail particles
     private void spawnProcessingTrailParticles() {
         Level level = this.level;
@@ -801,6 +845,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         if (isParticleFiltered()) {
             return;
         }
+        if(!isClientPlumeVisible()) return;
 
         Vec3 localDirection = getVisualEffectDirection();
         if (localDirection.lengthSqr() < 1.0E-6D) {
@@ -1033,9 +1078,18 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
             int tintColor = ColorGradient.rgb((beamColor >> 16 & 0xFF) / 255.0F * brightness,
                     (beamColor >> 8 & 0xFF) / 255.0F * brightness,
                     (beamColor & 0xFF) / 255.0F * brightness);
+            if(colors.mode() == PlumeRainbow.Mode.OFF && colorEffect.active()){
+                int custom = colorEffect.sample(level.getGameTime(), (float)progressRatio, 0);
+                red = (custom >> 16 & 255) / 255F * brightness;
+                green = (custom >> 8 & 255) / 255F * brightness;
+                blue = (custom & 255) / 255F * brightness;
+                tintColor = custom;
+                tintBlend = 1;
+            }
             WorldSpaceParticleEmitter.addParticleWithinViewDistance(this,
                     new ColoredCloudParticleOptions(red, green, blue,
-                            colors.mode(), colors.palette(), (float) progressRatio, tintColor, tintBlend),
+                            colors.mode(), colors.palette(), (float) progressRatio, tintColor, tintBlend)
+                            .withEffect(colors.mode() == PlumeRainbow.Mode.OFF ? colorEffect : ColorEffectPreset.DEFAULT.withAdditive(colorEffect.additive())),
                     sample.add(jitter), vel);
         }
     }
@@ -1162,6 +1216,11 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         redstoneThrottle = signalStrength / 15.0f;
         refreshThrottle();
         syncControlState();
+    }
+
+    // Persist redistributed fuel and use the normal throttled client update.
+    public void fuelStorageChanged(){
+        markTickStateChanged(true);
     }
 
     // Get the fuel tank
@@ -2289,11 +2348,30 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         return getVisualSourceCenter();
     }
 
+    // Identify the celebration content without changing fuel, thrust or upgrades
+    public boolean isCelebrationThruster(){
+        return getBlockState().is(CTBlocks.CELEBRATION_THRUSTER.get());
+    }
+
     // Check if the client effect source is valid
     public boolean isClientEffectSourceValid() {
         return level != null && level.isClientSide && !isRemoved()
                 && getBlockState().getBlock() instanceof ThrusterBlock;
     }
+
+    // Share the output-face obstruction result between particle spawning and beam rendering
+    public boolean isClientPlumeVisible(){
+        if(!com.rieno.gadgetsandgizmos.lib.physics.ClientEffectGate.withinRange(this)) return false;
+        long tick = level.getGameTime();
+        if(plumeVisibilityTick != tick){
+            plumeVisibilityTick = tick;
+            Vec3 dir = getVisualEffectDirection().normalize();
+            plumeOutputClear = com.rieno.gadgetsandgizmos.lib.physics.ClientEffectGate.clearOutput(this,
+                    getBlockPos().getCenter().add(dir.scale(.501D)), dir, 3D);
+        }
+        return plumeOutputClear;
+    }
+
 
     // Get the render bounding box
     @Override
@@ -2321,6 +2399,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
     // Get the display name
     @Override
     public Component getDisplayName() {
+        if(isCelebrationThruster()) return getBlockState().getBlock().getName();
         return Component.translatable("createthrusters.thruster.config_screen.title");
     }
 
@@ -3426,6 +3505,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         tag.putFloat("BeamMaxOpacity", beamMaxOpacity);
         tag.putFloat("PlumeColorRatio", plumeColorRatio);
         tag.putString("PlumeRainbowMode", plumeRainbowMode.name());
+        tag.put("ThrusterDyeEffect", colorEffect.write());
         tag.putString("PlumeRainbowPalette", plumeRainbowPalette.name());
         if (customName != null) {
             tag.putString("CustomName", customName);
@@ -3482,6 +3562,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         tag.putFloat("BeamMaxOpacity", beamMaxOpacity);
         tag.putFloat("PlumeColorRatio", plumeColorRatio);
         tag.putString("PlumeRainbowMode", plumeRainbowMode.name());
+        tag.put("ThrusterDyeEffect", colorEffect.write());
         tag.putString("PlumeRainbowPalette", plumeRainbowPalette.name());
         if (ovrDir != null) {
             tag.putDouble("OverrideDirX", ovrDir.x);
@@ -3601,6 +3682,7 @@ public class ThrusterBlockEntity extends SmartBlockEntity implements BlockEntity
         beamMaxOpacity = tag.contains("BeamMaxOpacity") ? Mth.clamp(tag.getFloat("BeamMaxOpacity"), 0.0f, 1.0f) : 0.34f;
         plumeColorRatio = tag.contains("PlumeColorRatio") ? Mth.clamp(tag.getFloat("PlumeColorRatio"), 0.0f, 1.0f) : DEFAULT_PLUME_COLOR_RATIO;
         plumeRainbowMode = PlumeRainbow.mode(tag.getString("PlumeRainbowMode"));
+        colorEffect = ColorEffectPreset.read(tag.getCompound("ThrusterDyeEffect"));
         plumeRainbowPalette = PlumeRainbow.palette(tag.getString("PlumeRainbowPalette"));
         ovrDir = tag.contains("OverrideDirX")
             ? new Vec3(tag.getDouble("OverrideDirX"), tag.getDouble("OverrideDirY"), tag.getDouble("OverrideDirZ")).normalize()

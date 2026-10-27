@@ -37,6 +37,13 @@ import org.jetbrains.annotations.NotNull;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
+import com.rieno.gadgetsandgizmos.lib.color.ColorEffectPreset;
+import com.rieno.gadgetsandgizmos.lib.client.render.ContainedEntityRenderer;
+import com.rieno.gadgetsandgizmos.registry.CTItems;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.animal.allay.Allay;
+import net.minecraft.world.item.ItemStack;
 
 // Draw the Thruster
 public class ThrusterRenderer implements BlockEntityRenderer<ThrusterBlockEntity> {
@@ -53,6 +60,8 @@ public class ThrusterRenderer implements BlockEntityRenderer<ThrusterBlockEntity
         private static final float BEAM_WIDTH_SCALE = 1.5f;
         private static final float BLAZE_BURNER_SCALE = 0.62f;
         private static final double BLAZE_BURNER_BASE_OFFSET = -0.24D;
+        private final ContainedEntityRenderer<Allay> allay = new ContainedEntityRenderer<>(EntityType.ALLAY,
+                entity -> entity.setItemSlot(EquipmentSlot.HEAD, new ItemStack(CTItems.PILOT_CAP.get())));
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -86,7 +95,9 @@ public class ThrusterRenderer implements BlockEntityRenderer<ThrusterBlockEntity
 
         BlockState state = be.getBlockState();
         boolean focusedMode = be.isFocusedMode();
-        if (!focusedMode) {
+        if(be.isCelebrationThruster()){
+            renderAllay(be, ms, buffer, light);
+        }else if (!focusedMode) {
             renderBlazeBurner(be, state, ms, buffer);
         }
 
@@ -96,9 +107,12 @@ public class ThrusterRenderer implements BlockEntityRenderer<ThrusterBlockEntity
 
         ThrusterSoundManager.touch(be);
 
+        if(be.isCelebrationThruster()) return;
+
         if (be.isParticleFiltered()) {
             return;
         }
+        if(!be.isClientPlumeVisible()) return;
 
                 if (focusedMode) {
             renderFocusedBeam(be, ms, buffer);
@@ -125,6 +139,35 @@ public class ThrusterRenderer implements BlockEntityRenderer<ThrusterBlockEntity
         =======================================================================================================================
 
         ------------------------------------------------------------##-----------------------------------------------------*/
+
+        // Draw the raised Allay with a livelier animation while the thruster runs
+        private void renderAllay(ThrusterBlockEntity be, PoseStack ms,
+                MultiBufferSource buffer, int light){
+                Level level = be.getLevel();
+                if(level == null) return;
+                Vec3 dir = Vec3.atLowerCornerOf(be.getBlockDirection().getNormal());
+                Vec3 anchor = new Vec3(0.5D, 0.5D, 0.5D).add(dir.scale(-0.15D));
+                Quaternionf orientation = rotationFromUp(dir);
+                boolean active = be.isActive();
+                float time = AnimationTickHolder.getRenderTime(level);
+                float animationTime = time * (active ? 2.5F : 1.0F);
+                float yaw = (float) Math.toDegrees(burnerLookAngle(be, anchor, dir, orientation));
+                if(active) yaw += Mth.sin(time * 0.22F) * 30.0F;
+                ms.pushPose();
+                try{
+                        ms.translate(anchor.x, anchor.y, anchor.z);
+                        ms.mulPose(orientation);
+                        if(active){
+                                ms.translate(0.0D, Mth.sin(time * 0.4F) * 0.035D, 0.0D);
+                                ms.mulPose(new Quaternionf().rotateZ(Mth.sin(time * 0.3F) * 0.15F));
+                        }
+                        ms.scale(0.8F, 0.8F, 0.8F);
+                        int age = Mth.floor(animationTime);
+                        allay.render(level, age, animationTime - age, yaw, ms, buffer, light);
+                }finally{
+                        ms.popPose();
+                }
+        }
 
         // Get the flame frame
         private static PartialModel flameFrame(ThrusterBlockEntity blockEntity) {
@@ -234,30 +277,30 @@ public class ThrusterRenderer implements BlockEntityRenderer<ThrusterBlockEntity
                 ms.translate(0.5D, 0.5D, 0.5D);
                 ms.mulPose(new Quaternionf().rotateTo(0.0f, 0.0f, 1.0f,
                                 (float) dir.x, (float) dir.y, (float) dir.z));
-                renderBeaconBeam(builder, ms, beamLength, beamColor, colors, beamAlpha, renderTime);
+                renderBeaconBeam(builder, ms, beamLength, beamColor, colors, blockEntity.colorEffect(), beamAlpha, renderTime);
                 ms.popPose();
         }
 
         // Draw the beacon beam
         private static void renderBeaconBeam(VertexConsumer builder, PoseStack ms, float length,
                                              int beamColor, SeasonalPlumeEffects.Selection colors,
-                                             float alpha, float renderTime) {
+                                             ColorEffectPreset effect, float alpha, float renderTime) {
                 float start = 0.35f;
                 float end = length + start;
                 int segments = Math.max(4, Mth.ceil(length * 2.0f));
                 float scroll = -renderTime * 0.025f;
 
                 renderBeaconBeamLayer(builder, ms, start, end, segments, 0.115f * BEAM_WIDTH_SCALE,
-                                beamColor, colors, alpha, scroll, 1.0f, renderTime);
+                                beamColor, colors, effect, alpha, scroll, 1.0f, renderTime);
                 renderBeaconBeamLayer(builder, ms, start, end, segments, 0.32f * BEAM_WIDTH_SCALE,
-                                beamColor, colors, alpha, scroll * 0.65f, 0.38f, renderTime);
+                                beamColor, colors, effect, alpha, scroll * 0.65f, 0.38f, renderTime);
         }
 
         // Draw the beacon beam layer
         private static void renderBeaconBeamLayer(VertexConsumer builder, PoseStack ms, float start, float end,
                                                   int segments, float radius, int beamColor,
                                                   SeasonalPlumeEffects.Selection colors,
-                                                  float alpha, float scroll, float alphaScale, float renderTime) {
+                                                  ColorEffectPreset effect, float alpha, float scroll, float alphaScale, float renderTime) {
                 for (int side = 0; side < 4; side++) {
                         float angle0 = (float) (Math.PI * 0.5D * side + Math.PI * 0.25D);
                         float angle1 = (float) (Math.PI * 0.5D * (side + 1) + Math.PI * 0.25D);
@@ -275,8 +318,8 @@ public class ThrusterRenderer implements BlockEntityRenderer<ThrusterBlockEntity
                                 float alpha1 = alpha * alphaScale * beamDistanceAlpha(t1);
                                 float v0 = scroll + z0 * 0.35f;
                                 float v1 = scroll + z1 * 0.35f;
-                                int color0 = beamColorAt(colors, beamColor, renderTime, t0);
-                                int color1 = beamColorAt(colors, beamColor, renderTime, t1);
+                                int color0 = beamColorAt(colors, effect, beamColor, renderTime, t0);
+                                int color1 = beamColorAt(colors, effect, beamColor, renderTime, t1);
                                 addBeamQuad(builder, ms, x0, y0, x1, y1, z0, z1,
                                                 color0, color1, alpha0, alpha1, v0, v1);
                         }
@@ -284,9 +327,9 @@ public class ThrusterRenderer implements BlockEntityRenderer<ThrusterBlockEntity
         }
 
         // Resolve one end of a focused beam segment
-        private static int beamColorAt(SeasonalPlumeEffects.Selection colors, int fallback,
+        private static int beamColorAt(SeasonalPlumeEffects.Selection colors, ColorEffectPreset effect, int fallback,
                                        float renderTime, float progress) {
-                return colors.mode() == PlumeRainbow.Mode.OFF ? fallback
+                return colors.mode() == PlumeRainbow.Mode.OFF ? (effect.active() ? effect.sample(renderTime, progress, 0) : fallback)
                                 : PlumeRainbow.color(colors.mode(), colors.palette(),
                                                 (double) renderTime, progress, 0);
         }

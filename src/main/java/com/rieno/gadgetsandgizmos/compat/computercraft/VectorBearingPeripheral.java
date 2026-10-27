@@ -8,8 +8,8 @@ package com.rieno.gadgetsandgizmos.compat.computercraft;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
-import com.rieno.gadgetsandgizmos.compat.computercraft.api.GadgetsPeripheral;
 import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralDoc;
+import com.rieno.gadgetsandgizmos.lib.control.AssemblyThrusterControl;
 import com.rieno.gadgetsandgizmos.compat.computercraft.api.PeripheralTypeDoc;
 import com.rieno.gadgetsandgizmos.content.VectorBearingBlockEntity;
 import dan200.computercraft.api.lua.LuaException;
@@ -17,13 +17,12 @@ import dan200.computercraft.api.lua.LuaFunction;
 import net.minecraft.core.Direction;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
 // Expose Vector Bearing controls and telemetry to ComputerCraft
 @PeripheralTypeDoc("vector_bearing")
-public class VectorBearingPeripheral extends GadgetsPeripheral<VectorBearingBlockEntity> {
+public class VectorBearingPeripheral extends BearingThrusterPeripheral<VectorBearingBlockEntity> {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -56,6 +55,30 @@ public class VectorBearingPeripheral extends GadgetsPeripheral<VectorBearingBloc
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
+
+    // Get the shared attached-thruster controls
+    @Override
+    protected AssemblyThrusterControl control(){
+        return blockEntity.getBearingAssembly().controls();
+    }
+
+    // Get the control mode
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getControlMode", signature = "getControlMode(id|'all'): string|table",
+            description = "Returns the control mode.")
+    public final Object getControlMode(String thrusterId) throws LuaException{
+        try{ return control().getControlMode(thrusterId); }
+        catch(IllegalArgumentException ex){ throw new LuaException(ex.getMessage()); }
+    }
+
+    // Set the control mode
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "setControlMode", signature = "setControlMode(id|'all', mode: 'auto'|'redstone'|'computer')",
+            description = "Sets the control mode.")
+    public final void setControlMode(String thrusterId, String mode) throws LuaException{
+        try{ control().setControlMode(thrusterId, mode); }
+        catch(IllegalArgumentException ex){ throw new LuaException(ex.getMessage()); }
+    }
 
     // Get the mode
     @LuaFunction(mainThread = true)
@@ -221,6 +244,12 @@ public class VectorBearingPeripheral extends GadgetsPeripheral<VectorBearingBloc
         status.put("keepStable", blockEntity.isKeepStable());
         status.put("assembled", blockEntity.isMountedAssemblyPresent());
         status.put("signals", getSignals());
+        status.put("thrusterCount", getThrusterCount());
+        status.put("thrusters", listThrusters());
+        status.put("rcsThrusterCount", getRcsThrusterCount());
+        status.put("rcsThrusters", listRcsThrusters());
+        status.put("totalRealThrust", getTotalRealThrust());
+        status.put("totalLiftCapacity", getTotalLiftCapacity());
         return status;
     }
 

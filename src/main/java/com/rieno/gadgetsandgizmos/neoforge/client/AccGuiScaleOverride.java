@@ -2,6 +2,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
+import com.rieno.gadgetsandgizmos.lib.client.GuiViewportScale;
 
 /**
  * Owns the temporary GUI-scale override shared by every ACC editor screen.
@@ -34,12 +35,7 @@ final class AccGuiScaleOverride {
         if (playerGuiScale == null) {
             playerGuiScale = minecraft.options.guiScale().get();
         }
-        if (minecraft.options.guiScale().get() != scale) {
-            minecraft.options.guiScale().set(scale);
-            minecraft.resizeDisplay();
-            return true;
-        }
-        return false;
+        return GuiViewportScale.apply(scale);
     }
 
     static void restoreAfterExit() {
@@ -59,10 +55,7 @@ final class AccGuiScaleOverride {
             }
             int scale = playerGuiScale;
             playerGuiScale = null;
-            if (minecraft.options.guiScale().get() != scale) {
-                minecraft.options.guiScale().set(scale);
-                minecraft.resizeDisplay();
-            }
+            GuiViewportScale.apply(scale);
         });
     }
 

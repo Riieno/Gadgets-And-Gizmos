@@ -20,6 +20,7 @@ import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.util.Mth;
 
 import java.util.Locale;
+import com.rieno.gadgetsandgizmos.lib.color.ColorEffectPreset;
 
 // Define RCS steam particle options
 public record RcsSteamParticleOptions(
@@ -28,7 +29,8 @@ public record RcsSteamParticleOptions(
         float blue,
         float scale,
         PlumeRainbow.Mode rainbowMode,
-        PlumeRainbow.Palette rainbowPalette
+        PlumeRainbow.Palette rainbowPalette,
+        ColorEffectPreset colorEffect
 ) implements ParticleOptions {
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -45,10 +47,11 @@ public record RcsSteamParticleOptions(
                     Codec.FLOAT.fieldOf("blue").forGetter(RcsSteamParticleOptions::blue),
                     Codec.FLOAT.fieldOf("scale").forGetter(RcsSteamParticleOptions::scale),
                     Codec.STRING.optionalFieldOf("rainbow_mode", "OFF").forGetter(opts -> opts.rainbowMode().name()),
-                    Codec.STRING.optionalFieldOf("rainbow_palette", "NORMAL").forGetter(opts -> opts.rainbowPalette().name())
-            ).apply(instance, (red, green, blue, scale, mode, palette) ->
+                    Codec.STRING.optionalFieldOf("rainbow_palette", "NORMAL").forGetter(opts -> opts.rainbowPalette().name()),
+                    ColorEffectPreset.CODEC.optionalFieldOf("color_effect", ColorEffectPreset.DEFAULT).forGetter(RcsSteamParticleOptions::colorEffect)
+            ).apply(instance, (red, green, blue, scale, mode, palette, effect) ->
                     new RcsSteamParticleOptions(red, green, blue, scale,
-                            PlumeRainbow.mode(mode), PlumeRainbow.palette(palette))));
+                            PlumeRainbow.mode(mode), PlumeRainbow.palette(palette), effect)));
 
     public static final StreamCodec<RegistryFriendlyByteBuf, RcsSteamParticleOptions> STREAM_CODEC =
             StreamCodec.of(RcsSteamParticleOptions::encode, RcsSteamParticleOptions::decode);
@@ -72,6 +75,10 @@ public record RcsSteamParticleOptions(
     }
 
     // Retain the ordinary steam constructor
+    public RcsSteamParticleOptions(float red, float green, float blue, float scale, PlumeRainbow.Mode mode, PlumeRainbow.Palette palette){
+        this(red, green, blue, scale, mode, palette, ColorEffectPreset.DEFAULT);
+    }
+
     public RcsSteamParticleOptions(float red, float green, float blue, float scale) {
         this(red, green, blue, scale, PlumeRainbow.Mode.OFF, PlumeRainbow.Palette.NORMAL);
     }
@@ -98,13 +105,17 @@ public record RcsSteamParticleOptions(
         buffer.writeFloat(opts.scale());
         buffer.writeEnum(opts.rainbowMode());
         buffer.writeEnum(opts.rainbowPalette());
+        boolean hasEffect = opts.colorEffect().active() || opts.colorEffect().additive();
+        buffer.writeBoolean(hasEffect);
+        if(hasEffect) buffer.writeNbt(opts.colorEffect().write());
     }
 
     // Decode the steam color and optional cycle
     private static RcsSteamParticleOptions decode(RegistryFriendlyByteBuf buffer) {
         return new RcsSteamParticleOptions(buffer.readFloat(), buffer.readFloat(),
                 buffer.readFloat(), buffer.readFloat(), buffer.readEnum(PlumeRainbow.Mode.class),
-                buffer.readEnum(PlumeRainbow.Palette.class));
+                buffer.readEnum(PlumeRainbow.Palette.class), buffer.readBoolean()
+                        ? ColorEffectPreset.read(buffer.readNbt()) : ColorEffectPreset.DEFAULT);
     }
 
     // Write the string

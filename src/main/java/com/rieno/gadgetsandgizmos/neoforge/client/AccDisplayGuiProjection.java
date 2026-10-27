@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.client.render.HologramRenderScope;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
@@ -119,6 +120,7 @@ public final class AccDisplayGuiProjection {
     public static boolean render(AccDisplayBlockEntity display, String mode,
                                  int width, int height, float partialTick,
                                  PoseStack poseStack, MultiBufferSource buffers) {
+        if(HologramRenderScope.isActive()) return false;
         Minecraft minecraft = Minecraft.getInstance();
         if (display == null || minecraft.level == null || minecraft.player == null) {
             return false;
@@ -170,7 +172,7 @@ public final class AccDisplayGuiProjection {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Handle the ACC display GUI projection
-    public static boolean isDragging(){ return activeInteraction != null || computerInteraction != null; }
+    public static boolean isDragging(){ return activeInteraction != null || computerInteraction != null || CameraWidgetClient.isDragging(); }
 
     public static boolean interact(AccDisplayBlockEntity clicked, BlockHitResult hit,
                                    int mouseButton) {
@@ -181,6 +183,10 @@ public final class AccDisplayGuiProjection {
         if(root.displayedCamera() != null){
             ScreenPoint point = contentPoint(root, screenPoint(root, clicked, hit));
             return point != null && AccDisplayCameraProjection.interact(root, point.x, point.y, mouseButton);
+        }
+        if("graph".equals(root.displayFrame().getString("State")) && "widgets".equals(root.displayFrame().getString("Mode"))){
+            ScreenPoint point = contentPoint(root, screenPoint(root, clicked, hit));
+            if(point != null && CameraWidgetClient.interactWorld(root, root.widgetAt(point.x, point.y), mouseButton)) return true;
         }
         if ("diagnostic_tablet".equals(root.displayFrame().getString("ActiveSource"))) {
             ScreenPoint point = contentPoint(root, screenPoint(root, clicked, hit));
@@ -237,9 +243,11 @@ public final class AccDisplayGuiProjection {
                 : contentPoint(cameraHit.root, screenPoint(cameraHit.root, cameraHit.clicked, cameraHit.hit));
         if(cameraPoint == null) AccDisplayCameraProjection.release();
         else AccDisplayCameraProjection.updatePointer(cameraHit.root, cameraPoint.x, cameraPoint.y);
+        CameraWidgetClient.updateWorld(cameraHit == null ? null : cameraHit.root,
+                cameraPoint == null ? null : cameraHit.root.widgetAt(cameraPoint.x, cameraPoint.y), false);
         long now = Util.getMillis();
         for (Session visible : new ArrayList<>(SESSIONS.values())) {
-            if (now - visible.lastUse <= 250L) {
+            if(now - visible.lastUse <= 250L && com.rieno.gadgetsandgizmos.lib.client.render.ClientRenderDistance.within(visible.display, 192D)){
                 visible.tick();
             }
         }
@@ -537,6 +545,12 @@ public final class AccDisplayGuiProjection {
     // Get the session
     private static Session session(AccDisplayBlockEntity display) {
         return SESSIONS.computeIfAbsent(display, Session::new);
+    }
+
+    // Keep a distant display's existing texture without ticking or rasterizing its editor
+    static void retain(AccDisplayBlockEntity display){
+        Session session = SESSIONS.get(display);
+        if(session != null) session.lastUse = Util.getMillis();
     }
 
     // Purge the ACC display gui projection

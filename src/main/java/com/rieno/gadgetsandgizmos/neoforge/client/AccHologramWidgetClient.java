@@ -20,8 +20,9 @@ public final class AccHologramWidgetClient{
     private AccHologramWidgetClient(){}
 
     public static void record(AccDisplayBlockEntity display){ VISIBLE.put(display, System.nanoTime()); }
-    public static boolean isDragging(){ return pressed != null && "slider".equals(pressed.hit().element().getString("Type")); }
-    public static void clear(){ VISIBLE.clear(); pressed = null; }
+    public static boolean isDragging(){ return CameraWidgetClient.isDragging()
+            || pressed != null && "slider".equals(pressed.hit().element().getString("Type")); }
+    public static void clear(){ VISIBLE.clear(); pressed = null; CameraWidgetClient.releaseWorld(); }
 
     public static void onInteraction(InputEvent.InteractionKeyMappingTriggered event){
         if(!event.isUseItem()) return;
@@ -29,18 +30,24 @@ public final class AccHologramWidgetClient{
         if(minecraft.screen != null || minecraft.player == null) return;
         Selection selected = pick();
         if(selected == null) return;
-        if(pressed == null){ pressed = selected; send(selected, false); }
+        if(pressed == null){
+            pressed = selected;
+            if(!CameraWidgetClient.interactWorld(selected.display(), selected.hit(), 1)) send(selected, false);
+        }
         event.setSwingHand(false); event.setCanceled(true);
     }
 
     public static void onClientTick(ClientTickEvent.Pre event){
         var minecraft = Minecraft.getInstance();
         if(minecraft.level == null){ clear(); return; }
-        if(minecraft.screen != null || minecraft.player == null || !minecraft.options.keyUse.isDown()){
+        if(minecraft.screen != null || minecraft.player == null || !minecraft.options.keyUse.isDown()
+                && !com.rieno.gadgetsandgizmos.lib.client.view.ViewInteractionClient.held()){
+            CameraWidgetClient.updateWorld(null, null, true);
             pressed = null; return;
         }
-        if(pressed == null || !"slider".equals(pressed.hit().element().getString("Type"))) return;
         Selection current = pick();
+        CameraWidgetClient.updateWorld(current == null ? null : current.display(), current == null ? null : current.hit(), true);
+        if(pressed == null || !"slider".equals(pressed.hit().element().getString("Type"))) return;
         if(current != null && current.display() == pressed.display()
                 && current.hit().node().id().equals(pressed.hit().node().id())
                 && current.hit().element().getString("InteractionId").equals(pressed.hit().element().getString("InteractionId"))){

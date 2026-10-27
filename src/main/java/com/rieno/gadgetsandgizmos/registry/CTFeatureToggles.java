@@ -87,7 +87,9 @@ public final class CTFeatureToggles {
     // Initialize the shared state
     static {
         LinkedHashMap<String, Boolean> blocks = new LinkedHashMap<>();
+        define(blocks, "world_hologram_projector", true);
         define(blocks, "thruster", true);
+        define(blocks, "celebration_thruster", true);
         define(blocks, "rcs_thruster", true);
         define(blocks, "creative_rcs_thruster", true);
         define(blocks, "blackstone_alloy_block", true);
@@ -148,6 +150,7 @@ public final class CTFeatureToggles {
         define(items, "advanced_portable_contraption_controller", true);
         define(items, "vertical_variable_transmission", true);
         define(items, "thruster_lense", true);
+        define(items, "thruster_dye", true);
         define(items, "processing_upgrade_smoking_t1", true);
         define(items, "processing_upgrade_smoking_t2", true);
         define(items, "processing_upgrade_smoking_t3", true);

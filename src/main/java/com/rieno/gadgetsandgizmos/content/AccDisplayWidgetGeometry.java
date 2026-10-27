@@ -86,12 +86,17 @@ public final class AccDisplayWidgetGeometry{
                 var local = DisplayWidgetProjection.unproject(bounds, point.x() * layout.scaleX(), point.y() * layout.scaleY(),
                         net.minecraft.util.Mth.clamp(elm.getDouble("Scale"), 0.01, 100), elm.getDouble("Rotation"));
                 if(!local.isInside(bounds)) continue;
-                best = new Hit(node, elm, point.distance(), local.horizontalFraction(bounds));
+                best = new Hit(node, elm, point.distance(), local.horizontalFraction(bounds), local.verticalFraction(bounds));
                 break;
             }
         }
         return best;
     }
 
-    public record Hit(AdvancedGraphDocument.Node node, CompoundTag element, double distance, double fraction){}
+    public record Hit(AdvancedGraphDocument.Node node, CompoundTag element, double distance,
+                      double fraction, double verticalFraction){
+        public Hit(AdvancedGraphDocument.Node node, CompoundTag element, double distance, double fraction){
+            this(node, element, distance, fraction, .5);
+        }
+    }
 }

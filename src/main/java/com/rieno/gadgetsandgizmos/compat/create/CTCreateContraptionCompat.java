@@ -98,6 +98,10 @@ public final class CTCreateContraptionCompat {
                 (blockEntity, state) -> state
                         .setValue(ThrusterBlock.FOCUSED, false)
                         .setValue(ThrusterBlock.POWERED, false));
+        SchematicStateFilterRegistry.REGISTRY.register(CTBlocks.CELEBRATION_THRUSTER.get(),
+                (blockEntity, state) -> state
+                        .setValue(ThrusterBlock.FOCUSED, false)
+                        .setValue(ThrusterBlock.POWERED, false));
         SchematicStateFilterRegistry.REGISTRY.register(CTBlocks.BIDIRECTIONAL_GEARBOX.get(),
                 (blockEntity, state) -> state
                         .setValue(BiDirectionalGearboxBlock.GYRO_MODE, false)

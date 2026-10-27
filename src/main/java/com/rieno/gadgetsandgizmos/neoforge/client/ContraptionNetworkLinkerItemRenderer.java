@@ -10,6 +10,8 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
+import com.rieno.gadgetsandgizmos.lib.client.render.RenderVisibilityGate;
+import com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerData;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerItem;
 import com.simibubi.create.foundation.item.render.CustomRenderedItemModel;
@@ -22,6 +24,7 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.AABB;
 import org.joml.Matrix4f;
 
 import java.util.ArrayList;
@@ -61,6 +64,9 @@ public class ContraptionNetworkLinkerItemRenderer extends CustomRenderedItemMode
     private static final float SCREEN_TEXT_Y = 7.08f / 16.0f - 0.5f;
     private static final float SCREEN_TEXT_WIDTH_PAD = 0.9f;
     private static final float SCREEN_TEXT_HEIGHT_PAD = 0.86f;
+    private static final AABB SCREEN_BOUNDS = new AABB(SCREEN_LEFT, SCREEN_TEXT_Y - .002F, SCREEN_TOP,
+            SCREEN_RIGHT, SCREEN_TEXT_Y + .002F, SCREEN_BOTTOM);
+    private final RenderVisibilityGate<ItemStack> visibility = new RenderVisibilityGate<>();
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -75,14 +81,16 @@ public class ContraptionNetworkLinkerItemRenderer extends CustomRenderedItemMode
     protected void render(ItemStack stack, CustomRenderedItemModel model, PartialItemModelRenderer renderer,
                           ItemDisplayContext ctx, PoseStack poseStack, MultiBufferSource buffer,
                           int light, int overlay) {
-        List<ContraptionNetworkLinkerData.LinkedTarget> targets = ContraptionNetworkLinkerData.readClientTargets(stack);
-        int linkedBlocks = linkedBlockCount(targets);
-
         if (ctx == ItemDisplayContext.GUI) {
             renderer.render(model.getOriginalModel(), light);
         } else {
             ContraptionNetworkLinkerItem.renderWithoutFoil(() -> renderer.render(model.getOriginalModel(), light));
         }
+
+        if(ctx != ItemDisplayContext.GUI && !ViewSceneRenderer.isCapturing()
+                && !visibility.shouldRender(stack, ctx, poseStack, buffer, SCREEN_BOUNDS)) return;
+        List<ContraptionNetworkLinkerData.LinkedTarget> targets = ContraptionNetworkLinkerData.readClientTargets(stack);
+        int linkedBlocks = linkedBlockCount(targets);
 
         poseStack.pushPose();
         renderScannerDisplay(targets, linkedBlocks, ContraptionNetworkLinkerData.getClientEditMode(stack),

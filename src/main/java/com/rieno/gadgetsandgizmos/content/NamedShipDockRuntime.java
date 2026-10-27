@@ -16,7 +16,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.phys.Vec3;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -77,6 +76,25 @@ final class NamedShipDockRuntime implements NamedDockingOperation.Host<NamedShip
         return operation.pending() || operation.complete();
     }
 
+    // Retain the completed berth's exit before another movement replaces this operation
+    Departure departure(){
+        if(!complete() || selected == null || selected.choice == null) return null;
+        Choice choice = selected.choice;
+        return new Departure(choice.dock, choice.shipIndex);
+    }
+
+    void beginDeparture(){
+        if(selected != null && selected.choice != null){
+            var ship = controller.getShipDockingConnector(selected.choice.shipIndex);
+            if(ship != null) DockingConnectorAutomation.disengage(
+                    DockingConnectorAutomation.resolve(level(), ship.subLevelId(), ship.blockPosition()),
+                    DockingConnectorAutomation.resolve(level(), selected.choice.dock.connectorSubLevelId(), selected.choice.dock.connectorPos()));
+        }
+        cancelForMovement();
+    }
+
+    record Departure(ShipDockRegistry.Dock dock, int connectorIdx){}
+
     void tick(){ operation.tick(tickTime()); }
     void cancel(){ operation.cancel(); }
     void cancelForMovement(){
@@ -113,6 +131,8 @@ final class NamedShipDockRuntime implements NamedDockingOperation.Host<NamedShip
         choices.sort(Comparator.comparingDouble(choice -> position().distanceTo(choice.dock.approach())));
         return choices.isEmpty() ? Optional.empty() : Optional.of(new Target(name.trim(), choices));
     }
+
+    Vec3 destination(Target target){ return target.choices.isEmpty() ? position() : target.choices.getFirst().dock.approach(); }
 
     private List<Choice> choices(ShipDockRegistry.Dock dock){
         List<Choice> choices = new ArrayList<>();
@@ -156,12 +176,11 @@ final class NamedShipDockRuntime implements NamedDockingOperation.Host<NamedShip
     }
 
     @Override public NamedDockingOperation.Reservation reserve(Target target, boolean committed){
+        committed |= runtime.approachCaptured(movementId("approach"));
         ServerLevel level = level();
         if(level == null) return NamedDockingOperation.Reservation.INVALID;
         if(owner == null){
-            String key = level.dimension().location() + "|" + SimulatedHelper.getContainingSubLevelId(controller)
-                    + "|" + controller.getBlockPos().asLong();
-            owner = new ShipDockScheduler.RequestKey(UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8)), "scm_graph_dock");
+            owner = new ShipDockScheduler.RequestKey(runtime.dockRequestOwnerId(), "scm_graph_dock");
         }
         selected = target;
         Set<ShipDockScheduler.DockSlot> occupied = new HashSet<>();
@@ -179,10 +198,15 @@ final class NamedShipDockRuntime implements NamedDockingOperation.Host<NamedShip
         var envelope = controller.getShipEnvelope();
         var vessel = envelope == null ? new ShipDockScheduler.VesselEnvelope(1, 1, 0.5)
                 : new ShipDockScheduler.VesselEnvelope(envelope.horizontalRadius(), envelope.height(), envelope.bottomOffset());
-        var lease = ShipDockScheduler.get(level.getServer()).request(level.getServer(), owner,
+        Map<ShipDockScheduler.DockSlot, ShipDockScheduler.AccessReport> access = new LinkedHashMap<>();
+        for(Choice choice : target.choices){
+            var report = runtime.assessDockApproach(choice.dock);
+            access.put(slot(choice.dock), report);
+        }
+        var lease = ShipDockScheduler.get(level.getServer()).requestPreferred(level.getServer(), owner,
                 committed && target.choice != null ? List.of(slot(target.choice.dock))
                         : target.choices.stream().map(choice -> slot(choice.dock)).toList(),
-                occupied, owned, new ShipDockScheduler.RequestPriority(distance, -1, committed), vessel);
+                occupied, owned, new ShipDockScheduler.RequestPriority(distance, -1, committed), vessel, access);
         target.holdingPlacement = lease.holdingPlacement();
         if(!lease.granted()) return NamedDockingOperation.Reservation.WAITING;
         target.holdingSlot = null;
@@ -207,8 +231,7 @@ final class NamedShipDockRuntime implements NamedDockingOperation.Host<NamedShip
     }
 
     private static ShipDockScheduler.DockSlot slot(ShipDockRegistry.Dock dock){
-        return new ShipDockScheduler.DockSlot(dock.id(), dock.dimension() + "|"
-                + (dock.connectorSubLevelId() == null ? "world" : dock.connectorSubLevelId()) + "|" + dock.connectorPos().asLong());
+        return ShipControlModuleRuntime.dockSlot(dock);
     }
 
     @Override public boolean navigate(Target target){
@@ -236,9 +259,18 @@ final class NamedShipDockRuntime implements NamedDockingOperation.Host<NamedShip
         var envelope = controller.getShipEnvelope();
         double bottom = envelope == null ? 0.5D : envelope.bottomOffset();
         double radius = envelope == null ? 1.0D : envelope.horizontalRadius();
-        List<List<Vec3>> corridors = target.choices.stream().map(choice ->
-                List.of(choice.dock.approach(), choice.dock.dockingTarget())).toList();
-        Vec3 waiting = ShipDockScheduler.resolveHoldingPosition(dock.approach(), dock.connectorFacing(), placement,
+        List<List<Vec3>> corridors = new ArrayList<>();
+        for(Choice choice : target.choices){
+            if(!choice.dock.approachPath().configured()){ corridors.add(List.of(choice.dock.approach(), choice.dock.dockingTarget())); continue; }
+            var network = choice.dock.approachPath().worldNetwork(choice.dock.connectorWorldPosition(), choice.dock.connectorFacing(), choice.dock.connectorUp());
+            for(var path : network.paths()) corridors.add(network.spline(path.id()).sample(1.0D));
+        }
+        Vec3 anchor = dock.approach(), outward = dock.connectorFacing();
+        if(dock.approachPath().configured()){
+            List<Vec3> approach = dock.approachPath().route(dock.connectorWorldPosition(), dock.connectorFacing(), dock.connectorUp(), false);
+            if(approach.size() >= 2){ anchor = approach.getFirst(); outward = approach.getFirst().subtract(approach.get(1)).normalize(); }
+        }
+        Vec3 waiting = ShipDockScheduler.resolveHoldingPosition(anchor, outward, placement,
                 placement.vertical() + Math.max(0.0D, bottom - 0.5D), corridors, Math.max(8.0D, radius * 2.0D + 2.0D));
         if(!runtime.execute(movementId("wait"), "ship_follow", Map.of(
                 "x", waiting.x, "y", waiting.y, "z", waiting.z, "speed", Math.min(speed * 28.0D, 8.0D),
@@ -253,6 +285,7 @@ final class NamedShipDockRuntime implements NamedDockingOperation.Host<NamedShip
     }
 
     @Override public boolean dock(Target target){
+        if(!runtime.prepareDockManeuver(target.choice.dock, target.choice.shipIndex, owner == null ? null : owner.ownerId(), Math.min(speed * 28.0D, 1.0D))) return true;
         var ship = controller.getShipDockingConnector(target.choice.shipIndex);
         BlockEntity station = DockingConnectorAutomation.resolve(level(), target.choice.dock.connectorSubLevelId(), target.choice.dock.connectorPos());
         BlockEntity onboard = ship == null ? null : DockingConnectorAutomation.resolve(level(), ship.subLevelId(), ship.blockPosition());
@@ -285,7 +318,13 @@ final class NamedShipDockRuntime implements NamedDockingOperation.Host<NamedShip
         text.put("target_point", "docking_connector:" + target.choice.shipIndex);
         UUID body = dock.connectorSubLevelId() == null ? dock.subLevelId() : dock.connectorSubLevelId();
         if(body != null) text.put("dock_sub_level_id", body.toString());
-        if(!runtime.execute(movementId(docking ? "capture" : "approach"), docking ? "ship_dock" : "ship_navigate", values, text)) return false;
+        boolean accepted;
+        if(!docking && dock.approachPath().configured()){
+            List<Vec3> controls = runtime.selectApproachRoute(movementId("approach"), dock, false, position());
+            if(controls.size() < 2) return true;
+            accepted = runtime.executeApproachSpline(movementId("approach"), values, text, controls, true, dock.id());
+        }else accepted = runtime.execute(movementId(docking ? "capture" : "approach"), docking ? "ship_dock" : "ship_navigate", values, text);
+        if(!accepted) return false;
         lastCommandPhase = phase;
         lastCommandTick = tickTime();
         return true;
@@ -297,6 +336,10 @@ final class NamedShipDockRuntime implements NamedDockingOperation.Host<NamedShip
         return ship != null && DockingConnectorAutomation.isLockedPair(
                 DockingConnectorAutomation.resolve(level(), ship.subLevelId(), ship.blockPosition()),
                 DockingConnectorAutomation.resolve(level(), target.choice.dock.connectorSubLevelId(), target.choice.dock.connectorPos()));
+    }
+
+    @Override public boolean waitingForClearance(Target target){
+        return runtime.dockingMovementBlocked(movementId("capture"));
     }
 
     @Override public void stopMovement(){

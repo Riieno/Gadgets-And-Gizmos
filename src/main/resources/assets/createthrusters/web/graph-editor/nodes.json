@@ -24,6 +24,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -34,6 +35,7 @@
       "color": "#4BBCE8",
       "stateful": true,
       "baseInputs": {
+        "interact_with_hit": "exec",
         "target": "target",
         "max_ray_length": "number",
         "rays_per_second": "number",
@@ -54,6 +56,7 @@
         "is_sub_level": "boolean"
       },
       "inputs": {
+        "interact_with_hit": "exec",
         "target": "target",
         "max_ray_length": "number",
         "rays_per_second": "number",
@@ -75,17 +78,17 @@
       },
       "defaultData": {
         "InputOptions": {
-          "mode": [
-            "Locked",
-            "Sentry",
-            "Manual"
-          ],
           "filter": [
             "sub_levels",
             "passive_mobs",
             "hostile_mobs",
             "players",
             "blocks"
+          ],
+          "mode": [
+            "Locked",
+            "Sentry",
+            "Manual"
           ],
           "filter_type": [
             "allowlist",
@@ -104,6 +107,7 @@
           "hit_x": "Hit X"
         },
         "InputOrder": [
+          "interact_with_hit",
           "target",
           "max_ray_length",
           "rays_per_second",
@@ -180,6 +184,7 @@
           "auto_tracking": "AutoTracking",
           "lock_target": "LockTarget",
           "source": "Camera Source",
+          "interact_with_hit": "Interact with Hit",
           "exec": "Execution",
           "target": "Camera Target"
         },
@@ -194,11 +199,13 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": [
         {
           "selector": "mode",
           "value": "Locked",
           "inputs": {
+            "interact_with_hit": "exec",
             "target": "target",
             "max_ray_length": "number",
             "rays_per_second": "number",
@@ -223,6 +230,7 @@
           "selector": "mode",
           "value": "Sentry",
           "inputs": {
+            "interact_with_hit": "exec",
             "target": "target",
             "max_ray_length": "number",
             "rays_per_second": "number",
@@ -247,6 +255,7 @@
           "selector": "mode",
           "value": "Manual",
           "inputs": {
+            "interact_with_hit": "exec",
             "target": "target",
             "max_ray_length": "number",
             "rays_per_second": "number",
@@ -301,6 +310,7 @@
         "OutputOrder": []
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -344,6 +354,7 @@
         "OutputOrder": []
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -371,6 +382,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -406,6 +418,7 @@
           "type": "number"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -439,6 +452,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -468,6 +482,7 @@
           "type": "string"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -525,6 +540,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -578,6 +594,7 @@
           "type": "boolean"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -791,6 +808,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -875,6 +893,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -902,6 +921,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -929,6 +949,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -961,6 +982,7 @@
           "type": "string"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -993,6 +1015,7 @@
           "type": "string"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1017,6 +1040,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1066,6 +1090,7 @@
           "type": "string"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1090,6 +1115,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1114,6 +1140,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1138,6 +1165,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1162,6 +1190,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1186,6 +1215,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1210,6 +1240,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1234,6 +1265,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1263,6 +1295,7 @@
           "type": "number"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1292,6 +1325,7 @@
           "type": "string"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1358,7 +1392,22 @@
             "frequency",
             "target",
             "list",
-            "map"
+            "map",
+            "color",
+            "any",
+            "worker",
+            "entity",
+            "task_request",
+            "container_selector",
+            "tag_filter",
+            "item_filter",
+            "fluid_filter",
+            "item_payload",
+            "failure_reason",
+            "fluid_payload",
+            "fe_payload",
+            "position",
+            "worker_group"
           ]
         },
         "DynamicOutputs": {
@@ -1377,6 +1426,7 @@
           "type": "string"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1413,6 +1463,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1449,6 +1500,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1499,6 +1551,7 @@
           "type": "number"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1532,6 +1585,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1565,6 +1619,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1595,6 +1650,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1628,6 +1684,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1661,6 +1718,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1694,6 +1752,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1727,6 +1786,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1763,6 +1823,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1817,6 +1878,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1853,6 +1915,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1886,6 +1949,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1916,6 +1980,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -1949,6 +2014,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -2003,6 +2069,7 @@
       "matchingInputs": {
         "b": "a"
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -2060,6 +2127,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": [
         {
           "selector": "flip_on",
@@ -2131,6 +2199,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -2184,6 +2253,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -2255,6 +2325,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -2305,6 +2376,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -2343,6 +2415,7 @@
           "type": "number"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -2381,6 +2454,7 @@
           "type": "number"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -2420,6 +2494,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -2459,6 +2534,7 @@
           "type": "number"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -2498,6 +2574,7 @@
           "type": "number"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -2537,6 +2614,7 @@
           "type": "number"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -2570,6 +2648,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -2603,6 +2682,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -2636,6 +2716,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -2669,56 +2750,7 @@
         ]
       },
       "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:percentage",
-      "name": "Percentage",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "a": "number",
-        "b": "number"
-      },
-      "baseOutputs": {
-        "value": "number",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "a": "number",
-        "b": "number"
-      },
-      "outputs": {
-        "value": "number",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "a",
-          "b"
-        ],
-        "OutputOrder": [
-          "value",
-          "valid"
-        ],
-        "Defaults": {
-          "a": {
-            "Type": "number",
-            "Payload": {
-              "Value": 0.0
-            }
-          },
-          "b": {
-            "Type": "number",
-            "Payload": {
-              "Value": 100.0
-            }
-          }
-        }
-      },
-      "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -2752,6 +2784,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -2785,6 +2818,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -2818,6 +2852,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -2851,6 +2886,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -2881,6 +2917,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -2923,6 +2960,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -2945,6 +2983,7 @@
         "value": "number"
       },
       "defaultData": {
+        "AngleUnit": "radians",
         "InputOrder": [
           "value"
         ],
@@ -2952,7 +2991,12 @@
           "value"
         ]
       },
-      "properties": {},
+      "properties": {
+        "AngleUnit": {
+          "type": "string"
+        }
+      },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -2975,6 +3019,7 @@
         "value": "number"
       },
       "defaultData": {
+        "AngleUnit": "radians",
         "InputOrder": [
           "value"
         ],
@@ -2982,7 +3027,12 @@
           "value"
         ]
       },
-      "properties": {},
+      "properties": {
+        "AngleUnit": {
+          "type": "string"
+        }
+      },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3013,6 +3063,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3043,6 +3094,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3065,6 +3117,7 @@
         "Out": "number"
       },
       "defaultData": {
+        "AngleUnit": "radians",
         "InputOrder": [
           "In"
         ],
@@ -3072,7 +3125,12 @@
           "Out"
         ]
       },
-      "properties": {},
+      "properties": {
+        "AngleUnit": {
+          "type": "string"
+        }
+      },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3095,6 +3153,7 @@
         "Out": "number"
       },
       "defaultData": {
+        "AngleUnit": "radians",
         "InputOrder": [
           "In"
         ],
@@ -3102,7 +3161,12 @@
           "Out"
         ]
       },
-      "properties": {},
+      "properties": {
+        "AngleUnit": {
+          "type": "string"
+        }
+      },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3125,6 +3189,7 @@
         "Out": "number"
       },
       "defaultData": {
+        "AngleUnit": "radians",
         "InputOrder": [
           "In"
         ],
@@ -3132,7 +3197,12 @@
           "Out"
         ]
       },
-      "properties": {},
+      "properties": {
+        "AngleUnit": {
+          "type": "string"
+        }
+      },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3155,6 +3225,7 @@
         "Out": "number"
       },
       "defaultData": {
+        "AngleUnit": "radians",
         "InputOrder": [
           "In"
         ],
@@ -3162,7 +3233,12 @@
           "Out"
         ]
       },
-      "properties": {},
+      "properties": {
+        "AngleUnit": {
+          "type": "string"
+        }
+      },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3187,12 +3263,10 @@
         "Out": "number"
       },
       "defaultData": {
+        "AngleUnit": "radians",
         "InputOrder": [
           "Y",
           "X"
-        ],
-        "OutputOrder": [
-          "Out"
         ],
         "Defaults": {
           "X": {
@@ -3201,9 +3275,17 @@
               "Value": 1.0
             }
           }
+        },
+        "OutputOrder": [
+          "Out"
+        ]
+      },
+      "properties": {
+        "AngleUnit": {
+          "type": "string"
         }
       },
-      "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3251,6 +3333,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3281,6 +3364,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3319,6 +3403,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3366,6 +3451,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3407,6 +3493,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3437,6 +3524,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3470,6 +3558,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3500,6 +3589,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3530,6 +3620,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3560,6 +3651,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3596,6 +3688,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3638,6 +3731,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3724,6 +3818,7 @@
           "type": "string"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3769,6 +3864,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3802,6 +3898,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3838,6 +3935,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3885,6 +3983,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -3930,6 +4029,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -4013,6 +4113,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -4111,6 +4212,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -4168,45 +4270,85 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
-      "id": "tait_bryan_to_quaternion",
-      "name": "Tait Bryan To Quaternion",
+      "id": "createthrusters:vector_dot",
+      "name": "Vector Dot",
       "category": "math",
       "categoryName": "Math",
       "color": "#59C58B",
       "stateful": false,
       "baseInputs": {
-        "tait_bryan": "map"
+        "a": "map",
+        "b": "map"
       },
       "baseOutputs": {
-        "quaternion": "map",
+        "value": "number",
         "valid": "boolean"
       },
       "inputs": {
-        "tait_bryan": "map"
+        "a": "map",
+        "b": "map"
       },
       "outputs": {
-        "quaternion": "map",
+        "value": "number",
         "valid": "boolean"
       },
       "defaultData": {
         "InputOrder": [
-          "tait_bryan"
+          "a",
+          "b"
         ],
         "OutputOrder": [
-          "quaternion",
+          "value",
           "valid"
         ],
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
-      "id": "createthrusters:quaternion_normalize",
-      "name": "Quaternion Normalize",
+      "id": "createthrusters:vector_normalize",
+      "name": "Vector Normalize",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "vector": "map"
+      },
+      "baseOutputs": {
+        "value": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "vector": "map"
+      },
+      "outputs": {
+        "value": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "vector"
+        ],
+        "OutputOrder": [
+          "value",
+          "valid"
+        ],
+        "Defaults": {}
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:quaternion_inverse",
+      "name": "Quaternion Inverse",
       "category": "math",
       "categoryName": "Math",
       "color": "#59C58B",
@@ -4272,6 +4414,449 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:quaternion_slerp",
+      "name": "Quaternion Slerp",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "a": "map",
+        "b": "map",
+        "amount": "number"
+      },
+      "baseOutputs": {
+        "quaternion": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "a": "map",
+        "b": "map",
+        "amount": "number"
+      },
+      "outputs": {
+        "quaternion": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "a",
+          "b",
+          "amount"
+        ],
+        "OutputOrder": [
+          "quaternion",
+          "valid"
+        ],
+        "Defaults": {
+          "a": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z",
+              "w"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "w": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              }
+            }
+          },
+          "amount": {
+            "Type": "number",
+            "Payload": {
+              "Value": 0.5
+            }
+          },
+          "b": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z",
+              "w"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "w": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              }
+            }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:quaternion_scale",
+      "name": "Quaternion Scale",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "quaternion": "map",
+        "scalar": "number"
+      },
+      "baseOutputs": {
+        "quaternion": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "quaternion": "map",
+        "scalar": "number"
+      },
+      "outputs": {
+        "quaternion": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "quaternion",
+          "scalar"
+        ],
+        "OutputOrder": [
+          "quaternion",
+          "valid"
+        ],
+        "Defaults": {
+          "quaternion": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z",
+              "w"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "w": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              }
+            }
+          },
+          "scalar": {
+            "Type": "number",
+            "Payload": {
+              "Value": 1.0
+            }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:linear_predict",
+      "name": "Linear Predict",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "position": "map",
+        "velocity": "map",
+        "acceleration": "map",
+        "jerk": "map",
+        "delta_time": "number"
+      },
+      "baseOutputs": {
+        "position": "map",
+        "velocity": "map",
+        "acceleration": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "position": "map",
+        "velocity": "map",
+        "acceleration": "map",
+        "jerk": "map",
+        "delta_time": "number"
+      },
+      "outputs": {
+        "position": "map",
+        "velocity": "map",
+        "acceleration": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "position",
+          "velocity",
+          "acceleration",
+          "jerk",
+          "delta_time"
+        ],
+        "OutputOrder": [
+          "position",
+          "velocity",
+          "acceleration",
+          "valid"
+        ],
+        "Defaults": {
+          "delta_time": {
+            "Type": "number",
+            "Payload": {
+              "Value": 0.05
+            }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:angle_from_coords",
+      "name": "Angle from Coords",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "origin": "map",
+        "target": "map"
+      },
+      "baseOutputs": {
+        "euler": "map",
+        "quaternion": "map",
+        "tait_bryan": "map",
+        "axis": "map",
+        "angle": "number",
+        "degrees": "number",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "origin": "map",
+        "target": "map"
+      },
+      "outputs": {
+        "euler": "map",
+        "quaternion": "map",
+        "tait_bryan": "map",
+        "axis": "map",
+        "angle": "number",
+        "degrees": "number",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "origin",
+          "target"
+        ],
+        "OutputOrder": [
+          "euler",
+          "quaternion",
+          "tait_bryan",
+          "axis",
+          "angle",
+          "degrees",
+          "valid"
+        ],
+        "Defaults": {
+          "origin": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              }
+            }
+          },
+          "target": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              }
+            }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:quaternion_rotate_vector",
+      "name": "Quaternion Rotate Vector",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "quaternion": "map",
+        "vector": "map"
+      },
+      "baseOutputs": {
+        "value": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "quaternion": "map",
+        "vector": "map"
+      },
+      "outputs": {
+        "value": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "quaternion",
+          "vector"
+        ],
+        "OutputOrder": [
+          "value",
+          "valid"
+        ],
+        "Defaults": {
+          "quaternion": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z",
+              "w"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "w": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              }
+            }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -4315,324 +4900,25 @@
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": true,
       "variants": []
     },
     {
-      "id": "createthrusters:world_direction_to_local",
-      "name": "World Direction To Local",
+      "id": "euler_to_quaternion",
+      "name": "Euler To Quaternion",
       "category": "math",
       "categoryName": "Math",
       "color": "#59C58B",
       "stateful": false,
       "baseInputs": {
-        "vector": "map",
-        "origin": "map",
-        "orientation": "map"
-      },
-      "baseOutputs": {
-        "value": "map",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "vector": "map",
-        "origin": "map",
-        "orientation": "map"
-      },
-      "outputs": {
-        "value": "map",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "vector",
-          "origin",
-          "orientation"
-        ],
-        "OutputOrder": [
-          "value",
-          "valid"
-        ],
-        "Defaults": {
-          "orientation": {
-            "Type": "map",
-            "EntryOrder": [
-              "x",
-              "y",
-              "z",
-              "w"
-            ],
-            "Payload": {
-              "x": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "y": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "z": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "w": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              }
-            }
-          }
-        }
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:pi",
-      "name": "Pi",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {},
-      "baseOutputs": {
-        "value": "number",
-        "valid": "boolean"
-      },
-      "inputs": {},
-      "outputs": {
-        "value": "number",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [],
-        "OutputOrder": [
-          "value",
-          "valid"
-        ],
-        "Defaults": {}
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:degrees_to_radians",
-      "name": "Degrees To Radians",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "angle": "number",
-        "angles": "map"
-      },
-      "baseOutputs": {
-        "angle": "number",
-        "angles": "map",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "angle": "number",
-        "angles": "map"
-      },
-      "outputs": {
-        "angle": "number",
-        "angles": "map",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "angle",
-          "angles"
-        ],
-        "OutputOrder": [
-          "angle",
-          "angles",
-          "valid"
-        ],
-        "Defaults": {
-          "angle": {
-            "Type": "number",
-            "Payload": {
-              "Value": 0.0
-            }
-          }
-        }
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:vector_scale",
-      "name": "Vector Scale",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "vector": "map",
-        "scalar": "number"
-      },
-      "baseOutputs": {
-        "value": "map",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "vector": "map",
-        "scalar": "number"
-      },
-      "outputs": {
-        "value": "map",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "vector",
-          "scalar"
-        ],
-        "OutputOrder": [
-          "value",
-          "valid"
-        ],
-        "Defaults": {
-          "scalar": {
-            "Type": "number",
-            "Payload": {
-              "Value": 1.0
-            }
-          }
-        }
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:linear_integrator",
-      "name": "Linear Integrator",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": true,
-      "baseInputs": {
-        "position": "map",
-        "velocity": "map",
-        "acceleration": "map",
-        "jerk": "map",
-        "delta_time": "number",
-        "exec": "exec",
-        "reset": "boolean"
-      },
-      "baseOutputs": {
-        "position": "map",
-        "velocity": "map",
-        "acceleration": "map",
-        "exec": "exec",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "position": "map",
-        "velocity": "map",
-        "acceleration": "map",
-        "jerk": "map",
-        "delta_time": "number",
-        "exec": "exec",
-        "reset": "boolean"
-      },
-      "outputs": {
-        "position": "map",
-        "velocity": "map",
-        "acceleration": "map",
-        "exec": "exec",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "position",
-          "velocity",
-          "acceleration",
-          "jerk",
-          "delta_time",
-          "exec",
-          "reset"
-        ],
-        "OutputOrder": [
-          "position",
-          "velocity",
-          "acceleration",
-          "exec",
-          "valid"
-        ],
-        "Defaults": {
-          "delta_time": {
-            "Type": "number",
-            "Payload": {
-              "Value": 0.05
-            }
-          }
-        }
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:matrix_multiply",
-      "name": "Matrix Multiply",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "a": "map",
-        "b": "map"
-      },
-      "baseOutputs": {
-        "matrix": "map",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "a": "map",
-        "b": "map"
-      },
-      "outputs": {
-        "matrix": "map",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "a",
-          "b"
-        ],
-        "OutputOrder": [
-          "matrix",
-          "valid"
-        ],
-        "Defaults": {}
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:quaternion_conjugate",
-      "name": "Quaternion Conjugate",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "quaternion": "map"
+        "euler": "map"
       },
       "baseOutputs": {
         "quaternion": "map",
         "valid": "boolean"
       },
       "inputs": {
-        "quaternion": "map"
+        "euler": "map"
       },
       "outputs": {
         "quaternion": "map",
@@ -4640,127 +4926,116 @@
       },
       "defaultData": {
         "InputOrder": [
-          "quaternion"
+          "euler"
         ],
         "OutputOrder": [
           "quaternion",
           "valid"
         ],
-        "Defaults": {
-          "quaternion": {
-            "Type": "map",
-            "EntryOrder": [
-              "x",
-              "y",
-              "z",
-              "w"
-            ],
-            "Payload": {
-              "x": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "y": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "z": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "w": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              }
-            }
-          }
-        }
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:matrix_identity",
-      "name": "Matrix Identity",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {},
-      "baseOutputs": {
-        "matrix": "map",
-        "valid": "boolean"
-      },
-      "inputs": {},
-      "outputs": {
-        "matrix": "map",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [],
-        "OutputOrder": [
-          "matrix",
-          "valid"
-        ],
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": true,
       "variants": []
     },
     {
-      "id": "quaternion_to_tait_bryan",
-      "name": "Quaternion To Tait Bryan",
+      "id": "createthrusters:matrix_create",
+      "name": "Matrix Create",
       "category": "math",
       "categoryName": "Math",
       "color": "#59C58B",
       "stateful": false,
       "baseInputs": {
-        "quaternion": "map"
+        "row_x": "map",
+        "row_y": "map",
+        "row_z": "map"
       },
       "baseOutputs": {
-        "tait_bryan": "map",
-        "roll": "number",
-        "pitch": "number",
-        "yaw": "number",
+        "matrix": "map",
         "valid": "boolean"
       },
       "inputs": {
-        "quaternion": "map"
+        "row_x": "map",
+        "row_y": "map",
+        "row_z": "map"
       },
       "outputs": {
-        "tait_bryan": "map",
-        "roll": "number",
-        "pitch": "number",
-        "yaw": "number",
+        "matrix": "map",
         "valid": "boolean"
       },
       "defaultData": {
         "InputOrder": [
-          "quaternion"
+          "row_x",
+          "row_y",
+          "row_z"
         ],
         "OutputOrder": [
-          "tait_bryan",
-          "roll",
-          "pitch",
-          "yaw",
+          "matrix",
           "valid"
         ],
         "Defaults": {
-          "quaternion": {
+          "row_x": {
             "Type": "map",
             "EntryOrder": [
               "x",
               "y",
-              "z",
-              "w"
+              "z"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              }
+            }
+          },
+          "row_y": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              }
+            }
+          },
+          "row_z": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z"
             ],
             "Payload": {
               "x": {
@@ -4778,12 +5053,6 @@
               "z": {
                 "Type": "number",
                 "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "w": {
-                "Type": "number",
-                "Payload": {
                   "Value": 1.0
                 }
               }
@@ -4792,6 +5061,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -4900,41 +5170,426 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
-      "id": "createthrusters:local_to_world",
-      "name": "Local To World",
+      "id": "createthrusters:matrix_identity",
+      "name": "Matrix Identity",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {},
+      "baseOutputs": {
+        "matrix": "map",
+        "valid": "boolean"
+      },
+      "inputs": {},
+      "outputs": {
+        "matrix": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [],
+        "OutputOrder": [
+          "matrix",
+          "valid"
+        ],
+        "Defaults": {}
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:percentage",
+      "name": "Percentage",
       "category": "math",
       "categoryName": "Math",
       "color": "#59C58B",
       "stateful": false,
       "baseInputs": {
-        "vector": "map",
-        "origin": "map",
-        "orientation": "map"
+        "a": "number",
+        "b": "number"
       },
       "baseOutputs": {
-        "value": "map",
+        "value": "number",
         "valid": "boolean"
       },
       "inputs": {
-        "vector": "map",
-        "origin": "map",
-        "orientation": "map"
+        "a": "number",
+        "b": "number"
       },
       "outputs": {
-        "value": "map",
+        "value": "number",
         "valid": "boolean"
       },
       "defaultData": {
         "InputOrder": [
-          "vector",
-          "origin",
-          "orientation"
+          "a",
+          "b"
         ],
         "OutputOrder": [
           "value",
+          "valid"
+        ],
+        "Defaults": {
+          "a": {
+            "Type": "number",
+            "Payload": {
+              "Value": 0.0
+            }
+          },
+          "b": {
+            "Type": "number",
+            "Payload": {
+              "Value": 100.0
+            }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:quaternion_conjugate",
+      "name": "Quaternion Conjugate",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "quaternion": "map"
+      },
+      "baseOutputs": {
+        "quaternion": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "quaternion": "map"
+      },
+      "outputs": {
+        "quaternion": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "quaternion"
+        ],
+        "OutputOrder": [
+          "quaternion",
+          "valid"
+        ],
+        "Defaults": {
+          "quaternion": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z",
+              "w"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "w": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              }
+            }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:matrix_subtract",
+      "name": "Matrix Subtract",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "a": "map",
+        "b": "map"
+      },
+      "baseOutputs": {
+        "matrix": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "a": "map",
+        "b": "map"
+      },
+      "outputs": {
+        "matrix": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "a",
+          "b"
+        ],
+        "OutputOrder": [
+          "matrix",
+          "valid"
+        ],
+        "Defaults": {}
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:matrix_to_quaternion",
+      "name": "Matrix To Quaternion",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "matrix": "map"
+      },
+      "baseOutputs": {
+        "quaternion": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "matrix": "map"
+      },
+      "outputs": {
+        "quaternion": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "matrix"
+        ],
+        "OutputOrder": [
+          "quaternion",
+          "valid"
+        ],
+        "Defaults": {
+          "matrix": {
+            "Type": "map",
+            "EntryOrder": [
+              "m00",
+              "m01",
+              "m02",
+              "m10",
+              "m11",
+              "m12",
+              "m20",
+              "m21",
+              "m22"
+            ],
+            "Payload": {
+              "m20": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "m00": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              },
+              "m11": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              },
+              "m22": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              },
+              "m10": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "m21": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "m02": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "m01": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "m12": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              }
+            }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "euler_to_tait_bryan",
+      "name": "Euler To Tait Bryan",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "euler": "map"
+      },
+      "baseOutputs": {
+        "tait_bryan": "map",
+        "roll": "number",
+        "pitch": "number",
+        "yaw": "number",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "euler": "map"
+      },
+      "outputs": {
+        "tait_bryan": "map",
+        "roll": "number",
+        "pitch": "number",
+        "yaw": "number",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "euler"
+        ],
+        "OutputOrder": [
+          "tait_bryan",
+          "roll",
+          "pitch",
+          "yaw",
+          "valid"
+        ],
+        "Defaults": {}
+      },
+      "properties": {},
+      "hiddenFromLibrary": true,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:degrees_to_radians",
+      "name": "Degrees To Radians",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "angle": "number",
+        "angles": "map"
+      },
+      "baseOutputs": {
+        "angle": "number",
+        "angles": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "angle": "number",
+        "angles": "map"
+      },
+      "outputs": {
+        "angle": "number",
+        "angles": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "angle",
+          "angles"
+        ],
+        "OutputOrder": [
+          "angle",
+          "angles",
+          "valid"
+        ],
+        "Defaults": {
+          "angle": {
+            "Type": "number",
+            "Payload": {
+              "Value": 0.0
+            }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": true,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:tensor_to_local",
+      "name": "Tensor To Local",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "tensor": "map",
+        "orientation": "map"
+      },
+      "baseOutputs": {
+        "matrix": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "tensor": "map",
+        "orientation": "map"
+      },
+      "outputs": {
+        "matrix": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "tensor",
+          "orientation"
+        ],
+        "OutputOrder": [
+          "matrix",
           "valid"
         ],
         "Defaults": {
@@ -4976,6 +5631,157 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:matrix_scale",
+      "name": "Matrix Scale",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "matrix": "map",
+        "scalar": "number"
+      },
+      "baseOutputs": {
+        "matrix": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "matrix": "map",
+        "scalar": "number"
+      },
+      "outputs": {
+        "matrix": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "matrix",
+          "scalar"
+        ],
+        "OutputOrder": [
+          "matrix",
+          "valid"
+        ],
+        "Defaults": {
+          "matrix": {
+            "Type": "map",
+            "EntryOrder": [
+              "m00",
+              "m01",
+              "m02",
+              "m10",
+              "m11",
+              "m12",
+              "m20",
+              "m21",
+              "m22"
+            ],
+            "Payload": {
+              "m20": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "m00": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              },
+              "m11": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              },
+              "m22": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              },
+              "m10": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "m21": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "m02": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "m01": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "m12": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              }
+            }
+          },
+          "scalar": {
+            "Type": "number",
+            "Payload": {
+              "Value": 1.0
+            }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "tait_bryan_to_quaternion",
+      "name": "Tait Bryan To Quaternion",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "tait_bryan": "map"
+      },
+      "baseOutputs": {
+        "quaternion": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "tait_bryan": "map"
+      },
+      "outputs": {
+        "quaternion": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "tait_bryan"
+        ],
+        "OutputOrder": [
+          "quaternion",
+          "valid"
+        ],
+        "Defaults": {}
+      },
+      "properties": {},
+      "hiddenFromLibrary": true,
       "variants": []
     },
     {
@@ -5046,53 +5852,19 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
-      "id": "createthrusters:vector_normalize",
-      "name": "Vector Normalize",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "vector": "map"
-      },
-      "baseOutputs": {
-        "value": "map",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "vector": "map"
-      },
-      "outputs": {
-        "value": "map",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "vector"
-        ],
-        "OutputOrder": [
-          "value",
-          "valid"
-        ],
-        "Defaults": {}
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:world_to_local",
-      "name": "World To Local",
+      "id": "createthrusters:vector_scale",
+      "name": "Vector Scale",
       "category": "math",
       "categoryName": "Math",
       "color": "#59C58B",
       "stateful": false,
       "baseInputs": {
         "vector": "map",
-        "origin": "map",
-        "orientation": "map"
+        "scalar": "number"
       },
       "baseOutputs": {
         "value": "map",
@@ -5100,8 +5872,7 @@
       },
       "inputs": {
         "vector": "map",
-        "origin": "map",
-        "orientation": "map"
+        "scalar": "number"
       },
       "outputs": {
         "value": "map",
@@ -5110,611 +5881,131 @@
       "defaultData": {
         "InputOrder": [
           "vector",
-          "origin",
-          "orientation"
+          "scalar"
         ],
         "OutputOrder": [
           "value",
           "valid"
         ],
         "Defaults": {
-          "orientation": {
-            "Type": "map",
-            "EntryOrder": [
-              "x",
-              "y",
-              "z",
-              "w"
-            ],
-            "Payload": {
-              "x": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "y": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "z": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "w": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              }
-            }
-          }
-        }
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "euler_to_tait_bryan",
-      "name": "Euler To Tait Bryan",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "euler": "map"
-      },
-      "baseOutputs": {
-        "tait_bryan": "map",
-        "roll": "number",
-        "pitch": "number",
-        "yaw": "number",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "euler": "map"
-      },
-      "outputs": {
-        "tait_bryan": "map",
-        "roll": "number",
-        "pitch": "number",
-        "yaw": "number",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "euler"
-        ],
-        "OutputOrder": [
-          "tait_bryan",
-          "roll",
-          "pitch",
-          "yaw",
-          "valid"
-        ],
-        "Defaults": {}
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:vector_cross",
-      "name": "Vector Cross",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "a": "map",
-        "b": "map"
-      },
-      "baseOutputs": {
-        "value": "map",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "a": "map",
-        "b": "map"
-      },
-      "outputs": {
-        "value": "map",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "a",
-          "b"
-        ],
-        "OutputOrder": [
-          "value",
-          "valid"
-        ],
-        "Defaults": {}
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:tensor_to_world",
-      "name": "Tensor To World",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "tensor": "map",
-        "orientation": "map"
-      },
-      "baseOutputs": {
-        "matrix": "map",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "tensor": "map",
-        "orientation": "map"
-      },
-      "outputs": {
-        "matrix": "map",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "tensor",
-          "orientation"
-        ],
-        "OutputOrder": [
-          "matrix",
-          "valid"
-        ],
-        "Defaults": {
-          "orientation": {
-            "Type": "map",
-            "EntryOrder": [
-              "x",
-              "y",
-              "z",
-              "w"
-            ],
-            "Payload": {
-              "x": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "y": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "z": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "w": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              }
-            }
-          }
-        }
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:matrix_add",
-      "name": "Matrix Add",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "a": "map",
-        "b": "map"
-      },
-      "baseOutputs": {
-        "matrix": "map",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "a": "map",
-        "b": "map"
-      },
-      "outputs": {
-        "matrix": "map",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "a",
-          "b"
-        ],
-        "OutputOrder": [
-          "matrix",
-          "valid"
-        ],
-        "Defaults": {}
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:quaternion_multiply",
-      "name": "Quaternion Multiply",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "a": "map",
-        "b": "map"
-      },
-      "baseOutputs": {
-        "quaternion": "map",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "a": "map",
-        "b": "map"
-      },
-      "outputs": {
-        "quaternion": "map",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "a",
-          "b"
-        ],
-        "OutputOrder": [
-          "quaternion",
-          "valid"
-        ],
-        "Defaults": {
-          "a": {
-            "Type": "map",
-            "EntryOrder": [
-              "x",
-              "y",
-              "z",
-              "w"
-            ],
-            "Payload": {
-              "x": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "y": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "z": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "w": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              }
-            }
-          },
-          "b": {
-            "Type": "map",
-            "EntryOrder": [
-              "x",
-              "y",
-              "z",
-              "w"
-            ],
-            "Payload": {
-              "x": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "y": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "z": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "w": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              }
-            }
-          }
-        }
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:quaternion_add",
-      "name": "Quaternion Add",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "a": "map",
-        "b": "map"
-      },
-      "baseOutputs": {
-        "quaternion": "map",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "a": "map",
-        "b": "map"
-      },
-      "outputs": {
-        "quaternion": "map",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "a",
-          "b"
-        ],
-        "OutputOrder": [
-          "quaternion",
-          "valid"
-        ],
-        "Defaults": {
-          "a": {
-            "Type": "map",
-            "EntryOrder": [
-              "x",
-              "y",
-              "z",
-              "w"
-            ],
-            "Payload": {
-              "x": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "y": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "z": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "w": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              }
-            }
-          },
-          "b": {
-            "Type": "map",
-            "EntryOrder": [
-              "x",
-              "y",
-              "z",
-              "w"
-            ],
-            "Payload": {
-              "x": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "y": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "z": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "w": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              }
-            }
-          }
-        }
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:quaternion_slerp",
-      "name": "Quaternion Slerp",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "a": "map",
-        "b": "map",
-        "amount": "number"
-      },
-      "baseOutputs": {
-        "quaternion": "map",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "a": "map",
-        "b": "map",
-        "amount": "number"
-      },
-      "outputs": {
-        "quaternion": "map",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "a",
-          "b",
-          "amount"
-        ],
-        "OutputOrder": [
-          "quaternion",
-          "valid"
-        ],
-        "Defaults": {
-          "a": {
-            "Type": "map",
-            "EntryOrder": [
-              "x",
-              "y",
-              "z",
-              "w"
-            ],
-            "Payload": {
-              "x": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "y": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "z": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "w": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              }
-            }
-          },
-          "b": {
-            "Type": "map",
-            "EntryOrder": [
-              "x",
-              "y",
-              "z",
-              "w"
-            ],
-            "Payload": {
-              "x": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "y": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "z": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "w": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              }
-            }
-          },
-          "amount": {
+          "scalar": {
             "Type": "number",
             "Payload": {
-              "Value": 0.5
+              "Value": 1.0
             }
           }
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
-      "id": "createthrusters:radians_to_degrees",
-      "name": "Radians To Degrees",
+      "id": "createthrusters:quaternion_magnitude",
+      "name": "Quaternion Magnitude",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "quaternion": "map"
+      },
+      "baseOutputs": {
+        "value": "number",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "quaternion": "map"
+      },
+      "outputs": {
+        "value": "number",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "quaternion"
+        ],
+        "OutputOrder": [
+          "value",
+          "valid"
+        ],
+        "Defaults": {
+          "quaternion": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z",
+              "w"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "w": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              }
+            }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:convert_angle",
+      "name": "Convert Angle",
       "category": "math",
       "categoryName": "Math",
       "color": "#59C58B",
       "stateful": false,
       "baseInputs": {
         "angle": "number",
+        "axis": "map",
         "angles": "map"
       },
       "baseOutputs": {
         "angle": "number",
+        "axis": "map",
         "angles": "map",
         "valid": "boolean"
       },
       "inputs": {
         "angle": "number",
+        "axis": "map",
         "angles": "map"
       },
       "outputs": {
         "angle": "number",
+        "axis": "map",
         "angles": "map",
         "valid": "boolean"
       },
       "defaultData": {
+        "OutputAngleType": "degrees",
         "InputOrder": [
           "angle",
+          "axis",
           "angles"
-        ],
-        "OutputOrder": [
-          "angle",
-          "angles",
-          "valid"
         ],
         "Defaults": {
           "angle": {
@@ -5722,43 +6013,47 @@
             "Payload": {
               "Value": 0.0
             }
-          }
-        }
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:matrix_diagonal",
-      "name": "Matrix Diagonal",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "diagonal": "map"
-      },
-      "baseOutputs": {
-        "matrix": "map",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "diagonal": "map"
-      },
-      "outputs": {
-        "matrix": "map",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "diagonal"
-        ],
-        "OutputOrder": [
-          "matrix",
-          "valid"
-        ],
-        "Defaults": {
-          "diagonal": {
+          },
+          "angles": {
+            "Type": "map",
+            "Payload": {}
+          },
+          "quaternion": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z",
+              "w"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "w": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              }
+            }
+          },
+          "axis": {
             "Type": "map",
             "EntryOrder": [
               "x",
@@ -5775,21 +6070,299 @@
               "y": {
                 "Type": "number",
                 "Payload": {
-                  "Value": 1.0
+                  "Value": 0.0
                 }
               },
               "z": {
                 "Type": "number",
                 "Payload": {
-                  "Value": 1.0
+                  "Value": 0.0
+                }
+              }
+            }
+          },
+          "tait_bryan": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z",
+              "roll",
+              "pitch",
+              "yaw"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "roll": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "pitch": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "yaw": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              }
+            }
+          },
+          "euler": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z",
+              "alpha",
+              "beta",
+              "gamma"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "beta": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "gamma": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "alpha": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
                 }
               }
             }
           }
+        },
+        "InputAngleType": "radians",
+        "OutputOrder": [
+          "angle",
+          "axis",
+          "angles",
+          "valid"
+        ]
+      },
+      "properties": {
+        "OutputAngleType": {
+          "type": "string",
+          "options": [
+            "radians",
+            "degrees",
+            "turns",
+            "gradians",
+            "axis_angle",
+            "euler",
+            "tait_bryan",
+            "quaternion"
+          ]
+        },
+        "InputAngleType": {
+          "type": "string",
+          "options": [
+            "radians",
+            "degrees",
+            "turns",
+            "gradians",
+            "axis_angle",
+            "euler",
+            "tait_bryan",
+            "quaternion"
+          ]
         }
       },
-      "properties": {},
-      "variants": []
+      "hiddenFromLibrary": false,
+      "variants": [
+        {
+          "selector": "InputAngleType",
+          "value": "radians",
+          "inputs": {
+            "angle": "number",
+            "axis": "map",
+            "angles": "map"
+          }
+        },
+        {
+          "selector": "InputAngleType",
+          "value": "degrees",
+          "inputs": {
+            "angle": "number",
+            "axis": "map",
+            "angles": "map"
+          }
+        },
+        {
+          "selector": "InputAngleType",
+          "value": "turns",
+          "inputs": {
+            "angle": "number",
+            "axis": "map",
+            "angles": "map"
+          }
+        },
+        {
+          "selector": "InputAngleType",
+          "value": "gradians",
+          "inputs": {
+            "angle": "number",
+            "axis": "map",
+            "angles": "map"
+          }
+        },
+        {
+          "selector": "InputAngleType",
+          "value": "axis_angle",
+          "inputs": {
+            "angle": "number",
+            "axis": "map"
+          }
+        },
+        {
+          "selector": "InputAngleType",
+          "value": "euler",
+          "inputs": {
+            "euler": "map"
+          }
+        },
+        {
+          "selector": "InputAngleType",
+          "value": "tait_bryan",
+          "inputs": {
+            "tait_bryan": "map"
+          }
+        },
+        {
+          "selector": "InputAngleType",
+          "value": "quaternion",
+          "inputs": {
+            "quaternion": "map"
+          }
+        },
+        {
+          "selector": "OutputAngleType",
+          "value": "radians",
+          "outputs": {
+            "angle": "number",
+            "axis": "map",
+            "angles": "map",
+            "valid": "boolean"
+          }
+        },
+        {
+          "selector": "OutputAngleType",
+          "value": "degrees",
+          "outputs": {
+            "angle": "number",
+            "axis": "map",
+            "angles": "map",
+            "valid": "boolean"
+          }
+        },
+        {
+          "selector": "OutputAngleType",
+          "value": "turns",
+          "outputs": {
+            "angle": "number",
+            "axis": "map",
+            "angles": "map",
+            "valid": "boolean"
+          }
+        },
+        {
+          "selector": "OutputAngleType",
+          "value": "gradians",
+          "outputs": {
+            "angle": "number",
+            "axis": "map",
+            "angles": "map",
+            "valid": "boolean"
+          }
+        },
+        {
+          "selector": "OutputAngleType",
+          "value": "axis_angle",
+          "outputs": {
+            "angle": "number",
+            "axis": "map",
+            "valid": "boolean"
+          }
+        },
+        {
+          "selector": "OutputAngleType",
+          "value": "euler",
+          "outputs": {
+            "euler": "map",
+            "alpha": "number",
+            "beta": "number",
+            "gamma": "number",
+            "valid": "boolean"
+          }
+        },
+        {
+          "selector": "OutputAngleType",
+          "value": "tait_bryan",
+          "outputs": {
+            "tait_bryan": "map",
+            "roll": "number",
+            "pitch": "number",
+            "yaw": "number",
+            "valid": "boolean"
+          }
+        },
+        {
+          "selector": "OutputAngleType",
+          "value": "quaternion",
+          "outputs": {
+            "quaternion": "map",
+            "valid": "boolean"
+          }
+        }
+      ]
     },
     {
       "id": "createthrusters:rigid_body_integrator",
@@ -5928,282 +6501,12 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
-      "id": "createthrusters:matrix_determinant",
-      "name": "Matrix Determinant",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "matrix": "map"
-      },
-      "baseOutputs": {
-        "value": "number",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "matrix": "map"
-      },
-      "outputs": {
-        "value": "number",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "matrix"
-        ],
-        "OutputOrder": [
-          "value",
-          "valid"
-        ],
-        "Defaults": {
-          "matrix": {
-            "Type": "map",
-            "EntryOrder": [
-              "m00",
-              "m01",
-              "m02",
-              "m10",
-              "m11",
-              "m12",
-              "m20",
-              "m21",
-              "m22"
-            ],
-            "Payload": {
-              "m20": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "m00": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              },
-              "m11": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              },
-              "m22": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              },
-              "m10": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "m21": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "m02": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "m01": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "m12": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              }
-            }
-          }
-        }
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:quaternion_magnitude",
-      "name": "Quaternion Magnitude",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "quaternion": "map"
-      },
-      "baseOutputs": {
-        "value": "number",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "quaternion": "map"
-      },
-      "outputs": {
-        "value": "number",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "quaternion"
-        ],
-        "OutputOrder": [
-          "value",
-          "valid"
-        ],
-        "Defaults": {
-          "quaternion": {
-            "Type": "map",
-            "EntryOrder": [
-              "x",
-              "y",
-              "z",
-              "w"
-            ],
-            "Payload": {
-              "x": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "y": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "z": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "w": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              }
-            }
-          }
-        }
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:matrix_subtract",
-      "name": "Matrix Subtract",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "a": "map",
-        "b": "map"
-      },
-      "baseOutputs": {
-        "matrix": "map",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "a": "map",
-        "b": "map"
-      },
-      "outputs": {
-        "matrix": "map",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "a",
-          "b"
-        ],
-        "OutputOrder": [
-          "matrix",
-          "valid"
-        ],
-        "Defaults": {}
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:linear_predict",
-      "name": "Linear Predict",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "position": "map",
-        "velocity": "map",
-        "acceleration": "map",
-        "jerk": "map",
-        "delta_time": "number"
-      },
-      "baseOutputs": {
-        "position": "map",
-        "velocity": "map",
-        "acceleration": "map",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "position": "map",
-        "velocity": "map",
-        "acceleration": "map",
-        "jerk": "map",
-        "delta_time": "number"
-      },
-      "outputs": {
-        "position": "map",
-        "velocity": "map",
-        "acceleration": "map",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "position",
-          "velocity",
-          "acceleration",
-          "jerk",
-          "delta_time"
-        ],
-        "OutputOrder": [
-          "position",
-          "velocity",
-          "acceleration",
-          "valid"
-        ],
-        "Defaults": {
-          "delta_time": {
-            "Type": "number",
-            "Payload": {
-              "Value": 0.05
-            }
-          }
-        }
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:tensor_to_local",
-      "name": "Tensor To Local",
+      "id": "createthrusters:tensor_to_world",
+      "name": "Tensor To World",
       "category": "math",
       "categoryName": "Math",
       "color": "#59C58B",
@@ -6272,184 +6575,7 @@
         }
       },
       "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:quaternion_rotate_vector",
-      "name": "Quaternion Rotate Vector",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "quaternion": "map",
-        "vector": "map"
-      },
-      "baseOutputs": {
-        "value": "map",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "quaternion": "map",
-        "vector": "map"
-      },
-      "outputs": {
-        "value": "map",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "quaternion",
-          "vector"
-        ],
-        "OutputOrder": [
-          "value",
-          "valid"
-        ],
-        "Defaults": {
-          "quaternion": {
-            "Type": "map",
-            "EntryOrder": [
-              "x",
-              "y",
-              "z",
-              "w"
-            ],
-            "Payload": {
-              "x": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "y": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "z": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "w": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              }
-            }
-          }
-        }
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:matrix_transpose",
-      "name": "Matrix Transpose",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "matrix": "map"
-      },
-      "baseOutputs": {
-        "matrix": "map",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "matrix": "map"
-      },
-      "outputs": {
-        "matrix": "map",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "matrix"
-        ],
-        "OutputOrder": [
-          "matrix",
-          "valid"
-        ],
-        "Defaults": {
-          "matrix": {
-            "Type": "map",
-            "EntryOrder": [
-              "m00",
-              "m01",
-              "m02",
-              "m10",
-              "m11",
-              "m12",
-              "m20",
-              "m21",
-              "m22"
-            ],
-            "Payload": {
-              "m20": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "m00": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              },
-              "m11": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              },
-              "m22": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              },
-              "m10": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "m21": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "m02": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "m01": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "m12": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              }
-            }
-          }
-        }
-      },
-      "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -6558,533 +6684,7 @@
         }
       },
       "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:quaternion_from_axis_angle",
-      "name": "Quaternion From Axis Angle",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "axis": "map",
-        "angle": "number"
-      },
-      "baseOutputs": {
-        "quaternion": "map",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "axis": "map",
-        "angle": "number"
-      },
-      "outputs": {
-        "quaternion": "map",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "axis",
-          "angle"
-        ],
-        "OutputOrder": [
-          "quaternion",
-          "valid"
-        ],
-        "Defaults": {
-          "axis": {
-            "Type": "map",
-            "EntryOrder": [
-              "x",
-              "y",
-              "z"
-            ],
-            "Payload": {
-              "x": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              },
-              "y": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "z": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              }
-            }
-          }
-        }
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:matrix_create",
-      "name": "Matrix Create",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "row_x": "map",
-        "row_y": "map",
-        "row_z": "map"
-      },
-      "baseOutputs": {
-        "matrix": "map",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "row_x": "map",
-        "row_y": "map",
-        "row_z": "map"
-      },
-      "outputs": {
-        "matrix": "map",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "row_x",
-          "row_y",
-          "row_z"
-        ],
-        "OutputOrder": [
-          "matrix",
-          "valid"
-        ],
-        "Defaults": {
-          "row_x": {
-            "Type": "map",
-            "EntryOrder": [
-              "x",
-              "y",
-              "z"
-            ],
-            "Payload": {
-              "x": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              },
-              "y": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "z": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              }
-            }
-          },
-          "row_y": {
-            "Type": "map",
-            "EntryOrder": [
-              "x",
-              "y",
-              "z"
-            ],
-            "Payload": {
-              "x": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "y": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              },
-              "z": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              }
-            }
-          },
-          "row_z": {
-            "Type": "map",
-            "EntryOrder": [
-              "x",
-              "y",
-              "z"
-            ],
-            "Payload": {
-              "x": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "y": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "z": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              }
-            }
-          }
-        }
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "quaternion_to_euler",
-      "name": "Quaternion To Euler",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "quaternion": "map"
-      },
-      "baseOutputs": {
-        "euler": "map",
-        "alpha": "number",
-        "beta": "number",
-        "gamma": "number",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "quaternion": "map"
-      },
-      "outputs": {
-        "euler": "map",
-        "alpha": "number",
-        "beta": "number",
-        "gamma": "number",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "quaternion"
-        ],
-        "OutputOrder": [
-          "euler",
-          "alpha",
-          "beta",
-          "gamma",
-          "valid"
-        ],
-        "Defaults": {
-          "quaternion": {
-            "Type": "map",
-            "EntryOrder": [
-              "x",
-              "y",
-              "z",
-              "w"
-            ],
-            "Payload": {
-              "x": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "y": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "z": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "w": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              }
-            }
-          }
-        }
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:quaternion_inverse",
-      "name": "Quaternion Inverse",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "quaternion": "map"
-      },
-      "baseOutputs": {
-        "quaternion": "map",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "quaternion": "map"
-      },
-      "outputs": {
-        "quaternion": "map",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "quaternion"
-        ],
-        "OutputOrder": [
-          "quaternion",
-          "valid"
-        ],
-        "Defaults": {
-          "quaternion": {
-            "Type": "map",
-            "EntryOrder": [
-              "x",
-              "y",
-              "z",
-              "w"
-            ],
-            "Payload": {
-              "x": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "y": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "z": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "w": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              }
-            }
-          }
-        }
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:quaternion_dot",
-      "name": "Quaternion Dot",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "a": "map",
-        "b": "map"
-      },
-      "baseOutputs": {
-        "value": "number",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "a": "map",
-        "b": "map"
-      },
-      "outputs": {
-        "value": "number",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "a",
-          "b"
-        ],
-        "OutputOrder": [
-          "value",
-          "valid"
-        ],
-        "Defaults": {
-          "a": {
-            "Type": "map",
-            "EntryOrder": [
-              "x",
-              "y",
-              "z",
-              "w"
-            ],
-            "Payload": {
-              "x": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "y": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "z": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "w": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              }
-            }
-          },
-          "b": {
-            "Type": "map",
-            "EntryOrder": [
-              "x",
-              "y",
-              "z",
-              "w"
-            ],
-            "Payload": {
-              "x": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "y": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "z": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "w": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              }
-            }
-          }
-        }
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:quaternion_scale",
-      "name": "Quaternion Scale",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "quaternion": "map",
-        "scalar": "number"
-      },
-      "baseOutputs": {
-        "quaternion": "map",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "quaternion": "map",
-        "scalar": "number"
-      },
-      "outputs": {
-        "quaternion": "map",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "quaternion",
-          "scalar"
-        ],
-        "OutputOrder": [
-          "quaternion",
-          "valid"
-        ],
-        "Defaults": {
-          "quaternion": {
-            "Type": "map",
-            "EntryOrder": [
-              "x",
-              "y",
-              "z",
-              "w"
-            ],
-            "Payload": {
-              "x": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "y": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "z": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "w": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              }
-            }
-          },
-          "scalar": {
-            "Type": "number",
-            "Payload": {
-              "Value": 1.0
-            }
-          }
-        }
-      },
-      "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -7190,6 +6790,446 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:quaternion_from_axis_angle",
+      "name": "Quaternion From Axis Angle",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "axis": "map",
+        "angle": "number"
+      },
+      "baseOutputs": {
+        "quaternion": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "axis": "map",
+        "angle": "number"
+      },
+      "outputs": {
+        "quaternion": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "axis",
+          "angle"
+        ],
+        "OutputOrder": [
+          "quaternion",
+          "valid"
+        ],
+        "Defaults": {
+          "axis": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              }
+            }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": true,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:world_to_local",
+      "name": "World To Local",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "vector": "map",
+        "origin": "map",
+        "orientation": "map"
+      },
+      "baseOutputs": {
+        "value": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "vector": "map",
+        "origin": "map",
+        "orientation": "map"
+      },
+      "outputs": {
+        "value": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "vector",
+          "origin",
+          "orientation"
+        ],
+        "OutputOrder": [
+          "value",
+          "valid"
+        ],
+        "Defaults": {
+          "orientation": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z",
+              "w"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "w": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              }
+            }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:matrix_transpose",
+      "name": "Matrix Transpose",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "matrix": "map"
+      },
+      "baseOutputs": {
+        "matrix": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "matrix": "map"
+      },
+      "outputs": {
+        "matrix": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "matrix"
+        ],
+        "OutputOrder": [
+          "matrix",
+          "valid"
+        ],
+        "Defaults": {
+          "matrix": {
+            "Type": "map",
+            "EntryOrder": [
+              "m00",
+              "m01",
+              "m02",
+              "m10",
+              "m11",
+              "m12",
+              "m20",
+              "m21",
+              "m22"
+            ],
+            "Payload": {
+              "m20": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "m00": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              },
+              "m11": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              },
+              "m22": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              },
+              "m10": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "m21": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "m02": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "m01": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "m12": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              }
+            }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "quaternion_to_tait_bryan",
+      "name": "Quaternion To Tait Bryan",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "quaternion": "map"
+      },
+      "baseOutputs": {
+        "tait_bryan": "map",
+        "roll": "number",
+        "pitch": "number",
+        "yaw": "number",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "quaternion": "map"
+      },
+      "outputs": {
+        "tait_bryan": "map",
+        "roll": "number",
+        "pitch": "number",
+        "yaw": "number",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "quaternion"
+        ],
+        "OutputOrder": [
+          "tait_bryan",
+          "roll",
+          "pitch",
+          "yaw",
+          "valid"
+        ],
+        "Defaults": {
+          "quaternion": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z",
+              "w"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "w": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              }
+            }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": true,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:quaternion_multiply",
+      "name": "Quaternion Multiply",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "a": "map",
+        "b": "map"
+      },
+      "baseOutputs": {
+        "quaternion": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "a": "map",
+        "b": "map"
+      },
+      "outputs": {
+        "quaternion": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "a",
+          "b"
+        ],
+        "OutputOrder": [
+          "quaternion",
+          "valid"
+        ],
+        "Defaults": {
+          "a": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z",
+              "w"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "w": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              }
+            }
+          },
+          "b": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z",
+              "w"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "w": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              }
+            }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -7320,104 +7360,79 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
-      "id": "createthrusters:matrix_to_quaternion",
-      "name": "Matrix To Quaternion",
+      "id": "quaternion_to_euler",
+      "name": "Quaternion To Euler",
       "category": "math",
       "categoryName": "Math",
       "color": "#59C58B",
       "stateful": false,
       "baseInputs": {
-        "matrix": "map"
+        "quaternion": "map"
       },
       "baseOutputs": {
-        "quaternion": "map",
+        "euler": "map",
+        "alpha": "number",
+        "beta": "number",
+        "gamma": "number",
         "valid": "boolean"
       },
       "inputs": {
-        "matrix": "map"
+        "quaternion": "map"
       },
       "outputs": {
-        "quaternion": "map",
+        "euler": "map",
+        "alpha": "number",
+        "beta": "number",
+        "gamma": "number",
         "valid": "boolean"
       },
       "defaultData": {
         "InputOrder": [
-          "matrix"
+          "quaternion"
         ],
         "OutputOrder": [
-          "quaternion",
+          "euler",
+          "alpha",
+          "beta",
+          "gamma",
           "valid"
         ],
         "Defaults": {
-          "matrix": {
+          "quaternion": {
             "Type": "map",
             "EntryOrder": [
-              "m00",
-              "m01",
-              "m02",
-              "m10",
-              "m11",
-              "m12",
-              "m20",
-              "m21",
-              "m22"
+              "x",
+              "y",
+              "z",
+              "w"
             ],
             "Payload": {
-              "m20": {
+              "x": {
                 "Type": "number",
                 "Payload": {
                   "Value": 0.0
                 }
               },
-              "m00": {
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "w": {
                 "Type": "number",
                 "Payload": {
                   "Value": 1.0
-                }
-              },
-              "m11": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              },
-              "m22": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              },
-              "m10": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "m21": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "m02": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "m01": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "m12": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
                 }
               }
             }
@@ -7425,6 +7440,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": true,
       "variants": []
     },
     {
@@ -7498,6 +7514,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": true,
       "variants": []
     },
     {
@@ -7574,95 +7591,12 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
-      "id": "euler_to_quaternion",
-      "name": "Euler To Quaternion",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "euler": "map"
-      },
-      "baseOutputs": {
-        "quaternion": "map",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "euler": "map"
-      },
-      "outputs": {
-        "quaternion": "map",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "euler"
-        ],
-        "OutputOrder": [
-          "quaternion",
-          "valid"
-        ],
-        "Defaults": {}
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:quaternion_create",
-      "name": "Quaternion Create",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "x": "number",
-        "y": "number",
-        "z": "number",
-        "w": "number"
-      },
-      "baseOutputs": {
-        "quaternion": "map",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "x": "number",
-        "y": "number",
-        "z": "number",
-        "w": "number"
-      },
-      "outputs": {
-        "quaternion": "map",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "x",
-          "y",
-          "z",
-          "w"
-        ],
-        "OutputOrder": [
-          "quaternion",
-          "valid"
-        ],
-        "Defaults": {
-          "w": {
-            "Type": "number",
-            "Payload": {
-              "Value": 1.0
-            }
-          }
-        }
-      },
-      "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:vector_dot",
-      "name": "Vector Dot",
+      "id": "createthrusters:quaternion_dot",
+      "name": "Quaternion Dot",
       "category": "math",
       "categoryName": "Math",
       "color": "#59C58B",
@@ -7692,29 +7626,287 @@
           "value",
           "valid"
         ],
-        "Defaults": {}
+        "Defaults": {
+          "a": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z",
+              "w"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "w": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              }
+            }
+          },
+          "b": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z",
+              "w"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "w": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              }
+            }
+          }
+        }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
-      "id": "createthrusters:matrix_scale",
-      "name": "Matrix Scale",
+      "id": "createthrusters:quaternion_add",
+      "name": "Quaternion Add",
       "category": "math",
       "categoryName": "Math",
       "color": "#59C58B",
       "stateful": false,
       "baseInputs": {
-        "matrix": "map",
-        "scalar": "number"
+        "a": "map",
+        "b": "map"
+      },
+      "baseOutputs": {
+        "quaternion": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "a": "map",
+        "b": "map"
+      },
+      "outputs": {
+        "quaternion": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "a",
+          "b"
+        ],
+        "OutputOrder": [
+          "quaternion",
+          "valid"
+        ],
+        "Defaults": {
+          "a": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z",
+              "w"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "w": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              }
+            }
+          },
+          "b": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z",
+              "w"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "w": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              }
+            }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:local_to_world",
+      "name": "Local To World",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "vector": "map",
+        "origin": "map",
+        "orientation": "map"
+      },
+      "baseOutputs": {
+        "value": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "vector": "map",
+        "origin": "map",
+        "orientation": "map"
+      },
+      "outputs": {
+        "value": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "vector",
+          "origin",
+          "orientation"
+        ],
+        "OutputOrder": [
+          "value",
+          "valid"
+        ],
+        "Defaults": {
+          "orientation": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z",
+              "w"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "w": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              }
+            }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:matrix_multiply",
+      "name": "Matrix Multiply",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "a": "map",
+        "b": "map"
       },
       "baseOutputs": {
         "matrix": "map",
         "valid": "boolean"
       },
       "inputs": {
-        "matrix": "map",
-        "scalar": "number"
+        "a": "map",
+        "b": "map"
       },
       "outputs": {
         "matrix": "map",
@@ -7722,11 +7914,117 @@
       },
       "defaultData": {
         "InputOrder": [
-          "matrix",
-          "scalar"
+          "a",
+          "b"
         ],
         "OutputOrder": [
           "matrix",
+          "valid"
+        ],
+        "Defaults": {}
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:quaternion_normalize",
+      "name": "Quaternion Normalize",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "quaternion": "map"
+      },
+      "baseOutputs": {
+        "quaternion": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "quaternion": "map"
+      },
+      "outputs": {
+        "quaternion": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "quaternion"
+        ],
+        "OutputOrder": [
+          "quaternion",
+          "valid"
+        ],
+        "Defaults": {
+          "quaternion": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z",
+              "w"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "w": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              }
+            }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:matrix_determinant",
+      "name": "Matrix Determinant",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "matrix": "map"
+      },
+      "baseOutputs": {
+        "value": "number",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "matrix": "map"
+      },
+      "outputs": {
+        "value": "number",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "matrix"
+        ],
+        "OutputOrder": [
+          "value",
           "valid"
         ],
         "Defaults": {
@@ -7799,8 +8097,1139 @@
                 }
               }
             }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:linear_integrator",
+      "name": "Linear Integrator",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": true,
+      "baseInputs": {
+        "position": "map",
+        "velocity": "map",
+        "acceleration": "map",
+        "jerk": "map",
+        "delta_time": "number",
+        "exec": "exec",
+        "reset": "boolean"
+      },
+      "baseOutputs": {
+        "position": "map",
+        "velocity": "map",
+        "acceleration": "map",
+        "exec": "exec",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "position": "map",
+        "velocity": "map",
+        "acceleration": "map",
+        "jerk": "map",
+        "delta_time": "number",
+        "exec": "exec",
+        "reset": "boolean"
+      },
+      "outputs": {
+        "position": "map",
+        "velocity": "map",
+        "acceleration": "map",
+        "exec": "exec",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "position",
+          "velocity",
+          "acceleration",
+          "jerk",
+          "delta_time",
+          "exec",
+          "reset"
+        ],
+        "OutputOrder": [
+          "position",
+          "velocity",
+          "acceleration",
+          "exec",
+          "valid"
+        ],
+        "Defaults": {
+          "delta_time": {
+            "Type": "number",
+            "Payload": {
+              "Value": 0.05
+            }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:matrix_diagonal",
+      "name": "Matrix Diagonal",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "diagonal": "map"
+      },
+      "baseOutputs": {
+        "matrix": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "diagonal": "map"
+      },
+      "outputs": {
+        "matrix": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "diagonal"
+        ],
+        "OutputOrder": [
+          "matrix",
+          "valid"
+        ],
+        "Defaults": {
+          "diagonal": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              }
+            }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:world_direction_to_local",
+      "name": "World Direction To Local",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "vector": "map",
+        "origin": "map",
+        "orientation": "map"
+      },
+      "baseOutputs": {
+        "value": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "vector": "map",
+        "origin": "map",
+        "orientation": "map"
+      },
+      "outputs": {
+        "value": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "vector",
+          "origin",
+          "orientation"
+        ],
+        "OutputOrder": [
+          "value",
+          "valid"
+        ],
+        "Defaults": {
+          "orientation": {
+            "Type": "map",
+            "EntryOrder": [
+              "x",
+              "y",
+              "z",
+              "w"
+            ],
+            "Payload": {
+              "x": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "y": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "z": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 0.0
+                }
+              },
+              "w": {
+                "Type": "number",
+                "Payload": {
+                  "Value": 1.0
+                }
+              }
+            }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:convert_unit",
+      "name": "Convert Unit",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "unit_type": "string",
+        "input_unit": "string",
+        "output_unit": "string",
+        "value": "number",
+        "voltage": "number",
+        "duration": "number"
+      },
+      "baseOutputs": {
+        "value": "number",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "unit_type": "string",
+        "input_unit": "string",
+        "output_unit": "string",
+        "value": "number"
+      },
+      "outputs": {
+        "value": "number",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "OutputLabels": {
+          "value": "Result"
+        },
+        "InputOrder": [
+          "unit_type",
+          "input_unit",
+          "output_unit",
+          "value"
+        ],
+        "Defaults": {
+          "duration": {
+            "Type": "number",
+            "Payload": {
+              "Value": 1.0
+            }
           },
-          "scalar": {
+          "unit_type": {
+            "Type": "string",
+            "Payload": {
+              "Value": "time"
+            }
+          },
+          "value": {
+            "Type": "number",
+            "Payload": {
+              "Value": 0.0
+            }
+          },
+          "output_unit": {
+            "Type": "string",
+            "Payload": {
+              "Value": "seconds"
+            }
+          },
+          "input_unit": {
+            "Type": "string",
+            "Payload": {
+              "Value": "ticks"
+            }
+          },
+          "voltage": {
+            "Type": "number",
+            "Payload": {
+              "Value": 1.0
+            }
+          }
+        },
+        "InputOptions": {
+          "unit_type": [
+            "time",
+            "distance",
+            "speed",
+            "weight",
+            "fluid_volume"
+          ],
+          "input_unit": [
+            "ticks",
+            "seconds",
+            "minutes",
+            "hours",
+            "milliseconds",
+            "days",
+            "weeks",
+            "microseconds",
+            "nanoseconds"
+          ],
+          "output_unit": [
+            "ticks",
+            "seconds",
+            "minutes",
+            "hours",
+            "milliseconds",
+            "days",
+            "weeks",
+            "microseconds",
+            "nanoseconds"
+          ]
+        },
+        "InputOptionLabels": {
+          "unit_type": {
+            "weight": "Weight",
+            "fluid_volume": "Fluid Volume",
+            "time": "Time",
+            "power": "Power",
+            "distance": "Distance",
+            "speed": "Speed"
+          },
+          "input_unit": {
+            "milliseconds": "Milliseconds",
+            "feet": "Feet",
+            "amps": "Amps",
+            "micrograms": "Micrograms",
+            "imperial_quarts": "Imperial Quarts",
+            "centimeters": "Centimeters",
+            "kilometers_per_hour": "Kilometers Per Hour",
+            "us_quarts": "US Quarts",
+            "millimeters": "Millimeters",
+            "ounces": "Ounces",
+            "milliwatt_hours": "Milliwatt Hours",
+            "coulombs": "Coulombs",
+            "meters_per_second": "Meters Per Second",
+            "nautical_miles": "Nautical Miles",
+            "inches": "Inches",
+            "seconds": "Seconds",
+            "us_gallons": "US Gallons",
+            "us_tablespoons": "US Tablespoons",
+            "kilowatts": "Kilowatts",
+            "blocks_per_second": "Blocks Per Second",
+            "pounds": "Pounds",
+            "micrometers": "Micrometers",
+            "grams": "Grams",
+            "milliamps": "Milliamps",
+            "kilojoules": "Kilojoules",
+            "minutes": "Minutes",
+            "liters": "Liters",
+            "buckets": "Buckets",
+            "imperial_gallons": "Imperial Gallons",
+            "us_cups": "US Cups",
+            "microamps": "Microamps",
+            "tonnes": "Tonnes",
+            "watt_hours": "Watt Hours",
+            "fe_per_second": "FE Per Second",
+            "cubic_meters": "Cubic Meters",
+            "yards": "Yards",
+            "fe_per_tick": "FE Per Tick",
+            "kiloamps": "Kiloamps",
+            "microamp_hours": "Microamp Hours",
+            "imperial_pints": "Imperial Pints",
+            "us_pints": "US Pints",
+            "fe": "FE",
+            "us_short_tons": "US Short Tons",
+            "imperial_fluid_ounces": "Imperial Fluid Ounces",
+            "weeks": "Weeks",
+            "blocks_per_tick": "Blocks Per Tick",
+            "amp_hours": "Amp Hours",
+            "feet_per_second": "Feet Per Second",
+            "millibuckets": "Millibuckets",
+            "milligrams": "Milligrams",
+            "metric_cups": "Metric Cups",
+            "meters": "Meters",
+            "miles": "Miles",
+            "uk_long_tons": "UK Long Tons",
+            "watts": "Watts",
+            "yards_per_second": "Yards Per Second",
+            "kilograms": "Kilograms",
+            "microseconds": "Microseconds",
+            "nanoseconds": "Nanoseconds",
+            "hours": "Hours",
+            "milliwatts": "Milliwatts",
+            "ticks": "Ticks",
+            "blocks": "Blocks",
+            "milliliters": "Milliliters",
+            "microliters": "Microliters",
+            "megawatts": "Megawatts",
+            "milliamp_hours": "Milliamp Hours",
+            "cubic_centimeters": "Cubic Centimeters",
+            "us_teaspoons": "US Teaspoons",
+            "miles_per_hour": "Miles Per Hour",
+            "meters_per_minute": "Meters Per Minute",
+            "stone": "Stone",
+            "megajoules": "Megajoules",
+            "megawatt_hours": "Megawatt Hours",
+            "blocks_per_minute": "Blocks Per Minute",
+            "kilometers": "Kilometers",
+            "kilowatt_hours": "Kilowatt Hours",
+            "days": "Days",
+            "knots": "Knots",
+            "us_fluid_ounces": "US Fluid Ounces",
+            "joules": "Joules",
+            "kilometers_per_second": "Kilometers Per Second"
+          },
+          "output_unit": {
+            "milliseconds": "Milliseconds",
+            "feet": "Feet",
+            "amps": "Amps",
+            "micrograms": "Micrograms",
+            "imperial_quarts": "Imperial Quarts",
+            "centimeters": "Centimeters",
+            "kilometers_per_hour": "Kilometers Per Hour",
+            "us_quarts": "US Quarts",
+            "millimeters": "Millimeters",
+            "ounces": "Ounces",
+            "milliwatt_hours": "Milliwatt Hours",
+            "coulombs": "Coulombs",
+            "meters_per_second": "Meters Per Second",
+            "nautical_miles": "Nautical Miles",
+            "inches": "Inches",
+            "seconds": "Seconds",
+            "us_gallons": "US Gallons",
+            "us_tablespoons": "US Tablespoons",
+            "kilowatts": "Kilowatts",
+            "blocks_per_second": "Blocks Per Second",
+            "pounds": "Pounds",
+            "micrometers": "Micrometers",
+            "grams": "Grams",
+            "milliamps": "Milliamps",
+            "kilojoules": "Kilojoules",
+            "minutes": "Minutes",
+            "liters": "Liters",
+            "buckets": "Buckets",
+            "imperial_gallons": "Imperial Gallons",
+            "us_cups": "US Cups",
+            "microamps": "Microamps",
+            "tonnes": "Tonnes",
+            "watt_hours": "Watt Hours",
+            "fe_per_second": "FE Per Second",
+            "cubic_meters": "Cubic Meters",
+            "yards": "Yards",
+            "fe_per_tick": "FE Per Tick",
+            "kiloamps": "Kiloamps",
+            "microamp_hours": "Microamp Hours",
+            "imperial_pints": "Imperial Pints",
+            "us_pints": "US Pints",
+            "fe": "FE",
+            "us_short_tons": "US Short Tons",
+            "imperial_fluid_ounces": "Imperial Fluid Ounces",
+            "weeks": "Weeks",
+            "blocks_per_tick": "Blocks Per Tick",
+            "amp_hours": "Amp Hours",
+            "feet_per_second": "Feet Per Second",
+            "millibuckets": "Millibuckets",
+            "milligrams": "Milligrams",
+            "metric_cups": "Metric Cups",
+            "meters": "Meters",
+            "miles": "Miles",
+            "uk_long_tons": "UK Long Tons",
+            "watts": "Watts",
+            "yards_per_second": "Yards Per Second",
+            "kilograms": "Kilograms",
+            "microseconds": "Microseconds",
+            "nanoseconds": "Nanoseconds",
+            "hours": "Hours",
+            "milliwatts": "Milliwatts",
+            "ticks": "Ticks",
+            "blocks": "Blocks",
+            "milliliters": "Milliliters",
+            "microliters": "Microliters",
+            "megawatts": "Megawatts",
+            "milliamp_hours": "Milliamp Hours",
+            "cubic_centimeters": "Cubic Centimeters",
+            "us_teaspoons": "US Teaspoons",
+            "miles_per_hour": "Miles Per Hour",
+            "meters_per_minute": "Meters Per Minute",
+            "stone": "Stone",
+            "megajoules": "Megajoules",
+            "megawatt_hours": "Megawatt Hours",
+            "blocks_per_minute": "Blocks Per Minute",
+            "kilometers": "Kilometers",
+            "kilowatt_hours": "Kilowatt Hours",
+            "days": "Days",
+            "knots": "Knots",
+            "us_fluid_ounces": "US Fluid Ounces",
+            "joules": "Joules",
+            "kilometers_per_second": "Kilometers Per Second"
+          }
+        },
+        "InputLabels": {
+          "duration": "Duration (s)",
+          "unit_type": "Unit Type",
+          "value": "Value",
+          "input_unit": "Input Unit",
+          "output_unit": "Output Unit",
+          "voltage": "Voltage (V)"
+        },
+        "OutputOrder": [
+          "value",
+          "valid"
+        ]
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "dependentInputOptions": {
+        "unit_type": {
+          "time": {
+            "input_unit": [
+              "ticks",
+              "seconds",
+              "minutes",
+              "hours",
+              "milliseconds",
+              "days",
+              "weeks",
+              "microseconds",
+              "nanoseconds"
+            ],
+            "output_unit": [
+              "ticks",
+              "seconds",
+              "minutes",
+              "hours",
+              "milliseconds",
+              "days",
+              "weeks",
+              "microseconds",
+              "nanoseconds"
+            ]
+          },
+          "distance": {
+            "input_unit": [
+              "meters",
+              "kilometers",
+              "miles",
+              "yards",
+              "blocks",
+              "feet",
+              "inches",
+              "centimeters",
+              "millimeters",
+              "micrometers",
+              "nautical_miles"
+            ],
+            "output_unit": [
+              "meters",
+              "kilometers",
+              "miles",
+              "yards",
+              "blocks",
+              "feet",
+              "inches",
+              "centimeters",
+              "millimeters",
+              "micrometers",
+              "nautical_miles"
+            ]
+          },
+          "speed": {
+            "input_unit": [
+              "meters_per_second",
+              "kilometers_per_second",
+              "kilometers_per_hour",
+              "miles_per_hour",
+              "knots",
+              "blocks_per_second",
+              "blocks_per_tick",
+              "feet_per_second",
+              "yards_per_second",
+              "meters_per_minute",
+              "blocks_per_minute"
+            ],
+            "output_unit": [
+              "meters_per_second",
+              "kilometers_per_second",
+              "kilometers_per_hour",
+              "miles_per_hour",
+              "knots",
+              "blocks_per_second",
+              "blocks_per_tick",
+              "feet_per_second",
+              "yards_per_second",
+              "meters_per_minute",
+              "blocks_per_minute"
+            ]
+          },
+          "weight": {
+            "input_unit": [
+              "grams",
+              "kilograms",
+              "tonnes",
+              "milligrams",
+              "micrograms",
+              "ounces",
+              "pounds",
+              "stone",
+              "us_short_tons",
+              "uk_long_tons"
+            ],
+            "output_unit": [
+              "grams",
+              "kilograms",
+              "tonnes",
+              "milligrams",
+              "micrograms",
+              "ounces",
+              "pounds",
+              "stone",
+              "us_short_tons",
+              "uk_long_tons"
+            ]
+          },
+          "fluid_volume": {
+            "input_unit": [
+              "buckets",
+              "millibuckets",
+              "liters",
+              "milliliters",
+              "microliters",
+              "cubic_meters",
+              "cubic_centimeters",
+              "us_fluid_ounces",
+              "imperial_fluid_ounces",
+              "us_gallons",
+              "imperial_gallons",
+              "us_quarts",
+              "imperial_quarts",
+              "us_pints",
+              "imperial_pints",
+              "us_cups",
+              "metric_cups",
+              "us_tablespoons",
+              "us_teaspoons"
+            ],
+            "output_unit": [
+              "buckets",
+              "millibuckets",
+              "liters",
+              "milliliters",
+              "microliters",
+              "cubic_meters",
+              "cubic_centimeters",
+              "us_fluid_ounces",
+              "imperial_fluid_ounces",
+              "us_gallons",
+              "imperial_gallons",
+              "us_quarts",
+              "imperial_quarts",
+              "us_pints",
+              "imperial_pints",
+              "us_cups",
+              "metric_cups",
+              "us_tablespoons",
+              "us_teaspoons"
+            ]
+          }
+        }
+      },
+      "dependentInputDefaults": {
+        "unit_type": {
+          "time": {
+            "input_unit": "ticks",
+            "output_unit": "seconds"
+          },
+          "distance": {
+            "input_unit": "meters",
+            "output_unit": "kilometers"
+          },
+          "speed": {
+            "input_unit": "meters_per_second",
+            "output_unit": "kilometers_per_second"
+          },
+          "weight": {
+            "input_unit": "grams",
+            "output_unit": "kilograms"
+          },
+          "fluid_volume": {
+            "input_unit": "buckets",
+            "output_unit": "millibuckets"
+          }
+        }
+      },
+      "unitConversions": {
+        "ticks": {
+          "category": "time",
+          "factor": 0.05
+        },
+        "seconds": {
+          "category": "time",
+          "factor": 1.0
+        },
+        "minutes": {
+          "category": "time",
+          "factor": 60.0
+        },
+        "hours": {
+          "category": "time",
+          "factor": 3600.0
+        },
+        "milliseconds": {
+          "category": "time",
+          "factor": 0.001
+        },
+        "days": {
+          "category": "time",
+          "factor": 86400.0
+        },
+        "weeks": {
+          "category": "time",
+          "factor": 604800.0
+        },
+        "microseconds": {
+          "category": "time",
+          "factor": 1.0E-6
+        },
+        "nanoseconds": {
+          "category": "time",
+          "factor": 1.0E-9
+        },
+        "meters": {
+          "category": "distance",
+          "factor": 1.0
+        },
+        "kilometers": {
+          "category": "distance",
+          "factor": 1000.0
+        },
+        "miles": {
+          "category": "distance",
+          "factor": 1609.344
+        },
+        "yards": {
+          "category": "distance",
+          "factor": 0.9144
+        },
+        "blocks": {
+          "category": "distance",
+          "factor": 1.0
+        },
+        "feet": {
+          "category": "distance",
+          "factor": 0.3048
+        },
+        "inches": {
+          "category": "distance",
+          "factor": 0.0254
+        },
+        "centimeters": {
+          "category": "distance",
+          "factor": 0.01
+        },
+        "millimeters": {
+          "category": "distance",
+          "factor": 0.001
+        },
+        "micrometers": {
+          "category": "distance",
+          "factor": 1.0E-6
+        },
+        "nautical_miles": {
+          "category": "distance",
+          "factor": 1852.0
+        },
+        "meters_per_second": {
+          "category": "speed",
+          "factor": 1.0
+        },
+        "kilometers_per_second": {
+          "category": "speed",
+          "factor": 1000.0
+        },
+        "kilometers_per_hour": {
+          "category": "speed",
+          "factor": 0.2777777777777778
+        },
+        "miles_per_hour": {
+          "category": "speed",
+          "factor": 0.44704
+        },
+        "knots": {
+          "category": "speed",
+          "factor": 0.5144444444444445
+        },
+        "blocks_per_second": {
+          "category": "speed",
+          "factor": 1.0
+        },
+        "blocks_per_tick": {
+          "category": "speed",
+          "factor": 20.0
+        },
+        "feet_per_second": {
+          "category": "speed",
+          "factor": 0.3048
+        },
+        "yards_per_second": {
+          "category": "speed",
+          "factor": 0.9144
+        },
+        "meters_per_minute": {
+          "category": "speed",
+          "factor": 0.016666666666666666
+        },
+        "blocks_per_minute": {
+          "category": "speed",
+          "factor": 0.016666666666666666
+        },
+        "grams": {
+          "category": "weight",
+          "factor": 0.001
+        },
+        "kilograms": {
+          "category": "weight",
+          "factor": 1.0
+        },
+        "tonnes": {
+          "category": "weight",
+          "factor": 1000.0
+        },
+        "milligrams": {
+          "category": "weight",
+          "factor": 1.0E-6
+        },
+        "micrograms": {
+          "category": "weight",
+          "factor": 1.0E-9
+        },
+        "ounces": {
+          "category": "weight",
+          "factor": 0.028349523125
+        },
+        "pounds": {
+          "category": "weight",
+          "factor": 0.45359237
+        },
+        "stone": {
+          "category": "weight",
+          "factor": 6.35029318
+        },
+        "us_short_tons": {
+          "category": "weight",
+          "factor": 907.18474
+        },
+        "uk_long_tons": {
+          "category": "weight",
+          "factor": 1016.0469088
+        },
+        "buckets": {
+          "category": "fluid_volume",
+          "factor": 1.0
+        },
+        "millibuckets": {
+          "category": "fluid_volume",
+          "factor": 0.001
+        },
+        "liters": {
+          "category": "fluid_volume",
+          "factor": 1.0
+        },
+        "milliliters": {
+          "category": "fluid_volume",
+          "factor": 0.001
+        },
+        "microliters": {
+          "category": "fluid_volume",
+          "factor": 1.0E-6
+        },
+        "cubic_meters": {
+          "category": "fluid_volume",
+          "factor": 1000.0
+        },
+        "cubic_centimeters": {
+          "category": "fluid_volume",
+          "factor": 0.001
+        },
+        "us_fluid_ounces": {
+          "category": "fluid_volume",
+          "factor": 0.0295735295625
+        },
+        "imperial_fluid_ounces": {
+          "category": "fluid_volume",
+          "factor": 0.028413062500000003
+        },
+        "us_gallons": {
+          "category": "fluid_volume",
+          "factor": 3.785411784
+        },
+        "imperial_gallons": {
+          "category": "fluid_volume",
+          "factor": 4.54609
+        },
+        "us_quarts": {
+          "category": "fluid_volume",
+          "factor": 0.946352946
+        },
+        "imperial_quarts": {
+          "category": "fluid_volume",
+          "factor": 1.1365225
+        },
+        "us_pints": {
+          "category": "fluid_volume",
+          "factor": 0.473176473
+        },
+        "imperial_pints": {
+          "category": "fluid_volume",
+          "factor": 0.56826125
+        },
+        "us_cups": {
+          "category": "fluid_volume",
+          "factor": 0.2365882365
+        },
+        "metric_cups": {
+          "category": "fluid_volume",
+          "factor": 0.25
+        },
+        "us_tablespoons": {
+          "category": "fluid_volume",
+          "factor": 0.01478676478125
+        },
+        "us_teaspoons": {
+          "category": "fluid_volume",
+          "factor": 0.00492892159375
+        }
+      },
+      "variants": []
+    },
+    {
+      "id": "createthrusters:matrix_add",
+      "name": "Matrix Add",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "a": "map",
+        "b": "map"
+      },
+      "baseOutputs": {
+        "matrix": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "a": "map",
+        "b": "map"
+      },
+      "outputs": {
+        "matrix": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "a",
+          "b"
+        ],
+        "OutputOrder": [
+          "matrix",
+          "valid"
+        ],
+        "Defaults": {}
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:radians_to_degrees",
+      "name": "Radians To Degrees",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "angle": "number",
+        "angles": "map"
+      },
+      "baseOutputs": {
+        "angle": "number",
+        "angles": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "angle": "number",
+        "angles": "map"
+      },
+      "outputs": {
+        "angle": "number",
+        "angles": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "angle",
+          "angles"
+        ],
+        "OutputOrder": [
+          "angle",
+          "angles",
+          "valid"
+        ],
+        "Defaults": {
+          "angle": {
+            "Type": "number",
+            "Payload": {
+              "Value": 0.0
+            }
+          }
+        }
+      },
+      "properties": {},
+      "hiddenFromLibrary": true,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:pi",
+      "name": "Pi",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {},
+      "baseOutputs": {
+        "value": "number",
+        "valid": "boolean"
+      },
+      "inputs": {},
+      "outputs": {
+        "value": "number",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [],
+        "OutputOrder": [
+          "value",
+          "valid"
+        ],
+        "Defaults": {}
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:vector_cross",
+      "name": "Vector Cross",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "a": "map",
+        "b": "map"
+      },
+      "baseOutputs": {
+        "value": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "a": "map",
+        "b": "map"
+      },
+      "outputs": {
+        "value": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "a",
+          "b"
+        ],
+        "OutputOrder": [
+          "value",
+          "valid"
+        ],
+        "Defaults": {}
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "createthrusters:quaternion_create",
+      "name": "Quaternion Create",
+      "category": "math",
+      "categoryName": "Math",
+      "color": "#59C58B",
+      "stateful": false,
+      "baseInputs": {
+        "x": "number",
+        "y": "number",
+        "z": "number",
+        "w": "number"
+      },
+      "baseOutputs": {
+        "quaternion": "map",
+        "valid": "boolean"
+      },
+      "inputs": {
+        "x": "number",
+        "y": "number",
+        "z": "number",
+        "w": "number"
+      },
+      "outputs": {
+        "quaternion": "map",
+        "valid": "boolean"
+      },
+      "defaultData": {
+        "InputOrder": [
+          "x",
+          "y",
+          "z",
+          "w"
+        ],
+        "OutputOrder": [
+          "quaternion",
+          "valid"
+        ],
+        "Defaults": {
+          "w": {
             "Type": "number",
             "Payload": {
               "Value": 1.0
@@ -7809,6 +9238,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -7842,6 +9272,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -7875,6 +9306,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -7908,6 +9340,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -7938,6 +9371,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -7968,6 +9402,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8001,6 +9436,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8034,6 +9470,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8058,6 +9495,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8096,6 +9534,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8143,6 +9582,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8190,6 +9630,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8223,6 +9664,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8234,6 +9676,7 @@
       "stateful": false,
       "baseInputs": {
         "string": "string",
+        "mode": "string",
         "delimiter": "string"
       },
       "baseOutputs": {
@@ -8241,20 +9684,31 @@
       },
       "inputs": {
         "string": "string",
+        "mode": "string",
         "delimiter": "string"
       },
       "outputs": {
         "list": "list"
       },
       "defaultData": {
+        "InputOptions": {
+          "mode": [
+            "Delimiter",
+            "Regex"
+          ]
+        },
         "InputOrder": [
           "string",
+          "mode",
           "delimiter"
         ],
-        "OutputOrder": [
-          "list"
-        ],
         "Defaults": {
+          "mode": {
+            "Type": "string",
+            "Payload": {
+              "Value": "Delimiter"
+            }
+          },
           "string": {
             "Type": "string",
             "Payload": {
@@ -8267,9 +9721,13 @@
               "Value": ","
             }
           }
-        }
+        },
+        "OutputOrder": [
+          "list"
+        ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8326,6 +9784,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8373,6 +9832,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8414,6 +9874,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8444,6 +9905,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8480,6 +9942,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8516,6 +9979,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8546,6 +10010,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8582,6 +10047,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8612,6 +10078,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8645,6 +10112,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8678,6 +10146,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8711,6 +10180,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8741,6 +10211,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8771,6 +10242,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8812,6 +10284,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8853,6 +10326,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8897,6 +10371,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8935,6 +10410,7 @@
           "type": "string"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -8973,6 +10449,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9011,6 +10488,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9065,6 +10543,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9116,6 +10595,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9161,6 +10641,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9206,6 +10687,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9255,6 +10737,7 @@
           "type": "boolean"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9288,6 +10771,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9338,6 +10822,7 @@
           "type": "boolean"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9371,6 +10856,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9404,6 +10890,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9440,6 +10927,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9476,6 +10964,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9520,6 +11009,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9559,6 +11049,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9592,6 +11083,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9631,6 +11123,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9670,6 +11163,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9712,6 +11206,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9751,6 +11246,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9787,6 +11283,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9820,6 +11317,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9853,6 +11351,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9883,6 +11382,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9913,6 +11413,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -9949,6 +11450,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -10006,6 +11508,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -10030,6 +11533,7 @@
         "OutputOrder": []
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -10054,6 +11558,32 @@
         "OutputOrder": []
       },
       "properties": {},
+      "hiddenFromLibrary": false,
+      "variants": []
+    },
+    {
+      "id": "display_link_input",
+      "name": "Display Link Input",
+      "category": "data",
+      "categoryName": "Data",
+      "color": "#5D9FE3",
+      "stateful": false,
+      "baseInputs": {},
+      "baseOutputs": {
+        "data": "map"
+      },
+      "inputs": {},
+      "outputs": {
+        "data": "map"
+      },
+      "defaultData": {
+        "InputOrder": [],
+        "OutputOrder": [
+          "data"
+        ]
+      },
+      "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -10092,6 +11622,7 @@
           "type": "boolean"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -10147,6 +11678,7 @@
           "type": "boolean"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -10201,6 +11733,7 @@
           "type": "string"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -10264,6 +11797,7 @@
           "type": "number"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -10327,6 +11861,7 @@
           "type": "number"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -10452,6 +11987,7 @@
           "type": "number"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -10541,6 +12077,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -10639,6 +12176,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -10740,6 +12278,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -10841,6 +12380,7 @@
           "type": "string"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -10944,6 +12484,7 @@
           "type": "string"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -11159,6 +12700,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -11192,6 +12734,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -11222,6 +12765,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -11253,6 +12797,7 @@
           "type": "number"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -11284,6 +12829,7 @@
           "type": "string"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -11302,6 +12848,7 @@
         "OutputOrder": []
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -11320,6 +12867,7 @@
         "OutputOrder": []
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -11338,6 +12886,7 @@
         "OutputOrder": []
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -11445,6 +12994,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -11480,6 +13030,7 @@
           "type": "string"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -11523,6 +13074,7 @@
           "type": "string"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -11581,6 +13133,7 @@
           "type": "string"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -11623,6 +13176,7 @@
           ]
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -11658,6 +13212,7 @@
           "type": "string"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -11703,6 +13258,7 @@
           ]
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -11744,6 +13300,7 @@
           "type": "string"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -11789,6 +13346,7 @@
           ]
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -11825,6 +13383,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -11870,6 +13429,7 @@
           ]
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -11936,6 +13496,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -11969,6 +13530,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -12008,6 +13570,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -12056,6 +13619,7 @@
           ]
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -12125,6 +13689,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -12320,6 +13885,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -12388,6 +13954,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -12418,6 +13985,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -12488,6 +14056,7 @@
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -12522,6 +14091,7 @@
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -12607,6 +14177,7 @@
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -12649,6 +14220,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -12700,6 +14272,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -12740,6 +14313,7 @@
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -12784,6 +14358,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -12795,6 +14370,7 @@
       "stateful": true,
       "baseInputs": {
         "exec": "exec",
+        "mode": "string",
         "amount": "number"
       },
       "baseOutputs": {
@@ -12804,6 +14380,7 @@
       },
       "inputs": {
         "exec": "exec",
+        "mode": "string",
         "amount": "number"
       },
       "outputs": {
@@ -12812,19 +14389,80 @@
         "complete": "exec"
       },
       "defaultData": {
+        "InputOptions": {
+          "mode": [
+            "Free",
+            "Angle"
+          ],
+          "reference": [
+            "North Relative",
+            "Current Vector"
+          ]
+        },
         "InputOrder": [
           "exec",
+          "mode",
           "amount"
         ],
+        "Defaults": {
+          "mode": {
+            "Type": "string",
+            "Payload": {
+              "Value": "Free"
+            }
+          },
+          "reference": {
+            "Type": "string",
+            "Payload": {
+              "Value": "North Relative"
+            }
+          },
+          "angle": {
+            "Type": "number",
+            "Payload": {
+              "Value": 0.0
+            }
+          }
+        },
         "OutputOrder": [
           "exec",
           "success",
           "complete"
-        ],
-        "Defaults": {}
+        ]
       },
       "properties": {},
-      "variants": []
+      "hiddenFromLibrary": false,
+      "variants": [
+        {
+          "selector": "mode",
+          "value": "Free",
+          "inputs": {
+            "exec": "exec",
+            "mode": "string",
+            "amount": "number"
+          },
+          "outputs": {
+            "exec": "exec",
+            "success": "boolean",
+            "complete": "exec"
+          }
+        },
+        {
+          "selector": "mode",
+          "value": "Angle",
+          "inputs": {
+            "exec": "exec",
+            "mode": "string",
+            "reference": "string",
+            "angle": "number"
+          },
+          "outputs": {
+            "exec": "exec",
+            "success": "boolean",
+            "complete": "exec"
+          }
+        }
+      ]
     },
     {
       "id": "ship_yaw_right",
@@ -12864,6 +14502,7 @@
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -12904,6 +14543,7 @@
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -12915,6 +14555,7 @@
       "stateful": true,
       "baseInputs": {
         "exec": "exec",
+        "mode": "string",
         "amount": "number"
       },
       "baseOutputs": {
@@ -12924,6 +14565,7 @@
       },
       "inputs": {
         "exec": "exec",
+        "mode": "string",
         "amount": "number"
       },
       "outputs": {
@@ -12932,19 +14574,80 @@
         "complete": "exec"
       },
       "defaultData": {
+        "InputOptions": {
+          "mode": [
+            "Free",
+            "Angle"
+          ],
+          "reference": [
+            "North Relative",
+            "Current Vector"
+          ]
+        },
         "InputOrder": [
           "exec",
+          "mode",
           "amount"
         ],
+        "Defaults": {
+          "mode": {
+            "Type": "string",
+            "Payload": {
+              "Value": "Free"
+            }
+          },
+          "reference": {
+            "Type": "string",
+            "Payload": {
+              "Value": "North Relative"
+            }
+          },
+          "angle": {
+            "Type": "number",
+            "Payload": {
+              "Value": 0.0
+            }
+          }
+        },
         "OutputOrder": [
           "exec",
           "success",
           "complete"
-        ],
-        "Defaults": {}
+        ]
       },
       "properties": {},
-      "variants": []
+      "hiddenFromLibrary": false,
+      "variants": [
+        {
+          "selector": "mode",
+          "value": "Free",
+          "inputs": {
+            "exec": "exec",
+            "mode": "string",
+            "amount": "number"
+          },
+          "outputs": {
+            "exec": "exec",
+            "success": "boolean",
+            "complete": "exec"
+          }
+        },
+        {
+          "selector": "mode",
+          "value": "Angle",
+          "inputs": {
+            "exec": "exec",
+            "mode": "string",
+            "reference": "string",
+            "angle": "number"
+          },
+          "outputs": {
+            "exec": "exec",
+            "success": "boolean",
+            "complete": "exec"
+          }
+        }
+      ]
     },
     {
       "id": "ship_pitch_up",
@@ -12984,6 +14687,7 @@
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -13024,6 +14728,7 @@
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -13064,6 +14769,7 @@
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -13104,6 +14810,7 @@
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -13115,6 +14822,7 @@
       "stateful": true,
       "baseInputs": {
         "exec": "exec",
+        "mode": "string",
         "amount": "number"
       },
       "baseOutputs": {
@@ -13124,6 +14832,7 @@
       },
       "inputs": {
         "exec": "exec",
+        "mode": "string",
         "amount": "number"
       },
       "outputs": {
@@ -13132,19 +14841,80 @@
         "complete": "exec"
       },
       "defaultData": {
+        "InputOptions": {
+          "mode": [
+            "Free",
+            "Angle"
+          ],
+          "reference": [
+            "North Relative",
+            "Current Vector"
+          ]
+        },
         "InputOrder": [
           "exec",
+          "mode",
           "amount"
         ],
+        "Defaults": {
+          "mode": {
+            "Type": "string",
+            "Payload": {
+              "Value": "Free"
+            }
+          },
+          "reference": {
+            "Type": "string",
+            "Payload": {
+              "Value": "North Relative"
+            }
+          },
+          "angle": {
+            "Type": "number",
+            "Payload": {
+              "Value": 0.0
+            }
+          }
+        },
         "OutputOrder": [
           "exec",
           "success",
           "complete"
-        ],
-        "Defaults": {}
+        ]
       },
       "properties": {},
-      "variants": []
+      "hiddenFromLibrary": false,
+      "variants": [
+        {
+          "selector": "mode",
+          "value": "Free",
+          "inputs": {
+            "exec": "exec",
+            "mode": "string",
+            "amount": "number"
+          },
+          "outputs": {
+            "exec": "exec",
+            "success": "boolean",
+            "complete": "exec"
+          }
+        },
+        {
+          "selector": "mode",
+          "value": "Angle",
+          "inputs": {
+            "exec": "exec",
+            "mode": "string",
+            "reference": "string",
+            "angle": "number"
+          },
+          "outputs": {
+            "exec": "exec",
+            "success": "boolean",
+            "complete": "exec"
+          }
+        }
+      ]
     },
     {
       "id": "ship_roll_right",
@@ -13184,6 +14954,7 @@
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -13224,6 +14995,7 @@
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -13261,6 +15033,7 @@
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -13298,6 +15071,7 @@
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -13338,6 +15112,7 @@
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -13378,6 +15153,7 @@
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -13418,6 +15194,7 @@
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -13455,6 +15232,7 @@
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -13492,6 +15270,7 @@
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -13529,6 +15308,7 @@
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -13566,6 +15346,7 @@
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -13610,6 +15391,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -13654,6 +15436,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -13698,6 +15481,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -13742,6 +15526,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -13806,6 +15591,7 @@
           "type": "boolean"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -13867,6 +15653,7 @@
           "type": "boolean"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -13931,6 +15718,7 @@
           "type": "boolean"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -14037,6 +15825,7 @@
           "type": "boolean"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -14113,6 +15902,7 @@
           "type": "boolean"
         }
       },
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -14147,6 +15937,7 @@
         "Defaults": {}
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -14194,6 +15985,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -14241,6 +16033,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -14384,6 +16177,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -14525,6 +16319,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -14573,6 +16368,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -14606,6 +16402,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -14639,6 +16436,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -14672,6 +16470,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -14705,6 +16504,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -14738,6 +16538,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -14771,6 +16572,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -14830,6 +16632,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -14923,6 +16726,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -14994,6 +16798,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -15065,6 +16870,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -15170,6 +16976,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -15257,6 +17064,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -15323,6 +17131,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -15418,6 +17227,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -15513,6 +17323,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -15605,6 +17416,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -15701,6 +17513,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -15808,6 +17621,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -15882,6 +17696,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -15959,6 +17774,7 @@
         }
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -16053,6 +17869,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -16095,6 +17912,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -16304,6 +18122,7 @@
         ]
       },
       "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     },
     {
@@ -16340,115 +18159,7 @@
         ]
       },
       "properties": {},
-      "variants": []
-    },
-    {
-      "id": "createthrusters:angle_from_coords",
-      "name": "Angle from Coords",
-      "category": "math",
-      "categoryName": "Math",
-      "color": "#59C58B",
-      "stateful": false,
-      "baseInputs": {
-        "origin": "map",
-        "target": "map"
-      },
-      "baseOutputs": {
-        "euler": "map",
-        "quaternion": "map",
-        "tait_bryan": "map",
-        "axis": "map",
-        "angle": "number",
-        "degrees": "number",
-        "valid": "boolean"
-      },
-      "inputs": {
-        "origin": "map",
-        "target": "map"
-      },
-      "outputs": {
-        "euler": "map",
-        "quaternion": "map",
-        "tait_bryan": "map",
-        "axis": "map",
-        "angle": "number",
-        "degrees": "number",
-        "valid": "boolean"
-      },
-      "defaultData": {
-        "InputOrder": [
-          "origin",
-          "target"
-        ],
-        "OutputOrder": [
-          "euler",
-          "quaternion",
-          "tait_bryan",
-          "axis",
-          "angle",
-          "degrees",
-          "valid"
-        ],
-        "Defaults": {
-          "origin": {
-            "Type": "map",
-            "EntryOrder": [
-              "x",
-              "y",
-              "z"
-            ],
-            "Payload": {
-              "x": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "y": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "z": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              }
-            }
-          },
-          "target": {
-            "Type": "map",
-            "EntryOrder": [
-              "x",
-              "y",
-              "z"
-            ],
-            "Payload": {
-              "x": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "y": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 0.0
-                }
-              },
-              "z": {
-                "Type": "number",
-                "Payload": {
-                  "Value": 1.0
-                }
-              }
-            }
-          }
-        }
-      },
-      "properties": {},
+      "hiddenFromLibrary": false,
       "variants": []
     }
   ],

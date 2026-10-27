@@ -199,6 +199,7 @@ public final class CTServerFeatureCleanup {
 
     // Handle the server stopped event
     public static void onServerStopped(ServerStoppedEvent evt) {
+        com.rieno.gadgetsandgizmos.content.ShipDockApproachService.clear();
         PENDING_CHUNKS.clear();
         ACTIVE_CHUNK_CLEANUPS.clear();
         disabledItems = Set.of();

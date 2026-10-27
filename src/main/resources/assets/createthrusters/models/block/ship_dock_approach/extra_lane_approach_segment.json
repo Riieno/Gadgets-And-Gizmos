@@ -1,0 +1,23 @@
+{
+	"format_version": "1.9.0",
+	"credit": "Made with Blockbench",
+	"textures": {
+		"1": "createthrusters:block/aileron_bearing/heads"
+	},
+	"elements": [
+		{
+			"from": [6, 1, 7],
+			"to": [10, 3, 9],
+			"rotation": {"angle": 0, "axis": "y", "origin": [6, 1, 7]},
+			"faces": {
+				"north": {"uv": [2, 7, 6, 9], "texture": "#1"},
+				"east": {"uv": [1, 7.5, 3, 9.5], "texture": "#1"},
+				"south": {"uv": [2, 7, 6, 9], "texture": "#1"},
+				"west": {"uv": [1, 7.5, 3, 9.5], "texture": "#1"},
+				"up": {"uv": [2, 7, 6, 9], "texture": "#1"},
+				"down": {"uv": [2, 7, 6, 9], "texture": "#1"}
+			}
+		}
+	],
+	"display": {}
+}

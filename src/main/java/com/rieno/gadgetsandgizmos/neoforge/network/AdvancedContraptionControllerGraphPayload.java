@@ -121,11 +121,38 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
             }
             // ------------------------------------DRAFTS / VALIDATION------------------------------------
             switch (payload.action()) {
-                case "unbind_glasses" -> {
-                    java.util.UUID pair = null;
-                    try{ pair = java.util.UUID.fromString(payload.argument()); }
-                    catch(IllegalArgumentException ignored){}
-                    persistPortable = controller.unregisterGogglesTrackerPair(pair);
+                case "bind_goggles", "unbind_goggles" -> {
+                    int action = "bind_goggles".equals(payload.action())
+                            ? AdvancedContraptionControllerMenu.BIND_GOGGLES : AdvancedContraptionControllerMenu.UNBIND_GOGGLES;
+                    boolean started = context.player().containerMenu instanceof AdvancedContraptionControllerMenu menu
+                            && menu.getMenuConfigTargetBlockEntity() == controller
+                            && menu.startGogglesAction(context.player(), action, payload.requestId());
+                    if(!started) sendGraphActionResult(context, payload.target(), payload.requestId(), false,
+                            "Could not start binding: check the input and output slots", -1, false, false, List.of());
+                }
+                case "linker_targets", "linker_pull", "linker_push", "linker_stored" -> {
+                    boolean changed = switch(payload.action()){
+                        case "linker_pull" -> controller.copyLinkerTargets(true);
+                        case "linker_push" -> controller.copyLinkerTargets(false);
+                        case "linker_stored" -> controller.editStoredTargets(payload.graph(), payload.expectedRevision());
+                        default -> false;
+                    };
+                    persistPortable = changed;
+                    if(context.player() instanceof ServerPlayer player){
+                        PacketDistributor.sendToPlayer(player, new AdvancedControllerStoredTargetsPayload(
+                                payload.target(), controller.getStoredTargetSnapshot()));
+                        ContraptionNetworkLinkerSnapshotPayload.sendIfChanged(player, controller.getStoredLinker());
+                        player.containerMenu.broadcastChanges();
+                    }
+                    if(!"linker_targets".equals(payload.action())){
+                        sendGraphActionResult(context, payload.target(), payload.requestId(), changed,
+                                changed ? switch(payload.action()){
+                                    case "linker_pull" -> "Pulled Targets from the Linker";
+                                    case "linker_push" -> "Pushed Targets to the Linker";
+                                    default -> "Stored Targets updated";
+                                } : "Target collection changed or linker unavailable",
+                                controller.getDraftGraph().revision(), false, false, List.of());
+                    }
                 }
                 case "controller_alias" -> {
                     boolean renamed = controller.renameGraphAlias(payload.argument());
@@ -417,7 +444,8 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                         String graphName = payload.argument() == null || payload.argument().isBlank()
                                 ? "Contraption Graph" : payload.argument().trim();
                         String manifest = ControllerManifestStore.sharedGraphJson(
-                                graphName, AdvancedGraphDocument.fromTag(payload.graph()));
+                                graphName, AdvancedGraphDocument.fromTag(payload.graph()),
+                                ControllerManifestStore.sharingMetadata(player.getGameProfile().getName(), player.getUUID()));
                         PublicGraphShareService.upload(manifest).thenAccept(res ->
                                 player.server.execute(() -> sendPublicShare(player, payload.target(),
                                         res.shared(), true, res.shared(),
@@ -428,7 +456,8 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                     AdvancedContraptionControllerBlockEntity.SharedGraphShareResult res =
                             controller.shareGraphToInsertedLinker(
                                     AdvancedGraphDocument.fromTag(payload.graph()), payload.argument(),
-                                    ControllerManifestStore.SharedGraphSaveMode.REJECT);
+                                    ControllerManifestStore.SharedGraphSaveMode.REJECT,
+                                    ControllerManifestStore.sharingMetadata(context.player().getGameProfile().getName(), context.player().getUUID()));
                     sendSharedGraphs(context, payload.target(), res.message(),
                             res.conflict() ? payload.argument() : "", new CompoundTag());
                     persistPortable = res.saved();
@@ -437,7 +466,8 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                     AdvancedContraptionControllerBlockEntity.SharedGraphShareResult res =
                             controller.shareGraphToInsertedLinker(
                                     AdvancedGraphDocument.fromTag(payload.graph()), payload.argument(),
-                                    ControllerManifestStore.SharedGraphSaveMode.OVERWRITE);
+                                    ControllerManifestStore.SharedGraphSaveMode.OVERWRITE,
+                                    ControllerManifestStore.sharingMetadata(context.player().getGameProfile().getName(), context.player().getUUID()));
                     sendSharedGraphs(context, payload.target(), res.message(), "", new CompoundTag());
                     persistPortable = res.saved();
                 }
@@ -445,9 +475,21 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                     AdvancedContraptionControllerBlockEntity.SharedGraphShareResult res =
                             controller.shareGraphToInsertedLinker(
                                     AdvancedGraphDocument.fromTag(payload.graph()), payload.argument(),
-                                    ControllerManifestStore.SharedGraphSaveMode.INCREMENT);
+                                    ControllerManifestStore.SharedGraphSaveMode.INCREMENT,
+                                    ControllerManifestStore.sharingMetadata(context.player().getGameProfile().getName(), context.player().getUUID()));
                     sendSharedGraphs(context, payload.target(), res.message(), "", new CompoundTag());
                     persistPortable = res.saved();
+                }
+                case "rename_shared_graph" -> {
+                    boolean renamed = ControllerManifestStore.renameSharedGraph(payload.argument(),
+                            payload.graph().getString("SharedGraphName"));
+                    sendSharedGraphs(context, payload.target(), renamed ? "Shared graph renamed" : "Failed to rename shared graph",
+                            "", new CompoundTag());
+                }
+                case "delete_shared_graph" -> {
+                    boolean deleted = ControllerManifestStore.deleteSharedGraph(payload.argument());
+                    sendSharedGraphs(context, payload.target(), deleted ? "Shared graph deleted" : "Failed to delete shared graph",
+                            "", new CompoundTag());
                 }
                 case "load_shared_graph", "load_client_shared_graph" -> {
                     String msg = "load_client_shared_graph".equals(payload.action())

@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.navigation.WaypointSplineData;
 import com.rieno.gadgetsandgizmos.lib.compat.simulated.SimulatedDockingApi;
 import com.rieno.gadgetsandgizmos.compat.createrailwaysnavigator.RailwayNavigatorGraphCompat;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
@@ -157,6 +158,10 @@ public final class ShippingScheduleRuntime {
     private @Nullable UUID currentDockId;
     // Attached dock id
     private @Nullable UUID attachedDockId;
+    private List<Vec3> departureControls = List.of();
+    private @Nullable UUID departureDockId;
+    private int departureConnectorIdx = -1;
+
     // Current diverted target id
     private @Nullable UUID divertedTargetId;
     // Current auto refuel
@@ -234,6 +239,7 @@ public final class ShippingScheduleRuntime {
     private long[] conditionStarted = new long[0];
     // Last cargo exchange tick
     private long lastCargoExchangeTick;
+    private long lastCargoTransferAttemptTick = Long.MIN_VALUE;
     // Last worker-managed ship resource totals
     private @Nullable ShipCargoAutomation.ResourceStatus lastWorkerResources;
     // Last dock telemetry tick
@@ -358,6 +364,10 @@ public final class ShippingScheduleRuntime {
             return;
         }
         long gameTime = level.getGameTime();
+        if(runtimeValidated && !hasValidPilot()){
+            runtimeValidated = false;
+            lastRuntimeValidationTick = Long.MIN_VALUE;
+        }
         int spread = Math.max(1, Math.min(4,
                 CTConfigs.SERVER.shippingScheduleWorkSpreadTicks.get()));
         if (intervalElapsed(gameTime, lastRuntimeValidationTick,
@@ -378,7 +388,15 @@ public final class ShippingScheduleRuntime {
             return;
         }
         tickSchedulePhase();
+        restorePostLoadControl();
         if(!requiresControlAfterLoad()) controller.releaseShipControlAfterLoad();
+    }
+
+    // Keep a waiting schedule under flight control once its saved ship is ready
+    private void restorePostLoadControl(){
+        if(requiresControlAfterLoad() && controller.isShipControlWaitingForScheduleAfterLoad()){
+            issueDockingRecoveryHold();
+        }
     }
 
     // Resume the schedule after loading
@@ -465,9 +483,12 @@ public final class ShippingScheduleRuntime {
                 runtimeValidated = false;
                 return false;
             }
+            controller.executeShipControlGraphCommand("shipping_schedule_pilot_stop", "ship_stop", Map.of());
             status = pilotState == PilotState.UNAVAILABLE
-                    ? "Shipping route active while its pilot loads"
-                    : "Shipping route active while its pilot seat restores";
+                    ? "Shipping route paused while its pilot loads"
+                    : "Shipping route paused while its pilot seat restores";
+            runtimeValidated = false;
+            return false;
         }
         invalidPilotSinceTick = Long.MIN_VALUE;
         refreshRouteCache();
@@ -520,6 +541,8 @@ public final class ShippingScheduleRuntime {
 
     // Update the schedule phase
     private void tickSchedulePhase() {
+        if(phase == Phase.PAUSED) return;
+        if(!departureControls.isEmpty()){ phase = Phase.UNDOCKING; tickUndocking(); return; }
         if (autoRefuelActive && phase == Phase.PRE_TRANSIT) {
             restartAutoRefuelRoute();
             return;
@@ -557,8 +580,11 @@ public final class ShippingScheduleRuntime {
         }
         ShipCargoAutomation.FuelStatus fuel = ShipCargoAutomation.fuelStatus(
                 controller, routeThrottle);
-        if (fuel.infinite() || fuel.capacity() <= 0.0D
-                || !autoRefuel.shouldRefuel(fuel.ratio())) {
+        ShipDockRegistry.Dock fuelTarget = currentTargetDock();
+        boolean insufficientRange = fuelTarget != null && !fuel.canReach(
+                currentPosition().distanceTo(fuelTarget.approach()), routeSpeed);
+        if (fuel.infinite() || fuel.capacity() <= 0.0D || controller.logistics().fuelStorageFull()
+                || !autoRefuel.shouldRefuel(fuel.ratio()) && !insufficientRange) {
             return false;
         }
         List<ShipDockRegistry.Dock> candidates = autoRefuelCandidates(fuel);
@@ -700,7 +726,8 @@ public final class ShippingScheduleRuntime {
             return false;
         }
         clearDockTelemetry();
-        disengageAttachedConnectors();
+        clearDepartureState();
+        if(!disengageAttachedConnectors()) return false;
         releaseAllReservations();
         resetRouteProgress();
         HolderLookup.Provider registries = controller.getLevel().registryAccess();
@@ -934,6 +961,7 @@ public final class ShippingScheduleRuntime {
         status = "Shipping schedule paused by the controller graph";
         controller.executeShipControlGraphCommand(
                 "shipping_schedule_pause", "ship_stop", Map.of());
+        if(controller.isShipControlRestoringAfterLoad()) controller.cancelShipControlLoadHold();
         controller.setChanged();
         return true;
     }
@@ -978,7 +1006,7 @@ public final class ShippingScheduleRuntime {
         }
         controller.executeShipControlGraphCommand(
                 "shipping_schedule_reset", "ship_stop", Map.of());
-        disengageAttachedConnectors();
+        if(!disengageAttachedConnectors()) return false;
         releaseAllReservations();
         resetRouteProgress();
         currentEntry = firstOperationalEntry();
@@ -1363,6 +1391,9 @@ public final class ShippingScheduleRuntime {
             return ShippingSchedulePilot.isBlazeBurnerPilot(controller)
                     ? PilotState.VALID : PilotState.INVALID;
         }
+        if(cachedPilot != null && (!cachedPilot.isAlive()
+                || cachedPilot.getRemovalReason() == Entity.RemovalReason.KILLED
+                || cachedPilot.getRemovalReason() == Entity.RemovalReason.DISCARDED)) return PilotState.INVALID;
         LivingEntity pilot = assignedPilot();
         if (pilot == null) {
             return PilotState.UNAVAILABLE;
@@ -1410,7 +1441,8 @@ public final class ShippingScheduleRuntime {
     private void clearRuntimeState(String nextStatus) {
         ShippingSchedulePilot.clearTrainHat(assignedPilot());
         clearDockTelemetry();
-        disengageAttachedConnectors();
+        if(attachedDockId == null && currentDockId != null) cancelDockingAttempt(cachedDock(currentDockId));
+        clearDepartureState();
         releaseAllReservations();
         resetRouteProgress();
         controller.executeShipControlGraphCommand(
@@ -2019,7 +2051,7 @@ public final class ShippingScheduleRuntime {
         restoredDockOwnership = null;
         releaseReservationChannel("holding");
         clearHoldingState();
-        disengageAttachedConnectors();
+        if(!disengageAttachedConnectors()) return;
         currentDockId = target.id();
         currentShipConnectorIndex = -1;
         connectorlessHoverTarget = null;
@@ -2057,7 +2089,7 @@ public final class ShippingScheduleRuntime {
         restoredDockOwnership = null;
         releaseReservationChannel("holding");
         clearHoldingState();
-        disengageAttachedConnectors();
+        if(!disengageAttachedConnectors()) return;
         currentDockId = target.id();
         if (target.connectorPos() != null) {
             target.connectorTargets().stream()
@@ -2126,7 +2158,7 @@ public final class ShippingScheduleRuntime {
         routeTerminalTransitPending = false;
         releaseReservationChannel("holding");
         clearHoldingState();
-        disengageAttachedConnectors();
+        if(!disengageAttachedConnectors()) return;
         currentDockId = target.dock().id();
         currentParkingZoneId = target.zone().id();
         parkingKind = target.zone().airborne()
@@ -2165,7 +2197,7 @@ public final class ShippingScheduleRuntime {
             return;
         }
         boolean wasAttached = needsUndockingStabilization(attachedDockId);
-        disengageAttachedConnectors();
+        if(!disengageAttachedConnectors()) return;
         currentDockId = waitingDock.id();
         currentParkingZoneId = null;
         parkingKind = isAirshipMode() ? ParkingKind.AIRBORNE : ParkingKind.GROUND;
@@ -2626,14 +2658,20 @@ public final class ShippingScheduleRuntime {
                 .filter(slot -> slot.equals(ownedDock)
                         || !failedDockingSlots.containsKey(slot))
                 .toList();
-        return ShipDockScheduler.get(controller.getLevel().getServer()).request(
+        Map<ShipDockScheduler.DockSlot, ShipDockScheduler.AccessReport> access = new LinkedHashMap<>();
+        for(ShipDockRegistry.Dock dock : candidates) for(var connector : dock.connectorTargets()){
+            ShipDockRegistry.Dock endpoint = dock.withConnector(connector);
+            var report = controller.assessShipDockApproach(endpoint);
+            if(report != null) access.put(schedulerSlot(endpoint), report);
+        }
+        return ShipDockScheduler.get(controller.getLevel().getServer()).requestPreferred(
                 controller.getLevel().getServer(),
                 new ShipDockScheduler.RequestKey(pilotId, "dock"),
                 availableSlots,
                 physicallyOccupied,
                 ownedDock,
                 dockRequestPriority(candidates, ownedDock != null),
-                vesselEnvelope());
+                vesselEnvelope(), access);
     }
 
     // Get the conservative vessel envelope
@@ -2691,7 +2729,8 @@ public final class ShippingScheduleRuntime {
                 .filter(Double::isFinite)
                 .min()
                 .orElse(Double.POSITIVE_INFINITY);
-        boolean committed = phase == Phase.DOCKING || ownsCandidateDock && (phase == Phase.DOCKED
+        boolean committed = phase == Phase.DOCKING || phase == Phase.NAVIGATING && controller.isShipApproachCaptured(NAVIGATION_COMMAND)
+                || ownsCandidateDock && (phase == Phase.DOCKED
                 || phase == Phase.WAITING
                 || attachedDockId != null);
         long etaTicks = committed ? 0L : estimatedDockEtaTicks(distance);
@@ -2897,7 +2936,7 @@ public final class ShippingScheduleRuntime {
         }
         currentDockId = waitingDock.id();
         boolean wasAttached = needsUndockingStabilization(attachedDockId);
-        disengageAttachedConnectors();
+        if(!disengageAttachedConnectors()) return;
         currentShipConnectorIndex = -1;
         connectorlessHoverTarget = null;
         phaseStartedTick = controller.getLevel().getGameTime();
@@ -3270,8 +3309,7 @@ public final class ShippingScheduleRuntime {
             skipCurrentEntry("Skipped invalid ship dock destination");
             return;
         }
-        controller.executeShipControlGraphCommand(
-                "shipping_schedule_stop", "ship_stop", Map.of());
+        if(!dockingRecoveryControlActive) issueDockingRecoveryHold();
         invalidateRouteCache();
         lastRuntimeValidationTick = Long.MIN_VALUE;
         status = "Waiting for the persisted ship dock registry to load";
@@ -3282,7 +3320,7 @@ public final class ShippingScheduleRuntime {
     private void skipCurrentEntry(String msg) {
         controller.executeShipControlGraphCommand(
                 "shipping_schedule_stop", "ship_stop", Map.of());
-        disengageAttachedConnectors();
+        if(!disengageAttachedConnectors()) return;
         releaseAllReservations();
         clearParkingState();
         clearHoldingState();
@@ -3301,6 +3339,23 @@ public final class ShippingScheduleRuntime {
 
     // Update the undocking
     private void tickUndocking() {
+        if(!departureControls.isEmpty()){
+            if(attachedDockId != null && !attachedDockId.equals(departureDockId)){
+                clearDepartureState();
+                phase = Phase.PRE_TRANSIT;
+                return;
+            }
+            ShipDockRegistry.Dock departing = cachedDock(departureDockId);
+            if(departing != null && !departing.approachPath().configured()){
+                clearDepartureState();
+                issueUndockingControl();
+            }else{
+                if(!issueApproachDeparture()) return;
+                if(!controller.isShipDockDepartureComplete("shipping_schedule_departure")) return;
+                clearDepartureState();
+                controller.executeShipControlGraphCommand("shipping_schedule_departure_stop", "ship_stop", Map.of());
+            }
+        }
         if (controller.getLevel() == null || currentDockId == null) {
             phase = Phase.PRE_TRANSIT;
             return;
@@ -3458,6 +3513,17 @@ public final class ShippingScheduleRuntime {
             return;
         }
         if (intervalElapsed(now, lastTargetRefreshTick, 20L)) {
+            if(dock.approachPath().configured()){
+                var report = controller.assessShipDockApproach(dock);
+                if(report != null && !report.reachable()){
+                    issueDockingRecoveryHold();
+                    resetRouteProgress();
+                    magneticCaptureActive = false;
+                    // Keep the request so the allocator retains obstruction feedback when changing berths
+                    beginLiveDockApproach(List.of(dock));
+                    return;
+                }
+            }
             issueNavigation(dock);
         }
         if (!hasUsableConnectorPair(dock)) {
@@ -3480,10 +3546,14 @@ public final class ShippingScheduleRuntime {
             return;
         }
         if (!controller.isShipControlGraphCommandComplete(NAVIGATION_COMMAND, "ship_navigate")
-                && !dockingApproachTargetReached(dock)) {
+                && (dock.approachPath().configured() || !dockingApproachTargetReached(dock))) {
             return;
         }
         if (!acquireDockAtArrival(dock)) {
+            return;
+        }
+        if(!controller.prepareShipDockManeuver(dock, currentShipConnectorIndex, Math.min(routeSpeed, MAX_DOCKING_SPEED))){
+            status = "Waiting for docking clearance at " + dock.name();
             return;
         }
         controller.setShipDockingMagneticCapture(currentShipConnectorIndex, false);
@@ -3617,6 +3687,12 @@ public final class ShippingScheduleRuntime {
             return;
         }
         // -----------------------------------------------------STALL CHECK-----------------------------------------------------
+        if(controller.isShipDockMovementBlocked(DOCKING_COMMAND)){
+            lastDockingProgressTick = now;
+            phaseStartedTick = now;
+            status = "Waiting for clear docking space at " + dock.name();
+            return;
+        }
         boolean stalled = lastDockingProgressTick != Long.MIN_VALUE
                 && now - lastDockingProgressTick > DOCKING_STALL_TICKS;
         if (stalled || now - phaseStartedTick > 600L) {
@@ -3633,6 +3709,11 @@ public final class ShippingScheduleRuntime {
                 ? new ShipDockScheduler.HoldingPlacement(16.0D, -10.0D, 0.0D)
                 : placement;
         Vec3 outward = dock.hasDockingConnector() ? dock.connectorFacing() : dock.facing();
+        Vec3 anchor = dock.approach();
+        if(dock.approachPath().configured()){
+            List<Vec3> approach = dock.approachPath().route(dock.connectorWorldPosition(), dock.connectorFacing(), dock.connectorUp(), false);
+            if(approach.size() >= 2){ anchor = approach.getFirst(); outward = approach.getFirst().subtract(approach.get(1)).normalize(); }
+        }
         Vec3 horizontal = new Vec3(outward.x, 0.0D, outward.z);
         if (horizontal.lengthSqr() < 1.0E-9D) {
             horizontal = new Vec3(dock.facing().x, 0.0D, dock.facing().z);
@@ -3644,10 +3725,16 @@ public final class ShippingScheduleRuntime {
         double routeClearance = Math.max(8.0D,
                 vesselEnvelope().horizontalRadius() * 2.0D
                         + QUEUE_ROUTE_CLEARANCE_PADDING);
-        List<List<Vec3>> routes = controller.shippingScheduleRoutePolylines(
-                currentEntry, precalculatedRouteTarget(dock), 1.0E-4D);
+        List<List<Vec3>> routes = new ArrayList<>(controller.shippingScheduleRoutePolylines(
+                currentEntry, precalculatedRouteTarget(dock), 1.0E-4D));
+        if(dock.approachPath().configured()){
+            var network = dock.approachPath().worldNetwork(dock.connectorWorldPosition(), dock.connectorFacing(), dock.connectorUp());
+            for(var path : network.paths()) routes.add(network.spline(path.id()).sample(1.0D));
+        }
+        for(var connector : dock.connectorTargets()) routes.add(List.of(connector.worldPosition(),
+                connector.approachPath().target(connector.worldPosition(), connector.facing())));
         return ShipDockScheduler.resolveHoldingPosition(
-                dock.approach(), horizontal, safe,
+                anchor, horizontal, safe,
                 safe.vertical() + lowerHullClearance,
                 routes, routeClearance);
     }
@@ -3700,8 +3787,8 @@ public final class ShippingScheduleRuntime {
                 "shipping_schedule_dock_recovery_brake", "ship_decelerate",
                 Map.of("strength", 1.0D));
         controller.executeShipControlGraphCommand(
-                "shipping_schedule_dock_recovery_hold", "ship_hover",
-                Map.of("y", currentPosition().y, "strength", 1.0D));
+                "shipping_schedule_dock_recovery_hold", "ship_climb",
+                Map.of("y", currentPosition().y, "speed", 0.6D, "avoid_collisions", 0.0D));
         dockingRecoveryControlActive = true;
     }
 
@@ -3766,6 +3853,9 @@ public final class ShippingScheduleRuntime {
         if (!useDockingConnector) {
             values.put("schedule_route_entry", (double) currentEntry);
         }
+        if(dock.approachPath().configured()) return controller.executeShipApproachSpline(
+                NAVIGATION_COMMAND, routeControlParameters(values), dockingCommandTextValues(dock),
+                controller.selectShipApproachRoute(NAVIGATION_COMMAND, dock, false, currentPosition()), true, dock.id());
         return controller.executeShipControlGraphCommand(
                 NAVIGATION_COMMAND, "ship_navigate",
                 routeControlParameters(values),
@@ -3836,15 +3926,27 @@ public final class ShippingScheduleRuntime {
         }
         controller.executeShipControlGraphCommand(
                 "shipping_schedule_undock_reset", "ship_stop", Map.of());
+        if(!departureControls.isEmpty()) return issueApproachDeparture();
         boolean braking = controller.executeShipControlGraphCommand(
                 UNDOCK_BRAKE_COMMAND, "ship_decelerate",
                 Map.of("strength", 1.0D));
         boolean hovering = controller.executeShipControlGraphCommand(
-                UNDOCK_HOVER_COMMAND, "ship_hover",
-                undockingHoldY == null
-                        ? Map.of("strength", 1.0D)
-                        : Map.of("strength", 1.0D, "y", undockingHoldY));
+                UNDOCK_HOVER_COMMAND, "ship_climb",
+                Map.of("y", undockingHoldY == null ? currentPosition().y : undockingHoldY,
+                        "speed", 0.6D, "avoid_collisions", 0.0D));
         return braking && hovering;
+    }
+
+    // Keep departure on the confirmed corridor before handing off to live navigation
+    private boolean issueApproachDeparture(){
+        if(departureControls.isEmpty() || departureDockId == null) return false;
+        return controller.beginShipDockDeparture("shipping_schedule_departure", cachedDock(departureDockId), departureConnectorIdx);
+    }
+
+    private void clearDepartureState(){
+        departureControls = List.of();
+        departureDockId = null;
+        departureConnectorIdx = -1;
     }
 
     // Issue the docking
@@ -3985,11 +4087,19 @@ public final class ShippingScheduleRuntime {
             resumeInterruptedSchedule();
             return;
         }
+        if(connected && intervalElapsed(controller.getLevel().getGameTime(), lastCargoTransferAttemptTick, 4L)){
+            lastCargoTransferAttemptTick = controller.getLevel().getGameTime();
+            BlockEntityPair pair = connectorPair(dock);
+            if(ScmLogisticsSchedule.exchange(controller, dock, pair.ship(), pair.dock(), entry,
+                    conditionProgress, autoRefuelActive && !autoRefuelReturning) > 0){
+                lastCargoExchangeTick = controller.getLevel().getGameTime();
+            }
+        }
         // Resolve auto refuel and route diversions
         if (autoRefuelActive) {
             ShipCargoAutomation.FuelStatus fuel = ShipCargoAutomation.fuelStatus(
                     controller, routeThrottle);
-            if (!fuelRefillComplete(fuel)) {
+            if (!currentFuelRefillComplete(fuel)) {
                 phase = Phase.WAITING;
                 status = "Auto Refuel at " + dock.name() + " ("
                         + Math.round(fuel.ratio() * 100.0D) + "%)";
@@ -4021,7 +4131,7 @@ public final class ShippingScheduleRuntime {
         if (entry.instruction instanceof RefuelIfInstruction) {
             ShipCargoAutomation.FuelStatus fuel = ShipCargoAutomation.fuelStatus(
                     controller, routeThrottle);
-            if (!fuelRefillComplete(fuel)) {
+            if (!currentFuelRefillComplete(fuel)) {
                 phase = Phase.WAITING;
                 status = "Refueling at " + dock.name() + " ("
                         + Math.round(fuel.ratio() * 100.0D) + "%)";
@@ -4151,6 +4261,10 @@ public final class ShippingScheduleRuntime {
     }
 
     // Check if the fuel refill is complete
+    private boolean currentFuelRefillComplete(ShipCargoAutomation.FuelStatus fuel){
+        return fuelRefillComplete(fuel) || controller.logistics().fuelStorageFull();
+    }
+
     static boolean fuelRefillComplete(ShipCargoAutomation.FuelStatus fuel) {
         return fuel.infinite() || fuel.capacity() <= 0.0D
                 || fuel.amount() >= fuel.capacity() * 0.999D;
@@ -4403,6 +4517,10 @@ public final class ShippingScheduleRuntime {
                 Math.min(ROUTE_TERMINAL_MAX_CAPTURE_RADIUS,
                         standOff * 0.5D));
         double verticalOffset = Math.max(1.5D, envelope.bottomOffset() + 1.0D);
+        if(dock.hasDockingConnector() && dock.approachPath().configured()){
+            List<Vec3> approach = controller.selectShipApproachRoute(NAVIGATION_COMMAND, dock, false, currentPosition());
+            if(!approach.isEmpty()) return new SablePathfinder.RouteTerminal(approach.getFirst(), captureRadius);
+        }
         return dockRouteTerminal(dock, standOff, verticalOffset, captureRadius);
     }
 
@@ -4413,6 +4531,9 @@ public final class ShippingScheduleRuntime {
             double verticalOffset,
             double captureRadius
     ) {
+        if(dock.hasDockingConnector() && dock.approachPath().configured()){
+            return new SablePathfinder.RouteTerminal(dock.approachRoute(false).getFirst(), captureRadius);
+        }
         if (dock.hasDockingConnector()) {
             return SablePathfinder.routeTerminal(
                     dock.connectorWorldPosition(), dock.connectorFacing(),
@@ -4479,24 +4600,45 @@ public final class ShippingScheduleRuntime {
     }
 
     // Disengage the attached connectors
-    private void disengageAttachedConnectors() {
+    private boolean disengageAttachedConnectors() {
         undockingHoldY = attachedDockId == null ? null : currentPosition().y;
         if (controller.getLevel() != null && attachedDockId != null) {
             ShipDockRegistry.Dock dock = cachedDock(attachedDockId);
             if (dock != null) {
+                var attached = controller.shipDockDepartureTarget(dock, currentShipConnectorIndex);
+                if(attached != null){
+                    dock = attached.dock();
+                    currentShipConnectorIndex = attached.connectorIdx();
+                }
+                if(!attachedDockId.equals(departureDockId)) clearDepartureState();
+                if(!dock.approachPath().configured()){
+                    clearDepartureState();
+                    controller.prepareShipDockManeuver(dock, currentShipConnectorIndex);
+                }else if(departureControls.isEmpty()){
+                    if(!controller.prepareShipDockDeparture(dock, currentShipConnectorIndex)){
+                        status = "Waiting for departure clearance at " + dock.name();
+                        return false;
+                    }
+                    departureControls = List.of(dock.dockingTarget(), dock.approach());
+                    departureDockId = dock.id();
+                    departureConnectorIdx = currentShipConnectorIndex;
+                }
                 BlockEntityPair pair = connectorPair(dock);
                 DockingConnectorAutomation.disengage(pair.ship(), pair.dock());
             }
         }
         attachedDockId = null;
         controller.activateShipDockingConnector(-1);
+        return true;
     }
 
     // Cancel the docking attempt
     private void cancelDockingAttempt(@Nullable ShipDockRegistry.Dock dock) {
         if (dock != null) {
             BlockEntityPair pair = connectorPair(dock);
-            DockingConnectorAutomation.disengage(pair.ship(), pair.dock());
+            DockingConnectorAutomation.disengage(pair.ship(),
+                    !DockingConnectorAutomation.hasConnectionState(pair.dock())
+                            || DockingConnectorAutomation.isMagneticCapturePair(pair.ship(), pair.dock()) ? pair.dock() : null);
         }
         magneticCaptureActive = false;
         controller.setShipDockingMagneticCapture(currentShipConnectorIndex, false);
@@ -4589,6 +4731,9 @@ public final class ShippingScheduleRuntime {
         CompoundTag tag = new CompoundTag();
         schedule.savedProgress = Math.max(0, currentEntry);
         tag.put("Schedule", schedule.write(provider));
+        tag.put("DepartureControls", WaypointSplineData.points(departureControls));
+        if(departureDockId != null) tag.putUUID("DepartureDock", departureDockId);
+        tag.putInt("DepartureConnector", departureConnectorIdx);
         tag.put("AutoRefuel", autoRefuel.toTag());
         tag.putBoolean("AutoRefuelActive", autoRefuelActive);
         tag.putBoolean("AutoRefuelReturning", autoRefuelReturning);
@@ -4667,6 +4812,7 @@ public final class ShippingScheduleRuntime {
                      boolean recoverAfterLoad) {
         // -----------------------------------------------------DEFAULT STATE-----------------------------------------------------
         if (!parent.contains("ShippingScheduleRuntime", Tag.TAG_COMPOUND)) {
+            clearDepartureState();
             schedule = null;
             blazeBurnerPilot = false;
             autoRefuel = ShippingAutoRefuelSettings.DEFAULT;
@@ -4713,6 +4859,10 @@ public final class ShippingScheduleRuntime {
         blazeBurnerPilot = tag.getBoolean("BlazeBurnerPilot");
         currentDockId = tag.hasUUID("CurrentDock") ? tag.getUUID("CurrentDock") : null;
         attachedDockId = tag.hasUUID("AttachedDock") ? tag.getUUID("AttachedDock") : null;
+        departureControls = WaypointSplineData.readPoints(tag.getList("DepartureControls", Tag.TAG_COMPOUND), 131072);
+        departureDockId = tag.hasUUID("DepartureDock") ? tag.getUUID("DepartureDock") : null;
+        departureConnectorIdx = tag.getInt("DepartureConnector");
+        if(schedule == null || schedule.entries.isEmpty()) clearDepartureState();
         divertedTargetId = tag.hasUUID("DivertedTarget") ? tag.getUUID("DivertedTarget") : null;
         try {
             phase = Phase.valueOf(tag.getString("Phase"));

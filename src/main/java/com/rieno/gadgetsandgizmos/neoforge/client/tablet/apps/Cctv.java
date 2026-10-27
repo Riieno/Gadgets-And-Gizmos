@@ -137,6 +137,7 @@ public final class Cctv implements TabletAppClientRenderer{
             ViewControlState controls = src instanceof ControlledViewSource camera ? camera.viewControlState()
                     : ViewControlState.fromTag(selected.getCompound("Controls"));
             String key = state.selected;
+            state.controls.setSource(ref);
             state.controls.setTakeControlAction(() -> ctx.actions().send("take_control", key));
             state.controls.setInteractAction(() -> ctx.actions().send("interact_hit", key));
             state.controls.renderChin(RemoteViewHud.canvas(ctx.graphics()), ctx.font(), ctx.left() + viewLeft, ctx.top() + controlsTop,

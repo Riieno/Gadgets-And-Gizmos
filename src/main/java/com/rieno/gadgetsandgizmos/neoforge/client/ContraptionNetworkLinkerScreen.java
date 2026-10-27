@@ -20,6 +20,8 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
+import java.util.function.Consumer;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -78,6 +80,7 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
 
     // Hand
     private final InteractionHand hand;
+    private final Consumer<CompoundTag> controllerSave;
     // Stack snapshot
     private final ItemStack stackSnapshot;
     // Tracks whether client data is available
@@ -125,6 +128,7 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
     public ContraptionNetworkLinkerScreen(InteractionHand hand, ItemStack stack) {
         super(Component.translatable("item.createthrusters.contraption_network_linker"));
         this.hand = hand;
+        this.controllerSave = null;
         this.stackSnapshot = stack.copy();
         this.clientDataAvailable = ContraptionNetworkLinkerData.hasClientData(stack);
         this.targets.addAll(ContraptionNetworkLinkerData.readClientTargets(stack));
@@ -134,6 +138,19 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
         if (this.targetMode == ContraptionNetworkLinkerData.TargetMode.AUTO) {
             this.targetMode = ContraptionNetworkLinkerData.TargetMode.FACE;
         }
+        setWindowSize(BG_W, BG_H);
+    }
+
+    // Reuse the item editor as a controller modal without reading or changing a held item
+    public ContraptionNetworkLinkerScreen(CompoundTag stored, Consumer<CompoundTag> controllerSave){
+        super(Component.translatable("createthrusters.advanced_controller.linker.stored_title"));
+        this.hand = InteractionHand.MAIN_HAND;
+        this.stackSnapshot = ItemStack.EMPTY;
+        this.clientDataAvailable = true;
+        this.controllerSave = java.util.Objects.requireNonNull(controllerSave);
+        this.targets.addAll(ContraptionNetworkLinkerData.readTargets(stored));
+        this.areas.addAll(ContraptionNetworkLinkerData.readAreas(stored));
+        this.editMode = ContraptionNetworkLinkerData.LinkMode.byId(stored.getString("EditMode"));
         setWindowSize(BG_W, BG_H);
     }
 
@@ -318,6 +335,11 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
     @Override
     public void onClose() {
         applyFieldEdits();
+        if(controllerSave != null){
+            controllerSave.accept(ContraptionNetworkLinkerData.writeClientEditRoot(
+                    ItemStack.EMPTY, targets, areas, editMode, ContraptionNetworkLinkerData.TargetMode.FACE));
+            return;
+        }
         if (clientDataAvailable) {
             PacketDistributor.sendToServer(new ContraptionNetworkLinkerSyncPayload(hand,
                     ContraptionNetworkLinkerData.writeClientEditRoot(
@@ -526,7 +548,7 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
 
     // Show recipe assignment for the selected machine area
     private void refreshFields() {
-        assignRecipesButton.visible = selectedArea >= 0 && selectedArea < areas.size()
+        assignRecipesButton.visible = controllerSave == null && selectedArea >= 0 && selectedArea < areas.size()
                 && areas.get(selectedArea).kind() == ContraptionNetworkLinkerData.AreaKind.MACHINE;
     }
 
@@ -545,6 +567,7 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
     // Get the mode label
     private Component modeLabel() {
         Component mode = Component.translatable(editMode.translationKey());
+        if(controllerSave != null) return mode;
         if(editMode != ContraptionNetworkLinkerData.LinkMode.SCM) return mode;
         Component scope = switch(targetMode){
             case AUTO, BLOCK, FACE -> faceModeButton.getMessage();
@@ -600,6 +623,18 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
     private void selectTab(ContraptionNetworkLinkerData.LinkMode mode) {
         applyFieldEdits();
         setFocused(null);
+        if(controllerSave != null && selectedTarget >= 0 && selectedTarget < targets.size()){
+            var target = targets.get(selectedTarget);
+            targets.set(selectedTarget, new ContraptionNetworkLinkerData.LinkedTarget(target.blockPos(), target.subLevelId(),
+                    target.blockId(), target.label(), mode, target.scope(), target.faces()));
+            editMode = targets.get(selectedTarget).mode();
+            selectedTarget = -1;
+            selectedFace = -1;
+            scroll = 0;
+            refreshFields();
+            refreshModeButtons();
+            return;
+        }
         editMode = mode;
         selectedTarget = -1;
         selectedFace = -1;
@@ -612,7 +647,7 @@ public class ContraptionNetworkLinkerScreen extends AbstractSimiScreen {
     // Show the SCM target choices on the linker toolbar
     private void refreshModeButtons(){
         if(faceModeButton == null || areaModeButton == null) return;
-        boolean scm = editMode == ContraptionNetworkLinkerData.LinkMode.SCM;
+        boolean scm = controllerSave == null && editMode == ContraptionNetworkLinkerData.LinkMode.SCM;
         if(scm && targetMode == ContraptionNetworkLinkerData.TargetMode.BLOCK){
             targetMode = ContraptionNetworkLinkerData.TargetMode.FACE;
         }

@@ -224,7 +224,7 @@ public class WorkerPodBlockEntity extends SmartBlockEntity {
                     instanceof WorkerPodBlockEntity pod) pods.putIfAbsent(pod.podId, pod);
         }
         for (ContraptionNetworkLinkerData.LinkedTarget target
-                : ContraptionNetworkLinkerData.readTargets(controller.getStoredLinker())) {
+                : controller.getLinkedTargets()) {
             if (target.mode() != ContraptionNetworkLinkerData.LinkMode.SCM) continue;
             BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(controller.getLevel(),
                     target.subLevelId(), target.blockPos());
@@ -2390,10 +2390,10 @@ public class WorkerPodBlockEntity extends SmartBlockEntity {
                 return;
             }
             UUID subLevelId = SimulatedHelper.getContainingSubLevelId(this);
-            var areas = ContraptionNetworkLinkerData.readAreas(controller.getStoredLinker()).stream()
+            var areas = controller.getLinkedAreas().stream()
                     .filter(area -> Objects.equals(area.subLevelId(), subLevelId)).toList();
             Set<BlockPos> linked = new HashSet<>();
-            ContraptionNetworkLinkerData.readTargets(controller.getStoredLinker()).stream()
+            controller.getLinkedTargets().stream()
                     .filter(target -> Objects.equals(target.subLevelId(), subLevelId))
                     .forEach(target -> linked.add(target.blockPos()));
             endpoints(controller, runtime, true).forEach(endpoint -> linked.addAll(endpoint.interactionBlocks()));
@@ -4209,7 +4209,7 @@ public class WorkerPodBlockEntity extends SmartBlockEntity {
         AdvancedContraptionControllerBlockEntity controller = owningController();
         if(controller == null) return noEntryBounds;
         UUID subLevelId = SimulatedHelper.getContainingSubLevelId(this);
-        noEntryBounds = ContraptionNetworkLinkerData.readAreas(controller.getStoredLinker()).stream()
+        noEntryBounds = controller.getLinkedAreas().stream()
                 .filter(area -> area.kind() == ContraptionNetworkLinkerData.AreaKind.NO_ENTRY
                         && Objects.equals(area.subLevelId(), subLevelId))
                 .map(ContraptionNetworkLinkerData.LinkedArea::bounds).toList();

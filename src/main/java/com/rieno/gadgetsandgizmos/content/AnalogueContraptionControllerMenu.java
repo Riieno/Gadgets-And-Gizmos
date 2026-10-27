@@ -60,16 +60,16 @@ public class AnalogueContraptionControllerMenu extends GhostItemMenu<AnalogueCon
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    public static final int PLAYER_SLOTS_X = 50;
+    public static final int PLAYER_SLOTS_X = 59;
 
-    public static final int PLAYER_SLOTS_Y = 232;
+    public static final int PLAYER_SLOTS_Y = 239;
     public static final int GHOST_SLOT_OUTPUT_FIRST_X = 104;
     public static final int GHOST_SLOT_OUTPUT_SECOND_X = 124;
     public static final int GHOST_SLOT_INPUT_FIRST_X = 176;
     public static final int GHOST_SLOT_INPUT_SECOND_X = 196;
     public static final int GHOST_SLOTS_Y = 26;
-    public static final int LINKER_SLOT_X = 256;
-    public static final int LINKER_SLOT_Y = 44;
+    public static final int LINKER_SLOT_X = 34;
+    public static final int LINKER_SLOT_Y = 201;
     public static final int GOGGLES_INPUT_SLOT_X = 154;
     public static final int GOGGLES_INPUT_SLOT_Y = 112;
     public static final int GOGGLES_OUTPUT_SLOT_X = 236;
@@ -298,6 +298,9 @@ public class AnalogueContraptionControllerMenu extends GhostItemMenu<AnalogueCon
     public ItemStack getCurrentLinkerStack() {
         return copySingle(getAuthoritativeLinkerStack());
     }
+
+    // Get the goggles awaiting an explicit binding action
+    public ItemStack getGogglesInputStack(){ return copySingle(gogglesContainer().getItem(0)); }
 
     // Get the goggles output stack
     public ItemStack getGogglesOutputStack() {
@@ -638,7 +641,7 @@ public class AnalogueContraptionControllerMenu extends GhostItemMenu<AnalogueCon
     }
 
     // Get the goggles container
-    private Container gogglesContainer() {
+    protected Container gogglesContainer() {
         if (gogglesContainer == null) {
             gogglesContainer = new SimpleContainer(2) {
                 // Set the changed
@@ -681,8 +684,15 @@ public class AnalogueContraptionControllerMenu extends GhostItemMenu<AnalogueCon
         super.broadcastChanges();
     }
 
+    // Choose whether inserting goggles starts the linking timer
+    protected boolean automaticallyLinkGoggles(){ return true; }
+
     // Update the goggles linking
-    private void tickGogglesLinking() {
+    protected void tickGogglesLinking() {
+        if(!automaticallyLinkGoggles()){
+            gogglesLinkProgress = 0;
+            return;
+        }
         if (playerInventory == null || playerInventory.player == null || playerInventory.player.level().isClientSide) {
             return;
         }
@@ -758,7 +768,7 @@ public class AnalogueContraptionControllerMenu extends GhostItemMenu<AnalogueCon
     }
 
     // Rename the linked goggles
-    private static ItemStack renameLinkedGoggles(
+    protected static ItemStack renameLinkedGoggles(
             ItemStack stack, String previousPairLabel, String pairLabel
     ) {
         if (stack == null || stack.isEmpty()) {
@@ -830,6 +840,10 @@ public class AnalogueContraptionControllerMenu extends GhostItemMenu<AnalogueCon
     // Get the goggles link progress
     public int getGogglesLinkProgress() {
         return gogglesLinkProgress;
+    }
+
+    protected void setGogglesLinkProgress(int progress){
+        gogglesLinkProgress = Math.clamp(progress, 0, getGogglesLinkDuration());
     }
 
     // Get the goggles link duration

@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.lib.discovery.INamedBlockEntity;
+import com.rieno.gadgetsandgizmos.lib.geometry.VoxelShapeCache;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import dev.ryanhcode.sable.api.block.BlockSubLevelCollisionShape;
 import dev.ryanhcode.sable.api.block.BlockSubLevelAssemblyListener;
@@ -82,6 +83,7 @@ public class AnalogueContraptionControllerBlock extends CTDirectionalBlock
             ControllerShapeRotation.createOrientations(SHAPE_NORTH);
     // Cache each mounted collision shape for embedded slabs
     private static final Map<ControllerShapeKey, VoxelShape> CONTROLLER_SHAPES = new ConcurrentHashMap<>();
+    private static final VoxelShapeCache EMBEDDED_SHAPES = new VoxelShapeCache(1024);
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -198,7 +200,7 @@ public class AnalogueContraptionControllerBlock extends CTDirectionalBlock
         if (embeddedState == null) {
             return controllerShape;
         }
-        return Shapes.or(embeddedState.getShape(level, pos, ctx), controllerShape);
+        return EMBEDDED_SHAPES.union(embeddedState.getShape(level, pos, ctx), controllerShape);
     }
 
     // Get the embedded support volume

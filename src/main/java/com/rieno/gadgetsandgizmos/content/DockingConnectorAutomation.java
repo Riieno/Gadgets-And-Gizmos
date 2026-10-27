@@ -146,6 +146,7 @@ public final class DockingConnectorAutomation {
             }
             collectStoredEndpoint(endpoints, endpoint);
         }
+        for(DockingConnectorBlockEntity endpoint : endpoints) ShipControlModuleRuntime.closeDockDoorsBeforeUndocking(endpoint);
         for (DockingConnectorBlockEntity endpoint : endpoints) {
             setPowered(endpoint, false);
         }

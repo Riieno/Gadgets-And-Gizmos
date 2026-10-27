@@ -14,6 +14,8 @@ import com.rieno.gadgetsandgizmos.neoforge.network.ShipDockConfigPayload;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -163,6 +165,20 @@ public class ShipDockScreen extends Screen {
         nameBox.setTextColor(0xFFE6E6E6);
         nameBox.setValue(dockName);
         addRenderableWidget(nameBox);
+        Button approach = Button.builder(Component.translatable(ShipDockApproachClient.editing(pos, subLevelId)
+                ? "createthrusters.ship_dock.confirm_approach" : "createthrusters.ship_dock.configure_approach"), button -> {
+            if(ShipDockApproachClient.editing(pos, subLevelId)) ShipDockApproachClient.confirm();
+            else ShipDockApproachClient.configure(pos, subLevelId);
+            onClose();
+        }).bounds(left, top + GUI_HEIGHT + 4, GUI_WIDTH, 20).build();
+        approach.setTooltip(Tooltip.create(Component.translatable("createthrusters.ship_dock.approach_shortcuts")));
+        addRenderableWidget(approach);
+        Button reset = Button.builder(Component.translatable("createthrusters.ship_dock.reset_approach"), button -> {
+            ShipDockApproachClient.reset(pos, subLevelId);
+            onClose();
+        }).bounds(left, top + GUI_HEIGHT + 28, GUI_WIDTH, 20).build();
+        reset.setTooltip(Tooltip.create(Component.translatable("createthrusters.ship_dock.reset_approach_hint")));
+        addRenderableWidget(reset);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -180,7 +196,7 @@ public class ShipDockScreen extends Screen {
 
     // Get the top edge of the cropped screen
     private int top() {
-        return (height - GUI_HEIGHT) / 2;
+        return Math.max(4, (height - GUI_HEIGHT - 48) / 2);
     }
 
     // Draw one dock capability card

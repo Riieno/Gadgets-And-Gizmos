@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.registry;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.content.WorldHologramProjectorBlockEntity;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import com.simibubi.create.content.kinetics.simpleRelays.SimpleKineticBlockEntity;
@@ -99,7 +100,8 @@ public final class CTBlockEntities {
 
     @Nullable
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<ThrusterBlockEntity>> THRUSTER = register("thruster",
-            () -> BlockEntityType.Builder.of(ThrusterBlockEntity::new, CTBlocks.THRUSTER.get()).build(null));
+            () -> BlockEntityType.Builder.of(ThrusterBlockEntity::new,
+                    CTBlocks.THRUSTER.get(), CTBlocks.CELEBRATION_THRUSTER.get()).build(null));
 
     @Nullable
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<RcsThrusterBlockEntity>> RCS_THRUSTER =
@@ -191,6 +193,10 @@ public final class CTBlockEntities {
     @Nullable
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<AdvancedContraptionControllerBlockEntity>> ADVANCED_CONTRAPTION_CONTROLLER = register("advanced_contraption_controller",
             () -> BlockEntityType.Builder.of(AdvancedContraptionControllerBlockEntity::new, CTBlocks.ADVANCED_CONTRAPTION_CONTROLLER.get()).build(null));
+
+    public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<WorldHologramProjectorBlockEntity>> WORLD_HOLOGRAM_PROJECTOR =
+            register("world_hologram_projector", () -> BlockEntityType.Builder.of(
+                    WorldHologramProjectorBlockEntity::new, CTBlocks.WORLD_HOLOGRAM_PROJECTOR.get()).build(null));
 
     @Nullable
     public static final DeferredHolder<BlockEntityType<?>, BlockEntityType<CameraBlockEntity>> CAMERA =

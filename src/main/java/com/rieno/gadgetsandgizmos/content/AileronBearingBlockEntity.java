@@ -20,6 +20,7 @@ import com.rieno.gadgetsandgizmos.lib.control.FrequencyBinding;
 import com.rieno.gadgetsandgizmos.lib.control.IDirectControlReceiver;
 import com.rieno.gadgetsandgizmos.lib.control.OrientationPayload;
 import com.rieno.gadgetsandgizmos.lib.control.OrientationTarget;
+import com.rieno.gadgetsandgizmos.lib.inventory.AssemblyResourceAccess;
 import com.rieno.gadgetsandgizmos.lib.kinetics.BearingHead;
 import com.rieno.gadgetsandgizmos.lib.kinetics.BearingHeadAccess;
 import com.rieno.gadgetsandgizmos.lib.kinetics.KineticAngleHelper;
@@ -73,10 +74,13 @@ import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.energy.IEnergyStorage;
+import net.neoforged.neoforge.fluids.capability.IFluidHandler;
 import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 
 import java.lang.reflect.Field;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.EnumMap;
 import java.util.EnumSet;
@@ -84,11 +88,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
 // Build and aim one or two mounted aileron sub-levels from shaft, redstone, link or computer control
-public class AileronBearingBlockEntity extends KineticBlockEntity implements MenuProvider, IDirectControlReceiver,
+public class AileronBearingBlockEntity extends KineticBlockEntity implements AssemblyResourceAccess, MenuProvider, IDirectControlReceiver,
         OrientationTarget, AdvancedGraphDataProvider, IHaveGoggleInformation, BlockEntitySubLevelActor,
         SmartGearboxServoAngleAcceptor, BearingHeadAccess {
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -124,6 +129,13 @@ public class AileronBearingBlockEntity extends KineticBlockEntity implements Men
 
     // Tracked heads
     private final EnumMap<BearingHead, HeadState> heads = new EnumMap<>(BearingHead.class);
+    // Shared controls and resource inputs span both mounted heads
+    private final BearingAssembly bearingAssembly = new BearingAssembly(this, "aileron_bearing",
+            () -> Arrays.stream(BearingHead.values()).map(this::getMountedSubLevelId)
+                    .filter(Objects::nonNull).toList(),
+            () -> Arrays.stream(BearingHead.values()).filter(head -> getMountedSubLevelId(head) == null)
+                    .map(this::getMountedBlockPos).toList(), new LinkedHashMap<>());
+
     // Pending assembly requests
     private final EnumSet<BearingHead> pendingAssemblyRequests = EnumSet.noneOf(BearingHead.class);
     // Current head mode
@@ -218,6 +230,8 @@ public class AileronBearingBlockEntity extends KineticBlockEntity implements Men
         updateSignals();
         updateTargetsAndAngles();
         aimMountedAssemblies(serverLevel);
+        if(bearingAssembly.controls().refreshBindings()) setChanged();
+        if(level.getGameTime() % 5L == 0L) bearingAssembly.resources().refillConsumers();
 
         if (level.getGameTime() % 10L == 0L) {
             sendData();
@@ -700,6 +714,23 @@ public class AileronBearingBlockEntity extends KineticBlockEntity implements Men
                 : Direction.UP;
         return head == BearingHead.PRIMARY ? primary : primary.getOpposite();
     }
+
+    // Get the library adapters for this bearing
+    public BearingAssembly getBearingAssembly(){ return bearingAssembly; }
+
+    @Override
+    public IFluidHandler getAssemblyFluidHandler(){ return bearingAssembly.resources().getAssemblyFluidHandler(); }
+
+    @Override
+    public IEnergyStorage getAssemblyEnergyHandler(){ return bearingAssembly.resources().getAssemblyEnergyHandler(); }
+
+    // Keep the two head faces reserved for their mounted assemblies
+    public boolean canAcceptAssemblyFluidFrom(Direction side){
+        return side == null || side != getHeadDirection(BearingHead.PRIMARY)
+                && side != getHeadDirection(BearingHead.SECONDARY);
+    }
+
+    public boolean canAcceptAssemblyEnergyFrom(Direction side){ return canAcceptAssemblyFluidFrom(side); }
 
     // Get the head mode
     public HeadMode getHeadMode() {
@@ -1455,6 +1486,7 @@ public class AileronBearingBlockEntity extends KineticBlockEntity implements Men
     @Override
     public void writeSafe(CompoundTag tag, HolderLookup.Provider provider) {
         super.writeSafe(tag, provider);
+        bearingAssembly.controls().write(tag);
         for (BearingHead head : BearingHead.values()) {
             HeadState state = state(head);
             CompoundTag headTag = new CompoundTag();
@@ -1471,6 +1503,7 @@ public class AileronBearingBlockEntity extends KineticBlockEntity implements Men
     @Override
     protected void write(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.write(tag, provider, clientPacket);
+        bearingAssembly.controls().write(tag);
         tag.putString("ActiveControlMode", activeControlMode.name());
         tag.putDouble("ShaftAngleDegrees", shaftAngleDegrees);
         tag.putBoolean("ShaftAngleInitialized", shaftAngleInitialized);
@@ -1523,6 +1556,7 @@ public class AileronBearingBlockEntity extends KineticBlockEntity implements Men
     @Override
     protected void read(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.read(tag, provider, clientPacket);
+        bearingAssembly.controls().read(tag);
         activeControlMode = readEnum(tag, "ActiveControlMode", ControlMode.AUTO);
         shaftAngleDegrees = tag.getDouble("ShaftAngleDegrees");
         shaftAngleInitialized = tag.getBoolean("ShaftAngleInitialized");

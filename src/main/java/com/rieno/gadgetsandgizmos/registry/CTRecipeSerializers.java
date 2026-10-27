@@ -10,6 +10,7 @@ package com.rieno.gadgetsandgizmos.registry;
 
 import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.content.IonThrusterRecipe;
+import com.rieno.gadgetsandgizmos.content.ThrusterDyeRecipe;
 import com.rieno.gadgetsandgizmos.content.PlayerMannequinRecipe;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.item.crafting.RecipeSerializer;
@@ -34,6 +35,8 @@ public final class CTRecipeSerializers {
             REGISTRAR.register("player_mannequin", () -> new SimpleCraftingRecipeSerializer<>(PlayerMannequinRecipe::new));
     public static final DeferredHolder<RecipeSerializer<?>, RecipeSerializer<IonThrusterRecipe>> ION_THRUSTER =
             REGISTRAR.register("ion_thruster", () -> new SimpleCraftingRecipeSerializer<>(IonThrusterRecipe::new));
+    public static final DeferredHolder<RecipeSerializer<?>, RecipeSerializer<ThrusterDyeRecipe>> THRUSTER_DYE =
+            REGISTRAR.register("thruster_dye", () -> new SimpleCraftingRecipeSerializer<>(ThrusterDyeRecipe::new));
 
     /*--------------------------------------------------------##---------------------------------------------------------
 

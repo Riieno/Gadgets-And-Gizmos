@@ -572,6 +572,8 @@ public final class CTConfigs {
 
     // Keep world rules and feature gates on the server
     public static final class Server {
+        // Hide buried ores in server-generated world hologram data
+        public final ModConfigSpec.BooleanValue worldHologramObfuscateOres;
         // Enable thruster particles
         public final ModConfigSpec.BooleanValue enableThrusterParticles;
         // Thruster particle intensity
@@ -611,6 +613,12 @@ public final class CTConfigs {
         // Initialize the server
         private Server(ModConfigSpec.Builder builder) {
             builder.comment("Authoritative server-side behavior").push("server");
+            builder.comment("World Hologram Projector").push("world_hologram_projector");
+            worldHologramObfuscateOres = builder
+                    .comment("Obfuscate Ores: replace ores below each column's surface with stone or deepslate before sending hologram data to clients.")
+                    .translation("createthrusters.configuration.obfuscateOres")
+                    .define("obfuscateOres", true);
+            builder.pop();
             builder.comment("Server-owned content availability. Clients use these values while connected.").push("features");
             blockFeatures = defineFeatureGroup(builder, "blocks", CTFeatureToggles.blockDefaults());
             itemFeatures = defineFeatureGroup(builder, "items", CTFeatureToggles.itemDefaults());

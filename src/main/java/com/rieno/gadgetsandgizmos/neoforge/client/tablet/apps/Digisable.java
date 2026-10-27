@@ -239,7 +239,7 @@ public final class Digisable implements TabletAppClientRenderer{
     // Combine shared server entries with private files discovered by this client
     private static ListTag schematicRows(TabletAppClientContext ctx){
         ListTag rows = ctx.data().getList("Schematics", Tag.TAG_COMPOUND).copy();
-        if(!ctx.data().getBoolean("SchematicsAllowed")) return rows;
+        if(!ctx.data().getBoolean("SchematicsAllowed") || ctx.data().getBoolean("SharedSchematicsLocal")) return rows;
         for(var file : ClientSchematicFiles.catalogue(ctx.data().getInt("SchematicMaximumBodies"), ctx.data().getInt("SchematicMaximumBlocks"))){
             CompoundTag row = new CompoundTag();
             row.putUUID("Id", file.id()); row.putString("Name", file.name()); row.putBoolean("Client", true);

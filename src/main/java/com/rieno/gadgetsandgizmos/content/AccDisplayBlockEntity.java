@@ -13,6 +13,7 @@ import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphCatalog;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudElementBinding;
+import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudCameraSource;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudInteractions;
 import com.rieno.gadgetsandgizmos.lib.display.DisplayFrameEnvelope;
 import com.rieno.gadgetsandgizmos.lib.display.DisplaySourceSelection;
@@ -21,6 +22,7 @@ import com.rieno.gadgetsandgizmos.lib.display.DisplaySurfaceProjection;
 import com.rieno.gadgetsandgizmos.lib.display.DisplayWidgetProjection;
 import com.rieno.gadgetsandgizmos.lib.display.AccDisplaySource;
 import com.rieno.gadgetsandgizmos.lib.display.AccDisplaySourceRegistry;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphTargetSelection;
 import com.rieno.gadgetsandgizmos.lib.display.ShipInformationDisplayModes;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget;
@@ -862,6 +864,16 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         return widget != null && "slider".equals(widget.element().getString("Type"));
     }
 
+    // Share the rendered element coordinates with client-side camera controls
+    public @Nullable AccDisplayWidgetGeometry.Hit widgetAt(double x, double y){
+        return surfaceWidgetAt(graph(), new ScreenPoint(x, y));
+    }
+
+    public @Nullable com.rieno.gadgetsandgizmos.lib.view.ViewReference widgetCamera(String nodeId, String interactionId){
+        return com.rieno.gadgetsandgizmos.lib.view.ViewReference.fromTag(
+                displayFrame().getCompound("WidgetCameras").getCompound(nodeId + ":" + interactionId));
+    }
+
     private @Nullable AccDisplayWidgetGeometry.Hit surfaceWidgetAt(AdvancedGraphDocument graph, ScreenPoint point){
         if(point.x() < 0 || point.y() < 0) return null;
         List<AdvancedGraphDocument.Node> nodes = graph.nodes();
@@ -919,7 +931,8 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
                         || !widgetPoint.isInside(bounds)) {
                     continue;
                 }
-                return new AccDisplayWidgetGeometry.Hit(node, elm, 0, widgetPoint.horizontalFraction(bounds));
+                return new AccDisplayWidgetGeometry.Hit(node, elm, 0,
+                        widgetPoint.horizontalFraction(bounds), widgetPoint.verticalFraction(bounds));
             }
         }
         return null;
@@ -983,7 +996,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
     private boolean canControlCamera(ServerPlayer player, com.rieno.gadgetsandgizmos.lib.view.ViewReference ref){
         AccDisplayBlockEntity root = networkRoot();
         if(root == null || player == null || !root.playerIsNear(player)
-                || ref == null || !ref.equals(root.displayedCamera())) return false;
+                || ref == null || !(ref.equals(root.displayedCamera()) || root.displaysWidgetCamera(ref))) return false;
         var source = ref.resolve(player.level());
         if(!(source instanceof CameraBlockEntity camera)) return false;
         if(!com.rieno.gadgetsandgizmos.lib.access.WorldAccessPolicy.canAccessLocal(player, player.serverLevel(),
@@ -991,6 +1004,26 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
                 || !com.rieno.gadgetsandgizmos.lib.access.WorldAccessPolicy.canAccessLocal(player, player.serverLevel(),
                 ref.subLevelId(), ref.blockPos())) return false;
         return true;
+    }
+
+    // Recheck live bindings and visibility before accepting a widget overlay command
+    private boolean displaysWidgetCamera(com.rieno.gadgetsandgizmos.lib.view.ViewReference ref){
+        if(!"graph".equals(displayFrame.getString("State")) || !"widgets".equals(displayFrame.getString("Mode"))) return false;
+        var activeController = boundController();
+        if(activeController == null) return false;
+        for(var node : graph().nodes()){
+            if(!(isDisplayWidgetNode(node) || "advanced_hud_element".equals(node.type()))
+                    || !targetsThisDisplay(node) || !value(node.id(), "visible").asBoolean()) continue;
+            for(Tag raw : node.data().getList("WidgetElements", Tag.TAG_COMPOUND)){
+                CompoundTag elm = (CompoundTag)raw;
+                if(!AdvancedHudCameraSource.TYPE.equals(elm.getString("Type"))
+                        || !AdvancedHudElementBinding.bool(elm, "Visible",
+                        !elm.contains("Visible") || elm.getBoolean("Visible"), port -> value(node.id(), port))) continue;
+                if(ref.equals(AdvancedHudCameraSource.reference(activeController, node, elm,
+                        port -> value(node.id(), port)))) return true;
+            }
+        }
+        return false;
     }
 
     // Submit ComputerCraft input
@@ -1080,6 +1113,9 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         AdvancedGraphDocument.Value current = valuePort.isBlank()
                 ? AdvancedGraphDocument.Value.number(0.0D) : value(node.id(), valuePort);
         switch (type) {
+            case "camera_source" -> {
+                return true;
+            }
             case "button" -> {
                 if (activeController.handleHudButtonInteraction(
                         player, node.id(), interactionId)) {
@@ -1730,6 +1766,23 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         frame.putInt("GraphRevision", graphRevision);
         frame.put("Graph", cachedGraphTag);
         frame.put("Values", sharedValues);
+        CompoundTag cameras = new CompoundTag();
+        if(contentNode == null){
+            for(var node : graph.nodes()){
+                if(!isDisplayWidgetNode(node) && !"advanced_hud_element".equals(node.type())) continue;
+                for(Tag raw : node.data().getList("WidgetElements", Tag.TAG_COMPOUND)){
+                    CompoundTag elm = (CompoundTag)raw;
+                    if(!AdvancedHudCameraSource.TYPE.equals(elm.getString("Type"))) continue;
+                    var ref = AdvancedHudCameraSource.reference(controller, node, elm, port -> {
+                        var val = inputs.get(node.id() + ":" + port);
+                        return val == null ? AdvancedGraphDocument.Value.fromTag(
+                                node.data().getCompound("Defaults").getCompound(port)) : val;
+                    });
+                    if(ref != null) cameras.put(node.id() + ":" + elm.getString("InteractionId"), ref.toTag());
+                }
+            }
+        }
+        frame.put("WidgetCameras", cameras);
         CompoundTag executionPulses = new CompoundTag();
         controller.getAccDisplayExecutionPulsesSnapshot().forEach(executionPulses::putLong);
         frame.put("ExecutionPulses", executionPulses);
@@ -2161,21 +2214,25 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         return BlockEntityLookupApi.findLoadedBehindFace(level, subLevelId, pos, face);
     }
 
+    // Share target precedence with controller registration and display source selection
+    static CompoundTag targetData(AdvancedGraphDocument.Node node, @Nullable AdvancedGraphDocument.Value target) {
+        return GraphTargetSelection.resolveBinding(node.data().getCompound("TargetData"),
+                target == null ? null : target.type(), target == null ? null : target.payload());
+    }
+
     // Use the wired source, then the node's saved source
     static CompoundTag externalSourceData(AdvancedGraphDocument.Node node,
             Map<String, AdvancedGraphDocument.Value> inputs) {
         AdvancedGraphDocument.Value source = inputs.get(node.id() + ":source");
-        if (source != null && "target".equals(source.type()) && source.payload().contains("BlockPos")) {
-            return source.payload().copy();
-        }
-        return node.data().getCompound("SourceData").copy();
+        return GraphTargetSelection.resolveBinding(node.data().getCompound("SourceData"),
+                source == null ? null : source.type(), source == null ? null : source.payload());
     }
 
     // Read the source used by the current presentation
     private CompoundTag selectedExternalSourceData(AdvancedGraphDocument.Node node) {
-        if (node.id().equals(displayFrame.getString("ContentNode"))) {
-            CompoundTag selected = displayFrame.getCompound("ExternalSourceData");
-            if (selected.contains("BlockPos")) return selected;
+        if (node.id().equals(displayFrame.getString("ContentNode"))
+                && displayFrame.contains("ExternalSourceData", Tag.TAG_COMPOUND)) {
+            return displayFrame.getCompound("ExternalSourceData");
         }
         return node.data().getCompound("SourceData");
     }
@@ -2276,10 +2333,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         if (node == null) {
             return false;
         }
-        CompoundTag target = node.data().getCompound("TargetData");
-        if(runtimeTarget != null && "target".equals(runtimeTarget.type()) && runtimeTarget.payload().contains("BlockPos")){
-            target = runtimeTarget.payload();
-        }
+        CompoundTag target = targetData(node, runtimeTarget);
         if (!target.contains("BlockPos")) {
             return false;
         }

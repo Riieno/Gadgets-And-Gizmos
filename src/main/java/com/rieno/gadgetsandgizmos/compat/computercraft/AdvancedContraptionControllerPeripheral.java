@@ -20,14 +20,18 @@ import com.rieno.gadgetsandgizmos.lib.graph.edit.GraphMutation;
 import com.rieno.gadgetsandgizmos.lib.graph.edit.GraphNodeAlias;
 import com.rieno.gadgetsandgizmos.lib.graph.edit.VersionedGraphEditor;
 import dan200.computercraft.api.lua.IArguments;
+import dan200.computercraft.api.lua.ILuaContext;
 import dan200.computercraft.api.lua.LuaException;
 import dan200.computercraft.api.lua.LuaFunction;
+import dan200.computercraft.api.lua.MethodResult;
+import dan200.computercraft.api.peripheral.IComputerAccess;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 // Expose Advanced Contraption Controller controls and telemetry to ComputerCraft
 @PeripheralTypeDoc("advanced_contraption_controller")
@@ -81,6 +85,9 @@ public class AdvancedContraptionControllerPeripheral extends AnalogueContraption
     // Server-authoritative SCM schedule bridge
     private final ComputerCraftScheduleBridge scheduleBridge;
 
+    // Native wireless target hub
+    private final ComputerCraftPeripheralBridge peripheralBridge;
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -96,6 +103,7 @@ public class AdvancedContraptionControllerPeripheral extends AnalogueContraption
         this.graphEditor = new AdvancedGraphEditingService(blockEntity);
         this.graphExporter = new AdvancedGraphLuaExporter(blockEntity);
         this.scheduleBridge = new ComputerCraftScheduleBridge(blockEntity);
+        this.peripheralBridge = new ComputerCraftPeripheralBridge(blockEntity);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -105,6 +113,79 @@ public class AdvancedContraptionControllerPeripheral extends AnalogueContraption
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
+
+    // Expose the native hub contract without changing the ACC peripheral type
+    @Override
+    public Set<String> getAdditionalTypes(){
+        return Set.of("peripheral_hub");
+    }
+
+    @Override
+    public void attach(IComputerAccess computer){
+        peripheralBridge.hub.attach(computer);
+    }
+
+    @Override
+    public void detach(IComputerAccess computer){
+        peripheralBridge.hub.detach(computer);
+    }
+
+    // List the configured targets which currently expose a CC peripheral
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getPeripherals", signature = "getPeripherals(): table",
+            description = "Maps linked target IDs such as thruster_0 to native names accepted by peripheral.wrap.")
+    public final Map<String, String> getPeripherals(){
+        return peripheralBridge.hub.getPeripherals();
+    }
+
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "peripheral", signature = "peripheral(id: string): string",
+            description = "Returns the same native peripheral name as getPeripherals()[id]; errors for unavailable targets.")
+    public final String peripheral(String id) throws LuaException{
+        return peripheralBridge.hub.peripheral(id);
+    }
+
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getNamesRemote", signature = "getNamesRemote(): table",
+            description = "Lists native names for the ACC's currently available target peripherals.")
+    public final List<String> getNamesRemote(){
+        return peripheralBridge.hub.getNamesRemote();
+    }
+
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "isPresentRemote", signature = "isPresentRemote(name: string): boolean",
+            description = "Checks whether a native target name is available through this ACC.")
+    public final boolean isPresentRemote(String name){
+        return peripheralBridge.hub.isPresentRemote(name);
+    }
+
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getTypeRemote", signature = "getTypeRemote(name: string): string...|nil",
+            description = "Returns all native types of an available target peripheral.")
+    public final Object[] getTypeRemote(String name){
+        return peripheralBridge.hub.getTypeRemote(name);
+    }
+
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "hasTypeRemote", signature = "hasTypeRemote(name: string, type: string): boolean|nil",
+            description = "Checks the native types of an available target peripheral.")
+    public final Boolean hasTypeRemote(String name, String type){
+        return peripheralBridge.hub.hasTypeRemote(name, type);
+    }
+
+    @LuaFunction(mainThread = true)
+    @PeripheralDoc(name = "getMethodsRemote", signature = "getMethodsRemote(name: string): table|nil",
+            description = "Lists the target's native CC methods, including methods from other mods.")
+    public final List<String> getMethodsRemote(String name){
+        return peripheralBridge.hub.getMethodsRemote(name);
+    }
+
+    @LuaFunction
+    @PeripheralDoc(name = "callRemote", signature = "callRemote(name: string, method: string, ...): any...",
+            description = "Forwards a native peripheral call, preserving its arguments, return values and yields.")
+    public final MethodResult callRemote(IComputerAccess computer, ILuaContext ctx, IArguments args) throws LuaException{
+        return peripheralBridge.hub.callRemote(computer, ctx, args);
+    }
 
     // Get the graph API version
     @LuaFunction(mainThread = true)

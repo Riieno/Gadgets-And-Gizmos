@@ -13,6 +13,9 @@ import com.rieno.gadgetsandgizmos.content.DiagnosticTabletApps;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletBlockEntity;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletData;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletItem;
+import com.rieno.gadgetsandgizmos.content.SmartContainerMenu;
+import com.rieno.gadgetsandgizmos.content.SmartContainerManifest;
+import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletMenuInventory;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppDefinition;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppRegistry;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletTabDefinition;
@@ -25,6 +28,8 @@ import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientSession;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientSurface;
 import com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientUi;
 import com.rieno.gadgetsandgizmos.lib.client.ui.ItemPickerScreen;
+import com.rieno.gadgetsandgizmos.lib.client.ui.PaintedSelectionModal;
+import com.rieno.gadgetsandgizmos.lib.client.ui.GuiRenderLayer;
 import com.rieno.gadgetsandgizmos.neoforge.network.DiagnosticTabletActionPayload;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
@@ -58,7 +63,7 @@ import java.util.Set;
 import java.util.UUID;
 
 // Run the tablet desktop and keep every app inside its own saved workspace
-public final class DiagnosticTabletScreen extends AbstractContainerScreen<DiagnosticTabletScreen.TabletOverlayMenu> {
+public final class DiagnosticTabletScreen<M extends AbstractContainerMenu> extends AbstractContainerScreen<M> {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -100,6 +105,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
 
     // Tracks whether placed is set
     private final boolean placed;
+    private boolean smartContainer;
     // Tracks whether projected is set
     private final boolean projected;
     // Hand
@@ -131,6 +137,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     // Tablet app client session
     private final TabletAppClientSession appClientSession = new TabletAppClientSession();
     private boolean appDialogOpen;
+    private PaintedSelectionModal frequencyItemPicker;
     // Current redstone editing id
     private String redstoneEditingId = "";
     // Redstone first index
@@ -181,11 +188,16 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Initialize the diagnostic tablet
+    @SuppressWarnings("unchecked")
     private DiagnosticTabletScreen(boolean placed, boolean projected, InteractionHand hand,
                                    BlockPos tabletPos, UUID tabletSubLevelId,
                                    DiagnosticTabletData.State state) {
-        super(new TabletOverlayMenu(), clientInventory(),
-                Component.translatable("screen.createthrusters.diagnostic_tablet"));
+        this((M)new TabletOverlayMenu(), clientInventory(), placed, projected, hand, tabletPos, tabletSubLevelId, state);
+    }
+
+    private DiagnosticTabletScreen(M menu, Inventory inventory, boolean placed, boolean projected, InteractionHand hand,
+                                   BlockPos tabletPos, UUID tabletSubLevelId, DiagnosticTabletData.State state){
+        super(menu, inventory, Component.translatable("screen.createthrusters.diagnostic_tablet"));
         imageWidth = PANEL_WIDTH;
         imageHeight = PANEL_HEIGHT;
         this.placed = placed;
@@ -247,6 +259,27 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         Minecraft.getInstance().setScreen(new DiagnosticTabletScreen(true, false,
                 InteractionHand.MAIN_HAND, tablet.getBlockPos(),
                 SimulatedHelper.getContainingSubLevelId(tablet), tablet.state()));
+    }
+
+    // Host the dedicated container app without adding it to the tablet catalogue
+    static DiagnosticTabletScreen containerScreen(net.minecraft.world.level.block.entity.BlockEntity target, boolean projected){
+        com.rieno.gadgetsandgizmos.lib.client.tablet.TabletAppClientRegistry.registerIfAbsent(
+                com.rieno.gadgetsandgizmos.content.SmartContainerManifest.ID, new SmartContainerManifestRenderer());
+        DiagnosticTabletScreen screen = new DiagnosticTabletScreen(true, projected, InteractionHand.MAIN_HAND,
+                target.getBlockPos(), SimulatedHelper.getContainingSubLevelId(target),
+                com.rieno.gadgetsandgizmos.content.SmartContainerTablets.state(target));
+        screen.smartContainer = true;
+        return screen;
+    }
+
+    // Open the mounted app in the same desktop used by its projected screen
+    static DiagnosticTabletScreen<SmartContainerMenu> containerScreen(SmartContainerMenu menu, Inventory inventory, Component title){
+        TabletAppClientRegistry.registerIfAbsent(SmartContainerManifest.ID, new SmartContainerManifestRenderer());
+        var state = DiagnosticTabletData.State.DEFAULT.withTabletId(menu.tabletId).withApp(SmartContainerManifest.ID, menu.tab());
+        var screen = new DiagnosticTabletScreen<SmartContainerMenu>(menu, inventory, true, false, InteractionHand.MAIN_HAND,
+                menu.targetPos, menu.subLevelId, state);
+        screen.smartContainer = true;
+        return screen;
     }
 
     // Get the projection width
@@ -312,6 +345,10 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     protected void containerTick() {
         super.containerTick();
         reconcileSourceTablet();
+        if(menu instanceof SmartContainerMenu storage && !state.tab().equals(storage.tab())){
+            state = state.withApp(SmartContainerManifest.ID, storage.tab());
+            reqActiveAppSnapshot();
+        }
         if (!isHome() && ++snapshotRefreshTicks >= 20) {
             snapshotRefreshTicks = 0;
             reqActiveAppSnapshot();
@@ -344,6 +381,12 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     // Draw the diagnostic tablet
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        if(frequencyItemPicker != null && frequencyItemPicker.isOpen()){
+            try(var layer = GuiRenderLayer.push(graphics, 700)){
+                frequencyItemPicker.render(graphics, font, width, height, mouseX, mouseY);
+            }
+            return;
+        }
         reconcileRuntimeApps();
         graphics.fillGradient(0, 0, width, height, 0xE0050910, 0xE00D1420);
         AdvancedControllerV2Theme.drawRoundedRect(graphics, left, top, PANEL_WIDTH, PANEL_HEIGHT,
@@ -358,6 +401,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         renderNavigationBar(graphics);
         super.render(graphics, mouseX, mouseY, partialTick);
         renderRedstoneInventoryTooltip(graphics, mouseX, mouseY);
+        if(menu instanceof SmartContainerMenu storage && storage.storageTab()) renderTooltip(graphics, mouseX, mouseY);
     }
 
     // Draw the status bar
@@ -368,6 +412,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         graphics.drawString(font, clock, left + 15, top + 13,
                 0xFFF3F7FC, false);
         graphics.drawString(font, worldStatus, statusLeft, top + 13, 0xFFB7C7DA, false);
+        if(placed) return;
         String mode = state.mode().name();
         int modeWidth = font.width(mode) + 12;
         int col = state.mode() == TabletInteractionMode.STANDARD
@@ -476,7 +521,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
                 graphics.drawString(font, label, contentLeft + 27, top + 52,
                         0xFFE3A64B, false);
             }
-            if (usesReaderMode(app)) {
+            if (!placed && usesReaderMode(app)) {
                 drawSmallButton(graphics, mouseX, mouseY, contentLeft + contentWidth - 92,
                         top + 34, 92, 18, state.mode() == TabletInteractionMode.READER
                                 ? "Reader active" : "Reader mode", app.accentColor());
@@ -552,7 +597,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         if (surfaceProjection() && visibleActions.size() != tab.actions().size()) {
             graphics.drawString(font, "Sneak-use the tablet to edit text actions.",
                     contentLeft, footerY, AdvancedControllerV2Theme.MUTED, false);
-        } else if (tab.actions().stream().anyMatch(this::readerAction)) {
+        } else if (!placed && tab.actions().stream().anyMatch(this::readerAction)) {
             graphics.drawString(font, "Reader actions close the tablet; use it on the target block.",
                     contentLeft, footerY, AdvancedControllerV2Theme.MUTED, false);
         } else {
@@ -1093,6 +1138,25 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
             redstoneFrequencyTarget = 1;
             redstoneSecondGhost = stack.copyWithCount(1);
         }
+    }
+
+    private void openRedstoneItemPicker(int slot){
+        Player player = Minecraft.getInstance().player;
+        if(player == null) return;
+        List<ItemStack> stacks = new ArrayList<>();
+        for(int idx = 0; idx < player.getInventory().getContainerSize(); idx++) stacks.add(player.getInventory().getItem(idx));
+        var entries = ItemPickerScreen.inventoryEntries(stacks);
+        ItemStack current = slot == 0 ? redstoneFirstGhost : redstoneSecondGhost;
+        redstoneFrequencyTarget = slot;
+        frequencyItemPicker = new PaintedSelectionModal(ItemPickerScreen.defaultAppearance(), font, Component.literal("Select Frequency Item"),
+                entries, ItemPickerScreen.inventorySelection(entries, current), false, ids -> {
+            if(ids.isEmpty()) return;
+            entries.stream().filter(entry -> entry.id().equals(ids.getFirst())).findFirst().ifPresent(entry -> {
+                if(slot == 0) redstoneFirstGhost = entry.icon().copyWithCount(1);
+                else redstoneSecondGhost = entry.icon().copyWithCount(1);
+            });
+        }, () -> frequencyItemPicker = null);
+        setFocused(null);
     }
 
     // Draw the frequency picker
@@ -1920,6 +1984,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
 
     // Draw the navigation bar
     private void renderNavigationBar(GuiGraphics graphics) {
+        if(smartContainer) return;
         int barWidth = isHome() ? 58 : 82;
         int barLeft = left + (PANEL_WIDTH - barWidth) / 2;
         AdvancedControllerV2Theme.drawRoundedRect(graphics, barLeft,
@@ -1933,6 +1998,14 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     // Handle mouse clicked
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int btn) {
+        if(frequencyItemPicker != null) return frequencyItemPicker.mouseClicked(width, height, mouseX, mouseY, btn);
+        if(btn == 1 && menu instanceof SmartContainerMenu){
+            TabletAppDefinition app = selectedApp();
+            TabletAppClientRenderer renderer = app == null ? null : TabletAppClientRegistry.renderer(app.id());
+            if(renderer != null && renderer.mouseClicked(clientAppContext(app, null, (int)mouseX, (int)mouseY),
+                    appClientSession.stateFor(app.id(), renderer), mouseX, mouseY, btn)) return true;
+        }
+
         if(btn == 0 && "redstone_editor".equals(editingAction) && !redstoneFrequencyModal
                 && inside(mouseX, mouseY, contentLeft() + 320, top + 190, 126, 25)){
             saveRedstoneEditor();
@@ -1986,7 +2059,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         List<TabletAppDefinition> apps = installedApps();
         int navigationWidth = 82;
         int navigationLeft = left + (PANEL_WIDTH - navigationWidth) / 2;
-        if (!isHome() && (inside(mouseX, mouseY, navigationLeft,
+        if (!smartContainer && !isHome() && (inside(mouseX, mouseY, navigationLeft,
                 top + PANEL_HEIGHT - 18, navigationWidth, 13) || inside(mouseX, mouseY,
                 left + 8, top + PANEL_HEIGHT - 27, 30, 22))) {
             select(DiagnosticTabletData.appId("home"), "");
@@ -2033,9 +2106,9 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
         int contentWidth = contentWidth();
         TabletAppClientRenderer renderer = TabletAppClientRegistry.renderer(app.id());
         if (renderer == null || !renderer.ownsAppSurface()) {
-            if (usesReaderMode(app) && inside(mouseX, mouseY, contentLeft + contentWidth - 92,
+            if (!placed && usesReaderMode(app) && inside(mouseX, mouseY, contentLeft + contentWidth - 92,
                     top + 34, 92, 18)) {
-                if (state.mode() == TabletInteractionMode.READER) {
+                if (!placed && state.mode() == TabletInteractionMode.READER) {
                     state = state.withMode(TabletInteractionMode.STANDARD, "");
                     send("mode_cycle", TabletInteractionMode.STANDARD.id());
                 } else {
@@ -2086,7 +2159,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
             boolean handled = renderer.mouseClicked(clientAppContext(app, null, (int) mouseX, (int) mouseY),
                     appClientSession.stateFor(app.id(), renderer), mouseX, mouseY, 0);
             if(handled) appClientSession.saveDrafts();
-            return handled;
+            return handled || (menu instanceof SmartContainerMenu && super.mouseClicked(mouseX, mouseY, 0));
         }
 
         int actionIndex = 0;
@@ -2334,12 +2407,12 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
             if (redstoneFrequencyModal) {
                 if (inside(mouseX, mouseY, contentLeft + REDSTONE_MODAL_FIRST_SLOT_X,
                         top + REDSTONE_MODAL_FIRST_SLOT_Y, 20, 20)) {
-                    redstoneFrequencyTarget = 0;
+                    openRedstoneItemPicker(0);
                     return true;
                 }
                 if (inside(mouseX, mouseY, contentLeft + REDSTONE_MODAL_SECOND_SLOT_X,
                         top + REDSTONE_MODAL_SECOND_SLOT_Y, 20, 20)) {
-                    redstoneFrequencyTarget = 1;
+                    openRedstoneItemPicker(1);
                     return true;
                 }
                 int inventorySlot = redstoneInventorySlotAt(mouseX, mouseY);
@@ -2943,8 +3016,10 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
 
     // Select the diagnostic tablet
     private void select(ResourceLocation app, String tab) {
+        if(smartContainer && !com.rieno.gadgetsandgizmos.content.SmartContainerManifest.ID.equals(app)) return;
         stopEditing();
         state = state.withApp(app, tab);
+        if(menu instanceof SmartContainerMenu storage) storage.selectClientTab(tab);
         if(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.MANIFEST.id().equals(app)){
             state = state.withMode(TabletInteractionMode.STANDARD, "");
         }
@@ -2966,6 +3041,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
 
     // Request the settings snapshot
     private void requestSettingsSnapshot() {
+        if(smartContainer) return;
         PacketDistributor.sendToServer(new DiagnosticTabletActionPayload(placed, hand,
                 tabletPos, tabletSubLevelId, sourceTabletId,
                 DiagnosticTabletData.appId("settings"), "tablet", "background_refresh", ""));
@@ -2973,6 +3049,14 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
 
     // Send the diagnostic tablet
     private void send(String action, String val) {
+        if(menu instanceof SmartContainerMenu storage){
+            if("storage_control".equals(action)){
+                try{ minecraft.gameMode.handleInventoryButtonClick(storage.containerId, Integer.parseInt(val)); }
+                catch(NumberFormatException ignored){}
+                return;
+            }
+            if("refresh".equals(action)) action = "menu_refresh";
+        }
         TabletAppDefinition app = selectedApp();
         String tab = app == null ? state.tab() : activeTab(app).id();
         PacketDistributor.sendToServer(new DiagnosticTabletActionPayload(placed, hand,
@@ -2991,6 +3075,9 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
                 mouseX, mouseY, this::sendClientAppAction, this::reqActiveAppSnapshot,
                 new TabletAppClientUi(){
                     @Override public boolean projected(){ return surfaceProjection(); }
+                    @Override public TabletMenuInventory inventory(){
+                        return menu instanceof SmartContainerMenu ? new TabletMenuInventory(menu, leftPos, topPos) : null;
+                    }
 
                     @Override public void editText(String prompt, String initial, int maximumLength, java.util.function.Consumer<String> accept){
                         appDialogOpen = !surfaceProjection();
@@ -3204,6 +3291,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
 
     // Reconcile the runtime apps
     private void reconcileRuntimeApps() {
+        if(smartContainer) return;
         TabletAppRegistry.Snapshot snapshot = TabletAppRegistry.snapshot();
         if (snapshot.revision() == observedRegistryRevision) return;
         observedRegistryRevision = snapshot.revision();
@@ -3244,6 +3332,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
 
     // Get the selected app
     private TabletAppDefinition selectedApp() {
+        if(smartContainer) return com.rieno.gadgetsandgizmos.content.SmartContainerManifest.APP;
         return TabletAppRegistry.apps().stream().filter(app -> app.id().equals(state.app()))
                 .findFirst().orElse(null);
     }
@@ -3374,6 +3463,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
 
     // Reconcile the source tablet
     private void reconcileSourceTablet() {
+        if(smartContainer) return;
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.player == null || minecraft.level == null) return;
         DiagnosticTabletData.State physicalState;
@@ -3517,6 +3607,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     // Handle mouse scrolled
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        if(frequencyItemPicker != null) return frequencyItemPicker.mouseScrolled(scrollY);
         TabletAppDefinition app = selectedApp();
         if(isBuiltInApp(app, "scm") && "permissions".equals(activeTab(app).id())
                 && inside(mouseX, mouseY, contentLeft(), top + 95, 178, 150)){
@@ -3572,6 +3663,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     // Handle key pressed
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if(frequencyItemPicker != null) return frequencyItemPicker.keyPressed(keyCode, scanCode, modifiers);
         TabletAppDefinition app = selectedApp();
         TabletAppClientRenderer renderer = app == null ? null : TabletAppClientRegistry.renderer(app.id());
         if(renderer != null && renderer.keyPressed(clientAppContext(app, null, 0, 0), appClientSession.stateFor(app.id(), renderer), keyCode, scanCode, modifiers)){
@@ -3597,6 +3689,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
     // Check if this is a pause screen
     @Override
     public boolean charTyped(char ch, int modifiers){
+        if(frequencyItemPicker != null) return frequencyItemPicker.charTyped(ch, modifiers);
         TabletAppDefinition app = selectedApp();
         TabletAppClientRenderer renderer = app == null ? null : TabletAppClientRegistry.renderer(app.id());
         if(renderer != null && renderer.chatTyped(clientAppContext(app, null, 0, 0), appClientSession.stateFor(app.id(), renderer), ch, modifiers)){
@@ -3608,6 +3701,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
 
     @Override
     public boolean mouseDragged(double x, double y, int button, double dx, double dy){
+        if(frequencyItemPicker != null) return frequencyItemPicker.mouseDragged(width, height, y, button);
         TabletAppDefinition app = selectedApp();
         TabletAppClientRenderer renderer = app == null ? null : TabletAppClientRegistry.renderer(app.id());
         if(renderer != null && renderer.mouseDragged(clientAppContext(app, null, (int) x, (int) y), appClientSession.stateFor(app.id(), renderer), x, y, button, dx, dy)) return true;
@@ -3616,6 +3710,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
 
     @Override
     public boolean mouseReleased(double x, double y, int button){
+        if(frequencyItemPicker != null) return frequencyItemPicker.mouseReleased();
         TabletAppDefinition app = selectedApp();
         TabletAppClientRenderer renderer = app == null ? null : TabletAppClientRegistry.renderer(app.id());
         if(renderer != null && renderer.mouseReleased(clientAppContext(app, null, (int) x, (int) y), appClientSession.stateFor(app.id(), renderer), x, y, button)) return true;
@@ -3624,6 +3719,7 @@ public final class DiagnosticTabletScreen extends AbstractContainerScreen<Diagno
 
     @Override
     public void removed(){
+        if(frequencyItemPicker != null) frequencyItemPicker.close();
         appClientSession.saveDrafts();
         if(!appDialogOpen) appClientSession.clear();
         super.removed();

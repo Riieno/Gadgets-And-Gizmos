@@ -224,6 +224,7 @@ public class DoubleButtonBlockEntity extends CopycatBlockEntity implements com.s
 
     // Set the frequency
     public void setFrequency(ButtonHalf btn, boolean firstFrequency, ItemStack stack) {
+        if(!isLinkHardwareVisible()) return;
         FrequencyBinding binding = bindings.get(btn);
         if (binding == null || level == null || level.isClientSide) {
             return;

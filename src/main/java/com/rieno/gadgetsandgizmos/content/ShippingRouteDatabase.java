@@ -16,6 +16,9 @@ import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
+import com.rieno.gadgetsandgizmos.lib.navigation.DockingApproachPath;
+import net.minecraft.nbt.TagParser;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -448,6 +451,13 @@ final class ShippingRouteDatabase {
                     + "ON ship_dock_landing_zones(dock_id, queue_order, zone_id)");
         }
         installLandingZoneAirborneColumn(connection);
+        boolean hasApproach = false;
+        try(Statement statement = connection.createStatement(); ResultSet res = statement.executeQuery("PRAGMA table_info(ship_dock_connectors)")){
+            while(res.next()) if("approach_data".equalsIgnoreCase(res.getString("name"))) hasApproach = true;
+        }
+        if(!hasApproach) try(Statement statement = connection.createStatement()){
+            statement.execute("ALTER TABLE ship_dock_connectors ADD COLUMN approach_data TEXT");
+        }
     }
 
     // Replace every persisted connector target for one dock
@@ -467,8 +477,8 @@ final class ShippingRouteDatabase {
                     local_x, local_y, local_z,
                     world_x, world_y, world_z,
                     facing_x, facing_y, facing_z,
-                    up_x, up_y, up_z
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    up_x, up_y, up_z, approach_data
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """)) {
             for (int idx = 0; idx < dock.connectorTargets().size(); idx++) {
                 ShipDockRegistry.ConnectorTarget target = dock.connectorTargets().get(idx);
@@ -487,6 +497,7 @@ final class ShippingRouteDatabase {
                 statement.setDouble(13, target.up().x);
                 statement.setDouble(14, target.up().y);
                 statement.setDouble(15, target.up().z);
+                statement.setString(16, target.approachPath().toTag().toString());
                 statement.addBatch();
             }
             statement.executeBatch();
@@ -671,11 +682,18 @@ final class ShippingRouteDatabase {
                             new Vec3(res.getDouble("facing_x"), res.getDouble("facing_y"),
                                     res.getDouble("facing_z")),
                             new Vec3(res.getDouble("up_x"), res.getDouble("up_y"),
-                                    res.getDouble("up_z"))));
+                                    res.getDouble("up_z")), readApproach(res.getString("approach_data"))));
                 }
             }
         }
         return List.copyOf(targets);
+    }
+
+    // Read legacy rows without discarding their connector
+    private static DockingApproachPath readApproach(String stored){
+        if(stored == null || stored.isBlank()) return DockingApproachPath.DEFAULT;
+        try{ return DockingApproachPath.fromTag(TagParser.parseTag(stored)); }
+        catch(com.mojang.brigadier.exceptions.CommandSyntaxException ignored){ return DockingApproachPath.DEFAULT; }
     }
 
     // Read the landing zones

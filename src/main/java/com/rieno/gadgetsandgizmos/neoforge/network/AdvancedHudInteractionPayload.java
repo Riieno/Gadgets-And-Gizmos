@@ -15,6 +15,10 @@ import com.rieno.gadgetsandgizmos.content.PortableContraptionControllerRuntime;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudInteractions;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget;
+import com.rieno.gadgetsandgizmos.lib.view.ViewControlAction;
+import com.rieno.gadgetsandgizmos.lib.view.ViewControlInput;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.TagParser;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
@@ -78,6 +82,16 @@ public record AdvancedHudInteractionPayload(MenuConfigTarget target, UUID pairId
                 target, pairId, nodeId, interactionId, ValueKind.BOOLEAN, 0.0D, val);
     }
 
+    // Carry overlay actions through the existing paired goggles and portable controller route
+    public static AdvancedHudInteractionPayload camera(MenuConfigTarget target, UUID pairId,
+            String nodeId, String interactionId, ViewControlAction action, ViewControlInput input){
+        CompoundTag command = new CompoundTag();
+        command.putString("Action", action.name());
+        if(input != null) command.put("Input", input.toTag());
+        return new AdvancedHudInteractionPayload(target, pairId, nodeId, interactionId,
+                ValueKind.CAMERA, 0, false, command.toString());
+    }
+
     // Get the type
     @Override
     public Type<? extends CustomPacketPayload> type() {
@@ -108,7 +122,9 @@ public record AdvancedHudInteractionPayload(MenuConfigTarget target, UUID pairId
                 case BOOLEAN -> AdvancedGraphDocument.Value.bool(payload.booleanValue());
                 case NUMBER -> AdvancedGraphDocument.Value.number(payload.numberValue());
                 case STRING -> AdvancedGraphDocument.Value.string(payload.stringValue());
+                case CAMERA -> cameraValue(payload.stringValue());
             };
+            if(val == null) return;
             AdvancedContraptionControllerBlockEntity controller = SimulatedHelper.findBlockEntity(
                     player.level(), payload.target().subLevelId(), payload.target().pos(),
                     AdvancedContraptionControllerBlockEntity.class);
@@ -135,6 +151,7 @@ public record AdvancedHudInteractionPayload(MenuConfigTarget target, UUID pairId
         if(payload.valueKind() == ValueKind.STRING){
             buffer.writeUtf(payload.stringValue(), AdvancedHudInteractions.MAX_TEXT_INPUT_LENGTH);
         }
+        if(payload.valueKind() == ValueKind.CAMERA) buffer.writeUtf(payload.stringValue(), 512);
     }
 
     // Decode the advanced HUD interaction
@@ -146,16 +163,26 @@ public record AdvancedHudInteractionPayload(MenuConfigTarget target, UUID pairId
         ValueKind valueKind = buffer.readEnum(ValueKind.class);
         double numberValue = buffer.readDouble();
         boolean booleanValue = buffer.readBoolean();
-        String stringValue = valueKind == ValueKind.STRING
-                ? buffer.readUtf(AdvancedHudInteractions.MAX_TEXT_INPUT_LENGTH) : "";
+        String stringValue = switch(valueKind){
+            case STRING -> buffer.readUtf(AdvancedHudInteractions.MAX_TEXT_INPUT_LENGTH);
+            case CAMERA -> buffer.readUtf(512);
+            default -> "";
+        };
         return new AdvancedHudInteractionPayload(
                 target, pairId, nodeId, interactionId, valueKind, numberValue, booleanValue, stringValue);
+    }
+
+    // Reject malformed commands before they reach a controller runtime
+    private static AdvancedGraphDocument.Value cameraValue(String command){
+        try{ return AdvancedGraphDocument.Value.map(TagParser.parseTag(command)); }
+        catch(com.mojang.brigadier.exceptions.CommandSyntaxException err){ return null; }
     }
 
     // Define the value kind values
     public enum ValueKind {
         NUMBER,
         BOOLEAN,
-        STRING
+        STRING,
+        CAMERA
     }
 }

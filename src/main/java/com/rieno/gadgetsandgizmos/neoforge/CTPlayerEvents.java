@@ -207,6 +207,12 @@ public final class CTPlayerEvents {
     // Handle the right click block event
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
+        if(com.rieno.gadgetsandgizmos.content.SmartContainerTablets.interact(event.getLevel(), event.getPos(), event.getEntity(), event.getHand(), event.getHitVec())){
+            event.setCancellationResult(InteractionResult.sidedSuccess(event.getLevel().isClientSide));
+            event.setCanceled(true);
+            return;
+        }
+
         // Gate direct wrench handlers before they can change a claimed ship
         if(event.getEntity() instanceof ServerPlayer player
                 && CREATE_WRENCH.equals(BuiltInRegistries.ITEM.getKey(event.getItemStack().getItem()))

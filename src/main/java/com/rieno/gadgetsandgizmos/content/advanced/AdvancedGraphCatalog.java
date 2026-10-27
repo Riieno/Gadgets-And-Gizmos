@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.content.advanced;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.lib.graph.GraphTextInputs;
+import com.rieno.gadgetsandgizmos.lib.control.math.AngleUnit;
 import com.rieno.gadgetsandgizmos.content.ShipTargetPoint;
 import com.rieno.gadgetsandgizmos.lib.physics.EntityTelemetryApi;
 import com.rieno.gadgetsandgizmos.lib.display.ShipInformationDisplayModes;
@@ -18,6 +19,7 @@ import com.rieno.gadgetsandgizmos.lib.graph.GraphNodeDefinition;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphNodeRegistry;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphApi;
 import com.rieno.gadgetsandgizmos.lib.graph.math.MathGraphNodes;
+import com.rieno.gadgetsandgizmos.lib.graph.math.AngleConversionNode;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphCounters;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphDataOperations;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphValue;
@@ -48,6 +50,7 @@ public final class AdvancedGraphCatalog {
     public static final String PID_INTEGRAL_MAX_PORT = "integral_max";
     public static final String CONTROLLER_RESET_PORT = "reset";
     public static final String COUNT_DIRECTION_TAG = "Direction";
+    public static final String ANGLE_UNIT_TAG = "AngleUnit";
     public static final String CHAT_BROADCAST_TAG = "BroadcastNearby";
     public static final String COLLAPSE_INPUTS_TO_MAP_TAG = "CollapseInputsToMap";
     public static final String COLLAPSE_OUTPUTS_TO_MAP_TAG = "CollapseOutputsToMap";
@@ -278,7 +281,8 @@ public final class AdvancedGraphCatalog {
         register("random_int_in_range", "math", GraphPortOrder.ports("min", "number", "max", "number"), GraphPortOrder.ports("value", "number"), false);
         register("string_concat", "data", GraphPortOrder.ports("a", "string", "b", "string"), GraphPortOrder.ports("value", "string"), false);
         register("split_string", "data",
-                GraphPortOrder.ports("string", "string", "delimiter", "string"), GraphPortOrder.ports("list", "list"), false);
+                GraphPortOrder.ports("string", "string", "mode", "string", "delimiter", "string"),
+                GraphPortOrder.ports("list", "list"), false);
         register("substring", "data",
                 GraphPortOrder.ports("string", "string", "start_index", "number", "end_index", "number"),
                 GraphPortOrder.ports("value", "string"), false);
@@ -367,6 +371,7 @@ public final class AdvancedGraphCatalog {
                 GraphPortOrder.ports("Result", "list"), false);
         register("split_list", "data", GraphPortOrder.ports("value", "any"), GraphPortOrder.ports(), false);
         register("break_out", "data", GraphPortOrder.ports("value", "any"), GraphPortOrder.ports(), false);
+        register(AdvancedControllerDisplayLinks.TYPE, "data", GraphPortOrder.ports(), GraphPortOrder.ports("data", "map"), false);
         register("get_block_data", "data", GraphPortOrder.ports("target", "target", "merge_like_ports", "boolean"),
                 GraphPortOrder.ports("data", "map"), false);
         register("set_block_data", "data", GraphPortOrder.ports("exec", "exec", "target", "target",
@@ -523,15 +528,15 @@ public final class AdvancedGraphCatalog {
         register("ship_flight_behavior", "ship_control",
                 GraphPortOrder.ports("exec", "exec", "behavior", "string"),
                 commandOutputs(), false);
-        register("ship_yaw", "ship_control", amountInputs(), targetCommandOutputs(), true);
+        register("ship_yaw", "ship_control", GraphPortOrder.ports("exec", "exec", "mode", "string", "amount", "number"), targetCommandOutputs(), true);
         register("ship_yaw_right", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_yaw_left", "ship_control", amountInputs(), targetCommandOutputs(), true);
-        register("ship_pitch", "ship_control", amountInputs(), targetCommandOutputs(), true);
+        register("ship_pitch", "ship_control", GraphPortOrder.ports("exec", "exec", "mode", "string", "amount", "number"), targetCommandOutputs(), true);
         register("ship_pitch_up", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_pitch_down", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_pan", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_tilt", "ship_control", amountInputs(), targetCommandOutputs(), true);
-        register("ship_roll", "ship_control", amountInputs(), targetCommandOutputs(), true);
+        register("ship_roll", "ship_control", GraphPortOrder.ports("exec", "exec", "mode", "string", "amount", "number"), targetCommandOutputs(), true);
         register("ship_roll_right", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_roll_left", "ship_control", amountInputs(), targetCommandOutputs(), true);
         register("ship_accelerate", "ship_control", amountInputs(), commandOutputs(), false);
@@ -863,6 +868,20 @@ public final class AdvancedGraphCatalog {
         return GraphPortOrder.copy(outputs);
     }
 
+    // Canonical rotation nodes retain Free mode for existing graphs
+    public static boolean isShipRotationModeNode(String type){
+        return "ship_pitch".equals(type) || "ship_yaw".equals(type) || "ship_roll".equals(type);
+    }
+
+    public static com.rieno.gadgetsandgizmos.lib.scm.ScmAngleControl.Axis shipRotationAxis(String type){
+        return switch(type){
+            case "ship_pitch" -> com.rieno.gadgetsandgizmos.lib.scm.ScmAngleControl.Axis.PITCH;
+            case "ship_yaw" -> com.rieno.gadgetsandgizmos.lib.scm.ScmAngleControl.Axis.YAW;
+            case "ship_roll" -> com.rieno.gadgetsandgizmos.lib.scm.ScmAngleControl.Axis.ROLL;
+            default -> throw new IllegalArgumentException("Not a rotation mode node: " + type);
+        };
+    }
+
     // Get the amount inputs
     private static Map<String, String> amountInputs() {
         return GraphPortOrder.ports("exec", "exec", "amount", "number");
@@ -912,7 +931,8 @@ public final class AdvancedGraphCatalog {
     public static List<Definition> all() {
         return REGISTRY.definitions().stream()
                 .filter(definition -> !"acc_display_mode".equals(definition.id())
-                        && !isRetiredScmActionType(definition.id()))
+                        && !isRetiredScmActionType(definition.id())
+                        && !AngleConversionNode.supersedes(definition.id()))
                 .map(AdvancedGraphCatalog::fromLibraryDefinition)
                 .toList();
     }
@@ -1201,6 +1221,19 @@ public final class AdvancedGraphCatalog {
                 ? node.data().getBoolean(CHAT_BROADCAST_TAG) : node.data().getBoolean("BroadcastGlobally");
     }
 
+    // Identify the trigonometry nodes whose input or output represents an angle
+    public static boolean usesAngleUnit(String type){
+        return type != null && switch(type){
+            case "sin", "cos", "math_tan", "math_asin", "math_acos", "math_atan", "math_atan2" -> true;
+            default -> false;
+        };
+    }
+
+    // Preserve the original radian behavior for nodes saved before the selector existed
+    public static AngleUnit angleUnit(AdvancedGraphDocument.Node node){
+        return AngleUnit.fromId(node == null ? "" : node.data().getString(ANGLE_UNIT_TAG));
+    }
+
     // Read the configured direction for one retained counter
     public static GraphCounters.Direction countDirection(AdvancedGraphDocument.Node node){
         CompoundTag defaults = node.data().getCompound("Defaults");
@@ -1219,6 +1252,12 @@ public final class AdvancedGraphCatalog {
 
     // Get the inputs
     public static Map<String, String> inputs(AdvancedGraphDocument.Node node) {
+        if("createthrusters:convert_unit".equals(node.type())){
+            return com.rieno.gadgetsandgizmos.lib.graph.math.UnitConversionNode.inputs(node.data());
+        }
+        if("createthrusters:convert_angle".equals(node.type())){
+            return AngleConversionNode.inputs(AngleConversionNode.Format.fromId(node.data().getString(AngleConversionNode.INPUT_TYPE)));
+        }
         Definition definition = get(node.type());
         CompoundTag dynamicInputs = node.data().getCompound("DynamicInputs");
         if("acc_display_widget".equals(node.type()) || "acc_hologram_widget".equals(node.type())){
@@ -1235,6 +1274,17 @@ public final class AdvancedGraphCatalog {
             dynamicInputs.remove("count");
         }
         Map<String, String> baseInputs = definition == null ? GraphPortOrder.ports() : definition.inputs();
+        if(isShipRotationModeNode(node.type())){
+            boolean angle = com.rieno.gadgetsandgizmos.lib.scm.ScmAngleControl.Mode.fromId(
+                    node.data().getCompound("Defaults").getCompound("mode").getCompound("Payload").getString("Value"))
+                    == com.rieno.gadgetsandgizmos.lib.scm.ScmAngleControl.Mode.ANGLE;
+            baseInputs = angle
+                    ? GraphPortOrder.ports("exec", "exec", "mode", "string", "reference", "string", "angle", "number")
+                    : GraphPortOrder.ports("exec", "exec", "mode", "string", "amount", "number");
+            dynamicInputs = dynamicInputs.copy();
+            dynamicInputs.remove(angle ? "amount" : "angle");
+            if(!angle) dynamicInputs.remove("reference");
+        }
         if("pulse_if".equals(node.type())){
             baseInputs = new LinkedHashMap<>(baseInputs);
             baseInputs.put("b", com.rieno.gadgetsandgizmos.lib.graph.GraphComparison.operandType(
@@ -1339,6 +1389,9 @@ public final class AdvancedGraphCatalog {
 
     // Get the outputs
     public static Map<String, String> outputs(AdvancedGraphDocument.Node node) {
+        if("createthrusters:convert_angle".equals(node.type())){
+            return AngleConversionNode.outputs(AngleConversionNode.Format.fromId(node.data().getString(AngleConversionNode.OUTPUT_TYPE), AngleConversionNode.Format.DEGREES));
+        }
         Definition definition = get(node.type());
         Map<String, String> baseOutputs = definition == null ? GraphPortOrder.ports() : definition.outputs();
         CompoundTag dynamicOutputs = node.data().getCompound("DynamicOutputs");
@@ -1569,6 +1622,7 @@ public final class AdvancedGraphCatalog {
             // ------------------------------------DISPLAY / IO------------------------------------
             case "get_block_data" -> "Get Data";
             case "set_block_data" -> "Set Data";
+            case "display_link_input" -> "Display Link Input";
             case "hud_element" -> "HUD Element";
             case "advanced_hud_element" -> "Advanced HUD Element";
             case "acc_display_widget" -> "ACC Display Widget";

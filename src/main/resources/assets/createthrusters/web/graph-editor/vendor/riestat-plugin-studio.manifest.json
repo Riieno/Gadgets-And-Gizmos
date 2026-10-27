@@ -10,6 +10,7 @@
     "Remove the Logic Performance Profiler control",
     "Consume the shared Gadgets Graph browser schema API and experimental node defaults",
     "Render dropdowns, conditional ports, structured inputs, function interfaces and precise values",
-    "Preserve source port names and collection insertion order"
+    "Preserve source port names and collection insertion order",
+    "Use shared dependent unit dropdowns and catalogue conversion factors for browser previews"
   ]
 }

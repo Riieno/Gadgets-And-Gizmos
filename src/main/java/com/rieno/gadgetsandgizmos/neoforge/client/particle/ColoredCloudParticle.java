@@ -15,10 +15,12 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleProvider;
 import net.minecraft.client.particle.ParticleRenderType;
+import com.rieno.gadgetsandgizmos.lib.client.render.SoftParticleRenderTypes;
 import net.minecraft.client.particle.SpriteSet;
 import net.minecraft.client.particle.TextureSheetParticle;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
+import com.rieno.gadgetsandgizmos.lib.color.ColorEffectPreset;
 
 // Draw a tinted cloud particle with configurable scale and lifetime
 public class ColoredCloudParticle extends TextureSheetParticle {
@@ -58,6 +60,7 @@ public class ColoredCloudParticle extends TextureSheetParticle {
     private final double spreadStrength;
     // Smoke lift
     private final double smokeLift;
+    private final ColorEffectPreset colorEffect;
     private final PlumeRainbow.Mode rainbowMode;
     private final PlumeRainbow.Palette rainbowPalette;
     private final float plumeProgress;
@@ -88,6 +91,7 @@ public class ColoredCloudParticle extends TextureSheetParticle {
         this.gCol = opts.green();
         this.bCol = opts.blue();
         this.rainbowMode = opts.rainbowMode();
+        this.colorEffect = opts.colorEffect();
         this.rainbowPalette = opts.rainbowPalette();
         this.plumeProgress = opts.plumeProgress();
         this.baseAlpha = 0.88F + this.random.nextFloat() * 0.08F;
@@ -120,7 +124,8 @@ public class ColoredCloudParticle extends TextureSheetParticle {
     // Get the render type
     @Override
     public ParticleRenderType getRenderType() {
-        return ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT;
+        return colorEffect.additive() ? SoftParticleRenderTypes.additiveParticleSheet()
+                : ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT;
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -170,9 +175,9 @@ public class ColoredCloudParticle extends TextureSheetParticle {
 
     // Follow the selected color cycle while the particle is luminous exhaust
     private void updateRainbowColor() {
-        if (this.rainbowMode == PlumeRainbow.Mode.OFF) return;
-        int color = PlumeRainbow.color(this.rainbowMode, this.rainbowPalette,
-                this.level.getGameTime(), this.plumeProgress, this.age);
+        if(this.rainbowMode == PlumeRainbow.Mode.OFF && !colorEffect.active()) return;
+        int color = this.rainbowMode == PlumeRainbow.Mode.OFF ? colorEffect.sample(this.level.getGameTime(), this.plumeProgress, this.age)
+                : PlumeRainbow.color(this.rainbowMode, this.rainbowPalette, this.level.getGameTime(), this.plumeProgress, this.age);
         this.rCol = (color >> 16 & 0xFF) / 255.0F;
         this.gCol = (color >> 8 & 0xFF) / 255.0F;
         this.bCol = (color & 0xFF) / 255.0F;

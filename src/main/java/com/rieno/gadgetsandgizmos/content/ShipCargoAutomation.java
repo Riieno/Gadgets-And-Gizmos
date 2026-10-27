@@ -1,348 +1,177 @@
 package com.rieno.gadgetsandgizmos.content;
 
-/*--------------------------------------------------------##---------------------------------------------------------
-
-=======================================================================================================================
-                                                        IMPORTS
-=======================================================================================================================
-
-------------------------------------------------------------##-----------------------------------------------------*/
-
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
-import com.rieno.gadgetsandgizmos.lib.worker.WorkerEndpointSnapshot;
-import com.rieno.gadgetsandgizmos.lib.worker.WorkerResourceType;
+import com.rieno.gadgetsandgizmos.lib.inventory.ResourceRouting;
+import com.rieno.gadgetsandgizmos.lib.inventory.ResourceRouting.Pool;
+import com.rieno.gadgetsandgizmos.lib.shipping.LogisticsBindings.Group;
 import com.simibubi.create.content.logistics.box.PackageItem;
 import com.simibubi.create.content.logistics.filter.FilterItemStack;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.neoforge.fluids.FluidStack;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Set;
 
-// Read worker-managed ship and dock storage without creating wireless transfer paths
-public final class ShipCargoAutomation {
-    /*--------------------------------------------------------##---------------------------------------------------------
+// Read authored SCM logistics storage and the selected Ship Dock's buffers
+public final class ShipCargoAutomation{
+    private ShipCargoAutomation(){}
 
-=======================================================================================================================
-                                                        PRELOAD / SETUP
-=======================================================================================================================
-
-------------------------------------------------------------##-----------------------------------------------------*/
-
-    // Initialize the ship cargo automation
-    private ShipCargoAutomation() {
-    }
-
-    /*--------------------------------------------------------##---------------------------------------------------------
-
-=======================================================================================================================
-                                                           FUNCTIONS
-=======================================================================================================================
-
-------------------------------------------------------------##-----------------------------------------------------*/
-
-    // Check whether manifested or smart ship storage contains any package
-    public static boolean hasPackages(AdvancedContraptionControllerBlockEntity controller) {
+    public static boolean hasPackages(AdvancedContraptionControllerBlockEntity controller){
         return shipItems(controller).stream().anyMatch(PackageItem::isPackage);
     }
 
-    // Check whether manifested or smart ship storage contains a package for this dock
-    public static boolean hasPackageForDock(
-            AdvancedContraptionControllerBlockEntity controller, String dockName
-    ) {
-        return shipItems(controller).stream().anyMatch(stack -> PackageItem.isPackage(stack)
-                && PackageItem.matchAddress(stack, dockName));
+    public static boolean hasPackageForDock(AdvancedContraptionControllerBlockEntity controller, String dockName){
+        return shipItems(controller).stream().anyMatch(stack -> PackageItem.isPackage(stack) && PackageItem.matchAddress(stack, dockName));
     }
 
-    // Check whether the dock worker buffer contains a matching package
-    public static boolean dockHasPackage(AdvancedContraptionControllerBlockEntity controller,
-                                         ShipDockRegistry.Dock dock, String addressFilter) {
-        String filter = addressFilter == null ? "" : addressFilter.strip();
+    public static boolean dockHasPackage(AdvancedContraptionControllerBlockEntity controller, ShipDockRegistry.Dock dock, String filter){
         return dockItems(controller, dock).stream().anyMatch(stack -> PackageItem.isPackage(stack)
-                && (filter.isEmpty() || PackageItem.matchAddress(stack, filter)));
+                && (filter == null || filter.isBlank() || PackageItem.matchAddress(stack, filter)));
     }
 
-    // Check whether the dock worker buffer has ordinary item cargo available
-    public static boolean dockHasRestockCargo(
-            AdvancedContraptionControllerBlockEntity controller, ShipDockRegistry.Dock dock
-    ) {
+    public static boolean dockHasRestockCargo(AdvancedContraptionControllerBlockEntity controller, ShipDockRegistry.Dock dock){
         return dockItems(controller, dock).stream().anyMatch(stack -> !PackageItem.isPackage(stack));
     }
 
-    // Check whether the dock worker buffer has fuel or FE available
-    public static boolean dockHasFuelSupply(
-            AdvancedContraptionControllerBlockEntity controller, ShipDockRegistry.Dock dock
-    ) {
-        WorkerStorageEndpoint endpoint = dockEndpoint(controller, dock);
-        if (endpoint == null) return false;
-        return !endpoint.stockedFluids(WorkerResourceType.FUEL).isEmpty()
-                || endpoint.stockedItems().stream().anyMatch(ShipCargoAutomation::isBurnableItem)
-                || endpoint.storedEnergy() > 0L;
+    public static boolean dockHasFuelSupply(AdvancedContraptionControllerBlockEntity controller, ShipDockRegistry.Dock dock){
+        return ScmDockingAccess.nativeAccess(() -> {
+            Pool source = dockStorage(controller, dock);
+            Pool fuel = controller.logistics().pool(Group.FUEL);
+            return items(source).stream().anyMatch(stack -> controller.logistics().acceptsFuel(stack)
+                    && ResourceRouting.insertItem(fuel, stack.copyWithCount(1), true).isEmpty())
+                    || fluids(source).stream().anyMatch(stack -> controller.logistics().acceptsFuel(stack)
+                    && ResourceRouting.insertFluid(fuel, stack, true) > 0)
+                    || energy(source) > 0 && ResourceRouting.insertEnergy(fuel, 1, true) > 0;
+        });
     }
 
-    // Check whether the dock worker buffer has room for a ship package
-    public static boolean dockCanReceivePackage(
-            AdvancedContraptionControllerBlockEntity controller, ShipDockRegistry.Dock dock
-    ) {
-        WorkerStorageEndpoint endpoint = dockEndpoint(controller, dock);
-        if (endpoint == null) return false;
-        return shipItems(controller).stream().anyMatch(stack -> PackageItem.isPackage(stack)
-                && PackageItem.matchAddress(stack, dock.name()) && endpoint.canInsert(stack));
+    public static boolean dockCanReceivePackage(AdvancedContraptionControllerBlockEntity controller, ShipDockRegistry.Dock dock){
+        return ScmDockingAccess.nativeAccess(() -> shipItems(controller).stream().anyMatch(stack -> PackageItem.isPackage(stack)
+                && PackageItem.matchAddress(stack, dock.name())
+                && ResourceRouting.insertItem(dockStorage(controller, dock), stack.copyWithCount(1), true).isEmpty()));
     }
 
-    // Count exact items in the dock worker buffer
-    public static long countDockItems(
-            AdvancedContraptionControllerBlockEntity controller,
-            ShipDockRegistry.Dock dock,
-            ItemStack filter
-    ) {
-        Level level = controller.getLevel();
-        if (level == null) return 0L;
-        FilterItemStack predicate = FilterItemStack.of(filter);
-        long amount = 0L;
-        for (ItemStack stack : dockItems(controller, dock)) {
-            if (predicate.test(level, stack)) amount = saturatingAdd(amount, stack.getCount());
-        }
-        return amount;
+    public static long countDockItems(AdvancedContraptionControllerBlockEntity controller, ShipDockRegistry.Dock dock, ItemStack filter){
+        var predicate = FilterItemStack.of(filter);
+        return dockItems(controller, dock).stream().filter(stack -> predicate.test(controller.getLevel(), stack)).mapToLong(ItemStack::getCount).sum();
     }
 
-    // Count exact fluids in the dock worker buffer
-    public static long countDockFluids(
-            AdvancedContraptionControllerBlockEntity controller,
-            ShipDockRegistry.Dock dock,
-            ItemStack filter
-    ) {
-        Level level = controller.getLevel();
-        if (level == null) return 0L;
-        FilterItemStack predicate = FilterItemStack.of(filter);
-        long amount = 0L;
-        for (FluidStack stack : dockFluids(controller, dock)) {
-            if (predicate.test(level, stack)) amount = saturatingAdd(amount, stack.getAmount());
-        }
-        return amount;
+    public static long countDockFluids(AdvancedContraptionControllerBlockEntity controller, ShipDockRegistry.Dock dock, ItemStack filter){
+        var predicate = FilterItemStack.of(filter);
+        return dockFluids(controller, dock).stream().filter(stack -> predicate.test(controller.getLevel(), stack)).mapToLong(FluidStack::getAmount).sum();
     }
 
-    // Count FE in the dock worker buffer
-    public static long countDockEnergy(
-            AdvancedContraptionControllerBlockEntity controller, ShipDockRegistry.Dock dock
-    ) {
-        WorkerStorageEndpoint endpoint = dockEndpoint(controller, dock);
-        return endpoint == null ? 0L : endpoint.storedEnergy();
+    public static long countDockEnergy(AdvancedContraptionControllerBlockEntity controller, ShipDockRegistry.Dock dock){
+        return ScmDockingAccess.nativeAccess(() -> energy(dockStorage(controller, dock)));
     }
 
-    // Count exact worker-managed ship items
-    public static long countItems(AdvancedContraptionControllerBlockEntity controller, ItemStack filter) {
-        Level level = controller.getLevel();
-        if (level == null) return 0L;
-        FilterItemStack predicate = FilterItemStack.of(filter);
-        long amount = 0L;
-        for (ItemStack stack : shipItems(controller)) {
-            if (predicate.test(level, stack)) amount = saturatingAdd(amount, stack.getCount());
-        }
-        return amount;
+    public static long countItems(AdvancedContraptionControllerBlockEntity controller, ItemStack filter){
+        var predicate = FilterItemStack.of(filter);
+        return shipItems(controller).stream().filter(stack -> predicate.test(controller.getLevel(), stack)).mapToLong(ItemStack::getCount).sum();
     }
 
-    // Count exact full worker-managed ship item stacks
-    public static long countFullItemStacks(
-            AdvancedContraptionControllerBlockEntity controller, ItemStack filter
-    ) {
-        Level level = controller.getLevel();
-        if (level == null) return 0L;
-        FilterItemStack predicate = FilterItemStack.of(filter);
-        long stacks = 0L;
-        for (ItemStack stack : shipItems(controller)) {
-            if (predicate.test(level, stack)) {
-                stacks = saturatingAdd(stacks, stack.getCount() / Math.max(1, stack.getMaxStackSize()));
-            }
-        }
-        return stacks;
+    public static long countFullItemStacks(AdvancedContraptionControllerBlockEntity controller, ItemStack filter){
+        var predicate = FilterItemStack.of(filter);
+        return shipItems(controller).stream().filter(stack -> predicate.test(controller.getLevel(), stack))
+                .mapToLong(stack -> stack.getCount() / Math.max(1, stack.getMaxStackSize())).sum();
     }
 
-    // Count exact worker-managed ship fluids
-    public static long countFluids(AdvancedContraptionControllerBlockEntity controller, ItemStack filter) {
-        Level level = controller.getLevel();
-        if (level == null) return 0L;
-        FilterItemStack predicate = FilterItemStack.of(filter);
-        long amount = 0L;
-        for (FluidStack stack : shipFluids(controller)) {
-            if (predicate.test(level, stack)) amount = saturatingAdd(amount, stack.getAmount());
-        }
-        return amount;
+    public static long countFluids(AdvancedContraptionControllerBlockEntity controller, ItemStack filter){
+        var predicate = FilterItemStack.of(filter);
+        return fluids(controller.logistics().pool(Group.FLUIDS)).stream().filter(stack -> predicate.test(controller.getLevel(), stack))
+                .mapToLong(FluidStack::getAmount).sum();
     }
 
-    // Get the actual propulsion fuel status rather than cargo staging amounts
-    public static FuelStatus fuelStatus(AdvancedContraptionControllerBlockEntity controller) {
-        return fuelStatus(controller, 1.0D);
+    public static FuelStatus fuelStatus(AdvancedContraptionControllerBlockEntity controller){ return fuelStatus(controller, 1.0D); }
+
+    public static FuelStatus fuelStatus(AdvancedContraptionControllerBlockEntity controller, double throttle){
+        return controller.logistics().fuelStatus(throttle);
     }
 
-    // Get the actual propulsion fuel status at an expected throttle
-    public static FuelStatus fuelStatus(
-            AdvancedContraptionControllerBlockEntity controller, double expectedThrottle
-    ) {
-        double amount = 0.0D;
-        double capacity = 0.0D;
-        double usePerTick = 0.0D;
-        boolean infinite = false;
-        for (BlockEntity blockEntity : shipBlockEntities(controller)) {
-            if (!(blockEntity instanceof ThrusterBlockEntity thruster) || thruster.getFuelCapacity() <= 0) {
-                continue;
-            }
-            if (thruster.getFuelAmount() == Integer.MAX_VALUE) {
-                infinite = true;
-                continue;
-            }
-            amount += Math.min(thruster.getFuelAmount(), thruster.getFuelCapacity());
-            capacity += thruster.getFuelCapacity();
-            usePerTick += Math.max(0.0D, thruster.getEstimatedFuelConsumptionMbPerTick(
-                    (float) Math.max(0.0D, Math.min(1.0D, expectedThrottle))));
-        }
-        return new FuelStatus(amount, capacity, usePerTick, infinite);
+    static ResourceStatus resourceStatus(AdvancedContraptionControllerBlockEntity controller){
+        Pool storage = controller.logistics().cargo();
+        return new ResourceStatus(items(storage).stream().mapToLong(ItemStack::getCount).sum(),
+                fluids(storage).stream().mapToLong(FluidStack::getAmount).sum(), energy(storage));
     }
 
-    // Get all worker-managed ship resources selected by manifests and smart storage
-    static ResourceStatus resourceStatus(AdvancedContraptionControllerBlockEntity controller) {
-        long items = 0L;
-        long fluids = 0L;
-        long energy = 0L;
-        for (WorkerStorageEndpoint endpoint : shipStorageEndpoints(controller)) {
-            for (WorkerEndpointSnapshot.ResourceAmount resource : endpoint.snapshot().resources()) {
-                switch (resource.resource().type()) {
-                    case ITEM -> items = saturatingAdd(items, resource.amount());
-                    case FLUID -> fluids = saturatingAdd(fluids, resource.amount());
-                    case ENERGY -> energy = saturatingAdd(energy, resource.amount());
-                    case FUEL -> {
-                    }
-                }
-            }
-        }
-        return new ResourceStatus(items, fluids, energy);
-    }
+    static boolean isBurnableItem(ItemStack stack){ return stack != null && !stack.isEmpty() && ThrusterBlockEntity.canUseAsSolidFuel(stack); }
 
-    // Check whether an item can fuel a standard fuel-burning thruster
-    static boolean isBurnableItem(ItemStack stack) {
-        return stack != null && !stack.isEmpty() && ThrusterBlockEntity.canUseAsSolidFuel(stack);
-    }
-
-    // Get the loaded block entities belonging to the ship's mapped sublevels
-    public static List<BlockEntity> shipBlockEntities(AdvancedContraptionControllerBlockEntity controller) {
+    // Retain the loaded-body helper used by non-routing ship diagnostics
+    public static List<BlockEntity> shipBlockEntities(AdvancedContraptionControllerBlockEntity controller){
         Set<BlockEntity> mapped = Collections.newSetFromMap(new IdentityHashMap<>());
-        if (controller.getLevel() != null) {
-            for (java.util.UUID subLevelId : controller.getMappedShipSubLevelIds()) {
-                Object subLevel = SubLevelBlockEntityCollector.getSubLevel(controller.getLevel(), subLevelId);
-                if (subLevel != null) mapped.addAll(SubLevelBlockEntityCollector.getBlockEntities(subLevel));
-            }
+        if(controller.getLevel() != null) for(var id : controller.getMappedShipSubLevelIds()){
+            Object body = SubLevelBlockEntityCollector.getSubLevel(controller.getLevel(), id);
+            if(body != null) mapped.addAll(SubLevelBlockEntityCollector.getBlockEntities(body));
         }
-        if (!mapped.isEmpty()) return List.copyOf(mapped);
-        Object subLevel = SimulatedHelper.getContainingSubLevel(controller);
-        if (subLevel != null) return SubLevelBlockEntityCollector.getBlockEntities(subLevel);
-        return List.of(controller);
+        if(!mapped.isEmpty()) return List.copyOf(mapped);
+        Object body = SimulatedHelper.getContainingSubLevel(controller);
+        return body == null ? List.of(controller) : SubLevelBlockEntityCollector.getBlockEntities(body);
     }
 
-    // Get the deduplicated manifested and smart storage aboard this ship
-    private static List<WorkerStorageEndpoint> shipStorageEndpoints(
-            AdvancedContraptionControllerBlockEntity controller
-    ) {
-        List<WorkerStorageEndpoint> endpoints = new ArrayList<>();
-        Set<java.util.UUID> seen = new HashSet<>();
-        for (BlockEntity blockEntity : shipBlockEntities(controller)) {
-            if (DockingConnectorAutomation.isDockingConnector(blockEntity)) continue;
-            WorkerStorageEndpoint endpoint = WorkerStorageEndpoint.managed(blockEntity);
-            if (endpoint != null && seen.add(endpoint.id())) endpoints.add(endpoint);
-        }
-        return List.copyOf(endpoints);
-    }
-
-    // Get exact worker-managed item stacks aboard this ship
-    private static List<ItemStack> shipItems(AdvancedContraptionControllerBlockEntity controller) {
-        List<ItemStack> stacks = new ArrayList<>();
-        for (WorkerStorageEndpoint endpoint : shipStorageEndpoints(controller)) {
-            stacks.addAll(endpoint.stockedItems());
-        }
-        return List.copyOf(stacks);
-    }
-
-    // Get exact worker-managed fluids aboard this ship
-    private static List<FluidStack> shipFluids(AdvancedContraptionControllerBlockEntity controller) {
-        List<FluidStack> stacks = new ArrayList<>();
-        for (WorkerStorageEndpoint endpoint : shipStorageEndpoints(controller)) {
-            stacks.addAll(endpoint.stockedFluids(WorkerResourceType.FLUID));
-        }
-        return List.copyOf(stacks);
-    }
-
-    // Resolve the live Ship Dock worker buffer without reaching a remote stock network
-    private static WorkerStorageEndpoint dockEndpoint(
-            AdvancedContraptionControllerBlockEntity controller, ShipDockRegistry.Dock dock
-    ) {
-        if (controller == null || dock == null) return null;
-        ServerLevel level = dockLevel(controller, dock);
-        if (level == null) return null;
-        BlockEntity blockEntity = SimulatedHelper.findLoadedBlockEntityExact(
-                level, dock.subLevelId(), dock.pos());
-        return blockEntity instanceof ShipDockBlockEntity ? WorkerStorageEndpoint.managed(blockEntity) : null;
-    }
-
-    // Get the exact dock-buffer item stacks
-    private static List<ItemStack> dockItems(
-            AdvancedContraptionControllerBlockEntity controller, ShipDockRegistry.Dock dock
-    ) {
-        WorkerStorageEndpoint endpoint = dockEndpoint(controller, dock);
-        return endpoint == null ? List.of() : endpoint.stockedItems();
-    }
-
-    // Get the exact dock-buffer fluid stacks
-    private static List<FluidStack> dockFluids(
-            AdvancedContraptionControllerBlockEntity controller, ShipDockRegistry.Dock dock
-    ) {
-        WorkerStorageEndpoint endpoint = dockEndpoint(controller, dock);
-        return endpoint == null ? List.of() : endpoint.stockedFluids(WorkerResourceType.FLUID);
-    }
-
-    // Get the loaded server level which owns this dock
-    private static ServerLevel dockLevel(
-            AdvancedContraptionControllerBlockEntity controller, ShipDockRegistry.Dock dock
-    ) {
-        if (controller.getLevel() == null || controller.getLevel().getServer() == null) return null;
-        return controller.getLevel().getServer().getLevel(net.minecraft.resources.ResourceKey.create(
+    static Pool dockStorage(AdvancedContraptionControllerBlockEntity controller, ShipDockRegistry.Dock dock){
+        if(controller == null || dock == null || controller.getLevel() == null || controller.getLevel().getServer() == null) return Pool.EMPTY;
+        ServerLevel level = controller.getLevel().getServer().getLevel(net.minecraft.resources.ResourceKey.create(
                 net.minecraft.core.registries.Registries.DIMENSION, dock.dimension()));
-    }
-
-    // Add an amount without wrapping long schedule counters
-    private static long saturatingAdd(long current, long amount) {
-        return amount <= 0L || current >= Long.MAX_VALUE - amount
-                ? amount <= 0L ? current : Long.MAX_VALUE : current + amount;
-    }
-
-    // Store physical propulsion fuel status
-    public record FuelStatus(double amount, double capacity, double usePerTick, boolean infinite) {
-        // Get the fill ratio
-        public double ratio() {
-            if (infinite) return 1.0D;
-            return capacity <= 0.0D ? 1.0D : Math.max(0.0D, Math.min(1.0D, amount / capacity));
+        if(level == null) return Pool.EMPTY;
+        List<Pool> pools = new ArrayList<>();
+        BlockEntity selected = SimulatedHelper.findLoadedBlockEntityExact(level, dock.subLevelId(), dock.pos());
+        if(selected instanceof ShipDockBlockEntity shipDock){
+            pools.add(shipDock.networkStorage());
+            pools.add(com.rieno.gadgetsandgizmos.lib.inventory.ContainerNetworkAccess.pool(shipDock));
         }
+        if(dock.hasDockingConnector()){
+            var connector = SimulatedHelper.findLoadedBlockEntityExact(level, dock.connectorSubLevelId(), dock.connectorPos());
+            pools.add(com.rieno.gadgetsandgizmos.lib.compat.simulated.SimulatedConnectorStorage.localResources(connector));
+        }
+        return ScmLogisticsRuntime.combine(pools);
+    }
 
-        // Check whether this fuel state can reach one route target
-        public boolean canReach(double distance, double speed) {
-            if (infinite || usePerTick <= 0.0D) return ratio() >= 0.1D;
-            double travelTicks = distance / Math.max(0.05D, speed) * 20.0D;
-            return amount - travelTicks * usePerTick >= capacity * 0.1D;
+    private static List<ItemStack> shipItems(AdvancedContraptionControllerBlockEntity controller){ return items(controller.logistics().pool(Group.ITEMS)); }
+
+    private static List<ItemStack> dockItems(AdvancedContraptionControllerBlockEntity controller, ShipDockRegistry.Dock dock){
+        return ScmDockingAccess.nativeAccess(() -> items(dockStorage(controller, dock)));
+    }
+
+    private static List<FluidStack> dockFluids(AdvancedContraptionControllerBlockEntity controller, ShipDockRegistry.Dock dock){
+        return ScmDockingAccess.nativeAccess(() -> fluids(dockStorage(controller, dock)));
+    }
+
+    private static List<ItemStack> items(Pool pool){
+        List<ItemStack> res = new ArrayList<>();
+        for(var handler : pool.items()) for(int slot = 0; slot < handler.getSlots(); slot++){
+            ItemStack stack = handler.getStackInSlot(slot);
+            if(!stack.isEmpty()) res.add(stack.copy());
+        }
+        return List.copyOf(res);
+    }
+
+    private static List<FluidStack> fluids(Pool pool){
+        List<FluidStack> res = new ArrayList<>();
+        for(var handler : pool.fluids()) for(int tank = 0; tank < handler.getTanks(); tank++){
+            FluidStack fluid = handler.getFluidInTank(tank);
+            if(!fluid.isEmpty()) res.add(fluid.copy());
+        }
+        return List.copyOf(res);
+    }
+
+    private static long energy(Pool pool){ return pool.energy().stream().mapToLong(storage -> storage.getEnergyStored()).sum(); }
+
+    // Reserve fraction and measured endurance keep incompatible fuel units separate
+    public record FuelStatus(double amount, double capacity, double usePerTick, boolean infinite, double remainingTicks){
+        public FuelStatus(double amount, double capacity, double usePerTick, boolean infinite){
+            this(amount, capacity, usePerTick, infinite, usePerTick > 0.0D ? amount / usePerTick : Double.POSITIVE_INFINITY);
+        }
+        public double ratio(){ return infinite || capacity <= 0.0D ? 1.0D : Math.max(0.0D, Math.min(1.0D, amount / capacity)); }
+        public boolean canReach(double distance, double speed){
+            return infinite || ratio() >= 0.1D && remainingTicks * 0.9D >= distance / Math.max(0.05D, speed) * 20.0D;
         }
     }
 
-    // Store worker-managed resource totals used by SCM displays and schedule conditions
-    record ResourceStatus(long items, long fluids, long energy) {
-        ResourceStatus {
-            items = Math.max(0L, items);
-            fluids = Math.max(0L, fluids);
-            energy = Math.max(0L, energy);
-        }
-    }
+    record ResourceStatus(long items, long fluids, long energy){}
 }

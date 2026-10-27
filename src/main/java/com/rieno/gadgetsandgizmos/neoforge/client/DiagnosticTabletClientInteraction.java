@@ -51,6 +51,10 @@ public final class DiagnosticTabletClientInteraction {
 
     // Handle the interaction key mapping triggered event
     public static void onInteractionKeyMappingTriggered(InputEvent.InteractionKeyMappingTriggered evt) {
+        Minecraft current = Minecraft.getInstance();
+        if(evt.isUseItem() && current.screen == null && current.hitResult instanceof BlockHitResult hit
+                && com.rieno.gadgetsandgizmos.content.SmartContainerTablets.resolveInteraction(current.level, hit) != null) return;
+
         if(evt.isUseItem() && com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps.DigisablePlacementClient.onUse()){
             evt.setSwingHand(false);
             evt.setCanceled(true);
@@ -160,6 +164,7 @@ public final class DiagnosticTabletClientInteraction {
         if (minecraft.level == null || !(minecraft.hitResult instanceof BlockHitResult hit)) {
             return false;
         }
+        if(com.rieno.gadgetsandgizmos.content.SmartContainerTablets.resolveInteraction(minecraft.level, hit) != null) return true;
         DiagnosticTabletBlock.PlacedInteraction interaction =
                 DiagnosticTabletBlock.resolveInteraction(minecraft.level, hit);
         return interaction != null && DiagnosticTabletBlock.isScreenHit(

@@ -169,7 +169,8 @@ public final class DigisableSchematics{
             row.putString("Format", inspected.format().name()); row.putString("Source", inspected.source().toString()); files.add(row);
         }
         data.put("Schematics", files);
-        data.putString("SharedSchematicFolder", ctx.player().server.isDedicatedServer() ? "server/schematics" : "world/schematics");
+        data.putString("SharedSchematicFolder", "schematics");
+        data.putBoolean("SharedSchematicsLocal", !ctx.player().server.isDedicatedServer());
         Session session = session(ctx);
         List<WorkerStorageEndpoint> endpoints = List.of();
         try{

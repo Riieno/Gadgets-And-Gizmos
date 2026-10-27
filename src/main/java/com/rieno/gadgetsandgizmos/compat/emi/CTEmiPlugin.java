@@ -255,7 +255,7 @@ public class CTEmiPlugin implements EmiPlugin {
     // Create the tablet ghost drag handler
     private static EmiDragDropHandler<DiagnosticTabletScreen> createTabletGhostDragHandler() {
         return new EmiDragDropHandler.BoundsBased<>((screen, targets) -> {
-            var areas = screen.redstoneGhostAreas();
+            var areas = ((DiagnosticTabletScreen<?>)screen).redstoneGhostAreas();
             for (int idx = 0; idx < areas.size(); idx++) {
                 int slot = idx;
                 var area = areas.get(idx);

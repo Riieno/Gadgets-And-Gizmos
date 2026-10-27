@@ -8,6 +8,9 @@ package com.rieno.gadgetsandgizmos.neoforge;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.neoforge.network.WorldHologramDataPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.WorldHologramConfigPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.WorldHologramRequestPayload;
 import com.mojang.logging.LogUtils;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
 import com.rieno.gadgetsandgizmos.content.AdvancedNavigationTableBlockEntity;
@@ -33,6 +36,7 @@ import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphSnapsh
 import com.rieno.gadgetsandgizmos.neoforge.network.ScmConfigurationSnapshotPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerPublicSharePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerSharedGraphsPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerStoredTargetsPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerMouseInputPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerPhysicalInteractionPayload;
@@ -112,6 +116,7 @@ import com.rieno.gadgetsandgizmos.neoforge.network.ShippingRouteSplinePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ShippingRouteVisibilityPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ShipDockConfigPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ShipDockOpenPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.ShipDockApproachPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ThrusterConfigPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ThrusterFuelTankPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ThrusterSlotPayload;
@@ -142,6 +147,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 import org.slf4j.Logger;
 
 import java.lang.reflect.Method;
+import com.rieno.gadgetsandgizmos.neoforge.network.ThrusterDyePresetPayload;
 
 // Connect server lifecycle and gameplay events to the addon's stateful systems
 public final class CTCommonEvents {
@@ -199,12 +205,18 @@ public final class CTCommonEvents {
         // Register the payload handlers
         public static void registerPayloadHandlers(RegisterPayloadHandlersEvent event) {
                 PayloadRegistrar registrar = event.registrar("2");
+                registrar.playToServer(WorldHologramRequestPayload.TYPE, WorldHologramRequestPayload.STREAM_CODEC, WorldHologramRequestPayload::handle);
+                registrar.playToServer(WorldHologramConfigPayload.TYPE, WorldHologramConfigPayload.STREAM_CODEC, WorldHologramConfigPayload::handle);
+                registrar.playToClient(WorldHologramDataPayload.TYPE, WorldHologramDataPayload.STREAM_CODEC, WorldHologramDataPayload::handle);
                 registrar.playToServer(com.rieno.gadgetsandgizmos.neoforge.network.ServerboundPlayerActionInputPacket.TYPE,
                         com.rieno.gadgetsandgizmos.neoforge.network.ServerboundPlayerActionInputPacket.STREAM_CODEC,
                         com.rieno.gadgetsandgizmos.neoforge.network.ServerboundPlayerActionInputPacket::handle);
                 // ------------------------------------THRUSTERS / ANALOGUE CONTROLS------------------------------------
                 registrar.playToServer(ThrusterBearingRangePayload.TYPE, ThrusterBearingRangePayload.STREAM_CODEC,
                                 ThrusterBearingRangePayload::handle);
+                registrar.playToServer(ThrusterDyePresetPayload.TYPE,
+                        ThrusterDyePresetPayload.STREAM_CODEC,
+                        ThrusterDyePresetPayload::handle);
                 registrar.playToServer(ThrusterConfigPayload.TYPE, ThrusterConfigPayload.STREAM_CODEC,
                                 ThrusterConfigPayload::handle);
                 registrar.playToServer(ThrusterFuelTankPayload.TYPE, ThrusterFuelTankPayload.STREAM_CODEC,
@@ -368,6 +380,7 @@ public final class CTCommonEvents {
                                 TeleportFrameResetPayload::handle);
                 registrar.playToClient(ShippingManifestOpenPayload.TYPE, ShippingManifestOpenPayload.STREAM_CODEC,
                                 ShippingManifestOpenPayload::handle);
+                registrar.playBidirectional(ShipDockApproachPayload.TYPE, ShipDockApproachPayload.STREAM_CODEC, ShipDockApproachPayload::handle);
                 registrar.playToClient(ShipDockOpenPayload.TYPE, ShipDockOpenPayload.STREAM_CODEC,
                                 ShipDockOpenPayload::handle);
                 registrar.playToClient(ArmorStandPoseOpenPayload.TYPE, ArmorStandPoseOpenPayload.STREAM_CODEC,
@@ -375,6 +388,8 @@ public final class CTCommonEvents {
                 registrar.playToClient(MannequinSkinChangeResultPayload.TYPE,
                                 MannequinSkinChangeResultPayload.STREAM_CODEC,
                                 MannequinSkinChangeResultPayload::handle);
+                registrar.playToClient(AdvancedControllerStoredTargetsPayload.TYPE, AdvancedControllerStoredTargetsPayload.STREAM_CODEC,
+                                AdvancedControllerStoredTargetsPayload::handle);
                 registrar.playToClient(AdvancedControllerSharedGraphsPayload.TYPE, AdvancedControllerSharedGraphsPayload.STREAM_CODEC,
                                 AdvancedControllerSharedGraphsPayload::handle);
                 registrar.playToClient(AdvancedControllerPublicSharePayload.TYPE,
@@ -493,11 +508,14 @@ public final class CTCommonEvents {
         }
         if (CTBlockEntities.SHIP_DOCK != null) {
             evt.registerBlockEntity(Capabilities.ItemHandler.BLOCK, CTBlockEntities.SHIP_DOCK.get(),
-                    (com.rieno.gadgetsandgizmos.content.ShipDockBlockEntity be, Direction side) -> be.getItemBuffer());
+                    (com.rieno.gadgetsandgizmos.content.ShipDockBlockEntity be, Direction side) ->
+                            be.getLevel() != null && be.getLevel().isClientSide ? be.getItemBuffer() : be.networkResources());
             evt.registerBlockEntity(Capabilities.FluidHandler.BLOCK, CTBlockEntities.SHIP_DOCK.get(),
-                    (com.rieno.gadgetsandgizmos.content.ShipDockBlockEntity be, Direction side) -> be.getFluidBuffer());
+                    (com.rieno.gadgetsandgizmos.content.ShipDockBlockEntity be, Direction side) ->
+                            be.getLevel() != null && be.getLevel().isClientSide ? be.getFluidBuffer() : be.networkResources());
             evt.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, CTBlockEntities.SHIP_DOCK.get(),
-                    (com.rieno.gadgetsandgizmos.content.ShipDockBlockEntity be, Direction side) -> be.getEnergyBuffer());
+                    (com.rieno.gadgetsandgizmos.content.ShipDockBlockEntity be, Direction side) ->
+                            be.getLevel() != null && be.getLevel().isClientSide ? be.getEnergyBuffer() : be.networkResources());
         }
         if (CTBlockEntities.THRUSTER != null) {
             evt.registerBlockEntity(Capabilities.FluidHandler.BLOCK, CTBlockEntities.THRUSTER.get(),
@@ -535,6 +553,12 @@ public final class CTCommonEvents {
                             ? be.getAssemblyFluidHandler()
                             : null);
         }
+        if(CTBlockEntities.AILERON_BEARING != null){
+            evt.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, CTBlockEntities.AILERON_BEARING.get(),
+                    (be, side) -> be.canAcceptAssemblyEnergyFrom(side) ? be.getAssemblyEnergyHandler() : null);
+            evt.registerBlockEntity(Capabilities.FluidHandler.BLOCK, CTBlockEntities.AILERON_BEARING.get(),
+                    (be, side) -> be.canAcceptAssemblyFluidFrom(side) ? be.getAssemblyFluidHandler() : null);
+        }
         if (CTBlockEntities.ANDESITE_CABLE != null) {
             evt.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, CTBlockEntities.ANDESITE_CABLE.get(),
                     (AndesiteCableBlockEntity be, Direction side) -> be.getEnergyView(side));
@@ -550,17 +574,17 @@ public final class CTCommonEvents {
         if (CTBlockEntities.SMART_VAULT != null) {
             evt.registerBlockEntity(Capabilities.ItemHandler.BLOCK, CTBlockEntities.SMART_VAULT.get(),
                     (com.rieno.gadgetsandgizmos.content.SmartVaultBlockEntity be, Direction side) ->
-                            be.getItemHandler());
+                            be.getLevel() != null && be.getLevel().isClientSide ? be.getItemHandler() : be.networkResources());
         }
         if (CTBlockEntities.SMART_TANK != null) {
             evt.registerBlockEntity(Capabilities.FluidHandler.BLOCK, CTBlockEntities.SMART_TANK.get(),
                     (com.rieno.gadgetsandgizmos.content.SmartTankBlockEntity be, Direction side) ->
-                            be.getFluidHandler());
+                            be.getLevel() != null && be.getLevel().isClientSide ? be.getFluidHandler() : be.networkResources());
         }
         if (CTBlockEntities.SMART_BATTERY != null) {
             evt.registerBlockEntity(Capabilities.EnergyStorage.BLOCK, CTBlockEntities.SMART_BATTERY.get(),
                     (com.rieno.gadgetsandgizmos.content.SmartBatteryBlockEntity be, Direction side) ->
-                            be.getEnergyHandler());
+                            be.getLevel() != null && be.getLevel().isClientSide ? be.getEnergyHandler() : be.networkResources());
         }
         // ------------------------------------OPTIONAL COMPAT------------------------------------
         if (ModList.get().isLoaded("computercraft")) {

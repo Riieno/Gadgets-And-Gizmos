@@ -75,6 +75,7 @@ public final class CTClientEvents {
         AdvancedHudImageClient.clearServerImages();
         AccDisplayGuiProjection.clear();
         AccHologramWidgetClient.clear();
+        CameraWidgetClient.clear();
         DiagnosticTabletGuiProjection.clear();
         DiagnosticTabletClientAppData.clear();
         com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps.DigisablePlacementClient.clear();
@@ -84,6 +85,7 @@ public final class CTClientEvents {
         PhysicsGantryBeltWheelShearsClient.clear();
         PoweredZiplineHandoffRenderer.clear();
         ShippingRouteSplineClient.clear();
+        ShipDockApproachClient.clear();
         CTFeatureToggles.clearServerOverrides();
     }
 }

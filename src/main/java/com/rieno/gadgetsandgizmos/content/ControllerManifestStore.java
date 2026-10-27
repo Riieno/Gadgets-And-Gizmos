@@ -8,6 +8,7 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
+import com.rieno.gadgetsandgizmos.lib.storage.SharedDocumentMetadata;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -17,6 +18,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.mojang.serialization.JsonOps;
+import com.rieno.gadgetsandgizmos.lib.storage.JsonFileOperations;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphImageAssets;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphDocument;
 import com.simibubi.create.Create;
@@ -262,8 +264,20 @@ public final class ControllerManifestStore {
         return sharedGraphsDir();
     }
 
+    public static SharedDocumentMetadata sharingMetadata(String authorName, UUID authorId){
+        String version = net.neoforged.fml.ModList.get() == null ? ""
+                : net.neoforged.fml.ModList.get().getModContainerById(com.rieno.gadgetsandgizmos.CreateThrusters.MOD_ID)
+                .map(container -> container.getModInfo().getVersion().toString()).orElse("");
+        return new SharedDocumentMetadata(authorName, authorId, Instant.now(),
+                com.rieno.gadgetsandgizmos.CreateThrusters.MOD_ID, version, net.minecraft.SharedConstants.getCurrentVersion().getName());
+    }
+
     // Get the shared graph JSON
     public static String sharedGraphJson(String requestedName, AdvancedGraphDocument graph) {
+        return sharedGraphJson(requestedName, graph, null);
+    }
+
+    public static String sharedGraphJson(String requestedName, AdvancedGraphDocument graph, SharedDocumentMetadata metadata){
         String displayName = requestedName == null || requestedName.isBlank()
                 ? "Contraption Graph" : requestedName.trim();
         String id = safeSharedBaseName(displayName);
@@ -273,14 +287,22 @@ public final class ControllerManifestStore {
                 displayName, graphToShare);
         JsonObject root = linkerRootJson(id, linkerData);
         root.addProperty("displayName", displayName);
+        if(metadata != null) metadata.apply(root);
         return GSON.toJson(root);
     }
 
     // Save the shared graph
-    static synchronized SharedGraphSaveResult saveSharedGraph(Path dir, String requestedName,
+    public static synchronized SharedGraphSaveResult saveSharedGraph(Path dir, String requestedName,
                                                               CompoundTag linkerData,
                                                               SharedGraphSaveMode saveMode) {
         return saveSharedGraph(dir, requestedName, "", linkerData, saveMode);
+    }
+
+    public static synchronized SharedGraphSaveResult saveSharedGraph(Path dir, String requestedName,
+            CompoundTag linkerData, SharedGraphSaveMode saveMode, SharedDocumentMetadata metadata){
+        JsonObject attrs = new JsonObject();
+        if(metadata != null) metadata.apply(attrs);
+        return saveSharedGraph(dir, requestedName, requestedName, linkerData, saveMode, attrs);
     }
 
     // Save the shared graph
@@ -288,6 +310,11 @@ public final class ControllerManifestStore {
                                                          String requestedDisplayName,
                                                          CompoundTag linkerData,
                                                          SharedGraphSaveMode saveMode) {
+        return saveSharedGraph(dir, requestedName, requestedDisplayName, linkerData, saveMode, null);
+    }
+
+    private static SharedGraphSaveResult saveSharedGraph(Path dir, String requestedName,
+            String requestedDisplayName, CompoundTag linkerData, SharedGraphSaveMode saveMode, JsonObject metadata){
         Path targetDirectory = dir == null ? sharedGraphsDir() : dir;
         String baseName = safeSharedBaseName(requestedName);
         SharedGraphSaveMode mode = saveMode == null ? SharedGraphSaveMode.REJECT : saveMode;
@@ -302,11 +329,16 @@ public final class ControllerManifestStore {
                 ? sharedDisplayName(requestedName, baseName, id) : requestedDisplayName.trim();
         JsonObject root = linkerRootJson(id, linkerData);
         root.addProperty("displayName", displayName);
+        SharedDocumentMetadata.copy(metadata, root);
         int revision = 1;
         if (mode == SharedGraphSaveMode.OVERWRITE && baseExists) {
             ManifestSnapshot existing = readManifest(basePath, true);
             if (existing != null) {
                 revision = Math.max(1, existing.revision() + 1);
+                try{
+                    JsonObject prev = JsonParser.parseString(Files.readString(basePath, StandardCharsets.UTF_8)).getAsJsonObject();
+                    if(prev.has("createdAt")) root.add("createdAt", prev.get("createdAt").deepCopy());
+                }catch(Exception ignored){}
             }
         }
         ManifestSnapshot snapshot = writeManifest(sharedGraphPath(targetDirectory, id), root, id, revision,
@@ -322,7 +354,7 @@ public final class ControllerManifestStore {
         return loadSharedGraph(sharedGraphsDir(), manifestId);
     }
 
-    static @Nullable ManifestSnapshot loadSharedGraph(Path dir, String manifestId){
+    public static @Nullable ManifestSnapshot loadSharedGraph(Path dir, String manifestId){
         if (manifestId == null || manifestId.isBlank()) {
             return null;
         }
@@ -333,6 +365,42 @@ public final class ControllerManifestStore {
             return readManifest(Files.isRegularFile(requested) ? requested : sharedGraphPath(root, manifestId), true);
         }catch(java.nio.file.InvalidPathException err){
             return null;
+        }
+    }
+
+    // Rename the catalogue entry while preserving file identity and the complete exported graph.
+    public static boolean renameSharedGraph(String id, String requestedName){
+        return renameSharedGraph(sharedGraphsDir(), id, requestedName);
+    }
+
+    public static synchronized boolean renameSharedGraph(Path directory, String id, String requestedName){
+        String name = requestedName == null ? "" : requestedName.strip();
+        if(name.isBlank() || name.length() > 64) return false;
+        try{
+            return JsonFileOperations.update(directory, id, root -> {
+                root.addProperty("displayName", name);
+                int revision = root.has("revision") ? root.get("revision").getAsInt() : 0;
+                root.addProperty("revision", Math.max(1, revision + 1));
+                root.addProperty("updatedAt", Instant.now().toString());
+                root.remove("contentHash");
+                root.addProperty("contentHash", sha256(GSON.toJson(root)));
+            });
+        }catch(Exception err){
+            Create.LOGGER.warn("Failed to rename shared graph {}", id, err);
+            return false;
+        }
+    }
+
+    public static boolean deleteSharedGraph(String id){
+        return deleteSharedGraph(sharedGraphsDir(), id);
+    }
+
+    public static synchronized boolean deleteSharedGraph(Path directory, String id){
+        try{
+            return JsonFileOperations.delete(directory, id);
+        }catch(IOException err){
+            Create.LOGGER.warn("Failed to delete shared graph {}", id, err);
+            return false;
         }
     }
 
@@ -350,6 +418,17 @@ public final class ControllerManifestStore {
         }
     }
 
+    public static @Nullable String readSharedGraphJson(Path directory, String id){
+        if(id == null || id.isBlank() || id.contains("/") || id.contains("\\")) return null;
+        try{
+            Path root = directory.toAbsolutePath().normalize();
+            Path file = root.resolve(id + ".json").normalize();
+            if(!root.equals(file.getParent()) || Files.isSymbolicLink(file) || !Files.isRegularFile(file)
+                    || Files.size(file) > 2 * 1024 * 1024) return null;
+            return Files.readString(file, StandardCharsets.UTF_8);
+        }catch(IOException | java.nio.file.InvalidPathException ex){ return null; }
+    }
+
     // Import the shared graph
     public static SharedGraphSaveResult importSharedGraph(String requestedName, String json,
                                                           SharedGraphSaveMode saveMode) {
@@ -357,7 +436,7 @@ public final class ControllerManifestStore {
     }
 
     // Import the shared graph
-    static synchronized SharedGraphSaveResult importSharedGraph(Path dir, String requestedName, String json,
+    public static synchronized SharedGraphSaveResult importSharedGraph(Path dir, String requestedName, String json,
                                                                 SharedGraphSaveMode saveMode) {
         try {
             JsonElement parsed = JsonParser.parseString(json == null ? "" : json);
@@ -379,7 +458,8 @@ public final class ControllerManifestStore {
             String name = requestedName == null ? "" : requestedName.trim();
             if (name.isBlank()) name = string(root, "displayName");
             if (name.isBlank()) name = string(root, "linkerManifestId");
-            return saveSharedGraph(dir, name, string(root, "displayName"), linkerData, saveMode);
+            root.addProperty("importedAt", Instant.now().toString());
+            return saveSharedGraph(dir, name, string(root, "displayName"), linkerData, saveMode, root);
         } catch (Exception err) {
             Create.LOGGER.warn("Failed to import shared graph manifest", err);
             return new SharedGraphSaveResult(SharedGraphSaveStatus.FAILED, "", null);
@@ -396,7 +476,7 @@ public final class ControllerManifestStore {
         return listSharedGraphs(sharedGraphsDir());
     }
 
-    static List<SharedGraphEntry> listSharedGraphs(Path dir){
+    public static List<SharedGraphEntry> listSharedGraphs(Path dir){
         if (!Files.isDirectory(dir)) {
             return List.of();
         }
@@ -700,6 +780,13 @@ public final class ControllerManifestStore {
         root.add("storedGraphs", nbtSectionJson(portableLinkerData, "StoredGraphs"));
         root.add("graphImages", graphImages);
         root.add("linkerData", nbtJson(portableLinkerData));
+        var stats = new JsonObject();
+        var graphs = ContraptionNetworkLinkerData.readStoredGraphs(portableLinkerData);
+        stats.addProperty("graphs", graphs.size());
+        stats.addProperty("nodes", graphs.stream().mapToInt(entry -> AdvancedGraphDocument.fromTag(entry.graphTag()).nodes().size()).sum());
+        stats.addProperty("functions", graphs.stream().mapToInt(entry -> AdvancedGraphDocument.fromTag(entry.graphTag()).functions().size()).sum());
+        root.add("statistics", stats);
+        root.addProperty("createdAt", Instant.now().toString());
         root.addProperty("updatedAtGameTime", 0L);
         root.addProperty("updatedAt", Instant.now().toString());
         return root;

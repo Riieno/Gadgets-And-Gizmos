@@ -9,6 +9,7 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.lib.scm.ScmOrientation;
+import com.rieno.gadgetsandgizmos.lib.shipping.LogisticsBindings;
 import com.rieno.gadgetsandgizmos.lib.control.ActionGroupRouting;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockIndex;
 import com.rieno.gadgetsandgizmos.lib.scm.ScmLeggedGait;
@@ -446,9 +447,18 @@ public final class ScmConfigurationProfile {
         return unitIndexes.get(references);
     }
 
+    private LogisticsBindings logistics = new LogisticsBindings();
+
+    public LogisticsBindings logistics(){ return logistics; }
+
+    public void setLogistics(LogisticsBindings bindings){
+        logistics = bindings == null ? new LogisticsBindings() : bindings;
+    }
+
     public CompoundTag toTag() {
         CompoundTag tag = new CompoundTag();
         tag.putInt("Version", VERSION);
+        tag.put("Logistics", logistics.toTag());
         tag.putString("VehicleType", vehicleType);
         tag.putString("SteeringType", steeringType);
         tag.putString("IkGait", ikGait);
@@ -479,6 +489,7 @@ public final class ScmConfigurationProfile {
         if (tag == null || tag.isEmpty()) {
             return profile;
         }
+        profile.logistics = LogisticsBindings.fromTag(tag.getCompound("Logistics"));
         profile.mapId = tag.hasUUID("MapId") ? tag.getUUID("MapId") : null;
         profile.orientationOverride = ScmOrientation.fromTag(tag.getCompound("Orientation")).orElse(null);
         profile.setVehicleType(tag.contains("VehicleType") ? tag.getString("VehicleType") : "auto");
