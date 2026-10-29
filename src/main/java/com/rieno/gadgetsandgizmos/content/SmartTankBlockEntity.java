@@ -34,8 +34,10 @@ public class SmartTankBlockEntity extends MultiFluidTankBlockEntity implements M
     // Expose only the resource capability registered for this block's automation port
     public ContainerNetworkAccess networkResources(){ return networkResources; }
 
+    private final com.rieno.gadgetsandgizmos.lib.inventory.LocalResourcePool localPool =
+            new com.rieno.gadgetsandgizmos.lib.inventory.LocalResourcePool();
     @Override public ResourceRouting.Pool localResources(){
-        return new ResourceRouting.Pool(java.util.List.of(), java.util.List.of(getFluidHandler()), java.util.List.of());
+        return localPool.get(null, getFluidHandler(), null);
     }
 
     private String fuelFluid = "";
@@ -86,12 +88,14 @@ public class SmartTankBlockEntity extends MultiFluidTankBlockEntity implements M
     }
 
     private final MountedTabletState tabletState = new MountedTabletState();
+    private boolean refreshWindows = true;
 
     @Override public MountedTabletState mountedTabletState(){ return tabletState; }
 
     @Override protected void read(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket){
         super.read(tag, provider, clientPacket);
         tabletState.read(tag);
+        refreshWindows = true;
         fuelFluid = tag.getString("FuelFluid");
         pumpFluid = tag.getString("PumpFluid");
     }
@@ -108,9 +112,38 @@ public class SmartTankBlockEntity extends MultiFluidTankBlockEntity implements M
         super(CTBlockEntities.SMART_TANK.get(), pos, state);
     }
 
+    // Repair older saved modes and defer model updates while members are still loading
+    public void refreshPresentation(){
+        refreshWindows = true;
+        applyPresentation();
+    }
+
+    private void applyPresentation(){
+        if(!refreshWindows || level == null) return;
+        if(level.isClientSide || !isController()){ refreshWindows = false; return; }
+        if(trySetWindows(tabletState.presentation().contents())) refreshWindows = false;
+    }
+
+    @Override public void initialize(){
+        super.initialize();
+        applyPresentation();
+    }
+
+    @Override public void tick(){
+        super.tick();
+        applyPresentation();
+    }
+
+    @Override public void removeController(boolean keepContents){
+        super.removeController(keepContents);
+        refreshPresentation();
+    }
+
     @Override public void notifyMultiUpdated(){
         super.notifyMultiUpdated();
+        SmartContainerTablets.inheritPresentation(this);
         var root = root();
+        root.refreshWindows = true;
         if(root != this){
             fuelFluid = root.fuelFluid;
             pumpFluid = root.pumpFluid;

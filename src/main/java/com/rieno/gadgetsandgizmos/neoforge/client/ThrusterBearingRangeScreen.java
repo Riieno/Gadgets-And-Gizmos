@@ -9,349 +9,210 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
-import com.rieno.gadgetsandgizmos.content.ThrusterBearingBlockEntity.AngleMode;
 import com.rieno.gadgetsandgizmos.content.ThrusterBearingBlockEntity;
+import com.rieno.gadgetsandgizmos.content.ThrusterBearingBlockEntity.AngleMode;
 import com.rieno.gadgetsandgizmos.content.ThrusterBearingBlockEntity.ControlMode;
+import com.rieno.gadgetsandgizmos.lib.client.render.GuiTextureRegion;
+import com.rieno.gadgetsandgizmos.lib.client.ui.DualThumbSlider;
+import com.rieno.gadgetsandgizmos.lib.client.ui.GuiControlPreviews;
+import com.rieno.gadgetsandgizmos.lib.client.ui.PaintedRangeSliderStyle;
 import com.rieno.gadgetsandgizmos.neoforge.network.ThrusterBearingRangePayload;
 import net.createmod.catnip.gui.AbstractSimiScreen;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
-import net.minecraft.util.Mth;
+import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.Locale;
 
-// Edit the bearing's pitch, yaw and control ranges with paired angle sliders
-public class ThrusterBearingRangeScreen extends AbstractSimiScreen {
-    /*--------------------------------------------------------##---------------------------------------------------------
+// Configure servo steering with a shared range rail and editable angle stops
+public class ThrusterBearingRangeScreen extends AbstractSimiScreen{
+/*--------------------------------------------------------##---------------------------------------------------------
 
-    =======================================================================================================================
-                                                           Constants
-    =======================================================================================================================
+=======================================================================================================================
+                                                        CONSTANTS
+=======================================================================================================================
 
-    ------------------------------------------------------------##-----------------------------------------------------*/
+------------------------------------------------------------##-----------------------------------------------------*/
 
-    private static final int WIDTH      = 316;
-    private static final int HEIGHT     = 188;
-    private static final int BAR_HEIGHT = 92;
-    private static final int BUTTON_WIDTH = 150;
-    private static final int ANGLE_OPTION_HEIGHT = 16;
-    private static final int RANGE_OPTION_WIDTH = 72;
-    private static final int SWIVEL_OPTION_WIDTH = 102;
-    private static final int ANGLE_OPTION_GAP = 8;
-    private static final int ANGLE_LABEL_WIDTH = 150;
-    private static final int ANGLE_LABEL_HEIGHT = 24;
+    private static final int WIDTH = 214;
+    private static final int HEIGHT = 185;
+    private static final int TAB_Y = 26;
+    private static final int TAB_WIDTH = 66;
+    private static final int TAB_HEIGHT = 15;
+    private static final int FIELD_X = 59;
+    private static final int FIELD_WIDTH = 138;
+    private static final int FIELD_HEIGHT = 12;
+    private static final int MIN_FIELD_Y = 59;
+    private static final int MAX_FIELD_Y = 80;
+    private static final int CONTROL_X = 57;
+    private static final int INVERT_X = 135;
+    private static final int BUTTON_Y = 134;
+    private static final int BUTTON_WIDTH = 66;
+    private static final int BUTTON_HEIGHT = 16;
+    private static final int SLIDER_X = 25;
+    private static final int SLIDER_Y = 69;
+    private static final int SLIDER_WIDTH = 8;
+    private static final int SLIDER_HEIGHT = 76;
+    private static final int TEXT_COLOR = 0xFFF3EEE4;
+    private static final ResourceLocation TEXTURE = ResourceLocation.fromNamespaceAndPath("createthrusters",
+            "textures/gui/servo_bearing.png");
+    private static final GuiTextureRegion BACKGROUND = new GuiTextureRegion(TEXTURE, 280, 240, 66, 0, WIDTH, HEIGHT);
+    private static final GuiTextureRegion RANGE_PANEL = new GuiTextureRegion(TEXTURE, 280, 240, 0, 78, 38, 103);
+    private static final PaintedRangeSliderStyle RANGE_STYLE = new PaintedRangeSliderStyle(
+            new GuiTextureRegion(TEXTURE, 280, 240, 0, 0, 8, 76),
+            new GuiTextureRegion(TEXTURE, 280, 240, 10, 0, 14, 7),
+            new GuiTextureRegion(TEXTURE, 280, 240, 10, 8, 14, 7),
+            PaintedRangeSliderStyle.Axis.VERTICAL, false);
 
-    private static final int ALT_TRACK_W   = 42;
-    private static final int ALT_TRACK_SH  = 200;
-    private static final int ALT_LIT_U     = 48;
-    private static final int ALT_LIT_W     = 10;
-    private static final int ALT_LIT_SH    = 200;
-    private static final int ALT_GRAB_U    = 64;
-    private static final int ALT_GRAB_V    = 0;
-    private static final int ALT_GRAB_W    = 26;
-    private static final int ALT_GRAB_H    = 16;
+/*--------------------------------------------------------##---------------------------------------------------------
 
-    private static final int LEFT_LIT_OFF   =  2;
-    private static final int RIGHT_LIT_OFF  = 29;
-    private static final int LEFT_GRAB_OFF  = -6;
-    private static final int RIGHT_GRAB_OFF = 22;
+=======================================================================================================================
+                                                        VARIABLES
+=======================================================================================================================
 
-    /*--------------------------------------------------------##---------------------------------------------------------
+------------------------------------------------------------##-----------------------------------------------------*/
 
-    =======================================================================================================================
-                                                            DEFAULTS
-                                                       #################
-                                                           Variables
-    =======================================================================================================================
-
-    ------------------------------------------------------------##-----------------------------------------------------*/
-
-    // Thruster bearing being configured
     private final ThrusterBearingBlockEntity be;
-    // Limit
-    private final double limit;
-
-    // Current bg x
-    private int bgX;
-    // Current bar top
-    private int barTop;
-    // Current mode x
-    private int modeX;
-    // Current mode y
-    private int modeY;
-    // Current opt x
-    private int optX;
-    // Current opt y
-    private int optY;
-    // Current invert x
-    private int invertX;
-    // Current invert y
-    private int invertY;
-    // Min angle in degrees
-    private double minAngleDeg;
-    // Max angle in degrees
-    private double maxAngleDeg;
-    // Current control mode
+    private final DualThumbSlider range;
+    private final CTScalableGui scalableGui = new CTScalableGui();
     private ControlMode controlMode;
-    // Current angle mode
     private AngleMode angleMode;
-    // Tracks whether inverted is set
     private boolean inverted;
-    // Tracks whether drag min is set
-    private boolean dragMin;
-    // Tracks whether drag max is set
-    private boolean dragMax;
-    // Tracks whether thruster bearing range is dirty
     private boolean dirty;
-    // Current drag start mouse y
-    private double dragStartMouseY;
-    // Drag start min angle in degrees
-    private double dragStartMinAngleDeg;
-    // Drag start max angle in degrees
-    private double dragStartMaxAngleDeg;
-    // Current inline angle editor
     private EditBox angleEditor;
-    // Tracks whether the inline editor is editing the minimum
     private boolean editingMinAngle;
 
-    // Scalable GUI
-    private final CTScalableGui scalableGui = new CTScalableGui();
+/*--------------------------------------------------------##---------------------------------------------------------
 
-    /*--------------------------------------------------------##---------------------------------------------------------
+=======================================================================================================================
+                                                        FUNCTIONS
+=======================================================================================================================
 
-    =======================================================================================================================
-                                                        PRELOAD / SETUP
-    =======================================================================================================================
+------------------------------------------------------------##-----------------------------------------------------*/
 
-    ------------------------------------------------------------##-----------------------------------------------------*/
-
-    // Initialize the thruster bearing range
-    public ThrusterBearingRangeScreen(ThrusterBearingBlockEntity blockEntity) {
-        super(Component.translatable("createthrusters.thruster_bearing.range_screen.title"));
-        this.be = blockEntity;
-        this.limit = CTConfigs.COMMON.bearingMaxPivotAngleDeg.get();
-        this.minAngleDeg = blockEntity.getMinAngleDegrees();
-        this.maxAngleDeg = blockEntity.getMaxAngleDegrees();
-        this.controlMode = blockEntity.getControlMode();
-        this.angleMode = blockEntity.getAngleMode();
-        this.inverted = blockEntity.isInverted();
+    // Retain the bearing's current settings when opening either steering mode
+    public ThrusterBearingRangeScreen(ThrusterBearingBlockEntity blockEntity){
+        super(Component.translatable("block.createthrusters.thruster_bearing"));
+        be = blockEntity;
+        double limit = CTConfigs.COMMON.bearingMaxPivotAngleDeg.get();
+        range = new DualThumbSlider(-limit, limit, blockEntity.getMinAngleDegrees(), blockEntity.getMaxAngleDegrees());
+        controlMode = blockEntity.getControlMode();
+        angleMode = blockEntity.getAngleMode();
+        inverted = blockEntity.isInverted();
         setWindowSize(WIDTH, HEIGHT);
     }
 
-    // Initialize the thruster bearing range
+    // Fit the painted frame and preserve an unfinished typed value across a resize
     @Override
-    protected void init() {
+    protected void init(){
         super.init();
         scalableGui.update(guiLeft, guiTop, windowWidth, windowHeight, width, height);
-        bgX       = guiLeft + 24;
-        barTop    = guiTop  + 34;
-        modeX = guiLeft + 100;
-        modeY = guiTop  + 98;
-        optX = guiLeft + 100;
-        optY = guiTop + 124;
-        invertX = guiLeft + 100;
-        invertY = guiTop + 158;
+        range.endDrag();
+        if(angleEditor != null){
+            String val = angleEditor.getValue();
+            openAngleEditor(editingMinAngle);
+            angleEditor.setValue(val);
+        }
     }
 
-    /*--------------------------------------------------------##---------------------------------------------------------
-
-    =======================================================================================================================
-                                                              MAIN
-    =======================================================================================================================
-
-    ------------------------------------------------------------##-----------------------------------------------------*/
-
-    // Draw the thruster bearing range
+    // Draw the two layouts over the same cropped atlas frame
     @Override
-    public void render(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTicks) {
-        super.render(guiGraphics, mouseX, mouseY, partialTicks);
-    }
-
-    /*--------------------------------------------------------##---------------------------------------------------------
-
-    =======================================================================================================================
-                                                           Functions
-    =======================================================================================================================
-
-    ------------------------------------------------------------##-----------------------------------------------------*/
-
-    // Draw the window
-    @Override
-    protected void renderWindow(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTicks) {
+    protected void renderWindow(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks){
         mouseX = scalableGui.mouseX(mouseX);
         mouseY = scalableGui.mouseY(mouseY);
-        scalableGui.push(guiGraphics);
-        try {
-        // -----------------------------------------------------WINDOW FRAME-----------------------------------------------------
-        CTCreateScreenHelper.renderPanel(guiGraphics, guiLeft, guiTop, windowWidth, windowHeight);
-
-        guiGraphics.drawCenteredString(font, title, guiLeft + windowWidth / 2, guiTop + 6,
-            CTCreateScreenHelper.BANNER_TITLE_COLOR);
-
-        CTCreateScreenHelper.renderSeparator(guiGraphics, guiLeft + 8, guiTop + 18, windowWidth - 16);
-
-        // -----------------------------------------------------ANGLE RANGE-----------------------------------------------------
-        boolean rangeMode = angleMode == AngleMode.RANGE;
-        if (rangeMode) {
-
-            int sliderPanelX = bgX - 12;
-            int sliderPanelW = 66;
-            CTCreateScreenHelper.renderInset(guiGraphics, sliderPanelX, guiTop + 24, sliderPanelW, 118, false, false);
-
-            guiGraphics.blit(CTCreateScreenHelper.ALTITUDE_TEX,
-                bgX, barTop, ALT_TRACK_W, BAR_HEIGHT,
-                0, 0, ALT_TRACK_W, ALT_TRACK_SH, 256, 256);
-
-            renderBarFillAndHandle(guiGraphics,
-                bgX + LEFT_LIT_OFF,  bgX + LEFT_GRAB_OFF,  minAngleDeg,
-                isOverLeftSlider(mouseX, mouseY));
-            renderBarFillAndHandle(guiGraphics,
-                bgX + RIGHT_LIT_OFF, bgX + RIGHT_GRAB_OFF, maxAngleDeg,
-                isOverRightSlider(mouseX, mouseY));
-
-            renderHandleLabel(guiGraphics, Component.literal("Min"), bgX + LEFT_GRAB_OFF, minAngleDeg);
-            renderHandleLabel(guiGraphics, Component.literal("Max"), bgX + RIGHT_GRAB_OFF, maxAngleDeg);
-        } else {
-
-            int infoX = guiLeft + 26;
-            int infoY = guiTop + 34;
-            int infoW = windowWidth - 52;
-            int infoH = 42;
-            CTCreateScreenHelper.renderInset(guiGraphics, infoX, infoY, infoW, infoH, false, false);
-            Component heading = Component.translatable("createthrusters.thruster_bearing.angle_mode")
-                .copy().append(Component.literal(": "))
-                .append(Component.translatable("createthrusters.thruster_bearing.angle_mode.swivel"));
-            guiGraphics.drawCenteredString(font,
-                heading,
-                infoX + infoW / 2,
-                infoY + 8,
-                CTCreateScreenHelper.LABEL_COLOR);
-            guiGraphics.drawCenteredString(font,
-                Component.translatable("createthrusters.thruster_bearing.angle_mode.swivel_hint"),
-                infoX + infoW / 2,
-                infoY + 22,
-                CTCreateScreenHelper.SUBTLE_TEXT_COLOR);
-        }
-
-        int textX = guiLeft + 100;
-        if (rangeMode) {
-            if (angleEditor == null || !editingMinAngle) {
-                guiGraphics.drawString(font,
-                    Component.translatable("createthrusters.thruster_bearing.min_angle"),
-                    textX, guiTop + 34, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
-                guiGraphics.drawString(font, formatAngle(minAngleDeg), textX, guiTop + 46, CTCreateScreenHelper.VALUE_COLOR, false);
+        scalableGui.push(graphics);
+        try{
+            BACKGROUND.draw(graphics, guiLeft, guiTop);
+            text(graphics, title, 8, 1, WIDTH - 16, 11, TEXT_COLOR, true);
+            for(int idx = 0; idx < 2; idx++){
+                AngleMode option = idx == 0 ? AngleMode.RANGE : AngleMode.SWIVEL;
+                button(graphics, Component.translatable(getAngleModeTranslationKey(option)),
+                        idx == 0 ? 60 : 136, TAB_Y, TAB_WIDTH, TAB_HEIGHT, mouseX, mouseY, angleMode == option);
             }
-            if (angleEditor == null || editingMinAngle) {
-                guiGraphics.drawString(font,
-                    Component.translatable("createthrusters.thruster_bearing.max_angle"),
-                    textX, guiTop + 60, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
-                guiGraphics.drawString(font, formatAngle(maxAngleDeg), textX, guiTop + 72, CTCreateScreenHelper.VALUE_COLOR, false);
+            if(angleMode == AngleMode.RANGE){
+                RANGE_PANEL.draw(graphics, guiLeft + 10, guiTop + 54);
+                double fraction = sliderFraction(mouseX, mouseY);
+                DualThumbSlider.Thumb highlighted = range.dragging() ? range.selectedThumb()
+                        : RANGE_STYLE.contains(mouseX, mouseY, guiLeft + SLIDER_X, guiTop + SLIDER_Y,
+                                SLIDER_WIDTH, SLIDER_HEIGHT) ? range.nearestThumb(fraction) : null;
+                RANGE_STYLE.draw(graphics, guiLeft + SLIDER_X, guiTop + SLIDER_Y,
+                        SLIDER_WIDTH, SLIDER_HEIGHT, range, highlighted);
+                if(angleEditor == null || !editingMinAngle){
+                    text(graphics, angleLabel(true), FIELD_X, MIN_FIELD_Y, FIELD_WIDTH, FIELD_HEIGHT, TEXT_COLOR, false);
+                }
+                if(angleEditor == null || editingMinAngle){
+                    text(graphics, angleLabel(false), FIELD_X, MAX_FIELD_Y, FIELD_WIDTH, FIELD_HEIGHT, TEXT_COLOR, false);
+                }
+                if(angleEditor != null) angleEditor.render(graphics, mouseX, mouseY, partialTicks);
+            }else{
+                Component heading = Component.translatable("createthrusters.thruster_bearing.angle_mode")
+                        .append(": ").append(Component.translatable(getAngleModeTranslationKey(AngleMode.SWIVEL)));
+                text(graphics, heading, FIELD_X, MIN_FIELD_Y, FIELD_WIDTH, FIELD_HEIGHT, TEXT_COLOR, false);
+                text(graphics, Component.translatable("createthrusters.thruster_bearing.angle_mode.swivel_hint"),
+                        FIELD_X, MAX_FIELD_Y, FIELD_WIDTH, FIELD_HEIGHT, TEXT_COLOR, false);
             }
-            if (angleEditor != null) {
-                angleEditor.render(guiGraphics, mouseX, mouseY, partialTicks);
-            }
-        }
-
-        CTCreateScreenHelper.renderSeparator(guiGraphics, textX, guiTop + 86, windowWidth - (textX - guiLeft) - 14);
-
-        guiGraphics.drawString(font,
-                Component.translatable("createthrusters.thruster_bearing.control_mode"),
-                textX, guiTop + 90, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
-        CTCreateScreenHelper.renderTextButton(guiGraphics, font, modeX, modeY, BUTTON_WIDTH, 18,
-                Component.translatable(getModeTranslationKey(controlMode)),
-                inside(mouseX, mouseY, modeX, modeY, BUTTON_WIDTH, 18), true, false);
-
-        guiGraphics.drawString(font,
-            Component.translatable("createthrusters.thruster_bearing.angle_mode"),
-            textX, guiTop + 116, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
-
-        for (int i = 0; i < 2; i++) {
-            AngleMode option = i == 0 ? AngleMode.RANGE : AngleMode.SWIVEL;
-            int optionX = angleModeOptionX(i);
-            int optionWidth = angleModeOptionWidth(i);
-            boolean hovered = inside(mouseX, mouseY, optionX, optY, optionWidth, ANGLE_OPTION_HEIGHT);
-            CTCreateScreenHelper.renderTextButton(guiGraphics, font,
-                optionX, optY, optionWidth, ANGLE_OPTION_HEIGHT,
-                    Component.translatable(getAngleModeTranslationKey(option)),
-                    hovered, angleMode == option, false);
-        }
-
-        CTCreateScreenHelper.renderSeparator(guiGraphics, textX, guiTop + 148,
-            windowWidth - (textX - guiLeft) - 14);
-        guiGraphics.drawString(font,
-            Component.translatable("createthrusters.thruster_bearing.invert"),
-            textX, guiTop + 150, CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
-        CTCreateScreenHelper.renderTextButton(guiGraphics, font, invertX, invertY, BUTTON_WIDTH, 18,
-            Component.translatable(inverted
-                ? "createthrusters.thruster_bearing.invert_on"
-                : "createthrusters.thruster_bearing.invert_off"),
-            inside(mouseX, mouseY, invertX, invertY, BUTTON_WIDTH, 18), true, inverted);
-        } finally {
-            scalableGui.pop(guiGraphics);
+            text(graphics, Component.translatable("createthrusters.thruster_bearing.config_screen.control_mode_label"),
+                    CONTROL_X, 120, BUTTON_WIDTH, 12, TEXT_COLOR, true);
+            text(graphics, Component.translatable("createthrusters.thruster_bearing.config_screen.inverted_label"),
+                    INVERT_X, 120, BUTTON_WIDTH, 12, TEXT_COLOR, true);
+            button(graphics, Component.translatable(getModeTranslationKey(controlMode)),
+                    CONTROL_X, BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT, mouseX, mouseY, true);
+            button(graphics, Component.translatable("createthrusters.thruster_bearing.config_screen.inverted." + inverted),
+                    INVERT_X, BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT, mouseX, mouseY, true);
+        }finally{
+            scalableGui.pop(graphics);
         }
     }
 
-    // Handle mouse clicked
+    // Share the painted hit areas with tabs, typed fields and the range rail
     @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int btn) {
+    public boolean mouseClicked(double mouseX, double mouseY, int btn){
         double screenMouseX = mouseX;
         double screenMouseY = mouseY;
         mouseX = scalableGui.mouseX(mouseX);
         mouseY = scalableGui.mouseY(mouseY);
-        if (btn != 0) {
-            return super.mouseClicked(screenMouseX, screenMouseY, btn);
-        }
-
-        if (angleEditor != null) {
-            if (angleEditor.mouseClicked(mouseX, mouseY, btn)) {
-                return true;
-            }
+        if(btn != 0) return super.mouseClicked(screenMouseX, screenMouseY, btn);
+        if(angleEditor != null){
+            if(angleEditor.mouseClicked(mouseX, mouseY, btn)) return true;
             commitAngleEditor();
         }
-        if (angleMode == AngleMode.RANGE
-                && inside(mouseX, mouseY, guiLeft + 100, guiTop + 32,
-                ANGLE_LABEL_WIDTH, ANGLE_LABEL_HEIGHT)) {
-            openAngleEditor(true);
+        for(int idx = 0; idx < 2; idx++){
+            if(!inside(mouseX, mouseY, guiLeft + (idx == 0 ? 60 : 136), guiTop + TAB_Y, TAB_WIDTH, TAB_HEIGHT)) continue;
+            AngleMode next = idx == 0 ? AngleMode.RANGE : AngleMode.SWIVEL;
+            if(angleMode != next){
+                angleMode = next;
+                range.endDrag();
+                dirty = true;
+            }
             return true;
         }
-        if (angleMode == AngleMode.RANGE
-                && inside(mouseX, mouseY, guiLeft + 100, guiTop + 58,
-                ANGLE_LABEL_WIDTH, ANGLE_LABEL_HEIGHT)) {
-            openAngleEditor(false);
-            return true;
+        if(angleMode == AngleMode.RANGE){
+            if(inside(mouseX, mouseY, guiLeft + FIELD_X, guiTop + MIN_FIELD_Y, FIELD_WIDTH, FIELD_HEIGHT)){
+                openAngleEditor(true);
+                return true;
+            }
+            if(inside(mouseX, mouseY, guiLeft + FIELD_X, guiTop + MAX_FIELD_Y, FIELD_WIDTH, FIELD_HEIGHT)){
+                openAngleEditor(false);
+                return true;
+            }
+            int x = guiLeft + SLIDER_X;
+            int y = guiTop + SLIDER_Y;
+            if(RANGE_STYLE.contains(mouseX, mouseY, x, y, SLIDER_WIDTH, SLIDER_HEIGHT)){
+                boolean overThumb = RANGE_STYLE.isOverThumb(mouseX, mouseY, x, y, SLIDER_WIDTH, SLIDER_HEIGHT, range.lowerFraction())
+                        || RANGE_STYLE.isOverThumb(mouseX, mouseY, x, y, SLIDER_WIDTH, SLIDER_HEIGHT, range.upperFraction());
+                dirty |= range.beginDrag(sliderFraction(mouseX, mouseY), !overThumb);
+                return true;
+            }
         }
-        if (angleMode == AngleMode.RANGE && isOverLeftSlider(mouseX, mouseY)) {
-            dragMin = true;
-            beginAngleDrag(mouseY);
-            updateDraggedValue(mouseY);
-            return true;
-        }
-        if (angleMode == AngleMode.RANGE && isOverRightSlider(mouseX, mouseY)) {
-            dragMax = true;
-            beginAngleDrag(mouseY);
-            updateDraggedValue(mouseY);
-            return true;
-        }
-        if (inside(mouseX, mouseY, modeX, modeY, BUTTON_WIDTH, 18)) {
+        if(inside(mouseX, mouseY, guiLeft + CONTROL_X, guiTop + BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT)){
             controlMode = nextControlMode(controlMode);
             dirty = true;
             return true;
         }
-        for (int i = 0; i < 2; i++) {
-            AngleMode option = i == 0 ? AngleMode.RANGE : AngleMode.SWIVEL;
-            int optionX = angleModeOptionX(i);
-            if (inside(mouseX, mouseY, optionX, optY, angleModeOptionWidth(i), ANGLE_OPTION_HEIGHT)) {
-                if (angleMode != option) {
-                    angleMode = option;
-                    dirty = true;
-                }
-                return true;
-            }
-        }
-        if (inside(mouseX, mouseY, invertX, invertY, BUTTON_WIDTH, 18)) {
+        if(inside(mouseX, mouseY, guiLeft + INVERT_X, guiTop + BUTTON_Y, BUTTON_WIDTH, BUTTON_HEIGHT)){
             inverted = !inverted;
             dirty = true;
             return true;
@@ -359,220 +220,134 @@ public class ThrusterBearingRangeScreen extends AbstractSimiScreen {
         return super.mouseClicked(screenMouseX, screenMouseY, btn);
     }
 
-    // Handle keys while editing an angle
+    // Keep the existing fine movement and five-degree snapping modifiers
     @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (angleEditor != null) {
-            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
-                commitAngleEditor();
-                return true;
-            }
-            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
-                angleEditor = null;
-                return true;
-            }
-            return angleEditor.keyPressed(keyCode, scanCode, modifiers);
-        }
-        return super.keyPressed(keyCode, scanCode, modifiers);
-    }
-
-    // Handle typed characters while editing an angle
-    @Override
-    public boolean charTyped(char codePoint, int modifiers) {
-        return angleEditor != null
-                ? angleEditor.charTyped(codePoint, modifiers)
-                : super.charTyped(codePoint, modifiers);
-    }
-
-    // Handle mouse dragged
-    @Override
-    public boolean mouseDragged(double mouseX, double mouseY, int btn, double dragX, double dragY) {
-        double screenMouseX = mouseX;
-        double screenMouseY = mouseY;
-        mouseX = scalableGui.mouseX(mouseX);
-        mouseY = scalableGui.mouseY(mouseY);
-        if (btn == 0 && (dragMin || dragMax)) {
-            updateDraggedValue(mouseY);
+    public boolean mouseDragged(double mouseX, double mouseY, int btn, double dragX, double dragY){
+        if(btn == 0 && range.dragging()){
+            double fraction = sliderFraction(scalableGui.mouseX(mouseX), scalableGui.mouseY(mouseY));
+            dirty |= range.dragTo(fraction, hasShiftDown() && !hasControlDown() ? 0.25 : 1, hasControlDown() ? 5 : 0);
             return true;
         }
-        return super.mouseDragged(screenMouseX, screenMouseY, btn, dragX, dragY);
+        return super.mouseDragged(mouseX, mouseY, btn, dragX, dragY);
     }
 
-    // Handle mouse released
+    // Persist both stops together when releasing the selected thumb
     @Override
-    public boolean mouseReleased(double mouseX, double mouseY, int btn) {
-        boolean wasDragging = dragMin || dragMax;
-        dragMin = false;
-        dragMax = false;
-        if (wasDragging) {
+    public boolean mouseReleased(double mouseX, double mouseY, int btn){
+        if(btn == 0 && range.endDrag()){
             sendRangeUpdate();
             return true;
         }
         return super.mouseReleased(mouseX, mouseY, btn);
     }
 
-    // Handle screen removal
+    // Commit a typed value with Enter and cancel it with Escape
     @Override
-    public void removed() {
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers){
+        if(angleEditor == null) return super.keyPressed(keyCode, scanCode, modifiers);
+        if(keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER){
+            commitAngleEditor();
+            return true;
+        }
+        if(keyCode == GLFW.GLFW_KEY_ESCAPE){
+            angleEditor = null;
+            return true;
+        }
+        return angleEditor.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public boolean charTyped(char codePoint, int modifiers){
+        return angleEditor != null ? angleEditor.charTyped(codePoint, modifiers) : super.charTyped(codePoint, modifiers);
+    }
+
+    // Retain edits when leaving the screen
+    @Override
+    public void removed(){
         commitAngleEditor();
+        range.endDrag();
         sendRangeUpdate();
         super.removed();
     }
 
-    // Open one inline angle editor
-    private void openAngleEditor(boolean minimum) {
+/*--------------------------------------------------------##---------------------------------------------------------
+
+=======================================================================================================================
+                                                        HELPERS
+=======================================================================================================================
+
+------------------------------------------------------------##-----------------------------------------------------*/
+
+    // Edit a value inside its painted well
+    private void openAngleEditor(boolean minimum){
         editingMinAngle = minimum;
-        int y = guiTop + (minimum ? 34 : 60);
-        angleEditor = new EditBox(font, guiLeft + 100, y, ANGLE_LABEL_WIDTH, 20,
-                Component.translatable(minimum
-                        ? "createthrusters.thruster_bearing.min_angle"
-                        : "createthrusters.thruster_bearing.max_angle"));
+        angleEditor = new EditBox(font, guiLeft + FIELD_X + 2, guiTop + (minimum ? MIN_FIELD_Y : MAX_FIELD_Y),
+                FIELD_WIDTH - 6, FIELD_HEIGHT, Component.translatable(minimum
+                        ? "createthrusters.thruster_bearing.min_angle" : "createthrusters.thruster_bearing.max_angle"));
+        angleEditor.setBordered(false);
+        angleEditor.setTextColor(TEXT_COLOR);
         angleEditor.setMaxLength(16);
         angleEditor.setFilter(ThrusterBearingRangeScreen::isPartialAngle);
-        angleEditor.setValue(String.format(Locale.ROOT, "%.1f", minimum ? minAngleDeg : maxAngleDeg));
+        angleEditor.setValue(String.format(Locale.ROOT, "%.1f", minimum ? range.lower() : range.upper()));
         angleEditor.setCursorPosition(angleEditor.getValue().length());
         angleEditor.setHighlightPos(0);
         angleEditor.setFocused(true);
     }
 
-    // Commit the current inline angle editor
-    private void commitAngleEditor() {
-        if (angleEditor == null) return;
-        try {
-            double value = Mth.clamp(Double.parseDouble(angleEditor.getValue()), -limit, limit);
-            if (editingMinAngle) {
-                minAngleDeg = Math.min(value, maxAngleDeg);
-            } else {
-                maxAngleDeg = Math.max(value, minAngleDeg);
-            }
-            dirty = true;
-        } catch (NumberFormatException ignored) {
+    // Clamp typed stops through the same ordering rules as the thumbs
+    private void commitAngleEditor(){
+        if(angleEditor == null) return;
+        try{
+            double val = Double.parseDouble(angleEditor.getValue());
+            if(Double.isFinite(val)) dirty |= editingMinAngle ? range.setLower(val) : range.setUpper(val);
+        }catch(NumberFormatException ignored){
         }
         angleEditor = null;
         sendRangeUpdate();
     }
 
-    // Check whether text is a valid partial angle
-    private static boolean isPartialAngle(String value) {
-        return value != null && value.matches("-?(?:\\d+(?:\\.\\d*)?|\\.\\d*)?");
+    private static boolean isPartialAngle(String val){
+        return val != null && val.matches("-?(?:\\d+(?:\\.\\d*)?|\\.\\d*)?");
     }
 
-    // Update the dragged value
-    private void updateDraggedValue(double mouseY) {
-        double directAngle = angleFromMouseY(mouseY);
-        double startDirectAngle = angleFromMouseY(dragStartMouseY);
-        if (dragMin) {
-            double angle = CTSliderInputHelper.adjustDegrees(directAngle, startDirectAngle, dragStartMinAngleDeg,
-                    -limit, limit);
-            minAngleDeg = Math.min(angle, maxAngleDeg);
-        } else if (dragMax) {
-            double angle = CTSliderInputHelper.adjustDegrees(directAngle, startDirectAngle, dragStartMaxAngleDeg,
-                    -limit, limit);
-            maxAngleDeg = Math.max(angle, minAngleDeg);
+    private double sliderFraction(double mouseX, double mouseY){
+        return RANGE_STYLE.fractionAt(mouseX, mouseY, guiLeft + SLIDER_X, guiTop + SLIDER_Y, SLIDER_WIDTH, SLIDER_HEIGHT);
+    }
+
+    private Component angleLabel(boolean minimum){
+        double val = minimum ? range.lower() : range.upper();
+        String formatted = String.format(Locale.ROOT, Math.abs(val - Math.rint(val)) < 0.0001 ? "%.0f deg" : "%.1f deg", val);
+        return Component.translatable(minimum ? "createthrusters.thruster_bearing.min_angle"
+                : "createthrusters.thruster_bearing.max_angle").append(": ").append(formatted);
+    }
+
+    // Paint only the hover state and label over each baked button
+    private void button(GuiGraphics graphics, Component label, int x, int y, int width, int height,
+                        int mouseX, int mouseY, boolean selected){
+        if(inside(mouseX, mouseY, guiLeft + x, guiTop + y, width, height)){
+            graphics.fill(guiLeft + x + 1, guiTop + y + 1, guiLeft + x + width - 1, guiTop + y + height - 1, 0x22FFFFFF);
         }
-        dirty = true;
+        text(graphics, label, x + 2, y + 1, width - 4, height - 2, selected ? TEXT_COLOR : 0xFF303030, true);
     }
 
-    // Begin the angle drag
-    private void beginAngleDrag(double mouseY) {
-        dragStartMouseY = mouseY;
-        dragStartMinAngleDeg = minAngleDeg;
-        dragStartMaxAngleDeg = maxAngleDeg;
+    private void text(GuiGraphics graphics, Component label, int x, int y, int width, int height, int color, boolean centered){
+        GuiControlPreviews.drawFittedText(graphics, font, label, guiLeft + x, guiTop + y, width, height, 1, color, centered);
     }
 
-    // Get the angle from mouse y
-    private double angleFromMouseY(double mouseY) {
-        double normalized = 1.0D - Mth.clamp((mouseY - barTop) / BAR_HEIGHT, 0.0D, 1.0D);
-        return Mth.clamp(Mth.lerp(normalized, -limit, limit), -limit, limit);
+    private static boolean inside(double mouseX, double mouseY, int x, int y, int width, int height){
+        return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height;
     }
 
-    // Get the handle center y
-    private int getHandleCenterY(double angleDeg) {
-        double normalized = Mth.clamp((angleDeg + limit) / (limit * 2.0D), 0.0D, 1.0D);
-        return barTop + (int) Math.round((1.0D - normalized) * BAR_HEIGHT);
-    }
-
-    // Check if this is over the left slider
-    private boolean isOverLeftSlider(double mx, double my) {
-        int grabX = bgX + LEFT_GRAB_OFF;
-        int grabY = getHandleCenterY(minAngleDeg) - ALT_GRAB_H / 2 - 1;
-        return inside(mx, my, grabX - 1, grabY, ALT_GRAB_W + 2, ALT_GRAB_H + 2);
-    }
-
-    // Check if this is over the right slider
-    private boolean isOverRightSlider(double mx, double my) {
-        int grabX = bgX + RIGHT_GRAB_OFF;
-        int grabY = getHandleCenterY(maxAngleDeg) - ALT_GRAB_H / 2 - 1;
-        return inside(mx, my, grabX - 1, grabY, ALT_GRAB_W + 2, ALT_GRAB_H + 2);
-    }
-
-    // Draw the bar fill and handle
-    private void renderBarFillAndHandle(GuiGraphics g, int litX, int grabX,
-                                        double angleDeg, boolean hovered) {
-        double normalized = Mth.clamp((angleDeg + limit) / (limit * 2.0D), 0.0D, 1.0D);
-
-        int litH = (int) Math.round(normalized * BAR_HEIGHT);
-        if (litH > 0) {
-            int litSrcY = (int) Math.round((1.0D - normalized) * ALT_LIT_SH);
-            int litSrcH = (int) Math.round(normalized * ALT_LIT_SH);
-            g.blit(CTCreateScreenHelper.ALTITUDE_TEX,
-                    litX, barTop + BAR_HEIGHT - litH, ALT_LIT_W, litH,
-                    ALT_LIT_U, litSrcY, ALT_LIT_W, litSrcH,
-                    256, 256);
-        }
-
-        int handleCY = getHandleCenterY(angleDeg);
-        g.blit(CTCreateScreenHelper.ALTITUDE_TEX,
-                grabX, handleCY - ALT_GRAB_H / 2,
-                ALT_GRAB_W, ALT_GRAB_H,
-                ALT_GRAB_U, ALT_GRAB_V, ALT_GRAB_W, ALT_GRAB_H,
-                256, 256);
-    }
-
-    // Draw the handle label
-    private void renderHandleLabel(GuiGraphics guiGraphics, Component label, int grabX, double angleDeg) {
-        int handleCenterY = getHandleCenterY(angleDeg);
-        int labelY = Mth.clamp(handleCenterY + ALT_GRAB_H / 2 + 2,
-            barTop + 2,
-            barTop + BAR_HEIGHT - 8);
-        guiGraphics.drawCenteredString(font, label, grabX + ALT_GRAB_W / 2,
-            labelY, CTCreateScreenHelper.LABEL_COLOR);
-    }
-
-        // Get the angle mode option x
-        private int angleModeOptionX(int idx) {
-            if (idx <= 0) {
-                return optX;
-            }
-            return optX + RANGE_OPTION_WIDTH + ANGLE_OPTION_GAP;
-        }
-
-        // Get the angle mode option width
-        private int angleModeOptionWidth(int idx) {
-            return idx == 0 ? RANGE_OPTION_WIDTH : SWIVEL_OPTION_WIDTH;
-        }
-
-    // Check if this is inside
-    private static boolean inside(double mouseX, double mouseY, int x, int y, int width, int height) {
-        return mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + height;
-    }
-
-    // Send the range update
-    private void sendRangeUpdate() {
-        if (!dirty) return;
+    // Preserve the existing network contract and serialized modes
+    private void sendRangeUpdate(){
+        if(!dirty) return;
         dirty = false;
         PacketDistributor.sendToServer(new ThrusterBearingRangePayload(
-                be.getBlockPos(), minAngleDeg, maxAngleDeg, controlMode, angleMode, inverted));
+                be.getBlockPos(), range.lower(), range.upper(), controlMode, angleMode, inverted));
     }
 
-    // Format the angle
-    private Component formatAngle(double angleDeg) {
-        return Component.literal(String.format("%.1f deg", angleDeg));
-    }
-
-    // Get the next control mode
-    private static ControlMode nextControlMode(ControlMode currentMode) {
-        return switch (currentMode) {
+    private static ControlMode nextControlMode(ControlMode currentMode){
+        return switch(currentMode){
             case AUTO -> ControlMode.REDSTONE;
             case REDSTONE -> ControlMode.COMPUTER;
             case COMPUTER -> ControlMode.SERVO;
@@ -580,9 +355,8 @@ public class ThrusterBearingRangeScreen extends AbstractSimiScreen {
         };
     }
 
-    // Get the mode translation key
-    private static String getModeTranslationKey(ControlMode controlMode) {
-        return switch (controlMode) {
+    private static String getModeTranslationKey(ControlMode mode){
+        return switch(mode){
             case AUTO -> "createthrusters.thruster_bearing.control_mode.auto";
             case REDSTONE -> "createthrusters.thruster_bearing.control_mode.redstone";
             case COMPUTER -> "createthrusters.thruster_bearing.control_mode.computer";
@@ -590,17 +364,8 @@ public class ThrusterBearingRangeScreen extends AbstractSimiScreen {
         };
     }
 
-    // Get the next angle mode
-    @SuppressWarnings("unused")
-    private static AngleMode nextAngleMode(AngleMode currentMode) {
-        return currentMode == AngleMode.RANGE ? AngleMode.SWIVEL : AngleMode.RANGE;
-    }
-
-    // Get the angle mode translation key
-    private static String getAngleModeTranslationKey(AngleMode angleMode) {
-        return switch (angleMode) {
-            case RANGE -> "createthrusters.thruster_bearing.angle_mode.range";
-            case SWIVEL -> "createthrusters.thruster_bearing.angle_mode.swivel";
-        };
+    private static String getAngleModeTranslationKey(AngleMode mode){
+        return mode == AngleMode.RANGE ? "createthrusters.thruster_bearing.angle_mode.range"
+                : "createthrusters.thruster_bearing.angle_mode.swivel";
     }
 }

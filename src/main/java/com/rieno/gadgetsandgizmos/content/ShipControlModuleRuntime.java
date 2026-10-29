@@ -370,6 +370,7 @@ public final class ShipControlModuleRuntime {
     private List<ShipControlMap.DockingConnector> doorConnectors = List.of();
     private long lastDoorMapTick = Long.MIN_VALUE;
     private Set<UUID> doorMapBodyIds = Set.of();
+    private Set<ScmConfigurationProfile.UnitReference> doorMapSelection = Set.of();
     private Vec3 doorMapForward = Vec3.ZERO;
     private Vec3 doorMapUp = Vec3.ZERO;
     private int dockDoorMask;
@@ -1138,6 +1139,7 @@ public final class ShipControlModuleRuntime {
         List<AutopilotDebugSnapshot.Section> sections = new ArrayList<>();
         sections.add(autopilotOverviewSection(vehicleId, brainState, primary, pathState));
         sections.add(autopilotTelemetrySection(vehicleTelemetry));
+        sections.add(new AutopilotDebugSnapshot.Section("Dock doors", dockDoorDebugEntries()));
         if (!activeCommands.isEmpty()) {
             sections.add(autopilotActiveCommandsSection());
         }
@@ -1217,6 +1219,7 @@ public final class ShipControlModuleRuntime {
         lines.add("runtime.freeze_handles=" + freezeHandles.size());
         lines.add("runtime.nested_freeze_handles=" + nestedFreezeHandles.size());
         lines.add("runtime.magnetic_connector=" + magneticConnectorIdx);
+        for(var entry : dockDoorDebugEntries()) lines.add("doors." + entry.label() + "=" + entry.value());
         lines.add("commands.active=" + activeCommands.keySet());
         lines.add("commands.completed=" + completedCommands);
         lines.add("spline.key=" + scheduleSplineConstraintKey);
@@ -3171,6 +3174,15 @@ public final class ShipControlModuleRuntime {
             loadMap();
         }
 
+        // A locked dock controls its doors while flight control waits for load recovery
+        if(phase == Phase.READY && map != null){
+            ServerSubLevel currentRoot = containingServerSubLevel();
+            if(currentRoot != null && map.rootSubLevelId().equals(currentRoot.getUniqueId())){
+                reconcileLiveDockingConnectors(currentRoot);
+                tickDockDoors(currentRoot);
+            }
+        }
+
         if (resumePoseHoldAfterLoad) {
             if (!tickResumePoseHold()) {
                 return;
@@ -3222,8 +3234,6 @@ public final class ShipControlModuleRuntime {
             if (currentRoot != null
                     && map.rootSubLevelId().equals(currentRoot.getUniqueId())) {
                 refreshActiveAssemblyMap(currentRoot);
-                reconcileLiveDockingConnectors(currentRoot);
-                tickDockDoors(currentRoot);
             }
         }
         if (phase == Phase.READY && map != null
@@ -4153,21 +4163,15 @@ public final class ShipControlModuleRuntime {
             var endpoint = dock.withConnector(target);
             endpoints.put(dockSlot(endpoint), endpoint);
         }
-        Set<ShipDockScheduler.DockSlot> provisioned = new HashSet<>();
         for(var reservation : ShipDockScheduler.get(level.getServer()).reservations(dock.id(), level.getServer().getTickCount())){
             if(reservation.owner().ownerId().equals(dockRequestOwnerId())
                     || reservation.owner().ownerId().equals(controller.getShippingSchedulePilotId())) continue;
             var endpoint = endpoints.get(reservation.slot());
             if(endpoint == null || reservation.slot().equals(dockSlot(dock))) continue;
-            provisioned.add(reservation.slot());
+            // Docked vessels already contribute their live hull through approachObstacles
+            if(SimulatedDockingApi.loadedPeer(DockingConnectorAutomation.resolve(level,
+                    endpoint.connectorSubLevelId(), endpoint.connectorPos())) != null) continue;
             berths.add(berthObstacle(reservation.owner().ownerId(), endpoint, reservation.vessel()));
-        }
-        for(var entry : endpoints.entrySet()){
-            if(entry.getKey().equals(dockSlot(dock)) || provisioned.contains(entry.getKey())) continue;
-            var endpoint = entry.getValue();
-            if(DockingConnectorAutomation.hasConnectionState(DockingConnectorAutomation.resolve(level,
-                    endpoint.connectorSubLevelId(), endpoint.connectorPos()))) berths.add(berthObstacle(dock.id(), endpoint,
-                    new ShipDockScheduler.VesselEnvelope(1, 1, 0.5D)));
         }
         List<ShipControlModuleRuntime> runtimes;
         synchronized(LIVE_RUNTIMES){ runtimes = List.copyOf(LIVE_RUNTIMES); }
@@ -4448,7 +4452,14 @@ public final class ShipControlModuleRuntime {
             Vec3 target = controls.getLast();
             boolean accepted = executeApproachSpline(exit, Map.of("x", target.x, "y", target.y, "z", target.z,
                     "speed", 4.0D, "tolerance", 0.5D, "avoid_collisions", 1.0D), text, controls, false, maneuverSlot.dockId());
-            if(accepted) authoredRouteDepartures.put(commandKey(exit, "ship_navigate"), true);
+            if(accepted){
+                String key = commandKey(exit, "ship_navigate");
+                authoredRouteDepartures.put(key, true);
+                var dock = ShipDockRegistry.get(controller.getLevel().getServer()).get(maneuverSlot.dockId());
+                if(dock != null) dock.connectorTargets().stream().map(dock::withConnector)
+                        .filter(endpoint -> dockSlot(endpoint).equals(maneuverSlot)).findFirst()
+                        .ifPresent(endpoint -> authoredDockTargets.put(key, endpoint));
+            }
             return accepted;
         }
         cancelNamedDockMovement(exit, backout, "");
@@ -4471,8 +4482,8 @@ public final class ShipControlModuleRuntime {
         var connector = controller.getShipDockingConnector(maneuverConnectorIdx);
         BlockEntity endpoint = connector == null ? null : DockingConnectorAutomation.resolve(
                 controller.getLevel(), connector.subLevelId(), connector.blockPosition());
-        if(SimulatedDockingApi.hasPhysicalConnection(endpoint)){
-            var peer = SimulatedDockingApi.loadedPeer(endpoint);
+        var peer = SimulatedDockingApi.loadedPeer(endpoint);
+        if(DockingConnectorAutomation.isLockedPair(endpoint, peer)){
             if(peer != null){
                 UUID bodyId = SimulatedHelper.getContainingSubLevelId(peer);
                 String key = controller.getLevel().dimension().location() + "|" + (bodyId == null ? "world" : bodyId) + "|" + peer.getBlockPos().asLong();
@@ -4483,7 +4494,7 @@ public final class ShipControlModuleRuntime {
                 }
             }
             // A stationary docked ship occupies its hull, leaving the lane and unrelated docks usable
-            scheduler.retainClearance(maneuverOwner, maneuverSlot, moving || occupied.isEmpty() ? maneuverBounds : occupied, server.getTickCount());
+            scheduler.retainClearance(maneuverOwner, maneuverSlot, occupied.isEmpty() ? maneuverBounds : occupied, server.getTickCount());
             return;
         }
         if(!moving && current.available() && ctx != null && DockingDeparturePlan.clear(
@@ -5484,15 +5495,14 @@ public final class ShipControlModuleRuntime {
         return Set.copyOf(ids);
     }
 
-    // Apply requests only after the ship has a locked physical connection to a Ship Dock
+    // Use the same locked connector pair that completes Schedule and Dock At
     private void tickDockDoors(ServerSubLevel root){
         int mask = 0;
         for(ShipControlMap.DockingConnector mapped : doorConnectors){
             var ship = DockingConnectorAutomation.resolve(controller.getLevel(),
                     mapped.subLevelId(), mapped.blockPosition());
             var peer = ship == null ? null : ship.getOtherConnector();
-            if(DockingConnectorAutomation.isLockedPair(ship, peer)
-                    && SimulatedDockingApi.hasPhysicalConnection(ship)) mask |= requestedDockDoors(peer);
+            if(DockingConnectorAutomation.isLockedPair(ship, peer)) mask |= requestedDockDoors(peer);
         }
         refreshDoorMap(root, mask != 0 && dockDoorMask == 0);
         dockDoors.apply(controller.getLevel(), mask);
@@ -5501,17 +5511,65 @@ public final class ShipControlModuleRuntime {
 
     // Read the linked dock's live selection without loading an unavailable block entity
     private static int requestedDockDoors(@Nullable BlockEntity connector){
-        if(connector == null || connector.getLevel() == null || connector.getLevel().getServer() == null) return 0;
+        ShipDockBlockEntity dock = doorControlDock(connector);
+        return dock == null ? 0 : dock.requestedDoorMask();
+    }
+
+    // Resolve the station by its physical connector when saved ownership metadata is stale
+    private static @Nullable ShipDockBlockEntity doorControlDock(@Nullable BlockEntity connector){
+        if(connector == null || connector.getLevel() == null || connector.getLevel().getServer() == null) return null;
         Level level = connector.getLevel();
         ShipDockRegistry registry = ShipDockRegistry.get(level.getServer());
         UUID owner = connector instanceof com.rieno.gadgetsandgizmos.compat.simulated.DockingConnectorBindingAccess binding
                 ? binding.createthrusters$getShipDockId() : null;
-        ShipDockRegistry.Dock dock = owner == null ? registry.dockForConnector(
-                level.dimension().location(), SimulatedHelper.getContainingSubLevelId(connector), connector.getBlockPos()) : registry.get(owner);
-        if(dock == null) return 0;
+        UUID bodyId = SimulatedHelper.getContainingSubLevelId(connector);
+        ShipDockRegistry.Dock dock = owner == null ? null : registry.get(owner);
+        if(dock != null && dock.dimension().equals(level.dimension().location())
+                && dock.connectorTargets().stream().anyMatch(target -> Objects.equals(target.subLevelId(), bodyId)
+                && target.pos().equals(connector.getBlockPos()))){
+            var loaded = loadedDoorControlDock(level, dock);
+            if(loaded != null) return loaded;
+        }
+        dock = registry.dockForConnector(level.dimension().location(), bodyId, connector.getBlockPos());
+        return dock == null ? null : loadedDoorControlDock(level, dock);
+    }
+
+    // Read only the loaded station represented by the selected registry record
+    private static @Nullable ShipDockBlockEntity loadedDoorControlDock(Level level, ShipDockRegistry.Dock dock){
         BlockEntity target = SimulatedHelper.findLoadedBlockEntityExact(level, dock.subLevelId(), dock.pos());
         return target instanceof ShipDockBlockEntity loaded && loaded.getDockId().equals(dock.id())
-                ? loaded.requestedDoorMask() : 0;
+                ? loaded : null;
+    }
+
+    // Show each stage of the live request without confusing a disabled dock with a broken connection
+    private List<AutopilotDebugSnapshot.Entry> dockDoorDebugEntries(){
+        List<AutopilotDebugSnapshot.Entry> entries = new ArrayList<>();
+        entries.add(debugEntry("Selected blocks", Integer.toString(controller.getScmConfigurationProfile().hullDoors().size())));
+        entries.add(debugEntry("Mapped doors", Integer.toString(dockDoors.doors().size())));
+        entries.add(debugEntry("Applied sides", dockDoorSides(dockDoorMask)));
+        for(var side : ShipDoorApi.Side.values()) entries.add(debugEntry(side.name(), Long.toString(
+                dockDoors.doors().stream().filter(door -> door.side() == side).count())));
+        int locked = 0;
+        for(var mapped : doorConnectors){
+            var ship = DockingConnectorAutomation.resolve(controller.getLevel(), mapped.subLevelId(), mapped.blockPosition());
+            var peer = ship == null ? null : ship.getOtherConnector();
+            if(!DockingConnectorAutomation.isLockedPair(ship, peer)) continue;
+            locked++;
+            var dock = doorControlDock(peer);
+            entries.add(debugEntry("Connector " + mapped.index(), dock == null ? "Locked; Ship Dock unavailable"
+                    : dock.getDockName() + "; " + (dock.isDoorControlEnabled() ? "enabled" : "disabled")
+                    + "; selected " + dockDoorSides(dock.getDoorControlMask())
+                    + "; requested " + dockDoorSides(dock.requestedDoorMask())));
+        }
+        entries.add(debugEntry("Locked connections", Integer.toString(locked)));
+        return List.copyOf(entries);
+    }
+
+    // Keep cardinal request labels readable in brain snapshots and file traces
+    private static String dockDoorSides(int mask){
+        String res = java.util.Arrays.stream(ShipDoorApi.Side.values()).filter(side -> (mask & side.mask()) != 0)
+                .map(Enum::name).collect(java.util.stream.Collectors.joining("+"));
+        return res.isEmpty() ? "None" : res;
     }
 
     // Refresh construction and orientation changes while retaining door addresses across movement
@@ -5519,11 +5577,16 @@ public final class ShipControlModuleRuntime {
         List<SubLevel> bodies = connectedShipSubLevels(root);
         Set<UUID> ids = bodies.stream().map(SubLevel::getUniqueId).collect(java.util.stream.Collectors.toSet());
         Vec3 forward = controllerForwardRoot(), up = controllerUpRoot();
+        var selection = controller.getScmConfigurationProfile().hullDoors();
         long now = controller.getLevel().getGameTime();
-        if(!force && ids.equals(doorMapBodyIds) && forward.distanceToSqr(doorMapForward) < 1.0E-8D
+        if(!force && selection.equals(doorMapSelection) && ids.equals(doorMapBodyIds) && forward.distanceToSqr(doorMapForward) < 1.0E-8D
                 && up.distanceToSqr(doorMapUp) < 1.0E-8D && !intervalElapsed(now, lastDoorMapTick, 100L)) return;
-        dockDoors.replace(ShipDoorApi.discover(root, bodies, forward, up));
+        ServerSubLevel host = containingServerSubLevel();
+        Vec3 origin = rootPosition(root, host == null ? root : host, controller.getBlockPos().getCenter());
+        dockDoors.replace(ShipDoorApi.selected(root, bodies, selection.stream()
+                .map(ref -> new ShipDoorApi.Reference(ref.subLevelId(), ref.blockPosition())).toList(), origin, forward, up));
         doorMapBodyIds = Set.copyOf(ids);
+        doorMapSelection = Set.copyOf(selection);
         doorMapForward = forward;
         doorMapUp = up;
         lastDoorMapTick = now;
@@ -6473,7 +6536,7 @@ public final class ShipControlModuleRuntime {
     private void readConfiguredPropulsionUnits(ServerSubLevel root) {
         ScmConfigurationProfile profile = controller.getScmConfigurationProfile();
         Set<ScmConfigurationProfile.UnitReference> configured = new LinkedHashSet<>();
-        profile.groups().forEach(group -> configured.addAll(group.units()));
+        profile.controlGroups().forEach(group -> configured.addAll(group.units()));
         configured.removeIf(reference -> excludedScmBlock(reference.subLevelId(), reference.blockPosition()));
         if (configured.isEmpty()) {
             profileDrivenInitialization = false;
@@ -6837,7 +6900,7 @@ public final class ShipControlModuleRuntime {
             Map<PropulsionUnitKey, ShipControlMap.PropulsionUnit> reusableUnits
     ) {
         ScmConfigurationProfile profile = controller.getScmConfigurationProfile();
-        List<ScmConfigurationProfile.UnitReference> references = profile.groups().stream()
+        List<ScmConfigurationProfile.UnitReference> references = profile.controlGroups().stream()
                 .flatMap(group -> group.units().stream())
                 .filter(ScmConfigurationProfile.UnitReference::isValid)
                 .distinct()
@@ -7543,7 +7606,7 @@ public final class ShipControlModuleRuntime {
                 if(excludedScmBlock(subLevel.getUniqueId(), blockEntity.getBlockPos())) continue;
                 ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(blockEntity.getBlockState().getBlock());
                 for (BearingActuator actuator : bearingActuatorsFor(blockEntity)) {
-                    if(profileDrivenInitialization && controller.getScmConfigurationProfile().groups().stream()
+                    if(profileDrivenInitialization && controller.getScmConfigurationProfile().controlGroups().stream()
                             .flatMap(group -> group.units().stream()).noneMatch(reference -> !reference.usesFaceControl()
                                     && Objects.equals(reference.subLevelId(), subLevel.getUniqueId())
                                     && reference.blockPosition().equals(blockEntity.getBlockPos()))) continue;
@@ -10435,7 +10498,7 @@ public final class ShipControlModuleRuntime {
         ScmConfigurationProfile configuration = controller.getScmConfigurationProfile();
         Set<ScmConfigurationProfile.UnitReference> configuredFaceUnits =
                 configuration.isConfiguredFor(currentMap)
-                        ? configuration.groups().stream().flatMap(group -> group.units().stream())
+                        ? configuration.controlGroups().stream().flatMap(group -> group.units().stream())
                         .filter(ScmConfigurationProfile.UnitReference::usesFaceControl)
                         .collect(java.util.stream.Collectors.toUnmodifiableSet())
                         : Set.of();
@@ -11658,6 +11721,25 @@ public final class ShipControlModuleRuntime {
                 }else torque = torque.add(acceleration);
                 continue;
             }
+            boolean tracksPoint = "ship_dock".equals(command.type()) || "ship_navigate".equals(command.type())
+                    || "ship_follow".equals(command.type());
+            Telemetry targetTelemetry = tracksPoint ? targetPointTelemetry(
+                    telemetry, command.targetPoint(), command.targetConnectorIndex()) : telemetry;
+            if(tracksPoint && !targetTelemetry.available()){
+                // Brake without replacing a missing connector with another tracking point
+                force = force.add(feedbackForceDemand(worldDirectionToRoot(
+                        telemetry.velocity().scale(-2.2D)), effectiveMap, dynamics));
+                brakeStrength = Math.max(brakeStrength, 1.0D);
+                decelerationStrength = Math.max(decelerationStrength, 1.0D);
+                compensateGravity = true;
+                uprightStabilizationStrength = Math.max(uprightStabilizationStrength, 0.8D);
+                positionIntegralErrors.remove(entry.getKey());
+                routeTrafficIntents.remove(entry.getKey());
+                routeTrafficDecisions.remove(entry.getKey());
+                releaseScheduleSplineConstraint(entry.getKey());
+                setDockCollisionExclusions(Set.of(), false);
+                continue;
+            }
             setDockCollisionExclusions(dockingCollisionExclusions(command),
                     collisionAvoidanceEnabled(command) && dockingCaptureCommand(command));
             switch (command.type()) {
@@ -11810,8 +11892,6 @@ public final class ShipControlModuleRuntime {
                         compensateGravity = true;
                         break;
                     }
-                    Telemetry targetTelemetry = targetPointTelemetry(
-                            telemetry, command.targetPoint(), command.targetConnectorIndex());
                     navigationPathStates.remove(entry.getKey() + ":docking_approach");
                     Vec3 target = command.targetPosition();
                     Vec3 captureDirection = normalize(
@@ -11885,8 +11965,6 @@ public final class ShipControlModuleRuntime {
                             targetTelemetry, command, guidance, modeDemand);
                 }
                 case "ship_navigate", "ship_follow" -> {
-                    Telemetry targetTelemetry = targetPointTelemetry(
-                            telemetry, command.targetPoint(), command.targetConnectorIndex());
                     SplineRouteTraversal authoredRoute = authoredDockRoutes.get(entry.getKey());
                     boolean finalAlignmentRequested = authoredRoute == null
                             && command.targetDirection().lengthSqr() > 1.0E-12D;
@@ -12590,6 +12668,20 @@ public final class ShipControlModuleRuntime {
         Vec3 position = telemetry.position();
         HullBounds hull = cachedShipHullBounds(position, collisionContext);
         SplineRouteTraversal authored = authoredDockRoutes.get(commandKey);
+        // Captured lanes can stop for traffic but cannot escape across unrelated lanes
+        if(authored != null && (authored.captured() || authored.aligningAtEntry(position))){
+            if(requested.lengthSqr() <= 1.0E-12D) return guidance;
+            double stopping = Math.min(8.0D, Math.max(0.25D,
+                    telemetry.velocity().length() * CONTROL_TICK_SECONDS * 2.0D));
+            double clearance = reactiveSafetyCollisionDistance(position, requested, stopping, groundVehicle, true, stopping);
+            if(clearance + 1.0E-4D < stopping){
+                long tick = controller.getLevel().getGameTime();
+                blockedApproachSince.computeIfAbsent(commandKey, ignored -> tick);
+                return NavigationGuidance.stopped(position);
+            }
+            blockedApproachSince.remove(commandKey);
+            return guidance;
+        }
         ReactiveCollisionAvoidance.ProximityHazard proximity = collisionProximityHazard(telemetry, collisionContext, hull);
         if(proximity.available()){
             NavigationPathState state = navigationPathStates.get(commandKey);
@@ -12602,19 +12694,6 @@ public final class ShipControlModuleRuntime {
             NavigationGuidance escape = proximityAvoidanceGuidance(commandKey, telemetry, command,
                     collisionContext, hull, proximity, groundVehicle);
             if(escape != null) return escape;
-        }
-        if((authored != null && (authored.captured() || authored.aligningAtEntry(position))) || "ship_dock".equals(command.type())){
-            if(requested.lengthSqr() <= 1.0E-12D) return guidance;
-            double stopping = Math.min(8.0D, Math.max(0.25D,
-                    telemetry.velocity().length() * CONTROL_TICK_SECONDS * 2.0D));
-            double clearance = reactiveSafetyCollisionDistance(position, requested, stopping, groundVehicle, true, stopping);
-            if(clearance + 1.0E-4D < stopping){
-                long tick = controller.getLevel().getGameTime();
-                blockedApproachSince.computeIfAbsent(commandKey, ignored -> tick);
-                return NavigationGuidance.stopped(position);
-            }
-            blockedApproachSince.remove(commandKey);
-            return guidance;
         }
         if(requested.lengthSqr() <= 1.0E-12D) return guidance;
         Vec3 forward = normalize(rootDirectionToWorld(controllerForwardRoot()), requested);
@@ -13361,6 +13440,13 @@ public final class ShipControlModuleRuntime {
                     .stream().map(box -> box.move(telemetry.position().scale(-1))).toList();
             travelClearance = Math.min(travelClearance, DockTrafficGeometry.clearance(telemetry.position(), selectedTravelDirection,
                     scanRange, hull, ShipDockScheduler.get(server).clearanceObstacles(maneuverOwner, server.getTickCount())));
+            var dock = authoredDockTargets.get(commandKey);
+            if(authored != null && authored.captured() && dock != null){
+                // Live probes cover centreline correction; lane braking follows the ordered spline
+                List<Vec3> controls = authored.remainingControls(telemetry.position());
+                travelClearance = Math.min(travelClearance, DockTrafficGeometry.clearance(
+                        controls, scanRange, hull, approachObstacles(dock)));
+            }
         }
         collisionSpeedLimit = ScmSpeedControl.scannedSafeSpeed(travelClearance, scanRange,
                 command.targetSpeed(), groundMode ? GROUND_NAVIGATION_MIN_CLEARANCE
@@ -14119,7 +14205,7 @@ public final class ShipControlModuleRuntime {
         Set<String> requestedSources = requestedSignals.keySet().stream()
                 .map(ShipControlModuleRuntime::scmProfileFaceSignalSource)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
-        for (ScmConfigurationProfile.Group group : configuration.groups()) {
+        for (ScmConfigurationProfile.Group group : configuration.controlGroups()) {
             for (ScmConfigurationProfile.UnitReference reference : group.units()) {
                 if (reference.usesFaceControl()
                         && !requestedSources.contains(scmProfileFaceSignalSource(reference))) {
@@ -14469,7 +14555,7 @@ public final class ShipControlModuleRuntime {
         }
         ScmConfigurationProfile configuration = controller.getScmConfigurationProfile();
         if (configuration != null) {
-            for (ScmConfigurationProfile.Group group : configuration.groups()) {
+            for (ScmConfigurationProfile.Group group : configuration.controlGroups()) {
                 for (ScmConfigurationProfile.UnitReference reference : group.units()) {
                     setProfileFaceSignal(batch, reference, targetIndex, 0);
                 }
@@ -16578,13 +16664,13 @@ public final class ShipControlModuleRuntime {
                 ? ShipTargetPoint.CENTER_OF_MASS : targetPoint;
         if (!centerTelemetry.available() || root == null
                 || selected.centerOfMass()) {
-            return centerTelemetry;
+            return selected.dockingConnector() ? Telemetry.EMPTY : centerTelemetry;
         }
 
         if (selected.dockingConnector()) {
             ShipControlMap.DockingConnector connector = mappedConnector(connectorIdx);
             if (connector == null) {
-                return centerTelemetry;
+                return Telemetry.EMPTY;
             }
             MappedDockingConnector mapped = mappedDockingConnector(root, connector);
             Vec3 worldPoint = mapped.worldTipPosition();
@@ -16628,6 +16714,7 @@ public final class ShipControlModuleRuntime {
                     return connector;
                 }
             }
+            return null;
         }
         return connectors.getFirst();
     }
@@ -17631,6 +17718,10 @@ public final class ShipControlModuleRuntime {
         SplineRouteTraversal route = authoredDockRoutes.get(key);
         if(route == null) return liveNavigationGuidanceUnprotected(key, telemetry, command, target);
         if(completedCommands.contains(key)) return NavigationGuidance.stopped(telemetry.position());
+        var dock = authoredDockTargets.get(key);
+        if(dock != null && !authoredRouteDepartures.getOrDefault(key, false)){
+            route = refreshApproachMovement(key, dock, telemetry.position(), approachHull(dock), approachObstacles(dock));
+        }
         publishRouteTrafficIntent(key, telemetry, command);
         double lookahead = Math.max(0.5D, Math.min(2.0D, telemetry.velocity().length() * 0.5D));
         WaypointSpline.TrackingTarget tracking = isControlMode(ScmBuiltinControlModes.AIRSHIP_ID)
@@ -19648,6 +19739,7 @@ public final class ShipControlModuleRuntime {
             Telemetry targetTelemetry,
             ActiveShipCommand command
     ) {
+        if(!targetTelemetry.available()) return false;
         double distance = usesGroundNavigation()
                 ? horizontalDistance(targetTelemetry.position(), command.targetPosition())
                 : targetTelemetry.position().distanceTo(command.targetPosition());
@@ -21432,6 +21524,8 @@ public final class ShipControlModuleRuntime {
     // Give manual inputs priority over autonomous collision checks
     private boolean collisionAvoidanceEnabled(@Nullable ActiveShipCommand command){
         if(command == null || !command.avoidCollisions()) return false;
+        if(isDockingAxisApproach(command)
+                && !authoredDockRoutes.containsKey(commandKey(command.id(), command.type()))) return false;
         return ScmCommandRouting.allowsCollisionAvoidance(command.type(), command.avoidCollisions(),
                 hasManualControlInputs());
     }

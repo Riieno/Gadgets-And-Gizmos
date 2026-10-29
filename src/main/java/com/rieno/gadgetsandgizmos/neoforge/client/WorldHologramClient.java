@@ -12,12 +12,12 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.rieno.gadgetsandgizmos.lib.probe.BlockEntityLookupApi;
 import com.rieno.gadgetsandgizmos.content.WorldHologramProjectorBlockEntity;
 import com.rieno.gadgetsandgizmos.lib.client.render.HologramEntityRenderer;
-import com.rieno.gadgetsandgizmos.lib.client.render.HologramProjectionRenderer;
 import com.rieno.gadgetsandgizmos.lib.client.render.HologramBlockEntityRenderer;
-import com.rieno.gadgetsandgizmos.lib.client.render.HologramProjectionFrame;
-import com.rieno.gadgetsandgizmos.lib.client.render.HologramRenderScope;
 import com.rieno.gadgetsandgizmos.content.AccDisplayBlockEntity;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletBlockEntity;
+import com.rieno.gadgetsandgizmos.lib.client.render.HologramProjectionRenderer;
+import com.rieno.gadgetsandgizmos.lib.client.render.HologramProjectionFrame;
+import com.rieno.gadgetsandgizmos.lib.client.render.HologramRenderScope;
 import com.rieno.gadgetsandgizmos.lib.client.render.ProjectionSmoothing;
 import com.rieno.gadgetsandgizmos.lib.client.render.SubLevelClientRenderApi;
 import com.rieno.gadgetsandgizmos.lib.client.render.SubLevelHologramRenderer;
@@ -25,6 +25,7 @@ import com.rieno.gadgetsandgizmos.lib.hologram.HologramSlice;
 import com.rieno.gadgetsandgizmos.lib.physics.ColoredLightBridge;
 import com.rieno.gadgetsandgizmos.config.CTConfigs;
 import org.joml.Vector3f;
+import org.joml.Quaternionf;
 import com.rieno.gadgetsandgizmos.lib.hologram.HologramChunk;
 import com.rieno.gadgetsandgizmos.lib.hologram.HologramEntity;
 import com.rieno.gadgetsandgizmos.lib.hologram.HologramRegion;
@@ -71,7 +72,7 @@ public final class WorldHologramClient{
 
     // Register GPU cache cleanup with the normal resource reload lifecycle
     public static void registerReloadListeners(RegisterClientReloadListenersEvent evt){
-        evt.registerReloadListener((ResourceManagerReloadListener)resources -> { generation++; clear(); });
+        evt.registerReloadListener((ResourceManagerReloadListener)resources -> { generation++; clear(); HologramProjectionRenderer.clearColorCache(); });
     }
 
     public static void onClientTick(ClientTickEvent.Post evt){
@@ -133,8 +134,11 @@ public final class WorldHologramClient{
             projection.nextRequest = now + 40;
         }
         HologramProjectionFrame frame = frame(projector, projection, partialTicks);
-        Vec3 center = SubLevelClientRenderApi.worldFrame(projector, partialTicks).position();
+        var mount = SubLevelClientRenderApi.worldFrame(projector, partialTicks);
+        Vec3 center = mount.position();
+        var owner = SableLevelApi.containingId(projector);
         var settings = projector.settings();
+        var resolution = CTConfigs.CLIENT.worldHologramProjectorResolution.get();
         var region = new HologramRegion(new ChunkPos(net.minecraft.core.BlockPos.containing(center)), settings.radius());
         projection.chunks.values().removeIf(chunk -> !region.contains(chunk.pos()));
         Vec3 origin = frame.origin();
@@ -143,41 +147,53 @@ public final class WorldHologramClient{
         projection.dynamic.beginFrame();
         poses.pushPose();
         try{
-            poses.translate(0.5, settings.height() + 0.25, 0.5);
+            Vector3f lift = new Vector3f(0, settings.height() - 0.25F, 0);
+            new Quaternionf(projector.projectionOrientation().rotation()).transform(lift);
+            poses.translate(0.5 + lift.x, 0.5 + lift.y, 0.5 + lift.z);
+            poses.mulPose(new Quaternionf(mount.orientation()).invert().mul(frame.orientation()));
             poses.scale(scale, scale, scale);
-            projection.terrain.render(poses, buffers, origin, projection.chunks.values(), generation);
+            projection.terrain.render(poses, buffers, origin, projection.chunks.values(), generation, resolution);
             projection.dynamic.render(poses, buffers, origin, projection.chunks.values(), null, partialTicks);
-            if(settings.ships()) projection.ships.render(poses, buffers, origin, region, projection.slice,
-                    CTConfigs.SERVER.worldHologramObfuscateOres.get(), partialTicks, generation, projection.dynamic);
+            if(settings.ships() || owner != null && settings.ownedSubLevel()) projection.ships.renderExteriorModels(poses, buffers, origin, region, projection.slice,
+                    CTConfigs.SERVER.worldHologramObfuscateOres.get(), partialTicks, generation, projection.dynamic,
+                    body -> body.getUniqueId().equals(owner) ? settings.ownedSubLevel() : settings.ships(), resolution);
             else projection.ships.close();
-            projection.models.render(poses, buffers, origin, projection.entities, partialTicks, entity ->
-                    entity instanceof net.minecraft.world.entity.player.Player ? settings.players() :
-                    entity instanceof net.minecraft.world.entity.monster.Enemy ? settings.hostile() : settings.passive());
+            projection.models.render(poses, buffers, origin, projection.entities, partialTicks, (snapshot, entity) ->
+                    (settings.ownedSubLevel() || owner == null || !owner.equals(snapshot.subLevelId()))
+                            && (entity instanceof net.minecraft.world.entity.player.Player ? settings.players() :
+                            entity instanceof net.minecraft.world.entity.monster.Enemy ? settings.hostile() : settings.passive()));
         }finally{ poses.popPose(); projection.dynamic.endFrame(); }
     }
 
-    // Use the same interpolated carrier pose for the source anchor and native Flywheel embeddings
+    // Use the same interpolated carrier pose for the source anchor and projected models
     private static HologramProjectionFrame frame(WorldHologramProjectorBlockEntity projector, Projection projection, float tick){
         var mount = SubLevelClientRenderApi.worldFrame(projector, tick);
         var settings = projector.settings();
         double seconds = (Minecraft.getInstance().level.getGameTime() + tick) / 20D;
         double baseline = projection.hasHeight ? HologramSlice.projectionOriginY(projection.surfaceY, settings.yOffset()) : mount.position().y;
         double y = projection.smoothing.update(new Vec3(0, baseline, 0), seconds).y;
-        Vector3f lift = new Vector3f(0, (float)((settings.height() - 0.25) * mount.scale().y), 0);
+        Quaternionf local = new Quaternionf(projector.projectionOrientation().rotation());
+        Quaternionf orientation = new Quaternionf(mount.orientation()).mul(local);
+        Vector3f lift = local.transform(new Vector3f(0, settings.height() - 0.25F, 0));
+        lift.mul((float)mount.scale().x, (float)mount.scale().y, (float)mount.scale().z);
         mount.orientation().transform(lift);
         Vec3 target = mount.position().add(lift.x, lift.y, lift.z);
         double scale = settings.size() / (settings.radius() * 16D);
-        return new HologramProjectionFrame(target, mount.orientation(), mount.scale().scale(scale),
+        var frame = new HologramProjectionFrame(target, orientation, mount.scale().scale(scale),
                 new Vec3(mount.position().x, y, mount.position().z));
+        if(settings.lockOrientation()) frame = frame.lockWorldUp();
+        if(settings.matchOrientation() && SableLevelApi.containingId(projector) != null){
+            return frame.alignSourceHeading(orientation);
+        }
+        return frame;
     }
 
     private static final class Projection{
-        private final HologramProjectionRenderer terrain = new HologramProjectionRenderer();
+        private final HologramProjectionRenderer terrain = HologramProjectionRenderer.staticModels(null);
         private final HologramEntityRenderer models = new HologramEntityRenderer();
         private final SubLevelHologramRenderer ships = new SubLevelHologramRenderer();
         private final ProjectionSmoothing smoothing = new ProjectionSmoothing();
         private final ColoredLightBridge.Light light = ColoredLightBridge.create();
-        private HologramBlockEntityRenderer dynamic;
         private final Map<Long, HologramChunk> chunks = new LinkedHashMap<>();
         private List<HologramEntity> entities = List.of();
         private HologramSlice slice = HologramSlice.SURFACE;
@@ -186,11 +202,13 @@ public final class WorldHologramClient{
         private boolean hasHeight;
         private long lastVisible;
         private long nextRequest = Long.MIN_VALUE;
+        private HologramBlockEntityRenderer dynamic;
         private Projection(WorldHologramProjectorBlockEntity projector){ dynamic = dynamic(projector); }
         private HologramBlockEntityRenderer dynamic(WorldHologramProjectorBlockEntity projector){
             return new HologramBlockEntityRenderer(tick -> Minecraft.getInstance().level == null ? null : frame(projector, this, tick),
                     entity -> !(entity instanceof WorldHologramProjectorBlockEntity)
-                            && !(entity instanceof AccDisplayBlockEntity) && !(entity instanceof DiagnosticTabletBlockEntity));
+                            && !(entity instanceof AccDisplayBlockEntity) && !(entity instanceof DiagnosticTabletBlockEntity)
+                            && !(entity instanceof com.simibubi.create.content.fluids.tank.FluidTankBlockEntity), false);
         }
         private void close(){ terrain.close(); ships.close(); dynamic.close(); light.close(); models.clear(); }
     }

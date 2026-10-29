@@ -36,14 +36,14 @@ public class PoweredZiplineMenu extends GhostItemMenu<PoweredZiplineBlockEntity>
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    public static final int PLAYER_SLOTS_X = 31;
-    public static final int PLAYER_SLOTS_Y = 112;
-    public static final int FORWARD_FIRST_X = 82;
-    public static final int FORWARD_SECOND_X = 102;
-    public static final int BACKWARD_FIRST_X = 82;
-    public static final int BACKWARD_SECOND_X = 102;
-    public static final int FORWARD_Y = 38;
-    public static final int BACKWARD_Y = 70;
+    public static final int PLAYER_SLOTS_X = 35;
+    public static final int PLAYER_SLOTS_Y = 142;
+    public static final int FORWARD_FIRST_X = 77;
+    public static final int FORWARD_SECOND_X = 97;
+    public static final int BACKWARD_FIRST_X = 77;
+    public static final int BACKWARD_SECOND_X = 97;
+    public static final int FORWARD_Y = 31;
+    public static final int BACKWARD_Y = 63;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 

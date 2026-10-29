@@ -53,6 +53,7 @@ public final class CreateThrustersNeoForge {
     // Initialize the create thrusters neo forge
     public CreateThrustersNeoForge(IEventBus modEventBus, ModContainer modContainer) {
         CTConfigs.register(modContainer);
+        com.rieno.gadgetsandgizmos.compat.createpropulsion.PropulsionDyeCompatibility.register();
         com.rieno.gadgetsandgizmos.compat.aeroclaims.PhysicsStaffAeroClaimsCompat.register();
         CTFeatureToggles.prepareDedicatedServerRegistration();
         CTMountedSeats.register();

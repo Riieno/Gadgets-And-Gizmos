@@ -10,17 +10,13 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.simibubi.create.Create;
 import com.rieno.gadgetsandgizmos.lib.inventory.ItemStackNbtSanitizer;
+import com.rieno.gadgetsandgizmos.lib.nbt.ChunkedTagPayload;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.NbtAccounter;
-import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.Tag;
+import net.minecraft.core.HolderLookup;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import org.jetbrains.annotations.Nullable;
-
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.util.Arrays;
 
 // Carry Controller Schematic state between the client and server
 final class ControllerSchematicPayload {
@@ -37,17 +33,6 @@ final class ControllerSchematicPayload {
     static final String LINKER_DATA_TAG = "LinkerData";
     static final String CONTROLLER_KIND_TAG = "ControllerKind";
     static final String PLACEMENT_PREPARED_TAG = "PlacementPrepared";
-
-    private static final int STORAGE_VERSION = 1;
-    private static final int CHUNK_BYTES = 32 * 1024;
-    private static final int MAX_COMPRESSED_BYTES = 16 * 1024 * 1024;
-    private static final int MAX_CHUNKS =
-            (MAX_COMPRESSED_BYTES + CHUNK_BYTES - 1) / CHUNK_BYTES;
-    private static final long MAX_DECOMPRESSED_BYTES = 128L * 1024L * 1024L;
-    private static final String VERSION_TAG = "Version";
-    private static final String COMPRESSED_BYTES_TAG = "CompressedBytes";
-    private static final String CHUNKS_TAG = "Chunks";
-    private static final String CHUNK_DATA_TAG = "Data";
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -69,105 +54,67 @@ final class ControllerSchematicPayload {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    // Write the controller schematic
-    static boolean write(CompoundTag blockEntityTag, CompoundTag payload) {
-        if (blockEntityTag == null || payload == null || payload.isEmpty()) {
-            return false;
-        }
-        discardLegacyPlotPoints(payload);
-        blockEntityTag.remove(BLOCK_ENTITY_TAG);
-        byte[] compressed = compress(payload);
-        if (compressed.length == 0 || compressed.length > MAX_COMPRESSED_BYTES) {
-            Create.LOGGER.warn("Skipped controller schematic payload with {} compressed bytes",
-                    compressed.length);
-            return false;
-        }
-
-        CompoundTag envelope = new CompoundTag();
-        envelope.putInt(VERSION_TAG, STORAGE_VERSION);
-        envelope.putInt(COMPRESSED_BYTES_TAG, compressed.length);
-        ListTag chunks = new ListTag();
-        for (int offset = 0; offset < compressed.length; offset += CHUNK_BYTES) {
-            CompoundTag chunk = new CompoundTag();
-            chunk.putByteArray(CHUNK_DATA_TAG, Arrays.copyOfRange(
-                    compressed, offset, Math.min(compressed.length, offset + CHUNK_BYTES)));
-            chunks.add(chunk);
-        }
-        envelope.put(CHUNKS_TAG, chunks);
-        blockEntityTag.put(BLOCK_ENTITY_TAG, envelope);
-        return true;
-    }
-
-    // Take the controller schematic payload
-    static @Nullable CompoundTag take(CompoundTag blockEntityTag) {
-        if (blockEntityTag == null
-                || !blockEntityTag.contains(BLOCK_ENTITY_TAG, Tag.TAG_COMPOUND)) {
-            return null;
-        }
-        CompoundTag envelope = blockEntityTag.getCompound(BLOCK_ENTITY_TAG).copy();
-        blockEntityTag.remove(BLOCK_ENTITY_TAG);
-        CompoundTag payload = decode(envelope);
-        if(payload != null) payload = ItemStackNbtSanitizer.withoutUnavailableItems(payload);
-        discardLegacyPlotPoints(payload);
-        return payload;
-    }
-
-    private static void discardLegacyPlotPoints(@Nullable CompoundTag payload) {
-        if (payload != null && payload.contains(CONTROLLER_DATA_TAG, Tag.TAG_COMPOUND)) {
-            payload.getCompound(CONTROLLER_DATA_TAG).remove("PlotPoints");
-        }
-    }
-
-    // Get the compress
-    private static byte[] compress(CompoundTag payload) {
-        try {
-            ByteArrayOutputStream output = new ByteArrayOutputStream();
-            NbtIo.writeCompressed(payload, output);
-            return output.toByteArray();
-        } catch (IOException | RuntimeException err) {
+    // Write a detached payload without replacing a valid envelope when encoding fails
+    static boolean write(CompoundTag blockEntityTag, CompoundTag payload){
+        if(blockEntityTag == null || payload == null || payload.isEmpty()) return false;
+        try{
+            CompoundTag copy = payload.copy();
+            discardLegacyPlotPoints(copy);
+            blockEntityTag.put(BLOCK_ENTITY_TAG, ChunkedTagPayload.encode(copy));
+            return true;
+        }catch(RuntimeException err){
             Create.LOGGER.warn("Failed to encode controller schematic payload", err);
-            return new byte[0];
+            return false;
         }
     }
 
-    // Decode the controller schematic
-    private static @Nullable CompoundTag decode(CompoundTag envelope) {
-        if (envelope.getInt(VERSION_TAG) != STORAGE_VERSION) {
-            Create.LOGGER.warn("Ignored controller schematic payload version {}",
-                    envelope.getInt(VERSION_TAG));
-            return null;
-        }
-        int expectedBytes = envelope.getInt(COMPRESSED_BYTES_TAG);
-        ListTag chunks = envelope.getList(CHUNKS_TAG, Tag.TAG_COMPOUND);
-        if (expectedBytes <= 0 || expectedBytes > MAX_COMPRESSED_BYTES
-                || chunks.isEmpty() || chunks.size() > MAX_CHUNKS) {
-            Create.LOGGER.warn("Ignored malformed controller schematic payload");
-            return null;
-        }
-
-        ByteArrayOutputStream joined = new ByteArrayOutputStream(expectedBytes);
-        for (int idx = 0; idx < chunks.size(); idx++) {
-            byte[] data = chunks.getCompound(idx).getByteArray(CHUNK_DATA_TAG);
-            if (data.length == 0 || data.length > CHUNK_BYTES
-                    || joined.size() + data.length > expectedBytes) {
-                Create.LOGGER.warn("Ignored malformed controller schematic payload chunk {}",
-                        idx);
-                return null;
-            }
-            joined.writeBytes(data);
-        }
-        if (joined.size() != expectedBytes) {
-            Create.LOGGER.warn("Ignored incomplete controller schematic payload");
-            return null;
-        }
-
-        try {
-            return NbtIo.readCompressed(
-                    new ByteArrayInputStream(joined.toByteArray()),
-                    NbtAccounter.create(MAX_DECOMPRESSED_BYTES));
-        } catch (IOException | RuntimeException err) {
+    // Read without consuming the template or clearing chunks before the database import succeeds
+    static @Nullable CompoundTag read(CompoundTag blockEntityTag){
+        if(blockEntityTag == null || !blockEntityTag.contains(BLOCK_ENTITY_TAG, Tag.TAG_COMPOUND)) return null;
+        try{
+            CompoundTag payload = ItemStackNbtSanitizer.withoutUnavailableItems(
+                    ChunkedTagPayload.decode(blockEntityTag.getCompound(BLOCK_ENTITY_TAG)));
+            discardLegacyPlotPoints(payload);
+            return payload;
+        }catch(RuntimeException err){
             Create.LOGGER.warn("Failed to decode controller schematic payload", err);
             return null;
         }
+    }
+
+    // Consume a decoded payload only for adapters which immediately write a replacement
+    static @Nullable CompoundTag take(CompoundTag blockEntityTag){
+        CompoundTag payload = read(blockEntityTag);
+        if(payload != null) blockEntityTag.remove(BLOCK_ENTITY_TAG);
+        return payload;
+    }
+
+    // Expand reference-only schematic data before a copied block can adopt its source identity
+    static CompoundTag copyMetadata(CompoundTag saved, @Nullable Level level, HolderLookup.Provider provider){
+        var snapshot = ControllerManifestStore.loadControllerFromMetadata(saved, level);
+        if(snapshot == null) throw new IllegalArgumentException("The schematic controller graph is unavailable");
+        CompoundTag payload = new CompoundTag();
+        CompoundTag data = snapshot.controllerData();
+        if(!snapshot.draftGraph().isEmpty()) data.put("AdvancedDraftGraph", snapshot.draftGraph());
+        if(!snapshot.activeGraph().isEmpty()) data.put("AdvancedActiveGraph", snapshot.activeGraph());
+        payload.putString(CONTROLLER_KIND_TAG, snapshot.kind());
+        payload.put(CONTROLLER_DATA_TAG, data);
+        var items = data.getCompound("LinkerSlot").getList("Items", Tag.TAG_COMPOUND);
+        if(!items.isEmpty()){
+            ItemStack linker = ItemStack.parseOptional(provider, items.getCompound(0));
+            CompoundTag root = ContraptionNetworkLinkerData.copyAuthoritativeRootForSchematic(linker);
+            if(!root.isEmpty()) payload.put(LINKER_DATA_TAG, root);
+        }
+        CompoundTag copy = saved.copy();
+        for(String key : java.util.List.of(ControllerManifestStore.TAG_CONTROLLER_MANIFEST_ID,
+                ControllerManifestStore.TAG_CONTROLLER_MANIFEST_REVISION, ControllerManifestStore.TAG_CONTROLLER_MANIFEST_HASH,
+                ControllerManifestStore.TAG_CONTROLLER_MANIFEST_STORAGE_VERSION)) copy.remove(key);
+        if(!write(copy, payload)) throw new IllegalArgumentException("The schematic controller graph could not be copied");
+        return copy;
+    }
+
+    private static void discardLegacyPlotPoints(@Nullable CompoundTag payload){
+        if(payload != null && payload.contains(CONTROLLER_DATA_TAG, Tag.TAG_COMPOUND))
+            payload.getCompound(CONTROLLER_DATA_TAG).remove("PlotPoints");
     }
 }

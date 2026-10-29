@@ -10,6 +10,8 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 import com.rieno.gadgetsandgizmos.content.VectorBearingBlockEntity;
 import com.rieno.gadgetsandgizmos.content.VectorBearingMenu;
+import com.rieno.gadgetsandgizmos.lib.client.ui.GuiControlPreviews;
+import com.rieno.gadgetsandgizmos.lib.client.ui.InlineTextEditor;
 import com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget;
 import com.rieno.gadgetsandgizmos.neoforge.network.VectorBearingConfigPayload;
 import com.simibubi.create.foundation.gui.menu.AbstractSimiContainerScreen;
@@ -25,6 +27,7 @@ import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.List;
+import java.util.Locale;
 
 // Edit Vector Bearing settings
 public class VectorBearingScreen extends AbstractSimiContainerScreen<VectorBearingMenu> {
@@ -78,6 +81,14 @@ public class VectorBearingScreen extends AbstractSimiContainerScreen<VectorBeari
     private static final int SLIDER_HIT_Y = 130;
     private static final int SLIDER_HIT_W = 64;
     private static final int SLIDER_HIT_H = 22;
+    private static final int MAX_ANGLE_LABEL_X = 168;
+    private static final int MAX_ANGLE_LABEL_Y = 106;
+    private static final int MAX_ANGLE_LABEL_W = 40;
+    private static final int MAX_ANGLE_VALUE_X = 177;
+    private static final int MAX_ANGLE_VALUE_Y = 118;
+    private static final int MAX_ANGLE_VALUE_W = 22;
+    private static final int MAX_ANGLE_LABEL_H = 10;
+    private static final float MAX_ANGLE_TEXT_SCALE = 0.65F;
     private static final int AXIS_LABEL_SOURCE_X = 224;
     private static final int AXIS_LABEL_SOURCE_X_Y = 128;
     private static final int AXIS_LABEL_SOURCE_Y_Y = 136;
@@ -136,6 +147,7 @@ public class VectorBearingScreen extends AbstractSimiContainerScreen<VectorBeari
     private boolean keepStable;
     // Tracks whether the max tilt slider is being dragged
     private boolean draggingMaxTilt;
+    private InlineTextEditor maxAngleEditor;
     // Tracks whether the local config differs from the server state
     private boolean dirty;
 
@@ -160,6 +172,7 @@ public class VectorBearingScreen extends AbstractSimiContainerScreen<VectorBeari
     // Initialize the vector bearing
     @Override
     protected void init() {
+        if(maxAngleEditor != null) maxAngleEditor.accept();
         super.init();
         scalableGui.update(leftPos, topPos, imageWidth, imageHeight, width, height);
     }
@@ -188,6 +201,7 @@ public class VectorBearingScreen extends AbstractSimiContainerScreen<VectorBeari
             drawModeLabel(guiGraphics, x, y);
             drawStabilizeAxisLabel(guiGraphics, x, y);
             drawStabilizationState(guiGraphics, x, y);
+            drawMaxAngleLabel(guiGraphics, scalableGui.mouseX(mouseX), scalableGui.mouseY(mouseY), partialTicks);
             drawMaxTiltSlider(guiGraphics, x, y);
         } finally {
             scalableGui.pop(guiGraphics);
@@ -296,6 +310,57 @@ public class VectorBearingScreen extends AbstractSimiContainerScreen<VectorBeari
         }
     }
 
+    // Keep the label and editable angle directly above the painted slider
+    private void drawMaxAngleLabel(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks){
+        int y = topPos + MAX_ANGLE_LABEL_Y;
+        GuiControlPreviews.drawFittedText(graphics, font,
+                Component.translatable("createthrusters.vector_bearing.config.max_angle"),
+                leftPos + MAX_ANGLE_LABEL_X, y, MAX_ANGLE_LABEL_W, MAX_ANGLE_LABEL_H,
+                MAX_ANGLE_TEXT_SCALE, 0xFFF3EEE4, true);
+        int x = leftPos + MAX_ANGLE_VALUE_X;
+        y = topPos + MAX_ANGLE_VALUE_Y;
+        boolean hovered = inside(mouseX, mouseY, x, y, MAX_ANGLE_VALUE_W, MAX_ANGLE_LABEL_H);
+        CTAnalogueControllerAppearance.STYLE.renderInset(graphics, x - 1, y, MAX_ANGLE_VALUE_W + 2,
+                MAX_ANGLE_LABEL_H, hovered, maxAngleEditor != null);
+        if(maxAngleEditor != null){
+            positionMaxAngleEditor();
+            maxAngleEditor.render(graphics, mouseX, mouseY, partialTicks);
+        }else{
+            GuiControlPreviews.drawFittedText(graphics, font,
+                    Component.literal(String.format(Locale.ROOT, "%.1f\u00b0", maxTiltDegrees)),
+                    x, y, MAX_ANGLE_VALUE_W, MAX_ANGLE_LABEL_H, MAX_ANGLE_TEXT_SCALE, 0xFFF3EEE4, true);
+        }
+    }
+
+    private void positionMaxAngleEditor(){
+        maxAngleEditor.setBounds(leftPos + MAX_ANGLE_VALUE_X, topPos + MAX_ANGLE_VALUE_Y + 2,
+                MAX_ANGLE_VALUE_W, MAX_ANGLE_TEXT_SCALE);
+    }
+
+    private void openMaxAngleEditor(){
+        maxAngleEditor = new InlineTextEditor(font,
+                Component.translatable("createthrusters.vector_bearing.config.max_angle"),
+                String.format(Locale.ROOT, "%.1f", maxTiltDegrees), 32,
+                this::acceptMaxAngle, () -> maxAngleEditor = null);
+        maxAngleEditor.setDecorated(false);
+        maxAngleEditor.setRightAligned(true);
+        positionMaxAngleEditor();
+    }
+
+    // Use the same angle range and precision as the slider
+    private void acceptMaxAngle(String text){
+        maxAngleEditor = null;
+        try{
+            double val = Double.parseDouble(text.strip());
+            if(!Double.isFinite(val)) return;
+            val = Math.round(Mth.clamp(val, 0, MAX_TILT_DEGREES) * 10) / 10.0D;
+            if(val == maxTiltDegrees) return;
+            maxTiltDegrees = val;
+            dirty = true;
+            sendConfig();
+        }catch(NumberFormatException ignored){}
+    }
+
     // Draw the max tilt slider
     private void drawMaxTiltSlider(GuiGraphics graphics, int x, int y) {
         double normalized = maxTiltDegrees / MAX_TILT_DEGREES;
@@ -339,7 +404,16 @@ public class VectorBearingScreen extends AbstractSimiContainerScreen<VectorBeari
         double screenMouseY = mouseY;
         mouseX = scalableGui.mouseX(mouseX);
         mouseY = scalableGui.mouseY(mouseY);
+        if(maxAngleEditor != null){
+            positionMaxAngleEditor();
+            if(maxAngleEditor.mouseClicked(mouseX, mouseY, btn)) return true;
+        }
         if (btn == 0) {
+            if(inside(mouseX, mouseY, leftPos + MAX_ANGLE_VALUE_X, topPos + MAX_ANGLE_VALUE_Y,
+                    MAX_ANGLE_VALUE_W, MAX_ANGLE_LABEL_H)){
+                openMaxAngleEditor();
+                return true;
+            }
             if (inside(mouseX, mouseY, leftPos + MODE_LEFT_ARROW_X, topPos + MODE_ARROW_Y,
                     MODE_ARROW_W, MODE_ARROW_H)) {
                 cycleControlMode(-1);
@@ -383,6 +457,7 @@ public class VectorBearingScreen extends AbstractSimiContainerScreen<VectorBeari
         double screenMouseX = mouseX;
         double screenMouseY = mouseY;
         mouseX = scalableGui.mouseX(mouseX);
+        if(maxAngleEditor != null) return maxAngleEditor.mouseDragged(mouseX, scalableGui.mouseY(mouseY), btn);
         if (btn == 0 && draggingMaxTilt) {
             updateMaxTiltFromSlider(mouseX);
             return true;
@@ -393,6 +468,8 @@ public class VectorBearingScreen extends AbstractSimiContainerScreen<VectorBeari
     // Finish the max tilt slider drag
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int btn) {
+        if(maxAngleEditor != null) return maxAngleEditor.mouseReleased(
+                scalableGui.mouseX(mouseX), scalableGui.mouseY(mouseY), btn);
         if (btn == 0 && draggingMaxTilt) {
             draggingMaxTilt = false;
             if (dirty) {
@@ -446,8 +523,21 @@ public class VectorBearingScreen extends AbstractSimiContainerScreen<VectorBeari
     // Handle the close event
     @Override
     public void onClose() {
+        if(maxAngleEditor != null) maxAngleEditor.accept();
         sendConfig();
         super.onClose();
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers){
+        return maxAngleEditor != null ? maxAngleEditor.keyPressed(keyCode, scanCode, modifiers)
+                : super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public boolean charTyped(char codePoint, int modifiers){
+        return maxAngleEditor != null ? maxAngleEditor.charTyped(codePoint, modifiers)
+                : super.charTyped(codePoint, modifiers);
     }
 
     // Get the extra areas

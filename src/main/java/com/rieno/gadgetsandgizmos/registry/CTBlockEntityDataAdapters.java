@@ -30,6 +30,7 @@ public final class CTBlockEntityDataAdapters {
         registered = true;
         BlockEntityDataAdapterRegistry.register(200, new PowerGridDataAdapter());
         BlockEntityDataAdapterRegistry.register(200, new CreateDisplayLinkDataAdapter());
+        BlockEntityDataAdapterRegistry.register(200, new com.rieno.gadgetsandgizmos.lib.probe.CuckooClockDataAdapter());
         BlockEntityDataAdapterRegistry.register(100, new VanillaSignDataAdapter());
         BlockEntityDataAdapterRegistry.register(100, new CreateFlapDisplayDataAdapter());
         BlockEntityDataAdapterRegistry.register(100, new IndustrialMotorDataAdapter());

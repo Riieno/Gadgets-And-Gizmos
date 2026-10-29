@@ -39,12 +39,8 @@ public class RcsThrusterMenu extends GhostItemMenu<RcsThrusterBlockEntity>
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    public static final int PLAYER_SLOTS_X = 47;
-    public static final int PLAYER_SLOTS_Y = 172;
-    public static final int GHOST_SLOT_FIRST_X = 104;
-    public static final int GHOST_SLOT_SECOND_X = 122;
-    public static final int GHOST_SLOTS_START_Y = 48;
-    public static final int GHOST_SLOT_ROW_SPACING = 26;
+    public static final int PLAYER_SLOTS_X = 10;
+    public static final int PLAYER_SLOTS_Y = 187;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -178,14 +174,37 @@ public class RcsThrusterMenu extends GhostItemMenu<RcsThrusterBlockEntity>
         return new ItemStackHandler(8);
     }
 
+    // Place each frequency pair beside its nozzle on the painted compass
+    public static int frequencySlotX(Direction nozzle, boolean second){
+        return switch(nozzle){
+            case NORTH, SOUTH -> second ? 96 : 66;
+            case EAST -> 121;
+            case WEST -> 41;
+            default -> throw new IllegalArgumentException("RCS frequency slots require a horizontal nozzle");
+        };
+    }
+
+    // Stack the east and west pairs while keeping north and south side by side
+    public static int frequencySlotY(Direction nozzle, boolean second){
+        return switch(nozzle){
+            case NORTH -> 33;
+            case SOUTH -> 113;
+            case EAST, WEST -> second ? 88 : 58;
+            default -> throw new IllegalArgumentException("RCS frequency slots require a horizontal nozzle");
+        };
+    }
+
     // Add the slots
     @Override
-    protected void addSlots() {
+    protected void addSlots(){
         addPlayerSlots(PLAYER_SLOTS_X, PLAYER_SLOTS_Y);
-        for (int row = 0; row < 4; row++) {
-            int y = GHOST_SLOTS_START_Y + row * GHOST_SLOT_ROW_SPACING;
-            addSlot(new SlotItemHandler(ghostInventory, row * 2, GHOST_SLOT_FIRST_X, y));
-            addSlot(new SlotItemHandler(ghostInventory, row * 2 + 1, GHOST_SLOT_SECOND_X, y));
+        Direction[] nozzles = {Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST};
+        for(int idx = 0; idx < nozzles.length; idx++){
+            Direction nozzle = nozzles[idx];
+            addSlot(new SlotItemHandler(ghostInventory, idx * 2,
+                    frequencySlotX(nozzle, false), frequencySlotY(nozzle, false)));
+            addSlot(new SlotItemHandler(ghostInventory, idx * 2 + 1,
+                    frequencySlotX(nozzle, true), frequencySlotY(nozzle, true)));
         }
     }
 

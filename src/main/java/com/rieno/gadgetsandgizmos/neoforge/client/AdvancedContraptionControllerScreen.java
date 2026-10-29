@@ -16,6 +16,7 @@ import com.rieno.gadgetsandgizmos.compat.aeroworks.AeroworksControllerCompat;
 import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerMenu;
 import com.rieno.gadgetsandgizmos.content.AdvancedContraptionControllerBlockEntity;
 import com.rieno.gadgetsandgizmos.content.AccDisplayBlockEntity;
+import com.rieno.gadgetsandgizmos.content.AccDisplaySurfaceLayout;
 import com.rieno.gadgetsandgizmos.content.UniversalDisplayAdapterBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerData;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerItem;
@@ -74,6 +75,7 @@ import com.rieno.gadgetsandgizmos.lib.client.ui.InlineTextEditor;
 import com.rieno.gadgetsandgizmos.lib.client.ui.ListScrollState;
 import com.rieno.gadgetsandgizmos.lib.client.ui.PaintedListModal;
 import com.rieno.gadgetsandgizmos.lib.client.ui.GuiCanvasTransform;
+import com.rieno.gadgetsandgizmos.lib.display.PortPropertyBindings;
 import com.rieno.gadgetsandgizmos.lib.client.render.GuiPoseScissor;
 import com.rieno.gadgetsandgizmos.lib.client.ui.PlayerSelectModal;
 import com.rieno.gadgetsandgizmos.lib.client.ui.SoundPickerModal;
@@ -279,8 +281,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private static final DateTimeFormatter GRAPH_VERSION_TIME =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault());
     private static final int CURVE_BODY_HEIGHT = 92;
-    private static final int HUD_WIDTH = 880;
-    private static final int HUD_HEIGHT = 560;
+    private static final int HUD_WIDTH = 864;
+    private static final int HUD_HEIGHT = 408;
     private static final int HUD_PORT_VISIBLE_ROWS = 5;
     private static final int HUD_IMAGE_VISIBLE_ROWS = 7;
     private static final int OPTION_DROPDOWN_VISIBLE_ROWS = 12;
@@ -336,6 +338,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private static final List<String> SCM_CALIBRATION_ACTIONS = List.of(
             ScmConfigurationProfile.AUTO_ACTION,
             ScmConfigurationProfile.ACCELERATION_ACTION,
+            ScmConfigurationProfile.HULL_DOORS_ACTION,
             "ship_forward", "ship_backward",
             "ship_strafe", "ship_strafe_left", "ship_strafe_right",
             "ship_ascend", "ship_descend",
@@ -1078,6 +1081,19 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private int hudBindingPropScroll;
     // Current HUD node id
     private String hudNodeId;
+    private int hudDisplayTaskbarPixels;
+    private boolean hudDisplayHalfHeight;
+    private int hudDisplayColumns = 1;
+    private int hudDisplayRows = 1;
+    private double hudCanvasZoom = 1;
+    private double hudCanvasPanX;
+    private double hudCanvasPanY;
+    private boolean hudPanPending;
+    private boolean hudPanning;
+    private double hudPanGrabX;
+    private double hudPanGrabY;
+    private double hudPanStartX;
+    private double hudPanStartY;
     // Current HUD selected idx
     private int hudSelectedIdx = -1;
     // Tracks whether HUD element is being dragged
@@ -1085,9 +1101,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Tracks whether resizing HUD element is set
     private boolean resizingHudElement;
     // Current HUD drag offset x
-    private int hudDragOffsetX;
+    private double hudDragOffsetX;
     // Current HUD drag offset y
-    private int hudDragOffsetY;
+    private double hudDragOffsetY;
     // Tracks whether HUD fields are being synced
     private boolean syncingHudFields;
     // Tracks whether HUD port dropdown is open
@@ -1578,9 +1594,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         functionNameEditor.setResponder(this::updateFunctionName);
         addRenderableWidget(functionNameEditor);
 
-        optionDropdownSearch = new EditBox(font, 0, 0, 120, 18, Component.literal("Search sounds"));
+        optionDropdownSearch = new EditBox(font, 0, 0, 120, 18, Component.literal("Search options"));
         optionDropdownSearch.setMaxLength(128);
-        optionDropdownSearch.setHint(Component.literal("Search sounds..."));
+        optionDropdownSearch.setHint(Component.literal("Search options..."));
         optionDropdownSearch.setVisible(false);
         optionDropdownSearch.setResponder(this::filterOptionDropdown);
         addRenderableWidget(optionDropdownSearch);
@@ -1666,44 +1682,58 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         hudText = new EditBox(font, 0, 0, 160, 18, Component.literal("Widget text"));
         hudText.setVisible(false);
         hudText.setResponder(val -> updateHudTextField("Text", val));
-        addRenderableWidget(hudText);
+        hudText.setBordered(false);
+        hudText.setHeight(12);
+        addWidget(hudText);
 
         hudTexture = new EditBox(font, 0, 0, 160, 18, Component.literal("Widget texture"));
         hudTexture.setMaxLength(Integer.MAX_VALUE);
         hudTexture.setVisible(false);
         hudTexture.setResponder(val -> updateHudTextField("Texture", val));
-        addRenderableWidget(hudTexture);
+        hudTexture.setBordered(false);
+        hudTexture.setHeight(12);
+        addWidget(hudTexture);
 
         hudWidth = new EditBox(font, 0, 0, 72, 18, Component.literal("Widget width"));
         hudWidth.setVisible(false);
         hudWidth.setResponder(val -> updateHudNumField("W", val));
-        addRenderableWidget(hudWidth);
+        hudWidth.setBordered(false);
+        hudWidth.setHeight(12);
+        addWidget(hudWidth);
 
         hudHeight = new EditBox(font, 0, 0, 72, 18, Component.literal("Widget height"));
         hudHeight.setVisible(false);
         hudHeight.setResponder(val -> updateHudNumField("H", val));
-        addRenderableWidget(hudHeight);
+        hudHeight.setBordered(false);
+        hudHeight.setHeight(12);
+        addWidget(hudHeight);
 
         hudRotation = new EditBox(font, 0, 0, 72, 18,
                 Component.literal("Widget rotation"));
         hudRotation.setVisible(false);
         hudRotation.setResponder(val -> updateHudDoubleField(
                 "Rotation", val, -3600.0D, 3600.0D));
-        addRenderableWidget(hudRotation);
+        hudRotation.setBordered(false);
+        hudRotation.setHeight(12);
+        addWidget(hudRotation);
 
         hudScale = new EditBox(font, 0, 0, 72, 18,
                 Component.literal("Widget scale"));
         hudScale.setVisible(false);
         hudScale.setResponder(val -> updateHudDoubleField(
                 "Scale", val, 0.01D, 100.0D));
-        addRenderableWidget(hudScale);
+        hudScale.setBordered(false);
+        hudScale.setHeight(12);
+        addWidget(hudScale);
 
         hudBorderWidth = new EditBox(font, 0, 0, 72, 18, Component.literal("Widget border width"));
         hudBorderWidth.setMaxLength(2);
         hudBorderWidth.setVisible(false);
         hudBorderWidth.setResponder(val -> updateHudClampedNumField(
                 "BorderWidth", val, 0, AdvancedHudElementStyle.MAX_BORDER_WIDTH));
-        addRenderableWidget(hudBorderWidth);
+        hudBorderWidth.setBordered(false);
+        hudBorderWidth.setHeight(12);
+        addWidget(hudBorderWidth);
 
         UiRect initialShareBounds = shareModalBounds();
         linkerShareName = new EditBox(font, initialShareBounds.x() + 16,
@@ -4063,8 +4093,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         boolean dockingSelection = scmConfigurationSelection.stream()
                 .anyMatch(this::isScmConfigurationDockingConnector);
+        boolean doorSelection = scmConfigurationSelection.stream()
+                .anyMatch(unit -> scmLivePreviewRenderer.isHullDoor(unit.subLevelId(), unit.blockPosition()));
         return actions.stream().filter(action -> dockingSelection
-                == ScmConfigurationProfile.isDockingConnectorAction(action)).toList();
+                == ScmConfigurationProfile.isDockingConnectorAction(action))
+                .filter(action -> !doorSelection || ScmConfigurationProfile.HULL_DOORS_ACTION.equals(action)).toList();
     }
 
     // Check whether one live selection is a docking connector.
@@ -4097,6 +4130,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     private String scmConfigurationTargetLabel(String action) {
+        if(ScmConfigurationProfile.HULL_DOORS_ACTION.equals(action)) return "Hull Doors";
         var logisticsGroup = LogisticsBindings.Group.fromId(action);
         if(logisticsGroup != null) return logisticsGroup.label();
         if (action == null || action.isBlank()) return "No SCM action available";
@@ -4119,6 +4153,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     private static String scmConfigurationActionLabel(String action) {
+        if(ScmConfigurationProfile.HULL_DOORS_ACTION.equals(action)) return "Hull Doors";
         var logisticsGroup = LogisticsBindings.Group.fromId(action);
         if(logisticsGroup != null) return logisticsGroup.label();
         ScmConfigurationProfile.DockingConnectorGroup dockingGroup =
@@ -4681,6 +4716,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         String groupId = "action_" + action;
         Map<String, ScmConfigurationProfile.Group> groups = new LinkedHashMap<>();
         scmConfigurationProfile.groups().forEach(group -> groups.put(group.id(), group));
+        boolean hullDoors = ScmConfigurationProfile.HULL_DOORS_ACTION.equals(action);
+        if(hullDoors){
+            bindingMode = ScmControlBindingMode.BLOCK;
+            if(scmConfigurationSelection.stream().anyMatch(unit -> !scmLivePreviewRenderer.isHullDoor(unit.subLevelId(), unit.blockPosition()))){
+                scmConfigurationStatus = "Select full-size doors for Hull Doors; trapdoors are excluded";
+                return false;
+            }
+        }
         boolean faceMode = bindingMode == ScmControlBindingMode.FACE;
         boolean missingFace = faceMode && scmConfigurationSelection.stream()
                 .anyMatch(unit -> unit.face() == null && scmConfigurationInputFace == null);
@@ -4688,8 +4731,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             scmConfigurationStatus = "Redstone Control: click a block face or choose a direction first";
             return false;
         }
+        ScmControlBindingMode scope = bindingMode;
         Set<ScmConfigurationProfile.UnitReference> bindings = scmConfigurationSelection.stream()
-                .map(unit -> switch (bindingMode) {
+                .map(unit -> switch (scope) {
                     case BLOCK -> blockControlReference(unit);
                     case FACE -> unit.withFace(unit.face() == null
                             ? scmConfigurationInputFace : unit.face());
@@ -10611,8 +10655,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                     MINI_BROWSER_WIDTH, MINI_BROWSER_HEIGHT));
         }
         if (hudOpen) {
-            UiRect bounds = hudBounds();
-            areas.add(new Rect2i(bounds.x(), bounds.y(), bounds.width(), bounds.height()));
+            GuiCanvasTransform transform = hudTransform();
+            areas.add(new Rect2i(transform.x(), transform.y(), Math.round(HUD_WIDTH * transform.scale()),
+                    Math.round(HUD_HEIGHT * transform.scale())));
         }
         return areas;
     }
@@ -15365,7 +15410,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         int y = optionDropdownRowsTop(optionDropdown);
         int textWidth = optionDropdown.width() - (maximumScroll > 0 ? 18 : 12);
         if (visibleRows == 0) {
-            graphics.drawString(font, "No matching sounds", optionDropdown.x() + 8, y + 5,
+            graphics.drawString(font, "No matching options", optionDropdown.x() + 8, y + 5,
                     0xFF91A9B8, false);
         }
         for (int row = 0; row < visibleRows; row++) {
@@ -15517,7 +15562,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             openSoundPicker(node);
             return;
         }
-        boolean searchable = false;
+        boolean searchable = "createthrusters:time".equals(node.type()) && "timezone".equals(port);
         int maximumWidth = searchable ? 232 : 158;
         int dropdownWidth = Math.max(isCameraFilterInput(node, port) ? 158 : 54, Math.min(maximumWidth,
                 Math.max((int) Math.round(width), maximumWidth == 232 ? 232 : 54)));
@@ -15586,16 +15631,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Filter the dropdown options
     static List<String> filterDropdownOptions(List<String> options, String query) {
-        if (options == null || options.isEmpty()) {
-            return List.of();
-        }
-        String normalized = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
-        if (normalized.isEmpty()) {
-            return List.copyOf(options);
-        }
-        return options.stream()
-                .filter(option -> option.toLowerCase(Locale.ROOT).contains(normalized))
-                .toList();
+        return GuiDropdownControl.filterOptions(options, query);
     }
 
     // Close the option dropdown
@@ -15948,6 +15984,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return clickScmConfiguration(mouseX, mouseY, button);
         }
         if (hudOpen) {
+            GuiCanvasTransform transform = hudTransform();
+            mouseX = transform.localX(mouseX);
+            mouseY = transform.localY(mouseY);
             if (clickHud(mouseX, mouseY, button)) {
                 clearHudFieldFocus();
                 return true;
@@ -16479,6 +16518,20 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return true;
         }
         if (hudOpen) {
+            GuiCanvasTransform transform = hudTransform();
+            mouseX = transform.localX(mouseX);
+            mouseY = transform.localY(mouseY);
+            if(hudPanPending && button == GLFW.GLFW_MOUSE_BUTTON_RIGHT){
+                if(!hudPanning) hudPanning = exceedsRightPanDeadzone(hudPanGrabX * transform.scale(),
+                        hudPanGrabY * transform.scale(), mouseX * transform.scale(), mouseY * transform.scale());
+                if(hudPanning){
+                    GraphViewport viewport = new GraphViewport(0, 0, hudPanStartX, hudPanStartY, 1)
+                            .panBy(mouseX - hudPanGrabX, mouseY - hudPanGrabY);
+                    hudCanvasPanX = viewport.panX();
+                    hudCanvasPanY = viewport.panY();
+                }
+                return true;
+            }
             if(draggingHudOpacityKey != null){
                 updateHudOpacitySlider(mouseX);
                 return true;
@@ -16691,6 +16744,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             return true;
         }
         if (hudOpen) {
+            hudPanPending = false;
+            hudPanning = false;
             draggingHudElement = false;
             resizingHudElement = false;
             draggingHudOpacityKey = null;
@@ -17024,12 +17079,13 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         // -----------------------------------------------------HUD DESIGNER-----------------------------------------------------
         if (hudOpen) {
+            if(!hudDropdownOpen() && scrollHudCanvas(mouseX, mouseY, scrollY)) return true;
             if(hudStyleDropdownOpen && hudElement() != null){
                 int count = AdvancedHudInteractiveStyles.options(hudElement().getString("Type")).size();
                 hudStyleDropdownScroll = Mth.clamp(hudStyleDropdownScroll - (int)Math.signum(scrollY),
                         0, Math.max(0, count - hudStyleVisibleRows(count)));
             } else if (hudBindingDropdownKey != null) {
-                List<String> ports = hudBindingPorts(hudNode());
+                List<String> ports = hudBindingOptions();
                 int maxScroll = Math.max(0, ports.size() - HUD_PORT_VISIBLE_ROWS);
                 hudBindingDropdownScroll = Mth.clamp(
                         hudBindingDropdownScroll - (int) Math.signum(scrollY), 0, maxScroll);
@@ -17043,8 +17099,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 int maxScroll = Math.max(0, ports.size() - HUD_PORT_VISIBLE_ROWS);
                 hudPortDropdownScroll = Mth.clamp(
                         hudPortDropdownScroll - (int) Math.signum(scrollY), 0, maxScroll);
-            } else if (hudDataBindings) {
-                List<String> properties = hudBindableProps(hudElement());
+            } else if (hudDataBindings && hudSidebarBounds().contains(
+                    hudTransform().localX(mouseX), hudTransform().localY(mouseY))) {
+                List<String> properties = hudBindingPorts(hudNode());
                 int visibleRows = hudBindingVisibleRows();
                 int maxScroll = Math.max(0, properties.size() - visibleRows);
                 hudBindingPropScroll = Mth.clamp(
@@ -17105,11 +17162,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         // -----------------------------------------------------GRAPH ZOOM-----------------------------------------------------
         if (inGraph(mouseX, mouseY)) {
-            double graphMouseX = graphX(mouseX);
-            double graphMouseY = graphY(mouseY);
-            zoom = Mth.clamp(zoom + scrollY * 0.1, 0.05, 1.75);
-            panX = mouseX - graphLeft() - graphMouseX * zoom;
-            panY = mouseY - graphTop() - graphMouseY * zoom;
+            GraphViewport next = graphViewport().zoomAt(mouseX, mouseY,
+                    Mth.clamp(zoom + scrollY * 0.1, 0.05, 1.75));
+            zoom = next.zoom();
+            panX = next.panX();
+            panY = next.panY();
             storeViewport();
             return true;
         }
@@ -17242,7 +17299,9 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         }
         if (hudOpen) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
-                if (hudImageDropdownOpen) {
+                if(hudBindingDropdownKey != null){
+                    hudBindingDropdownKey = null;
+                } else if (hudImageDropdownOpen) {
                     hudImageDropdownOpen = false;
                 } else if (hudStyleDropdownOpen) {
                     hudStyleDropdownOpen = false;
@@ -19189,7 +19248,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                 .findFirst().orElse("variable");
         return new AdvancedGraphNodeFactory.Context(
                 pairId, nextVariableName(), firstVariable,
-                minecraft == null || minecraft.player == null ? "" : minecraft.player.getGameProfile().getName());
+                minecraft == null || minecraft.player == null ? "" : minecraft.player.getGameProfile().getName(),
+                menu.getServerTimezone());
     }
 
     // Get the next variable name
@@ -19284,8 +19344,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     // Align one graph-space coordinate to the configured Shift-drag grid.
-    private double snapGraphCoordinate(double coordinate) {
-        return Math.round(coordinate / gridSnapStep) * (double) gridSnapStep;
+    private double snapGraphCoordinate(double coordinate){
+        return GraphViewport.snapCoordinate(coordinate, gridSnapStep);
     }
 
     // Select the marquee
@@ -24634,22 +24694,28 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Get the HUD bounds
-    private UiRect hudBounds() {
-        int width = Math.min(HUD_WIDTH, Math.max(480, this.width - 60));
-        int height = Math.min(HUD_HEIGHT, Math.max(300, this.height - 20));
-        return new UiRect((this.width - width) / 2, (this.height - height) / 2, width, height);
+    private UiRect hudBounds(){
+        return new UiRect(0, 0, HUD_WIDTH, HUD_HEIGHT);
+    }
+
+    // Fit artwork, fields and pointer coordinates with the same transform
+    private GuiCanvasTransform hudTransform(){
+        return GuiCanvasTransform.fit(HUD_WIDTH, HUD_HEIGHT, width, height, 8);
+    }
+
+    private UiRect hudAtlasRect(int x, int y, int width, int height){
+        return new UiRect(Math.round(x * 1.5F), Math.round(y * 1.5F),
+                Math.round(width * 1.5F), Math.round(height * 1.5F));
     }
 
     // Get the HUD canvas bounds
-    private UiRect hudCanvasBounds() {
-        UiRect bounds = hudBounds();
-        return new UiRect(bounds.x() + 12, bounds.y() + 68, bounds.width() - 250, bounds.height() - 80);
+    private UiRect hudCanvasBounds(){
+        return hudAtlasRect(115, 69, 325, 175);
     }
 
     // Get the HUD sidebar bounds
-    private UiRect hudSidebarBounds() {
-        UiRect bounds = hudBounds();
-        return new UiRect(bounds.right() - 226, bounds.y() + 68, 214, bounds.height() - 80);
+    private UiRect hudSidebarBounds(){
+        return hudAtlasRect(444, 69, 127, 175);
     }
 
     // Get the HUD btn bounds
@@ -24688,6 +24754,15 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         if (!isAdvancedHudNode(node)) return;
         if(hudColorPicker != null) hudColorPicker.cancel();
         clearTextFocus();
+        hudDisplayTaskbarPixels = 0;
+        hudDisplayHalfHeight = false;
+        hudDisplayColumns = Math.max(1, (int)Math.round((node.data().getInt("WidgetWidth") + 24) / 96.0D));
+        hudDisplayRows = Math.max(1, (int)Math.round((node.data().getInt("WidgetHeight") + 24) / 96.0D));
+        hudCanvasZoom = 1;
+        hudCanvasPanX = 0;
+        hudCanvasPanY = 0;
+        hudPanPending = false;
+        hudPanning = false;
         if("acc_display_widget".equals(node.type())) syncDisplayWidgetCanvas(node);
         hudOpen = true;
         hudNodeId = node.id();
@@ -24713,26 +24788,77 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Size the designer to the complete selected display surface
     private void syncDisplayWidgetCanvas(AdvancedGraphDocument.Node node){
-        if(minecraft == null || minecraft.level == null) return;
+        AccDisplayBlockEntity display = hudConnectedDisplay(node);
+        if(display == null) return;
+        hudDisplayColumns = Math.max(1, display.networkWidth());
+        hudDisplayRows = Math.max(1, display.networkHeight());
+        hudDisplayHalfHeight = AccDisplaySurfaceLayout.visiblePixelsPerRow(display.getBlockState())
+                < AccDisplayBlockEntity.PIXELS_PER_BLOCK;
+        hudDisplayTaskbarPixels = display.displayFrame().getList("Sources", Tag.TAG_COMPOUND).size() > 1
+                ? AccDisplayBlockEntity.TASKBAR_PIXELS : 0;
+        int height = Math.max(1, display.surfacePixelHeight() - hudDisplayTaskbarPixels);
+        if(node.data().getInt("WidgetWidth") == display.surfacePixelWidth()
+                && node.data().getInt("WidgetHeight") == height) return;
+        checkpoint();
+        AdvancedDisplayWidgets.resizeCanvas(node, display.surfacePixelWidth(), height);
+    }
+
+    // Resolve the same target used by the display widget runtime
+    private AccDisplayBlockEntity hudConnectedDisplay(AdvancedGraphDocument.Node node){
+        if(node == null || !"acc_display_widget".equals(node.type()) || minecraft == null || minecraft.level == null) return null;
         CompoundTag target = node.data().getCompound("TargetData");
         var controller = menu.getMenuConfigTargetBlockEntity();
         if(controller != null){
             var input = controller.previewGraphInput(draft, node, "target");
             if(input != null && "target".equals(input.type()) && input.payload().contains("BlockPos")) target = input.payload();
         }
-        if(!target.contains("BlockPos")) return;
+        if(!target.contains("BlockPos")) return null;
         ControllerDiscoveryNode discovery = ControllerDiscoveryNode.fromTag(target);
         var resolved = AdvancedContraptionControllerBlockEntity.resolveGraphDataTarget(minecraft.level, node, discovery);
-        if(resolved == null || !(resolved.level().getBlockEntity(resolved.pos()) instanceof AccDisplayBlockEntity display)) return;
-        AccDisplayBlockEntity root = display.networkRoot();
-        if(root == null) return;
-        int height = root.surfacePixelHeight();
-        if(root.displayFrame().getList("Sources", Tag.TAG_COMPOUND).size() > 1) height -= AccDisplayBlockEntity.TASKBAR_PIXELS;
-        height = Math.max(1, height);
-        if(node.data().getInt("WidgetWidth") == root.surfacePixelWidth()
-                && node.data().getInt("WidgetHeight") == height) return;
-        checkpoint();
-        AdvancedDisplayWidgets.resizeCanvas(node, root.surfacePixelWidth(), height);
+        if(resolved == null || !(resolved.level().getBlockEntity(resolved.pos()) instanceof AccDisplayBlockEntity display)) return null;
+        return display.networkRoot();
+    }
+
+    private int hudDisplayTaskbarHeight(){
+        return hudDisplayTaskbarPixels;
+    }
+
+    private GuiCanvasTransform hudPreviewTransform(AdvancedGraphDocument.Node node, UiRect canvas){
+        GraphViewport viewport = hudPreviewViewport(node, canvas);
+        return new GuiCanvasTransform((int)Math.round(viewport.screenX(0)),
+                (int)Math.round(viewport.screenY(0)), (float)viewport.zoom());
+    }
+
+    // Share the graph's navigation transform without changing its saved viewport
+    private GraphViewport hudPreviewViewport(AdvancedGraphDocument.Node node, UiRect canvas){
+        boolean display = "acc_display_widget".equals(node.type());
+        int border = display ? AccDisplayBlockEntity.BORDER_PIXELS * 2 : 0;
+        int width = Math.max(1, node.data().getInt("WidgetWidth")) + border;
+        int height = Math.max(1, node.data().getInt("WidgetHeight")) + border + (display ? hudDisplayTaskbarHeight() : 0);
+        GuiCanvasTransform fit = GuiCanvasTransform.fit(width, height, canvas.width(), canvas.height(), 10, Float.MAX_VALUE);
+        return new GraphViewport(canvas.x() + fit.x(), canvas.y() + fit.y(),
+                hudCanvasPanX, hudCanvasPanY, fit.scale() * hudCanvasZoom);
+    }
+
+    private boolean hudDropdownOpen(){
+        return hudBindingDropdownKey != null || hudStyleDropdownOpen || hudFontStyleDropdownOpen
+                || hudPortDropdownOpen || hudImageDropdownOpen;
+    }
+
+    private boolean scrollHudCanvas(double mouseX, double mouseY, double scroll){
+        GuiCanvasTransform transform = hudTransform();
+        double x = transform.localX(mouseX);
+        double y = transform.localY(mouseY);
+        AdvancedGraphDocument.Node node = hudNode();
+        if(!isAdvancedHudNode(node) || !hudCanvasBounds().contains(x, y)) return false;
+        if(hudPanPending || draggingHudElement || resizingHudElement) return true;
+        double nextZoom = Mth.clamp(hudCanvasZoom + scroll * 0.1D, 0.05D, 8.0D);
+        GraphViewport viewport = hudPreviewViewport(node, hudCanvasBounds());
+        GraphViewport next = viewport.zoomAt(x, y, viewport.zoom() * nextZoom / hudCanvasZoom);
+        hudCanvasZoom = nextZoom;
+        hudCanvasPanX = next.panX();
+        hudCanvasPanY = next.panY();
+        return true;
     }
 
     // Close the HUD
@@ -24741,6 +24867,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         clearHudFieldFocus();
         hudOpen = false;
         hudNodeId = null;
+        hudPanPending = false;
+        hudPanning = false;
         hudSelectedIdx = -1;
         draggingHudElement = false;
         resizingHudElement = false;
@@ -24886,27 +25014,76 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     // Draw the HUD
-    private void drawHud(GuiGraphics graphics, int mouseX, int mouseY) {
+    private void drawHud(GuiGraphics graphics, int mouseX, int mouseY){
+        graphics.fill(0, 0, width, height, 0x88000000);
+        GuiCanvasTransform transform = hudTransform();
+        int localX = (int)transform.localX(mouseX);
+        int localY = (int)transform.localY(mouseY);
+        graphics.pose().pushPose();
+        try{
+            graphics.pose().translate(transform.x(), transform.y(), 0);
+            graphics.pose().scale(transform.scale(), transform.scale(), 1);
+            drawHudContents(graphics, localX, localY);
+            for(EditBox field : hudFields()){
+                if(!field.visible) continue;
+                if(field == hudText || field == hudTexture){
+                    HudDesignerAppearance.STYLE.renderInset(graphics, field.getX() - 3, field.getY() - 3,
+                            field.getWidth() + 6, 18, field.isMouseOver(localX, localY), field.isFocused());
+                }else{
+                    HudDesignerAppearance.VALUE.draw(graphics, field.getX() - 3, field.getY() - 1,
+                            field.getWidth() + 6, 12);
+                }
+                field.setTextShadow(false);
+                field.render(graphics, localX, localY, 0);
+            }
+        }finally{ graphics.pose().popPose(); }
+    }
+
+    private void drawHudButton(GuiGraphics graphics, net.minecraft.client.gui.Font font,
+                               int x, int y, int width, int height, Component label,
+                               boolean hovered, boolean enabled){
+        HudDesignerAppearance.STYLE.renderTextButton(graphics, font, x, y, width, height,
+                label, hovered, enabled, false);
+    }
+
+    private void drawHudSelector(GuiGraphics graphics, UiRect bounds, String label, boolean hovered, boolean enabled){
+        HudDesignerAppearance.STYLE.renderButton(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height(),
+                hovered, enabled, false);
+        GuiControlPreviews.drawFittedText(graphics, font, Component.literal(label), bounds.x() + 4, bounds.y() + 1,
+                bounds.width() - 18, bounds.height() - 2, 1, enabled ? 0xFFF3EEE4 : 0xFFB8B8B8, false);
+        graphics.drawString(font, "v", bounds.right() - 11, bounds.y() + (bounds.height() - 8) / 2,
+                enabled ? 0xFFF3EEE4 : 0xFFB8B8B8, false);
+    }
+
+    private void drawHudHeader(GuiGraphics graphics, String label, UiRect bounds){
+        GuiControlPreviews.drawFittedText(graphics, font, Component.literal(label), bounds.x() + 4, bounds.y(),
+                bounds.width() - 8, bounds.height(), 1, 0xFFF3EEE4, true);
+    }
+
+    private void drawHudContents(GuiGraphics graphics, int mouseX, int mouseY){
         layoutHudWidgets();
-        UiRect bounds = hudBounds();
         UiRect canvas = hudCanvasBounds();
         UiRect sidebar = hudSidebarBounds();
-        graphics.fill(0, 0, width, height, 0x88000000);
-        renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
-        graphics.drawString(font, "Advanced HUD Designer", bounds.x() + 12, bounds.y() + 12, 0xFFFFFFFF, false);
+        HudDesignerAppearance.FRAME.draw(graphics, 0, 0, HUD_WIDTH, HUD_HEIGHT);
+        AdvancedGraphDocument.Node node = hudNode();
+        drawHudHeader(graphics, node != null && "acc_display_widget".equals(node.type())
+                ? "ACC Display Widget Designer" : "Advanced HUD Designer", hudAtlasRect(4, 1, 568, 13));
+        drawHudHeader(graphics, "Add New", hudAtlasRect(4, 27, 109, 15));
+        drawHudHeader(graphics, "Z-Index / Ordering", hudAtlasRect(206, 27, 126, 15));
+        drawHudHeader(graphics, "Configuration", hudAtlasRect(444, 27, 127, 15));
 
         UiRect visualTab = hudPaletteTab(false);
         UiRect interactiveTab = hudPaletteTab(true);
-        renderAdvancedButton(graphics, font, visualTab.x(), visualTab.y(), visualTab.width(), visualTab.height(),
+        drawHudButton(graphics, font, visualTab.x(), visualTab.y(), visualTab.width(), visualTab.height(),
                 Component.literal("Visual"), visualTab.contains(mouseX, mouseY), !hudInteractivePalette);
-        renderAdvancedButton(graphics, font, interactiveTab.x(), interactiveTab.y(),
+        drawHudButton(graphics, font, interactiveTab.x(), interactiveTab.y(),
                 interactiveTab.width(), interactiveTab.height(), Component.literal("Interactive"),
                 interactiveTab.contains(mouseX, mouseY), hudInteractivePalette);
 
         int actionCount = 5;
         for (int i = 0; i < actionCount; i++) {
             UiRect btn = hudActionBtn(i);
-            renderAdvancedButton(graphics, font, btn.x(), btn.y(), btn.width(), btn.height(),
+            drawHudButton(graphics, font, btn.x(), btn.y(), btn.width(), btn.height(),
                     Component.literal(hudInteractivePalette
                             ? switch (i) {
                         case 0 -> "Button";
@@ -24923,122 +25100,123 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                         default -> "Progress";
                     }), inside(mouseX, mouseY, btn.x(), btn.y(), btn.width(), btn.height()), true);
         }
+        CompoundTag selected = hudElement();
         UiRect remove = hudRemoveBtn();
-        renderAdvancedButton(graphics, font, remove.x(), remove.y(), remove.width(), remove.height(),
-                Component.literal("Remove"), inside(mouseX, mouseY, remove.x(), remove.y(), remove.width(), remove.height()), true);
+        drawHudButton(graphics, font, remove.x(), remove.y(), remove.width(), remove.height(),
+                Component.literal("Remove"), remove.contains(mouseX, mouseY), selected != null);
         UiRect close = hudCloseBtn();
-        renderAdvancedButton(graphics, font, close.x(), close.y(), close.width(), close.height(),
-                Component.literal("Close"), inside(mouseX, mouseY, close.x(), close.y(), close.width(), close.height()), true);
-
-        graphics.fill(canvas.x(), canvas.y(), canvas.right(), canvas.bottom(), 0xFF111923);
-        graphics.renderOutline(canvas.x(), canvas.y(), canvas.width(), canvas.height(), 0xFF3D637E);
-        renderSidebarPanel(graphics, sidebar.x(), sidebar.y(), sidebar.width(), sidebar.height());
-        graphics.renderOutline(sidebar.x(), sidebar.y(), sidebar.width(), sidebar.height(), 0xFF3D637E);
-        graphics.drawString(font, "Canvas", canvas.x() + 8, canvas.y() - 12, 0xFF91D9FF, false);
-        graphics.drawString(font, "Selected Element", sidebar.x() + 8, sidebar.y() + 8, 0xFF91D9FF, false);
-
-        AdvancedGraphDocument.Node node = hudNode();
-        if (!isAdvancedHudNode(node)) return;
-        double scale = hudCanvasScale(node, canvas);
-        int previewWidth = (int) Math.round(Math.max(1, node.data().getInt("WidgetWidth")) * scale);
-        int previewHeight = (int) Math.round(Math.max(1, node.data().getInt("WidgetHeight")) * scale);
-        int previewX = canvas.x() + (canvas.width() - previewWidth) / 2;
-        int previewY = canvas.y() + (canvas.height() - previewHeight) / 2;
-        graphics.enableScissor(canvas.x(), canvas.y(), canvas.right(), canvas.bottom());
-        graphics.fill(previewX, previewY, previewX + previewWidth, previewY + previewHeight, 0xFF0E151D);
-        graphics.renderOutline(previewX, previewY, previewWidth, previewHeight, 0xFF64879D);
-
-        // ------------------------------------CANVAS PREVIEW------------------------------------
-
+        if(close.contains(mouseX, mouseY)) graphics.fill(close.x() + 2, close.y() + 2,
+                close.right() - 2, close.bottom() - 2, 0x33FFFFFF);
+        if(!isAdvancedHudNode(node)) return;
         ListTag elements = node.data().getList(WIDGET_ELEMENTS, Tag.TAG_COMPOUND);
-        for (int i = 0; i < elements.size(); i++) {
-            CompoundTag elm = AdvancedHudElementBinding.resolvedCopy(
-                    elements.getCompound(i), port -> hudDataVal(node, port));
-            AdvancedHudElementStyle.applyDefaults(elm);
-            if (elm.contains("Visible", Tag.TAG_BYTE) && !elm.getBoolean("Visible")) {
-                continue;
+        drawHudButton(graphics, font, hudLayerBtn(1).x(), hudLayerBtn(1).y(),
+                hudLayerBtn(1).width(), hudLayerBtn(1).height(), Component.literal("UP"),
+                hudLayerBtn(1).contains(mouseX, mouseY), selected != null && hudSelectedIdx < elements.size() - 1);
+        drawHudButton(graphics, font, hudLayerBtn(-1).x(), hudLayerBtn(-1).y(),
+                hudLayerBtn(-1).width(), hudLayerBtn(-1).height(), Component.literal("DOWN"),
+                hudLayerBtn(-1).contains(mouseX, mouseY), selected != null && hudSelectedIdx > 0);
+        for(boolean data : new boolean[]{false, true}){
+            UiRect tab = hudInspectorTab(data);
+            drawHudButton(graphics, font, tab.x(), tab.y(), tab.width(), tab.height(),
+                    Component.literal(data ? "Data" : "Properties"), tab.contains(mouseX, mouseY),
+                    data == hudDataBindings);
+        }
+        String dimensions = Math.max(1, node.data().getInt("WidgetWidth")) + " x "
+                + Math.max(1, node.data().getInt("WidgetHeight"));
+        String order = selected == null ? "" : " | Layer " + (hudSelectedIdx + 1) + " / " + elements.size();
+        GuiControlPreviews.drawFittedText(graphics, font, Component.literal(dimensions + order
+                        + " | Wheel: zoom | RMB: pan | Shift: snap " + gridSnapStep + " | Arrows / Ctrl+Arrows: move"),
+                100, 381, hudCloseBtn().x() - 110, 20, 1, 0xFF444444, false);
+        double scale = hudCanvasScale(node, canvas);
+        int previewWidth = (int)Math.round(Math.max(1, node.data().getInt("WidgetWidth")) * scale);
+        int previewHeight = (int)Math.round(Math.max(1, node.data().getInt("WidgetHeight")) * scale);
+        int previewX = hudPreviewX(node, canvas);
+        int previewY = hudPreviewY(node, canvas);
+        try(var viewportClip = GuiPoseScissor.push(graphics, canvas.x() + 2, canvas.y() + 2,
+                canvas.right() - 2, canvas.bottom() - 2)){
+            boolean display = "acc_display_widget".equals(node.type());
+            if(display){
+                GuiCanvasTransform fit = hudPreviewTransform(node, canvas);
+                int taskbar = hudDisplayTaskbarHeight();
+                HudDesignerAppearance.renderDisplay(graphics, fit.x(), fit.y(),
+                        (int)Math.round((node.data().getInt("WidgetWidth") + 24) * scale),
+                        (int)Math.round((node.data().getInt("WidgetHeight") + 24 + taskbar) * scale),
+                        hudDisplayHalfHeight, hudDisplayColumns, hudDisplayRows);
+                if(taskbar > 0) graphics.fill(previewX, previewY + previewHeight,
+                        previewX + previewWidth, previewY + previewHeight + (int)Math.round(taskbar * scale), 0xFF171717);
+            }else{
+                graphics.fill(previewX, previewY, previewX + previewWidth, previewY + previewHeight, 0xFF303030);
+                graphics.renderOutline(previewX, previewY, previewWidth, previewHeight, 0xFF707070);
             }
-            UiRect elementRect = hudElementRect(node, canvas, elm);
-            float elementScale = (float) Mth.clamp(elm.getDouble("Scale"), 0.01D, 100.0D);
-            graphics.pose().pushPose();
-            graphics.pose().translate(elementRect.x() + elementRect.width() * 0.5F,
-                    elementRect.y() + elementRect.height() * 0.5F, 0.0F);
-            graphics.pose().mulPose(com.mojang.math.Axis.ZP.rotationDegrees(
-                    (float) elm.getDouble("Rotation")));
-            graphics.pose().scale(elementScale, elementScale, 1.0F);
-            graphics.pose().translate(-elementRect.x() - elementRect.width() * 0.5F,
-                    -elementRect.y() - elementRect.height() * 0.5F, 0.0F);
-            switch (elm.getString("Type")) {
-                case "camera_source" -> {
-                    var ref = AdvancedHudCameraSource.reference(menu.getMenuConfigTargetBlockEntity(), node, elm,
-                            port -> hudDataVal(node, port));
-                    ViewFeedRenderer.draw(graphics, font, ref,
-                            elementRect.x(), elementRect.y(), elementRect.width(), elementRect.height());
-                    CameraWidgetClient.preview(graphics, font, ref,
-                            elementRect.x(), elementRect.y(), elementRect.width(), elementRect.height());
-                }
-                case "box" -> AdvancedHudElementRenderer.drawBox(graphics, elm,
-                        elementRect.x(), elementRect.y(), elementRect.width(), elementRect.height(), scale);
-                case "image" -> {
-                    if (!AdvancedHudImageClient.draw(graphics, elm.getString("Texture"),
-                            elementRect.x(), elementRect.y(), elementRect.width(), elementRect.height())) {
-                        graphics.fill(elementRect.x(), elementRect.y(), elementRect.right(), elementRect.bottom(),
-                                0x66374756);
-                        graphics.drawString(font, "IMG", elementRect.x() + 4, elementRect.y() + 4,
-                                0xFFFFFFFF, false);
+            try(var clip = GuiPoseScissor.push(graphics, previewX, previewY,
+                    previewX + previewWidth, previewY + previewHeight)){
+
+                // ------------------------------------CANVAS PREVIEW------------------------------------
+
+                for (int i = 0; i < elements.size(); i++) {
+                    CompoundTag elm = hudPreviewElement(node, elements.getCompound(i));
+                    if (elm.contains("Visible", Tag.TAG_BYTE) && !elm.getBoolean("Visible")) {
+                        continue;
+                    }
+                    UiRect elementRect = hudElementRect(node, canvas, elm);
+                    float elementScale = (float) Mth.clamp(elm.getDouble("Scale"), 0.01D, 100.0D);
+                    graphics.pose().pushPose();
+                    graphics.pose().translate(elementRect.x() + elementRect.width() * 0.5F,
+                            elementRect.y() + elementRect.height() * 0.5F, 0.0F);
+                    graphics.pose().mulPose(com.mojang.math.Axis.ZP.rotationDegrees(
+                            (float) elm.getDouble("Rotation")));
+                    graphics.pose().scale(elementScale, elementScale, 1.0F);
+                    graphics.pose().translate(-elementRect.x() - elementRect.width() * 0.5F,
+                            -elementRect.y() - elementRect.height() * 0.5F, 0.0F);
+                    switch (elm.getString("Type")) {
+                        case "camera_source" -> {
+                            var ref = AdvancedHudCameraSource.reference(menu.getMenuConfigTargetBlockEntity(), node, elm,
+                                    port -> hudDataVal(node, port));
+                            ViewFeedRenderer.draw(graphics, font, ref,
+                                    elementRect.x(), elementRect.y(), elementRect.width(), elementRect.height());
+                            CameraWidgetClient.preview(graphics, font, ref,
+                                    elementRect.x(), elementRect.y(), elementRect.width(), elementRect.height());
+                        }
+                        case "box" -> AdvancedHudElementRenderer.drawBox(graphics, elm,
+                                elementRect.x(), elementRect.y(), elementRect.width(), elementRect.height(), scale);
+                        case "image" -> {
+                            if (!AdvancedHudImageClient.draw(graphics, elm.getString("Texture"),
+                                    elementRect.x(), elementRect.y(), elementRect.width(), elementRect.height())) {
+                                graphics.fill(elementRect.x(), elementRect.y(), elementRect.right(), elementRect.bottom(),
+                                        0x66374756);
+                                graphics.drawString(font, "IMG", elementRect.x() + 4, elementRect.y() + 4,
+                                        0xFFFFFFFF, false);
+                            }
+                        }
+                        case "value" -> AdvancedHudElementRenderer.drawText(graphics, font, elm,
+                                designerHudValueLabel(node,
+                                        elm.getString("Port").isBlank() ? "value" : elm.getString("Port")),
+                                elementRect.x(), elementRect.y(), elementRect.width(), elementRect.height(), scale);
+                        case "button", "toggle", "slider", "text_input" -> drawHudInteractive(
+                                graphics, elm, elementRect, scale);
+                        case "progress" -> drawHudProgress(graphics, node, elm, elementRect, scale);
+                        default -> AdvancedHudElementRenderer.drawText(graphics, font, elm, elm.getString("Text"),
+                                elementRect.x(), elementRect.y(), elementRect.width(), elementRect.height(), scale);
+                    }
+                    graphics.pose().popPose();
+                    graphics.renderOutline(elementRect.x(), elementRect.y(), elementRect.width(), elementRect.height(),
+                            i == hudSelectedIdx ? 0xFFFFFFFF : 0xFF59C58B);
+                    if (i == hudSelectedIdx) {
+                        graphics.fill(elementRect.right() - 5, elementRect.bottom() - 5, elementRect.right(), elementRect.bottom(), 0xFFFFFFFF);
                     }
                 }
-                case "value" -> AdvancedHudElementRenderer.drawText(graphics, font, elm,
-                        designerHudValueLabel(node,
-                                elm.getString("Port").isBlank() ? "value" : elm.getString("Port")),
-                        elementRect.x(), elementRect.y(), elementRect.width(), elementRect.height(), scale);
-                case "button", "toggle", "slider", "text_input" -> drawHudInteractive(
-                        graphics, elm, elementRect, scale);
-                case "progress" -> drawHudProgress(graphics, node, elm, elementRect, scale);
-                default -> AdvancedHudElementRenderer.drawText(graphics, font, elm, elm.getString("Text"),
-                        elementRect.x(), elementRect.y(), elementRect.width(), elementRect.height(), scale);
-            }
-            graphics.pose().popPose();
-            graphics.renderOutline(elementRect.x(), elementRect.y(), elementRect.width(), elementRect.height(),
-                    i == hudSelectedIdx ? 0xFFFFFFFF : 0xFF59C58B);
-            if (i == hudSelectedIdx) {
-                graphics.fill(elementRect.right() - 5, elementRect.bottom() - 5, elementRect.right(), elementRect.bottom(), 0xFFFFFFFF);
+
             }
         }
 
-        graphics.disableScissor();
-
-        // -----------------------------------------------------SELECTED WIDGET---------------------------------------------------
-
-        CompoundTag selected = hudElement();
-        if (selected == null) {
-            graphics.drawString(font, "No widget selected.", sidebar.x() + 8, sidebar.y() + 30, 0xFF91A9B8, false);
+        // Inspect the selected element beneath the configuration tabs
+        if(selected == null){
+            GuiControlPreviews.drawFittedText(graphics, font, Component.literal("Select or add a widget."),
+                    sidebar.x() + 8, sidebar.y() + 10, sidebar.width() - 16, 18, 1, 0xFFB8B8B8, false);
             return;
         }
         String type = selected.getString("Type");
         ElementInspectorLayout inspector = ElementInspectorLayout.forType(type);
-        graphics.drawString(font, "Type: " + humanPort(type), sidebar.x() + 8, sidebar.y() + 30,
-                0xFFFFFFFF, false);
-        graphics.drawString(font, "Drag to move; corner to resize.", sidebar.x() + 8, sidebar.y() + 46,
-                0xFF91A9B8, false);
-        graphics.drawString(font, "Order: " + (hudSelectedIdx + 1) + " of " + elements.size()
-                        + " (front is highest)", sidebar.x() + 8, sidebar.y() + 62, 0xFFC8D7E3, false);
-        UiRect lower = hudLayerBtn(-1);
-        UiRect raise = hudLayerBtn(1);
-        renderAdvancedButton(graphics, font, lower.x(), lower.y(), lower.width(), lower.height(),
-                Component.literal("Lower"), lower.contains(mouseX, mouseY), hudSelectedIdx > 0);
-        renderAdvancedButton(graphics, font, raise.x(), raise.y(), raise.width(), raise.height(),
-                Component.literal("Raise"), raise.contains(mouseX, mouseY),
-                hudSelectedIdx < elements.size() - 1);
-
-        UiRect propertiesTab = hudInspectorTab(false);
-        UiRect dataTab = hudInspectorTab(true);
-        renderAdvancedButton(graphics, font, propertiesTab.x(), propertiesTab.y(),
-                propertiesTab.width(), propertiesTab.height(), Component.literal("Properties"),
-                propertiesTab.contains(mouseX, mouseY), !hudDataBindings);
-        renderAdvancedButton(graphics, font, dataTab.x(), dataTab.y(),
-                dataTab.width(), dataTab.height(), Component.literal("Data"),
-                dataTab.contains(mouseX, mouseY), hudDataBindings);
         if (hudDataBindings) {
             drawHudBindings(graphics, node, selected, mouseX, mouseY);
             return;
@@ -25048,108 +25226,108 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         switch (type) {
             case "camera_source" -> {
                 graphics.drawString(font, "Select Camera Source in Data.",
-                        sidebar.x() + 8, propertyTop, 0xFF91A9B8, false);
+                        sidebar.x() + 8, propertyTop, 0xFFB8B8B8, false);
                 graphics.drawString(font, "W / H / Rotation / Scale",
-                        sidebar.x() + 8, propertyTop + 42, 0xFFC8D7E3, false);
+                        sidebar.x() + 8, propertyTop + 42, 0xFFF3EEE4, false);
             }
             case "value" -> {
-                graphics.drawString(font, "Port", sidebar.x() + 8, propertyTop, 0xFFC8D7E3, false);
+                graphics.drawString(font, "Port", sidebar.x() + 8, propertyTop, 0xFFF3EEE4, false);
                 drawHudPortBtn(graphics, node, selected, mouseX, mouseY);
                 graphics.drawString(font, "Field type: " + humanPort(hudPortType(
                                 node, selected.getString("Port"))),
-                        sidebar.x() + 8, propertyTop + 38, 0xFF91A9B8, false);
+                        sidebar.x() + 8, propertyTop + 38, 0xFFB8B8B8, false);
                 graphics.drawString(font, "Font size: " + AdvancedHudElementStyle.fontSize(selected),
-                        sidebar.x() + 8, propertyTop + inspector.fontSizeOffset() - 11, 0xFFC8D7E3, false);
+                        sidebar.x() + 8, propertyTop + inspector.fontSizeOffset() - 11, 0xFFF3EEE4, false);
                 drawHudPropSlider(graphics, hudFontSizeSliderBounds(),
                         AdvancedHudElementStyle.fontSize(selected), AdvancedHudElementStyle.MIN_FONT_SIZE,
                         AdvancedHudElementStyle.MAX_FONT_SIZE, "FontSize", mouseX, mouseY);
                 drawHudColorControl(graphics, selected, "Color", "Text color", mouseX, mouseY);
                 graphics.drawString(font, "Font style", sidebar.x() + 8, propertyTop + inspector.fontStyleOffset() - 12,
-                        0xFFC8D7E3, false);
+                        0xFFF3EEE4, false);
                 drawHudFontStyleBtn(graphics, selected, mouseX, mouseY);
                 graphics.drawString(font, "W / H / Rotation / Scale",
-                        sidebar.x() + 8, propertyTop + 176, 0xFFC8D7E3, false);
+                        sidebar.x() + 8, propertyTop + 176, 0xFFF3EEE4, false);
             }
             case "box" -> {
                 drawHudColorControl(graphics, selected, "Color", "Background color", mouseX, mouseY);
                 drawHudColorControl(graphics, selected, "BorderColor", "Border color", mouseX, mouseY);
                 graphics.drawString(font, "Border width", sidebar.x() + 8, propertyTop + 96,
-                        0xFFC8D7E3, false);
+                        0xFFF3EEE4, false);
                 graphics.drawString(font, "Border radius: " + AdvancedHudElementStyle.borderRadius(selected),
                         sidebar.x() + 8, propertyTop + 116,
-                        0xFFC8D7E3, false);
+                        0xFFF3EEE4, false);
                 drawHudPropSlider(graphics, hudBorderRadiusSliderBounds(),
                         AdvancedHudElementStyle.borderRadius(selected), 0,
                         AdvancedHudElementStyle.MAX_BORDER_RADIUS, "BorderRadius", mouseX, mouseY);
                 graphics.drawString(font, "W / H / Rotation / Scale", sidebar.x() + 8, propertyTop + 148,
-                        0xFFC8D7E3, false);
+                        0xFFF3EEE4, false);
             }
             case "image" -> {
-                graphics.drawString(font, "Port", sidebar.x() + 8, propertyTop, 0xFFC8D7E3, false);
+                graphics.drawString(font, "Port", sidebar.x() + 8, propertyTop, 0xFFF3EEE4, false);
                 drawHudPortBtn(graphics, node, selected, mouseX, mouseY);
                 graphics.drawString(font, "Texture / URL fallback", sidebar.x() + 8, propertyTop + 42,
-                        0xFFC8D7E3, false);
+                        0xFFF3EEE4, false);
                 UiRect upload = hudImageUploadBtnBounds();
                 UiRect library = hudImageLibraryBtnBounds();
                 boolean uploadPending = hudPendingImageNodeId != null;
-                renderAdvancedButton(graphics, font, upload.x(), upload.y(), upload.width(), upload.height(),
+                drawHudButton(graphics, font, upload.x(), upload.y(), upload.width(), upload.height(),
                         Component.literal(uploadPending ? "Uploading..." : "Upload"),
                         upload.contains(mouseX, mouseY), !uploadPending);
                 String libraryLabel = AdvancedHudImageClient.uploadedImages().isEmpty()
                         ? "Uploaded (none)" : "Uploaded";
-                drawSelectorButton(graphics, library, libraryLabel, library.contains(mouseX, mouseY),
+                drawHudSelector(graphics, library, libraryLabel, library.contains(mouseX, mouseY),
                         !AdvancedHudImageClient.uploadedImages().isEmpty());
                 graphics.drawString(font, "W / H / Rotation / Scale", sidebar.x() + 8, propertyTop + 108,
-                        0xFFC8D7E3, false);
+                        0xFFF3EEE4, false);
                 graphics.drawString(font, "Fallback is used for an empty port.",
-                        sidebar.x() + 8, propertyTop + 146, 0xFF91A9B8, false);
+                        sidebar.x() + 8, propertyTop + 146, 0xFFB8B8B8, false);
                 if (!hudImageStatus.isBlank()) {
                     graphics.drawString(font, trim(hudImageStatus, 31),
-                            sidebar.x() + 8, propertyTop + 162, 0xFFC8D7E3, false);
+                            sidebar.x() + 8, propertyTop + 162, 0xFFF3EEE4, false);
                 }
             }
             case "slider", "progress" -> {
                 graphics.drawString(font, "progress".equals(type) ? "Port" : "Style",
-                        sidebar.x() + 8, propertyTop, 0xFFC8D7E3, false);
+                        sidebar.x() + 8, propertyTop, 0xFFF3EEE4, false);
                 if ("progress".equals(type)) {
                     drawHudPortBtn(graphics, node, selected, mouseX, mouseY);
-                    graphics.drawString(font, "Style", hudStyleBtnBounds().x(), propertyTop, 0xFFC8D7E3, false);
+                    graphics.drawString(font, "Style", hudStyleBtnBounds().x(), propertyTop, 0xFFF3EEE4, false);
                 }
                 drawHudStyleBtn(graphics, selected, mouseX, mouseY);
                 graphics.drawString(font, "Range: " + compactNumber(selected.getDouble("Min"))
                                 + " to " + compactNumber(selected.getDouble("Max")),
-                        sidebar.x() + 8, propertyTop + 42, 0xFFC8D7E3, false);
+                        sidebar.x() + 8, propertyTop + 42, 0xFFF3EEE4, false);
                 graphics.drawString(font, "progress".equals(type)
                                 ? "Circle: square / Half: 2:1"
                                 : "Step: " + compactNumber(selected.getDouble("Step")),
-                        sidebar.x() + 8, propertyTop + 58, 0xFF91A9B8, false);
+                        sidebar.x() + 8, propertyTop + 58, 0xFFB8B8B8, false);
                 graphics.drawString(font, "W / H / Rotation / Scale", sidebar.x() + 8, propertyTop + 80,
-                        0xFFC8D7E3, false);
+                        0xFFF3EEE4, false);
             }
             default -> {
-                graphics.drawString(font, "Text", sidebar.x() + 8, propertyTop, 0xFFC8D7E3, false);
+                graphics.drawString(font, "Text", sidebar.x() + 8, propertyTop, 0xFFF3EEE4, false);
                 graphics.drawString(font, "Font size: " + AdvancedHudElementStyle.fontSize(selected),
                         sidebar.x() + 8, propertyTop + inspector.fontSizeOffset() - 11,
-                        0xFFC8D7E3, false);
+                        0xFFF3EEE4, false);
                 drawHudPropSlider(graphics, hudFontSizeSliderBounds(),
                         AdvancedHudElementStyle.fontSize(selected), AdvancedHudElementStyle.MIN_FONT_SIZE,
                         AdvancedHudElementStyle.MAX_FONT_SIZE, "FontSize", mouseX, mouseY);
                 drawHudColorControl(graphics, selected, "Color", "Text color", mouseX, mouseY);
                 boolean interactive = AdvancedHudInteractiveStyles.supports(type);
                 graphics.drawString(font, "Font style", sidebar.x() + 8, propertyTop + inspector.fontStyleOffset() - 12,
-                        0xFFC8D7E3, false);
+                        0xFFF3EEE4, false);
                 if (interactive) {
                     int styleLabelX = hudStyleBtnBounds().x();
                     graphics.drawString(font, "Style", styleLabelX,
                             propertyTop + inspector.fontStyleOffset() - 12,
-                            0xFFC8D7E3, false);
+                            0xFFF3EEE4, false);
                 }
                 drawHudFontStyleBtn(graphics, selected, mouseX, mouseY);
                 if (interactive) {
                     drawHudStyleBtn(graphics, selected, mouseX, mouseY);
                 }
                 graphics.drawString(font, "W / H / Rotation / Scale", sidebar.x() + 8, propertyTop + 154,
-                        0xFFC8D7E3, false);
+                        0xFFF3EEE4, false);
             }
         }
         if (AdvancedHudInteractiveStyles.supports(type)) drawHudPalette(graphics, selected, mouseX, mouseY);
@@ -25158,6 +25336,16 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Draw dropdowns above the canvas and the designer's text fields
     private void drawHudDropdowns(GuiGraphics graphics, int mouseX, int mouseY){
         if(!hudOpen) return;
+        GuiCanvasTransform transform = hudTransform();
+        graphics.pose().pushPose();
+        try{
+            graphics.pose().translate(transform.x(), transform.y(), 0);
+            graphics.pose().scale(transform.scale(), transform.scale(), 1);
+            drawHudDropdownContents(graphics, (int)transform.localX(mouseX), (int)transform.localY(mouseY));
+        }finally{ graphics.pose().popPose(); }
+    }
+
+    private void drawHudDropdownContents(GuiGraphics graphics, int mouseX, int mouseY){
         boolean dropdownOpen = hudDataBindings ? hudBindingDropdownKey != null
                 : hudPortDropdownOpen || hudFontStyleDropdownOpen || hudStyleDropdownOpen || hudImageDropdownOpen;
         if(!dropdownOpen) return;
@@ -25301,50 +25489,68 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     // Draw the HUD bindings
-    private void drawHudBindings(
-            GuiGraphics graphics, AdvancedGraphDocument.Node node, CompoundTag elm,
-            int mouseX, int mouseY) {
+    private void drawHudBindings(GuiGraphics graphics, AdvancedGraphDocument.Node node, CompoundTag elm,
+                                 int mouseX, int mouseY){
         UiRect sidebar = hudSidebarBounds();
-        int y = hudPropTop(sidebar);
-        List<String> properties = hudBindableProps(elm);
-        int visibleRows = hudBindingVisibleRows();
-        hudBindingPropScroll = Mth.clamp(hudBindingPropScroll,
-                0, Math.max(0, properties.size() - visibleRows));
-        int end = Math.min(properties.size(), hudBindingPropScroll + visibleRows);
-        for (int idx = hudBindingPropScroll; idx < end; idx++) {
-            String property = properties.get(idx);
-            graphics.drawString(font, AdvancedHudCameraSource.PROPERTY.equals(property)
-                            ? "Camera Source" : trim(humanPort(property), 10),
-                    sidebar.x() + 8, y + 5, 0xFFC8D7E3, false);
-            UiRect btn = hudBindingBtnBounds(property);
+        List<String> ports = hudBindingPorts(node);
+        int visible = hudBindingVisibleRows();
+        hudBindingPropScroll = Mth.clamp(hudBindingPropScroll, 0, Math.max(0, ports.size() - visible));
+        Map<String, String> bindings = hudPropertyBindings(elm);
+        int end = Math.min(ports.size(), hudBindingPropScroll + visible);
+        for(int idx = hudBindingPropScroll; idx < end; idx++){
+            String port = ports.get(idx);
+            UiRect btn = hudBindingBtnBounds(port);
+            GuiControlPreviews.drawFittedText(graphics, font, Component.literal(hudPortOptionLabel(node, port)),
+                    btn.x(), btn.y() - 13, btn.width(), 10, 1, 0xFFF3EEE4, false);
+            List<String> properties = PortPropertyBindings.properties(bindings, port);
+            String label = properties.isEmpty() ? "Default" : properties.stream()
+                    .map(this::hudBindingPropertyLabel).collect(java.util.stream.Collectors.joining(", "));
+            drawHudSelector(graphics, btn, label, btn.contains(mouseX, mouseY), true);
+        }
+        if(ports.isEmpty()) graphics.drawString(font, "No data ports.", sidebar.x() + 8, sidebar.y() + 12, 0xFFB8B8B8, false);
+        if(ports.size() > visible) graphics.drawString(font, (hudBindingPropScroll + 1) + "-" + end + " / " + ports.size(),
+                sidebar.right() - 58, sidebar.bottom() - 11, 0xFFB8B8B8, false);
+    }
+
+    private String hudBindingPropertyLabel(String property){
+        return switch(property){
+            case "" -> "Default";
+            case "W" -> "Width";
+            case "H" -> "Height";
+            case AdvancedHudCameraSource.PROPERTY -> "Camera Source";
+            default -> humanPort(property);
+        };
+    }
+
+    // Retain property-to-port storage while presenting controls from the port side
+    private Map<String, String> hudPropertyBindings(CompoundTag elm){
+        Map<String, String> bindings = new LinkedHashMap<>();
+        if(elm == null) return bindings;
+        for(String property : hudBindableProps(elm)){
             String port = AdvancedHudElementBinding.port(elm, property);
-            String label = port.isBlank() ? "Static" : hudFieldLabel(node, port);
-            renderAdvancedButton(graphics, font, btn.x(), btn.y(),
-                    btn.width(), btn.height(), Component.literal(trim(label, 15)),
-                    btn.contains(mouseX, mouseY), true);
-            y += 19;
+            if(!port.isBlank()) bindings.put(property, port);
         }
-        if (properties.size() > visibleRows) {
-            graphics.drawString(font,
-                    (hudBindingPropScroll + 1) + "-" + end + " / " + properties.size(),
-                    sidebar.right() - 48, sidebar.bottom() - 10, 0xFF91A9B8, false);
-        }
+        return bindings;
+    }
+
+    private List<String> hudBindingOptions(){
+        List<String> options = new ArrayList<>();
+        options.add("");
+        options.addAll(hudBindableProps(hudElement()));
+        return options;
     }
 
     // Get the HUD binding btn bounds
-    private UiRect hudBindingBtnBounds(String property) {
+    private UiRect hudBindingBtnBounds(String port){
         UiRect sidebar = hudSidebarBounds();
-        int idx = hudBindableProps(hudElement()).indexOf(property)
-                - hudBindingPropScroll;
-        return new UiRect(sidebar.x() + 78,
-                hudPropTop(sidebar) + idx * 19,
-                sidebar.width() - 86, 17);
+        int idx = hudBindingPorts(hudNode()).indexOf(port) - hudBindingPropScroll;
+        return new UiRect(sidebar.x() + 8, hudPropTop(sidebar) + idx * 36 + 14, sidebar.width() - 16, 18);
     }
 
     // Get the HUD binding visible rows
-    private int hudBindingVisibleRows() {
+    private int hudBindingVisibleRows(){
         UiRect sidebar = hudSidebarBounds();
-        return Math.max(1, (sidebar.bottom() - hudPropTop(sidebar) - 12) / 19);
+        return Math.max(1, (sidebar.bottom() - hudPropTop(sidebar) - 12) / 36);
     }
 
     // Get the HUD binding dropdown bounds
@@ -25359,55 +25565,42 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     // Get the HUD binding ports
-    private List<String> hudBindingPorts(AdvancedGraphDocument.Node node) {
-        List<String> ports = new ArrayList<>();
-        ports.add("");
-        if (isAdvancedHudNode(node)) {
-            AdvancedGraphCatalog.inputs(node).entrySet().stream()
-                    .filter(entry -> !"exec".equals(entry.getValue()))
-                    .map(Map.Entry::getKey)
-                    .forEach(ports::add);
-        }
-        return ports;
+    private List<String> hudBindingPorts(AdvancedGraphDocument.Node node){
+        Set<String> ports = new LinkedHashSet<>();
+        if(isAdvancedHudNode(node)) AdvancedGraphCatalog.inputs(node).entrySet().stream()
+                .filter(entry -> !"exec".equals(entry.getValue()) && !"target".equals(entry.getKey()))
+                .map(Map.Entry::getKey).forEach(ports::add);
+        ports.addAll(hudPropertyBindings(hudElement()).values());
+        return List.copyOf(ports);
     }
 
     // Draw the HUD binding dropdown
-    private void drawHudBindingDropdown(
-            GuiGraphics graphics, AdvancedGraphDocument.Node node, CompoundTag elm,
-            int mouseX, int mouseY) {
-        List<String> ports = hudBindingPorts(node);
-        int visibleRows = Math.min(HUD_PORT_VISIBLE_ROWS, ports.size());
-        int maximum = Math.max(0, ports.size() - visibleRows);
-        hudBindingDropdownScroll = Mth.clamp(
-                hudBindingDropdownScroll, 0, maximum);
-        UiRect bounds = hudBindingDropdownBounds(visibleRows);
-        renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
-        String selectedPort = AdvancedHudElementBinding.port(elm, hudBindingDropdownKey);
-        int rowY = bounds.y() + 2;
-        for (int row = 0; row < visibleRows; row++) {
-            String port = ports.get(hudBindingDropdownScroll + row);
-            boolean selected = port.equals(selectedPort);
-            boolean hovered = inside(mouseX, mouseY, bounds.x() + 2, rowY, bounds.width() - 4, 16);
-            if (selected || hovered) {
-                renderControllerOption(graphics, bounds.x() + 2, rowY, bounds.width() - 4, 16,
-                        port.isBlank() ? AdvancedGraphCatalog.categoryColor("hud")
-                                : portColor(hudPortType(node, port)), selected);
-            }
-            String label = port.isBlank() ? "Static"
-                    : hudPortOptionLabel(node, port);
-            graphics.drawString(font, trim(label, 24), bounds.x() + 7, rowY + 4,
-                    selected ? nodeValueTextColor() : 0xFFE0EDF4, false);
-            rowY += 18;
+    private void drawHudBindingDropdown(GuiGraphics graphics, AdvancedGraphDocument.Node node, CompoundTag elm,
+                                        int mouseX, int mouseY){
+        List<String> options = hudBindingOptions();
+        int visible = Math.min(HUD_PORT_VISIBLE_ROWS, options.size());
+        hudBindingDropdownScroll = Mth.clamp(hudBindingDropdownScroll, 0, Math.max(0, options.size() - visible));
+        UiRect bounds = hudBindingDropdownBounds(visible);
+        HudDesignerAppearance.STYLE.renderInset(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height(), false, false);
+        List<String> selected = PortPropertyBindings.properties(hudPropertyBindings(elm), hudBindingDropdownKey);
+        for(int row = 0; row < visible; row++){
+            String property = options.get(hudBindingDropdownScroll + row);
+            int y = bounds.y() + 2 + row * 18;
+            boolean active = property.isBlank() ? selected.isEmpty() : selected.contains(property);
+            boolean hovered = inside(mouseX, mouseY, bounds.x() + 2, y, bounds.width() - 4, 16);
+            HudDesignerAppearance.STYLE.renderInset(graphics, bounds.x() + 2, y, bounds.width() - 4, 16, hovered, active);
+            graphics.drawString(font, hudBindingPropertyLabel(property), bounds.x() + 7, y + 4, 0xFFF3EEE4, false);
         }
     }
 
     // Handle the HUD binding click
-    private boolean clickHudBinding(double mouseX, double mouseY) {
-        CompoundTag elm = hudElement();
-        if (elm == null) return false;
-        for (String property : hudBindableProps(elm)) {
-            if (!hudBindingBtnBounds(property).contains(mouseX, mouseY)) continue;
-            hudBindingDropdownKey = property;
+    private boolean clickHudBinding(double mouseX, double mouseY){
+        List<String> ports = hudBindingPorts(hudNode());
+        int end = Math.min(ports.size(), hudBindingPropScroll + hudBindingVisibleRows());
+        for(int idx = hudBindingPropScroll; idx < end; idx++){
+            String port = ports.get(idx);
+            if(!hudBindingBtnBounds(port).contains(mouseX, mouseY)) continue;
+            hudBindingDropdownKey = port;
             hudBindingDropdownScroll = 0;
             return true;
         }
@@ -25415,19 +25608,22 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     // Handle the HUD binding dropdown click
-    private boolean clickHudBindingDropdown(double mouseX, double mouseY) {
-        AdvancedGraphDocument.Node node = hudNode();
+    private boolean clickHudBindingDropdown(double mouseX, double mouseY){
         CompoundTag elm = hudElement();
-        List<String> ports = hudBindingPorts(node);
-        int visibleRows = Math.min(HUD_PORT_VISIBLE_ROWS, ports.size());
-        UiRect bounds = hudBindingDropdownBounds(visibleRows);
-        if (elm != null && visibleRows > 0 && bounds.contains(mouseX, mouseY)) {
-            int row = (int) ((mouseY - bounds.y() - 2) / 18);
+        List<String> options = hudBindingOptions();
+        int visible = Math.min(HUD_PORT_VISIBLE_ROWS, options.size());
+        UiRect bounds = hudBindingDropdownBounds(visible);
+        if(elm != null && bounds.contains(mouseX, mouseY)){
+            int row = (int)((mouseY - bounds.y() - 2) / 18);
             int idx = hudBindingDropdownScroll + row;
-            if (row >= 0 && row < visibleRows && idx < ports.size()) {
+            if(row >= 0 && row < visible && idx < options.size()){
                 checkpoint();
-                AdvancedHudElementBinding.bind(
-                        elm, hudBindingDropdownKey, ports.get(idx));
+                Map<String, String> bindings = PortPropertyBindings.assign(
+                        hudPropertyBindings(elm), hudBindingDropdownKey, options.get(idx));
+                for(String property : hudBindableProps(elm)){
+                    AdvancedHudElementBinding.bind(elm, property, bindings.getOrDefault(property, ""));
+                }
+                simulatedDraft = null;
             }
         }
         hudBindingDropdownKey = null;
@@ -25436,14 +25632,23 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Draw the HUD prop slider
     private void drawHudPropSlider(GuiGraphics graphics, UiRect bounds, int val,
-                                               int minimum, int maximum, String key,
-                                               int mouseX, int mouseY) {
-        float pct = maximum <= minimum ? 0.0F
-                : (val - minimum) / (float) (maximum - minimum);
-        boolean active = key.equals(draggingHudPropSlider);
-        renderControllerSlider(graphics, bounds.x(), bounds.y() + bounds.height() / 2,
-                bounds.width(), pct, portColor("number"),
-                active || bounds.contains(mouseX, mouseY));
+                                   int minimum, int maximum, String key, int mouseX, int mouseY){
+        double pct = maximum <= minimum ? 0 : (val - minimum) / (double)(maximum - minimum);
+        UiRect track = hudPropSliderTrack(bounds);
+        drawHudSlider(graphics, track, pct, key.equals(draggingHudPropSlider) || track.contains(mouseX, mouseY));
+        HudDesignerAppearance.VALUE.draw(graphics, track.right() + 5, track.y() + 2, 25, 9);
+        GuiControlPreviews.drawFittedText(graphics, font, Component.literal(Integer.toString(val)),
+                track.right() + 6, track.y() + 1, 23, 11, 1, 0xFFF3EEE4, true);
+    }
+
+    private UiRect hudPropSliderTrack(UiRect bounds){
+        return new UiRect(bounds.x(), bounds.y(), bounds.width() - 30, 12);
+    }
+
+    private void drawHudSlider(GuiGraphics graphics, UiRect track, double fraction, boolean hovered){
+        HudDesignerAppearance.RAIL.draw(graphics, track.x(), track.y(), track.width(), track.height());
+        HudDesignerAppearance.SLIDER.draw(graphics, track.x() + 2, track.y() + 2,
+                track.width() - 4, track.height() - 4, fraction, hovered);
     }
 
     // Draw the HUD color preview and opacity slider
@@ -25452,21 +25657,18 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         UiRect sidebar = hudSidebarBounds();
         int col = hudColorVal(elm, key);
         UiRect swatch = hudColorPreviewBounds(key);
-        graphics.drawString(font, label, sidebar.x() + 8, swatch.y(), 0xFFC8D7E3, false);
-        drawHudCheckerboard(graphics, swatch);
-        graphics.fill(swatch.x(), swatch.y(), swatch.right(), swatch.bottom(), col);
-        graphics.renderOutline(swatch.x(), swatch.y(), swatch.width(), swatch.height(),
-                swatch.contains(mouseX, mouseY) ? 0xFFFFFFFF : 0xFFB9CFDC);
+        graphics.drawString(font, label, sidebar.x() + 8, swatch.y() + 2, 0xFFF3EEE4, false);
+        HudDesignerAppearance.SWATCH.draw(graphics, swatch.x(), swatch.y(), swatch.width(), swatch.height());
+        UiRect inner = new UiRect(swatch.x() + 3, swatch.y() + 3, swatch.width() - 6, swatch.height() - 6);
+        drawHudCheckerboard(graphics, inner);
+        graphics.fill(inner.x(), inner.y(), inner.right(), inner.bottom(), col);
         UiRect row = hudOpacitySliderBounds(key);
         UiRect track = hudOpacitySliderTrackBounds(key);
         float pct = ColorOpacity.opacity(col);
-        graphics.drawString(font, "Opacity", row.x(), row.y() + 3, 0xFF91A9B8, false);
-        renderControllerSlider(graphics, track.x(), track.y() + track.height() / 2,
-                track.width(), pct, portColor("number"),
-                key.equals(draggingHudOpacityKey) || track.contains(mouseX, mouseY));
-        String pctLabel = Math.round(pct * 100.0F) + "%";
-        graphics.drawString(font, pctLabel, row.right() - font.width(pctLabel), row.y() + 3,
-                0xFF91A9B8, false);
+        graphics.drawString(font, "Opacity", row.x(), row.y(), 0xFFF3EEE4, false);
+        drawHudSlider(graphics, track, pct, key.equals(draggingHudOpacityKey) || track.contains(mouseX, mouseY));
+        GuiControlPreviews.drawFittedText(graphics, font, Component.literal(Math.round(pct * 100) + "%"),
+                track.right() + 4, track.y(), 26, track.height(), 1, 0xFFF3EEE4, true);
     }
 
     // Draw the HUD checkerboard
@@ -25486,25 +25688,24 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                                                 int mouseX, int mouseY) {
         UiRect btn = hudFontStyleBtnBounds();
         String label = AdvancedHudElementStyle.fontStyleLabel(AdvancedHudElementStyle.fontStyle(elm));
-        drawSelectorButton(graphics, btn, label, btn.contains(mouseX, mouseY), true);
+        drawHudSelector(graphics, btn, label, btn.contains(mouseX, mouseY), true);
     }
 
     // Draw the HUD font style dropdown
     private void drawHudFontStyleDropdown(GuiGraphics graphics, CompoundTag elm,
                                                   int mouseX, int mouseY) {
         UiRect bounds = hudFontStyleDropdownBounds();
-        renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        HudDesignerAppearance.STYLE.renderInset(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height(), false, false);
         String selectedStyle = AdvancedHudElementStyle.fontStyle(elm);
         int rowY = bounds.y() + 2;
         for (String style : AdvancedHudElementStyle.FONT_STYLE_OPTIONS) {
             boolean selected = style.equals(selectedStyle);
             boolean hovered = inside(mouseX, mouseY, bounds.x() + 2, rowY, bounds.width() - 4, 16);
             if (selected || hovered) {
-                renderControllerOption(graphics, bounds.x() + 2, rowY, bounds.width() - 4, 16,
-                        AdvancedGraphCatalog.categoryColor("hud"), selected);
+                HudDesignerAppearance.STYLE.renderInset(graphics, bounds.x() + 2, rowY, bounds.width() - 4, 16, true, selected);
             }
             graphics.drawString(font, AdvancedHudElementStyle.fontStyleLabel(style),
-                    bounds.x() + 7, rowY + 4, selected ? nodeValueTextColor() : 0xFFE0EDF4, false);
+                    bounds.x() + 7, rowY + 4, 0xFFF3EEE4, false);
             rowY += 18;
         }
     }
@@ -25516,7 +25717,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         String type = elm.getString("Type");
         String label = AdvancedHudInteractiveStyles.label(
                 type, AdvancedHudInteractiveStyles.style(elm));
-        drawSelectorButton(graphics, btn, label, btn.contains(mouseX, mouseY), true);
+        drawHudSelector(graphics, btn, label, btn.contains(mouseX, mouseY), true);
     }
 
     private static final List<String> HUD_PALETTE_KEYS = List.of(
@@ -25536,11 +25737,11 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         for(int i = 0; i < HUD_PALETTE_KEYS.size(); i++){
             UiRect swatch = hudPaletteSwatchBounds(i);
             graphics.drawCenteredString(font, HUD_PALETTE_LABELS.get(i), swatch.x() + swatch.width() / 2,
-                    swatch.y() - 12, nodeMutedTextColor());
-            drawHudCheckerboard(graphics, swatch);
-            graphics.fill(swatch.x(), swatch.y(), swatch.right(), swatch.bottom(), hudColorVal(elm, HUD_PALETTE_KEYS.get(i)));
-            graphics.renderOutline(swatch.x(), swatch.y(), swatch.width(), swatch.height(),
-                    swatch.contains(mouseX, mouseY) ? 0xFFFFFFFF : 0xFF527185);
+                    swatch.y() - 12, 0xFFB8B8B8);
+            HudDesignerAppearance.SWATCH.draw(graphics, swatch.x(), swatch.y(), swatch.width(), swatch.height());
+            UiRect inner = new UiRect(swatch.x() + 3, swatch.y() + 3, swatch.width() - 6, swatch.height() - 6);
+            drawHudCheckerboard(graphics, inner);
+            graphics.fill(inner.x(), inner.y(), inner.right(), inner.bottom(), hudColorVal(elm, HUD_PALETTE_KEYS.get(i)));
         }
     }
 
@@ -25560,7 +25761,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     private void drawHudStyleDropdown(GuiGraphics graphics, CompoundTag elm, int mouseX, int mouseY) {
         List<AdvancedHudInteractiveStyles.Option> opts = AdvancedHudInteractiveStyles.options(elm.getString("Type"));
         UiRect bounds = hudStyleDropdownBounds(opts.size());
-        renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        HudDesignerAppearance.STYLE.renderInset(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height(), false, false);
         String selectedStyle = AdvancedHudInteractiveStyles.style(elm);
         int visible = hudStyleVisibleRows(opts.size());
         hudStyleDropdownScroll = Mth.clamp(hudStyleDropdownScroll, 0, Math.max(0, opts.size() - visible));
@@ -25569,10 +25770,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             int rowY = bounds.y() + 2 + row * 18;
             boolean selected = option.id().equals(selectedStyle);
             boolean hovered = inside(mouseX, mouseY, bounds.x() + 2, rowY, bounds.width() - 4, 16);
-            if(selected || hovered) renderControllerOption(graphics, bounds.x() + 2, rowY,
-                    bounds.width() - 4, 16, AdvancedGraphCatalog.categoryColor("hud"), selected);
-            graphics.drawString(font, option.label(), bounds.x() + 7, rowY + 4,
-                    selected ? nodeValueTextColor() : 0xFFE0EDF4, false);
+            if(selected || hovered) HudDesignerAppearance.STYLE.renderInset(graphics, bounds.x() + 2, rowY, bounds.width() - 4, 16, true, selected);
+            graphics.drawString(font, option.label(), bounds.x() + 7, rowY + 4, 0xFFF3EEE4, false);
             CompoundTag preview = elm.copy();
             preview.putString("Style", option.id());
             preview.putDouble("Min", 0); preview.putDouble("Max", 1);
@@ -25583,7 +25782,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             for(boolean checkbox : new boolean[]{false, true}){
                 UiRect btn = hudToggleShapeBtnBounds(checkbox);
                 boolean selected = checkbox == HudStyleCatalog.checkbox(elm.getString("ToggleShape"));
-                renderAdvancedButton(graphics, font, btn.x(), btn.y(), btn.width(), btn.height(),
+                drawHudButton(graphics, font, btn.x(), btn.y(), btn.width(), btn.height(),
                         Component.literal(checkbox ? "Checkbox" : "Switch"), btn.contains(mouseX, mouseY), selected);
             }
         }
@@ -25833,34 +26032,36 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         CompoundTag elm = hudElement();
         if(elm == null || draggingHudOpacityKey == null) return;
         UiRect track = hudOpacitySliderTrackBounds(draggingHudOpacityKey);
-        float amount = (float) Mth.clamp((mouseX - track.x() - 4.5D)
-                / Math.max(1.0D, track.width() - 9.0D), 0.0D, 1.0D);
-        int col = ColorOpacity.withOpacity(hudColorVal(elm, draggingHudOpacityKey), amount);
-        setHudColor(elm, draggingHudOpacityKey, col);
+        float amount = (float)HudDesignerAppearance.SLIDER.fractionAt(mouseX, track.x() + 2, track.width() - 4);
+        setHudColor(elm, draggingHudOpacityKey, ColorOpacity.withOpacity(hudColorVal(elm, draggingHudOpacityKey), amount));
     }
 
     // Update the HUD prop slider
-    private void updateHudPropSlider(double mouseX) {
+    private void updateHudPropSlider(double mouseX){
         CompoundTag elm = hudElement();
-        if (elm == null || draggingHudPropSlider == null) {
-            return;
-        }
+        if(elm == null || draggingHudPropSlider == null) return;
         boolean fontSize = "FontSize".equals(draggingHudPropSlider);
-        UiRect bounds = fontSize ? hudFontSizeSliderBounds() : hudBorderRadiusSliderBounds();
+        UiRect track = hudPropSliderTrack(fontSize ? hudFontSizeSliderBounds() : hudBorderRadiusSliderBounds());
         int minimum = fontSize ? AdvancedHudElementStyle.MIN_FONT_SIZE : 0;
-        int maximum = fontSize ? AdvancedHudElementStyle.MAX_FONT_SIZE
-                : AdvancedHudElementStyle.MAX_BORDER_RADIUS;
-        double amount = Mth.clamp((mouseX - bounds.x() - 4.5D)
-                / Math.max(1.0D, bounds.width() - 9.0D), 0.0D, 1.0D);
-        int val = minimum + (int) Math.round(amount * (maximum - minimum));
+        int maximum = fontSize ? AdvancedHudElementStyle.MAX_FONT_SIZE : AdvancedHudElementStyle.MAX_BORDER_RADIUS;
+        double amount = HudDesignerAppearance.SLIDER.fractionAt(mouseX, track.x() + 2, track.width() - 4);
+        int val = minimum + (int)Math.round(amount * (maximum - minimum));
         elm.putInt(draggingHudPropSlider, val);
-        updateManagedAccWidgetDefault(elm, draggingHudPropSlider,
-                graphDefault("number", val));
+        updateManagedAccWidgetDefault(elm, draggingHudPropSlider, graphDefault("number", val));
     }
 
     // Handle the HUD click
     private boolean clickHud(double mouseX, double mouseY, int btn) {
         if (!hudOpen) return false;
+        if(btn == GLFW.GLFW_MOUSE_BUTTON_RIGHT && !hudDropdownOpen() && hudCanvasBounds().contains(mouseX, mouseY)){
+            hudPanPending = true;
+            hudPanning = false;
+            hudPanGrabX = mouseX;
+            hudPanGrabY = mouseY;
+            hudPanStartX = hudCanvasPanX;
+            hudPanStartY = hudCanvasPanY;
+            return true;
+        }
         if(hudStyleDropdownOpen) return clickHudStyle(mouseX, mouseY);
         if (btn == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             // ------------------------------------OPEN MENUS------------------------------------
@@ -25997,9 +26198,14 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             AdvancedGraphDocument.Node node = hudNode();
             if (isAdvancedHudNode(node) && hudCanvasBounds().contains(mouseX, mouseY)) {
                 ListTag elements = node.data().getList(WIDGET_ELEMENTS, Tag.TAG_COMPOUND);
-                for (int i = elements.size() - 1; i >= 0; i--) {
-                    CompoundTag elm = AdvancedHudElementBinding.resolvedCopy(
-                            elements.getCompound(i), port -> hudDataVal(node, port));
+                UiRect canvas = hudCanvasBounds();
+                double scale = hudCanvasScale(node, canvas);
+                UiRect preview = new UiRect(hudPreviewX(node, canvas), hudPreviewY(node, canvas),
+                        (int)Math.round(Math.max(1, node.data().getInt("WidgetWidth")) * scale),
+                        (int)Math.round(Math.max(1, node.data().getInt("WidgetHeight")) * scale));
+                for (int i = elements.size() - 1; preview.contains(mouseX, mouseY) && i >= 0; i--) {
+                    CompoundTag elm = hudPreviewElement(node, elements.getCompound(i));
+                    if(elm.contains("Visible", Tag.TAG_BYTE) && !elm.getBoolean("Visible")) continue;
                     UiRect rect = hudElementRect(node, hudCanvasBounds(), elm);
                     if (hudElementContains(elm, rect, mouseX, mouseY)) {
                         hudSelectedIdx = i;
@@ -26015,8 +26221,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
                             resizingHudElement = true;
                         } else {
                             draggingHudElement = true;
-                            hudDragOffsetX = (int) mouseX - rect.x();
-                            hudDragOffsetY = (int) mouseY - rect.y();
+                            hudDragOffsetX = (mouseX - rect.x()) / scale;
+                            hudDragOffsetY = (mouseY - rect.y()) / scale;
                         }
                         return true;
                     }
@@ -26038,50 +26244,77 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     // Drag the HUD element
-    private boolean dragHud(double mouseX, double mouseY, int btn) {
-        if (!hudOpen || btn != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
+    private boolean dragHud(double mouseX, double mouseY, int btn){
+        if(!hudOpen || btn != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
         CompoundTag elm = hudElement();
         AdvancedGraphDocument.Node node = hudNode();
-        if (elm == null || !isAdvancedHudNode(node)) return false;
+        if(elm == null || !isAdvancedHudNode(node)) return false;
         UiRect canvas = hudCanvasBounds();
         double scale = hudCanvasScale(node, canvas);
         int baseX = hudPreviewX(node, canvas);
         int baseY = hudPreviewY(node, canvas);
-        if (draggingHudElement) {
-            int localX = (int) Math.round((mouseX - baseX - hudDragOffsetX) / scale);
-            int localY = (int) Math.round((mouseY - baseY - hudDragOffsetY) / scale);
-            int nextX = allowsOffSurfaceLayout(node)
-                    ? Mth.clamp(localX, -4096, 4096)
-                    : Mth.clamp(localX, 0, Math.max(0, node.data().getInt("WidgetWidth") - 1));
-            int nextY = allowsOffSurfaceLayout(node)
-                    ? Mth.clamp(localY, -4096, 4096)
-                    : Mth.clamp(localY, 0, Math.max(0, node.data().getInt("WidgetHeight") - 1));
-            elm.putInt("X", nextX);
-            elm.putInt("Y", nextY);
-            updateManagedAccWidgetDefault(elm, "X", graphDefault("number", nextX));
-            updateManagedAccWidgetDefault(elm, "Y", graphDefault("number", nextY));
-            syncHudFields();
+        if(draggingHudElement){
+            double x = (mouseX - baseX) / scale - hudDragOffsetX;
+            double y = (mouseY - baseY) / scale - hudDragOffsetY;
+            moveHudElementTo(node, elm, x, y);
             return true;
         }
-        if (resizingHudElement) {
-            int localW = (int) Math.round((mouseX - baseX) / scale) - elm.getInt("X");
-            int localH = (int) Math.round((mouseY - baseY) / scale) - elm.getInt("Y");
-            int nextWidth = allowsOffSurfaceLayout(node)
-                    ? Mth.clamp(localW, 1, 4096)
-                    : Mth.clamp(localW, 1, Math.max(1,
-                    node.data().getInt("WidgetWidth") - elm.getInt("X")));
-            int nextHeight = allowsOffSurfaceLayout(node)
-                    ? Mth.clamp(localH, 1, 4096)
-                    : Mth.clamp(localH, 1, Math.max(1,
-                    node.data().getInt("WidgetHeight") - elm.getInt("Y")));
+        if(resizingHudElement){
+            double width = (mouseX - baseX) / scale - elm.getInt("X");
+            double height = (mouseY - baseY) / scale - elm.getInt("Y");
+            if(hasShiftDown()){
+                width = snapGraphCoordinate(width);
+                height = snapGraphCoordinate(height);
+            }
+            int nextWidth = Mth.clamp((int)Math.round(width), 1, allowsOffSurfaceLayout(node) ? 4096
+                    : Math.max(1, node.data().getInt("WidgetWidth") - elm.getInt("X")));
+            int nextHeight = Mth.clamp((int)Math.round(height), 1, allowsOffSurfaceLayout(node) ? 4096
+                    : Math.max(1, node.data().getInt("WidgetHeight") - elm.getInt("Y")));
             elm.putInt("W", nextWidth);
             elm.putInt("H", nextHeight);
             updateManagedAccWidgetDefault(elm, "W", graphDefault("number", nextWidth));
             updateManagedAccWidgetDefault(elm, "H", graphDefault("number", nextHeight));
+            simulatedDraft = null;
             syncHudFields();
             return true;
         }
         return false;
+    }
+
+    // Apply the graph's Shift snapping to the element's authored coordinates
+    private void moveHudElementTo(AdvancedGraphDocument.Node node, CompoundTag elm, double x, double y){
+        if(hasShiftDown()){
+            x = snapGraphCoordinate(x);
+            y = snapGraphCoordinate(y);
+        }
+        int min = allowsOffSurfaceLayout(node) ? -4096 : 0;
+        int maxX = allowsOffSurfaceLayout(node) ? 4096
+                : Math.max(0, node.data().getInt("WidgetWidth") - elm.getInt("W"));
+        int maxY = allowsOffSurfaceLayout(node) ? 4096
+                : Math.max(0, node.data().getInt("WidgetHeight") - elm.getInt("H"));
+        int nextX = Mth.clamp((int)Math.round(x), min, maxX);
+        int nextY = Mth.clamp((int)Math.round(y), min, maxY);
+        elm.putInt("X", nextX);
+        elm.putInt("Y", nextY);
+        updateManagedAccWidgetDefault(elm, "X", graphDefault("number", nextX));
+        updateManagedAccWidgetDefault(elm, "Y", graphDefault("number", nextY));
+        simulatedDraft = null;
+        syncHudFields();
+    }
+
+    private boolean nudgeHudElement(int keyCode){
+        int dx = keyCode == GLFW.GLFW_KEY_LEFT ? -1 : keyCode == GLFW.GLFW_KEY_RIGHT ? 1 : 0;
+        int dy = keyCode == GLFW.GLFW_KEY_UP ? -1 : keyCode == GLFW.GLFW_KEY_DOWN ? 1 : 0;
+        if(dx == 0 && dy == 0) return false;
+        CompoundTag elm = hudElement();
+        AdvancedGraphDocument.Node node = hudNode();
+        if(elm == null || !isAdvancedHudNode(node) || hudDropdownOpen()) return true;
+        double pixels = hasControlDown() ? V2_GRID_SPACING : 1;
+        double step = Math.max(1, Math.round(hudPreviewViewport(node, hudCanvasBounds())
+                .graphDistance(pixels / hudTransform().scale())));
+        checkpoint();
+        moveHudElementTo(node, elm, elm.getInt("X") + dx * step, elm.getInt("Y") + dy * step);
+        return true;
     }
 
     // Remove the HUD element
@@ -26104,8 +26337,8 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     // Get the HUD prop top
-    private int hudPropTop(UiRect sidebar) {
-        return sidebar.y() + 130;
+    private int hudPropTop(UiRect sidebar){
+        return sidebar.y() + 10;
     }
 
     // Get the HUD size field y
@@ -26198,39 +26431,29 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     // Get the color preview square used for rendering and input
     private UiRect hudColorPreviewBounds(String key){
         UiRect sidebar = hudSidebarBounds();
-        return new UiRect(sidebar.right() - 22, hudColorLabelY(key), 14, 14);
+        return new UiRect(sidebar.right() - 26, hudColorLabelY(key), 18, 14);
     }
 
     // Get the full opacity row beneath the color preview
     private UiRect hudOpacitySliderBounds(String key){
         UiRect sidebar = hudSidebarBounds();
-        return new UiRect(sidebar.x() + 8, hudColorLabelY(key) + 18, sidebar.width() - 16, 14);
+        return new UiRect(sidebar.x() + 8, hudColorLabelY(key) + 18, sidebar.width() - 16, 26);
     }
 
     // Keep the opacity track clear of its label and percentage
     private UiRect hudOpacitySliderTrackBounds(String key){
         UiRect row = hudOpacitySliderBounds(key);
-        int labelWidth = font.width("Opacity") + 6;
-        int valWidth = font.width("100%") + 6;
-        return new UiRect(row.x() + labelWidth, row.y(), row.width() - labelWidth - valWidth, row.height());
+        return new UiRect(row.x(), row.y() + 12, row.width() - 30, 12);
     }
 
     // Get the HUD layer btn
-    private UiRect hudLayerBtn(int dir) {
-        UiRect sidebar = hudSidebarBounds();
-        int gap = 8;
-        int buttonWidth = (sidebar.width() - 16 - gap) / 2;
-        int x = sidebar.x() + 8 + (dir > 0 ? buttonWidth + gap : 0);
-        return new UiRect(x, sidebar.y() + 76, buttonWidth, 20);
+    private UiRect hudLayerBtn(int dir){
+        return hudAtlasRect(dir > 0 ? 222 : 281, 50, 39, 10);
     }
 
     // Get the HUD inspector tab
-    private UiRect hudInspectorTab(boolean data) {
-        UiRect sidebar = hudSidebarBounds();
-        int gap = 6;
-        int buttonWidth = (sidebar.width() - 16 - gap) / 2;
-        return new UiRect(sidebar.x() + 8 + (data ? buttonWidth + gap : 0),
-                sidebar.y() + 104, buttonWidth, 20);
+    private UiRect hudInspectorTab(boolean data){
+        return hudAtlasRect(data ? 518 : 458, 50, 39, 10);
     }
 
     // Get the HUD port btn bounds
@@ -26319,7 +26542,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         List<String> ports = hudValPorts(node);
         String port = elm.getString("Port");
         String label = ports.contains(port) ? hudPortOptionLabel(node, port) : "Select a port";
-        drawSelectorButton(graphics, btn, label, btn.contains(mouseX, mouseY), !ports.isEmpty());
+        drawHudSelector(graphics, btn, label, btn.contains(mouseX, mouseY), !ports.isEmpty());
     }
 
     // Draw the HUD port dropdown
@@ -26331,18 +26554,17 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         int maxScroll = Math.max(0, ports.size() - visibleRows);
         hudPortDropdownScroll = Mth.clamp(hudPortDropdownScroll, 0, maxScroll);
         UiRect bounds = hudPortDropdownBounds(visibleRows);
-        renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        HudDesignerAppearance.STYLE.renderInset(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height(), false, false);
         int rowY = bounds.y() + 2;
         for (int row = 0; row < visibleRows; row++) {
             String port = ports.get(hudPortDropdownScroll + row);
             boolean selected = port.equals(elm.getString("Port"));
             boolean hovered = inside(mouseX, mouseY, bounds.x() + 2, rowY, bounds.width() - 4, 16);
             if (selected || hovered) {
-                renderControllerOption(graphics, bounds.x() + 2, rowY, bounds.width() - 4, 16,
-                        portColor(hudPortType(node, port)), selected);
+                HudDesignerAppearance.STYLE.renderInset(graphics, bounds.x() + 2, rowY, bounds.width() - 4, 16, true, selected);
             }
             graphics.drawString(font, trim(hudPortOptionLabel(node, port), 29),
-                    bounds.x() + 7, rowY + 4, selected ? nodeValueTextColor() : 0xFFE0EDF4, false);
+                    bounds.x() + 7, rowY + 4, 0xFFF3EEE4, false);
             rowY += 18;
         }
     }
@@ -26380,7 +26602,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
         int maxScroll = Math.max(0, images.size() - visibleRows);
         hudImageDropdownScroll = Mth.clamp(hudImageDropdownScroll, 0, maxScroll);
         UiRect bounds = hudImageDropdownBounds(visibleRows);
-        renderAdvancedPanel(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        HudDesignerAppearance.STYLE.renderInset(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height(), false, false);
         String selectedName = AdvancedHudImageStore.referencedName(elm.getString("Texture")).orElse("");
         int rowY = bounds.y() + 2;
         for (int row = 0; row < visibleRows; row++) {
@@ -26388,11 +26610,10 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
             boolean selected = image.equals(selectedName);
             boolean hovered = inside(mouseX, mouseY, bounds.x() + 2, rowY, bounds.width() - 4, 16);
             if (selected || hovered) {
-                renderControllerOption(graphics, bounds.x() + 2, rowY, bounds.width() - 4, 16,
-                        AdvancedGraphCatalog.categoryColor("hud"), selected);
+                HudDesignerAppearance.STYLE.renderInset(graphics, bounds.x() + 2, rowY, bounds.width() - 4, 16, true, selected);
             }
             graphics.drawString(font, trim(image, 27), bounds.x() + 7, rowY + 4,
-                    selected ? nodeValueTextColor() : 0xFFE0EDF4, false);
+                    0xFFF3EEE4, false);
             rowY += 18;
         }
     }
@@ -26609,6 +26830,7 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
 
     // Handle the HUD key press
     private boolean hudKeyPressed(int keyCode) {
+        if(nudgeHudElement(keyCode)) return true;
         if (hasControlDown()) {
             if (keyCode == GLFW.GLFW_KEY_C) {
                 copyHudElement();
@@ -26680,48 +26902,59 @@ public class AdvancedContraptionControllerScreen extends AbstractContainerScreen
     }
 
     // Get the HUD action btn
-    private UiRect hudActionBtn(int idx) {
-        UiRect bounds = hudBounds();
-        return new UiRect(bounds.x() + 140 + idx * (hudInteractivePalette ? 62 : 68), bounds.y() + 38,
-                hudInteractivePalette ? idx == 4 ? 88 : 58 : 64, 20);
+    private UiRect hudActionBtn(int idx){
+        return hudAtlasRect(9, 77 + idx * 20, 98, 16);
     }
 
     // Get the HUD palette tab
-    private UiRect hudPaletteTab(boolean interactive) {
-        UiRect bounds = hudBounds();
-        return new UiRect(bounds.x() + 140 + (interactive ? 88 : 0),
-                bounds.y() + 10, interactive ? 94 : 82, 20);
+    private UiRect hudPaletteTab(boolean interactive){
+        return hudAtlasRect(interactive ? 69 : 10, 50, 39, 10);
     }
 
     // Get the HUD remove btn
-    private UiRect hudRemoveBtn() {
-        UiRect bounds = hudBounds();
-        return new UiRect(bounds.right() - 160, bounds.y() + 38, 70, 20);
+    private UiRect hudRemoveBtn(){
+        return new UiRect(10, 381, 78, 20);
     }
 
     // Get the HUD close btn
-    private UiRect hudCloseBtn() {
-        UiRect bounds = hudBounds();
-        return new UiRect(bounds.right() - 82, bounds.y() + 38, 70, 20);
+    private UiRect hudCloseBtn(){
+        return hudAtlasRect(553, 251, 18, 18);
     }
 
     // Get the HUD canvas scale
-    private double hudCanvasScale(AdvancedGraphDocument.Node node, UiRect canvas) {
-        double widthScale = canvas.width() / (double) Math.max(1, node.data().getInt("WidgetWidth"));
-        double heightScale = canvas.height() / (double) Math.max(1, node.data().getInt("WidgetHeight"));
-        return Math.max(0.25, Math.min(widthScale, heightScale));
+    private double hudCanvasScale(AdvancedGraphDocument.Node node, UiRect canvas){
+        return hudPreviewViewport(node, canvas).zoom();
     }
 
     // Get the HUD preview x
-    private int hudPreviewX(AdvancedGraphDocument.Node node, UiRect canvas) {
-        int previewWidth = (int) Math.round(Math.max(1, node.data().getInt("WidgetWidth")) * hudCanvasScale(node, canvas));
-        return canvas.x() + (canvas.width() - previewWidth) / 2;
+    private int hudPreviewX(AdvancedGraphDocument.Node node, UiRect canvas){
+        return (int)Math.round(hudPreviewViewport(node, canvas).screenX(
+                "acc_display_widget".equals(node.type()) ? AccDisplayBlockEntity.BORDER_PIXELS : 0));
     }
 
     // Get the HUD preview y
-    private int hudPreviewY(AdvancedGraphDocument.Node node, UiRect canvas) {
-        int previewHeight = (int) Math.round(Math.max(1, node.data().getInt("WidgetHeight")) * hudCanvasScale(node, canvas));
-        return canvas.y() + (canvas.height() - previewHeight) / 2;
+    private int hudPreviewY(AdvancedGraphDocument.Node node, UiRect canvas){
+        return (int)Math.round(hudPreviewViewport(node, canvas).screenY(
+                "acc_display_widget".equals(node.type()) ? AccDisplayBlockEntity.BORDER_PIXELS : 0));
+    }
+
+    // Match display bounds and scale limits in both drawing and picking
+    private CompoundTag hudPreviewElement(AdvancedGraphDocument.Node node, CompoundTag source){
+        CompoundTag elm = AdvancedHudElementBinding.resolvedCopy(source, port -> hudDataVal(node, port));
+        AdvancedHudElementStyle.applyDefaults(elm);
+        if("acc_display_widget".equals(node.type())){
+            int width = Math.max(1, node.data().getInt("WidgetWidth"));
+            int height = Math.max(1, node.data().getInt("WidgetHeight"));
+            DisplayWidgetProjection.Bounds bounds = DisplayWidgetProjection.fit(
+                    elm.getInt("X"), elm.getInt("Y"), elm.getInt("W"), elm.getInt("H"), width, height);
+            elm.putInt("X", bounds.x());
+            elm.putInt("Y", bounds.y());
+            elm.putInt("W", bounds.width());
+            elm.putInt("H", bounds.height());
+            elm.putDouble("Scale", Math.min(elm.getDouble("Scale"),
+                    DisplayWidgetProjection.maximumScale(bounds, width, height, elm.getDouble("Rotation"))));
+        }
+        return elm;
     }
 
     // Get the HUD element rect

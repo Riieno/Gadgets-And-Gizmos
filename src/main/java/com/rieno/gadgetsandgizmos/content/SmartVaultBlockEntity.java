@@ -53,8 +53,10 @@ public class SmartVaultBlockEntity extends ConnectedVaultBlockEntity implements 
     // Expose only the resource capability registered for this block's automation port
     public ContainerNetworkAccess networkResources(){ return networkResources; }
 
+    private final com.rieno.gadgetsandgizmos.lib.inventory.LocalResourcePool localPool =
+            new com.rieno.gadgetsandgizmos.lib.inventory.LocalResourcePool();
     @Override public ResourceRouting.Pool localResources(){
-        return new ResourceRouting.Pool(java.util.List.of(getItemHandler()), java.util.List.of(), java.util.List.of());
+        return localPool.get(getItemHandler(), null, null);
     }
 
     private final MountedTabletState tabletState = new MountedTabletState();
@@ -112,6 +114,7 @@ public class SmartVaultBlockEntity extends ConnectedVaultBlockEntity implements 
     public void notifyMultiUpdated() {
         updateLargeState(getWidth() > 2, 6);
         super.notifyMultiUpdated();
+        SmartContainerTablets.inheritPresentation(this);
     }
 
     // Reset the custom vault state when Create splits the multiblock
@@ -132,7 +135,7 @@ public class SmartVaultBlockEntity extends ConnectedVaultBlockEntity implements 
                     BlockPos pos = axis == Direction.Axis.Z
                             ? worldPosition.offset(firstWidthIdx, secondWidthIdx, lengthIdx)
                             : worldPosition.offset(lengthIdx, secondWidthIdx, firstWidthIdx);
-                    BlockEntity blockEntity = level.getBlockEntity(pos);
+                    BlockEntity blockEntity = getLoadedMember(pos);
                     if (blockEntity instanceof SmartVaultBlockEntity smart) {
                         handlers.add(smart.inventory);
                     }

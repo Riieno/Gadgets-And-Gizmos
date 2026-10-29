@@ -19,6 +19,11 @@ import com.rieno.gadgetsandgizmos.lib.control.AnalogueChannelMode;
 import com.rieno.gadgetsandgizmos.lib.control.AnalogueSignalPacket;
 import com.rieno.gadgetsandgizmos.lib.control.AnalogueTransmissionTarget;
 import com.rieno.gadgetsandgizmos.lib.control.ControllerDirectTargetReference;
+import com.rieno.gadgetsandgizmos.lib.item.BlockEntityItemDrops;
+import com.rieno.gadgetsandgizmos.lib.schematic.SchematicSnapshotProvider;
+import com.rieno.gadgetsandgizmos.lib.schematic.SchematicPlacementScope;
+import com.simibubi.create.api.contraption.transformable.TransformableBlockEntity;
+import com.simibubi.create.content.contraptions.StructureTransform;
 import com.rieno.gadgetsandgizmos.lib.control.ControllerBindingOwner;
 import com.rieno.gadgetsandgizmos.lib.control.ControllerMechanic;
 import com.rieno.gadgetsandgizmos.lib.control.ControllerMechanicBinding;
@@ -109,11 +114,12 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
 
 // Handle controller inputs, layout and linked outputs
 public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity implements IHaveGoggleInformation,
         MenuProvider, com.rieno.gadgetsandgizmos.lib.discovery.INamedBlockEntity, BlockEntitySubLevelActor,
-        SchematicMaterialData, SpecialBlockEntityItemRequirement {
+        SchematicMaterialData, SpecialBlockEntityItemRequirement, SchematicSnapshotProvider, TransformableBlockEntity {
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -304,8 +310,12 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     private String controllerManifestHash = "";
     // Pending controller schematic payload
     private @Nullable CompoundTag pendingControllerSchematicPayload;
+    // Preserve unreadable imports without replacing them with an empty graph
+    private @Nullable CompoundTag pendingControllerSchematicEnvelope;
     // Tracks whether controller schematic import is pending
     private boolean pendingControllerSchematicImport;
+    // Controller item captured before destructive cleanup
+    private ItemStack retainedControllerDrop = ItemStack.EMPTY;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -2896,6 +2906,42 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         return bindings;
     }
 
+    // Check if the controller has a program or stored items to retain
+    protected boolean hasControllerConfiguration(){
+        return customName != null || !storedTargets.isEmpty() || !getStoredLinker().isEmpty()
+                || !customKeyEntries.isEmpty() || hasBoundFrequencies(frequencyBindings)
+                || hasBoundFrequencies(inputFrequencyBindings) || hasBoundTargets(directTargets)
+                || hasBoundTargets(inputTargets) || hasLocalOutputSides()
+                || keyBindings.values().stream().anyMatch(key -> key != null && key >= 0);
+    }
+
+    // Save the setup before removal resets its outputs and linker slot
+    public ItemStack prepareControllerDrop(){
+        if(destructiveRemovalPending && !retainedControllerDrop.isEmpty()) return retainedControllerDrop.copy();
+        retainedControllerDrop = ItemStack.EMPTY;
+        if(level == null || level.isClientSide || pendingAssemblyBindingRemap
+                || !hasControllerConfiguration()) return ItemStack.EMPTY;
+        ControllerManifestStore.ManifestSnapshot snapshot = saveControllerManifest(level.registryAccess());
+        CompoundTag data = new CompoundTag();
+        if(snapshot != null){
+            ControllerManifestStore.writeControllerMetadata(data, snapshot);
+        }else{
+            data = saveControllerData(level.registryAccess());
+            AnalogueContraptionControllerBlockItem.stripEmbeddedSupportData(data);
+        }
+        data.put(ControllerPhysicalState.TAG_KEY, new CompoundTag());
+        retainedControllerDrop = BlockEntityItemDrops.create(this, data);
+        if(customName != null) retainedControllerDrop.set(
+                net.minecraft.core.component.DataComponents.CUSTOM_NAME, Component.literal(customName));
+        return retainedControllerDrop.copy();
+    }
+
+    // Discard the captured item if the block could not be removed
+    public void cancelDestructiveRemoval(){
+        destructiveRemovalPending = false;
+        retainedControllerDrop = ItemStack.EMPTY;
+    }
+
     // Handle the destroyed event
     public void onDestroyed() {
         if (level == null || level.isClientSide) {
@@ -2921,7 +2967,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
             }
         }
         ItemStack linker = getStoredLinker();
-        if (!linker.isEmpty()) {
+        if (!linker.isEmpty() && retainedControllerDrop.isEmpty()) {
             Containers.dropItemStack(level,
                     worldPosition.getX() + 0.5D,
                     worldPosition.getY() + 0.5D,
@@ -2930,7 +2976,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
             linkerSlot.setStackInSlot(0, ItemStack.EMPTY);
         }
         unregisterWirelessNetwork();
-        if (!retainControllerManifestAfterDestroy()) {
+        if (retainedControllerDrop.isEmpty() && !retainControllerManifestAfterDestroy()) {
             deleteControllerManifest();
         }
     }
@@ -3032,7 +3078,28 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         CompoundTag physical = new CompoundTag();
         writeControllerPhysicalState(physical, provider);
         tag.put(ControllerPhysicalState.TAG_KEY, physical);
+        if(pendingControllerSchematicEnvelope != null){
+            tag.put(ControllerSchematicPayload.BLOCK_ENTITY_TAG, pendingControllerSchematicEnvelope.copy());
+            return;
+        }
         writeSchematicPayload(tag, provider, SubLevelSchematicSerializationContext.getCurrentContext());
+    }
+
+    // Capture the complete portable setup from the server for Create's client-side exporter
+    @Override
+    public CompoundTag schematicSnapshot(HolderLookup.Provider provider){
+        CompoundTag tag = new CompoundTag();
+        writeSafe(tag, provider);
+        return tag;
+    }
+
+    // Transform pending portable data when Create rotates its detached schematic preview
+    @Override
+    public void transform(BlockEntity blockEntity, StructureTransform transform){
+        if(pendingControllerSchematicPayload == null) return;
+        ControllerCreateSchematicData.remap(pendingControllerSchematicPayload, blockEntity.getBlockPos(),
+                transform::applyWithoutOffset, dir -> transform.rotateFacing(transform.mirrorFacing(dir)),
+                SimulatedHelper.getContainingSubLevelId(blockEntity));
     }
 
     // Write the analogue contraption controller
@@ -3044,6 +3111,10 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         tag.put(ControllerPhysicalState.TAG_KEY, physical);
         SubLevelSchematicSerializationContext schematicContext =
                 SubLevelSchematicSerializationContext.getCurrentContext();
+        if(!clientPacket && pendingControllerSchematicEnvelope != null){
+            tag.put(ControllerSchematicPayload.BLOCK_ENTITY_TAG, pendingControllerSchematicEnvelope.copy());
+            return;
+        }
         if (!clientPacket && schematicContext != null) {
             writeSchematicPayload(tag, provider, schematicContext);
             return;
@@ -3077,7 +3148,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
             remapSchematicData(payload, ctx);
             if(ctx.getType() == SubLevelSchematicSerializationContext.Type.PLACE)
                 payload.putBoolean(ControllerSchematicPayload.PLACEMENT_PREPARED_TAG, true);
-        }
+        }else ControllerCreateSchematicData.captureSource(payload, worldPosition, SimulatedHelper.getContainingSubLevelId(this));
         if(!ControllerSchematicPayload.write(tag, payload))
             throw new IllegalArgumentException("Controller graph exceeds the schematic payload limit");
     }
@@ -3375,6 +3446,12 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
 
     // Finalize the pending controller schematic import
     private boolean finalizePendingControllerSchematicImport() {
+        if(!pendingControllerSchematicImport && pendingControllerSchematicPayload != null
+                && level != null && !level.isClientSide && !isVirtual() && level.getBlockEntity(worldPosition) == this){
+            CompoundTag tag = new CompoundTag();
+            if(!ControllerSchematicPayload.write(tag, pendingControllerSchematicPayload)) return false;
+            read(tag, level.registryAccess(), false);
+        }
         if (!pendingControllerSchematicImport) {
             return true;
         }
@@ -3400,6 +3477,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         }
         pendingControllerSchematicImport = false;
         pendingControllerSchematicPayload = null;
+        pendingControllerSchematicEnvelope = null;
         setChanged();
         return true;
     }
@@ -3514,22 +3592,29 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
     // Read the analogue contraption controller
     @Override
     protected void read(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
+        var copyContext = SubLevelSchematicSerializationContext.getCurrentContext();
+        boolean copying = isVirtual() || SchematicPlacementScope.isActive()
+                || copyContext != null && copyContext.getType() == SubLevelSchematicSerializationContext.Type.PLACE;
+        if(!clientPacket && copying && ControllerManifestStore.hasControllerMetadata(tag)
+                && !tag.contains(ControllerSchematicPayload.BLOCK_ENTITY_TAG, Tag.TAG_COMPOUND))
+            tag = ControllerSchematicPayload.copyMetadata(tag, level, provider);
         super.read(tag, provider, clientPacket);
         // ------------------------------------SCHEMATIC PAYLOAD------------------------------------
         boolean hadSchematicPayload = !clientPacket
                 && tag.contains(ControllerSchematicPayload.BLOCK_ENTITY_TAG, Tag.TAG_COMPOUND);
         CompoundTag schematicPayload = hadSchematicPayload
-                ? ControllerSchematicPayload.take(tag)
+                ? ControllerSchematicPayload.read(tag)
                 : null;
         if (hadSchematicPayload && schematicPayload == null) {
-            schematicPayload = new CompoundTag();
-            schematicPayload.putString(
-                    ControllerSchematicPayload.CONTROLLER_KIND_TAG,
-                    controllerManifestKind());
-            schematicPayload.put(
-                    ControllerSchematicPayload.CONTROLLER_DATA_TAG,
-                    new CompoundTag());
+            pendingControllerSchematicEnvelope = tag.getCompound(ControllerSchematicPayload.BLOCK_ENTITY_TAG).copy();
+            pendingControllerSchematicPayload = null;
+            pendingControllerSchematicImport = true;
+            resetManifestId();
+            readControllerBody(ControllerPhysicalState.materialData(tag), provider);
+            return;
         }
+        if(!clientPacket) pendingControllerSchematicEnvelope = null;
+        if(schematicPayload != null) prepareControllerSchematicPayload(schematicPayload);
         SubLevelSchematicSerializationContext schematicContext =
                 SubLevelSchematicSerializationContext.getCurrentContext();
         if (schematicPayload != null && schematicContext != null) {
@@ -3538,6 +3623,13 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
                 schematicPayload.putBoolean(
                         ControllerSchematicPayload.PLACEMENT_PREPARED_TAG, true);
             }
+        }
+
+        boolean placedSchematic = schematicPayload != null && level != null && !level.isClientSide
+                && !isVirtual() && level.getBlockEntity(worldPosition) == this;
+        if(placedSchematic && schematicContext == null){
+            ControllerCreateSchematicData.remap(schematicPayload, worldPosition, UnaryOperator.identity(),
+                    UnaryOperator.identity(), SimulatedHelper.getContainingSubLevelId(this));
         }
 
         // -----------------------------------------------------MANIFEST DATA-----------------------------------------------------
@@ -3550,7 +3642,7 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
             manifestKind = schematicPayload.getString(
                     ControllerSchematicPayload.CONTROLLER_KIND_TAG);
             pendingControllerSchematicPayload = schematicPayload.copy();
-            pendingControllerSchematicImport = schematicPayload.getBoolean(
+            pendingControllerSchematicImport = placedSchematic || schematicPayload.getBoolean(
                     ControllerSchematicPayload.PLACEMENT_PREPARED_TAG);
         } else if (!clientPacket && ControllerManifestStore.hasControllerMetadata(tag)) {
             readManifestMeta(tag);
@@ -3607,6 +3699,9 @@ public class AnalogueContraptionControllerBlockEntity extends SmartBlockEntity i
         }
         invalidateControllerRuntimeProgram();
     }
+
+    // Let specialised controllers detach runtime identities before loading a copied program
+    protected void prepareControllerSchematicPayload(CompoundTag payload){}
 
     // Serialize the backing currently held by this block instead of one retained with a program
     protected void writeControllerPhysicalState(CompoundTag tag, HolderLookup.Provider provider){

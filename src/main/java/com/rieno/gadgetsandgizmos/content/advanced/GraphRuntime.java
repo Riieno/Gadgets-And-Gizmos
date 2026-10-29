@@ -45,6 +45,7 @@ import com.rieno.gadgetsandgizmos.lib.graph.GraphValueMirrors;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphEvaluationState;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphEvaluationCache;
 import com.rieno.gadgetsandgizmos.lib.graph.GraphPreviewPlan;
+import com.rieno.gadgetsandgizmos.lib.graph.GraphPortOrder;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerFailureReason;
 import com.rieno.gadgetsandgizmos.lib.worker.WorkerTaskRequest;
 import net.minecraft.nbt.CompoundTag;
@@ -60,6 +61,7 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -125,6 +127,22 @@ public final class GraphRuntime {
     private final Map<String, AdvancedGraphDocument.Value> liveInputs = new LinkedHashMap<>();
     // Tracked live outputs
     private final Map<String, AdvancedGraphDocument.Value> liveOutputs = new LinkedHashMap<>();
+    // Publish changed ports independently to display and HUD readers
+    private final com.rieno.gadgetsandgizmos.lib.util.ValueChangeJournal<String> inputChanges =
+            new com.rieno.gadgetsandgizmos.lib.util.ValueChangeJournal<>(8192);
+    private final com.rieno.gadgetsandgizmos.lib.util.ValueChangeJournal<String> outputChanges =
+            new com.rieno.gadgetsandgizmos.lib.util.ValueChangeJournal<>(8192);
+    // Borrow live values on the owning thread without exposing mutable maps
+    private final Map<String, AdvancedGraphDocument.Value> liveInputView = Collections.unmodifiableMap(liveInputs);
+    private final Map<String, AdvancedGraphDocument.Value> liveOutputView = Collections.unmodifiableMap(liveOutputs);
+    // Detach public snapshots only after their own ports change
+    private final com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache<Map<String, AdvancedGraphDocument.Value>>
+            inputSnapshot = new com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache<>();
+    private final com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache<Map<String, AdvancedGraphDocument.Value>>
+            outputSnapshot = new com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache<>();
+    // Share one read-only HUD evaluation between observers of the same tick and state
+    private final com.rieno.gadgetsandgizmos.lib.util.TickSnapshotCache<PlayerHudValues> hudSample =
+            new com.rieno.gadgetsandgizmos.lib.util.TickSnapshotCache<>();
     // Tracked execution pulses
     private final Map<String, Long> executionPulses = new LinkedHashMap<>();
     // Tracked diagnostics
@@ -500,6 +518,10 @@ public final class GraphRuntime {
         }
         pollShipControlCommands(program);
         Frame samplingFrame = null;
+        if(!program.mouseNodes.isEmpty() && !simulationOnly){
+            samplingFrame = new Frame(program);
+            updateMouseCapture(program, samplingFrame);
+        }
         if(program.cameraNodes.length > 0 && !simulationOnly){
             samplingFrame = new Frame(program);
             updateCameraConfigurations(program, samplingFrame);
@@ -576,6 +598,9 @@ public final class GraphRuntime {
         }
         liveInputs.clear();
         liveOutputs.clear();
+        inputChanges.reset();
+        outputChanges.reset();
+        hudSample.invalidate();
         executionPulses.clear();
         diagnostics.clear();
         pendingOutputs = null;
@@ -699,6 +724,9 @@ public final class GraphRuntime {
         restoreValueMap(snapshot.getCompound("LiveInputs"), liveInputs);
         liveOutputs.clear();
         restoreValueMap(snapshot.getCompound("LiveOutputs"), liveOutputs);
+        inputChanges.reset();
+        outputChanges.reset();
+        hudSample.invalidate();
         interactionOutputs.clear();
         CompoundTag submittedOutputs = snapshot.getCompound("InteractionOutputs");
         for(String key : submittedOutputs.getAllKeys()){
@@ -936,7 +964,23 @@ public final class GraphRuntime {
 
     // Get the live inputs
     public Map<String, AdvancedGraphDocument.Value> liveInputs() {
-        return Map.copyOf(liveInputs);
+        return inputSnapshot.get(this, inputChanges.revision(), () -> Map.copyOf(liveInputs));
+    }
+
+    // Borrow live inputs while publishing presentation changes on the owning thread
+    public Map<String, AdvancedGraphDocument.Value> liveInputsView(){ return liveInputView; }
+
+    // Borrow live outputs while publishing presentation changes on the owning thread
+    public Map<String, AdvancedGraphDocument.Value> liveOutputsView(){ return liveOutputView; }
+
+    // Read input changes without consuming another presentation's history
+    public com.rieno.gadgetsandgizmos.lib.util.ValueChangeJournal.Changes<String> inputChangesSince(long revision){
+        return inputChanges.changesSince(revision);
+    }
+
+    // Read output changes without consuming another presentation's history
+    public com.rieno.gadgetsandgizmos.lib.util.ValueChangeJournal.Changes<String> outputChangesSince(long revision){
+        return outputChanges.changesSince(revision);
     }
 
     // Identify output ports whose submitted UI values must survive preview sampling
@@ -963,7 +1007,7 @@ public final class GraphRuntime {
 
     // Get the live outputs
     public Map<String, AdvancedGraphDocument.Value> liveOutputs() {
-        return Map.copyOf(liveOutputs);
+        return outputSnapshot.get(this, outputChanges.revision(), () -> Map.copyOf(liveOutputs));
     }
 
     // Export shared variables without adopting the observer as an interaction actor
@@ -977,6 +1021,11 @@ public final class GraphRuntime {
     }
     // Observe shared HUD values without changing execution state or interaction ownership
     public PlayerHudValues playerHudValues(UUID playerId){
+        return hudSample.get(new HudSampleKey(compiledProgram, liveValueRevision), gameTime(), this::sampleHudValues);
+    }
+
+    // Evaluate shared HUD ports without copying unrelated graph values
+    private PlayerHudValues sampleHudValues(){
         Map<String, AdvancedGraphDocument.Value> inputs = new LinkedHashMap<>();
         Map<String, AdvancedGraphDocument.Value> outputs = new LinkedHashMap<>();
         Frame frame = new Frame(compiledProgram, false);
@@ -997,6 +1046,8 @@ public final class GraphRuntime {
         }
         return new PlayerHudValues(Map.copyOf(inputs), Map.copyOf(outputs));
     }
+    // Invalidate shared sampling when topology or authoritative runtime values change
+    private record HudSampleKey(CompiledProgram program, long revision){}
     public record PlayerHudValues(Map<String, AdvancedGraphDocument.Value> inputs,
                                   Map<String, AdvancedGraphDocument.Value> outputs){}
 
@@ -1030,6 +1081,7 @@ public final class GraphRuntime {
         if (Objects.equals(prev, val)) {
             return false;
         }
+        inputChanges.record(key);
         liveValueRevision++;
         return true;
     }
@@ -1040,6 +1092,7 @@ public final class GraphRuntime {
         if (Objects.equals(prev, val)) {
             return false;
         }
+        outputChanges.record(key);
         liveValueRevision++;
         return true;
     }
@@ -1123,8 +1176,16 @@ public final class GraphRuntime {
             node.inputTypes().keySet().forEach(port -> inputs.add(node.id() + ":" + port));
             node.outputTypes().keySet().forEach(port -> outputs.add(node.id() + ":" + port));
         }
-        boolean changed = liveInputs.keySet().removeIf(key -> !inputs.contains(key));
-        changed |= liveOutputs.keySet().removeIf(key -> !outputs.contains(key));
+        boolean changed = liveInputs.keySet().removeIf(key -> {
+            if(inputs.contains(key)) return false;
+            inputChanges.record(key);
+            return true;
+        });
+        changed |= liveOutputs.keySet().removeIf(key -> {
+            if(outputs.contains(key)) return false;
+            outputChanges.record(key);
+            return true;
+        });
         if(changed) liveValueRevision++;
     }
 
@@ -1538,6 +1599,7 @@ public final class GraphRuntime {
             }
 
             for (NodeInstruction node : program.mouseNodesForEvent(eventId)) {
+                if(!capturesMouse(frame, node, operations) && !eventId.endsWith(":reset")) continue;
                 String input = mouseInput(node.source());
                 double val = controller == null ? 0.0D : controller.getMouseInputValue(input);
                 boolean active = controller != null && controller.isMouseInputActive(input);
@@ -2504,6 +2566,9 @@ public final class GraphRuntime {
             }
             case "local_redstone_input", "wireless_frequency_input" -> graphBindingValue(node.bindingId(), port, true);
             case "mouse_input" -> {
+                if(!capturesMouse(frame, node, operations)){
+                    yield retainedMouseOutput(node, port);
+                }
                 AdvancedGraphDocument.Value val = frame.cachedOutput(node, port);
                 if (val != null) yield val;
                 String input = mouseInput(node.source());
@@ -3019,6 +3084,11 @@ public final class GraphRuntime {
             }
             // Get the service
             @Override public <T> Optional<T> service(GraphServiceKey<T> key) {
+                if(GraphHostServices.TIME.equals(key) && controller != null && controller.getLevel() != null){
+                    var source = new com.rieno.gadgetsandgizmos.lib.time.TimeSource(
+                            controller.getLevel()::getDayTime, java.time.Clock.systemDefaultZone());
+                    return Optional.of(key.type().cast(source));
+                }
                 if(controller != null && GraphHostServices.NODE_OUTPUTS.equals(key)){
                     com.rieno.gadgetsandgizmos.lib.graph.GraphNodeOutputs outputs = id ->
                             com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.outputs(controller, id);
@@ -4244,8 +4314,11 @@ public final class GraphRuntime {
                 node.boundTargetValue = value;
                 List<AdvancedGraphDocument.Edge> edges = node.targetEdges;
                 if(!AdvancedGraphTargets.apply(controller.getLevel(), node.source(), value, edges)) return;
-                node.inputTypes.clear();node.inputTypes.putAll(AdvancedGraphCatalog.inputs(node.source()));
-                node.outputTypes.clear();node.outputTypes.putAll(AdvancedGraphCatalog.outputs(node.source()));
+                var inputTypes = GraphPortOrder.copy(AdvancedGraphCatalog.inputs(node.source()));
+                var outputTypes = GraphPortOrder.copy(AdvancedGraphCatalog.outputs(node.source()));
+                // Keep active port iterators valid while a wired target changes its schema
+                node.inputTypes = inputTypes;
+                node.outputTypes = outputTypes;
                 node.inputPorts = node.inputTypes.keySet().toArray(String[]::new);
                 node.inputs.clear();node.defaults.clear();node.connectedPorts.clear();
                 List<AdvancedGraphDocument.Edge> incoming = edges.stream().filter(edge -> node.id().equals(edge.toNode())).toList();
@@ -4456,10 +4529,10 @@ public final class GraphRuntime {
         private final String variable;
         // Trigger event
         private final String triggerEvent;
-        // Input types
-        private final Map<String, String> inputTypes;
-        // Output types
-        private final Map<String, String> outputTypes;
+        // Current immutable input schema
+        private Map<String, String> inputTypes;
+        // Current immutable output schema
+        private Map<String, String> outputTypes;
         private AdvancedGraphDocument.Value boundTargetValue;
         private boolean resolvingTarget;
         private List<AdvancedGraphDocument.Edge> targetEdges = List.of();
@@ -4497,8 +4570,8 @@ public final class GraphRuntime {
             this.bindingId = bindingId;
             this.variable = variable;
             this.triggerEvent = triggerEvent;
-            this.inputTypes = new LinkedHashMap<>(inputTypes);
-            this.outputTypes = new LinkedHashMap<>(outputTypes);
+            this.inputTypes = GraphPortOrder.copy(inputTypes);
+            this.outputTypes = GraphPortOrder.copy(outputTypes);
             this.inputPorts = this.inputTypes.keySet().toArray(String[]::new);
             this.textJoin = "string_concat".equals(src.type()) ? GraphTextInputs.compileJoin(src.data()) : null;
             for (String port : this.inputTypes.keySet()) {
@@ -5165,6 +5238,7 @@ public final class GraphRuntime {
         // Check if this needs regular tick
         private boolean needsRegularTick(boolean samplePassiveOutputs) {
             return hasAutomaticEventNodes() || profilerNodes.length > 0
+                    || !mouseNodes.isEmpty()
                     || needsHudInputSampling()
                     || samplePassiveOutputs && passiveNodes.length > 0
                     || cameraNodes.length > 0
@@ -5275,6 +5349,37 @@ public final class GraphRuntime {
             binding = node.data().getString("RouteBindingId");
         }
         return binding.isBlank() ? node.data().getString("Channel") : binding;
+    }
+
+    // Sample capture even when no mouse events arrive, so a graph can release or reacquire the mouse
+    private void updateMouseCapture(CompiledProgram program, Frame frame){
+        if(controller == null) return;
+        Map<String, String> requests = new LinkedHashMap<>();
+        int[] operations = frame.resetOperations();
+        for(var nodes : program.mouseNodes.values()){
+            for(var node : nodes){
+                String input = mouseInput(node.source());
+                boolean capture = capturesMouse(frame, node, operations);
+                if(capture) requests.put(node.id(), input);
+                frame.seedOutput(node, "value", capture ? AdvancedGraphDocument.Value.number(controller.getMouseInputValue(input))
+                        : retainedMouseOutput(node, "value"));
+                frame.seedOutput(node, "active", capture ? AdvancedGraphDocument.Value.bool(controller.isMouseInputActive(input))
+                        : retainedMouseOutput(node, "active"));
+            }
+        }
+        controller.updateMouseCaptureRequests(requests);
+    }
+
+    // Pausing capture retains each node's last reading until input resumes or a reset event arrives
+    private AdvancedGraphDocument.Value retainedMouseOutput(NodeInstruction node, String port){
+        return liveOutputs.getOrDefault(node.portKey(port), persistentOutputOr(node, port,
+                "active".equals(port) ? AdvancedGraphDocument.Value.bool(false) : AdvancedGraphDocument.Value.number(0)));
+    }
+
+    // Saved nodes without the new input retain their previous capture behavior
+    private static boolean capturesMouse(Frame frame, NodeInstruction node, int[] operations){
+        return !node.hasInput("capture_input") && node.defaultValue("capture_input") == null
+                || frame.value(node, "capture_input", operations).asBoolean();
     }
 
     // Handle mouse input

@@ -17,6 +17,7 @@ import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.neoforge.common.ModConfigSpec;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppPurchaseScope;
+import com.rieno.gadgetsandgizmos.lib.hologram.HologramResolution;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -185,6 +186,8 @@ public final class CTConfigs {
         public final ModConfigSpec.IntValue cameraMinimumRefreshRate;
         // Pixel resolution of the longest edge of each camera feed
         public final ModConfigSpec.IntValue cameraFeedResolution;
+        // Surface detail of miniature world and ship projections
+        public final ModConfigSpec.EnumValue<HologramResolution> worldHologramProjectorResolution;
         // Show detailed goggle tooltips
         public final ModConfigSpec.BooleanValue showDetailedGoggleTooltips;
         // Show shipping manifest goggle tooltip
@@ -201,14 +204,10 @@ public final class CTConfigs {
         public final ModConfigSpec.DoubleValue thrusterMaxVolume;
         // Thruster particle scale
         public final ModConfigSpec.DoubleValue thrusterParticleScale;
-        // Light the surroundings of active thrusters
-        public final ModConfigSpec.BooleanValue thrustersEmitLight;
         // Use the V2 Thruster plume renderer
         public final ModConfigSpec.BooleanValue useThrusterPlumeV2Renderer;
         // Use animated metaballs for V2 thruster plumes
         public final ModConfigSpec.BooleanValue usePlumeMetaballRendering;
-        // Light the world along active thruster plumes
-        public final ModConfigSpec.BooleanValue plumesEmitLight;
         // Select the active seasonal visual effect
         public final ModConfigSpec.EnumValue<SeasonalPlumeEffects.Force> forceSeasonalEffects;
         // Select the Pride Month plume cycle
@@ -227,6 +226,10 @@ public final class CTConfigs {
             cameraFeedResolution = builder
                     .comment("Pixel resolution of the longest edge of ACC Display and CCTV tablet camera feeds. Aspect ratio is preserved. Higher values improve detail and use more GPU resources. Changes apply to active feeds.")
                     .defineInRange("cameraFeedResolution", 320, 64, 2048);
+            worldHologramProjectorResolution = builder
+                    .comment("World Hologram Projector Resolution. FULL keeps original textured models. HIGH simplifies small projected blocks. MEDIUM always averages eligible solid faces; LOW also groups their colors, including nearby and layered terrain such as grass. Glass, thin blocks and block entity partials retain their models. Distant surfaces simplify further. Changes apply to active holograms.")
+                    .translation("createthrusters.configuration.worldHologramProjectorResolution")
+                    .defineEnum("worldHologramProjectorResolution", HologramResolution.FULL);
             showDetailedGoggleTooltips = builder
                     .comment("Legacy option; addon goggle tooltip details now follow Create's Sneak detail behavior")
                     .define("showDetailedGoggleTooltips", false);
@@ -251,19 +254,12 @@ public final class CTConfigs {
             thrusterParticleScale = builder
                     .comment("Local thruster particle multiplier (0 disables local thruster particles)")
                     .defineInRange("thrusterParticleScale", 1.0D, 0.0D, 1.0D);
-            thrustersEmitLight = builder
-                    .comment("Thrusters emit light")
-                    .translation("createthrusters.configuration.thrustersEmitLight")
-                    .define("thrustersEmitLight", true);
             useThrusterPlumeV2Renderer = builder
                     .comment("Use Thruster Plume V2 Renderer with blue, orange/yellow, and burnt sienna exhaust")
                     .define("useThrusterPlumeV2Renderer", true);
             usePlumeMetaballRendering = builder
                     .comment("Use Plume metaball rendering for the active V2 exhaust")
                     .define("usePlumeMetaballRendering", true);
-            plumesEmitLight = builder
-                    .comment("Plumes emit light into the surrounding world")
-                    .define("plumesEmitLight", false);
             clawMarkerRenderMode = builder
                     .comment("Claw marker render mode is disabled; OFF is enforced")
                     .defineEnum("clawMarkerRenderMode", ClawMarkerRenderMode.OFF);
@@ -296,6 +292,9 @@ public final class CTConfigs {
 
     // Keep shared mechanics in the common config
     public static final class Common {
+        // Allow optional plume presets on each installation
+        public final ModConfigSpec.BooleanValue dyeApplicatorFlightControl;
+        public final ModConfigSpec.BooleanValue dyeApplicatorPropulsionSimulated;
         // Thruster base thrust
         public final ModConfigSpec.DoubleValue thrusterBaseThrust;
         // Maximum thrust from each RCS nozzle
@@ -385,6 +384,16 @@ public final class CTConfigs {
         // Initialize the common
         private Common(ModConfigSpec.Builder builder) {
             builder.comment("Gameplay values shared between client and server").push("common");
+            builder.comment("Dye Applicator").translation("createthrusters.configuration.dye_applicator").push("dye_applicator");
+            dyeApplicatorFlightControl = builder
+                    .comment("Allow the Dye Applicator on Flight Control thruster plumes. The server controls application; each client controls visibility. Disabled clients see the native plume. Saved presets are retained.")
+                    .translation("createthrusters.configuration.dyeApplicatorFlightControl")
+                    .define("flightControl", true);
+            dyeApplicatorPropulsionSimulated = builder
+                    .comment("Allow the Dye Applicator on Propulsion Simulated thruster plumes. The server controls application; each client controls visibility. Disabled clients see the native plume. Saved presets are retained.")
+                    .translation("createthrusters.configuration.dyeApplicatorPropulsionSimulated")
+                    .define("propulsionSimulated", true);
+            builder.pop();
             builder.comment("Flight Control graph integration").push("flight_control");
             easyFlightControlIntegration = builder
                     .comment("Easy Flight control integration. Allow control nodes without dedicated Flight Control blocks. A Creative Flight Control Computer on the sublevel also enables this. Its node always requires the physical block. Existing blocks synchronize with their nodes in either mode. The HUD node is always available.")

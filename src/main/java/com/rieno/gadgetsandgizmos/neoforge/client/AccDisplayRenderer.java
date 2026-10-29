@@ -15,6 +15,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.rieno.gadgetsandgizmos.lib.client.render.RenderVisibilityGate;
 import com.rieno.gadgetsandgizmos.lib.client.render.RenderGeometryCache;
 import com.rieno.gadgetsandgizmos.lib.client.render.ClientRenderDistance;
+import com.rieno.gadgetsandgizmos.lib.display.DisplayFrameSchedule;
 import com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRequests;
 import com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer;
 import com.rieno.gadgetsandgizmos.lib.client.view.ViewFeedRenderer;
@@ -132,14 +133,24 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
         var pos = blockEntity.getBlockPos();
         if(!ViewSceneRenderer.isCapturing() && !visibility.shouldRender(blockEntity, null, poseStack, buffer,
                 getRenderBoundingBox(blockEntity).move(-pos.getX(), -pos.getY(), -pos.getZ()))) return;
+        // Secondary views omit recursive feeds and must leave the player's retained content alone
         if(ViewSceneRenderer.isCapturing()){
-            renderContent(blockEntity, partialTick, poseStack, buffer);
+            renderSecondary(blockEntity, partialTick, poseStack, buffer);
             return;
         }
         RetainedDisplay display = retained.computeIfAbsent(blockEntity, ignored -> new RetainedDisplay());
-        boolean refresh = ClientRenderDistance.within(blockEntity, 12D * 16);
+        AccHologramWidgetClient.record(blockEntity);
+        CompoundTag frame = blockEntity.displayFrame();
+        var state = blockEntity.getBlockState();
+        long now = net.minecraft.Util.getMillis();
+        boolean live = ClientRenderDistance.within(blockEntity, 12D * 16);
+        boolean refresh = DisplayFrameSchedule.shouldRender(display.frame != null,
+                display.state != state, display.frame != frame, live && hasLiveContent(frame),
+                now, display.lastFrame, 50L);
         display.geometry.render(poseStack, buffer, refresh, target -> display.feeds.record(
                 () -> renderContent(blockEntity, partialTick, new PoseStack(), target)));
+        if(refresh){ display.frame = frame; display.state = state; display.lastFrame = now; }
+        if(live && !ViewSceneRenderer.isCapturing()) display.feeds.refresh();
         display.feeds.retain();
         if(!refresh){
             AccDisplayGuiProjection.retain(blockEntity);
@@ -147,9 +158,50 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
         }
     }
 
+    // Camera passes share their own geometry without replacing the player's feed surface
+    private void renderSecondary(AccDisplayBlockEntity blockEntity, float partialTick, PoseStack poses, MultiBufferSource buffers){
+        var display = retained.computeIfAbsent(blockEntity, ignored -> new RetainedDisplay());
+        var frame = blockEntity.displayFrame();
+        var state = blockEntity.getBlockState();
+        long now = net.minecraft.Util.getMillis();
+        boolean refresh = DisplayFrameSchedule.shouldRender(display.secondaryFrame != null, display.secondaryState != state,
+                display.secondaryFrame != frame, hasLiveContent(frame), now, display.lastSecondaryFrame, 50L);
+        display.secondaryGeometry.render(poses, buffers, refresh,
+                target -> renderContent(blockEntity, partialTick, new PoseStack(), target));
+        if(refresh){ display.secondaryFrame = frame; display.secondaryState = state; display.lastSecondaryFrame = now; }
+        AccHologramWidgetClient.record(blockEntity);
+        if(!refresh){
+            AccDisplayGuiProjection.retain(blockEntity);
+            DiagnosticTabletGuiProjection.retainAccDisplay(blockEntity.diagnosticTabletSource());
+        }
+    }
+
+    // Text-only frames have no client animation; incoming frame changes still update immediately
+    private static boolean hasLiveContent(CompoundTag frame){
+        String state = frame.getString("State");
+        return switch(state){
+            case "display_link", "unavailable", "unbound" -> false;
+            case "external" -> !"text".equals(frame.getCompound("External").getString("Format"));
+            default -> true;
+        };
+    }
+
     private static final class RetainedDisplay{
         private final RenderGeometryCache geometry = new RenderGeometryCache();
+        private final RenderGeometryCache secondaryGeometry = new RenderGeometryCache();
         private final ViewSceneRequests feeds = new ViewSceneRequests();
+        private CompoundTag frame;
+        private net.minecraft.world.level.block.state.BlockState state;
+        private long lastFrame;
+        private CompoundTag secondaryFrame;
+        private net.minecraft.world.level.block.state.BlockState secondaryState;
+        private long lastSecondaryFrame;
+        private AABB bounds;
+        private CompoundTag boundsFrame;
+        private net.minecraft.world.level.block.state.BlockState boundsState;
+        private long boundsTick;
+        private int boundsWidth;
+        private int boundsHeight;
     }
 
     // Keep the original layers and layout in the display's local coordinates
@@ -1395,6 +1447,12 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
                                  float scale, float rotation) {
     }
 
+    // Dispatch only the controller that draws the connected surface
+    @Override
+    public boolean shouldRender(AccDisplayBlockEntity blockEntity, net.minecraft.world.phys.Vec3 camera){
+        return blockEntity.isNetworkRoot() && BlockEntityRenderer.super.shouldRender(blockEntity, camera);
+    }
+
     // Check if this should render off screen
     @Override
     public boolean shouldRenderOffScreen(AccDisplayBlockEntity blockEntity) {
@@ -1410,6 +1468,22 @@ public class AccDisplayRenderer implements BlockEntityRenderer<AccDisplayBlockEn
     // Get the render bounding box
     @Override
     public AABB getRenderBoundingBox(AccDisplayBlockEntity blockEntity) {
+        if(!blockEntity.isNetworkRoot()) return new AABB(blockEntity.getBlockPos());
+        var cached = retained.computeIfAbsent(blockEntity, ignored -> new RetainedDisplay());
+        var frame = blockEntity.displayFrame();
+        var state = blockEntity.getBlockState();
+        long tick = blockEntity.getLevel() == null ? 0 : blockEntity.getLevel().getGameTime();
+        int width = blockEntity.networkWidth(), height = blockEntity.networkHeight();
+        if(cached.bounds == null || cached.boundsFrame != frame || cached.boundsState != state || cached.boundsTick != tick
+                || cached.boundsWidth != width || cached.boundsHeight != height){
+            cached.bounds = computeRenderBounds(blockEntity);
+            cached.boundsFrame = frame; cached.boundsState = state; cached.boundsTick = tick;
+            cached.boundsWidth = width; cached.boundsHeight = height;
+        }
+        return cached.bounds;
+    }
+
+    private AABB computeRenderBounds(AccDisplayBlockEntity blockEntity){
         net.minecraft.core.BlockPos start = blockEntity.getBlockPos();
         net.minecraft.core.BlockPos end = start
                 .below(Math.max(0, blockEntity.networkHeight() - 1))

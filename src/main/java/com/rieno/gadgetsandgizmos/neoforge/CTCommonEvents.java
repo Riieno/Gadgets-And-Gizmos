@@ -39,6 +39,7 @@ import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerSharedGraph
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerStoredTargetsPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerMouseInputPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerMouseCapturePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerPhysicalInteractionPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerProfilerPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedHudImageCatalogPayload;
@@ -248,6 +249,8 @@ public final class CTCommonEvents {
                                 AdvancedContraptionControllerGraphPayload::handle);
                 registrar.playToServer(AdvancedControllerMouseInputPayload.TYPE, AdvancedControllerMouseInputPayload.STREAM_CODEC,
                                 AdvancedControllerMouseInputPayload::handle);
+                registrar.playToClient(AdvancedControllerMouseCapturePayload.TYPE, AdvancedControllerMouseCapturePayload.STREAM_CODEC,
+                                AdvancedControllerMouseCapturePayload::handle);
                 registrar.playToServer(AdvancedControllerPhysicalInteractionPayload.TYPE,
                                 AdvancedControllerPhysicalInteractionPayload.STREAM_CODEC,
                                 AdvancedControllerPhysicalInteractionPayload::handle);
@@ -410,6 +413,10 @@ public final class CTCommonEvents {
                                 ScmConfigurationSnapshotPayload::handle);
                 registrar.playToClient(AdvancedControllerRuntimePayload.TYPE, AdvancedControllerRuntimePayload.STREAM_CODEC,
                                 AdvancedControllerRuntimePayload::handle);
+                registrar.optional().playToClient(
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeDeltaPayload.TYPE,
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeDeltaPayload.STREAM_CODEC,
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeDeltaPayload::handle);
                 registrar.playToClient(FunctionPlotterDataPayload.TYPE,
                                 FunctionPlotterDataPayload.STREAM_CODEC,
                                 FunctionPlotterDataPayload::handle);

@@ -100,12 +100,13 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
     private ListTag controllerSources = new ListTag();
     // Current ACC display controller
     private @Nullable AdvancedContraptionControllerBlockEntity controller;
-    // Last frame fingerprint
-    private int lastFrameFingerprint;
+    // Publish explicit presentation requests even when their metadata is unchanged
+    private boolean frameRefreshForced;
     // Last network graph revision
     private int lastNetworkGraphRevision = Integer.MIN_VALUE;
-    // Last network frame
-    private CompoundTag lastNetworkFrame = new CompoundTag();
+    // Retain only the network baseline metadata between incremental packets
+    private boolean lastNetworkGraphFrame;
+    private long lastNetworkValueRevision = Long.MIN_VALUE;
     // Controls whether to force full graph sync
     private boolean forceFullGraphSync;
     // Rebuild serialized layout when either the graph document or its revision changes
@@ -113,6 +114,19 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
             controllerGraphCache = new com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache<>();
     // Cached graph tag
     private CompoundTag cachedGraphTag = new CompoundTag();
+    // Recompile value interest only when the applied graph changes
+    private AdvancedGraphDocument projectedControllerGraph;
+    private int projectedControllerRevision = Integer.MIN_VALUE;
+    private com.rieno.gadgetsandgizmos.lib.util.ValueProjection<String, AdvancedGraphDocument.Value> controllerInputs;
+    private com.rieno.gadgetsandgizmos.lib.util.ValueProjection<String, AdvancedGraphDocument.Value> controllerOutputs;
+    // Encode changed presentation values once and retain independent packet change history
+    private CompoundTag cachedControllerValues = new CompoundTag();
+    private final com.rieno.gadgetsandgizmos.lib.util.ValueChangeJournal<String> controllerValueChanges =
+            new com.rieno.gadgetsandgizmos.lib.util.ValueChangeJournal<>(8192);
+    // Poll external telemetry sources while ordinary widgets follow port changes
+    private boolean controllerSourcesNeedPolling;
+    private boolean controllerShowsGraph;
+    private ControllerFrameState controllerFrameState;
     // Tracked display link lines
     private final List<String> displayLinkLines = new ArrayList<>();
     // Tracked advanced data link frames
@@ -241,12 +255,15 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         if (graphChanged) {
             forceFullGraphSync = true;
         }
-        int fingerprint = nextFrame.hashCode();
-        if (fingerprint == lastFrameFingerprint && nextFrame.equals(displayFrame)) {
-            return;
-        }
+        boolean cachedValues = graphFrame && nextFrame.contains("ValuesRevision")
+                && displayFrame.contains("ValuesRevision")
+                && nextFrame.get("Graph") == displayFrame.get("Graph");
+        boolean unchanged = cachedValues
+                ? CompoundTagCopies.equalsExcept(nextFrame, displayFrame, Set.of("Graph", "Values"))
+                : nextFrame.equals(displayFrame);
+        if(!frameRefreshForced && unchanged) return;
+        frameRefreshForced = false;
         displayFrame = nextFrame;
-        lastFrameFingerprint = fingerprint;
         sendData();
     }
 
@@ -312,7 +329,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         root.configuredDisplayMode = "ship_information";
         root.activeSourceId = "";
         root.forceFullGraphSync = true;
-        root.lastFrameFingerprint = Integer.MIN_VALUE;
+        root.frameRefreshForced = true;
         root.setChanged();
         root.copyDisplayModeToNetwork(normalized, true, "ship_information");
         root.rebuildAndPublishFrame();
@@ -329,7 +346,7 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         root.configuredDisplayMode = sourceMode;
         root.activeSourceId = "";
         root.forceFullGraphSync = true;
-        root.lastFrameFingerprint = Integer.MIN_VALUE;
+        root.frameRefreshForced = true;
         root.setChanged();
         root.copyDisplayModeToNetwork(root.shipInformationDisplayMode,
                 root.shipInformationModeConfigured, sourceMode);
@@ -419,9 +436,16 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         }
         AccDisplayBlockEntity root = networkRoot();
         if (root == null) root = this;
+        Map<String, AdvancedGraphDocument.Value> safeInputs = inputs == null ? Map.of() : inputs;
+        Map<String, AdvancedGraphDocument.Value> safeOutputs = outputs == null ? Map.of() : outputs;
+        Set<String> changedKeys = new java.util.HashSet<>(root.cachedControllerValues.getAllKeys());
+        changedKeys.addAll(safeInputs.keySet());
+        changedKeys.addAll(safeOutputs.keySet());
+        root.updateCachedControllerValues(changedKeys, safeInputs, safeOutputs);
+        root.controllerShowsGraph = true;
         ListTag next = root.createControllerSources(sender,
-                inputs == null ? Map.of() : inputs,
-                outputs == null ? Map.of() : outputs);
+                safeInputs, safeOutputs);
+        root.projectedControllerGraph = null;
         boolean controllerChanged = root.controller != sender;
         boolean graphChanged = controllerChanged
                 || sourceGraphRevision(next) != sourceGraphRevision(root.controllerSources);
@@ -434,12 +458,100 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         root.rebuildAndPublishFrame();
     }
 
+    // Update cached widget values from the controller's independent change journals
+    public void receiveControllerChanges(AdvancedContraptionControllerBlockEntity sender){
+        if(level == null || level.isClientSide || sender == null || sender.isRemoved()) return;
+        AccDisplayBlockEntity root = networkRoot();
+        if(root == null) root = this;
+        root.applyControllerChanges(sender);
+    }
+
+    // Rebuild sources only when their selected values, topology, or telemetry changes
+    private void applyControllerChanges(AdvancedContraptionControllerBlockEntity sender){
+        // ------------------------------------COMPILE VALUE INTEREST------------------------------------
+        var graph = sender.activeGraphView();
+        boolean structureChanged = controller != sender || projectedControllerGraph != graph
+                || projectedControllerRevision != graph.revision();
+        if(structureChanged){
+            Set<String> nodeIds = new java.util.HashSet<>();
+            controllerShowsGraph = false;
+            controllerSourcesNeedPolling = false;
+            for(var node : graph.nodes()){
+                if(node.type().startsWith("acc_display_") || "acc_hologram_widget".equals(node.type())
+                        || "advanced_hud_element".equals(node.type())) nodeIds.add(node.id());
+                if("acc_display_graph".equals(node.type()) || "acc_display_plotter".equals(node.type())){
+                    controllerShowsGraph = true;
+                }
+                if(node.type().startsWith("acc_display_") && !isDisplayWidgetNode(node)
+                        && !"acc_display_graph".equals(node.type()) && !"acc_display_plotter".equals(node.type())){
+                    controllerSourcesNeedPolling = true;
+                }
+            }
+            java.util.function.Predicate<String> selection = controllerShowsGraph ? key -> true
+                    : new com.rieno.gadgetsandgizmos.lib.graph.GraphValueSelection(nodeIds);
+            controllerInputs = new com.rieno.gadgetsandgizmos.lib.util.ValueProjection<>(selection);
+            controllerOutputs = new com.rieno.gadgetsandgizmos.lib.util.ValueProjection<>(selection);
+            projectedControllerGraph = graph;
+            projectedControllerRevision = graph.revision();
+            cachedControllerValues = new CompoundTag();
+            controllerValueChanges.reset();
+        }
+        // ------------------------------------ENCODE CHANGED PORTS------------------------------------
+        var runtime = sender.displayRuntime();
+        var inputs = controllerInputs.update(sender, runtime.inputChangesSince(controllerInputs.revision()),
+                runtime.liveInputsView());
+        var outputs = controllerOutputs.update(sender, runtime.outputChangesSince(controllerOutputs.revision()),
+                runtime.liveOutputsView());
+        Set<String> keys = new java.util.HashSet<>(inputs.values().keySet());
+        keys.addAll(inputs.removed());
+        keys.addAll(outputs.values().keySet());
+        keys.addAll(outputs.removed());
+        if(inputs.full() || outputs.full()){
+            keys.addAll(cachedControllerValues.getAllKeys());
+            keys.addAll(controllerInputs.values().keySet());
+            keys.addAll(controllerOutputs.values().keySet());
+        }
+        long prevRevision = controllerValueChanges.revision();
+        updateCachedControllerValues(keys, controllerInputs.values(), controllerOutputs.values());
+        // ------------------------------------PUBLISH CHANGED SOURCES------------------------------------
+        ControllerFrameState next = new ControllerFrameState(sender.displaysShipInitializationProgress(),
+                sender.getShipInitializationProgressPercent(), sender.getShipInitializationProgressStatus(),
+                sender.getBlockPos(), SimulatedHelper.getContainingSubLevelId(sender),
+                controllerShowsGraph ? runtime.liveValueRevision() : 0L);
+        if(!structureChanged && prevRevision == controllerValueChanges.revision()
+                && next.equals(controllerFrameState) && !controllerSourcesNeedPolling) return;
+        controllerFrameState = next;
+        controller = sender;
+        controllerSources = createControllerSources(sender, controllerInputs.values(), controllerOutputs.values());
+        forceFullGraphSync |= structureChanged;
+        rebuildAndPublishFrame();
+    }
+
+    // Encode changed addon values while retaining output precedence and explicit removals
+    private void updateCachedControllerValues(Set<String> keys, Map<String, AdvancedGraphDocument.Value> inputs,
+                                              Map<String, AdvancedGraphDocument.Value> outputs){
+        for(String key : keys){
+            var val = outputs.get(key);
+            if(val == null) val = inputs.get(key);
+            CompoundTag encoded = val == null ? null : val.toTag();
+            if(Objects.equals(cachedControllerValues.get(key), encoded)) continue;
+            if(encoded == null) cachedControllerValues.remove(key);
+            else cachedControllerValues.put(key, encoded);
+            controllerValueChanges.record(key);
+        }
+    }
+
+    // Track metadata that can change without modifying graph ports
+    private record ControllerFrameState(boolean initializing, int percent, String status,
+                                        BlockPos pos, UUID subLevelId, long pulseRevision){}
+
     // Keep the next controller update complete even when a document reuses its saved revision
     void invalidateControllerGraph(AdvancedContraptionControllerBlockEntity sender){
         AccDisplayBlockEntity root = networkRoot();
         if(root == null) root = this;
         if(root.controller != sender) return;
         root.controllerGraphCache.invalidate();
+        root.projectedControllerGraph = null;
         root.forceFullGraphSync = true;
     }
 
@@ -451,6 +563,11 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
             return;
         }
         root.controller = null;
+        root.projectedControllerGraph = null;
+        root.controllerInputs = null;
+        root.controllerOutputs = null;
+        root.cachedControllerValues = new CompoundTag();
+        root.controllerValueChanges.reset();
         root.controllerSources = new ListTag();
         root.forceFullGraphSync = true;
         root.rebuildAndPublishFrame();
@@ -1485,8 +1602,9 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         } else if (active != null) {
             CompoundTag selected = active.getCompound("Frame");
             if(selected.get("Graph") == cachedGraphTag){
-                frame = CompoundTagCopies.copyExcept(selected, Set.of("Graph"));
+                frame = CompoundTagCopies.copyExcept(selected, Set.of("Graph", "Values"));
                 frame.put("Graph", cachedGraphTag);
+                frame.put("Values", selected.getCompound("Values"));
             }else frame = selected.copy();
         } else if (DISPLAY_MODE_AUTO.equals(configuredDisplayMode)) {
             CompoundTag presentation = presentations.getCompound(0);
@@ -1677,14 +1795,10 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
                         || isShippingInformationNode(node)
                         || "acc_display_scm_information".equals(node.type()))
                 .toList();
-        boolean sharedValuesRequired = widgetsVisible || standaloneNodes.stream()
+        boolean sharedValuesRequired = widgetsVisible || standaloneNodes.isEmpty() || standaloneNodes.stream()
                 .anyMatch(node -> "acc_display_graph".equals(node.type())
                         || "acc_display_plotter".equals(node.type()));
-        CompoundTag sharedValues = new CompoundTag();
-        if (sharedValuesRequired) {
-            writeValues(sharedValues, inputs);
-            writeValues(sharedValues, outputs);
-        }
+        CompoundTag sharedValues = sharedValuesRequired ? cachedControllerValues : new CompoundTag();
         if (widgetsVisible || standaloneNodes.isEmpty()) {
             addSource(sources, "acc:widgets", "ACC",
                     createControllerFrame(controller, inputs, outputs, null, sharedValues));
@@ -1766,6 +1880,9 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         frame.putInt("GraphRevision", graphRevision);
         frame.put("Graph", cachedGraphTag);
         frame.put("Values", sharedValues);
+        if(sharedValues == cachedControllerValues){
+            frame.putLong("ValuesRevision", controllerValueChanges.revision());
+        }
         CompoundTag cameras = new CompoundTag();
         if(contentNode == null){
             for(var node : graph.nodes()){
@@ -1784,7 +1901,9 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         }
         frame.put("WidgetCameras", cameras);
         CompoundTag executionPulses = new CompoundTag();
-        controller.getAccDisplayExecutionPulsesSnapshot().forEach(executionPulses::putLong);
+        if(contentNode != null || sharedValues != cachedControllerValues || controllerShowsGraph){
+            controller.getAccDisplayExecutionPulsesSnapshot().forEach(executionPulses::putLong);
+        }
         frame.put("ExecutionPulses", executionPulses);
         return frame;
     }
@@ -2358,19 +2477,6 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         return false;
     }
 
-    // Write the values
-    private static void writeValues(
-            CompoundTag target,
-            Map<String, AdvancedGraphDocument.Value> values
-    ) {
-        values.forEach((key, val) -> {
-            CompoundTag tag = new CompoundTag();
-            tag.putString("Type", val.type());
-            tag.put("Payload", val.payload().copy());
-            target.put(key, tag);
-        });
-    }
-
     // Store the screen point
     private record ScreenPoint(double x, double y) {
     }
@@ -2407,12 +2513,12 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
         CompoundTag tag = new CompoundTag();
         super.write(tag, provider, true);
         writeDisplayMetadata(tag);
-        CompoundTag currentFrame = CompoundTagCopies.copyExcept(displayFrame, Set.of("Graph"));
         int graphRevision = displayFrame.getInt("GraphRevision");
         boolean canSendDelta = "graph".equals(displayFrame.getString("State"))
                 && !forceFullGraphSync && graphRevision == lastNetworkGraphRevision
-                && "graph".equals(lastNetworkFrame.getString("State"));
-        CompoundTag packetFrame = canSendDelta ? currentFrame.copy() : displayFrame.copy();
+                && lastNetworkGraphFrame && displayFrame.contains("ValuesRevision");
+        CompoundTag packetFrame = canSendDelta
+                ? CompoundTagCopies.copyExcept(displayFrame, Set.of("Graph", "Values")) : displayFrame.copy();
         tag.put("AccDisplayFrame", packetFrame);
         if ("graph".equals(packetFrame.getString("State"))) {
             int revision = packetFrame.getInt("GraphRevision");
@@ -2420,29 +2526,26 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
                 forceFullGraphSync = false;
                 lastNetworkGraphRevision = revision;
             } else {
-                packetFrame.remove("Graph");
-                CompoundTag previousValues = lastNetworkFrame.getCompound("Values");
-                CompoundTag currentValues = currentFrame.getCompound("Values");
+                var changes = controllerValueChanges.changesSince(lastNetworkValueRevision);
+                CompoundTag currentValues = displayFrame.getCompound("Values");
                 CompoundTag changedValues = new CompoundTag();
-                for (String key : currentValues.getAllKeys()) {
-                    if (!Objects.equals(currentValues.get(key), previousValues.get(key))) {
-                        changedValues.put(key, currentValues.get(key).copy());
-                    }
-                }
                 ListTag removedValues = new ListTag();
-                for (String key : previousValues.getAllKeys()) {
-                    if (!currentValues.contains(key)) {
-                        removedValues.add(net.minecraft.nbt.StringTag.valueOf(key));
+                if(changes.full()){
+                    packetFrame.put("Values", currentValues.copy());
+                }else{
+                    for(String key : changes.keys()){
+                        Tag val = currentValues.get(key);
+                        if(val == null) removedValues.add(net.minecraft.nbt.StringTag.valueOf(key));
+                        else changedValues.put(key, val.copy());
                     }
-                }
-                packetFrame.putBoolean("ValueDelta", true);
-                packetFrame.put("Values", changedValues);
-                if (!removedValues.isEmpty()) {
-                    packetFrame.put("RemovedValues", removedValues);
+                    packetFrame.putBoolean("ValueDelta", true);
+                    packetFrame.put("Values", changedValues);
+                    if(!removedValues.isEmpty()) packetFrame.put("RemovedValues", removedValues);
                 }
             }
         }
-        lastNetworkFrame = currentFrame;
+        lastNetworkGraphFrame = "graph".equals(displayFrame.getString("State"));
+        lastNetworkValueRevision = controllerValueChanges.revision();
         return tag;
     }
 
@@ -2491,7 +2594,6 @@ public class AccDisplayBlockEntity extends SmartBlockEntity implements Multibloc
                 incoming.put("Graph", displayFrame.getCompound("Graph"));
             }
             displayFrame = incoming;
-            lastFrameFingerprint = displayFrame.hashCode();
         }
     }
 }

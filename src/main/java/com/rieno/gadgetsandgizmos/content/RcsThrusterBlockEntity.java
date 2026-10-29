@@ -216,6 +216,13 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+    // Clear legacy lighting once instead of inspecting it on every server tick
+    @Override
+    public void onLoad(){
+        super.onLoad();
+        PropulsionLight.clear(level, worldPosition);
+    }
+
     // Update the RCS thruster
     @Override
     public void tick() {
@@ -231,7 +238,6 @@ public class RcsThrusterBlockEntity extends KineticBlockEntity
             if (level.getGameTime() % LINK_RECEIVER_REFRESH_TICKS == 0L) {
                 refreshReceiverStrengths();
             }
-            PropulsionLight.update(level, worldPosition, 0);
         }
     }
 

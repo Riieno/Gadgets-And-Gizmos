@@ -39,12 +39,8 @@ public class GyroscopeLinkMenu extends GhostItemMenu<GyroscopeLinkBlockEntity>
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    public static final int PLAYER_SLOTS_X = 32;
-    public static final int PLAYER_SLOTS_Y = 258;
-    public static final int GHOST_SLOT_FIRST_X = 80;
-    public static final int GHOST_SLOT_SECOND_X = 98;
-    public static final int GHOST_SLOTS_START_Y = 70;
-    public static final int GHOST_SLOT_ROW_SPACING = 30;
+    public static final int PLAYER_SLOTS_X = 97;
+    public static final int PLAYER_SLOTS_Y = 201;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -209,22 +205,41 @@ public class GyroscopeLinkMenu extends GhostItemMenu<GyroscopeLinkBlockEntity>
         return new ItemStackHandler(8);
     }
 
+    // Place each cardinal frequency pair around the painted compass
+    public static int frequencySlotX(Direction dir, boolean second){
+        return switch(dir){
+            case NORTH, SOUTH -> second ? 74 : 44;
+            case EAST -> 99;
+            case WEST -> 19;
+            default -> throw new IllegalArgumentException("Data Link frequencies require a horizontal direction");
+        };
+    }
+
+    // Stack the east and west frequency pairs beside their compass labels
+    public static int frequencySlotY(Direction dir, boolean second){
+        return switch(dir){
+            case NORTH -> 48;
+            case SOUTH -> 128;
+            case EAST, WEST -> second ? 103 : 73;
+            default -> throw new IllegalArgumentException("Data Link frequencies require a horizontal direction");
+        };
+    }
+
     // Add the slots
     @Override
     protected void addSlots() {
         addPlayerSlots(PLAYER_SLOTS_X, PLAYER_SLOTS_Y);
 
-        addFrequencySlotPair(0, 0);
-        addFrequencySlotPair(2, 1);
-        addFrequencySlotPair(4, 2);
-        addFrequencySlotPair(6, 3);
+        addFrequencySlotPair(0, Direction.NORTH);
+        addFrequencySlotPair(2, Direction.SOUTH);
+        addFrequencySlotPair(4, Direction.EAST);
+        addFrequencySlotPair(6, Direction.WEST);
     }
 
     // Add the frequency slot pair
-    private void addFrequencySlotPair(int slotIndex, int row) {
-        int slotY = GHOST_SLOTS_START_Y + row * GHOST_SLOT_ROW_SPACING;
-        addSlot(new ActiveGhostSlot(ghostInventory, slotIndex, GHOST_SLOT_FIRST_X, slotY));
-        addSlot(new ActiveGhostSlot(ghostInventory, slotIndex + 1, GHOST_SLOT_SECOND_X, slotY));
+    private void addFrequencySlotPair(int slotIndex, Direction dir){
+        addSlot(new ActiveGhostSlot(ghostInventory, slotIndex, frequencySlotX(dir, false), frequencySlotY(dir, false)));
+        addSlot(new ActiveGhostSlot(ghostInventory, slotIndex + 1, frequencySlotX(dir, true), frequencySlotY(dir, true)));
     }
 
     // Add the player slots

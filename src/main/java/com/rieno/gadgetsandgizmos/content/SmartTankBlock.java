@@ -26,6 +26,11 @@ public class SmartTankBlock extends FluidTankBlock {
     }
 
     @Override
+    public InteractionResult onWrenched(BlockState state, net.minecraft.world.item.context.UseOnContext ctx){
+        return SmartContainerTablets.wrench(ctx);
+    }
+
+    @Override
     protected InteractionResult useWithoutItem(BlockState state,
             Level level, BlockPos pos,
             Player player, BlockHitResult hit){

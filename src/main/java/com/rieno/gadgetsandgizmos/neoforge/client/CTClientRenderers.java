@@ -9,17 +9,21 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.CreateThrusters;
+import com.rieno.gadgetsandgizmos.lib.client.render.ColoredOrientedRotatingVisual;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.rieno.gadgetsandgizmos.registry.CTEntityTypes;
 import com.simibubi.create.content.fluids.tank.FluidTankRenderer;
+import com.simibubi.create.AllPartialModels;
 import com.simibubi.create.content.kinetics.base.ShaftRenderer;
 import com.simibubi.create.content.kinetics.simpleRelays.encased.EncasedCogRenderer;
 import com.simibubi.create.content.kinetics.simpleRelays.encased.EncasedCogVisual;
 import com.simibubi.create.content.kinetics.base.SingleAxisRotatingVisual;
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer;
+import dev.engine_room.flywheel.lib.model.Models;
 import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntityType;
@@ -51,6 +55,14 @@ public final class CTClientRenderers {
         if (CTBlockEntities.THRUSTER_BEARING != null) {
             SimpleBlockEntityVisualizer.builder(CTBlockEntities.THRUSTER_BEARING.get())
                     .factory(ThrusterBearingVisual::new)
+                    .apply();
+        }
+        if(CTBlockEntities.VECTOR_BEARING != null){
+            SimpleBlockEntityVisualizer.builder(CTBlockEntities.VECTOR_BEARING.get())
+                    .factory((ctx, be, partialTick) -> new ColoredOrientedRotatingVisual<>(ctx, be, partialTick,
+                            Direction.SOUTH, be.getBearingFacing().getOpposite(),
+                            Models.partial(AllPartialModels.SHAFT_HALF), 0xFFFFFF))
+                    .neverSkipVanillaRender()
                     .apply();
         }
         if (CTBlockEntities.AILERON_BEARING != null) {

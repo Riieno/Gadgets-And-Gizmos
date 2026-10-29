@@ -6,6 +6,8 @@
   "compatibilityLevel": "JAVA_21",
   "refmap": "createthrusters.refmap.json",
   "mixins": [
+    "FlightControlThrusterDyeMixin",
+    "PropulsionThrusterDyeMixin",
     "FlightControlTrailAccess",
     "FlightControlMouseAccess",
     "FlightControlAllocationAccess",
@@ -125,6 +127,10 @@
     "ArchitecturyEventBusesWhenAvailableGuardMixin"
   ],
   "client": [
+    "FlightControlPlumeDyeMixin",
+    "PropulsionPlumeDyeMixin",
+    "PropulsionPlumeTrailDyeMixin",
+    "PropulsionPlumeParticleDyeMixin",
     "FlightControlHudRenderAccess",
     "FlightControlHudRenderMixin",
     "FlightControlAttitudeRenderMixin",

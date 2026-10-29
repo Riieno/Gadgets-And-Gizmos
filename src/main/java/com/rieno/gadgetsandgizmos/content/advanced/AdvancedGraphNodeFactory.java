@@ -43,7 +43,8 @@ public final class AdvancedGraphNodeFactory {
     public record Context(String firstGogglesPairId,
                           String nextVariableName,
                           String firstVariableName,
-                          String creatorName) {
+                          String creatorName,
+                          String serverTimezone) {
         public static final Context EMPTY =
                 new Context("", "variable", "variable");
 
@@ -52,6 +53,13 @@ public final class AdvancedGraphNodeFactory {
             nextVariableName = fallback(nextVariableName, "variable");
             firstVariableName = fallback(firstVariableName, "variable");
             creatorName = normalize(creatorName);
+            serverTimezone = fallback(serverTimezone, "UTC");
+        }
+
+        // Preserve existing callers while using the local server zone outside a networked editor
+        public Context(String firstGogglesPairId, String nextVariableName, String firstVariableName, String creatorName){
+            this(firstGogglesPairId, nextVariableName, firstVariableName, creatorName,
+                    com.rieno.gadgetsandgizmos.lib.time.ClockTime.serverTimezone());
         }
 
         public Context(String firstGogglesPairId, String nextVariableName, String firstVariableName){
@@ -84,6 +92,8 @@ public final class AdvancedGraphNodeFactory {
                     com.rieno.gadgetsandgizmos.lib.control.SignalValueType.REDSTONE.id());
         }
         com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.initialize(type, data);
+        if("createthrusters:time".equals(type))
+            com.rieno.gadgetsandgizmos.lib.graph.TimeGraphNode.initializeTimezone(data, safeContext.serverTimezone());
         if("camera".equals(type)){
             CompoundTag defaults = new CompoundTag();
             defaults.put("max_ray_length", graphDefault("number", 64.0D));
@@ -362,6 +372,7 @@ public final class AdvancedGraphNodeFactory {
         if ("mouse_input".equals(type)) {
             data.putString("MouseInput", "left_click");
             CompoundTag defaults = data.getCompound("Defaults");
+            defaults.put("capture_input", graphDefault("boolean", true));
             defaults.put("reset_axis", graphDefault("boolean", false));
             defaults.put("timeout", graphDefault("number", 20.0D));
             data.put("Defaults", defaults);

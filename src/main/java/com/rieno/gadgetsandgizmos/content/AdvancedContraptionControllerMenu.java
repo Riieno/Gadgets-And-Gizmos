@@ -73,6 +73,8 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
     private AdvancedGraphDocument initialShippingScheduleActive;
     // Tracks whether tablet remote access is set
     private boolean tabletRemoteAccess;
+    // Retain the server's zone independently of the editor client's operating system
+    private String serverTimezone;
     private final TimedItemSlotAction gogglesAction = new TimedItemSlotAction();
     private long gogglesActionRequestId;
 
@@ -133,6 +135,7 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
         super.readExtraOpenData(buffer);
         int draftRevision = buffer.readVarInt();
         int activeRevision = buffer.readVarInt();
+        serverTimezone = buffer.readUtf(128);
         AdvancedControllerGraphSnapshotPayload.GraphSnapshot snapshot =
                 AdvancedControllerGraphSnapshotPayload.clientSnapshot(
                         getContentPos(), getContentSubLevelId(), draftRevision, activeRevision);
@@ -145,6 +148,11 @@ public class AdvancedContraptionControllerMenu extends AnalogueContraptionContro
     // Get the initial draft
     public AdvancedGraphDocument getInitialDraft() {
         return initialDraft == null ? new AdvancedGraphDocument() : initialDraft.copy();
+    }
+
+    // Supply the authoritative default when creating a Time node in the editor
+    public String getServerTimezone(){
+        return serverTimezone == null ? com.rieno.gadgetsandgizmos.lib.time.ClockTime.serverTimezone() : serverTimezone;
     }
 
     // Get the initial active

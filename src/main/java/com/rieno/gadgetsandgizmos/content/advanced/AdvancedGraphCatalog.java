@@ -168,6 +168,11 @@ public final class AdvancedGraphCatalog {
         register("profiler_tps", "profiler", GraphPortOrder.ports(), GraphPortOrder.ports("value", "number"), false);
         register("profiler_frametime", "profiler", GraphPortOrder.ports(), GraphPortOrder.ports("value", "number"), false);
         register("constant_number", "core", GraphPortOrder.ports(), GraphPortOrder.ports("value", "number"), false);
+        var time = com.rieno.gadgetsandgizmos.lib.graph.TimeGraphNode.definition("createthrusters");
+        REGISTRY.register(time);
+        GraphApi.runtimes().register(time.id(), com.rieno.gadgetsandgizmos.lib.graph.TimeGraphNode::execute);
+        com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.register(time.id(),
+                com.rieno.gadgetsandgizmos.lib.graph.TimeGraphNode.presentation());
         register("constant_boolean", "core", GraphPortOrder.ports(), GraphPortOrder.ports("value", "boolean"), false);
         register("constant_string", "core", GraphPortOrder.ports(), GraphPortOrder.ports("value", "string"), false);
         register("constant_color", "core", GraphPortOrder.ports(), GraphPortOrder.ports("value", "color"), false);
@@ -440,7 +445,7 @@ public final class AdvancedGraphCatalog {
                 GraphPortOrder.ports("exec", "exec"), false);
         register("controller_channel_input", "controller", GraphPortOrder.ports(), GraphPortOrder.ports("exec", "exec", "value", "number", "active", "boolean"), false);
         register("gamepad_input", "controller", GraphPortOrder.ports(), GraphPortOrder.ports("exec", "exec", "value", "number", "active", "boolean"), false);
-        register("mouse_input", "controller", GraphPortOrder.ports("reset_axis", "boolean", "timeout", "number"),
+        register("mouse_input", "controller", GraphPortOrder.ports("capture_input", "boolean", "reset_axis", "boolean", "timeout", "number"),
                 GraphPortOrder.ports("exec", "exec", "value", "number", "active", "boolean"), false);
         register("controller_channel_output", "controller", GraphPortOrder.ports("exec", "exec", "value", "number"), GraphPortOrder.ports("exec", "exec"), false);
         register("local_redstone_input", "controller", GraphPortOrder.ports(), GraphPortOrder.ports("exec", "exec", "value", "number", "active", "boolean"), false);
@@ -1252,6 +1257,8 @@ public final class AdvancedGraphCatalog {
 
     // Get the inputs
     public static Map<String, String> inputs(AdvancedGraphDocument.Node node) {
+        if("createthrusters:time".equals(node.type()))
+            return com.rieno.gadgetsandgizmos.lib.graph.TimeGraphNode.inputs(node.data());
         if("createthrusters:convert_unit".equals(node.type())){
             return com.rieno.gadgetsandgizmos.lib.graph.math.UnitConversionNode.inputs(node.data());
         }
@@ -1494,6 +1501,7 @@ public final class AdvancedGraphCatalog {
 
     // Get the advanced graph catalog display name
     public static String displayName(String id) {
+        if("createthrusters:time".equals(id)) return "Time";
         MathGraphNodes.Node math = mathNode(id);
         if(math != null) return math.title();
         return switch (id) {

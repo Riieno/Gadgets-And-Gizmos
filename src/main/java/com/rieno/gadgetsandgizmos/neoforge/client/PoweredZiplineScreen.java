@@ -10,11 +10,15 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 
 import com.rieno.gadgetsandgizmos.content.PoweredZiplineMenu;
 import com.rieno.gadgetsandgizmos.content.PoweredZiplineBlockEntity;
+import com.rieno.gadgetsandgizmos.lib.client.render.GuiTextureRegion;
+import com.rieno.gadgetsandgizmos.lib.client.ui.GuiControlPreviews;
+import com.rieno.gadgetsandgizmos.lib.client.ui.PaintedSliderStyle;
 import com.rieno.gadgetsandgizmos.neoforge.network.ServerboundZiplineConfigPacket;
 import com.simibubi.create.foundation.gui.menu.AbstractSimiContainerScreen;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.Slot;
@@ -33,12 +37,21 @@ public class PoweredZiplineScreen extends AbstractSimiContainerScreen<PoweredZip
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    private static final int WIDTH = 260;
-    private static final int HEIGHT = 190;
-    private static final int CONFIG_X = 146;
-    private static final int CONFIG_VALUE_RIGHT_PADDING = 16;
-    private static final int SLIDER_WIDTH = 98;
-    private static final int SLIDER_HEIGHT = 12;
+    private static final int WIDTH = 246;
+    private static final int HEIGHT = 224;
+    private static final int CONFIG_X = 140;
+    private static final int SLIDER_WIDTH = 76;
+    private static final int SLIDER_HEIGHT = 16;
+    private static final int CONFIRM_X = 213;
+    private static final int CONFIRM_Y = 105;
+    private static final int CONFIRM_SIZE = 18;
+    private static final int TEXT_COLOR = 0xFFF3EEE4;
+    private static final ResourceLocation TEXTURE = ResourceLocation.fromNamespaceAndPath("createthrusters",
+            "textures/gui/powered_zipline.png");
+    private static final GuiTextureRegion BACKGROUND = new GuiTextureRegion(TEXTURE, 246, 261, 0, 0, WIDTH, HEIGHT);
+    private static final PaintedSliderStyle SLIDER = new PaintedSliderStyle(
+            new GuiTextureRegion(TEXTURE, 246, 261, 0, 234, 76, 8),
+            new GuiTextureRegion(TEXTURE, 246, 261, 0, 245, 6, 16), 6);
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -92,9 +105,9 @@ public class PoweredZiplineScreen extends AbstractSimiContainerScreen<PoweredZip
         super.init();
         scalableGui.update(leftPos, topPos, imageWidth, imageHeight, width, height);
         maxSpeedSliderX = leftPos + CONFIG_X;
-        maxSpeedSliderY = topPos + 54;
+        maxSpeedSliderY = topPos + 34;
         dampingSliderX = leftPos + CONFIG_X;
-        dampingSliderY = topPos + 84;
+        dampingSliderY = topPos + 66;
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -111,42 +124,29 @@ public class PoweredZiplineScreen extends AbstractSimiContainerScreen<PoweredZip
         mouseX = scalableGui.mouseX(mouseX);
         mouseY = scalableGui.mouseY(mouseY);
         scalableGui.push(guiGraphics);
-        try {
-        int x = leftPos;
-        int y = topPos;
-        CTCreateScreenHelper.renderPanel(guiGraphics, x, y, WIDTH, HEIGHT);
-        renderPlayerInventory(guiGraphics, x + PoweredZiplineMenu.PLAYER_SLOTS_X - 8, y + PoweredZiplineMenu.PLAYER_SLOTS_Y - 18);
-
-        guiGraphics.drawCenteredString(font, title, x + WIDTH / 2, y + 6, CTCreateScreenHelper.BANNER_TITLE_COLOR);
-        guiGraphics.drawString(font, Component.translatable("createthrusters.powered_zipline.config.forward"), x + 12, y + 42,
-                CTCreateScreenHelper.LABEL_COLOR, false);
-        guiGraphics.drawString(font, Component.translatable("createthrusters.powered_zipline.config.backward"), x + 12, y + 74,
-                CTCreateScreenHelper.LABEL_COLOR, false);
-        guiGraphics.drawString(font, Component.translatable("createthrusters.powered_zipline.config.max_speed"), x + CONFIG_X, y + 42,
-                CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
-        drawRightAligned(guiGraphics, formatSpeed(maxSpeed), x + WIDTH - CONFIG_VALUE_RIGHT_PADDING, y + 42);
-        renderHorizontalSlider(guiGraphics, maxSpeedSliderX, maxSpeedSliderY, maxSpeedToPercent(maxSpeed),
-                isOverHorizontalHandle(mouseX, mouseY, maxSpeedSliderX, maxSpeedSliderY, maxSpeedToPercent(maxSpeed)));
-        guiGraphics.drawString(font, Component.translatable("createthrusters.powered_zipline.config.damping"), x + CONFIG_X, y + 72,
-                CTCreateScreenHelper.SUBTLE_TEXT_COLOR, false);
-        drawRightAligned(guiGraphics, formatPercent(damping), x + WIDTH - CONFIG_VALUE_RIGHT_PADDING, y + 72);
-        renderHorizontalSlider(guiGraphics, dampingSliderX, dampingSliderY, damping,
-                isOverHorizontalHandle(mouseX, mouseY, dampingSliderX, dampingSliderY, damping));
-
-        CTCreateScreenHelper.renderBlockSlots(guiGraphics, x + PoweredZiplineMenu.FORWARD_FIRST_X - 10,
-                y + PoweredZiplineMenu.FORWARD_Y - 2, 2);
-        CTCreateScreenHelper.renderBlockSlots(guiGraphics, x + PoweredZiplineMenu.BACKWARD_FIRST_X - 10,
-                y + PoweredZiplineMenu.BACKWARD_Y - 2, 2);
-
-        CTCreateScreenHelper.renderFrequencyGhostSlot(guiGraphics, x + PoweredZiplineMenu.FORWARD_FIRST_X + 1,
-                y + PoweredZiplineMenu.FORWARD_Y + 1, false, false);
-        CTCreateScreenHelper.renderFrequencyGhostSlot(guiGraphics, x + PoweredZiplineMenu.FORWARD_SECOND_X + 1,
-                y + PoweredZiplineMenu.FORWARD_Y + 1, false, true);
-        CTCreateScreenHelper.renderFrequencyGhostSlot(guiGraphics, x + PoweredZiplineMenu.BACKWARD_FIRST_X + 1,
-                y + PoweredZiplineMenu.BACKWARD_Y + 1, false, false);
-        CTCreateScreenHelper.renderFrequencyGhostSlot(guiGraphics, x + PoweredZiplineMenu.BACKWARD_SECOND_X + 1,
-                y + PoweredZiplineMenu.BACKWARD_Y + 1, false, true);
-        } finally {
+        try{
+            int x = leftPos;
+            int y = topPos;
+            // Crop above the spare slider artwork while retaining the painted inventory
+            BACKGROUND.draw(guiGraphics, x, y);
+            GuiControlPreviews.drawFittedText(guiGraphics, font, title, x + 8, y + 1, 222, 11, 1, TEXT_COLOR, true);
+            GuiControlPreviews.drawFittedText(guiGraphics, font,
+                    Component.translatable("createthrusters.powered_zipline.config.forward"),
+                    x + 23, y + 31, 48, 16, 1, TEXT_COLOR, false);
+            GuiControlPreviews.drawFittedText(guiGraphics, font,
+                    Component.translatable("createthrusters.powered_zipline.config.backward"),
+                    x + 23, y + 63, 48, 16, 1, TEXT_COLOR, false);
+            renderSliderLabel(guiGraphics, "createthrusters.powered_zipline.config.max_speed", formatSpeed(maxSpeed), y + 24);
+            renderHorizontalSlider(guiGraphics, maxSpeedSliderX, maxSpeedSliderY, maxSpeedToPercent(maxSpeed),
+                    draggingMaxSpeed || isOverHorizontalHandle(mouseX, mouseY, maxSpeedSliderX, maxSpeedSliderY, maxSpeedToPercent(maxSpeed)));
+            renderSliderLabel(guiGraphics, "createthrusters.powered_zipline.config.damping", formatPercent(damping), y + 56);
+            renderHorizontalSlider(guiGraphics, dampingSliderX, dampingSliderY, damping,
+                    draggingDamping || isOverHorizontalHandle(mouseX, mouseY, dampingSliderX, dampingSliderY, damping));
+            if(inside(mouseX, mouseY, x + CONFIRM_X, y + CONFIRM_Y, CONFIRM_SIZE, CONFIRM_SIZE)){
+                guiGraphics.fill(x + CONFIRM_X, y + CONFIRM_Y, x + CONFIRM_X + CONFIRM_SIZE,
+                        y + CONFIRM_Y + CONFIRM_SIZE, 0x22FFFFFF);
+            }
+        }finally{
             scalableGui.pop(guiGraphics);
         }
     }
@@ -179,6 +179,10 @@ public class PoweredZiplineScreen extends AbstractSimiContainerScreen<PoweredZip
         mouseX = scalableGui.mouseX(mouseX);
         mouseY = scalableGui.mouseY(mouseY);
         if (btn == 0) {
+            if(inside(mouseX, mouseY, leftPos + CONFIRM_X, topPos + CONFIRM_Y, CONFIRM_SIZE, CONFIRM_SIZE)){
+                onClose();
+                return true;
+            }
             if (inside(mouseX, mouseY, maxSpeedSliderX, maxSpeedSliderY, SLIDER_WIDTH, SLIDER_HEIGHT)) {
                 draggingMaxSpeed = true;
                 updateMaxSpeedValue(mouseX);
@@ -265,13 +269,13 @@ public class PoweredZiplineScreen extends AbstractSimiContainerScreen<PoweredZip
 
     // Update the max speed value
     private void updateMaxSpeedValue(double mouseX) {
-        maxSpeed = percentToMaxSpeed((float) Mth.clamp((mouseX - maxSpeedSliderX) / SLIDER_WIDTH, 0.0D, 1.0D));
+        maxSpeed = percentToMaxSpeed((float)SLIDER.fractionAt(mouseX, maxSpeedSliderX, SLIDER_WIDTH));
         dirty = true;
     }
 
     // Update the damping value
     private void updateDampingValue(double mouseX) {
-        damping = (float) Mth.clamp((mouseX - dampingSliderX) / SLIDER_WIDTH, 0.0D, 1.0D);
+        damping = (float)SLIDER.fractionAt(mouseX, dampingSliderX, SLIDER_WIDTH);
         dirty = true;
     }
 
@@ -287,21 +291,13 @@ public class PoweredZiplineScreen extends AbstractSimiContainerScreen<PoweredZip
     }
 
     // Draw the horizontal slider
-    private void renderHorizontalSlider(GuiGraphics guiGraphics, int x, int y, float percent, boolean hovered) {
-        float clamped = Mth.clamp(percent, 0.0f, 1.0f);
-        CTCreateScreenHelper.renderInset(guiGraphics, x, y, SLIDER_WIDTH, SLIDER_HEIGHT, false, false);
-        guiGraphics.fill(x + 4, y + 4, x + SLIDER_WIDTH - 4, y + 8, 0xFF3D2F20);
-        int fillRight = x + 4 + Math.round(clamped * (SLIDER_WIDTH - 8));
-        guiGraphics.fill(x + 4, y + 4, fillRight, y + 8, 0xFFC6843F);
-        int handleX = x + Math.round(clamped * SLIDER_WIDTH) - 4;
-        CTCreateScreenHelper.renderTextButton(guiGraphics, font, handleX, y - 1, 8, SLIDER_HEIGHT + 2,
-                Component.empty(), hovered, true, false);
+    private void renderHorizontalSlider(GuiGraphics guiGraphics, int x, int y, float percent, boolean hovered){
+        SLIDER.draw(guiGraphics, x, y, SLIDER_WIDTH, SLIDER_HEIGHT, percent, hovered);
     }
 
     // Check if this is over the horizontal handle
-    private boolean isOverHorizontalHandle(double mouseX, double mouseY, int x, int y, float percent) {
-        int handleX = x + Math.round(Mth.clamp(percent, 0.0f, 1.0f) * SLIDER_WIDTH) - 4;
-        return inside(mouseX, mouseY, handleX, y - 1, 8, SLIDER_HEIGHT + 2);
+    private boolean isOverHorizontalHandle(double mouseX, double mouseY, int x, int y, float percent){
+        return inside(mouseX, mouseY, SLIDER.thumbLeft(x, SLIDER_WIDTH, percent), y, SLIDER.thumbWidth(), SLIDER_HEIGHT);
     }
 
     // Check if this is inside
@@ -322,9 +318,12 @@ public class PoweredZiplineScreen extends AbstractSimiContainerScreen<PoweredZip
                 PoweredZiplineBlockEntity.MAX_CONFIGURED_MAX_SPEED);
     }
 
-    // Draw the right aligned
-    private void drawRightAligned(GuiGraphics guiGraphics, Component text, int right, int y) {
-        guiGraphics.drawString(font, text, right - font.width(text), y, CTCreateScreenHelper.VALUE_COLOR, false);
+    // Fit each setting and value above its painted rail
+    private void renderSliderLabel(GuiGraphics guiGraphics, String key, Component val, int y){
+        GuiControlPreviews.drawFittedText(guiGraphics, font, Component.translatable(key),
+                leftPos + CONFIG_X, y, 48, 10, 0.8F, TEXT_COLOR, false);
+        GuiControlPreviews.drawFittedText(guiGraphics, font, val,
+                leftPos + CONFIG_X + 48, y, 28, 10, 0.8F, TEXT_COLOR, true);
     }
 
     // Format the speed

@@ -35,13 +35,78 @@ public final class SmartContainerTablets{
     }
 
     public static BlockEntity controller(BlockEntity target){
-        if(target instanceof FluidTankBlockEntity tank) return tank.getControllerBE() == null ? tank : tank.getControllerBE();
-        if(target instanceof ItemVaultBlockEntity vault) return vault.getControllerBE() == null ? vault : vault.getControllerBE();
+        if(target instanceof FluidTankBlockEntity tank){ var root = tank.getControllerBE(); return root == null ? tank : root; }
+        if(target instanceof ItemVaultBlockEntity vault){ var root = vault.getControllerBE(); return root == null ? vault : root; }
         return target;
     }
 
+    public static String tab(BlockEntity target){
+        return controller(target) instanceof MountedTabletState.Host host ? host.mountedTabletState().tab() : "contents";
+    }
+
+    public static MountedTabletState.Presentation presentation(BlockEntity target){
+        return controller(target) instanceof MountedTabletState.Host host ? host.mountedTabletState().presentation()
+                : MountedTabletState.Presentation.CONTENTS;
+    }
+
+    public static boolean tabletVisible(BlockEntity target){ return supports(target) && presentation(target).tablet(); }
+    public static boolean contentsVisible(BlockEntity target){ return presentation(target).contents(); }
+
+    public static boolean ownsPanel(BlockEntity target){
+        for(var panel : panels(target)) if(panel.owner().equals(target.getBlockPos())) return true;
+        return false;
+    }
+
+    // Apply one wrench choice to every loaded member so it survives controller changes and reloads
+    public static boolean cyclePresentation(BlockEntity target){
+        if(!supports(target) || target.getLevel() == null || target.getLevel().isClientSide) return false;
+        BlockEntity root = controller(target);
+        if(!(root instanceof MountedTabletState.Host host)) return false;
+        var next = host.mountedTabletState().presentation().next(root instanceof FluidTankBlockEntity);
+        int x = 1, y = 1, z = 1;
+        if(root instanceof FluidTankBlockEntity tank){ x = z = tank.getWidth(); y = tank.getHeight(); }
+        else if(root instanceof ItemVaultBlockEntity vault){
+            x = vault.getMainConnectionAxis() == Direction.Axis.X ? vault.getHeight() : vault.getWidth();
+            y = vault.getWidth();
+            z = vault.getMainConnectionAxis() == Direction.Axis.Z ? vault.getHeight() : vault.getWidth();
+        }
+        for(BlockPos pos : BlockPos.betweenClosed(root.getBlockPos(), root.getBlockPos().offset(Math.max(1, x) - 1, Math.max(1, y) - 1, Math.max(1, z) - 1))){
+            if(!root.getLevel().hasChunkAt(pos)) continue;
+            var member = root.getLevel().getBlockEntity(pos);
+            if(member == null || member.getType() != root.getType() || controller(member) != root
+                    || !(member instanceof MountedTabletState.Host mounted)) continue;
+            mounted.mountedTabletState().setPresentation(next);
+            member.setChanged();
+            if(member instanceof SmartBlockEntity smart) smart.sendData();
+        }
+        if(root instanceof SmartTankBlockEntity tank) tank.refreshPresentation();
+        return true;
+    }
+
+    // Newly joined members inherit the controller's saved choice
+    public static void inheritPresentation(BlockEntity member){
+        if(member.getLevel() == null || member.getLevel().isClientSide) return;
+        var root = controller(member);
+        if(root == member || !(member instanceof MountedTabletState.Host mounted)
+                || !(root instanceof MountedTabletState.Host host)) return;
+        if(mounted.mountedTabletState().setPresentation(host.mountedTabletState().presentation())){
+            member.setChanged();
+            if(member instanceof SmartBlockEntity smart) smart.sendData();
+        }
+    }
+
+    public static net.minecraft.world.InteractionResult wrench(net.minecraft.world.item.context.UseOnContext ctx){
+        var target = ctx.getLevel().getBlockEntity(ctx.getClickedPos());
+        if(!supports(target)) return net.minecraft.world.InteractionResult.PASS;
+        if(!ctx.getLevel().isClientSide && cyclePresentation(target) && ctx.getPlayer() != null){
+            ctx.getPlayer().displayClientMessage(net.minecraft.network.chat.Component.translatable(
+                    "createthrusters.smart_container.presentation." + presentation(target).id()), true);
+        }
+        return net.minecraft.world.InteractionResult.sidedSuccess(ctx.getLevel().isClientSide);
+    }
+
     public static List<MultiblockPanelLayout.Panel> panels(BlockEntity target){
-        if(!supports(target)) return List.of();
+        if(!tabletVisible(target)) return List.of();
         BlockEntity root = controller(target);
         if(root instanceof FluidTankBlockEntity tank){
             return MultiblockPanelLayout.panels(root.getBlockPos(), tank.getWidth(), tank.getHeight(),
@@ -112,7 +177,9 @@ public final class SmartContainerTablets{
         if(!supports(target)) return null;
         var location = local ? hit.getLocation() : SimulatedHelper.toContainingLocalPosition(target, hit.getLocation());
         var localHit = new BlockHitResult(location, hit.getDirection(), target.getBlockPos(), hit.isInside());
-        return isPanelHit(target, localHit) ? new PanelInteraction(target, localHit) : null;
+        boolean containerHit = !tabletVisible(target)
+                && new AABB(target.getBlockPos()).inflate(.001D).contains(location);
+        return containerHit || isPanelHit(target, localHit) ? new PanelInteraction(target, localHit) : null;
     }
 
     // Derive a stable screen identity without placing or saving a second block entity
@@ -125,7 +192,6 @@ public final class SmartContainerTablets{
 
     public static DiagnosticTabletData.State state(BlockEntity target){
         return DiagnosticTabletData.State.DEFAULT.withTabletId(tabletId(target))
-                .withApp(SmartContainerManifest.ID, controller(target) instanceof MountedTabletState.Host host
-                        ? host.mountedTabletState().tab() : "contents");
+                .withApp(SmartContainerManifest.ID, tab(target));
     }
 }

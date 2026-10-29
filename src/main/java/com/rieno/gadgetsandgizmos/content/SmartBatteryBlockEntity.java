@@ -51,8 +51,10 @@ public class SmartBatteryBlockEntity extends ConnectedVaultBlockEntity implement
     // Expose only the resource capability registered for this block's automation port
     public ContainerNetworkAccess networkResources(){ return networkResources; }
 
+    private final com.rieno.gadgetsandgizmos.lib.inventory.LocalResourcePool localPool =
+            new com.rieno.gadgetsandgizmos.lib.inventory.LocalResourcePool();
     @Override public ResourceRouting.Pool localResources(){
-        return new ResourceRouting.Pool(java.util.List.of(), java.util.List.of(), java.util.List.of(getEnergyHandler()));
+        return localPool.get(null, null, getEnergyHandler());
     }
 
     private static final String ENERGY_TAG = "Energy";
@@ -216,6 +218,7 @@ public class SmartBatteryBlockEntity extends ConnectedVaultBlockEntity implement
     public void notifyMultiUpdated() {
         updateLargeState(getWidth() > 2, 6);
         super.notifyMultiUpdated();
+        SmartContainerTablets.inheritPresentation(this);
         if(powerGridInstalled()) PowerGridDeviceConnectors.invalidate(this);
     }
 
@@ -247,7 +250,7 @@ public class SmartBatteryBlockEntity extends ConnectedVaultBlockEntity implement
         while (!pending.isEmpty() && members.size() < FULL_BLOCKS) {
             BlockPos pos = pending.removeFirst();
             if (!visited.add(pos) || !level.isLoaded(pos)) continue;
-            BlockEntity blockEntity = level.getBlockEntity(pos);
+            BlockEntity blockEntity = getLoadedMember(pos);
             if (!(blockEntity instanceof SmartBatteryBlockEntity battery)
                     || !controller.equals(battery.getController())) continue;
             members.add(battery);
@@ -266,8 +269,13 @@ public class SmartBatteryBlockEntity extends ConnectedVaultBlockEntity implement
 
     // Get exact stored energy across the loaded multiblock members
     private long storedEnergy() {
+        return storedEnergy(members());
+    }
+
+    // Sum the same loaded membership already captured for this transfer
+    private long storedEnergy(List<SmartBatteryBlockEntity> members){
         long stored = 0L;
-        for (SmartBatteryBlockEntity member : members()) stored += member.energy;
+        for(SmartBatteryBlockEntity member : members) stored += member.energy;
         return stored;
     }
 
@@ -299,7 +307,7 @@ public class SmartBatteryBlockEntity extends ConnectedVaultBlockEntity implement
         if(!simulate) synchronizePowerGrid();
         List<SmartBatteryBlockEntity> members = members();
         long totalCapacity = capacity(members.size());
-        long accepted = Math.min(maximum, Math.max(0L, totalCapacity - storedEnergy()));
+        long accepted = Math.min(maximum, Math.max(0L, totalCapacity - storedEnergy(members)));
         if (simulate || accepted <= 0L) return accepted;
         long remaining = accepted;
         long memberCapacity = Math.max(SINGLE_CAPACITY,
@@ -323,7 +331,7 @@ public class SmartBatteryBlockEntity extends ConnectedVaultBlockEntity implement
         if (maximum <= 0L) return 0L;
         if(!simulate) synchronizePowerGrid();
         List<SmartBatteryBlockEntity> members = members();
-        long extracted = Math.min(maximum, storedEnergy());
+        long extracted = Math.min(maximum, storedEnergy(members));
         if (simulate || extracted <= 0L) return extracted;
         long remaining = extracted;
         for (SmartBatteryBlockEntity member : members) {

@@ -1,0 +1,12 @@
+{
+  "replace": false,
+  "values": [
+    "createthrusters:aileron_bearing_link",
+    "createthrusters:thruster_bearing_link",
+    "createthrusters:vector_bearing_link",
+    {
+      "id": "simulated:swivel_bearing_link_block",
+      "required": false
+    }
+  ]
+}

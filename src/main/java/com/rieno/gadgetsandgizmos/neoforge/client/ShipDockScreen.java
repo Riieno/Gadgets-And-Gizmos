@@ -322,6 +322,7 @@ public class ShipDockScreen extends Screen {
         if (dropdown == Dropdown.DOORS) {
             doorControlMask = ShipDockBlockEntity.sanitizeDoorControlMask(doorControlMask
                     ^ ShipDockBlockEntity.DoorDirection.values()[index].mask());
+            doorControlEnabled = doorControlMask != 0;
             return;
         }
         ShipDockBlockEntity.ConnectorReference reference = availableConnectors.get(index);
@@ -355,6 +356,7 @@ public class ShipDockScreen extends Screen {
 
     // Get the compact selected door summary
     private String doorSummary() {
+        if(!doorControlEnabled) return Component.translatable("createthrusters.ship_dock.door_control.disabled").getString();
         StringBuilder summary = new StringBuilder();
         for (ShipDockBlockEntity.DoorDirection direction : ShipDockBlockEntity.DoorDirection.values()) {
             if ((doorControlMask & direction.mask()) == 0) {
@@ -466,7 +468,9 @@ public class ShipDockScreen extends Screen {
         if (openDropdown == null && (inside(mouseX, mouseY, left + DOOR_ENABLE_X,
                 top + DOOR_ENABLE_Y, DOOR_ENABLE_SIZE, DOOR_ENABLE_SIZE)
                 || inside(mouseX, mouseY, left + DOOR_MODE_X, top + DOOR_MODE_Y,
-                DOOR_MODE_W, DOOR_MODE_H))) {
+                DOOR_MODE_W, DOOR_MODE_H)
+                || inside(mouseX, mouseY, left + DOOR_LABEL_X, top + DOOR_ENABLE_Y,
+                Math.min(CONFIRM_X - DOOR_LABEL_X - 2, font.width(Component.translatable("createthrusters.ship_dock.door_control"))), DOOR_ENABLE_SIZE))) {
             graphics.renderTooltip(font, Component.translatable(
                     "createthrusters.ship_dock.door_control.tooltip"), mouseX, mouseY);
         }
@@ -489,7 +493,6 @@ public class ShipDockScreen extends Screen {
                 return true;
             }
             openDropdown = null;
-            return true;
         }
         for (int index = 0; index < CARD_YS.length; index++) {
             int cardY = top + CARD_YS[index];
@@ -511,7 +514,9 @@ public class ShipDockScreen extends Screen {
             return true;
         }
         if (inside(mouseX, mouseY, left + DOOR_ENABLE_X, top + DOOR_ENABLE_Y,
-                DOOR_ENABLE_SIZE, DOOR_ENABLE_SIZE)) {
+                DOOR_ENABLE_SIZE, DOOR_ENABLE_SIZE)
+                || inside(mouseX, mouseY, left + DOOR_LABEL_X, top + DOOR_ENABLE_Y,
+                Math.min(CONFIRM_X - DOOR_LABEL_X - 2, font.width(Component.translatable("createthrusters.ship_dock.door_control"))), DOOR_ENABLE_SIZE)) {
             doorControlEnabled = !doorControlEnabled;
             return true;
         }

@@ -20,6 +20,7 @@ import com.rieno.gadgetsandgizmos.neoforge.network.AnalogueContraptionController
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerGraphSnapshotPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerMouseInputPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerMouseCapturePayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerPhysicalInteractionPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.ControllerRuntimeSyncPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.LecternPortableContraptionControllerKeyPayload;
@@ -150,15 +151,34 @@ public final class AnalogueContraptionControllerClientHandler {
 
     // Apply the advanced runtime
     public static void applyAdvancedRuntime(AdvancedControllerRuntimePayload payload) {
+        AdvancedContraptionControllerBlockEntity controller = runtimeController(payload);
+        if(controller == null) return;
+        applyCachedAdvancedGraphSnapshot(controller, payload.pos(), payload.subLevelId());
+        controller.applyClientGraphRuntime(payload.gogglesTrackerPairs(), payload.liveInputs(),
+                payload.liveOutputs(), payload.executionPulses(), payload.variables());
+        controller.applyClientGogglesTrackerItems(payload.gogglesTrackerItems());
+    }
+
+    // Apply ordered HUD changes only to a controller with the matching baseline
+    public static void applyAdvancedRuntimeDelta(
+            com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeDeltaPayload payload){
+        AdvancedContraptionControllerBlockEntity controller = runtimeController(payload.update());
+        if(controller == null) return;
+        applyCachedAdvancedGraphSnapshot(controller, payload.update().pos(), payload.update().subLevelId());
+        controller.applyClientGraphRuntimeDelta(payload);
+    }
+
+    // Resolve the same controller for full updates and incremental HUD updates
+    private static AdvancedContraptionControllerBlockEntity runtimeController(AdvancedControllerRuntimePayload payload){
         Minecraft minecraft = Minecraft.getInstance();
         if (payload == null || minecraft.level == null || minecraft.player == null) {
-            return;
+            return null;
         }
         AdvancedContraptionControllerBlockEntity controller;
         if (payload.containerId() >= 0) {
             if (minecraft.player.containerMenu.containerId != payload.containerId()
                     || !(minecraft.player.containerMenu instanceof AdvancedContraptionControllerMenu menu)) {
-                return;
+                return null;
             }
             controller = menu.getMenuConfigTargetBlockEntity();
         } else {
@@ -168,14 +188,7 @@ public final class AnalogueContraptionControllerClientHandler {
                         minecraft, payload.gogglesTrackerPairs().keySet());
             }
         }
-        if (controller != null) {
-            applyCachedAdvancedGraphSnapshot(
-                    controller, payload.pos(), payload.subLevelId());
-            controller.applyClientGraphRuntime(
-                    payload.gogglesTrackerPairs(),
-                    payload.liveInputs(), payload.liveOutputs(), payload.executionPulses(), payload.variables());
-            controller.applyClientGogglesTrackerItems(payload.gogglesTrackerItems());
-        }
+        return controller;
     }
 
     // Apply the advanced graph snapshot
@@ -590,13 +603,25 @@ public final class AnalogueContraptionControllerClientHandler {
         lastHardwareControllerSendTick = Long.MIN_VALUE;
     }
 
+    // Ignore delayed capture updates for a different controller or interaction mode
+    public static void applyMouseCapture(AdvancedControllerMouseCapturePayload payload){
+        boolean matches = switch(payload.target()){
+            case BLOCK -> activeControllerPos != null && activeControllerPos.equals(payload.pos())
+                    && java.util.Objects.equals(activeControllerSubLevelId, payload.subLevelId());
+            case PORTABLE -> activePortable && activePortableHand == payload.hand();
+            case LECTERN -> activeLecternPos != null && activeLecternPos.equals(payload.pos());
+        };
+        var controller = matches ? activeAdvCtrl() : null;
+        if(controller != null && controller.applyClientMouseCaptureRequests(payload.requests())) resetMouseSendState();
+    }
+
     // Handle the mouse movement
     public static boolean onMouseMove(double yaw, double pitch) {
         boolean nativeMouse = net.neoforged.fml.ModList.get().isLoaded("create_flight_control")
                 && com.rieno.gadgetsandgizmos.compat.flightcontrol.client.FlightControlClient.activeMouse() != null;
         AdvancedContraptionControllerBlockEntity controller = activeAdvCtrl();
         if (controller == null) return false;
-        Set<String> inputs = controller.getConfiguredMouseInputs();
+        Set<String> inputs = controller.getCapturedMouseInputs();
         boolean captureX = inputs.contains("mouse_x");
         boolean captureY = inputs.contains("mouse_y");
         if (!captureX && !captureY) return false;
@@ -643,7 +668,7 @@ public final class AnalogueContraptionControllerClientHandler {
             case 2 -> "middle_click";
             default -> "";
         };
-        if (input.isBlank() || !controller.getConfiguredMouseInputs().contains(input)) return false;
+        if (input.isBlank() || !controller.getCapturedMouseInputs().contains(input)) return false;
         boolean active = action != 0;
         controller.applyClientMouseInput(input, active ? 1.0D : 0.0D, active);
         sendMousePayload(input, active ? 1.0D : 0.0D, active);
@@ -655,9 +680,9 @@ public final class AnalogueContraptionControllerClientHandler {
         AdvancedContraptionControllerBlockEntity controller = activeAdvCtrl();
         if (controller == null) return false;
         double delta = vertical != 0.0D ? vertical : horizontal;
-        if (delta == 0.0D) return true;
+        if (delta == 0.0D) return false;
         String input = delta > 0.0D ? "scroll_up" : "scroll_down";
-        if (!controller.getConfiguredMouseInputs().contains(input)) return false;
+        if (!controller.getCapturedMouseInputs().contains(input)) return false;
         double val = Mth.clamp(Math.abs(delta), 0.0D, 1.0D);
         controller.applyClientMouseInput(input, val, true);
         sendMousePayload(input, val, true);

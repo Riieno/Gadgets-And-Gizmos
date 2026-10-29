@@ -38,7 +38,9 @@ public final class ThrusterDyeItem extends Item{
         }
         var target = ctx.getLevel().getBlockEntity(ctx.getClickedPos());
         if(!(target instanceof ColorEffectTarget)) target = SimulatedHelper.findBlockEntityIncludingSubLevels(ctx.getLevel(), ctx.getClickedPos());
+        if(target instanceof ColorEffectTarget colored && colored.colorEffectTarget() instanceof net.minecraft.world.level.block.entity.BlockEntity owner) target = owner;
         if(!(target instanceof ColorEffectTarget effect)) return InteractionResult.PASS;
+        if(!effect.acceptsColorEffect()) return InteractionResult.PASS;
         if(player instanceof ServerPlayer server){
             if(!WorldAccessPolicy.canAccessLocal(server, server.serverLevel(), SimulatedHelper.getContainingSubLevelId(target), target.getBlockPos())) return InteractionResult.FAIL;
             var preset = ThrusterDyeData.preset(ctx.getItemInHand());

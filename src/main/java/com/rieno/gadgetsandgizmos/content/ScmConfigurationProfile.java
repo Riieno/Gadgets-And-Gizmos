@@ -49,6 +49,8 @@ public final class ScmConfigurationProfile {
      * craft's drive chain.
      */
     public static final String ACCELERATION_ACTION = "scm_acceleration";
+    // Hull doors are selected equipment, separate from propulsion and control probes
+    public static final String HULL_DOORS_ACTION = "scm_hull_doors";
     private static final String DOCKING_CONNECTOR_ACTION_PREFIX = "scm_docking_connector_";
 
     private UUID mapId;
@@ -346,6 +348,21 @@ public final class ScmConfigurationProfile {
         return routing().hasBindings();
     }
 
+    // Get only the doors explicitly assigned by the player
+    public Set<UnitReference> hullDoors(){
+        String id = actionGroups.get(HULL_DOORS_ACTION);
+        return groups().stream().filter(group -> group.id().equals(id)).findFirst()
+                .map(Group::units).orElse(Set.of());
+    }
+
+    // Keep equipment-only groups out of actuator initialization and allocation
+    public List<Group> controlGroups(){
+        String doors = actionGroups.get(HULL_DOORS_ACTION);
+        return groups().stream().filter(group -> !group.id().equals(doors)
+                || actionGroups.entrySet().stream().anyMatch(entry -> !HULL_DOORS_ACTION.equals(entry.getKey())
+                && group.id().equals(entry.getValue()))).toList();
+    }
+
     /**
      * Return the units permitted for the currently active commands. Auto is
      * included with every active action; unassigned units remain excluded once
@@ -405,7 +422,8 @@ public final class ScmConfigurationProfile {
         if(routing == null){
             routing = new ActionGroupRouting<>(groups.stream()
                     .map(group -> new ActionGroupRouting.Group<>(group.id(), List.copyOf(group.units())))
-                    .toList(), actionGroups);
+                    .toList(), actionGroups.entrySet().stream().filter(entry -> !HULL_DOORS_ACTION.equals(entry.getKey()))
+                    .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue)));
         }
         return routing;
     }
@@ -436,7 +454,7 @@ public final class ScmConfigurationProfile {
     Set<UnitReference> groupedUnits(){
         if(groupedUnits == null){
             Set<UnitReference> units = new LinkedHashSet<>();
-            groups.forEach(group -> units.addAll(group.units()));
+            controlGroups().forEach(group -> units.addAll(group.units()));
             groupedUnits = Set.copyOf(units);
         }
         return groupedUnits;

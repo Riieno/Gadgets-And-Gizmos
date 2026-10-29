@@ -482,6 +482,8 @@ public final class AdvancedGraphDocument
         }
         migrateFlightControlBindings(graph.nodes, graph.edges);
         for(FunctionGraph function : graph.functions) migrateFlightControlBindings(function.nodes, function.edges);
+        migrateTimeInputs(graph.nodes, graph.edges);
+        for(FunctionGraph function : graph.functions) migrateTimeInputs(function.nodes, function.edges);
         migrateCameraRayPorts(graph.nodes, graph.edges);
         for(FunctionGraph function : graph.functions) migrateCameraRayPorts(function.nodes, function.edges);
         for(Node node : graph.nodes) AdvancedGraphTargetSignals.upgrade(node, graph.edges);
@@ -977,6 +979,22 @@ public final class AdvancedGraphDocument
             ids.add(node.id());
             com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.removeInputs(node.data(), ports);
             com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.synchronize(node.type(), node.data());
+            for(String key : List.of(AdvancedGraphPortState.PERSISTENT_PORTS_TAG, AdvancedGraphPortState.PERSISTENT_VALUES_TAG)){
+                CompoundTag vals = node.data().getCompound(key);
+                ports.forEach(port -> vals.remove("input:" + port));
+            }
+        }
+        edges.removeIf(edge -> ids.contains(edge.toNode()) && ports.contains(edge.toPort()));
+    }
+
+    // Remove retired time offsets and their wires while retaining the selected zone
+    private static void migrateTimeInputs(List<Node> nodes, List<Edge> edges){
+        var ports = com.rieno.gadgetsandgizmos.lib.graph.TimeGraphNode.RETIRED_INPUTS;
+        Set<String> ids = new java.util.HashSet<>();
+        for(Node node : nodes){
+            if(!"createthrusters:time".equals(node.type())) continue;
+            ids.add(node.id());
+            com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.removeInputs(node.data(), ports);
             for(String key : List.of(AdvancedGraphPortState.PERSISTENT_PORTS_TAG, AdvancedGraphPortState.PERSISTENT_VALUES_TAG)){
                 CompoundTag vals = node.data().getCompound(key);
                 ports.forEach(port -> vals.remove("input:" + port));

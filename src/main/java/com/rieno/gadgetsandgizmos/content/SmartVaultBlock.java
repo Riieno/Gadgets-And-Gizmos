@@ -26,6 +26,11 @@ public class SmartVaultBlock extends ItemVaultBlock {
         super(properties);
     }
 
+    @Override
+    public InteractionResult onWrenched(BlockState state, net.minecraft.world.item.context.UseOnContext ctx){
+        return SmartContainerTablets.wrench(ctx);
+    }
+
     // Inherit the axis from an adjacent custom vault when not placing precisely
     @Override
     public BlockState getStateForPlacement(BlockPlaceContext ctx) {

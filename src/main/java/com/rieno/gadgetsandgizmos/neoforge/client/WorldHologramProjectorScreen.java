@@ -33,6 +33,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.DoubleConsumer;
 import java.util.function.DoubleFunction;
 import java.util.function.DoubleSupplier;
@@ -69,6 +71,7 @@ public final class WorldHologramProjectorScreen extends AbstractSimiScreen{
     private WorldHologramSettings selected;
     private WorldHologramSettings lastServerSettings;
     private final List<InlineNumberField> numberFields = new ArrayList<>();
+    private final List<CompactCheckbox> subLevelToggles = new ArrayList<>();
     private final Map<SteppedSlider, DoubleSupplier> sliders = new LinkedHashMap<>();
     private final GuiFocusGuard focus = new GuiFocusGuard();
     private boolean dirty;
@@ -97,31 +100,34 @@ public final class WorldHologramProjectorScreen extends AbstractSimiScreen{
         numberFields.forEach(InlineNumberField::commit);
         numberFields.clear();
         sliders.clear();
+        subLevelToggles.clear();
         super.init();
         var radius = addSetting(49, 1, 9, 1, true, () -> selected.radius(),
                 val -> Component.translatable("createthrusters.world_hologram.radius", (int)val),
-                val -> update(new WorldHologramSettings((int)val, selected.height(), selected.size(), selected.players(), selected.hostile(), selected.passive(), selected.yOffset(), selected.ships())));
+                val -> update(new WorldHologramSettings((int)val, selected.height(), selected.size(), selected.players(), selected.hostile(), selected.passive(), selected.yOffset(), selected.ships(), selected.matchOrientation(), selected.ownedSubLevel(), selected.lockOrientation())));
         radius.setTooltip(Tooltip.create(Component.translatable("createthrusters.world_hologram.radius.tooltip")));
         addSetting(70, 0, 32, 0.25, false, () -> selected.height(),
                 val -> Component.translatable("createthrusters.world_hologram.height", decimal(val)),
-                val -> update(new WorldHologramSettings(selected.radius(), (float)val, selected.size(), selected.players(), selected.hostile(), selected.passive(), selected.yOffset(), selected.ships())));
+                val -> update(new WorldHologramSettings(selected.radius(), (float)val, selected.size(), selected.players(), selected.hostile(), selected.passive(), selected.yOffset(), selected.ships(), selected.matchOrientation(), selected.ownedSubLevel(), selected.lockOrientation())));
         addSetting(92, 0.5, 16, 0.25, false, () -> selected.size(),
                 val -> Component.translatable("createthrusters.world_hologram.size", decimal(val)),
-                val -> update(new WorldHologramSettings(selected.radius(), selected.height(), (float)val, selected.players(), selected.hostile(), selected.passive(), selected.yOffset(), selected.ships())));
+                val -> update(new WorldHologramSettings(selected.radius(), selected.height(), (float)val, selected.players(), selected.hostile(), selected.passive(), selected.yOffset(), selected.ships(), selected.matchOrientation(), selected.ownedSubLevel(), selected.lockOrientation())));
         var offset = addSetting(113, -512, 512, 1, true, () -> selected.yOffset(),
                 val -> offsetLabel((int)val),
-                val -> update(new WorldHologramSettings(selected.radius(), selected.height(), selected.size(), selected.players(), selected.hostile(), selected.passive(), (int)val, selected.ships())));
+                val -> update(new WorldHologramSettings(selected.radius(), selected.height(), selected.size(), selected.players(), selected.hostile(), selected.passive(), (int)val, selected.ships(), selected.matchOrientation(), selected.ownedSubLevel(), selected.lockOrientation())));
         offset.setTooltip(Tooltip.create(Component.translatable("createthrusters.world_hologram.y_offset.tooltip")));
-        int checkX = guiLeft + 18, checkWidth = 230;
-        addRenderableWidget(new CompactCheckbox(checkX, guiTop + 141, checkWidth, 9, Component.translatable("createthrusters.world_hologram.players"), font,
-                () -> selected.players(), val -> update(new WorldHologramSettings(selected.radius(), selected.height(), selected.size(), val, selected.hostile(), selected.passive(), selected.yOffset(), selected.ships())), CHECKBOX));
-        addRenderableWidget(new CompactCheckbox(checkX, guiTop + 160, checkWidth, 9, Component.translatable("createthrusters.world_hologram.hostile"), font,
-                () -> selected.hostile(), val -> update(new WorldHologramSettings(selected.radius(), selected.height(), selected.size(), selected.players(), val, selected.passive(), selected.yOffset(), selected.ships())), CHECKBOX));
-        addRenderableWidget(new CompactCheckbox(checkX, guiTop + 178, checkWidth, 9, Component.translatable("createthrusters.world_hologram.passive"), font,
-                () -> selected.passive(), val -> update(new WorldHologramSettings(selected.radius(), selected.height(), selected.size(), selected.players(), selected.hostile(), val, selected.yOffset(), selected.ships())), CHECKBOX));
-        var ships = addRenderableWidget(new CompactCheckbox(checkX, guiTop + 195, checkWidth, 9, Component.translatable("createthrusters.world_hologram.ships"), font,
-                () -> selected.ships(), val -> update(new WorldHologramSettings(selected.radius(), selected.height(), selected.size(), selected.players(), selected.hostile(), selected.passive(), selected.yOffset(), val)), CHECKBOX));
+        addToggle(0, "players", () -> selected.players(), val -> update(new WorldHologramSettings(selected.radius(), selected.height(), selected.size(), val, selected.hostile(), selected.passive(), selected.yOffset(), selected.ships(), selected.matchOrientation(), selected.ownedSubLevel(), selected.lockOrientation())));
+        addToggle(1, "hostile", () -> selected.hostile(), val -> update(new WorldHologramSettings(selected.radius(), selected.height(), selected.size(), selected.players(), val, selected.passive(), selected.yOffset(), selected.ships(), selected.matchOrientation(), selected.ownedSubLevel(), selected.lockOrientation())));
+        addToggle(2, "passive", () -> selected.passive(), val -> update(new WorldHologramSettings(selected.radius(), selected.height(), selected.size(), selected.players(), selected.hostile(), val, selected.yOffset(), selected.ships(), selected.matchOrientation(), selected.ownedSubLevel(), selected.lockOrientation())));
+        var ships = addToggle(3, "ships", () -> selected.ships(), val -> update(new WorldHologramSettings(selected.radius(), selected.height(), selected.size(), selected.players(), selected.hostile(), selected.passive(), selected.yOffset(), val, selected.matchOrientation(), selected.ownedSubLevel(), selected.lockOrientation())));
         ships.setTooltip(Tooltip.create(Component.translatable("createthrusters.world_hologram.ships.tooltip")));
+        var orientation = addToggle(4, "match_orientation", () -> selected.matchOrientation(), val -> update(new WorldHologramSettings(selected.radius(), selected.height(), selected.size(), selected.players(), selected.hostile(), selected.passive(), selected.yOffset(), selected.ships(), val, selected.ownedSubLevel(), selected.lockOrientation())));
+        orientation.setTooltip(Tooltip.create(Component.translatable("createthrusters.world_hologram.match_orientation.tooltip")));
+        var owned = addToggle(5, "owned_sub_level", () -> selected.ownedSubLevel(), val -> update(new WorldHologramSettings(selected.radius(), selected.height(), selected.size(), selected.players(), selected.hostile(), selected.passive(), selected.yOffset(), selected.ships(), selected.matchOrientation(), val, selected.lockOrientation())));
+        owned.setTooltip(Tooltip.create(Component.translatable("createthrusters.world_hologram.owned_sub_level.tooltip")));
+        var lock = addToggle(6, "lock_orientation", () -> selected.lockOrientation(), val -> update(new WorldHologramSettings(selected.radius(), selected.height(), selected.size(), selected.players(), selected.hostile(), selected.passive(), selected.yOffset(), selected.ships(), selected.matchOrientation(), selected.ownedSubLevel(), val)));
+        lock.setTooltip(Tooltip.create(Component.translatable("createthrusters.world_hologram.lock_orientation.tooltip")));
+        updateSubLevelControls();
         var done = addRenderableWidget(new Button(guiLeft + 263, guiTop + 228, 9, 9,
                 Component.translatable("gui.done"), btn -> onClose(), supplier -> supplier.get()){
             @Override protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick){
@@ -134,6 +140,25 @@ public final class WorldHologramProjectorScreen extends AbstractSimiScreen{
 
     private static GuiTextureRegion template(int u, int v, int width, int height){
         return new GuiTextureRegion(TEMPLATE, 508, 268, u, v, width, height);
+    }
+
+    // Start a right-aligned column after the first four toggles
+    private CompactCheckbox addToggle(int idx, String key, BooleanSupplier checked, Consumer<Boolean> changed){
+        boolean right = idx >= 4;
+        int y = switch(idx % 4){ case 0 -> 141; case 1 -> 160; case 2 -> 178; default -> 195; };
+        var toggle = addRenderableWidget(new CompactCheckbox(guiLeft + (right ? 134 : 18), guiTop + y,
+                right ? 130 : 112, 9, Component.translatable("createthrusters.world_hologram." + key), font, checked, changed, CHECKBOX));
+        toggle.setRightAligned(right);
+        if(right) subLevelToggles.add(toggle);
+        return toggle;
+    }
+
+    private void updateSubLevelControls(){
+        boolean mounted = SableLevelApi.containingId(projector) != null;
+        for(var toggle : subLevelToggles){
+            if(!mounted && getFocused() == toggle) setFocused(null);
+            toggle.visible = toggle.active = mounted;
+        }
     }
 
     // Reuse the same setting callback for dragging and precise inline entry
@@ -189,6 +214,7 @@ public final class WorldHologramProjectorScreen extends AbstractSimiScreen{
     public void tick(){
         super.tick();
         if(projector.isRemoved() || minecraft.player == null || !projector.canView(minecraft.player, 8)){ onClose(); return; }
+        updateSubLevelControls();
         WorldHologramSettings current = projector.settings();
         if(!current.equals(lastServerSettings)){
             if(dirty){
@@ -200,7 +226,10 @@ public final class WorldHologramProjectorScreen extends AbstractSimiScreen{
                         selected.hostile() == lastServerSettings.hostile() ? current.hostile() : selected.hostile(),
                         selected.passive() == lastServerSettings.passive() ? current.passive() : selected.passive(),
                         selected.yOffset() == lastServerSettings.yOffset() ? current.yOffset() : selected.yOffset(),
-                        selected.ships() == lastServerSettings.ships() ? current.ships() : selected.ships());
+                        selected.ships() == lastServerSettings.ships() ? current.ships() : selected.ships(),
+                        selected.matchOrientation() == lastServerSettings.matchOrientation() ? current.matchOrientation() : selected.matchOrientation(),
+                        selected.ownedSubLevel() == lastServerSettings.ownedSubLevel() ? current.ownedSubLevel() : selected.ownedSubLevel(),
+                        selected.lockOrientation() == lastServerSettings.lockOrientation() ? current.lockOrientation() : selected.lockOrientation());
             }else selected = current;
             synchronizeSliders();
             lastServerSettings = current;

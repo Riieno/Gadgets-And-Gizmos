@@ -736,9 +736,10 @@ public final class ContraptionNetworkLinkerData {
 
     // Copy the authoritative root for schematic
     static CompoundTag copyAuthoritativeRootForSchematic(ItemStack stack) {
-        CompoundTag root = rootTag(stack, false);
-        CompoundTag copy = root == null ? new CompoundTag() : root.copy();
         CompoundTag stackTag = stackCustomDataTagView(stack);
+        ControllerManifestStore.ManifestSnapshot snapshot = ControllerManifestStore.loadLinkerFromMetadata(stackTag);
+        CompoundTag root = snapshot == null ? rootTag(stack, false) : snapshot.linkerData();
+        CompoundTag copy = root == null ? new CompoundTag() : root.copy();
         if (ControllerManifestStore.hasLinkerMetadata(stackTag)) {
             ListTag graphs = ControllerSqliteStore.loadLinkerStoredGraphs(
                     ControllerManifestStore.linkerManifestId(stackTag));
