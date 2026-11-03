@@ -16,6 +16,7 @@ import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppAccess;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppDefinition;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppPurchaseScope;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppRegistry;
+import com.rieno.gadgetsandgizmos.lib.tablet.TabletLauncherThemes;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletNotifications;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletStorage;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletStorageApi;
@@ -41,8 +42,8 @@ public final class DiagnosticTabletSettingsApp {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     static final ResourceLocation APP_ID = DiagnosticTabletData.appId("settings");
-    private static final Set<String> WALLPAPERS = Set.of(
-            "aurora", "midnight", "sunset", "meadow", "graphite");
+    public static final ResourceLocation DEFAULT_LAUNCHER_TEXTURE = ResourceLocation.fromNamespaceAndPath(
+            "createthrusters", "textures/gui/apps/screens/launcher_streaks.png");
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -82,9 +83,10 @@ public final class DiagnosticTabletSettingsApp {
                 yield success("Tablet renamed");
             }
             case "wallpaper_set" -> {
-                if (!WALLPAPERS.contains(val)) yield failure("Unknown wallpaper");
+                ResourceLocation texture = ResourceLocation.tryParse(val);
+                if(!TabletLauncherThemes.isLauncherTexture(texture)) yield failure("Unknown launcher theme");
                 database.updateTablet(tabletId, settings -> {
-                    settings.putString("Wallpaper", val);
+                    settings.putString("Wallpaper", texture.toString());
                     return settings;
                 });
                 yield quietSuccess();
@@ -135,6 +137,7 @@ public final class DiagnosticTabletSettingsApp {
     public static CompoundTag snapshot(net.minecraft.server.MinecraftServer server, UUID tabletId) {
         TabletStorage database = TabletStorageApi.storage();
         CompoundTag root = database.tablet(tabletId);
+        root.putUUID("TabletId", tabletId);
         Set<ResourceLocation> installed = database.installedApps(tabletId);
         ListTag apps = new ListTag();
         for (TabletAppDefinition definition : TabletAppRegistry.apps()) {
@@ -158,15 +161,11 @@ public final class DiagnosticTabletSettingsApp {
         }
         root.put("NotificationCounts", notificationCounts);
         ListTag wallpapers = new ListTag();
-        WALLPAPERS.stream().sorted().forEach(id -> {
-            CompoundTag wallpaper = new CompoundTag();
-            wallpaper.putString("Id", id);
-            wallpapers.add(wallpaper);
-        });
+        TabletLauncherThemes.dataPackThemes().forEach(theme -> wallpapers.add(theme.toTag()));
         root.put("Wallpapers", wallpapers);
         root.putString("ModVersion", version("createthrusters"));
         root.putString("LibraryVersion", version(GadgetsNGizmosLibrary.MOD_ID));
-        root.putString("Wiki", "https://gadgetsngizmos-hub.com/wiki");
+        root.putString("Wiki", "https://github.com/Riieno/Gadgets-And-Gizmos/wiki");
         root.putString("Discord", "https://discord.gg/zhvuEMEpZR");
         return root;
     }

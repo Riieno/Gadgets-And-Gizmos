@@ -31,7 +31,7 @@ public final class AdvancedGraphPortState {
     public static final String SWITCH_OUTPUT_TYPES_TAG = "SwitchOutputTypes";
     public static final String SWITCH_CASE_TYPES_TAG = "SwitchCaseTypes";
     public static final List<String> SWITCH_DATA_TYPES = List.of(
-            "any", "boolean", "string", "number", "direction", "frequency", "target");
+            "any", "boolean", "string", "number", "direction", "frequency", "target", "player");
 
     private static final String INPUT_PREFIX = "input:";
     private static final String OUTPUT_PREFIX = "output:";

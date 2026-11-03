@@ -77,7 +77,12 @@ public final class CTClientEvents {
         AccHologramWidgetClient.clear();
         DiagnosticTabletGuiProjection.clear();
         DiagnosticTabletClientAppData.clear();
+<<<<<<< Updated upstream
         
+=======
+        com.rieno.gadgetsandgizmos.lib.tablet.TabletAppIconStyles.clear();
+        com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps.DigisablePlacementClient.clear();
+>>>>>>> Stashed changes
         DoubleButtonClientHandler.reset();
         ArmorStandPoseClientState.reset();
         PhysicsGantryBeltWheelConnectionParticles.clear();

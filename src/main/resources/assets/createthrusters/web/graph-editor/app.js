@@ -479,56 +479,7 @@
 
   // Convert studio defaults for the graph
   function defaultToGraph(value, declaredType, prevEntry) {
-    const previous = prevEntry && typeof prevEntry === "object" && !Array.isArray(prevEntry)
-      ? prevEntry : {};
-    const prevType = String(previous.Type || "").trim().toLowerCase();
-    let type = String(declaredType || prevType || "any").trim().toLowerCase();
-    if (!type || type === "exec") type = prevType || "any";
-    if (type === "any") {
-      if (typeof value === "boolean") type = "boolean";
-      else if (typeof value === "number") type = "number";
-      else if (Array.isArray(value)) type = "list";
-      else if (value && typeof value === "object") type = "map";
-      else if (prevType && prevType !== "any") type = prevType;
-      else type = "string";
-    }
-    if (type === "list") {
-      const values = Array.isArray(value) ? value : [];
-      const prevPayload = previous.Payload && typeof previous.Payload === "object"
-        ? previous.Payload : {};
-      return {
-        Type: "list",
-        Payload: Object.fromEntries(values.map((child, index) => {
-          const key = String(index);
-          return [key, defaultToGraph(child, "any", prevPayload[key])];
-        }))
-      };
-    }
-    if (type === "map") {
-      const values = value && typeof value === "object" && !Array.isArray(value) ? value : {};
-      const prevPayload = previous.Payload && typeof previous.Payload === "object"
-        ? previous.Payload : {};
-      return {
-        Type: "map",
-        EntryOrder: Object.keys(values),
-        Payload: Object.fromEntries(Object.entries(values)
-          .map(([key, child]) => [key,
-            defaultToGraph(child, "any", prevPayload[key])]))
-      };
-    }
-    let normalized = value;
-    if (type === "boolean") {
-      normalized = typeof value === "string" ? value.toLowerCase() === "true" : Boolean(value);
-    } else if (type === "number") {
-      const number = Number(value);
-      normalized = Number.isFinite(number) ? number : 0;
-    } else if (["string", "direction"].includes(type)) {
-      normalized = value == null ? "" : String(value);
-    }
-    const payload = normalized && typeof normalized === "object" && !Array.isArray(normalized)
-      ? deepCopy(normalized)
-      : { Value: normalized };
-    return { Type: type, Payload: payload };
+    return globalThis.GadgetsGraphNodes.encode(value, declaredType, prevEntry);
   }
 
   /*--------------------------------------------------------##---------------------------------------------------------
@@ -547,6 +498,7 @@
       direction: "string",
       frequency: "map",
       target: "map",
+      player: "map",
       array: "list",
       json: "map"
     });

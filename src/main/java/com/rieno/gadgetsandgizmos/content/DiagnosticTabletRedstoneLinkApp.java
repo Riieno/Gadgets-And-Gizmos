@@ -10,6 +10,8 @@ package com.rieno.gadgetsandgizmos.content;
 
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAction;
+import com.rieno.gadgetsandgizmos.lib.item.RegisteredItemCatalog;
+import com.rieno.gadgetsandgizmos.lib.tablet.ControlCardStyle;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionContext;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionHandler;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletStorageApi;
@@ -21,6 +23,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.nbt.TagParser;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -80,6 +83,39 @@ public final class DiagnosticTabletRedstoneLinkApp {
         UUID pulseChannel = null;
         TabletActionHandler.Result res = quietSuccess();
 
+        if("card_reorder".equals(actionId)){
+            var ordered = new ArrayList<DiagnosticTabletData.RedstoneLinkChannel>();
+            var ids = new java.util.HashSet<UUID>();
+            for(String part : val.split("\\|")){
+                UUID id = parseChannelId(part);
+                int idx = indexOf(channels, id);
+                if(idx < 0 || !ids.add(id)) return failure("Invalid card order");
+                ordered.add(channels.get(idx));
+            }
+            if(ordered.size() != channels.size()) return failure("Include every card in the new order");
+            saveChannels(ctx.player().server, tabletId, ordered);
+            sendSnapshot(ctx, ordered);
+            return quietSuccess();
+        }
+
+        if(java.util.Set.of("media_previous", "media_pause", "media_next").contains(actionId)){
+            if(!mediaInstalled(ctx.player(), tabletId)) return failure("Install Media to use the music controls");
+            var media = DiagnosticTabletMediaApp.execute(ctx, new TabletAction(DiagnosticTabletMediaApp.ID, "player",
+                    actionId.substring("media_".length()), action.arguments()));
+            sendSnapshot(ctx, channels);
+            return media;
+        }
+
+        if("card_save".equals(actionId)){
+            var saved = saveCard(ctx, val, channels);
+            if(!saved.success()){
+                var data = snapshot(ctx.player(), tabletId, channels);
+                data.putString("Error", saved.message().getString());
+                PacketDistributor.sendToPlayer(ctx.player(), new DiagnosticTabletAppSnapshotPayload(APP_ID, ctx, data));
+            }
+            return saved;
+        }
+
         if ("refresh".equals(actionId) || "select".equals(actionId)) {
             sendSnapshot(ctx, channels);
             return res;
@@ -103,9 +139,6 @@ public final class DiagnosticTabletRedstoneLinkApp {
                     frequencies.getCompound("FrequencyFirst"));
             ItemStack second = ItemStack.parseOptional(ctx.player().registryAccess(),
                     frequencies.getCompound("FrequencyLast"));
-            if (first.isEmpty() || second.isEmpty()) {
-                return failure("Configure both Redstone Link frequencies before scanning it");
-            }
             DiagnosticTabletData.RedstoneLinkChannel channel = channelFrom(selected.label(), first, second);
             if (channels.stream().anyMatch(existing -> sameFrequency(existing, channel))) {
                 return failure("That frequency pair already exists on this tablet");
@@ -119,13 +152,12 @@ public final class DiagnosticTabletRedstoneLinkApp {
             }
             String[] parts = val.split("\\|", 7);
             if (parts.length < 7) return failure("Choose two frequencies, their colors, a mode and signal strength");
-            ResourceLocation first = ResourceLocation.tryParse(parts[0]);
+            ResourceLocation first = frequencyId(parts[0]);
             int firstColor = parseColor(parts[1]);
-            ResourceLocation second = ResourceLocation.tryParse(parts[2]);
+            ResourceLocation second = frequencyId(parts[2]);
             int secondColor = parseColor(parts[3]);
-            if (first == null || second == null || !hasItem(ctx.player(), first)
-                    || !hasItem(ctx.player(), second)) {
-                return failure("Both frequency items must be in your inventory");
+            if (!validFrequency(first) || !validFrequency(second)) {
+                return failure("Choose two registered frequency items");
             }
             int strength = parseStrength(parts[5]);
             if (strength < 0) return failure("Signal strength must be between 0 and 15");
@@ -150,13 +182,12 @@ public final class DiagnosticTabletRedstoneLinkApp {
                 case "channel_update" -> {
                     String[] parts = val.split("\\|", 8);
                     if (parts.length < 8) return failure("Complete every channel field");
-                    ResourceLocation first = ResourceLocation.tryParse(parts[1]);
+                    ResourceLocation first = frequencyId(parts[1]);
                     int firstColor = parseColor(parts[2]);
-                    ResourceLocation second = ResourceLocation.tryParse(parts[3]);
+                    ResourceLocation second = frequencyId(parts[3]);
                     int secondColor = parseColor(parts[4]);
                     int strength = parseStrength(parts[6]);
-                    if (first == null || second == null || strength < 0
-                            || !hasItem(ctx.player(), first) || !hasItem(ctx.player(), second)) {
+                    if (!validFrequency(first) || !validFrequency(second) || strength < 0) {
                         return failure("Choose valid frequency items and signal strength");
                     }
                     DiagnosticTabletData.RedstoneLinkControlMode mode =
@@ -238,13 +269,58 @@ public final class DiagnosticTabletRedstoneLinkApp {
     // Save the channels
     private static void saveChannels(net.minecraft.server.MinecraftServer server, UUID tabletId,
                                      List<DiagnosticTabletData.RedstoneLinkChannel> channels) {
+        saveChannels(server, tabletId, channels, null, null);
+    }
+
+    // Commit channel data and appearance together while removing deleted cards
+    private static void saveChannels(net.minecraft.server.MinecraftServer server, UUID tabletId,
+                                     List<DiagnosticTabletData.RedstoneLinkChannel> channels, UUID cardId, ControlCardStyle style){
         TabletStorageApi.storage().updateApp(tabletId, APP_ID, data -> {
             ListTag tags = new ListTag();
             channels.stream().limit(DiagnosticTabletData.MAX_REDSTONE_LINK_CHANNELS)
                     .forEach(channel -> tags.add(channel.toTag()));
             data.put("Channels", tags);
+            var cards = data.getCompound("Cards").copy();
+            for(String key : new ArrayList<>(cards.getAllKeys())){
+                if(channels.stream().noneMatch(channel -> channel.id().toString().equals(key))) cards.remove(key);
+            }
+            if(cardId != null && style != null) cards.put(cardId.toString(), style.toTag());
+            data.put("Cards", cards);
             return data;
         });
+    }
+
+    // Validate the painted editor's complete draft before changing any channel or presentation data
+    private static TabletActionHandler.Result saveCard(TabletActionContext ctx, String val,
+                                                       List<DiagnosticTabletData.RedstoneLinkChannel> channels){
+        CompoundTag draft;
+        try{ draft = TagParser.parseTag(val); }
+        catch(com.mojang.brigadier.exceptions.CommandSyntaxException err){ return failure("Invalid control card"); }
+        UUID id = draft.hasUUID("Id") ? draft.getUUID("Id") : UUID.randomUUID();
+        int idx = indexOf(channels, id);
+        if(draft.hasUUID("Id") && idx < 0) return failure("The channel no longer exists");
+        if(idx < 0 && channels.size() >= DiagnosticTabletData.MAX_REDSTONE_LINK_CHANNELS) return failure("The channel limit has been reached");
+        var first = frequencyId(draft.getString("FirstItem"));
+        var second = frequencyId(draft.getString("SecondItem"));
+        var style = ControlCardStyle.fromTag(draft.getCompound("Card"));
+        if(!validFrequency(first) || !validFrequency(second) || !RegisteredItemCatalog.contains(style.icon())){
+            return failure("Choose registered frequency items and a card icon");
+        }
+        int strength = draft.getInt("Strength");
+        String modeId = draft.getString("Mode");
+        if(strength < 0 || strength > 15 || !java.util.Set.of("button", "toggle", "slider", "media", "clock").contains(modeId)) return failure("Invalid control type or strength");
+        var mode = DiagnosticTabletData.RedstoneLinkControlMode.fromId(modeId);
+        var channel = new DiagnosticTabletData.RedstoneLinkChannel(id, draft.getString("Label"), first,
+                parseColor(Integer.toString(draft.getInt("FirstColor"))), second, parseColor(Integer.toString(draft.getInt("SecondColor"))),
+                mode, strength, idx >= 0 && mode == DiagnosticTabletData.RedstoneLinkControlMode.TOGGLE && channels.get(idx).active());
+        if(channels.stream().anyMatch(existing -> !existing.id().equals(id) && sameFrequency(existing, channel))) return failure("That frequency pair already exists on this tablet");
+        if(idx < 0) channels.add(channel); else channels.set(idx, channel);
+        saveChannels(ctx.player().server, ctx.sourceTabletId(), channels, id, style);
+        syncRuntime(ctx, channels);
+        var snapshot = snapshot(ctx.player(), ctx.sourceTabletId(), channels);
+        snapshot.putUUID("SavedCard", id);
+        PacketDistributor.sendToPlayer(ctx.player(), new DiagnosticTabletAppSnapshotPayload(APP_ID, ctx, snapshot));
+        return quietSuccess();
     }
 
     // Get the snapshot
@@ -253,6 +329,10 @@ public final class DiagnosticTabletRedstoneLinkApp {
         CompoundTag root = new CompoundTag();
         root.putLong("UpdatedAt", System.currentTimeMillis());
         root.putInt("MaxChannels", DiagnosticTabletData.MAX_REDSTONE_LINK_CHANNELS);
+        root.putBoolean("MediaInstalled", mediaInstalled(player, tabletId));
+        if(root.getBoolean("MediaInstalled")) root.put("Media", DiagnosticTabletDatabase.forServer(player.server)
+                .app(tabletId, DiagnosticTabletMediaApp.ID).getCompound("Playback").copy());
+        var cards = DiagnosticTabletAppStorage.data(player.server, tabletId, APP_ID).getCompound("Cards");
         ListTag channels = new ListTag();
         for (DiagnosticTabletData.RedstoneLinkChannel channel : src) {
             CompoundTag tag = channel.toTag();
@@ -261,6 +341,9 @@ public final class DiagnosticTabletRedstoneLinkApp {
             tag.putInt("Output", channel.outputStrength());
             tag.putString("FirstName", frequencyName(channel.firstItem(), channel.firstColor()));
             tag.putString("SecondName", frequencyName(channel.secondItem(), channel.secondColor()));
+            var card = cards.contains(channel.id().toString()) ? ControlCardStyle.fromTag(cards.getCompound(channel.id().toString()))
+                    : new ControlCardStyle(ControlCardStyle.Size.SINGLE, 0x303030, channel.firstItem());
+            tag.put("Card", card.toTag());
             channels.add(tag);
         }
         root.put("Channels", channels);
@@ -269,6 +352,14 @@ public final class DiagnosticTabletRedstoneLinkApp {
                 .getCompound("Settings");
         root.put("Settings", settings.copy());
         return root;
+    }
+
+    // Gate the embedded player using the installed Media app and its existing entitlement rules
+    private static boolean mediaInstalled(ServerPlayer player, UUID tabletId){
+        return tabletId != null && DiagnosticTabletDatabase.forServer(player.server).installedApps(tabletId).contains(DiagnosticTabletMediaApp.ID)
+                && com.rieno.gadgetsandgizmos.lib.tablet.TabletAppAccess.canUse(
+                com.rieno.gadgetsandgizmos.lib.tablet.TabletAppRegistry.definition(DiagnosticTabletMediaApp.ID),
+                com.rieno.gadgetsandgizmos.lib.tablet.TabletAppPurchaseScope.PLAYER, player.getUUID(), tabletId);
     }
 
     // Get the frequency stack
@@ -345,17 +436,6 @@ public final class DiagnosticTabletRedstoneLinkApp {
                 DiagnosticTabletData.RedstoneLinkControlMode.BUTTON, 15, false);
     }
 
-    // Check if this has item
-    private static boolean hasItem(ServerPlayer player, ResourceLocation id) {
-        if (player.isCreative()) return BuiltInRegistries.ITEM.containsKey(id);
-        Container inventory = player.getInventory();
-        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
-            ItemStack stack = inventory.getItem(slot);
-            if (!stack.isEmpty() && BuiltInRegistries.ITEM.getKey(stack.getItem()).equals(id)) return true;
-        }
-        return false;
-    }
-
     // Get the color
     private static int color(ItemStack stack) {
         DyedItemColor col = stack.get(DataComponents.DYED_COLOR);
@@ -387,10 +467,16 @@ public final class DiagnosticTabletRedstoneLinkApp {
     // Check if this uses the same frequency
     private static boolean sameFrequency(DiagnosticTabletData.RedstoneLinkChannel first,
                                          DiagnosticTabletData.RedstoneLinkChannel second) {
+        if(first.controlMode() == DiagnosticTabletData.RedstoneLinkControlMode.MEDIA || second.controlMode() == DiagnosticTabletData.RedstoneLinkControlMode.MEDIA
+                || first.controlMode() == DiagnosticTabletData.RedstoneLinkControlMode.CLOCK || second.controlMode() == DiagnosticTabletData.RedstoneLinkControlMode.CLOCK) return false;
+        if(first.firstItem().equals(ResourceLocation.withDefaultNamespace("air")) && first.secondItem().equals(ResourceLocation.withDefaultNamespace("air"))) return false;
         return first.firstItem().equals(second.firstItem()) && first.firstColor() == second.firstColor()
                 && first.secondItem().equals(second.secondItem())
                 && first.secondColor() == second.secondColor();
     }
+
+    private static ResourceLocation frequencyId(String val){ return val.isBlank() ? ResourceLocation.withDefaultNamespace("air") : ResourceLocation.tryParse(val); }
+    static boolean validFrequency(ResourceLocation id){ return id != null && (id.equals(ResourceLocation.withDefaultNamespace("air")) || RegisteredItemCatalog.contains(id)); }
 
     // Parse the channel id
     private static UUID parseChannelId(String val) {

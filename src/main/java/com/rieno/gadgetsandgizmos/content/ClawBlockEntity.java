@@ -468,6 +468,8 @@ public class ClawBlockEntity extends SmartBlockEntity implements RopeStrandHolde
             grabbedEntity.setDeltaMovement(grabbedEntity.getDeltaMovement()
                     .add(localDirectionToClaw.scale(0.1)));
         }
+        // Sync the pull motion to the held player's client
+        if(grabbedEntity instanceof Player) grabbedEntity.hurtMarked = true;
     }
 
     // Check if automatic assembly should run
@@ -1166,11 +1168,7 @@ public class ClawBlockEntity extends SmartBlockEntity implements RopeStrandHolde
 
     // Check if this should scan living entity targets
     private boolean shouldScanLivingEntityTargets() {
-        if (!CTConfigs.COMMON.clawCanGrabEntities.get()) {
-            return false;
-        }
-
-        return net.neoforged.fml.loading.FMLEnvironment.dist.isClient();
+        return level != null && !level.isClientSide() && CTConfigs.COMMON.clawCanGrabEntities.get();
     }
 
     // Collect the potential living entities

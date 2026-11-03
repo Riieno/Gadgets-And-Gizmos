@@ -12,6 +12,14 @@ import com.rieno.gadgetsandgizmos.CreateThrusters;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.rieno.gadgetsandgizmos.registry.CTEntityTypes;
+<<<<<<< Updated upstream
+=======
+import com.simibubi.create.content.fluids.tank.FluidTankRenderer;
+import com.simibubi.create.content.kinetics.base.ShaftRenderer;
+import com.simibubi.create.content.kinetics.simpleRelays.encased.EncasedCogRenderer;
+import com.simibubi.create.content.kinetics.simpleRelays.encased.EncasedCogVisual;
+import com.simibubi.create.content.kinetics.base.SingleAxisRotatingVisual;
+>>>>>>> Stashed changes
 import dev.engine_room.flywheel.lib.visualization.SimpleBlockEntityVisualizer;
 import net.minecraft.client.resources.model.ModelResourceLocation;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -53,6 +61,14 @@ public final class CTClientRenderers {
                     .factory(ThrusterBearingVisual::new)
                     .apply();
         }
+<<<<<<< Updated upstream
+=======
+        if(CTBlockEntities.VECTOR_BEARING != null){
+            SimpleBlockEntityVisualizer.builder(CTBlockEntities.VECTOR_BEARING.get())
+                    .factory(VectorBearingVisual::new)
+                    .apply();
+        }
+>>>>>>> Stashed changes
         if (CTBlockEntities.AILERON_BEARING != null) {
             SimpleBlockEntityVisualizer.builder(CTBlockEntities.AILERON_BEARING.get())
                     .factory(AileronBearingShaftVisual::new)

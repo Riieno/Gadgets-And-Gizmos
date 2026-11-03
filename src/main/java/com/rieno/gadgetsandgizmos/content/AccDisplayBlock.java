@@ -212,11 +212,13 @@ public class AccDisplayBlock extends HorizontalDirectionalBlock
         return InteractionResult.sidedSuccess(level.isClientSide);
     }
 
-    // Get the destroy progress
+    // Keep empty-hand screen interactions from starting block damage
     @Override
     protected float getDestroyProgress(BlockState state, Player player,
                                        BlockGetter level, BlockPos pos) {
-        return player.getMainHandItem().isEmpty()
+        return player.getMainHandItem().isEmpty() && player.pick(player.blockInteractionRange(), 1.0F, false)
+                instanceof BlockHitResult hit && hit.getBlockPos().equals(pos)
+                && hit.getDirection() == state.getValue(FACING)
                 ? 0.0F : super.getDestroyProgress(state, player, level, pos);
     }
 

@@ -2920,7 +2920,27 @@
         "OutputOrder": [
           "exec",
           "value"
-        ]
+        ],
+        "Defaults": {
+          "a": {
+            "Type": "number",
+            "Payload": {
+              "Value": 0.0
+            }
+          },
+          "b": {
+            "Type": "number",
+            "Payload": {
+              "Value": 1.0
+            }
+          },
+          "amount": {
+            "Type": "number",
+            "Payload": {
+              "Value": 0.1
+            }
+          }
+        }
       },
       "properties": {},
       "variants": []
@@ -3766,7 +3786,33 @@
         "OutputOrder": [
           "exec",
           "value"
-        ]
+        ],
+        "Defaults": {
+          "value": {
+            "Type": "number",
+            "Payload": {
+              "Value": 1.0
+            }
+          },
+          "rise": {
+            "Type": "number",
+            "Payload": {
+              "Value": 0.1
+            }
+          },
+          "fall": {
+            "Type": "number",
+            "Payload": {
+              "Value": 0.1
+            }
+          },
+          "reset_delay": {
+            "Type": "number",
+            "Payload": {
+              "Value": 0.0
+            }
+          }
+        }
       },
       "properties": {},
       "variants": []

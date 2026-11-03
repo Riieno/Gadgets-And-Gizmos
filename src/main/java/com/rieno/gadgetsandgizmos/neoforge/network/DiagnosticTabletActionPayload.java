@@ -14,9 +14,9 @@ import com.rieno.gadgetsandgizmos.content.DiagnosticTabletApps;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletBlockEntity;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletData;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletItem;
-import com.rieno.gadgetsandgizmos.content.DiagnosticTabletDatabase;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletAppStorage;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAction;
+import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppUsage;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletStorageApi;
 import com.rieno.gadgetsandgizmos.registry.CTFeatureToggles;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletInteractionMode;
@@ -119,8 +119,6 @@ public record DiagnosticTabletActionPayload(boolean placed, InteractionHand hand
                 state = state.withTabletId(payload.sourceTabletId() == null
                         ? UUID.randomUUID() : payload.sourceTabletId());
             }
-            DiagnosticTabletDatabase database = DiagnosticTabletDatabase.forServer(player.server);
-            database.importLegacy(state.tabletId(), state);
             state = state.withoutLegacyAppData();
             ResourceLocation settingsId = DiagnosticTabletData.appId("settings");
             ResourceLocation homeId = DiagnosticTabletData.appId("home");
@@ -129,6 +127,7 @@ public record DiagnosticTabletActionPayload(boolean placed, InteractionHand hand
                 return;
             }
             boolean backgroundRefresh = "background_refresh".equals(payload.actionId());
+            boolean openingApp = !state.app().equals(payload.appId());
             if (!backgroundRefresh) state = state.withApp(payload.appId(), payload.tabId());
             boolean stateOnlyAction = true;
             switch (payload.actionId()) {
@@ -145,6 +144,9 @@ public record DiagnosticTabletActionPayload(boolean placed, InteractionHand hand
                 case "clear_selections" -> DiagnosticTabletAppStorage.clearSelections(
                         player.server, state.tabletId(), payload.appId());
                 case "select" -> {
+                    if(openingApp && !homeId.equals(payload.appId())){
+                        TabletAppUsage.recordLaunch(TabletStorageApi.storage(), state.tabletId(), payload.appId());
+                    }
                 }
                 default -> stateOnlyAction = false;
             }
@@ -183,7 +185,7 @@ public record DiagnosticTabletActionPayload(boolean placed, InteractionHand hand
         buffer.writeResourceLocation(payload.appId());
         buffer.writeUtf(payload.tabId(), 64);
         buffer.writeUtf(payload.actionId(), 160);
-        buffer.writeUtf(payload.value(), 256);
+        buffer.writeUtf(payload.value(), 4096);
     }
 
     // Decode the diagnostic tablet action
@@ -194,6 +196,6 @@ public record DiagnosticTabletActionPayload(boolean placed, InteractionHand hand
         UUID subLevel = buffer.readBoolean() ? buffer.readUUID() : null;
         UUID sourceTabletId = buffer.readBoolean() ? buffer.readUUID() : null;
         return new DiagnosticTabletActionPayload(placed, hand, pos, subLevel, sourceTabletId,
-                buffer.readResourceLocation(), buffer.readUtf(64), buffer.readUtf(160), buffer.readUtf(256));
+                buffer.readResourceLocation(), buffer.readUtf(64), buffer.readUtf(160), buffer.readUtf(4096));
     }
 }

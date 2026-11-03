@@ -67,7 +67,6 @@ public class ContraptionNetworkLinkerItem extends Item {
         super.inventoryTick(stack, level, entity, slotId, isSelected);
         if (level instanceof ServerLevel serverLevel
                 && Math.floorMod(entity.tickCount + slotId, 20) == 0) {
-            ContraptionNetworkLinkerData.migrateLegacyStorage(stack);
             ContraptionNetworkLinkerTracker.get(serverLevel.getServer()).observeLinker(serverLevel, stack);
             if (entity instanceof net.minecraft.server.level.ServerPlayer player) {
                 ContraptionNetworkLinkerSnapshotPayload.sendIfChanged(player, stack);

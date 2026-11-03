@@ -65,6 +65,7 @@ import com.rieno.gadgetsandgizmos.neoforge.network.DoubleButtonConfigPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.DoubleButtonHoldPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.DiagnosticTabletActionPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.DiagnosticTabletAppSnapshotPayload;
+import com.rieno.gadgetsandgizmos.neoforge.network.DiagnosticTabletAppIconsPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.DiagnosticTabletRemoteOpenPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.DiagnosticTabletReopenPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.FeatureToggleSyncPayload;
@@ -188,7 +189,14 @@ public final class CTCommonEvents {
 
         // Register the payload handlers
         public static void registerPayloadHandlers(RegisterPayloadHandlersEvent event) {
+<<<<<<< Updated upstream
                 PayloadRegistrar registrar = event.registrar("2");
+=======
+                PayloadRegistrar registrar = event.registrar("3");
+                registrar.playToServer(WorldHologramRequestPayload.TYPE, WorldHologramRequestPayload.STREAM_CODEC, WorldHologramRequestPayload::handle);
+                registrar.playToServer(WorldHologramConfigPayload.TYPE, WorldHologramConfigPayload.STREAM_CODEC, WorldHologramConfigPayload::handle);
+                registrar.playToClient(WorldHologramDataPayload.TYPE, WorldHologramDataPayload.STREAM_CODEC, WorldHologramDataPayload::handle);
+>>>>>>> Stashed changes
                 registrar.playToServer(com.rieno.gadgetsandgizmos.neoforge.network.ServerboundPlayerActionInputPacket.TYPE,
                         com.rieno.gadgetsandgizmos.neoforge.network.ServerboundPlayerActionInputPacket.STREAM_CODEC,
                         com.rieno.gadgetsandgizmos.neoforge.network.ServerboundPlayerActionInputPacket::handle);
@@ -373,8 +381,32 @@ public final class CTCommonEvents {
                 registrar.playToClient(ScmConfigurationSnapshotPayload.TYPE,
                                 ScmConfigurationSnapshotPayload.STREAM_CODEC,
                                 ScmConfigurationSnapshotPayload::handle);
+                registrar.optional().playToClient(com.rieno.gadgetsandgizmos.neoforge.network.ScmConfigurationDeltaPayload.TYPE,
+                                com.rieno.gadgetsandgizmos.neoforge.network.ScmConfigurationDeltaPayload.STREAM_CODEC,
+                                com.rieno.gadgetsandgizmos.neoforge.network.ScmConfigurationDeltaPayload::handle);
                 registrar.playToClient(AdvancedControllerRuntimePayload.TYPE, AdvancedControllerRuntimePayload.STREAM_CODEC,
                                 AdvancedControllerRuntimePayload::handle);
+<<<<<<< Updated upstream
+=======
+                registrar.playToServer(com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerDraftPayload.TYPE,
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerDraftPayload.STREAM_CODEC,
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerDraftPayload::handle);
+                registrar.playToClient(com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerDraftRuntimePayload.TYPE,
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerDraftRuntimePayload.STREAM_CODEC,
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerDraftRuntimePayload::handle);
+                registrar.optional().playToClient(
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeEventsPayload.TYPE,
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeEventsPayload.STREAM_CODEC,
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeEventsPayload::handle);
+                registrar.optional().playToServer(
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeResyncPayload.TYPE,
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeResyncPayload.STREAM_CODEC,
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeResyncPayload::handle);
+                registrar.optional().playToClient(
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeDeltaPayload.TYPE,
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeDeltaPayload.STREAM_CODEC,
+                                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeDeltaPayload::handle);
+>>>>>>> Stashed changes
                 registrar.playToClient(FunctionPlotterDataPayload.TYPE,
                                 FunctionPlotterDataPayload.STREAM_CODEC,
                                 FunctionPlotterDataPayload::handle);
@@ -401,6 +433,9 @@ public final class CTCommonEvents {
                 registrar.playToClient(DiagnosticTabletAppSnapshotPayload.TYPE,
                                 DiagnosticTabletAppSnapshotPayload.STREAM_CODEC,
                                 DiagnosticTabletAppSnapshotPayload::handle);
+                registrar.playToClient(DiagnosticTabletAppIconsPayload.TYPE,
+                                DiagnosticTabletAppIconsPayload.STREAM_CODEC,
+                                DiagnosticTabletAppIconsPayload::handle);
                 registrar.playToClient(DiagnosticTabletRemoteOpenPayload.TYPE,
                                 DiagnosticTabletRemoteOpenPayload.STREAM_CODEC,
                                 DiagnosticTabletRemoteOpenPayload::handle);

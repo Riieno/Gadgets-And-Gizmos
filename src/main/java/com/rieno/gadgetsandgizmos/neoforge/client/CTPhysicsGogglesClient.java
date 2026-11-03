@@ -1083,6 +1083,7 @@ public final class CTPhysicsGogglesClient {
     // Get the HUD input text
     private static String hudInputText(AdvancedContraptionControllerBlockEntity controller,
                                        AdvancedGraphDocument.Node node, String port) {
+        AnalogueContraptionControllerClientHandler.ensureRuntimeBaseline(controller, -1);
         AdvancedGraphLiveValue liveValue = controller.getGraphLiveInput(node.id(), port);
         if (liveValue != null) {
             return graphValueText(liveValue);
@@ -1094,6 +1095,7 @@ public final class CTPhysicsGogglesClient {
     private static AdvancedGraphDocument.Value hudInputValue(
             AdvancedContraptionControllerBlockEntity controller,
             AdvancedGraphDocument.Node node, String port) {
+        AnalogueContraptionControllerClientHandler.ensureRuntimeBaseline(controller, -1);
         AdvancedGraphLiveValue liveValue = controller.getGraphLiveInput(node.id(), port);
         return liveValue == null
                 ? controller.previewActiveGraphInput(node, port)
@@ -1104,6 +1106,7 @@ public final class CTPhysicsGogglesClient {
     private static AdvancedGraphDocument.Value hudOutputValue(
             AdvancedContraptionControllerBlockEntity controller,
             AdvancedGraphDocument.Node node, String port) {
+        AnalogueContraptionControllerClientHandler.ensureRuntimeBaseline(controller, -1);
         return graphValue(controller.getGraphLiveOutput(node.id(), port));
     }
 

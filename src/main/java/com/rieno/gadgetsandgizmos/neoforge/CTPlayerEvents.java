@@ -70,6 +70,7 @@ import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import com.simibubi.create.foundation.utility.RaycastHelper;
+import com.simibubi.create.content.equipment.wrench.WrenchItem;
 import dev.simulated_team.simulated.content.blocks.rope.rope_winch.RopeWinchBlock;
 import dev.simulated_team.simulated.index.SimTags;
 import net.minecraft.sounds.SoundEvents;
@@ -123,6 +124,7 @@ public final class CTPlayerEvents {
         if (event.getEntity() instanceof net.minecraft.server.level.ServerPlayer serverPlayer) {
             CTCommonEvents.syncFeatureTogglesToPlayer(serverPlayer);
             CTCommonEvents.syncGraphV2ThemeToPlayer(serverPlayer);
+            com.rieno.gadgetsandgizmos.content.DiagnosticTabletAppStoreConfig.syncIcons(serverPlayer);
         }
     }
 
@@ -293,7 +295,7 @@ public final class CTPlayerEvents {
         event.setCanceled(true);
     }
 
-    // Handle the left click block event
+    // Reserve empty-hand front clicks for display controls
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onLeftClickBlock(PlayerInteractEvent.LeftClickBlock event) {
         if (event.getAction() != PlayerInteractEvent.LeftClickBlock.Action.START
@@ -302,7 +304,7 @@ public final class CTPlayerEvents {
         }
         AccDisplayBlockEntity display = AccDisplayBlock.findDisplay(
                 event.getLevel(), event.getPos());
-        if (display == null) {
+        if (display == null || event.getFace() != display.getBlockState().getValue(AccDisplayBlock.FACING)) {
             return;
         }
         net.minecraft.world.phys.HitResult picked = event.getEntity().pick(6.0D, 1.0F, false);
@@ -543,6 +545,7 @@ public final class CTPlayerEvents {
 
     // Try to handle placed tablet interaction
     private static boolean tryHandlePlacedTabletInteraction(PlayerInteractEvent.RightClickBlock evt) {
+        if(evt.getItemStack().getItem() instanceof WrenchItem) return false;
         if (evt.getEntity() == null) {
             return false;
         }

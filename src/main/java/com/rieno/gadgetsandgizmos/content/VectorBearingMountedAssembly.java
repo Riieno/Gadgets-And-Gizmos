@@ -9,7 +9,10 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.lib.physics.MountedAssemblyStatus;
-import com.rieno.gadgetsandgizmos.lib.physics.SableConstraintApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SableFrameConstraint;
+import com.rieno.gadgetsandgizmos.lib.physics.SableAttachmentPoseApi;
+import com.rieno.gadgetsandgizmos.lib.physics.SubLevelAssemblyApi;
+import com.rieno.gadgetsandgizmos.lib.geometry.CardinalRotation;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.mojang.logging.LogUtils;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
@@ -18,7 +21,6 @@ import com.simibubi.create.content.contraptions.AssemblyException;
 import dev.ryanhcode.sable.Sable;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import dev.ryanhcode.sable.api.physics.PhysicsPipeline;
-import dev.ryanhcode.sable.api.physics.constraint.GenericConstraintHandle;
 import dev.ryanhcode.sable.api.sublevel.ServerSubLevelContainer;
 import dev.ryanhcode.sable.api.sublevel.SubLevelContainer;
 import dev.ryanhcode.sable.companion.math.Pose3d;
@@ -79,11 +81,15 @@ final class VectorBearingMountedAssembly {    // Last orientation applied to the
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Current joint
+<<<<<<< Updated upstream
     private GenericConstraintHandle joint;
     // Current joint parent
     private ServerSubLevel jointParent;
     // Current joint child
     private ServerSubLevel jointChild;
+=======
+    private final SableFrameConstraint joint = new SableFrameConstraint();
+>>>>>>> Stashed changes
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -290,9 +296,6 @@ final class VectorBearingMountedAssembly {    // Last orientation applied to the
         if (mountedState == null || !(mountedState.getBlock() instanceof VectorBearingLinkBlock)) {
             return MountedAssemblyStatus.BROKEN;
         }
-        if (mountedState.getValue(VectorBearingLinkBlock.FACING) != bearing.getBearingFacing()) {
-            return MountedAssemblyStatus.INVALID;
-        }
         VectorBearingLinkBlockEntity link = SimulatedHelper.findBlockEntityInSubLevel(
                 child, localPos, VectorBearingLinkBlockEntity.class);
         if (link == null) {
@@ -365,11 +368,7 @@ final class VectorBearingMountedAssembly {    // Last orientation applied to the
     private static boolean recoverConflictingHeads(ServerLevel level, ServerSubLevel child,
                                                    VectorBearingLinkBlockEntity trigger) {
         List<VectorBearingLinkBlockEntity> links = new ArrayList<>();
-        for (BlockEntity blockEntity : SubLevelBlockEntityCollector.getBlockEntities(child)) {
-            if (blockEntity instanceof VectorBearingLinkBlockEntity link) {
-                links.add(link);
-            }
-        }
+        links.addAll(SubLevelBlockEntityCollector.getBlockEntities(child, VectorBearingLinkBlockEntity.class));
         if (trigger != null && links.stream().noneMatch(link -> link == trigger)) {
             links.add(trigger);
         }
@@ -483,20 +482,29 @@ final class VectorBearingMountedAssembly {    // Last orientation applied to the
         Quaterniond tilt = new Quaterniond().rotationTo(baseNormal, desiredParent);
         Quaterniond shaftSpin = shaftRotation(facing, shaftAngleDegrees);
         Quaterniond relativeOrientation = new Quaterniond(tilt).mul(shaftSpin).normalize();
+        relativeOrientation.mul(CardinalRotation.between(bearing.getMountedHeadFacing(), facing).quaternion()).normalize();
         TiltCandidate accepted = createTiltCandidate(bearing, facing, relativeOrientation);
 
-        if (!ensureJoint(mountedPos, facing, accepted.baseAnchor(), accepted.baseFrameOrientation(),
-                pipeline, parent, child)) {
-            return false;
-        }
-        if (!hasJointTargetOrientation(accepted.baseFrameOrientation())) {
-            retargetJoint(mountedPos, facing, accepted.baseAnchor(), accepted.baseFrameOrientation());
-        }
-        if (parent != null) {
-            pipeline.wakeUp(parent);
-        }
-        pipeline.wakeUp(child);
-        return joint != null && joint.isValid();
+        return joint.update(pipeline, parent, child, accepted.baseAnchor(),
+                getChildAnchor(mountedPos, bearing.getMountedHeadFacing()), accepted.baseFrameOrientation());
+    }
+
+    // Move the detached head and its child attachments to the newly selected bearing face
+    boolean reorient(VectorBearingBlockEntity bearing, ServerLevel level){
+        ServerSubLevel child = resolveChild(bearing, level);
+        BlockPos pos = bearing.getMountedLocalPos();
+        if(child == null || pos == null) return false;
+        Direction facing = bearing.getBearingFacing();
+        Vec3 dir = bearing.getInterpolatedHeadDirection(1);
+        Vector3d normal = directionVector(facing);
+        Vector3d target = new Quaterniond().rotationTo(new Vector3d(0, 1, 0), normal)
+                .transform(new Vector3d(dir.x, dir.y, dir.z)).normalize();
+        Quaterniond orientation = new Quaterniond().rotationTo(normal, target)
+                .mul(shaftRotation(facing, bearing.sampleShaftAngleDeg()))
+                .mul(CardinalRotation.between(bearing.getMountedHeadFacing(), facing).quaternion()).normalize();
+        releaseJoint();
+        return SableAttachmentPoseApi.align(level, NestedAssemblyFrame.resolve(bearing).parentBody(), child,
+                getBaseAnchor(bearing, facing), getChildAnchor(pos, bearing.getMountedHeadFacing()), orientation);
     }
 
     // Create the tilt candidate
@@ -507,6 +515,7 @@ final class VectorBearingMountedAssembly {    // Last orientation applied to the
         return new TiltCandidate(baseAnchor, baseFrameOrientation);
     }
 
+<<<<<<< Updated upstream
     // Ensure the joint
     private boolean ensureJoint(BlockPos mountedPos, Direction facing, Vector3d baseAnchor, Quaterniond baseFrameOrientation,
                                 PhysicsPipeline pipeline, ServerSubLevel parent, ServerSubLevel child) {
@@ -550,6 +559,8 @@ final class VectorBearingMountedAssembly {    // Last orientation applied to the
         }
     }
 
+=======
+>>>>>>> Stashed changes
     // Get the base anchor
     private Vector3d getBaseAnchor(VectorBearingBlockEntity bearing, Direction facing) {
         Vector3d baseNormal = directionVector(facing);
@@ -603,6 +614,7 @@ final class VectorBearingMountedAssembly {    // Last orientation applied to the
                 return;
             }
             Quaterniond orientation = parentFrame.toWorldOrientation(new Quaterniond());
+            CardinalRotation placement = CardinalRotation.between(bearing.getMountedHeadFacing(), bearing.getBearingFacing());
             ServerSubLevelContainer container = SubLevelContainer.getContainer(level);
             if (container != null) {
                 container.physicsSystem().getPipeline().teleport(child, child.logicalPose().position(), orientation);
@@ -610,7 +622,8 @@ final class VectorBearingMountedAssembly {    // Last orientation applied to the
             }
             com.rieno.gadgetsandgizmos.lib.physics.SableSubLevelLifecycleApi.transfer(level, child, () -> {
                 destroyLinkBlock(level, child, localPos);
-                SimAssemblyHelper.disassembleSubLevel(level, child, localPos, bearing.getBlockPos(), Rotation.NONE, true);
+                SubLevelAssemblyApi.disassembleOriented(level, child, localPos, bearing.getBlockPos(),
+                        placement, true);
             });
             com.rieno.gadgetsandgizmos.lib.physics.SableSubLevelLifecycleApi.removeEmpty(level, child);
         }
@@ -652,14 +665,7 @@ final class VectorBearingMountedAssembly {    // Last orientation applied to the
 
     // Release the joint
     void releaseJoint() {
-        if (joint != null && joint.isValid()) {
-            joint.remove();
-        }
-        joint = null;
-        jointParent = null;
-        jointChild = null;
-        jointTargetOrientation.identity();
-        jointTargetOrientationInitialized = false;
+        joint.close();
     }
 
     // Clear the child sublevel

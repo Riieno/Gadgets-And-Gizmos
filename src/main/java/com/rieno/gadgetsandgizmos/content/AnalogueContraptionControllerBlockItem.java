@@ -22,7 +22,6 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.TooltipFlag;
@@ -78,16 +77,6 @@ public class AnalogueContraptionControllerBlockItem extends CTTooltipBlockItem {
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
-
-    // Update the inventory
-    @Override
-    public void inventoryTick(ItemStack stack, Level level, Entity entity, int slotId, boolean isSelected) {
-        super.inventoryTick(stack, level, entity, slotId, isSelected);
-        PortableContraptionControllerItem.migrateLegacyStorage(
-                stack,
-                level,
-                entity == null ? BlockPos.ZERO : entity.blockPosition());
-    }
 
     // Place the analogue contraption controller block item
     @Override

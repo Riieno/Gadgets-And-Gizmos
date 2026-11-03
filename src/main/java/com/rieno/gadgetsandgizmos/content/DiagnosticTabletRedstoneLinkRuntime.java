@@ -92,7 +92,6 @@ public final class DiagnosticTabletRedstoneLinkRuntime {
         MinecraftServer server = tablet.getLevel().getServer();
         UUID tabletId = tablet.state().tabletId();
         if (server == null || tabletId == null) return;
-        DiagnosticTabletDatabase.forServer(server).importLegacy(tabletId, tablet.state());
         syncPlaced(null, tablet, DiagnosticTabletRedstoneLinkApp.channels(server, tabletId));
     }
 
@@ -206,7 +205,6 @@ public final class DiagnosticTabletRedstoneLinkRuntime {
                 ItemSource src = new ItemSource(player.getUUID(), tabletId);
                 discovered.add(src);
                 rememberSource(tabletId, src);
-                DiagnosticTabletDatabase.forServer(server).importLegacy(tabletId, state);
                 sync(src, player.serverLevel(), player.blockPosition(),
                         DiagnosticTabletRedstoneLinkApp.channels(server, tabletId));
             }
@@ -449,10 +447,10 @@ public final class DiagnosticTabletRedstoneLinkRuntime {
     // Check if this has valid frequency
     private static boolean hasValidFrequency(
             DiagnosticTabletData.RedstoneLinkChannel channel) {
-        return !DiagnosticTabletRedstoneLinkApp.frequencyStack(
-                channel.firstItem(), channel.firstColor()).isEmpty()
-                && !DiagnosticTabletRedstoneLinkApp.frequencyStack(
-                channel.secondItem(), channel.secondColor()).isEmpty();
+        return channel.controlMode() != DiagnosticTabletData.RedstoneLinkControlMode.MEDIA
+                && channel.controlMode() != DiagnosticTabletData.RedstoneLinkControlMode.CLOCK
+                && DiagnosticTabletRedstoneLinkApp.validFrequency(channel.firstItem())
+                && DiagnosticTabletRedstoneLinkApp.validFrequency(channel.secondItem());
     }
 
     // Expose the source

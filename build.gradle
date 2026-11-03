@@ -307,6 +307,118 @@ sourceSets {
     }
 }
 
+<<<<<<< Updated upstream
+=======
+// Run presentation regressions in an isolated server without packaging test classes
+if(providers.gradleProperty('acc_presentation_validation').map { it.toBoolean() }.getOrElse(false)){
+    dependencies { additionalRuntimeClasspath files(configurations.bundledSqlite) }
+    sourceSets {
+        accPresentationTest {
+            java.srcDir 'src/containerGameTest/java'
+            resources.srcDir 'src/containerGameTest/resources'
+            compileClasspath += sourceSets.main.output + configurations.compileClasspath
+            runtimeClasspath += output + compileClasspath + configurations.runtimeClasspath
+        }
+    }
+    neoForge {
+        mods {
+            "${mod_id}" { sourceSet(sourceSets.accPresentationTest) }
+        }
+        runs {
+            accPresentationTest {
+                type = 'gameTestServer'
+                gameDirectory = file('run/acc-presentation-tests')
+                systemProperty 'neoforge.enabledGameTestNamespaces', mod_id
+                systemProperty 'acc.presentation.graph', providers.gradleProperty('acc_presentation_graph').getOrElse('')
+            }
+            remoteControlTest {
+                type = 'gameTestServer'
+                gameDirectory = file('run/remote-control-tests')
+                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_remote_controls'
+            }
+            physicsRegressionTest {
+                type = 'gameTestServer'
+                gameDirectory = file(providers.gradleProperty('physics_regression_directory')
+                        .getOrElse('run/physics-regression-tests'))
+                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_physics_regressions'
+            }
+            shipDoorTest {
+                type = 'gameTestServer'
+                gameDirectory = file('run/ship-door-tests')
+                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_ship_doors'
+            }
+            containerNetworkTest {
+                type = 'gameTestServer'
+                gameDirectory = file('run/container-network-tests')
+                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_container_networks'
+            }
+            dockingLaneTest {
+                type = 'gameTestServer'
+                gameDirectory = file('run/docking-lane-tests')
+                systemProperty 'neoforge.enabledGameTestNamespaces', 'createthrusters_docking_lanes'
+            }
+        }
+    }
+
+    if(providers.gradleProperty('rendering_validation').map { it.toBoolean() }.getOrElse(false)){
+        def renderingWorld = file('run/rendering-validation/saves/Optimization Validation')
+        def prepareRenderingWorld = tasks.register('prepareRenderingValidation', Copy) {
+            from file('run/acc-presentation-tests/world')
+            into renderingWorld
+            onlyIf { !new File(renderingWorld, 'level.dat').isFile() }
+            doFirst {
+                if(!file('run/acc-presentation-tests/world/level.dat').isFile()){
+                    throw new GradleException('Run runAccPresentationTest before rendering validation.')
+                }
+            }
+        }
+        neoForge.runs.client {
+            gameDirectory = file('run/rendering-validation')
+            programArguments.addAll('--quickPlaySingleplayer', 'Optimization Validation')
+            systemProperty 'gadgetsngizmos.renderingValidation', 'true'
+            systemProperty 'gadgetsngizmos.renderingValidationResult', file('run/rendering-validation/result.txt').absolutePath
+        }
+        tasks.named('runClient') {
+            dependsOn prepareRenderingWorld
+            doFirst { file('run/rendering-validation/result.txt').text = 'RUNNING' }
+        }
+    }
+
+    if(providers.gradleProperty('digisable_validation').map { it.toBoolean() }.getOrElse(false)){
+        def validationDir = file(providers.gradleProperty('digisable_validation_directory').getOrElse('run/digisable-validation'))
+        def validationWorld = new File(validationDir, 'saves/Digisable Validation')
+        def prepareDigisableValidation = tasks.register('prepareDigisableValidation', Copy) {
+            from file('run/acc-presentation-tests/world')
+            include 'level.dat'
+            into validationWorld
+            onlyIf { !new File(validationWorld, 'level.dat').isFile() }
+            doFirst {
+                if(!file('run/acc-presentation-tests/world/level.dat').isFile())
+                    throw new GradleException('Run runAccPresentationTest before Digisable validation.')
+            }
+        }
+        neoForge.runs.client {
+            gameDirectory = validationDir
+            programArguments.addAll('--quickPlaySingleplayer', 'Digisable Validation')
+            systemProperty 'gadgetsngizmos.digisableValidation', 'true'
+            systemProperty 'gadgetsngizmos.digisableValidationResult', new File(validationDir, 'result.txt').absolutePath
+        }
+        tasks.named('runClient') {
+            dependsOn prepareDigisableValidation
+            doFirst {
+                new File(validationDir, 'result.txt').text = 'RUNNING'
+                def options = new File(validationDir, 'options.txt')
+                if(!options.isFile()) options.text = 'onboardAccessibility:false\npauseOnLostFocus:false\nrenderDistance:6\nmaxFps:60\n'
+            }
+            doLast {
+                def result = new File(validationDir, 'result.txt').text
+                if(!result.startsWith('PASSED:')) throw new GradleException(result)
+            }
+        }
+    }
+}
+
+>>>>>>> Stashed changes
 def ccDocsCatalogue = layout.projectDirectory.file(
         'src/main/resources/data/computercraft/lua/rom/modules/main/'
                 + 'gadgetsandgizmos/docs_catalog.lua')

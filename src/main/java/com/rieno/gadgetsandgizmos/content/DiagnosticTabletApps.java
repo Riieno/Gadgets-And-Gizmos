@@ -13,6 +13,7 @@ import com.rieno.gadgetsandgizmos.lib.tablet.TabletAction;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionContext;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionHandler;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppDefinition;
+import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppDescriptions;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppRegistry;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletTabDefinition;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletStorageApi;
@@ -49,7 +50,7 @@ public final class DiagnosticTabletApps {
             "Secure remote sessions for Advanced Controllers", 0xFF00B8D4,
             List.of(tab("devices", "Devices", "refresh", "remote_control",
                     "open_graph", "open_plotter", "rename_controller",
-                    "remove_controller")));
+                    "remove_controller", "controller_color")));
     private static final TabletAppDefinition SCM = definition("scm", "Ship Control",
             "Ship, dock, logistics and landing-zone control", 0xFFFFB74D,
             List.of(
@@ -75,21 +76,27 @@ public final class DiagnosticTabletApps {
                     tab("saved", "Saved", "journey_save", "journey_remove")));
     private static final TabletAppDefinition REDSTONE_LINK = definition("redstone_link", "Redstone Link",
             "Smart-home controls for wireless redstone", 0xFF7C4DFF,
-            List.of(tab("home", "Home", "refresh", "channel_button", "channel_toggle", "channel_slider"),
-                    tab("devices", "Devices", "channel_create", "channel_update", "bind_channel", "channel_mode",
-                            "channel_strength", "channel_rename", "channel_remove")));
+            List.of(tab("home", "Home", "refresh", "channel_button", "channel_toggle", "channel_slider", "media_previous", "media_pause", "media_next"),
+                    tab("devices", "Devices", "card_reorder", "card_save", "channel_create", "channel_update", "bind_channel", "channel_mode",
+                            "channel_strength", "channel_rename", "channel_remove", "channel_button", "channel_toggle", "channel_slider",
+                            "media_previous", "media_pause", "media_next")));
     private static final TabletAppDefinition APP_STORE = definition("app_store", "App Store",
             "Purchase and install tablet applications", 0xFF66BB6A,
             List.of(tab("store", "Store", "refresh", "purchase_app")), Set.of(), true);
     private static final TabletAppDefinition SETTINGS = definition("settings", "Settings",
             "Tablet identity, appearance and applications", 0xFF90A4AE,
-            List.of(tab("tablet", "Tablet", "tablet_rename", "wallpaper_set"),
+            List.of(tab("tablet", "Themes", "wallpaper_set"),
                     tab("apps", "Apps", "app_install", "app_uninstall"),
-                    tab("about", "About", "refresh")), Set.of(), true);
+                    tab("about", "About", "refresh", "tablet_rename")), Set.of(), true);
     private static final TabletAppDefinition GG_AUTO = definition("gg_auto", "G&G Auto",
             "On-ship navigation and telemetry", 0xFF5AC8FA,
-            List.of(tab("drive", "Drive", "refresh", "navigate", "hover", "dock"),
-                    tab("stats", "Stats", "refresh")));
+            List.of(tab("drive", "Drive", "refresh", "navigate", "hover", "dock", "media_pause", "media_previous", "media_next"),
+                    tab("stats", "Stats", "refresh"), tab("manifest", "Manifest", "refresh")));
+    private static final TabletAppDefinition MEDIA = definition("media", "Media",
+            "Browse music discs and create looping playlists.", 0xFF49B9A2,
+            List.of(tab("player", "Player", "play", "pause", "next", "previous", "playlist_create",
+                    "playlist_select", "playlist_delete", "playlist_rename", "playlist_toggle")));
+
     private static final TabletAppDefinition NFC = definition("nfc", "NFC",
             "Inspect and directly control nearby blocks", 0xFF90A4AE,
             List.of(tab("inspect", "Inspect", "refresh", "nfc_scan", "nfc_signal")));
@@ -131,6 +138,15 @@ public final class DiagnosticTabletApps {
         TabletAppRegistry.registerIfAbsent(SETTINGS, DiagnosticTabletApps::execute);
         TabletAppRegistry.registerIfAbsent(GG_AUTO, DiagnosticTabletApps::execute);
         TabletAppRegistry.registerIfAbsent(NFC, DiagnosticTabletApps::execute);
+<<<<<<< Updated upstream
+=======
+        TabletAppRegistry.registerIfAbsent(MEDIA, DiagnosticTabletMediaApp::execute);
+        TabletAppDescriptions.register(MEDIA.id(), Component.literal(
+                "Play every registered music disc, search tracks, and save looping playlists. "
+                        + "Placed tablets play into the world and follow ships; portable tablets play privately from the hotbar or offhand."));
+        com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.register();
+        registerDescriptions();
+>>>>>>> Stashed changes
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -140,6 +156,29 @@ public final class DiagnosticTabletApps {
     =======================================================================================================================
 
     ------------------------------------------------------------##-----------------------------------------------------*/
+
+    // Supply detailed store listings for the bundled applications
+    private static void registerDescriptions(){
+        describe(RDP, "Connect securely to linked Advanced Controllers, operate their controls and open their graph or plotter remotely.");
+        describe(SCM, "Inspect ships and docks, manage logistics, and control navigation and landing zones from one place.");
+        describe(BLOCK360, "Stay connected with other players, create private circles and share your location.");
+        describe(JOURNEY, "Search stations and docks, plan journeys and keep saved routes together with live departure information.");
+        describe(REDSTONE_LINK, "Create buttons, toggles and sliders for wireless redstone controls, then choose the channels and frequencies each device uses.");
+        describe(GG_AUTO, "View onboard telemetry and guide a ship through navigation, hovering and docking controls.");
+        describe(NFC, "Use Reader mode to inspect a nearby block and operate its exposed controls directly from the tablet.");
+        var paid = com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.DIGISABLE;
+        describe(paid, "Browse sublevels and stored assemblies with a 3D preview. Store or extract assemblies, inspect schematic materials and place validated builds.");
+        describe(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.MANIFEST,
+                "Inspect detailed container cargo and browse connected items, fluids and energy through the tablet.");
+        describe(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.BLOCKMATES,
+                "Manage controller workers and request item or fluid deliveries from connected storage. Follow request progress and inspect inventories.");
+        describe(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.CCTV,
+                "Browse bound cameras, watch their live feeds and operate supported camera controls.");
+    }
+
+    private static void describe(TabletAppDefinition app, String details){
+        TabletAppDescriptions.register(app.id(), Component.literal(details));
+    }
 
     // Check if this is canonical definition
     public static boolean isCanonicalDefinition(TabletAppDefinition definition, String id) {
@@ -154,6 +193,7 @@ public final class DiagnosticTabletApps {
             case "settings" -> definition == SETTINGS;
             case "gg_auto" -> definition == GG_AUTO;
             case "nfc" -> definition == NFC;
+            case "media" -> definition == MEDIA;
             default -> false;
         };
     }
@@ -269,8 +309,6 @@ public final class DiagnosticTabletApps {
             return failure("Unknown tablet app");
         }
         UUID tabletId = state.tabletId() == null ? sourceTabletId : state.tabletId();
-        DiagnosticTabletDatabase database = DiagnosticTabletDatabase.forServer(player.server);
-        if (tabletId != null) database.importLegacy(tabletId, state);
         DiagnosticTabletData.Binding binding = tabletId == null ? null
                 : DiagnosticTabletAppStorage.selectedBinding(player.server, tabletId, action.appId());
         TabletActionContext ctx = new TabletActionContext(player, tablet,

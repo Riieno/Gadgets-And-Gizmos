@@ -350,13 +350,18 @@ public class AnalogueContraptionControllerMenu extends GhostItemMenu<AnalogueCon
     @Override
     protected void addSlots() {
         addPlayerSlots(PLAYER_SLOTS_X, PLAYER_SLOTS_Y);
-        addSlot(new ActiveGhostSlot(ghostInventory, 0, GHOST_SLOT_OUTPUT_FIRST_X, GHOST_SLOTS_Y));
-        addSlot(new ActiveGhostSlot(ghostInventory, 1, GHOST_SLOT_OUTPUT_SECOND_X, GHOST_SLOTS_Y));
-        addSlot(new ActiveGhostSlot(ghostInventory, 2, GHOST_SLOT_INPUT_FIRST_X, GHOST_SLOTS_Y));
-        addSlot(new ActiveGhostSlot(ghostInventory, 3, GHOST_SLOT_INPUT_SECOND_X, GHOST_SLOTS_Y));
+        addSlot(createGhostSlot(0, GHOST_SLOT_OUTPUT_FIRST_X, GHOST_SLOTS_Y));
+        addSlot(createGhostSlot(1, GHOST_SLOT_OUTPUT_SECOND_X, GHOST_SLOTS_Y));
+        addSlot(createGhostSlot(2, GHOST_SLOT_INPUT_FIRST_X, GHOST_SLOTS_Y));
+        addSlot(createGhostSlot(3, GHOST_SLOT_INPUT_SECOND_X, GHOST_SLOTS_Y));
         addSlot(new ActiveLinkerSlot(linkerContainer(), 0, linkerSlotX(), linkerSlotY()));
         addSlot(new ActiveGogglesInputSlot(gogglesContainer(), 0, gogglesInputSlotX(), gogglesInputSlotY()));
         addSlot(new ActiveGogglesOutputSlot(gogglesContainer(), 1, gogglesOutputSlotX(), gogglesOutputSlotY()));
+    }
+
+    // Let controller menus place their active ghost slots within their own artwork
+    protected SlotItemHandler createGhostSlot(int idx, int x, int y){
+        return new ActiveGhostSlot(ghostInventory, idx, x, y);
     }
 
     // Get the linker slot x

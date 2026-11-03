@@ -215,7 +215,9 @@ public final class DiagnosticTabletData {
     public enum RedstoneLinkControlMode {
         BUTTON("button"),
         TOGGLE("toggle"),
-        SLIDER("slider");
+        SLIDER("slider"),
+        MEDIA("media"),
+        CLOCK("clock");
 
         // Redstone link control mode id
         private final String id;
@@ -257,8 +259,8 @@ public final class DiagnosticTabletData {
             if (label.length() > 48) label = label.substring(0, 48);
             firstItem = firstItem == null ? EMPTY_FREQUENCY : firstItem;
             secondItem = secondItem == null ? EMPTY_FREQUENCY : secondItem;
-            firstColor = normalizeColor(firstColor);
-            secondColor = normalizeColor(secondColor);
+            firstColor = firstItem.equals(EMPTY_FREQUENCY) ? -1 : normalizeColor(firstColor);
+            secondColor = secondItem.equals(EMPTY_FREQUENCY) ? -1 : normalizeColor(secondColor);
             controlMode = controlMode == null ? RedstoneLinkControlMode.BUTTON : controlMode;
             strength = Math.max(0, Math.min(15, strength));
         }
@@ -300,7 +302,7 @@ public final class DiagnosticTabletData {
         // Get the output strength
         public int outputStrength() {
             return switch (controlMode) {
-                case BUTTON -> 0;
+                case BUTTON, MEDIA, CLOCK -> 0;
                 case TOGGLE -> active ? strength : 0;
                 case SLIDER -> strength;
             };

@@ -566,7 +566,8 @@ public final class AccDisplayGuiProjection {
         }
         BlockEntity blockEntity = SimulatedHelper.findBlockEntityIncludingSubLevels(
                 minecraft.level, hit.getBlockPos());
-        if (!(blockEntity instanceof AccDisplayBlockEntity clicked)) {
+        if (!(blockEntity instanceof AccDisplayBlockEntity clicked)
+                || hit.getDirection() != clicked.getBlockState().getValue(com.rieno.gadgetsandgizmos.content.AccDisplayBlock.FACING)) {
             return null;
         }
         AccDisplayBlockEntity root = clicked.networkRoot();

@@ -14,6 +14,13 @@ import com.rieno.gadgetsandgizmos.content.advanced.AdvancedHudInteractions;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAction;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionContext;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionHandler;
+<<<<<<< Updated upstream
+=======
+import com.rieno.gadgetsandgizmos.lib.tablet.TabletStorageApi;
+import com.rieno.gadgetsandgizmos.lib.scm.ShipPermission;
+import com.rieno.gadgetsandgizmos.lib.access.WorldAccessPolicy;
+import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
+>>>>>>> Stashed changes
 import com.rieno.gadgetsandgizmos.neoforge.network.DiagnosticTabletAppSnapshotPayload;
 import com.rieno.gadgetsandgizmos.neoforge.network.DiagnosticTabletRemoteOpenPayload;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
@@ -61,9 +68,16 @@ final class DiagnosticTabletRdpApp {
         if ("remove_controller".equals(action.actionId())) {
             DiagnosticTabletAppStorage.removeBinding(ctx.player().server, tabletId,
                     DiagnosticTabletData.appId("rdp"), val);
+            TabletStorageApi.storage().updateApp(tabletId, DiagnosticTabletData.appId("rdp"), data -> {
+                var colors = data.getCompound("DeviceColors").copy();
+                colors.remove(val);
+                data.put("DeviceColors", colors);
+                return data;
+            });
             sendSnapshot(ctx, snapshot(ctx));
             return quietSuccess();
         }
+        if("controller_color".equals(action.actionId())) return color(ctx, val);
         if ("rename_controller".equals(action.actionId())) {
             int separator = val.indexOf('|');
             if (separator <= 0 || !DiagnosticTabletAppStorage.renameBinding(
@@ -188,6 +202,31 @@ final class DiagnosticTabletRdpApp {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+    // Store colors only for devices already bound to this tablet
+    private static TabletActionHandler.Result color(TabletActionContext ctx, String val){
+        int separator = val.lastIndexOf('|');
+        String key = separator < 0 ? "" : val.substring(0, separator);
+        String hex = separator < 0 ? "" : val.substring(separator + 1);
+        var bindings = DiagnosticTabletAppStorage.bindings(ctx.player().server, ctx.sourceTabletId(), DiagnosticTabletData.appId("rdp"));
+        if(!hex.matches("[0-9a-fA-F]{6}") || bindings.stream().noneMatch(binding -> DiagnosticTabletAppStorage.key(binding).equals(key))){
+            var data = snapshot(ctx);
+            data.putString("Error", "Choose a valid color for a bound device");
+            sendSnapshot(ctx, data);
+            return failure("Choose a valid color for a bound device");
+        }
+        int color = Integer.parseInt(hex, 16);
+        var keys = bindings.stream().map(DiagnosticTabletAppStorage::key).collect(java.util.stream.Collectors.toSet());
+        TabletStorageApi.storage().updateApp(ctx.sourceTabletId(), DiagnosticTabletData.appId("rdp"), data -> {
+            var colors = data.getCompound("DeviceColors").copy();
+            for(String stored : java.util.Set.copyOf(colors.getAllKeys())) if(!keys.contains(stored)) colors.remove(stored);
+            colors.putInt(key, color);
+            data.put("DeviceColors", colors);
+            return data;
+        });
+        sendSnapshot(ctx, snapshot(ctx));
+        return quietSuccess();
+    }
+
     // Get the selected controller
     private static AdvancedContraptionControllerBlockEntity selectedController(
             TabletActionContext ctx, String requestedKey) {
@@ -221,6 +260,8 @@ final class DiagnosticTabletRdpApp {
         CompoundTag root = new CompoundTag();
         UUID tabletId = ctx.sourceTabletId();
         if (tabletId == null) return root;
+        CompoundTag appData = DiagnosticTabletAppStorage.data(ctx.player().server, tabletId, DiagnosticTabletData.appId("rdp"));
+        CompoundTag colors = appData.getCompound("DeviceColors");
         DiagnosticTabletData.Binding selected = DiagnosticTabletAppStorage.selectedBinding(
                 ctx.player().server, tabletId, DiagnosticTabletData.appId("rdp"));
         ListTag devices = new ListTag();
@@ -230,6 +271,7 @@ final class DiagnosticTabletRdpApp {
             String key = DiagnosticTabletAppStorage.key(binding);
             device.putString("Key", key);
             device.putString("Name", binding.label());
+            device.putInt("Color", colors.contains(key, Tag.TAG_INT) ? colors.getInt(key) & 0xFFFFFF : 0x303030);
             device.putString("Type", binding.type());
             device.putBoolean("Selected", selected != null
                     && DiagnosticTabletAppStorage.key(selected).equals(key));
@@ -237,11 +279,12 @@ final class DiagnosticTabletRdpApp {
                     binding.subLevelId(), binding.pos());
             device.putBoolean("Online", target instanceof AdvancedContraptionControllerBlockEntity
                     || isWirelessComputer(target));
+            device.putBoolean("GraphAvailable", target instanceof AdvancedContraptionControllerBlockEntity);
+            device.putBoolean("PlotAvailable", target instanceof AdvancedContraptionControllerBlockEntity);
             devices.add(device);
         }
         root.put("Devices", devices);
-        root.put("Settings", DiagnosticTabletAppStorage.data(ctx.player().server,
-                tabletId, DiagnosticTabletData.appId("rdp")).getCompound("Settings").copy());
+        root.put("Settings", appData.getCompound("Settings").copy());
         AdvancedContraptionControllerBlockEntity controller = selectedController(ctx, "");
         if (controller != null) root.merge(snapshot(controller));
         else root.merge(disconnectedSnapshot());

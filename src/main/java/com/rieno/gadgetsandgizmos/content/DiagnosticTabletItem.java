@@ -104,10 +104,16 @@ public class DiagnosticTabletItem extends BlockItem {
             DiagnosticTabletData.ensureTabletId(ctx.getItemInHand());
             current = DiagnosticTabletData.read(ctx.getItemInHand());
         }
+<<<<<<< Updated upstream
         if (!ctx.getLevel().isClientSide && current.tabletId() != null
                 && player instanceof ServerPlayer serverPlayer) {
             DiagnosticTabletDatabase.forServer(serverPlayer.server).importLegacy(current.tabletId(), current);
             current = current.withoutLegacyAppData();
+=======
+        if(com.rieno.gadgetsandgizmos.content.tablet.PaidTabletApps.MANIFEST.id().equals(current.app())
+                && current.mode() != TabletInteractionMode.STANDARD){
+            current = current.withMode(TabletInteractionMode.STANDARD, "");
+>>>>>>> Stashed changes
             DiagnosticTabletData.write(ctx.getItemInHand(), current);
         }
         if (current.mode() == TabletInteractionMode.STANDARD) {
@@ -307,6 +313,15 @@ public class DiagnosticTabletItem extends BlockItem {
     private static String encodeSelections(List<DiagnosticTabletData.Binding> selections) {
         return selections.stream().map(DiagnosticTabletItem::selectionValue)
                 .collect(java.util.stream.Collectors.joining(";"));
+    }
+
+    // Advance portable music only while the tablet is in the hotbar or offhand
+    @Override
+    public void inventoryTick(ItemStack stack, net.minecraft.world.level.Level level,
+                              net.minecraft.world.entity.Entity entity, int slot, boolean selected){
+        super.inventoryTick(stack, level, entity, slot, selected);
+        if(entity instanceof net.minecraft.server.level.ServerPlayer player
+                && (slot < 9 || player.getOffhandItem() == stack)) DiagnosticTabletMediaApp.tick(stack, player);
     }
 
     // Add the hover text

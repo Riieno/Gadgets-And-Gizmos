@@ -11,6 +11,7 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletBlock;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletData;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletItem;
+import com.rieno.gadgetsandgizmos.content.DiagnosticTabletSurface;
 import com.rieno.gadgetsandgizmos.content.ContraptionNetworkLinkerItem;
 import com.rieno.gadgetsandgizmos.neoforge.network.DiagnosticTabletActionPayload;
 import com.rieno.gadgetsandgizmos.registry.CTFeatureToggles;
@@ -156,9 +157,8 @@ public final class DiagnosticTabletClientInteraction {
         }
         DiagnosticTabletBlock.PlacedInteraction interaction =
                 DiagnosticTabletBlock.resolveInteraction(minecraft.level, hit);
-        return interaction != null && DiagnosticTabletBlock.isScreenHit(
-                interaction.tablet().getBlockState(), interaction.tablet().getBlockPos(),
-                interaction.hit());
+        return interaction != null && DiagnosticTabletSurface.projectScreen(
+                interaction.tablet(), interaction.hit(), minecraft.player) != null;
     }
 
     // Check if the main hand owns the interaction

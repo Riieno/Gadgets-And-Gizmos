@@ -11,11 +11,14 @@ package com.rieno.gadgetsandgizmos.content;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.simibubi.create.foundation.block.IBE;
+import com.simibubi.create.content.equipment.wrench.WrenchItem;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.storage.loot.LootParams;
 import net.minecraft.world.level.storage.loot.parameters.LootContextParams;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -24,8 +27,14 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Mirror;
+import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.StateDefinition;
+import net.minecraft.world.level.block.state.properties.EnumProperty;
+import net.minecraft.world.level.block.state.properties.DirectionProperty;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.HitResult;
@@ -42,6 +51,19 @@ public class DiagnosticTabletBlock extends CTDirectionalBlock implements IBE<Dia
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
+                                                           CONSTANTS
+    =======================================================================================================================
+
+    ------------------------------------------------------------##-----------------------------------------------------*/
+
+    public static final EnumProperty<DiagnosticTabletView> VIEW =
+            EnumProperty.create("view", DiagnosticTabletView.class);
+    public static final DirectionProperty HORIZONTAL_FACING =
+            DirectionProperty.create("horizontal_facing", Direction.Plane.HORIZONTAL);
+
+    /*--------------------------------------------------------##---------------------------------------------------------
+
+    =======================================================================================================================
                                                         PRELOAD / SETUP
     =======================================================================================================================
 
@@ -50,6 +72,8 @@ public class DiagnosticTabletBlock extends CTDirectionalBlock implements IBE<Dia
     // Initialize the diagnostic tablet block
     public DiagnosticTabletBlock(Properties properties) {
         super(properties);
+        registerDefaultState(defaultBlockState().setValue(VIEW, DiagnosticTabletView.FLAT)
+                .setValue(HORIZONTAL_FACING, Direction.NORTH));
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -63,7 +87,36 @@ public class DiagnosticTabletBlock extends CTDirectionalBlock implements IBE<Dia
     // Get the state for placement
     @Override
     public BlockState getStateForPlacement(BlockPlaceContext ctx) {
-        return defaultBlockState().setValue(FACING, ctx.getClickedFace());
+        Direction facing = ctx.getClickedFace();
+        Direction horizontal = facing.getAxis().isVertical() ? ctx.getHorizontalDirection().getOpposite() : facing;
+        return defaultBlockState().setValue(FACING, facing).setValue(HORIZONTAL_FACING, horizontal);
+    }
+
+    // Register the model view alongside the mounting face
+    @Override
+    protected void createBlockStateDefinition(StateDefinition.Builder<Block, BlockState> builder){
+        super.createBlockStateDefinition(builder);
+        builder.add(VIEW, HORIZONTAL_FACING);
+    }
+
+    // Rotate the mounting face and the floor or ceiling viewing direction together
+    @Override
+    public BlockState rotate(BlockState state, Rotation rotation){
+        return super.rotate(state, rotation).setValue(HORIZONTAL_FACING,
+                rotation.rotate(state.getValue(HORIZONTAL_FACING)));
+    }
+
+    // Mirror the viewing direction even when the mounting face is vertical
+    @Override
+    public BlockState mirror(BlockState state, Mirror mirror){
+        return state.setValue(FACING, mirror.mirror(state.getValue(FACING)))
+                .setValue(HORIZONTAL_FACING, mirror.mirror(state.getValue(HORIZONTAL_FACING)));
+    }
+
+    // Let Create update the model without rotating the mounting face
+    @Override
+    public BlockState getRotatedBlockState(BlockState state, Direction targetedFace){
+        return state.setValue(VIEW, state.getValue(VIEW).next());
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -81,6 +134,15 @@ public class DiagnosticTabletBlock extends CTDirectionalBlock implements IBE<Dia
         return interactPlacedTablet(level, pos, player, hit);
     }
 
+    // Let the wrench handle cycling and sneak pickup before screen interaction
+    @Override
+    protected ItemInteractionResult useItemOn(ItemStack stack, BlockState state, Level level,
+                                              BlockPos pos, Player player, InteractionHand hand,
+                                              BlockHitResult hit){
+        if(stack.getItem() instanceof WrenchItem) return ItemInteractionResult.SKIP_DEFAULT_BLOCK_INTERACTION;
+        return super.useItemOn(stack, state, level, pos, player, hand, hit);
+    }
+
     // Handle the placed tablet
     public InteractionResult interactPlacedTablet(Level level, BlockPos pos,
                                                    Player player, BlockHitResult hit) {
@@ -96,14 +158,12 @@ public class DiagnosticTabletBlock extends CTDirectionalBlock implements IBE<Dia
             return InteractionResult.PASS;
         }
         DiagnosticTabletBlockEntity tablet = interaction.tablet();
-        BlockState state = tablet.getBlockState();
-        BlockPos pos = tablet.getBlockPos();
         BlockHitResult hit = interaction.hit();
         if (player.isShiftKeyDown()) {
             if (level.isClientSide) DiagnosticTabletItem.openClientScreen(tablet);
             return InteractionResult.sidedSuccess(level.isClientSide);
         }
-        if (!isScreenHit(state, pos, hit)) {
+        if(DiagnosticTabletSurface.projectScreen(tablet, hit, player) == null){
             return InteractionResult.PASS;
         }
         if (level.isClientSide) {
@@ -147,9 +207,10 @@ public class DiagnosticTabletBlock extends CTDirectionalBlock implements IBE<Dia
 
     // Check if this is screen hit
     public static boolean isScreenHit(BlockState state, BlockPos pos, BlockHitResult hit) {
-        Direction facing = state.getValue(FACING);
-        if (hit == null || hit.getDirection() != facing) return false;
-        return DiagnosticTabletSurface.screen(facing).project(
+        if(hit == null) return false;
+        var surface = DiagnosticTabletSurface.screen(state);
+        if(surface.normal().dot(Vec3.atLowerCornerOf(hit.getDirection().getNormal())) <= 0.0D) return false;
+        return surface.project(
                 hit.getLocation().subtract(pos.getX(), pos.getY(), pos.getZ())) != null;
     }
 
@@ -157,7 +218,7 @@ public class DiagnosticTabletBlock extends CTDirectionalBlock implements IBE<Dia
     @Override
     protected VoxelShape getShape(BlockState state, BlockGetter level, BlockPos pos,
                                   CollisionContext ctx) {
-        return DiagnosticTabletSurface.shape(state.getValue(FACING));
+        return DiagnosticTabletSurface.shape(state);
     }
 
     // Handle block placement
@@ -167,6 +228,7 @@ public class DiagnosticTabletBlock extends CTDirectionalBlock implements IBE<Dia
         super.setPlacedBy(level, pos, state, placer, stack);
         if (level.getBlockEntity(pos) instanceof DiagnosticTabletBlockEntity tablet) {
             tablet.setState(DiagnosticTabletData.read(stack));
+            tablet.setPlayback(DiagnosticTabletMediaApp.readPlayback(stack));
         }
     }
 
@@ -177,6 +239,9 @@ public class DiagnosticTabletBlock extends CTDirectionalBlock implements IBE<Dia
         BlockEntity blockEntity = builder.getOptionalParameter(LootContextParams.BLOCK_ENTITY);
         if (blockEntity instanceof DiagnosticTabletBlockEntity tablet) {
             copyTabletState(drops, tablet.state());
+            for(ItemStack drop : drops){
+                if(drop.getItem() instanceof DiagnosticTabletItem) DiagnosticTabletMediaApp.writePlayback(drop, tablet.playback());
+            }
         }
         return drops;
     }
@@ -189,6 +254,7 @@ public class DiagnosticTabletBlock extends CTDirectionalBlock implements IBE<Dia
         if (!stack.isEmpty()
                 && level.getBlockEntity(pos) instanceof DiagnosticTabletBlockEntity tablet) {
             DiagnosticTabletData.write(stack, tablet.state());
+            DiagnosticTabletMediaApp.writePlayback(stack, tablet.playback());
         }
         return stack;
     }

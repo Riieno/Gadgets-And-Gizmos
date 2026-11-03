@@ -11,6 +11,10 @@ package com.rieno.gadgetsandgizmos.neoforge.client;
 import com.rieno.gadgetsandgizmos.content.ShipDockBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ThrusterBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ThrusterMenu;
+<<<<<<< Updated upstream
+=======
+import com.rieno.gadgetsandgizmos.content.WorkerInventoryMenu;
+>>>>>>> Stashed changes
 import com.rieno.gadgetsandgizmos.content.DoubleButtonBlockEntity;
 import com.rieno.gadgetsandgizmos.content.GyroscopeLinkBlockEntity;
 import com.rieno.gadgetsandgizmos.content.GyroscopeLinkMenu;
@@ -133,6 +137,12 @@ public final class CTClientScreens {
         if (CTMenuTypes.VECTOR_BEARING != null) evt.register(CTMenuTypes.VECTOR_BEARING.get(), VectorBearingScreen::new);
         if (CTMenuTypes.AILERON_BEARING != null) evt.register(CTMenuTypes.AILERON_BEARING.get(), AileronBearingScreen::new);
         if (CTMenuTypes.POWERED_ZIPLINE != null) evt.register(CTMenuTypes.POWERED_ZIPLINE.get(), PoweredZiplineScreen::new);
+<<<<<<< Updated upstream
+=======
+        if (CTMenuTypes.WORKER_INVENTORY != null) evt.register(CTMenuTypes.WORKER_INVENTORY.get(), WorkerInventoryScreen::new);
+        evt.register(CTMenuTypes.SMART_CONTAINER.get(), SmartContainerScreen::new);
+        evt.register(CTMenuTypes.THRUSTER_DYE.get(), ThrusterDyeScreen::new);
+>>>>>>> Stashed changes
         evt.register(CTMenuTypes.NAVIGATION_TABLE.get(), NavigationTableScreen::new);
     }
 

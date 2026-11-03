@@ -226,7 +226,11 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
             }
             if (level != null && !level.isClientSide) {
                 ContraptionNetworkLinkerData.ensureStoredIdentity(getStackInSlot(0));
+<<<<<<< Updated upstream
                 ContraptionNetworkLinkerData.migrateLegacyStorage(getStackInSlot(0));
+=======
+                com.rieno.gadgetsandgizmos.lib.inventory.ContainerStorageNetworks.invalidate();
+>>>>>>> Stashed changes
                 syncFromInsertedLinker();
                 if (!pendingAssemblyBindingRemap) {
                     replayCurrentOutputs();
@@ -3311,7 +3315,7 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
 
         ItemStack linker = getStoredLinker();
         if (ContraptionNetworkLinkerData.hasEmbeddedSchematicRoot(linker)
-                && !ContraptionNetworkLinkerData.migrateLegacyStorage(linker)) {
+                && !ContraptionNetworkLinkerData.persistSchematicCopy(linker)) {
             return false;
         }
         if (!finalizeAdditionalControllerSchematicImport(
@@ -3726,7 +3730,6 @@ private final ItemStackHandler linkerSlot = new ItemStackHandler(1) {
     public AbstractContainerMenu createMenu(int containerId, Inventory playerInventory, Player player) {
         if (player instanceof ServerPlayer serverPlayer) {
             ItemStack linker = getStoredLinker();
-            ContraptionNetworkLinkerData.migrateLegacyStorage(linker);
             ContraptionNetworkLinkerSnapshotPayload.sendIfChanged(serverPlayer, linker);
         }
         return new AnalogueContraptionControllerMenu(containerId, playerInventory, this);

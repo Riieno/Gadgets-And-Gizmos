@@ -55,6 +55,10 @@ public final class AnalogueContraptionControllerClientHandler {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+    private static final Map<AdvancedContraptionControllerBlockEntity, Long> RUNTIME_BASELINE_REQUESTS = new WeakHashMap<>();
+    private static final Set<AdvancedContraptionControllerBlockEntity> RUNTIME_BASELINE_PENDING =
+            java.util.Collections.newSetFromMap(new WeakHashMap<>());
+
     private static final String STEP_DOWN_KEY_SUFFIX = "#step_down";
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -96,10 +100,6 @@ private static AnalogueContraptionControllerBlockEntity activePortableController
     private static Set<Integer> suppressedKeyCodes = Set.of();
     // Tracks whether gate use input until release is set
     private static boolean gateUseInputUntilRelease;
-    // Last sent mouse x
-    private static double lastSentMouseX = Double.NaN;
-    // Last sent mouse y
-    private static double lastSentMouseY = Double.NaN;
     // Last hardware controller values
     private static Map<String, Double> lastHardwareControllerValues = Map.of();
     private static final Map<AdvancedContraptionControllerBlockEntity,
@@ -150,6 +150,63 @@ private static AnalogueContraptionControllerBlockEntity activePortableController
 
     // Apply the advanced runtime
     public static void applyAdvancedRuntime(AdvancedControllerRuntimePayload payload) {
+<<<<<<< Updated upstream
+=======
+        AdvancedContraptionControllerBlockEntity controller = runtimeController(payload);
+        if(controller == null) return;
+        applyCachedAdvancedGraphSnapshot(controller, payload.pos(), payload.subLevelId());
+        controller.applyClientGraphRuntime(payload.gogglesTrackerPairs(), payload.liveInputs(),
+                payload.liveOutputs(), payload.executionPulses(), payload.variables());
+        controller.applyClientGogglesTrackerItems(payload.gogglesTrackerItems());
+    }
+
+    // Apply ordered HUD changes only to a controller with the matching baseline
+    public static void applyAdvancedRuntimeDelta(
+            com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeDeltaPayload payload){
+        AdvancedContraptionControllerBlockEntity controller = runtimeController(payload.update());
+        if(controller == null) return;
+        applyCachedAdvancedGraphSnapshot(controller, payload.update().pos(), payload.update().subLevelId());
+        controller.applyClientGraphRuntimeDelta(payload);
+    }
+
+    // Resolve the same controller for full updates and incremental HUD updates
+    public static void ensureRuntimeBaseline(AdvancedContraptionControllerBlockEntity controller, int containerId){
+        if(controller == null || controller.hasClientRuntimeStream() && !RUNTIME_BASELINE_PENDING.contains(controller)) return;
+        requestRuntimeBaseline(controller, com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget.of(
+                controller.getBlockPos(), SimulatedHelper.getContainingSubLevelId(controller)), containerId);
+    }
+
+    private static void requestRuntimeBaseline(AdvancedContraptionControllerBlockEntity controller,
+            com.rieno.gadgetsandgizmos.lib.menuconfig.MenuConfigTarget target, int containerId){
+        Minecraft minecraft = Minecraft.getInstance();
+        if(minecraft.level == null || minecraft.getConnection() == null
+                || !net.neoforged.neoforge.network.registration.NetworkRegistry.hasChannel(minecraft.getConnection(),
+                com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeResyncPayload.TYPE.id())) return;
+        RUNTIME_BASELINE_PENDING.add(controller);
+        long now = minecraft.level.getGameTime();
+        Long prev = RUNTIME_BASELINE_REQUESTS.get(controller);
+        if(prev != null && now >= prev && now - prev < 20) return;
+        RUNTIME_BASELINE_REQUESTS.put(controller, now);
+        net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+                new com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeResyncPayload(target, containerId));
+    }
+
+    public static void applyAdvancedRuntimeEvents(
+            com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeEventsPayload payload){
+        var pairs = com.rieno.gadgetsandgizmos.lib.nbt.UuidStringTags.read(payload.pairs());
+        var address = new AdvancedControllerRuntimePayload(payload.target().pos(), payload.target().subLevelId(),
+                payload.containerId(), pairs, Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
+        AdvancedContraptionControllerBlockEntity controller = runtimeController(address);
+        if(controller == null) return;
+        applyCachedAdvancedGraphSnapshot(controller, address.pos(), address.subLevelId());
+        if(!controller.applyClientGraphRuntimeEvents(payload)){
+            requestRuntimeBaseline(controller, payload.target(), payload.containerId());
+        }else if(payload.changes().getBoolean("Reset")) RUNTIME_BASELINE_PENDING.remove(controller);
+    }
+
+    // Resolve the same controller for full updates and incremental HUD updates
+    private static AdvancedContraptionControllerBlockEntity runtimeController(AdvancedControllerRuntimePayload payload){
+>>>>>>> Stashed changes
         Minecraft minecraft = Minecraft.getInstance();
         if (payload == null || minecraft.level == null || minecraft.player == null) {
             return;
@@ -249,6 +306,30 @@ private static AnalogueContraptionControllerBlockEntity activePortableController
         startBlockInteractMode(controller, remote, controller.getBlockPos(), SimulatedHelper.getContainingSubLevelId(controller));
     }
 
+<<<<<<< Updated upstream
+=======
+    // Retain the server target identity when the client controller is detached
+    private static void startBlockInteractMode(AnalogueContraptionControllerBlockEntity controller,
+                                               boolean remote, BlockPos controllerPos, UUID subLevelId){
+        stopInteractMode(false);
+        activeControllerPos = controllerPos.immutable();
+        activeControllerSubLevelId = subLevelId;
+        activeController = controller;
+        activeControllerRemote = remote;
+        refreshSuppressedKeyCodes(controller);
+        armUseInputGate();
+        releaseSuppressedMappings();
+        if (controller instanceof AdvancedContraptionControllerBlockEntity) {
+            PacketDistributor.sendToServer(new AdvancedControllerPhysicalInteractionPayload(
+                    activeControllerPos, activeControllerSubLevelId, true, remote, "use"));
+        }
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player != null) {
+            player.displayClientMessage(Component.literal("Controller interact mode enabled"), true);
+        }
+    }
+
+>>>>>>> Stashed changes
     // Toggle portable controller interaction mode
     public static void togglePortableInteractMode(boolean advanced, InteractionHand hand) {
         if (activePortable && activePortableAdvanced == advanced && activePortableHand == hand) {
@@ -271,7 +352,6 @@ private static AnalogueContraptionControllerBlockEntity activePortableController
         activePortableAdvanced = advanced;
         activePortableHand = hand;
         activePortableController = controller;
-        resetMouseSendState();
         PacketDistributor.sendToServer(new PortableContraptionControllerModePayload(hand, advanced, true));
         refreshSuppressedKeyCodes(controller);
         armUseInputGate();
@@ -303,7 +383,6 @@ private static AnalogueContraptionControllerBlockEntity activePortableController
         activeLecternPos = pos.immutable();
         activeLecternAdvanced = advanced;
         activeLecternController = controller;
-        resetMouseSendState();
         PacketDistributor.sendToServer(new LecternPortableContraptionControllerModePayload(
                 activeLecternPos, activeLecternAdvanced, true));
         refreshSuppressedKeyCodes(controller);
@@ -547,32 +626,46 @@ private static AnalogueContraptionControllerBlockEntity activePortableController
         lastHardwareControllerSendTick = Long.MIN_VALUE;
     }
 
+<<<<<<< Updated upstream
+=======
+    // Ignore delayed capture updates for a different controller or interaction mode
+    public static void applyMouseCapture(AdvancedControllerMouseCapturePayload payload){
+        boolean matches = switch(payload.target()){
+            case BLOCK -> activeControllerPos != null && activeControllerPos.equals(payload.pos())
+                    && java.util.Objects.equals(activeControllerSubLevelId, payload.subLevelId());
+            case PORTABLE -> activePortable && activePortableHand == payload.hand();
+            case LECTERN -> activeLecternPos != null && activeLecternPos.equals(payload.pos());
+        };
+        var controller = matches ? activeAdvCtrl() : null;
+        if(controller != null) controller.applyClientMouseCaptureRequests(payload.requests(), payload.axisTimeouts());
+    }
+
+>>>>>>> Stashed changes
     // Handle the mouse movement
     public static boolean onMouseMove(double yaw, double pitch) {
         boolean nativeMouse = net.neoforged.fml.ModList.get().isLoaded("create_flight_control")
                 && com.rieno.gadgetsandgizmos.compat.flightcontrol.client.FlightControlClient.activeMouse() != null;
         AdvancedContraptionControllerBlockEntity controller = activeAdvCtrl();
         if (controller == null) return false;
+<<<<<<< Updated upstream
         Set<String> inputs = controller.getConfiguredMouseInputs();
+=======
+        controller.resetStaleMouseAxes();
+        Set<String> inputs = controller.getCapturedMouseInputs();
+>>>>>>> Stashed changes
         boolean captureX = inputs.contains("mouse_x");
         boolean captureY = inputs.contains("mouse_y");
         if (!captureX && !captureY) return false;
 
-        if (captureX) {
+        if (captureX && Double.isFinite(yaw) && yaw != 0) {
             double val = Mth.clamp(controller.getMouseInputValue("mouse_x") + yaw / 110.0D, -1.0D, 1.0D);
             controller.applyClientMouseInput("mouse_x", val, Math.abs(val) > 0.0001D);
-            if (Double.isNaN(lastSentMouseX) || Math.abs(val - lastSentMouseX) > 0.0001D) {
-                sendMousePayload("mouse_x", val, Math.abs(val) > 0.0001D);
-                lastSentMouseX = val;
-            }
+            sendMousePayload("mouse_x", val, Math.abs(val) > 0.0001D);
         }
-        if (captureY) {
+        if (captureY && Double.isFinite(pitch) && pitch != 0) {
             double val = Mth.clamp(controller.getMouseInputValue("mouse_y") - pitch / 110.0D, -1.0D, 1.0D);
             controller.applyClientMouseInput("mouse_y", val, Math.abs(val) > 0.0001D);
-            if (Double.isNaN(lastSentMouseY) || Math.abs(val - lastSentMouseY) > 0.0001D) {
-                sendMousePayload("mouse_y", val, Math.abs(val) > 0.0001D);
-                lastSentMouseY = val;
-            }
+            sendMousePayload("mouse_y", val, Math.abs(val) > 0.0001D);
         }
         return !nativeMouse;
     }
@@ -677,7 +770,6 @@ private static AnalogueContraptionControllerBlockEntity activePortableController
         activeLecternController = null;
         suppressedKeyCodes = Set.of();
         gateUseInputUntilRelease = false;
-        resetMouseSendState();
         lastHardwareControllerValues = Map.of();
         lastHardwareControllerSendTick = Long.MIN_VALUE;
 
@@ -791,10 +883,17 @@ private static AnalogueContraptionControllerBlockEntity activePortableController
         return controller instanceof AdvancedContraptionControllerBlockEntity advanced ? advanced : null;
     }
 
+<<<<<<< Updated upstream
     // Reset the mouse send state
     private static void resetMouseSendState() {
         lastSentMouseX = Double.NaN;
         lastSentMouseY = Double.NaN;
+=======
+    // Expose the physical ACC session to optional native controller clients
+    public static AdvancedContraptionControllerBlockEntity physicalAdvancedController(){
+        return activeControllerPos != null && activeController instanceof AdvancedContraptionControllerBlockEntity controller
+                ? controller : null;
+>>>>>>> Stashed changes
     }
 
     // Arm the use input gate

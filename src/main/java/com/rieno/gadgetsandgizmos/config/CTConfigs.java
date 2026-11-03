@@ -82,6 +82,12 @@ public final class CTConfigs {
     private CTConfigs() {
     }
 
+    // Read the live server setting and retain the enabled default before configuration is loaded
+    public static boolean commandNodesEnabled(){
+        try{ return SERVER.enableCommandNodes.get(); }
+        catch(IllegalStateException err){ return true; }
+    }
+
     // Register the CT configs
     public static void register(ModContainer modContainer) {
         modContainer.registerConfig(ModConfig.Type.CLIENT, CLIENT_SPEC, CreateThrusters.MOD_ID + "-client.toml");
@@ -129,9 +135,11 @@ public final class CTConfigs {
         builder.push(group);
         for (Map.Entry<String, Boolean> entry : defaults.entrySet()) {
             String featureLabel = CTFeatureToggles.featureLabel(entry.getKey());
+            String key = "diagnostic_tablet".equals(entry.getKey())
+                    ? CTFeatureToggles.DIAGNOSTIC_TABLET_CONFIG_KEY : entry.getKey();
             values.put(entry.getKey(), builder
                     .comment("Allow " + featureLabel + " on this server. Existing content is not removed automatically.")
-                    .define(entry.getKey(), entry.getValue()));
+                    .define(key, entry.getValue()));
         }
         builder.pop();
         return Map.copyOf(values);
@@ -387,8 +395,6 @@ public final class CTConfigs {
         public final ModConfigSpec.BooleanValue enableScmIk;
         // Allow Flight Control graph nodes without their dedicated blocks
         public final ModConfigSpec.BooleanValue easyFlightControlIntegration;
-        // Enable smart tablet
-        public final ModConfigSpec.BooleanValue enableDiagnosticTablet;
         // App purchase Ownership Scope
         public final ModConfigSpec.EnumValue<TabletAppPurchaseScope> appPurchaseScope;
         // Initialize the common
@@ -565,12 +571,6 @@ public final class CTConfigs {
                     .define("enableIk", false);
             builder.pop();
 
-            builder.comment("Smart Tablet availability").push("diagnostic_tablet");
-            enableDiagnosticTablet = builder
-                    .comment("Legacy startup fallback for the Smart Tablet. The server.features.blocks.diagnostic_tablet setting takes precedence.")
-                    .define("enabled", false); // Disable the Tablet by default in release
-            builder.pop();
-
             builder.comment("App Ownership and persistance").push("diagnostic_tablet");
             appPurchaseScope = builder
                     .comment("Who owns the paid apps, PLAYER is shared across tablets, DEVICE is not.")
@@ -581,6 +581,13 @@ public final class CTConfigs {
 
     // Keep world rules and feature gates on the server
     public static final class Server {
+<<<<<<< Updated upstream
+=======
+        // Gate saved command execution and new command instances on this server
+        public final ModConfigSpec.BooleanValue enableCommandNodes;
+        // Hide buried ores in server-generated world hologram data
+        public final ModConfigSpec.BooleanValue worldHologramObfuscateOres;
+>>>>>>> Stashed changes
         // Enable thruster particles
         public final ModConfigSpec.BooleanValue enableThrusterParticles;
         // Thruster particle intensity
@@ -626,7 +633,10 @@ public final class CTConfigs {
             itemFeatures = defineFeatureGroup(builder, "items", CTFeatureToggles.itemDefaults());
             entityFeatures = defineFeatureGroup(builder, "entities", CTFeatureToggles.entityDefaults());
             builder.pop();
-            builder.comment("Advanced Contraption Controller chat delivery").push("advanced_controller");
+            builder.comment("Advanced Contraption Controller settings").push("advanced_controller");
+            enableCommandNodes = builder
+                    .comment("Allow Command nodes to execute and new Command nodes to be created. Disabled nodes remain saved but do not execute or appear in node libraries.")
+                    .define("enableCommandNodes", true);
             allowNearbyChatBroadcast = builder
                     .comment("Allow Send Chat Message nodes to broadcast nearby: the same sub-level, or a centered 3x3 chunk area in the main world. Private messages remain available when disabled. The legacy config key is retained so existing opt-outs keep working.")
                     .define("allowGlobalChatBroadcast", true);

@@ -14,10 +14,19 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexSorting;
 import com.rieno.gadgetsandgizmos.CreateThrusters;
+<<<<<<< Updated upstream
 import com.rieno.gadgetsandgizmos.content.CTDirectionalBlock;
+=======
+import com.rieno.gadgetsandgizmos.lib.client.render.FramebufferGuiRenderer;
+import com.rieno.gadgetsandgizmos.lib.client.render.RenderSurfaceVisibility;
+import com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRenderer;
+import com.rieno.gadgetsandgizmos.lib.client.view.ViewSceneRequests;
+import com.rieno.gadgetsandgizmos.lib.display.DisplayFrameDemand;
+>>>>>>> Stashed changes
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletBlockEntity;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletData;
 import com.rieno.gadgetsandgizmos.content.DiagnosticTabletSurface;
+import com.rieno.gadgetsandgizmos.lib.geometry.PlanarSurface;
 import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -89,6 +98,7 @@ public final class DiagnosticTabletGuiProjection {
         Minecraft minecraft = Minecraft.getInstance();
         if (tablet == null || minecraft.player == null || minecraft.level == null) return false;
         Session session = BLOCK_SESSIONS.computeIfAbsent(tablet, ignored -> new Session());
+<<<<<<< Updated upstream
         int fingerprint = DiagnosticTabletData.toTag(tablet.state()).toString().hashCode();
         if (!session.prepare(() -> DiagnosticTabletScreen.projectionBlock(tablet),
                 fingerprint, tablet)) return false;
@@ -96,6 +106,53 @@ public final class DiagnosticTabletGuiProjection {
         return draw(session, DiagnosticTabletSurface.screen(facing), false, poseStack, buffers);
     }
 
+=======
+        PlanarSurface surface = DiagnosticTabletSurface.screen(tablet.getBlockState());
+        if(session.lastFrame != 0L && !session.visibility.isVisible()){
+            return draw(session, surface, false, poseStack, buffers);
+        }
+        int fingerprint = DiagnosticTabletData.toTag(tablet.state()).toString().hashCode();
+        if (!session.prepare(() -> DiagnosticTabletScreen.projectionBlock(tablet),
+                fingerprint, tablet)) return false;
+        return draw(session, surface, false, poseStack, buffers);
+    }
+
+    // Project the dedicated manifest onto a partial attached to a smart multiblock
+    public static boolean renderContainer(net.minecraft.world.level.block.entity.BlockEntity target,
+            PlanarSurface surface, PoseStack poses, MultiBufferSource buffers){
+        return renderContainer(target, surface, poses, buffers, true);
+    }
+
+    public static boolean renderContainer(net.minecraft.world.level.block.entity.BlockEntity target,
+            PlanarSurface surface, PoseStack poses, MultiBufferSource buffers, boolean live){
+        if(HologramRenderScope.isActive()) return false;
+        Session session = CONTAINER_SESSIONS.get(target);
+        if(ViewSceneRenderer.isCapturing() || !live){
+            if(session != null && session.projection != null && session.projection.isReady()){
+                if(!ViewSceneRenderer.isCapturing()) session.demand.request(frame, false);
+                return draw(session, surface, false, poses, buffers);
+            }
+            return drawContainerPreview(surface, poses, buffers);
+        }
+        session = containerSession(target);
+        session.demand.request(frame, true);
+        if(session.lastFrame != 0L && !session.visibility.isVisible()) return draw(session, surface, false, poses, buffers);
+        if(!session.prepare(() -> DiagnosticTabletScreen.containerScreen(target, true), com.rieno.gadgetsandgizmos.content.SmartContainerTablets.tab(target).hashCode(), target)) return false;
+        return draw(session, surface, false, poses, buffers);
+    }
+
+    public static boolean interactContainer(net.minecraft.world.level.block.entity.BlockEntity target, double x, double y){
+        Session session = containerSession(target);
+        session.demand.request(frame, true);
+        if(!session.prepare(() -> DiagnosticTabletScreen.containerScreen(target, true), com.rieno.gadgetsandgizmos.content.SmartContainerTablets.tab(target).hashCode(), target)) return false;
+        session.lastUse = Util.getMillis();
+        boolean handled = session.screen.mouseClicked(x * DiagnosticTabletScreen.projectionWidth(),
+                y * DiagnosticTabletScreen.projectionHeight(), 0);
+        if(handled) session.lastFrame = 0L;
+        return handled;
+    }
+
+>>>>>>> Stashed changes
     // Draw the ACC display
     public static boolean renderAccDisplay(DiagnosticTabletBlockEntity tablet, int width, int height,
                                            float partialTick, PoseStack poseStack,
@@ -158,11 +215,7 @@ public final class DiagnosticTabletGuiProjection {
                                         BlockHitResult hit, int mouseButton) {
         Minecraft minecraft = Minecraft.getInstance();
         if (tablet == null || hit == null || minecraft.player == null) return false;
-        Direction facing = tablet.getBlockState().getValue(CTDirectionalBlock.FACING);
-        if (hit.getDirection() != facing) return false;
-        DiagnosticTabletSurface.Point point = DiagnosticTabletSurface.screen(facing).project(
-                hit.getLocation().subtract(tablet.getBlockPos().getX(),
-                        tablet.getBlockPos().getY(), tablet.getBlockPos().getZ()));
+        PlanarSurface.Point point = DiagnosticTabletSurface.projectScreen(tablet, hit, minecraft.player);
         if (point == null) return false;
 
         Session session = BLOCK_SESSIONS.computeIfAbsent(tablet, ignored -> new Session());
@@ -229,7 +282,7 @@ public final class DiagnosticTabletGuiProjection {
     }
 
     // Draw the diagnostic tablet gui projection
-    private static boolean draw(Session session, DiagnosticTabletSurface.Surface surface,
+    private static boolean draw(Session session, PlanarSurface surface,
                                 boolean itemCoordinates, PoseStack poseStack,
                                 MultiBufferSource buffers) {
         long now = Util.getMillis();
@@ -257,6 +310,24 @@ public final class DiagnosticTabletGuiProjection {
                 .setColor(0xFFFFFFFF).setUv(u, v).setLight(0x00F000F0);
     }
 
+<<<<<<< Updated upstream
+=======
+    // A never-opened distant tablet uses a shared image without allocating a screen or framebuffer
+    private static boolean drawContainerPreview(PlanarSurface surface, PoseStack poses, MultiBufferSource buffers){
+        var target = buffers.getBuffer(RenderType.textPolygonOffset(CONTAINER_PREVIEW));
+        var matrix = poses.last().pose();
+        vertex(target, matrix, surface.topLeft(), 0, 1);
+        vertex(target, matrix, surface.bottomLeft(), 0, 0);
+        vertex(target, matrix, surface.bottomRight(), 1, 0);
+        vertex(target, matrix, surface.topRight(), 1, 1);
+        return true;
+    }
+
+    private static Session containerSession(net.minecraft.world.level.block.entity.BlockEntity target){
+        return CONTAINER_SESSIONS.computeIfAbsent(target, ignored -> { var session = new Session(); session.container = true; return session; });
+    }
+
+>>>>>>> Stashed changes
     // Purge the diagnostic tablet gui projection
     private static void purge(long now) {
         purge(BLOCK_SESSIONS, now);

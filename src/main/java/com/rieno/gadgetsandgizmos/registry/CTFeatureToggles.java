@@ -36,6 +36,7 @@ public final class CTFeatureToggles {
 
     private static final String SERVER_CONFIG_FILE = CreateThrusters.MOD_ID + "-server.toml";
     private static final String COMMON_CONFIG_FILE = CreateThrusters.MOD_ID + "-common.toml";
+    public static final String DIAGNOSTIC_TABLET_CONFIG_KEY = "smart_tablet";
     private static final Pattern BOOLEAN_ENTRY = Pattern.compile("^\\s*([A-Za-z0-9_]+)\\s*=\\s*(true|false)\\s*(?:#.*)?$",
             Pattern.CASE_INSENSITIVE);
     private static final Pattern SECTION = Pattern.compile("^\\s*\\[([^]]+)]\\s*(?:#.*)?$");
@@ -119,7 +120,7 @@ public final class CTFeatureToggles {
         define(blocks, "universal_display_adapter", true);// Disable ACC Displays adaptor in Release
         define(blocks, "ship_dock", true);
         define(blocks, "advanced_navigation_table", true);
-        define(blocks, "diagnostic_tablet", false); // Disable Smart Tablet in Release
+        define(blocks, "diagnostic_tablet", true);
         define(blocks, "shipping_manifest", true);
         define(blocks, "alternator", true);
         define(blocks, "claw", true);
@@ -353,6 +354,7 @@ public final class CTFeatureToggles {
         return switch (normalized) {
             case ACC_DISPLAY_FEATURE -> "ACC Displays";
             case MUSIC_DISCS_FEATURE -> "Music Discs";
+            case "diagnostic_tablet" -> "Smart Tablet";
             case "player_mannequin" -> "Supporter Mannequins";
             default -> normalized.replace('_', ' ');
         };
@@ -419,7 +421,6 @@ public final class CTFeatureToggles {
         Path configDirectory = FMLPaths.CONFIGDIR.get();
 
         readFeatureConfig(configDirectory.resolve(COMMON_CONFIG_FILE), blocks, items, entities);
-        readDiagnosticTabletConfig(configDirectory.resolve(COMMON_CONFIG_FILE), blocks);
         readFeatureConfig(configDirectory.resolve(SERVER_CONFIG_FILE), blocks, items, entities);
         return new StartupFeatureValues(blocks, items, entities);
     }
@@ -450,6 +451,8 @@ public final class CTFeatureToggles {
                 boolean val = Boolean.parseBoolean(entryMatcher.group(2));
                 String key = normalize(entryMatcher.group(1));
                 if (section.endsWith(".features.blocks")) {
+                    if("diagnostic_tablet".equals(key)) continue;
+                    if(DIAGNOSTIC_TABLET_CONFIG_KEY.equals(key)) key = "diagnostic_tablet";
                     setKnownValue(blocks, key, val);
                 } else if (section.endsWith(".features.items")) {
                     setKnownValue(items, key, val);
@@ -461,6 +464,7 @@ public final class CTFeatureToggles {
         }
     }
 
+<<<<<<< Updated upstream
     // Read the diagnostic tablet config
     private static void readDiagnosticTabletConfig(Path path,
                                                    Map<String, Boolean> blocks,
@@ -491,6 +495,8 @@ public final class CTFeatureToggles {
         }
     }
 
+=======
+>>>>>>> Stashed changes
     // Set the known value
     private static void setKnownValue(Map<String, Boolean> values, String key, boolean val) {
         if (values.containsKey(key)) {
@@ -503,6 +509,7 @@ public final class CTFeatureToggles {
                                         Map<String, Boolean> items,
                                         Map<String, Boolean> entities) {
     }
+<<<<<<< Updated upstream
 
 
     // Read the diagnostic tablet config
@@ -532,4 +539,6 @@ public final class CTFeatureToggles {
         } catch (IOException ignored) {
         }
     }
+=======
+>>>>>>> Stashed changes
 }

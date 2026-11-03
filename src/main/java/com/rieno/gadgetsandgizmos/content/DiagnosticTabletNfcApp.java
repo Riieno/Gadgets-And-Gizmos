@@ -22,6 +22,7 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.nbt.NbtUtils;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -104,7 +105,7 @@ final class DiagnosticTabletNfcApp {
                 BlockPos support = placed.getBlockPos().relative(facing.getOpposite());
                 BlockEntity blockEntity = placed.getLevel().getBlockEntity(support);
                 return new Target(placed.getLevel(), placed.getLevel().getBlockState(support),
-                        blockEntity, support);
+                        blockEntity, support, ctx.sourceSubLevelId());
             }
         }
         UUID tabletId = ctx.sourceTabletId();
@@ -120,7 +121,7 @@ final class DiagnosticTabletNfcApp {
         BlockState state = targetLevel.getBlockState(binding.pos());
         if (state.isAir()) return null;
         BlockEntity blockEntity = targetLevel.getBlockEntity(binding.pos());
-        return new Target(targetLevel, state, blockEntity, binding.pos());
+        return new Target(targetLevel, state, blockEntity, binding.pos(), binding.subLevelId());
     }
 
     // Get the snapshot
@@ -130,6 +131,9 @@ final class DiagnosticTabletNfcApp {
         data.putBoolean("Available", true);
         data.putString("Block", BuiltInRegistries.BLOCK.getKey(target.state().getBlock()).toString());
         data.putString("Name", target.state().getBlock().getName().getString());
+        data.put("State", NbtUtils.writeBlockState(target.state()));
+        data.putString("Dimension", target.level().dimension().location().toString());
+        if(target.subLevelId() != null) data.putUUID("SubLevelId", target.subLevelId());
         data.putLong("Pos", target.pos().asLong());
         data.putFloat("Hardness", target.state().getDestroySpeed(target.level(), target.pos()));
         data.putBoolean("BlockEntity", target.blockEntity() != null);
@@ -183,6 +187,6 @@ final class DiagnosticTabletNfcApp {
     }
 
     // Store the target
-    private record Target(Level level, BlockState state, BlockEntity blockEntity, BlockPos pos) {
+    private record Target(Level level, BlockState state, BlockEntity blockEntity, BlockPos pos, UUID subLevelId) {
     }
 }

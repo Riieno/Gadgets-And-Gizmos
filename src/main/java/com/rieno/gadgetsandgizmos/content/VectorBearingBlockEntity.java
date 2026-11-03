@@ -1175,6 +1175,32 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         return mountedSubLevelId;
     }
 
+    // Read the saved head basis independently of the base's current wrench rotation
+    public Direction getMountedHeadFacing(){
+        SubLevel child = SableLevelApi.subLevel(level, mountedSubLevelId);
+        BlockEntity head = child == null || mountedLocalPos == null ? null
+                : SubLevelBlockEntityCollector.getBlockEntity(child, mountedLocalPos);
+        return head instanceof VectorBearingLinkBlockEntity link
+                ? link.getBlockDirection() : getBearingFacing();
+    }
+
+    // Defer wrench rotation while the mounted head is still loading
+    boolean canReorientMountedAssembly(){
+        if(mountedSubLevelId == null) return true;
+        ServerLevel server = SableLevelApi.serverLevel(level);
+        return server != null && mountedAssembly.hasMountedBlock(this, server);
+    }
+
+    // Move the existing plot without replacing its head or saved contents
+    void reorientMountedAssembly(){
+        ServerLevel server = SableLevelApi.serverLevel(level);
+        if(server == null || mountedSubLevelId == null) return;
+        mountedAssembly.reorient(this, server);
+        invalidateMountedSailPower();
+        setChanged();
+        sendData();
+    }
+
     // Get the mounted local pos
     BlockPos getMountedLocalPos() {
         return mountedLocalPos;
@@ -1319,7 +1345,7 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
     }
 
     // Sample the shaft angle deg
-    private double sampleShaftAngleDeg() {
+    double sampleShaftAngleDeg() {
         if (level == null) {
             return shaftAngleDegrees;
         }
@@ -1558,7 +1584,7 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
         var embeddedLevel = plot.getEmbeddedLevelAccessor();
         BlockPos plotCenter = plot.getCenterBlock();
         BlockPos forceOrigin = mountedLocalPos == null ? plotCenter : mountedLocalPos;
-        Direction facing = getBearingFacing();
+        Direction facing = getMountedHeadFacing();
         BoundingBox bounds = plot.getBoundingBox().toMojang();
         double sailPower = 0.0D;
         double sailRadius = 0.0D;
@@ -2082,6 +2108,21 @@ public class VectorBearingBlockEntity extends KineticBlockEntity implements Menu
     @Override
     public AABB createRenderBoundingBox() {
         return new AABB(worldPosition).minmax(new AABB(getMountedBlockPos())).inflate(2.0D);
+    }
+
+    // Release solver ownership when Create unloads this block entity
+    @Override
+    public void invalidate(){
+        mountedAssembly.releaseJoint();
+        directTiltInputs.clear();
+        super.invalidate();
+    }
+
+    // Release solver ownership before the chunk stops ticking
+    @Override
+    public void onChunkUnloaded(){
+        mountedAssembly.releaseJoint();
+        super.onChunkUnloaded();
     }
 
     // Destroy the vector bearing

@@ -8,12 +8,11 @@ package com.rieno.gadgetsandgizmos.compat.sable;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
-import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
+import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityPresence;
 import com.rieno.gadgetsandgizmos.content.AileronBearingLinkBlockEntity;
 import com.rieno.gadgetsandgizmos.content.ThrusterBearingLinkBlockEntity;
 import com.rieno.gadgetsandgizmos.content.VectorBearingLinkBlockEntity;
 import dev.ryanhcode.sable.sublevel.SubLevel;
-import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
 import java.util.AbstractCollection;
@@ -21,8 +20,6 @@ import java.util.Collection;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Predicate;
 
 // Ignore bearing-owned mounted sublevels during contraption camera collision checks
@@ -35,7 +32,8 @@ public final class BearingCameraCollisionFilter {
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
-    private static final Map<UUID, BlockPos> BEARING_SUB_LEVELS = new ConcurrentHashMap<>();
+    private static final SubLevelBlockEntityPresence BEARING_SUB_LEVELS =
+            new SubLevelBlockEntityPresence(BearingCameraCollisionFilter::isBearingLink);
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -72,29 +70,7 @@ public final class BearingCameraCollisionFilter {
 
     // Check if this sublevel belongs to one of this addon's bearing heads
     private static boolean isBearingSubLevel(SubLevel subLevel) {
-        if (subLevel == null || subLevel.isRemoved()) {
-            return false;
-        }
-
-        UUID id = subLevel.getUniqueId();
-        BlockPos cachedPos = id == null ? null : BEARING_SUB_LEVELS.get(id);
-        if (cachedPos != null) {
-            BlockEntity cached = SubLevelBlockEntityCollector.getBlockEntity(subLevel, cachedPos);
-            if (isBearingLink(cached)) {
-                return true;
-            }
-            BEARING_SUB_LEVELS.remove(id, cachedPos);
-        }
-
-        for (BlockEntity blockEntity : SubLevelBlockEntityCollector.getBlockEntities(subLevel)) {
-            if (isBearingLink(blockEntity)) {
-                if (id != null) {
-                    BEARING_SUB_LEVELS.put(id, blockEntity.getBlockPos().immutable());
-                }
-                return true;
-            }
-        }
-        return false;
+        return BEARING_SUB_LEVELS.matches(subLevel);
     }
 
     // Check whether a block entity is the mounted link for one of this addon's bearing types

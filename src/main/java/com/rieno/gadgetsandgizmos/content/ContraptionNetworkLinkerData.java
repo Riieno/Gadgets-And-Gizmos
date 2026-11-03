@@ -638,8 +638,8 @@ public final class ContraptionNetworkLinkerData {
                 && currentClientSnapshot(stackTag) == null;
     }
 
-    // Migrate the legacy storage
-    public static boolean migrateLegacyStorage(ItemStack stack) {
+    // Persist the embedded linker data from a schematic placement
+    static boolean persistSchematicCopy(ItemStack stack) {
         if (stack == null || stack.isEmpty()) {
             return false;
         }
@@ -679,9 +679,7 @@ public final class ContraptionNetworkLinkerData {
                 return true;
             }
         }
-        if (stackTag.contains(TAG_ROOT, Tag.TAG_COMPOUND)) {
-            return migrateLegacyStorage(stack);
-        }
+        if(stackTag.contains(TAG_ROOT, Tag.TAG_COMPOUND)) return false;
         getOrCreateLinkerId(stack);
         return ControllerManifestStore.hasLinkerMetadata(stackCustomDataTagView(stack));
     }
@@ -736,50 +734,12 @@ public final class ContraptionNetworkLinkerData {
                 && stackCustomDataTagView(stack).contains(TAG_ROOT, Tag.TAG_COMPOUND);
     }
 
-    // Migrate the legacy NBT container
-    static boolean migrateLegacyNbtContainer(CompoundTag container) {
-        if (container == null) {
-            return false;
-        }
-        if (!container.contains(TAG_ROOT, Tag.TAG_COMPOUND)) {
-            if (!ControllerManifestStore.hasLinkerMetadata(container)
-                    || !hasPersistedLinkerPayload(container)) {
-                return false;
-            }
-            cleanLinkerStackTag(container);
-            return true;
-        }
-
-        CompoundTag root = container.getCompound(TAG_ROOT).copy();
-        String manifestId = ControllerManifestStore.linkerManifestId(container);
-        int currentRevision = ControllerManifestStore.linkerManifestRevision(container);
-        if (currentRevision <= 0 && !manifestId.isBlank()) {
-            currentRevision = ControllerSqliteStore.loadLinkerRevision(manifestId);
-        }
-        ControllerManifestStore.ManifestSnapshot snapshot =
-                ControllerManifestStore.saveLinker(manifestId, root, currentRevision);
-        if (snapshot == null) {
-            return false;
-        }
-        cleanLinkerStackTag(container);
-        ControllerManifestStore.writeLinkerMetadata(container, snapshot);
-        writeClientSnapshot(container, root, snapshot);
-        return true;
-    }
-
     // Get the client snapshot for sync
     public static @Nullable ControllerManifestStore.ManifestSnapshot clientSnapshotForSync(ItemStack stack) {
         if (stack == null || stack.isEmpty()) {
             return null;
         }
-        CompoundTag stackTag = stackCustomDataTag(stack);
-        if (stackTag.contains(TAG_ROOT, Tag.TAG_COMPOUND)) {
-            if (!migrateLegacyStorage(stack)) {
-                return null;
-            }
-            stackTag = stackCustomDataTag(stack);
-        }
-        return ControllerManifestStore.loadLinkerFromMetadata(stackTag);
+        return ControllerManifestStore.loadLinkerFromMetadata(stackCustomDataTagView(stack));
     }
 
     // Install the client snapshot

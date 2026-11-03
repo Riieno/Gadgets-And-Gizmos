@@ -14,6 +14,7 @@ import com.rieno.gadgetsandgizmos.lib.control.ControllerDirectTargetReference;
 import com.rieno.gadgetsandgizmos.lib.discovery.ControllerDiscoveryNode;
 import com.rieno.gadgetsandgizmos.lib.discovery.SubLevelBlockEntityCollector;
 import com.rieno.gadgetsandgizmos.lib.physics.SableLevelApi;
+import com.rieno.gadgetsandgizmos.lib.probe.LoadedBlockAccess;
 import dev.ryanhcode.sable.api.SubLevelAssemblyHelper;
 import dev.ryanhcode.sable.companion.math.BoundingBox3ic;
 import dev.ryanhcode.sable.sublevel.ServerSubLevel;
@@ -983,7 +984,7 @@ public final class ContraptionNetworkLinkerTracker extends SavedData {
         if (locator.currentLocalPos == null) {
             return null;
         }
-        return SimulatedHelper.findBlockEntity(level, locator.currentSubLevelId, locator.currentLocalPos,
+        return LoadedBlockAccess.blockEntity(level, locator.currentSubLevelId, locator.currentLocalPos,
                 AnalogueContraptionControllerBlockEntity.class);
     }
 
@@ -992,16 +993,8 @@ public final class ContraptionNetworkLinkerTracker extends SavedData {
         if (locator.currentLocalPos == null) {
             return false;
         }
-        if (locator.currentSubLevelId != null) {
-            Object subLevel = SubLevelBlockEntityCollector.getSubLevel(level, locator.currentSubLevelId);
-            return subLevel != null
-                    && SimulatedHelper.findBlockEntity(level, locator.currentSubLevelId, locator.currentLocalPos,
-                    AnalogueContraptionControllerBlockEntity.class) == null;
-        }
-        BlockPos worldPos = BlockPos.containing(locator.anchorX, locator.anchorY, locator.anchorZ);
-        return level.hasChunkAt(worldPos)
-                && SimulatedHelper.findBlockEntity(level, null, locator.currentLocalPos,
-                AnalogueContraptionControllerBlockEntity.class) == null;
+        BlockState state = LoadedBlockAccess.blockState(level, locator.currentSubLevelId, locator.currentLocalPos);
+        return state != null && !(state.getBlock() instanceof AnalogueContraptionControllerBlock);
     }
 
     // Resolve the location
@@ -1605,23 +1598,7 @@ public final class ContraptionNetworkLinkerTracker extends SavedData {
             if (level == null || currentLocalPos == null || !scope.usesFaces()) {
                 return null;
             }
-            BlockState state = null;
-            if (currentSubLevelId == null) {
-                if (level.hasChunkAt(currentLocalPos)) {
-                    state = level.getBlockState(currentLocalPos);
-                }
-            } else {
-                BlockEntity blockEntity = SimulatedHelper.findBlockEntity(level, currentSubLevelId, currentLocalPos);
-                if (blockEntity != null) {
-                    state = blockEntity.getBlockState();
-                } else {
-                    Level targetLevel = targetLevel(level);
-                    if (targetLevel != null && SubLevelBlockEntityCollector.isTargetLoaded(
-                            level, currentSubLevelId, currentLocalPos)) {
-                        state = targetLevel.getBlockState(currentLocalPos);
-                    }
-                }
-            }
+            BlockState state = LoadedBlockAccess.blockState(level, currentSubLevelId, currentLocalPos);
             if (state == null || !(state.getBlock() instanceof ContraptionNetworkLinkerPlaneBlock)
                     || !state.hasProperty(ContraptionNetworkLinkerPlaneBlock.ORIENTATION)) {
                 return null;
@@ -1674,6 +1651,7 @@ public final class ContraptionNetworkLinkerTracker extends SavedData {
                 return true;
             }
             if (ContraptionNetworkLinkerData.isContraptionDiagramTarget(blockId)) {
+                if(LoadedBlockAccess.blockState(level, currentSubLevelId, currentLocalPos) == null) return false;
                 return confirmedMissing(level,
                         !ContraptionDiagramControllerCompat.targetExists(level, toDiscoveryNode()));
             }
@@ -1685,10 +1663,8 @@ public final class ContraptionNetworkLinkerTracker extends SavedData {
                 return confirmedMissing(level,
                         faceSupportStatus(targetLevel) == FaceSupportStatus.MISSING);
             }
-            if (!targetLevel.hasChunkAt(currentLocalPos)) {
-                return false;
-            }
-            BlockState state = targetLevel.getBlockState(currentLocalPos);
+            BlockState state = LoadedBlockAccess.blockState(targetLevel, currentSubLevelId, currentLocalPos);
+            if(state == null) return false;
             if (state.isAir()) {
                 return confirmedMissing(level, true);
             }
@@ -1724,8 +1700,8 @@ public final class ContraptionNetworkLinkerTracker extends SavedData {
             long now = level.getGameTime();
             for (ContraptionNetworkLinkerData.LinkedFace face : faces) {
                 BlockPos attachedPos = attachedBlockPosition(currentLocalPos, face.face());
-                if (!targetLevel.hasChunkAt(attachedPos)
-                        || !targetLevel.getBlockState(attachedPos).isAir()) {
+                BlockState state = LoadedBlockAccess.blockState(targetLevel, currentSubLevelId, attachedPos);
+                if (state == null || !state.isAir()) {
                     missingFaceSinceTicks.remove(face.face());
                     survivingFaces.add(face);
                     continue;
@@ -1757,11 +1733,11 @@ public final class ContraptionNetworkLinkerTracker extends SavedData {
                 return;
             }
             Level targetLevel = targetLevel(level);
-            if (targetLevel == null || faceSupportStatus(targetLevel) != FaceSupportStatus.PRESENT
-                    || !targetLevel.hasChunkAt(currentLocalPos)) {
+            if (targetLevel == null || faceSupportStatus(targetLevel) != FaceSupportStatus.PRESENT) {
                 return;
             }
-            BlockState state = targetLevel.getBlockState(currentLocalPos);
+            BlockState state = LoadedBlockAccess.blockState(targetLevel, currentSubLevelId, currentLocalPos);
+            if(state == null) return;
             if (state.isAir()) {
                 if (!targetLevel.setBlock(currentLocalPos,
                         com.rieno.gadgetsandgizmos.registry.CTBlocks.CONTRAPTION_NETWORK_LINKER_PLANE.get()
@@ -1771,13 +1747,14 @@ public final class ContraptionNetworkLinkerTracker extends SavedData {
                 state = targetLevel.getBlockState(currentLocalPos);
             }
             if (!(state.getBlock() instanceof ContraptionNetworkLinkerPlaneBlock)
-                    || !(targetLevel.getBlockEntity(currentLocalPos)
+                    || !(LoadedBlockAccess.blockEntity(targetLevel, currentSubLevelId, currentLocalPos)
                     instanceof ContraptionNetworkLinkerPlaneBlockEntity plane)) {
                 return;
             }
             for (ContraptionNetworkLinkerData.LinkedFace face : faces) {
                 BlockPos attachedPos = attachedBlockPosition(currentLocalPos, face.face());
-                if (!targetLevel.hasChunkAt(attachedPos) || targetLevel.getBlockState(attachedPos).isAir()) {
+                BlockState attached = LoadedBlockAccess.blockState(targetLevel, currentSubLevelId, attachedPos);
+                if (attached == null || attached.isAir()) {
                     continue;
                 }
                 if (!plane.hasPlane(face.face()) || plane.getMode(face.face()) != mode) {
@@ -1794,11 +1771,12 @@ public final class ContraptionNetworkLinkerTracker extends SavedData {
             boolean unavailable = false;
             for (ContraptionNetworkLinkerData.LinkedFace face : faces) {
                 BlockPos attachedPos = attachedBlockPosition(currentLocalPos, face.face());
-                if (!targetLevel.hasChunkAt(attachedPos)) {
+                BlockState state = LoadedBlockAccess.blockState(targetLevel, currentSubLevelId, attachedPos);
+                if (state == null) {
                     unavailable = true;
                     continue;
                 }
-                if (!targetLevel.getBlockState(attachedPos).isAir()) {
+                if (!state.isAir()) {
                     return FaceSupportStatus.PRESENT;
                 }
             }

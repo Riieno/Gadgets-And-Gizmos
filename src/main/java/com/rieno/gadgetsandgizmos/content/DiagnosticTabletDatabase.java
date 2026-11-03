@@ -306,45 +306,12 @@ public final class DiagnosticTabletDatabase implements TabletStorage, TabletAppE
         return ownerId == null ? null : new EntitlementKey(scope, ownerId, appId);
     }
 
-    // Import the legacy
-    public synchronized void importLegacy(UUID tabletId, DiagnosticTabletData.State state) {
-        if (tabletId == null || state == null) return;
-        ensureTablet(tabletId);
-        ResourceLocation appId = state.app();
-        AppRow currentApp = apps.get(new AppKey(tabletId, appId));
-        if (currentApp == null || !currentApp.data().contains("MigratedLegacy")) {
-            updateApp(tabletId, appId, data -> {
-                if (state.binding() != null) data.put("SelectedBinding", state.binding().toTag());
-                if (!state.selections().isEmpty()) {
-                    net.minecraft.nbt.ListTag selections = new net.minecraft.nbt.ListTag();
-                    state.selections().forEach(binding -> selections.add(binding.toTag()));
-                    data.put("Selections", selections);
-                }
-                data.putBoolean("MigratedLegacy", true);
-                return data;
-            });
-        }
-        if (!state.redstoneLinkChannels().isEmpty()) {
-            ResourceLocation redstoneLink = DiagnosticTabletData.appId("redstone_link");
-            AppRow currentRedstoneLink = apps.get(new AppKey(tabletId, redstoneLink));
-            if (currentRedstoneLink == null
-                    || !currentRedstoneLink.data().contains("Channels")) {
-                updateApp(tabletId, redstoneLink, data -> {
-                    net.minecraft.nbt.ListTag channels = new net.minecraft.nbt.ListTag();
-                    state.redstoneLinkChannels().forEach(channel -> channels.add(channel.toTag()));
-                    data.put("Channels", channels);
-                    return data;
-                });
-            }
-        }
-    }
-
     // Ensure the tablet
     private synchronized void ensureTablet(UUID tabletId) {
         if (tablets.containsKey(tabletId)) return;
         CompoundTag defaults = new CompoundTag();
         defaults.putString("Name", "Smart Tablet");
-        defaults.putString("Wallpaper", "aurora");
+        defaults.putString("Wallpaper", DiagnosticTabletSettingsApp.DEFAULT_LAUNCHER_TEXTURE.toString());
         defaults.putString("Theme", "dark");
         updateNewTablet(tabletId, defaults);
     }

@@ -5,6 +5,7 @@ import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionContext;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletActionHandler;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppAccess;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppDefinition;
+import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppDescriptions;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppEntitlementApi;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppPrice;
 import com.rieno.gadgetsandgizmos.lib.tablet.TabletAppPurchaseScope;
@@ -64,6 +65,7 @@ public final class DiagnosticTabletAppStore {
             row.putString("Id", app.id().toString());
             row.putString("Name", app.title().getString());
             row.putString("Description", app.description().getString());
+            row.putString("Details", TabletAppDescriptions.details(app).getString());
             row.putBoolean("Owned", TabletAppAccess.canUse(app, TabletAppPurchaseScope.PLAYER,
                     player.getUUID(), tabletId));
             row.putBoolean("Installed", storage.installedApps(tabletId).contains(app.id()));

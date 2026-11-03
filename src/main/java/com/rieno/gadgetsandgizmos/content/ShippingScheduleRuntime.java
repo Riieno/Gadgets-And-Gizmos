@@ -236,6 +236,8 @@ private @Nullable UUID currentParkingZoneId;
     private long lastRouteProgressTick = Long.MIN_VALUE;
     // Current best route distance
     private double bestRouteDistance = Double.POSITIVE_INFINITY;
+    // Rebase the watchdog when connector tracking takes over from direct navigation
+    private boolean trackingApproachProgress;
     // Docking retry count
     private int dockingRetryCount;
     // Current title
@@ -569,8 +571,16 @@ private @Nullable UUID restoredDockOwnership;
         }
         ShipCargoAutomation.FuelStatus fuel = ShipCargoAutomation.fuelStatus(
                 controller, routeThrottle);
+<<<<<<< Updated upstream
         if (fuel.infinite() || fuel.capacity() <= 0.0D
                 || !autoRefuel.shouldRefuel(fuel.ratio())) {
+=======
+        if(fuel.infinite() || fuel.capacity() <= 0.0D || controller.logistics().fuelStorageFull()) return false;
+        ShipDockRegistry.Dock fuelTarget = currentTargetDock();
+        boolean insufficientRange = fuelTarget != null && !fuel.canReach(
+                currentPosition().distanceTo(fuelTarget.approach()), routeSpeed);
+        if(!autoRefuel.shouldRefuel(fuel.ratio()) && !insufficientRange){
+>>>>>>> Stashed changes
             return false;
         }
         List<ShipDockRegistry.Dock> candidates = autoRefuelCandidates(fuel);
@@ -1796,6 +1806,71 @@ private @Nullable UUID restoredDockOwnership;
         beginLiveDockApproach(actualCandidates);
     }
 
+<<<<<<< Updated upstream
+=======
+    // Run the stable live reservation and connector assignment after planned transit finishes.
+    private void beginLiveDockApproach(List<ShipDockRegistry.Dock> actualCandidates) {
+        if (actualCandidates == null || actualCandidates.isEmpty()) return;
+        routeTerminalTransitPending = false;
+        // This list is the stable scheduler's complete authority for the live phase. At a planned
+        // terminal it contains only that terminal's dock, preventing heartbeat/arrival retries
+        // from silently expanding back to a different schedule candidate.
+        pendingDockCandidates = actualCandidates.stream()
+                .map(ShipDockRegistry.Dock::id)
+                .toList();
+        ShipDockScheduler.Lease lease = requestDockLease(actualCandidates);
+        if (!lease.granted()) {
+            ShipDockRegistry.Dock target = navigationCandidate(actualCandidates);
+            if (target == null) {
+                waitForDockAvailability();
+                return;
+            }
+            enterDockQueue(actualCandidates, lease);
+            return;
+        }
+        ShipDockRegistry.Dock target = dockForLease(actualCandidates, lease);
+        if (target == null) {
+            waitForDockAvailability();
+            return;
+        }
+        startReservedRoute(target);
+    }
+
+    // Traverse the reusable route before provisioning may redirect local final approach control.
+    private void startRouteTerminalTransit(ShipDockRegistry.Dock target) {
+        if (controller.getLevel() == null || target == null) return;
+        boolean wasAttached = needsUndockingStabilization(attachedDockId);
+        queueAfterUndocking = false;
+        routeTerminalTransitPending = true;
+        restoredDockOwnership = null;
+        releaseReservationChannel("holding");
+        clearHoldingState();
+        if(!disengageAttachedConnectors()) return;
+        currentDockId = target.id();
+        currentShipConnectorIndex = -1;
+        connectorlessHoverTarget = null;
+        controller.activateShipDockingConnector(-1);
+        phaseStartedTick = controller.getLevel().getGameTime();
+        lastTargetRefreshTick = Long.MIN_VALUE;
+        resetRouteProgress(target);
+        if(wasAttached || !departureControls.isEmpty()){
+            issueUndockingControl();
+            phase = Phase.UNDOCKING;
+            status = "Stabilizing after undocking";
+        } else if (issueRouteTerminalTransit(target)) {
+            phase = Phase.TRANSITING;
+            status = "Following the planned route toward " + target.name();
+        } else {
+            routeTerminalTransitPending = false;
+            resetRouteProgress();
+            issueDockingRecoveryHold();
+            phase = Phase.PRE_TRANSIT;
+            status = "Route control unavailable; stabilizing and retrying";
+        }
+        controller.setChanged();
+    }
+
+>>>>>>> Stashed changes
     // Start the reserved route
     private void startReservedRoute(ShipDockRegistry.Dock target) {
         if (controller.getLevel() == null) {
@@ -1833,7 +1908,8 @@ private @Nullable UUID restoredDockOwnership;
         phaseStartedTick = controller.getLevel().getGameTime();
         lastTargetRefreshTick = Long.MIN_VALUE;
         resetRouteProgress(target);
-        if (wasAttached && issueUndockingControl()) {
+        if(wasAttached || !departureControls.isEmpty()){
+            issueUndockingControl();
             phase = Phase.UNDOCKING;
             status = "Stabilizing after undocking";
         } else if (issueNavigation(target)) {
@@ -1890,7 +1966,8 @@ private @Nullable UUID restoredDockOwnership;
         phaseStartedTick = controller.getLevel().getGameTime();
         lastTargetRefreshTick = Long.MIN_VALUE;
         resetRouteProgress();
-        if (wasAttached && issueUndockingControl()) {
+        if(wasAttached || !departureControls.isEmpty()){
+            issueUndockingControl();
             phase = Phase.UNDOCKING;
             status = "Stabilizing before parking at " + target.dock().name();
         } else {
@@ -1928,7 +2005,8 @@ private @Nullable UUID restoredDockOwnership;
         phaseStartedTick = controller.getLevel().getGameTime();
         lastTargetRefreshTick = Long.MIN_VALUE;
         resetRouteProgress();
-        if (wasAttached && issueUndockingControl()) {
+        if(wasAttached || !departureControls.isEmpty()){
+            issueUndockingControl();
             queueAfterUndocking = true;
             phase = Phase.UNDOCKING;
             status = "Stabilizing before joining the landing zone queue";
@@ -2571,7 +2649,8 @@ private @Nullable UUID restoredDockOwnership;
         phaseStartedTick = controller.getLevel().getGameTime();
         lastTargetRefreshTick = Long.MIN_VALUE;
         resetRouteProgress();
-        if (wasAttached && issueUndockingControl()) {
+        if(wasAttached || !departureControls.isEmpty()){
+            issueUndockingControl();
             queueAfterUndocking = true;
             phase = Phase.UNDOCKING;
             status = "Stabilizing before joining the dock queue";
@@ -2838,6 +2917,7 @@ private @Nullable UUID restoredDockOwnership;
     private void resetRouteProgress() {
         bestRouteDistance = Double.POSITIVE_INFINITY;
         lastRouteProgressTick = Long.MIN_VALUE;
+        trackingApproachProgress = false;
     }
 
     // Reset the route progress
@@ -2846,7 +2926,7 @@ private @Nullable UUID restoredDockOwnership;
             resetRouteProgress();
             return;
         }
-        double distance = currentPosition().distanceTo(routeProgressTarget(dock));
+        double distance = routeProgressDistance(dock);
         bestRouteDistance = Double.isFinite(distance)
                 ? Math.max(0.0D, distance) : Double.POSITIVE_INFINITY;
         lastRouteProgressTick = controller.getLevel().getGameTime();
@@ -2857,11 +2937,16 @@ private @Nullable UUID restoredDockOwnership;
         if (dock == null) {
             return false;
         }
-        double distance = currentPosition().distanceTo(routeProgressTarget(dock));
+        double distance = routeProgressDistance(dock);
         if (!Double.isFinite(distance)) {
             return false;
         }
         distance = Math.max(0.0D, distance);
+        if(trackingApproachProgress && controller.isShipDockMovementBlocked(NAVIGATION_COMMAND)){
+            bestRouteDistance = distance;
+            lastRouteProgressTick = now;
+            return false;
+        }
         if (!Double.isFinite(bestRouteDistance)) {
             bestRouteDistance = distance;
             lastRouteProgressTick = now;
@@ -2880,6 +2965,40 @@ private @Nullable UUID restoredDockOwnership;
                 || stalledFor >= ROUTE_PROGRESS_STALL_TICKS;
     }
 
+<<<<<<< Updated upstream
+=======
+    // Track progress against the route phase which currently owns translation.
+    private Vec3 routeProgressTarget(ShipDockRegistry.Dock dock) {
+        return phase == Phase.TRANSITING || routeTerminalTransitPending
+                ? scheduleRouteTerminal(dock).position() : navigationTarget(dock);
+    }
+
+    // Follow unvisited spline distance even when a bend leads away from the dock
+    private double routeProgressDistance(ShipDockRegistry.Dock dock){
+        double remaining = phase == Phase.NAVIGATING && !routeTerminalTransitPending && dock.approachPath().configured()
+                ? controller.shipApproachRemainingDistance(NAVIGATION_COMMAND) : Double.NaN;
+        boolean tracking = Double.isFinite(remaining);
+        if(tracking != trackingApproachProgress){
+            trackingApproachProgress = tracking;
+            bestRouteDistance = Double.POSITIVE_INFINITY;
+        }
+        return tracking ? remaining : currentPosition().distanceTo(routeProgressTarget(dock));
+    }
+
+    // Replan a lost coarse route without cooling down a connector which was never assigned.
+    private void pauseLostRouteTerminalTransit() {
+        issueDockingRecoveryHold();
+        resetRouteProgress();
+        currentDockId = null;
+        currentShipConnectorIndex = -1;
+        routeTerminalTransitPending = false;
+        magneticCaptureActive = false;
+        phase = Phase.PRE_TRANSIT;
+        status = "Route progress was lost; stabilizing and replanning";
+        controller.setChanged();
+    }
+
+>>>>>>> Stashed changes
     // Pause the lost dock approach
     private void pauseLostDockApproach(ShipDockRegistry.Dock dock) {
         issueDockingRecoveryHold();
@@ -2932,6 +3051,31 @@ private @Nullable UUID restoredDockOwnership;
 
     // Update the undocking
     private void tickUndocking() {
+<<<<<<< Updated upstream
+=======
+        if(attachedDockId != null && (departureDockId == null || attachedDockId.equals(departureDockId))){
+            if(!disengageAttachedConnectors() || !issueUndockingControl()) return;
+        }
+        if(!departureControls.isEmpty()){
+            if(attachedDockId != null && !attachedDockId.equals(departureDockId)){
+                clearDepartureState();
+                phase = Phase.PRE_TRANSIT;
+                return;
+            }
+            ShipDockRegistry.Dock departing = departureDock();
+            if(departing != null && !departing.approachPath().configured()){
+                clearDepartureState();
+                issueUndockingControl();
+            }else if(controller.isShipDockDepartureCleared("shipping_schedule_departure", departing, departureConnectorIdx)){
+                clearDepartureState();
+            }else{
+                if(!issueApproachDeparture()) return;
+                if(!controller.isShipDockDepartureComplete("shipping_schedule_departure")) return;
+                clearDepartureState();
+                controller.executeShipControlGraphCommand("shipping_schedule_departure_stop", "ship_stop", Map.of());
+            }
+        }
+>>>>>>> Stashed changes
         if (controller.getLevel() == null || currentDockId == null) {
             phase = Phase.PRE_TRANSIT;
             return;
@@ -3385,6 +3529,7 @@ private @Nullable UUID restoredDockOwnership;
         if (controller.getLevel() == null) {
             return false;
         }
+        if(!departureControls.isEmpty()) return issueApproachDeparture();
         controller.executeShipControlGraphCommand(
                 "shipping_schedule_undock_reset", "ship_stop", Map.of());
         boolean braking = controller.executeShipControlGraphCommand(
@@ -3398,6 +3543,35 @@ private @Nullable UUID restoredDockOwnership;
         return braking && hovering;
     }
 
+<<<<<<< Updated upstream
+=======
+    // Keep departure on the confirmed corridor before handing off to live navigation
+    private boolean issueApproachDeparture(){
+        if(departureControls.isEmpty() || departureDockId == null) return false;
+        clearDockingRecoveryControl();
+        boolean accepted = controller.beginShipDockDeparture("shipping_schedule_departure", departureDock(), departureConnectorIdx);
+        if(!accepted){
+            issueDockingRecoveryHold();
+            status = "Waiting for departure clearance";
+        }
+        return accepted;
+    }
+
+    // Keep the occupied connector after the schedule advances to another entry
+    private @Nullable ShipDockRegistry.Dock departureDock(){
+        ShipDockRegistry.Dock dock = cachedDock(departureDockId);
+        if(dock == null) return null;
+        var target = controller.shipDockDepartureTarget(dock, departureConnectorIdx);
+        return target == null ? dock : target.dock();
+    }
+
+    private void clearDepartureState(){
+        departureControls = List.of();
+        departureDockId = null;
+        departureConnectorIdx = -1;
+    }
+
+>>>>>>> Stashed changes
     // Issue the docking
     private boolean issueDocking(ShipDockRegistry.Dock dock) {
         if (controller.getLevel() == null || dock.connectorFacing() == null
@@ -3516,6 +3690,17 @@ private @Nullable UUID restoredDockOwnership;
             resumeInterruptedSchedule();
             return;
         }
+<<<<<<< Updated upstream
+=======
+        if(connected && intervalElapsed(controller.getLevel().getGameTime(), lastCargoTransferAttemptTick, 4L)){
+            lastCargoTransferAttemptTick = controller.getLevel().getGameTime();
+            BlockEntityPair pair = connectorPair(dock);
+            if(ScmLogisticsSchedule.exchange(controller, dock, pair.ship(), pair.dock(), entry,
+                    conditionProgress, autoRefuelActive && !autoRefuelReturning || divertedTargetId != null) > 0){
+                lastCargoExchangeTick = controller.getLevel().getGameTime();
+            }
+        }
+>>>>>>> Stashed changes
         // Resolve auto refuel and route diversions
         if (autoRefuelActive) {
             ShipCargoAutomation.FuelStatus fuel = ShipCargoAutomation.fuelStatus(
@@ -3538,7 +3723,8 @@ private @Nullable UUID restoredDockOwnership;
                 return;
             }
             ShipCargoAutomation.FuelStatus fuel = ShipCargoAutomation.fuelStatus(controller, routeThrottle);
-            if (fuel.canReach(currentPosition().distanceTo(resumed.approach()), routeSpeed)) {
+            if(currentFuelRefillComplete(fuel)
+                    && fuel.canReach(currentPosition().distanceTo(resumed.approach()), routeSpeed)){
                 divertedTargetId = null;
                 beginRoute(List.of(resumed), false);
             } else {
@@ -3809,8 +3995,8 @@ private @Nullable UUID restoredDockOwnership;
 
     // Check if the fuel refill is complete
     static boolean fuelRefillComplete(ShipCargoAutomation.FuelStatus fuel) {
-        return fuel.infinite() || fuel.capacity() <= 0.0D
-                || fuel.amount() >= fuel.capacity() * 0.999D;
+        return fuel.infinite() || fuel.capacity() > 0.0D
+                && fuel.amount() >= fuel.capacity() * 0.999D;
     }
 
     // Check if this is energy cargo condition
@@ -4018,6 +4204,18 @@ private @Nullable UUID restoredDockOwnership;
         return dock.worldPosition().add(dock.facing().scale(4.0D)).add(0.0D, 1.5D, 0.0D);
     }
 
+<<<<<<< Updated upstream
+=======
+    // Check the connector's physical arrival at the final approach handoff.
+    private boolean dockingApproachTargetReached(ShipDockRegistry.Dock dock) {
+        ShipControlModuleRuntime.MappedDockingConnector connector =
+                controller.getShipDockingConnector(currentShipConnectorIndex);
+        if (connector == null || dock == null) return false;
+        Vec3 pos = connector.worldTipPosition();
+        return pos.distanceTo(dock.approach()) <= 1.25D;
+    }
+
+>>>>>>> Stashed changes
     // Check if the connectorless hover target was reached
     static boolean connectorlessHoverTargetReached(
             Vec3 currentPosition,
@@ -4038,6 +4236,28 @@ private @Nullable UUID restoredDockOwnership;
         if (controller.getLevel() != null && attachedDockId != null) {
             ShipDockRegistry.Dock dock = cachedDock(attachedDockId);
             if (dock != null) {
+<<<<<<< Updated upstream
+=======
+                var attached = controller.shipDockDepartureTarget(dock, currentShipConnectorIndex);
+                if(attached != null){
+                    dock = attached.dock();
+                    currentShipConnectorIndex = attached.connectorIdx();
+                }
+                if(!attachedDockId.equals(departureDockId)) clearDepartureState();
+                if(!dock.approachPath().configured()){
+                    clearDepartureState();
+                    controller.prepareShipDockManeuver(dock, currentShipConnectorIndex);
+                }else if(departureControls.isEmpty()){
+                    clearDockingRecoveryControl();
+                    if(!controller.prepareShipDockDeparture(dock, currentShipConnectorIndex)){
+                        status = "Waiting for departure clearance at " + dock.name();
+                        return false;
+                    }
+                    departureControls = List.of(dock.dockingTarget(), dock.approach());
+                    departureDockId = dock.id();
+                    departureConnectorIdx = currentShipConnectorIndex;
+                }
+>>>>>>> Stashed changes
                 BlockEntityPair pair = connectorPair(dock);
                 DockingConnectorAutomation.disengage(pair.ship(), pair.dock());
             }

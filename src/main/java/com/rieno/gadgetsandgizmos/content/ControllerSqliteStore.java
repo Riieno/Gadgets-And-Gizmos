@@ -8,11 +8,6 @@ package com.rieno.gadgetsandgizmos.content;
 
 ------------------------------------------------------------##-----------------------------------------------------*/
 
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import com.mojang.brigadier.exceptions.CommandSyntaxException;
-import com.mojang.serialization.JsonOps;
 import com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphImageAssets;
 import com.rieno.gadgetsandgizmos.lib.control.ControllerDirectTargetReference;
 import com.simibubi.create.Create;
@@ -22,9 +17,7 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
-import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
-import net.minecraft.nbt.TagParser;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.storage.LevelResource;
@@ -74,7 +67,6 @@ final class ControllerSqliteStore {
     private static final LinkerTargetCache LINKER_TARGET_CACHE = new LinkerTargetCache();
     private static final Map<Connection, Map<String, ControllerWriteState>> CONTROLLER_WRITE_CACHE =
             new IdentityHashMap<>();
-    private static final Set<Path> MIGRATED_LINKER_PATHS = new LinkedHashSet<>();
     private static final String TAG_LINKER_ID = "LinkerId";
     private static final String TAG_EDIT_MODE = "EditMode";
     private static final String TAG_TARGET_MODE = "TargetMode";
@@ -202,6 +194,7 @@ final class ControllerSqliteStore {
                                    @Nullable UUID subLevelId) {
     }
 
+<<<<<<< Updated upstream
     // Store the controller index data
     private record ControllerIndexData(String id, String dimension, CompoundTag controllerData) {
     }
@@ -242,6 +235,11 @@ final class ControllerSqliteStore {
                     && activeGraph.equals(requestedActiveGraph)
                     && graphHistory.equals(requestedGraphHistory);
         }
+=======
+    // Identify one durable SCM state snapshot and its controller manifest.
+    record ScmPersistenceBinding(UUID scmId, String manifestId) {
+    }
+>>>>>>> Stashed changes
 
         // Get the snapshot
         private ControllerManifestStore.ManifestSnapshot snapshot(String id) {
@@ -302,7 +300,7 @@ final class ControllerSqliteStore {
         }
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT kind, dimension, block_x, block_y, block_z, sublevel_id,
-                       revision, content_hash, controller_data_nbt, manifest_json
+                       revision, content_hash, controller_data_nbt
                 FROM controllers
                 WHERE id = ?
                 """)) {
@@ -312,17 +310,7 @@ final class ControllerSqliteStore {
                     return null;
                 }
                 byte[] controllerBytes = res.getBytes("controller_data_nbt");
-                if (controllerBytes == null || controllerBytes.length == 0) {
-                    String legacyJson = res.getString("manifest_json");
-                    if (legacyJson != null && !legacyJson.isBlank()) {
-                        ControllerManifestStore.ManifestSnapshot legacySnapshot = snapshotFromJson(legacyJson, false);
-                        if (legacySnapshot != null) {
-                            importController(legacySnapshot, level);
-                            return legacySnapshot;
-                        }
-                    }
-                    return null;
-                }
+                if (controllerBytes == null || controllerBytes.length == 0) return null;
                 CompoundTag controllerData = compoundFromBytes(controllerBytes);
                 CompoundTag draftGraph = loadGraph(connection, "controller", manifestId, "draft");
                 CompoundTag activeGraph = loadGraph(connection, "controller", manifestId, "active");
@@ -424,6 +412,17 @@ final class ControllerSqliteStore {
                     upsertGraph(connection, "alias", alias, "active", alias, active, 1, now);
                 }
                 ControllerAliasGraph graph = loadControllerAliasGraph(connection, controllerId);
+                if(graph != null && (!com.rieno.gadgetsandgizmos.lib.graph.GraphNodeAvailability.canReplace(
+                        draft, graph.draft(), com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphCatalog::isNodeDisabled)
+                        || !com.rieno.gadgetsandgizmos.lib.graph.GraphNodeAvailability.canReplace(
+                        active, graph.active(), com.rieno.gadgetsandgizmos.content.advanced.AdvancedGraphCatalog::isNodeDisabled)
+                        || !com.rieno.gadgetsandgizmos.lib.graph.edit.PrivilegedGraphEdits.canReplace(
+                        draft, graph.draft(), "createthrusters:command"::equals)
+                        || !com.rieno.gadgetsandgizmos.lib.graph.edit.PrivilegedGraphEdits.canReplace(
+                        active, graph.active(), "createthrusters:command"::equals))){
+                    connection.rollback();
+                    return null;
+                }
                 connection.commit();
                 return graph;
             } catch (SQLException | RuntimeException err) {
@@ -834,26 +833,6 @@ final class ControllerSqliteStore {
         }
     }
 
-    // Import the controller
-    static synchronized boolean importController(ControllerManifestStore.ManifestSnapshot snapshot,
-                                                 @Nullable Level level) {
-        if (snapshot == null) {
-            return false;
-        }
-        return saveController(snapshot.id(), Math.max(0, snapshot.revision()),
-                snapshot.kind() == null || snapshot.kind().isBlank() ? "base_controller" : snapshot.kind(),
-                level, BlockPos.ZERO, null, snapshot.controllerData(), snapshot.draftGraph(), snapshot.activeGraph(),
-                insertedLinkerManifestId(snapshot.controllerData())) != null;
-    }
-
-    // Import the linker
-    static synchronized boolean importLinker(ControllerManifestStore.ManifestSnapshot snapshot) {
-        if (snapshot == null) {
-            return false;
-        }
-        return saveLinker(snapshot.id(), Math.max(0, snapshot.revision()), snapshot.linkerData()) != null;
-    }
-
     // Delete the controller
     static synchronized boolean deleteController(String manifestId, @Nullable Level level) {
         if (manifestId == null || manifestId.isBlank()) {
@@ -1067,25 +1046,6 @@ final class ControllerSqliteStore {
         CONTROLLER_WRITE_CACHE.clear();
     }
 
-    // Import the legacy linkers
-    static synchronized void importLegacyLinkers(Path dir,
-                                                 Function<Path, ControllerManifestStore.ManifestSnapshot> loader) {
-        if (dir == null || loader == null || !Files.isDirectory(dir) || !MIGRATED_LINKER_PATHS.add(dir)) {
-            return;
-        }
-        try (var paths = Files.list(dir)) {
-            for (Path path : paths.filter(path -> Files.isRegularFile(path)
-                    && path.getFileName().toString().endsWith(".json")).toList()) {
-                ControllerManifestStore.ManifestSnapshot snapshot = loader.apply(path);
-                if (snapshot != null && loadLinker(snapshot.id()) == null) {
-                    importLinker(snapshot);
-                }
-            }
-        } catch (IOException err) {
-            Create.LOGGER.warn("Failed to import legacy linker manifests from {}", dir, err);
-        }
-    }
-
     // Get the connection
     private static @Nullable Connection connection(@Nullable Level level) {
         Path path = databasePath(level);
@@ -1106,8 +1066,6 @@ final class ControllerSqliteStore {
             Connection connection = SqliteDriverLoader.connect("jdbc:sqlite:" + normalized);
             applyPragmas(connection);
             installSchema(connection);
-            migrateLegacyManifestJson(connection);
-            reindexCtrlTargetsV3(connection);
             CONNECTIONS.put(normalized, connection);
             return connection;
         } catch (SQLException | IOException err) {
@@ -1312,7 +1270,7 @@ final class ControllerSqliteStore {
         try (PreparedStatement statement = connection.prepareStatement(
                 "INSERT OR IGNORE INTO schema_meta(key, value) VALUES (?, ?)")) {
             statement.setString(1, "schema_version");
-            statement.setString(2, "2");
+            statement.setString(2, "3");
             statement.executeUpdate();
             statement.setString(1, "created_by_mod");
             statement.setString(2, "createthrusters");
@@ -1340,6 +1298,7 @@ final class ControllerSqliteStore {
         }
     }
 
+<<<<<<< Updated upstream
     // Reindex the V3 controller targets
     private static void reindexCtrlTargetsV3(Connection connection) throws SQLException {
         int schemaVersion = 0;
@@ -1532,6 +1491,8 @@ final class ControllerSqliteStore {
         return changed;
     }
 
+=======
+>>>>>>> Stashed changes
     // Load the linker root
     private static CompoundTag loadLinkerRoot(Connection connection,
                                              String manifestId,
@@ -2232,62 +2193,6 @@ final class ControllerSqliteStore {
         return val == null ? null : val.copy();
     }
 
-    // Get the snapshot from JSON
-    private static @Nullable ControllerManifestStore.ManifestSnapshot snapshotFromJson(String json, boolean linker) {
-        if (json == null || json.isBlank()) {
-            return null;
-        }
-        try {
-            JsonObject root = JsonParser.parseString(json).getAsJsonObject();
-            String id = linker ? string(root, "linkerManifestId") : string(root, "controllerManifestId");
-            if (id.isBlank()) {
-                return null;
-            }
-            int revision = root.has("revision") ? root.get("revision").getAsInt() : 0;
-            int storageVersion = root.has("schemaVersion") ? root.get("schemaVersion").getAsInt()
-                    : ControllerManifestStore.STORAGE_VERSION;
-            String hash = string(root, "contentHash");
-            String kind = string(root, "kind");
-            return new ControllerManifestStore.ManifestSnapshot(
-                    id,
-                    revision,
-                    hash,
-                    storageVersion,
-                    kind,
-                    compound(root, "controllerData"),
-                    compound(root, "draftGraph"),
-                    compound(root, "activeGraph"),
-                    compound(root, "linkerData"));
-        } catch (Exception err) {
-            Create.LOGGER.warn("Failed to decode legacy SQLite manifest JSON", err);
-            return null;
-        }
-    }
-
-    // Get the compound
-    private static CompoundTag compound(JsonObject root, String key) throws CommandSyntaxException {
-        if (!root.has(key) || root.get(key).isJsonNull()) {
-            return new CompoundTag();
-        }
-        JsonElement elm = root.get(key);
-        if (elm.isJsonPrimitive()) {
-            String snbt = elm.getAsString();
-            if (snbt == null || snbt.isBlank()) {
-                return new CompoundTag();
-            }
-            return TagParser.parseTag(snbt);
-        }
-        try {
-            Tag tag = JsonOps.INSTANCE.convertTo(NbtOps.INSTANCE, elm);
-            if (tag instanceof CompoundTag compoundTag) {
-                return compoundTag;
-            }
-        } catch (RuntimeException err) {
-            Create.LOGGER.warn("Failed to convert legacy SQLite manifest field {} from JSON to NBT", key, err);
-        }
-        return new CompoundTag();
-    }
-
     // Get the NBT bytes
     private static @Nullable byte[] nbtBytes(@Nullable CompoundTag tag) {
         if (tag == null || tag.isEmpty()) {
@@ -2350,11 +2255,6 @@ final class ControllerSqliteStore {
     // Convert null text to an empty string
     private static String nullToEmpty(@Nullable String val) {
         return val == null ? "" : val;
-    }
-
-    // Get the string
-    private static String string(JsonObject root, String key) {
-        return root.has(key) && root.get(key).isJsonPrimitive() ? root.get(key).getAsString() : "";
     }
 
     // Parse the UUID
@@ -2487,22 +2387,6 @@ final class ControllerSqliteStore {
             this.mode = mode == null ? ContraptionNetworkLinkerData.LinkMode.OUTPUT : mode;
             this.scope = scope == null ? ContraptionNetworkLinkerData.TargetScope.FACE : scope;
         }
-    }
-
-    // Store the legacy controller row
-    private record LegacyControllerRow(
-            String id,
-            String kind,
-            int revision,
-            String dimension,
-            String manifestJson) {
-    }
-
-    // Store the legacy linker row
-    private record LegacyLinkerRow(
-            String id,
-            int revision,
-            String manifestJson) {
     }
 
     // Store the linked block row

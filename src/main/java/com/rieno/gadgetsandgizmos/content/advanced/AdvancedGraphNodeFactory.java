@@ -77,6 +77,16 @@ public final class AdvancedGraphNodeFactory {
                     com.rieno.gadgetsandgizmos.lib.control.SignalValueType.REDSTONE.id());
         }
         com.rieno.gadgetsandgizmos.lib.graph.GraphNodePresentationRegistry.initialize(type, data);
+<<<<<<< Updated upstream
+=======
+        if("createthrusters:time".equals(type))
+            com.rieno.gadgetsandgizmos.lib.graph.TimeGraphNode.initializeTimezone(data, safeContext.serverTimezone());
+        if("createthrusters:command".equals(type)){
+            CompoundTag defaults = new CompoundTag();
+            defaults.put("command", graphDefault("string", ""));
+            data.put("Defaults", defaults);
+        }
+>>>>>>> Stashed changes
         if("camera".equals(type)){
             CompoundTag defaults = new CompoundTag();
             defaults.put("max_ray_length", graphDefault("number", 64.0D));
@@ -446,6 +456,20 @@ public final class AdvancedGraphNodeFactory {
             defaults.put("operator", graphDefault("string", "=="));
             data.put("Defaults", defaults);
             putCompareOperatorOptions(data);
+        }
+        if("lerp".equals(type) || "ramp".equals(type)){
+            CompoundTag defaults = data.getCompound("Defaults");
+            if("lerp".equals(type)){
+                defaults.put("a", graphDefault("number", 0));
+                defaults.put("b", graphDefault("number", 1));
+                defaults.put("amount", graphDefault("number", .1));
+            }else{
+                defaults.put("value", graphDefault("number", 1));
+                defaults.put("rise", graphDefault("number", .1));
+                defaults.put("fall", graphDefault("number", .1));
+                defaults.put("reset_delay", graphDefault("number", 0));
+            }
+            data.put("Defaults", defaults);
         }
         if ("smoothing".equals(type)) {
             CompoundTag defaults = data.getCompound("Defaults");

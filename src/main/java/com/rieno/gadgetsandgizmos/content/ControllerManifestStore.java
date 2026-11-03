@@ -197,15 +197,7 @@ public final class ControllerManifestStore {
 
     // Load the controller
     public static @Nullable ManifestSnapshot loadController(String manifestId, @Nullable Level level) {
-        ManifestSnapshot sqliteSnapshot = ControllerSqliteStore.loadController(manifestId, level);
-        if (sqliteSnapshot != null) {
-            return sqliteSnapshot;
-        }
-        ManifestSnapshot legacySnapshot = readManifest(controllerPath(manifestId, level), legacyControllerPath(manifestId), false);
-        if (legacySnapshot != null) {
-            ControllerSqliteStore.importController(legacySnapshot, level);
-        }
-        return legacySnapshot;
+        return ControllerSqliteStore.loadController(manifestId, level);
     }
 
     // Delete the controller
@@ -218,15 +210,7 @@ public final class ControllerManifestStore {
 
     // Load the linker
     public static @Nullable ManifestSnapshot loadLinker(String manifestId) {
-        ManifestSnapshot sqliteSnapshot = ControllerSqliteStore.loadLinker(manifestId);
-        if (sqliteSnapshot != null) {
-            return sqliteSnapshot;
-        }
-        ManifestSnapshot legacySnapshot = readManifest(linkerPath(manifestId), legacyLinkerPath(manifestId), true);
-        if (legacySnapshot != null) {
-            ControllerSqliteStore.importLinker(legacySnapshot);
-        }
-        return legacySnapshot;
+        return ControllerSqliteStore.loadLinker(manifestId);
     }
 
     // Save the controller
@@ -427,13 +411,11 @@ public final class ControllerManifestStore {
         if (rewriter == null) {
             return 0;
         }
-        importLegacyLinkerManifests();
         return ControllerSqliteStore.rewriteLinkers(rewriter);
     }
 
     // Load the linker manifest data
     public static List<CompoundTag> loadLinkerManifestData() {
-        importLegacyLinkerManifests();
         return ControllerSqliteStore.loadLinkerData();
     }
 
@@ -497,71 +479,13 @@ public final class ControllerManifestStore {
 
     // Read the manifest
     private static @Nullable ManifestSnapshot readManifest(Path path, boolean linker) {
-        return readManifest(path, null, linker);
-    }
-
-    // Rewrite the linker manifests in the directory
-    private static int rewriteLinkerManifestsIn(Path dir,
-                                                Function<CompoundTag, Boolean> rewriter,
-                                                Set<String> visitedIds) {
-        if (!Files.isDirectory(dir)) {
-            return 0;
-        }
-        int changed = 0;
-        try (var paths = Files.list(dir)) {
-            for (Path path : paths.filter(path -> Files.isRegularFile(path)
-                    && path.getFileName().toString().endsWith(".json")).toList()) {
-                ManifestSnapshot snapshot = readManifest(path, true);
-                if (snapshot == null || !visitedIds.add(snapshot.id())) {
-                    continue;
-                }
-                CompoundTag linkerData = snapshot.linkerData();
-                if (Boolean.TRUE.equals(rewriter.apply(linkerData))) {
-                    saveLinker(snapshot.id(), linkerData, snapshot.revision());
-                    changed++;
-                }
-            }
-        } catch (IOException err) {
-            Create.LOGGER.warn("Failed to rewrite linker manifests in {}", dir, err);
-        }
-        return changed;
-    }
-
-    // Load the linker manifest data
-    private static void loadLinkerManifestDataFrom(Path dir,
-                                                   Set<String> visitedIds,
-                                                   List<CompoundTag> output) {
-        if (!Files.isDirectory(dir)) {
-            return;
-        }
-        try (var paths = Files.list(dir)) {
-            for (Path path : paths.filter(path -> Files.isRegularFile(path)
-                    && path.getFileName().toString().endsWith(".json")).toList()) {
-                ManifestSnapshot snapshot = readManifest(path, true);
-                if (snapshot != null && visitedIds.add(snapshot.id())) {
-                    output.add(snapshot.linkerData());
-                }
-            }
-        } catch (IOException err) {
-            Create.LOGGER.warn("Failed to read linker manifests in {}", dir, err);
-        }
-    }
-
-    // Read the manifest
-    private static @Nullable ManifestSnapshot readManifest(Path path, @Nullable Path fallbackPath, boolean linker) {
         try {
             Path selectedPath = path;
-            if (!Files.exists(selectedPath) && fallbackPath != null
-                    && !Objects.equals(selectedPath, fallbackPath) && Files.exists(fallbackPath)) {
-                selectedPath = fallbackPath;
-            }
-            boolean loadedFromFallback = !Objects.equals(selectedPath, path);
             if (!Files.exists(selectedPath)) {
                 Create.LOGGER.warn("Controller manifest is missing: {}", path);
                 return null;
             }
             JsonObject root = JsonParser.parseString(Files.readString(selectedPath, StandardCharsets.UTF_8)).getAsJsonObject();
-            boolean legacyJson = manifestUsesLegacyNbt(root);
             String kind = string(root, "kind");
             String id = linker ? string(root, "linkerManifestId") : string(root, "controllerManifestId");
             if (id.isBlank()) {
@@ -584,9 +508,6 @@ public final class ControllerManifestStore {
             hydrateSharedGraphImages(root, linkerData);
             ManifestSnapshot snapshot = new ManifestSnapshot(id, revision, hash, storageVersion, kind,
                     controllerData, draftGraph, activeGraph, linkerData);
-            if ((loadedFromFallback || legacyJson) && isSharedGraphPath(selectedPath)) {
-                migrateManifest(path, linker, root, snapshot);
-            }
             return snapshot;
         } catch (Exception err) {
             Create.LOGGER.warn("Failed to read controller manifest {}", path, err);
@@ -635,49 +556,6 @@ public final class ControllerManifestStore {
             Create.LOGGER.warn("Failed to delete controller manifest {}", path, err);
             return false;
         }
-    }
-
-    // Migrate the manifest
-    private static void migrateManifest(Path destination, boolean linker, JsonObject sourceRoot,
-                                        ManifestSnapshot snapshot) {
-        if (destination == null || snapshot == null) {
-            return;
-        }
-        JsonObject migrated = sourceRoot == null ? new JsonObject() : sourceRoot.deepCopy();
-        migrated.addProperty("schemaVersion", STORAGE_VERSION);
-        migrated.addProperty("kind", snapshot.kind() == null || snapshot.kind().isBlank()
-                ? (linker ? "contraption_network_linker" : "base_controller") : snapshot.kind());
-        if (linker) {
-            migrated.addProperty("linkerManifestId", snapshot.id());
-            CompoundTag linkerData = snapshot.linkerData();
-            JsonObject linkerRoot = linkerRootJson(snapshot.id(), linkerData);
-            for (String key : linkerRoot.keySet()) {
-                migrated.add(key, linkerRoot.get(key));
-            }
-            writeManifest(destination, migrated, snapshot.id(), snapshot.revision(), "contraption_network_linker",
-                    new CompoundTag(), new CompoundTag(), new CompoundTag(), linkerData);
-            return;
-        }
-
-        CompoundTag controllerData = snapshot.controllerData();
-        CompoundTag draftGraph = snapshot.draftGraph();
-        CompoundTag activeGraph = snapshot.activeGraph();
-        String kind = snapshot.kind() == null || snapshot.kind().isBlank() ? "base_controller" : snapshot.kind();
-        migrated.addProperty("controllerManifestId", snapshot.id());
-        migrated.add("controllerData", nbtJson(controllerData));
-        migrated.add("storedTargets", nbtSectionJson(controllerData, "StoredTargets"));
-        migrated.add("standardChannels", standardChannels(controllerData));
-        migrated.add("customEntries", nbtSectionJson(controllerData, "CustomKeyEntries"));
-        migrated.addProperty("insertedLinkerManifestId", insertedLinkerManifestId(controllerData));
-        migrated.addProperty("ometerOutputSignal", controllerData.getInt("OmeterOutputSignal"));
-        migrated.addProperty("customName", controllerData.getString("CustomName"));
-        if ("advanced_controller".equals(kind) || !draftGraph.isEmpty() || !activeGraph.isEmpty()) {
-            migrated.add("draftGraph", nbtJson(draftGraph));
-            migrated.add("activeGraph", nbtJson(activeGraph));
-            migrated.addProperty("compiledProgramHash", sha256(GSON.toJson(nbtJson(activeGraph))));
-        }
-        writeManifest(destination, migrated, snapshot.id(), snapshot.revision(), kind,
-                controllerData, draftGraph, activeGraph, new CompoundTag());
     }
 
     // Get the linker root JSON
@@ -848,40 +726,6 @@ public final class ControllerManifestStore {
         return new CompoundTag();
     }
 
-    // Check if the manifest uses legacy NBT
-    private static boolean manifestUsesLegacyNbt(JsonObject root) {
-        if (root == null) {
-            return false;
-        }
-        if (legacyPrimitive(root, "controllerData")
-                || legacyPrimitive(root, "storedTargets")
-                || legacyPrimitive(root, "customEntries")
-                || legacyPrimitive(root, "draftGraph")
-                || legacyPrimitive(root, "activeGraph")
-                || legacyPrimitive(root, "targets")
-                || legacyPrimitive(root, "channelBindings")
-                || legacyPrimitive(root, "customEntryBindings")
-                || legacyPrimitive(root, "storedControllerManifests")
-                || legacyPrimitive(root, "storedGraphs")
-                || legacyPrimitive(root, "linkerData")) {
-            return true;
-        }
-        if (root.has("standardChannels") && root.get("standardChannels").isJsonObject()) {
-            JsonObject standard = root.getAsJsonObject("standardChannels");
-            for (String key : standard.keySet()) {
-                if (legacyPrimitive(standard, key)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
-    // Check if the legacy value is primitive
-    private static boolean legacyPrimitive(JsonObject root, String key) {
-        return root.has(key) && root.get(key).isJsonPrimitive();
-    }
-
     // Get the NBT JSON
     private static JsonElement nbtJson(@Nullable CompoundTag tag) {
         return NbtOps.INSTANCE.convertTo(JsonOps.INSTANCE, tag == null ? new CompoundTag() : tag);
@@ -906,26 +750,6 @@ public final class ControllerManifestStore {
             return manifestId.trim();
         }
         return UUID.randomUUID().toString();
-    }
-
-    // Get the controller path
-    private static Path controllerPath(String manifestId, @Nullable Level level) {
-        return rootDir(level).resolve("controllers").resolve(safeFileName(manifestId) + ".json");
-    }
-
-    // Get the legacy controller path
-    private static Path legacyControllerPath(String manifestId) {
-        return legacyRootDir().resolve("controllers").resolve(safeFileName(manifestId) + ".json");
-    }
-
-    // Get the linker path
-    private static Path linkerPath(String manifestId) {
-        return rootDir().resolve("linkers").resolve(safeFileName(manifestId) + ".json");
-    }
-
-    // Get the legacy linker path
-    private static Path legacyLinkerPath(String manifestId) {
-        return legacyRootDir().resolve("linkers").resolve(safeFileName(manifestId) + ".json");
     }
 
     // Get the shared graph path
@@ -983,22 +807,6 @@ public final class ControllerManifestStore {
         } catch (RuntimeException err) {
             return null;
         }
-    }
-
-    // Import the legacy linker manifests
-    private static void importLegacyLinkerManifests() {
-        ControllerSqliteStore.importLegacyLinkers(rootDir().resolve("linkers"), path -> readManifest(path, true));
-        Path legacy = legacyRootDir().resolve("linkers");
-        if (!Objects.equals(legacy, rootDir().resolve("linkers"))) {
-            ControllerSqliteStore.importLegacyLinkers(legacy, path -> readManifest(path, true));
-        }
-    }
-
-    // Check if this is shared graph path
-    private static boolean isSharedGraphPath(Path path) {
-        Path parent = path == null ? null : path.getParent();
-        return parent != null && parent.getFileName() != null
-                && SHARED_GRAPHS_DIR.equals(parent.getFileName().toString());
     }
 
     // Get the safe shared base name

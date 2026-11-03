@@ -59,7 +59,7 @@ public final class AdvancedGraphEditingService implements VersionedGraphEditor {
 
     @Override
     public List<GraphNodeDefinition> nodeTypes() {
-        return List.copyOf(GraphApi.nodes().definitions());
+        return GraphApi.nodes().definitions().stream().filter(node -> !AdvancedGraphCatalog.isNodeDisabled(node.id())).toList();
     }
 
     @Override
@@ -170,6 +170,9 @@ public final class AdvancedGraphEditingService implements VersionedGraphEditor {
             return new GraphEditResult(false, false, false, working.revision(),
                     "storage_limit", "Transaction exceeds a hard graph limit",
                     Map.of(), converted);
+        }
+        if(!controller.canEditGraph(controller.getDraftGraph(), working)){
+            return failure(working.revision(), "operator_required", "Operator permissions required for Command nodes");
         }
         if (!controller.saveDraft(working, expectedRevision)) {
             return failure(controller.getDraftGraph().revision(), "revision_conflict",

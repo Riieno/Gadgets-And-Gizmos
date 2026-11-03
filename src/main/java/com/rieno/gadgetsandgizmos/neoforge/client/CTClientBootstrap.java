@@ -14,6 +14,7 @@ import com.rieno.gadgetsandgizmos.content.DiagnosticTabletData;
 import com.rieno.gadgetsandgizmos.content.IonThrusterStacks;
 import com.rieno.gadgetsandgizmos.content.ZiplineRidingController;
 import com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps.AppStore;
+import com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps.Settings;
 import com.rieno.gadgetsandgizmos.registry.CTBlocks;
 import com.rieno.gadgetsandgizmos.registry.CTItems;
 import com.rieno.gadgetsandgizmos.ponder.CTPonderPlugin;
@@ -100,7 +101,24 @@ public final class CTClientBootstrap {
                     SoftParticleRenderTypes.setShaderPackWorldTargetBinder(ShaderPackClientCompat::bindWorldTarget);
                 }
                 TabletAppClientRegistry.registerIfAbsent(DiagnosticTabletData.appId("app_store"), new AppStore());
+<<<<<<< Updated upstream
                 
+=======
+                TabletAppClientRegistry.registerIfAbsent(DiagnosticTabletData.appId("settings"), new Settings());
+                TabletAppClientRegistry.registerIfAbsent(DiagnosticTabletData.appId("nfc"),
+                        new com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps.Nfc());
+                TabletAppClientRegistry.registerIfAbsent(DiagnosticTabletData.appId("rdp"),
+                        new com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps.RemoteDesktop(CTColorPickerAppearance.DEFAULT));
+                TabletAppClientRegistry.registerIfAbsent(DiagnosticTabletData.appId("gg_auto"),
+                        new com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps.GgAuto());
+                TabletAppClientRegistry.registerIfAbsent(DiagnosticTabletData.appId("media"),
+                        new com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps.Media());
+                TabletAppClientRegistry.registerIfAbsent(DiagnosticTabletData.appId("redstone_link"),
+                        new com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps.RedstoneLink(CTColorPickerAppearance.DEFAULT));
+                com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps.Media.registerIcon();
+                DiagnosticTabletMediaClient.register();
+                com.rieno.gadgetsandgizmos.neoforge.client.tablet.apps.PaidTabletAppClients.register();
+>>>>>>> Stashed changes
                 BlackstoneCasingConnectedTextures.register();
                 AccDisplayConnectedTextures.register();
                 SmartStorageConnectedTextures.register();
@@ -231,6 +249,7 @@ public final class CTClientBootstrap {
         NeoForge.EVENT_BUS.addListener(AccHologramWidgetClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(ShippingRouteSplineClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletGuiProjection::onClientTick);
+        NeoForge.EVENT_BUS.addListener(DiagnosticTabletMediaClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletGuiProjection::onRenderFrame);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletLandingZoneClient::onRenderWorld);
         NeoForge.EVENT_BUS.addListener(DiagnosticTabletLandingZoneClient::onMouseScrolling);

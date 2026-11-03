@@ -334,6 +334,20 @@ private final AdvancedGraphVersionHistory graphVersions = new AdvancedGraphVersi
     private Map<String, AdvancedGraphDocument.Value> graphObserverOutputs = new LinkedHashMap<>();
     // Cached graph runtime observers
     private List<GraphRuntimeObserver> cachedGraphRuntimeObservers = List.of();
+<<<<<<< Updated upstream
+=======
+    // Retain independent HUD delivery baselines without copying editor mirrors every tick
+    private final AdvancedHudRuntimeSync hudRuntimeSync = new AdvancedHudRuntimeSync();
+    private final com.rieno.gadgetsandgizmos.lib.graph.GraphRuntimeReplica<AdvancedGraphDocument.Value> clientRuntimeEvents =
+            new com.rieno.gadgetsandgizmos.lib.graph.GraphRuntimeReplica<>();
+    private final java.util.ArrayDeque<com.rieno.gadgetsandgizmos.lib.graph.GraphRuntimeJournal.Event<AdvancedGraphDocument.Value>> clientRuntimePulses =
+            new java.util.ArrayDeque<>();
+    private CompoundTag clientRuntimeMetadata = new CompoundTag();
+    private final Map<UUID, Long> runtimeResyncTicks = new LinkedHashMap<>();
+    // Require a matching complete baseline before applying client HUD deltas
+    private final com.rieno.gadgetsandgizmos.lib.util.ValueUpdateSequence clientHudSequence =
+            new com.rieno.gadgetsandgizmos.lib.util.ValueUpdateSequence();
+>>>>>>> Stashed changes
     // Last graph runtime observer scan
     private long lastGraphRuntimeObserverScan = Long.MIN_VALUE;
     // Last graph runtime send tick
@@ -467,7 +481,9 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     // Tracked transient mouse inputs
     private final Set<String> transientMouseInputs = new HashSet<>();
     // Mouse input last movement tick count
-    private final Map<String, Long> mouseInputLastMovementTicks = new LinkedHashMap<>();
+    private final Map<String, com.rieno.gadgetsandgizmos.lib.control.MouseAxisState> mouseAxes = new LinkedHashMap<>();
+    // Keep server-evaluated reset settings available to portable and physical clients
+    private Map<String, Integer> mouseAxisTimeouts = Map.of();
     // Tracked physical interaction participants
     private final Set<UUID> physicalInteractionParticipants = new HashSet<>();
     // Last synced ship initialization visible state
@@ -644,6 +660,11 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     // Update the advanced contraption controller
     @Override
     public void tick() {
+<<<<<<< Updated upstream
+=======
+        com.rieno.gadgetsandgizmos.lib.inventory.ContainerStorageNetworks.track(this,
+                SmartContainerManifest::linkedStorage, SmartContainerManifest::storageSubLevels);
+>>>>>>> Stashed changes
         if (AccDisplayControllerRegistry.isStopping(getLevel())
                 || serverShutdownPrepared || !isControllerRuntimeLoaded()) {
             return;
@@ -1111,6 +1132,57 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         return accepted;
     }
 
+<<<<<<< Updated upstream
+=======
+    // Supply the owning schedule with a stable traffic-aware network route
+    List<Vec3> selectShipApproachRoute(String id, ShipDockRegistry.Dock dock, boolean departing, Vec3 reference){
+        return shipControlRuntime.selectApproachRoute(id, dock, departing, reference);
+    }
+
+    // Exchange ship-specific clearance and berth preference with the dock allocator
+    com.rieno.gadgetsandgizmos.lib.shipping.ShipDockScheduler.AccessReport assessShipDockApproach(ShipDockRegistry.Dock dock){
+        return shipControlRuntime.assessDockApproach(dock);
+    }
+
+    // Follow confirmed approach controls through the SCM navigation adapter
+    boolean executeShipApproachSpline(String id, Map<String, Double> values, Map<String, String> text, List<Vec3> controls, boolean captureAtEntry, UUID corridorId){
+        return shipControlRuntime.executeApproachSpline(id, values, text, controls, captureAtEntry, corridorId);
+    }
+
+    boolean prepareShipDockManeuver(ShipDockRegistry.Dock dock, int connectorIdx){
+        return shipControlRuntime.prepareDockManeuver(dock, connectorIdx);
+    }
+
+    boolean prepareShipDockManeuver(ShipDockRegistry.Dock dock, int connectorIdx, double speed){
+        return shipControlRuntime.prepareDockManeuver(dock, connectorIdx, getShippingSchedulePilotId(), speed);
+    }
+
+    boolean prepareShipDockDeparture(ShipDockRegistry.Dock dock, int connectorIdx){
+        return shipControlRuntime.prepareDockDeparture(dock, connectorIdx);
+    }
+
+    ShipControlModuleRuntime.DockDepartureTarget shipDockDepartureTarget(ShipDockRegistry.Dock dock, int connectorIdx){
+        return shipControlRuntime.dockDepartureTarget(dock, connectorIdx);
+    }
+
+    boolean beginShipDockDeparture(String id, ShipDockRegistry.Dock dock, int connectorIdx){
+        return shipControlRuntime.beginDockDeparture(id, dock, connectorIdx);
+    }
+
+    boolean isShipDockDepartureComplete(String id){ return shipControlRuntime.dockDepartureComplete(id); }
+
+    boolean isShipDockDepartureCleared(String id, ShipDockRegistry.Dock dock, int connectorIdx){
+        return shipControlRuntime.dockDepartureCleared(id, dock, connectorIdx);
+    }
+
+    boolean isShipApproachCaptured(String id){ return shipControlRuntime.approachCaptured(id); }
+
+    // Report ordered approach distance to the owning schedule
+    double shipApproachRemainingDistance(String id){ return shipControlRuntime.approachRemainingDistance(id); }
+
+    boolean isShipDockMovementBlocked(String id){ return shipControlRuntime.dockingMovementBlocked(id); }
+
+>>>>>>> Stashed changes
     // Check if the ship control graph command is pending
     public boolean isShipControlGraphCommandPending(String commandId, String nodeType) {
         if ("ship_flight_behavior".equals(nodeType)) {
@@ -1157,6 +1229,10 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
             return shippingScheduleRuntime.graphValue(port);
         }
         return shipControlRuntime.graphValue(port);
+    }
+
+    com.rieno.gadgetsandgizmos.lib.navigation.NavigationMapData.Route navigationMapRoute(Vec3 position, Vec3 target){
+        return shipControlRuntime.navigationMapRoute(position, target);
     }
 
     // Get the ship control graph value
@@ -1275,7 +1351,30 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
             graphObserverSampleRevision = Integer.MIN_VALUE;
             return;
         }
+<<<<<<< Updated upstream
         boolean sampleDraft = observers.stream().anyMatch(observer -> observer.containerId() >= 0);
+=======
+        hudRuntimeSync.retain(observers.stream().map(observer -> observer.player().getUUID())
+                .collect(java.util.stream.Collectors.toSet()));
+        long now = level == null ? 0L : level.getGameTime();
+        if(observers.stream().noneMatch(this::requiresGraphDiagnostics)){
+            graphLiveInputs.clear();
+            graphLiveOutputs.clear();
+            graphObserverInputs.clear();
+            graphObserverOutputs.clear();
+            lastGraphObserverSample = Long.MIN_VALUE;
+            graphObserverSampleGraph = null;
+            graphObserverSampleRevision = Integer.MIN_VALUE;
+            if(lastGraphRuntimeSendTick == Long.MIN_VALUE || now < lastGraphRuntimeSendTick
+                    || now - lastGraphRuntimeSendTick >= GRAPH_RUNTIME_SEND_INTERVAL){
+                sendGraphRuntimeData(observers);
+                lastGraphRuntimeSendTick = now;
+            }
+            return;
+        }
+        boolean sampleDraft = observers.stream().anyMatch(observer -> observer.containerId() >= 0
+                && !AdvancedHudRuntimeSync.supportsEvents(observer.player()));
+>>>>>>> Stashed changes
         long gameTime = level == null ? 0L : level.getGameTime();
         boolean observerSampleDue = lastGraphObserverSample == Long.MIN_VALUE
                 || gameTime - lastGraphObserverSample >= GRAPH_OBSERVER_SAMPLE_INTERVAL
@@ -1294,6 +1393,15 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
                     graphObserverInputs, graphObserverOutputs);
             lastGraphObserverSample = gameTime;
             graphObserverSampledDraft = sampleDraft;
+        }
+        graphRuntime.observeRuntimePorts(graphObserverInputs, graphObserverOutputs);
+        if(observers.stream().allMatch(observer -> AdvancedHudRuntimeSync.supportsEvents(observer.player()))){
+            if(lastGraphRuntimeSendTick == Long.MIN_VALUE || gameTime < lastGraphRuntimeSendTick
+                    || gameTime - lastGraphRuntimeSendTick >= GRAPH_RUNTIME_SEND_INTERVAL){
+                sendGraphRuntimeData(observers);
+                lastGraphRuntimeSendTick = gameTime;
+            }
+            return;
         }
         long runtimeRevision = graphRuntime.liveValueRevision();
         boolean runtimeChanged = runtimeRevision != lastGraphRuntimeMirrorRevision;
@@ -1408,8 +1516,8 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
             return;
         }
         activeBindings.add(bindingId);
-        double val = getGraphBindingValue(bindingId);
-        boolean active = isGraphBindingActive(bindingId);
+        double val = graphRuntime.physicalBindingValue(bindingId);
+        boolean active = graphRuntime.physicalBindingActive(bindingId);
         Double prev = lastGraphChannelValues.put(bindingId, val);
         if (prev == null) {
             if (active) {
@@ -1420,7 +1528,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         if (prev != null && Math.abs(prev - val) > 0.0001) {
             UUID playerId = graphRuntime.bindingInteractionPlayer(bindingId, !active);
             graphRuntime.setBindingActive(bindingId, active, playerId);
-            graphRuntime.enqueue("channel:" + bindingId, playerId);
+            graphRuntime.enqueueExternal("channel:" + bindingId, playerId);
         }
     }
 
@@ -1602,9 +1710,12 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         if (observers == null || observers.isEmpty()) {
             return;
         }
+<<<<<<< Updated upstream
         Map<String, AdvancedGraphLiveValue> liveInputs = graphLiveValues(graphLiveInputs);
         Map<String, AdvancedGraphLiveValue> liveOutputs = graphLiveValues(graphLiveOutputs);
         UUID subLevelId = SimulatedHelper.getContainingSubLevelId(this);
+=======
+>>>>>>> Stashed changes
         for (GraphRuntimeObserver observer : observers) {
             var personal = graphRuntime.playerHudValues(observer.player().getUUID());
             Map<String, AdvancedGraphLiveValue> playerInputs = new LinkedHashMap<>(liveInputs);
@@ -1615,12 +1726,32 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
                     gogglesTrackerPairs,
                     observer.pairId(),
                     observer.containerId() >= 0);
+<<<<<<< Updated upstream
             PacketDistributor.sendToPlayer(observer.player(), new AdvancedControllerRuntimePayload(
                     getBlockPos(), subLevelId, observer.containerId(),
                     trackerPairs,
                     playerInputs, playerOutputs, graphExecutionPulses, graphRuntime.previewVariables(observer.player().getUUID()), getGogglesTrackerPairItems().entrySet().stream()
                             .filter(entry -> trackerPairs.containsKey(entry.getKey()))
                             .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue))));
+=======
+            Map<UUID, String> trackerItems = getGogglesTrackerPairItems().entrySet().stream()
+                    .filter(entry -> trackerPairs.containsKey(entry.getKey()))
+                    .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+            if(hudRuntimeSync.sendEvents(this, observer.player(), observer.containerId(), trackerPairs,
+                    hudInputs, personal.outputs(), graphRuntime.previewVariables(observer.player().getUUID()), trackerItems)) continue;
+            if(!requiresGraphDiagnostics(observer)){
+                hudRuntimeSync.send(this, observer.player(), trackerPairs, hudInputs, personal.outputs(),
+                        graphRuntime.executionPulses(), graphRuntime.previewVariables(observer.player().getUUID()), trackerItems);
+                continue;
+            }
+            Map<String, AdvancedGraphDocument.Value> playerInputs = new LinkedHashMap<>(graphLiveInputs);
+            Map<String, AdvancedGraphDocument.Value> playerOutputs = new LinkedHashMap<>(graphLiveOutputs);
+            playerInputs.putAll(hudInputs);
+            playerOutputs.putAll(personal.outputs());
+            hudRuntimeSync.send(this, observer.player(), observer.containerId(), trackerPairs,
+                    playerInputs, playerOutputs, graphExecutionPulses,
+                    graphRuntime.previewVariables(observer.player().getUUID()), trackerItems);
+>>>>>>> Stashed changes
         }
     }
 
@@ -1652,17 +1783,43 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
             return;
         }
         var personal = graphRuntime.playerHudValues(player.getUUID());
-        Map<String, AdvancedGraphDocument.Value> playerInputs = new LinkedHashMap<>(graphRuntime.liveInputs());
-        Map<String, AdvancedGraphDocument.Value> playerOutputs = new LinkedHashMap<>(graphRuntime.liveOutputs());
+        Map<String, AdvancedGraphDocument.Value> hudInputs = new LinkedHashMap<>(personal.inputs());
+        AdvancedHudCameraSource.addHudReferences(this, activeGraph, hudInputs);
+        if(hudRuntimeSync.sendEvents(this, player, containerId, getGogglesTrackerPairLabels(), hudInputs,
+                personal.outputs(), graphRuntime.previewVariables(player.getUUID()), getGogglesTrackerPairItems())){
+            directRuntimeSendStates.put(sendKey, new DirectRuntimeSendState(gameTime, runtimeRevision));
+            return;
+        }
+        Map<String, AdvancedGraphDocument.Value> playerInputs = new LinkedHashMap<>(graphRuntime.liveInputsView());
+        Map<String, AdvancedGraphDocument.Value> playerOutputs = new LinkedHashMap<>(graphRuntime.liveOutputsView());
         playerInputs.putAll(personal.inputs());
         playerOutputs.putAll(personal.outputs());
+<<<<<<< Updated upstream
         PacketDistributor.sendToPlayer(player, new AdvancedControllerRuntimePayload(
                 getBlockPos(), SimulatedHelper.getContainingSubLevelId(this), containerId,
                 getGogglesTrackerPairLabels(),
                 graphLiveValues(playerInputs),
                 graphLiveValues(playerOutputs),
                 graphRuntime.executionPulses(), graphRuntime.previewVariables(player.getUUID()), getGogglesTrackerPairItems()));
+=======
+        AdvancedHudCameraSource.addHudReferences(this, activeGraph, playerInputs);
+        hudRuntimeSync.send(this, player, containerId, getGogglesTrackerPairLabels(), playerInputs, playerOutputs,
+                graphRuntime.executionPulses(), graphRuntime.previewVariables(player.getUUID()), getGogglesTrackerPairItems());
+>>>>>>> Stashed changes
         directRuntimeSendStates.put(sendKey, new DirectRuntimeSendState(gameTime, runtimeRevision));
+    }
+
+    // Recover only active observer streams and bound repeated requests from one connection
+    public void resyncGraphRuntime(ServerPlayer player, int containerId){
+        if(level == null || level.isClientSide || graphRuntimeObservers().stream().noneMatch(observer ->
+                observer.player() == player && observer.containerId() == containerId)) return;
+        long now = level.getGameTime();
+        Long prev = runtimeResyncTicks.get(player.getUUID());
+        if(prev != null && now >= prev && now - prev < 20) return;
+        runtimeResyncTicks.put(player.getUUID(), now);
+        hudRuntimeSync.forget(player.getUUID());
+        directRuntimeSendStates.remove(player.getUUID() + ":" + containerId);
+        sendGraphRuntimeDataTo(player, containerId);
     }
 
     // Get the graph live values
@@ -1703,6 +1860,246 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
                 () -> com.rieno.gadgetsandgizmos.lib.graph.GraphReadView.of(activeGraph));
     }
 
+<<<<<<< Updated upstream
+=======
+    // Reuse a caller-owned detached copy while the applied graph remains unchanged
+    public AdvancedGraphDocument activeGraphSnapshot(
+            com.rieno.gadgetsandgizmos.lib.util.RevisionSnapshotCache<AdvancedGraphDocument> cache){
+        return cache.get(activeGraph, activeGraph.revision(), activeGraph::copy);
+    }
+
+    // Get the hidden Schedule Scratch graph draft. Callers must still pass the
+    // Schedule-workspace check before displaying or editing this document.
+    public AdvancedGraphDocument getShippingScheduleDraftGraph() {
+        hydrateShippingScheduleGraphFromRuntime();
+        return shippingScheduleDraftGraph.copy();
+    }
+
+    // Supply known ship docks to destination, parking and refuel input completions
+    public List<String> shippingScheduleDestinationNames(ResourceLocation inputId){
+        if(inputId == null || !Set.of("destination", "park_at", "refuel_if").contains(inputId.getPath())) return List.of();
+        if(level == null || level.isClientSide || level.getServer() == null) return shippingScheduleDestinationNames;
+        return ShipDockRegistry.get(level.getServer()).allIn(level.dimension().location()).stream()
+                .map(ShipDockRegistry.Dock::name).distinct().sorted().limit(4096).toList();
+    }
+
+    // Get the active Schedule Scratch graph.
+    public AdvancedGraphDocument getShippingScheduleActiveGraph() {
+        hydrateShippingScheduleGraphFromRuntime();
+        return shippingScheduleActiveGraph.copy();
+    }
+
+    // Save one controller-owned Scratch schedule graph. An already-running
+    // SCM receives the updated route; an inactive SCM waits for Start.
+    public boolean saveShippingScheduleGraph(AdvancedGraphDocument graph, int expectedRevision) {
+        hydrateShippingScheduleGraphFromRuntime();
+        if (!hasShippingScheduleWorkspace() || graph == null
+                || expectedRevision != shippingScheduleDraftGraph.revision()
+                || getLevel() == null || getLevel().isClientSide) {
+            return false;
+        }
+        AdvancedGraphDocument candidate = graph.copy();
+        ShippingScheduleGraph.ensureTemplate(candidate);
+        if(!canEditGraph(shippingScheduleDraftGraph, candidate)
+                || !canEditGraph(shippingScheduleActiveGraph, candidate)) return false;
+        com.simibubi.create.content.trains.schedule.Schedule schedule =
+                ShippingScheduleGraph.toSchedule(candidate, getLevel().registryAccess());
+        // Saving is not a hidden start button. A live SCM runtime receives
+        // the edited schedule immediately, while an inactive controller keeps
+        // the graph ready for the explicit Start control.
+        if (shippingScheduleRuntime.hasSchedule() && (schedule == null || schedule.entries.isEmpty()
+                || !shippingScheduleRuntime.replaceSchedule(schedule))) {
+            return false;
+        }
+        candidate.setRevision(shippingScheduleDraftGraph.revision() + 1);
+        boolean wasFollowing = followsShippingScheduleRoute();
+        shippingScheduleDraftGraph = candidate;
+        shippingScheduleActiveGraph = candidate.copy();
+        if(wasFollowing != followsShippingScheduleRoute()) shipControlRuntime.resetScheduledRouteFollowing();
+        if(schedule != null && !schedule.entries.isEmpty()) shippingScheduleRuntime.ensureEditableRoutes(schedule);
+        setChanged();
+        sendData();
+        return true;
+    }
+
+    // Explicitly import the physical schedule held by the attached pilot. Once
+    // materialised, the SCM's stored Scratch graph remains authoritative until
+    // the player deliberately reads the item again.
+    public boolean readShippingScheduleFromPilot() {
+        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
+        com.simibubi.create.content.trains.schedule.Schedule schedule = ShippingSchedulePilot.adjacentPilotSchedule(this);
+        if (schedule == null || schedule.entries.isEmpty()) return false;
+        syncShippingScheduleGraphFromSchedule(schedule);
+        sendData();
+        return true;
+    }
+
+    // Explicitly write the SCM-owned Scratch graph to its live Create runtime
+    // and paired held schedule item. This is intentionally separate from a
+    // Read so an old item cannot silently overwrite an edited controller graph.
+    public boolean writeShippingScheduleToPilot() {
+        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
+        AdvancedGraphDocument candidate = shippingScheduleDraftGraph.copy();
+        ShippingScheduleGraph.ensureTemplate(candidate);
+        com.simibubi.create.content.trains.schedule.Schedule schedule =
+                ShippingScheduleGraph.toSchedule(candidate, getLevel().registryAccess());
+        if (schedule == null || schedule.entries.isEmpty()) return false;
+        if (shippingScheduleRuntime.hasSchedule() && !shippingScheduleRuntime.replaceSchedule(schedule)) return false;
+        boolean wroteItem = ShippingSchedulePilot.writeAdjacentPilotSchedule(this, schedule);
+        if (!wroteItem) return false;
+        shippingScheduleActiveGraph = candidate.copy();
+        setChanged();
+        sendData();
+        return true;
+    }
+
+    // Start the controller-owned Scratch schedule without depending on a
+    // physical shipping-schedule item. A seated pilot (or blaze pilot) is
+    // still required because it is the runtime actor, but the document stored
+    // by this SCM is the authority.
+    public boolean startShippingScheduleGraph() {
+        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
+        AdvancedGraphDocument candidate = shippingScheduleDraftGraph.copy();
+        ShippingScheduleGraph.ensureTemplate(candidate);
+        com.simibubi.create.content.trains.schedule.Schedule schedule =
+                ShippingScheduleGraph.toSchedule(candidate, getLevel().registryAccess());
+        if (schedule == null || schedule.entries.isEmpty()) return false;
+        boolean updated = shippingScheduleRuntime.hasSchedule()
+                ? shippingScheduleRuntime.replaceSchedule(schedule)
+                : installScheduleGraphRuntime(schedule);
+        if (!updated) return false;
+        shippingScheduleActiveGraph = candidate.copy();
+        if (!shippingScheduleRuntime.restartFromController()) return false;
+        setChanged();
+        sendData();
+        return true;
+    }
+
+    // Route the visible SCM controls through the same server-authoritative
+    // runtime commands as schedule graph nodes.
+    public boolean controlShippingScheduleGraph(String command) {
+        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
+        return shippingScheduleRuntime.executeGraphCommand(command);
+    }
+
+    // Queue the complete visible schedule route without starting or changing the schedule.
+    public boolean precalculateShippingScheduleRoute() {
+        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
+        AdvancedGraphDocument graph = shippingScheduleDraftGraph.copy();
+        ShippingScheduleGraph.ensureTemplate(graph);
+        com.simibubi.create.content.trains.schedule.Schedule schedule =
+                ShippingScheduleGraph.toSchedule(graph, getLevel().registryAccess());
+        return schedule != null && !schedule.entries.isEmpty()
+                && shippingScheduleRuntime.precalculateRoutes(schedule);
+    }
+
+    // Delete prepared schedule-route geometry without changing the schedule graph.
+    public boolean deleteShippingScheduleRoute() {
+        if (!hasShippingScheduleWorkspace() || getLevel() == null || getLevel().isClientSide) return false;
+        return shipControlRuntime.deleteScheduledRoutes();
+    }
+
+    // Queue resolved schedule legs through the SCM route planner with their schedule entry identity.
+    boolean queueShippingScheduleRoutes(
+            List<ShipControlModuleRuntime.ScheduledRouteDestination> destinations
+    ) {
+        return shipControlRuntime.queueScheduledRouteDestinations(destinations);
+    }
+
+    public boolean followsShippingScheduleRoute(){
+        return shippingScheduleDraftGraph.variables().getOrDefault(ShippingScheduleGraph.FOLLOW_ROUTE_VARIABLE,
+                AdvancedGraphDocument.Value.bool(true)).asBoolean();
+    }
+
+    boolean createEditableShippingScheduleRoutes(List<ShipControlModuleRuntime.ScheduledRouteDestination> destinations){
+        return shipControlRuntime.createEditableScheduledRoutes(destinations);
+    }
+
+    // Get detached retained route geometry used to place schedule-owned dock queues.
+    List<List<Vec3>> shippingScheduleRoutePolylines(
+            int scheduleEntry,
+            Vec3 target,
+            double targetTolerance
+    ) {
+        return shipControlRuntime.scheduledRoutePolylines(
+                scheduleEntry, target, targetTolerance);
+    }
+
+    // Check whether a schedule-route calculation is currently queued.
+    public boolean isPrecalculatingShippingScheduleRoute() {
+        return shipControlRuntime.isPrecalculatingScheduledRoutes();
+    }
+
+    // Get the live queued schedule-route calculation progress.
+    public double shippingScheduleRoutePrecalculationProgress() {
+        return shipControlRuntime.scheduledRoutePrecalculationProgress();
+    }
+
+    // Start a schedule graph without requiring the retired schedule item.
+    private boolean installScheduleGraphRuntime(com.simibubi.create.content.trains.schedule.Schedule schedule) {
+        if (schedule == null || getLevel() == null) {
+            return false;
+        }
+        if (ShippingSchedulePilot.isBlazeBurnerPilot(this)) {
+            String identity = getLevel().dimension().location() + "|" + getBlockPos().asLong();
+            UUID pilot = UUID.nameUUIDFromBytes(("shipping_schedule_blaze|" + identity)
+                    .getBytes(StandardCharsets.UTF_8));
+            return shippingScheduleRuntime.install(schedule, pilot,
+                    ShippingAutoRefuelSettings.fromSchedule(schedule), true);
+        }
+        LivingEntity pilot = ShippingSchedulePilot.findAdjacentSeatedPilot(this);
+        return pilot != null && shippingScheduleRuntime.install(schedule, pilot.getUUID(),
+                ShippingAutoRefuelSettings.fromSchedule(schedule));
+    }
+
+    // Convert an installed legacy item schedule to its graph representation.
+    private void syncShippingScheduleGraphFromRuntime() {
+        if (getLevel() == null) {
+            return;
+        }
+        com.simibubi.create.content.trains.schedule.Schedule schedule = shippingScheduleRuntime.scheduleCopy();
+        if (schedule == null) return;
+        syncShippingScheduleGraphFromSchedule(schedule);
+    }
+
+    // Materialize a live or legacy held schedule into the reusable graph
+    // contract. Keeping this separate from the runtime reader lets older
+    // pilots populate Schedule immediately without first being reassigned.
+    private void syncShippingScheduleGraphFromSchedule(
+            com.simibubi.create.content.trains.schedule.Schedule schedule
+    ) {
+        if (getLevel() == null || schedule == null) return;
+        AdvancedGraphDocument graph = ShippingScheduleGraph.fromSchedule(schedule, getLevel().registryAccess());
+        if(!canEditGraph(shippingScheduleDraftGraph, graph)
+                || !canEditGraph(shippingScheduleActiveGraph, graph)) return;
+        int nextRevision = Math.max(shippingScheduleDraftGraph.revision(), shippingScheduleActiveGraph.revision()) + 1;
+        graph.setRevision(nextRevision);
+        shippingScheduleDraftGraph = graph;
+        shippingScheduleActiveGraph = graph.copy();
+        setChanged();
+    }
+
+    // Older worlds can already have a schedule runtime in memory while the
+    // new graph tags are absent. Menu creation and snapshots must repair that
+    // state too; relying only on the NBT read path left a valid held schedule
+    // looking like an empty Schedule tab until the controller reloaded.
+    private void hydrateShippingScheduleGraphFromRuntime() {
+        if (getLevel() == null || getLevel().isClientSide) {
+            return;
+        }
+        com.simibubi.create.content.trains.schedule.Schedule schedule = shippingScheduleRuntime.scheduleCopy();
+        if (schedule == null) schedule = ShippingSchedulePilot.adjacentPilotSchedule(this);
+        if (schedule == null || schedule.entries.isEmpty()) return;
+        // A populated graph is controller-owned. It must never be silently
+        // replaced just because the held item/runtime has changed; the explicit
+        // Read action handles that direction. Empty legacy state still imports
+        // automatically so existing pilots open with a useful Schedule tab.
+        if (shippingScheduleDraftGraph.nodes().isEmpty()) {
+            syncShippingScheduleGraphFromSchedule(schedule);
+        }
+    }
+
+>>>>>>> Stashed changes
     // Get the active graph view
     AdvancedGraphDocument activeGraphView() {
         return activeGraph;
@@ -1743,13 +2140,58 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         }
     }
 
+<<<<<<< Updated upstream
+=======
+    // Mirror native GUI settings without replacing an independently edited graph draft
+    public void updateNativeGraphSettings(String nodeId, String type, Map<String, com.rieno.gadgetsandgizmos.lib.graph.GraphValue> settings){
+        if("createthrusters:command".equals(type)) return;
+        if(level == null || level.isClientSide || settings.isEmpty()) return;
+        var active = activeGraph.nodes().stream().filter(node -> node.id().equals(nodeId) && node.type().equals(type)).findFirst().orElse(null);
+        if(active == null) return;
+        CompoundTag defaults = active.data().getCompound("Defaults");
+        var draft = draftGraph.nodes().stream().filter(node -> node.id().equals(nodeId) && node.type().equals(type)).findFirst().orElse(null);
+        CompoundTag draftDefaults = draft == null ? null : draft.data().getCompound("Defaults");
+        boolean changed = false;
+        boolean draftChanged = false;
+        for(var pair : settings.entrySet()){
+            var tag = GraphRuntime.fromLibraryValue(pair.getValue()).toTag();
+            if(tag.equals(defaults.get(pair.getKey()))) continue;
+            if(draftDefaults != null && java.util.Objects.equals(defaults.get(pair.getKey()), draftDefaults.get(pair.getKey()))){
+                draftDefaults.put(pair.getKey(), tag.copy());
+                draftChanged = true;
+            }
+            defaults.put(pair.getKey(), tag);
+            changed = true;
+        }
+        if(!changed) return;
+        active.data().put("Defaults", defaults);
+        activeGraph.setRevision(activeGraph.revision() + 1);
+        if(draftChanged){
+            draft.data().put("Defaults", draftDefaults);
+            draftGraph.setRevision(draftGraph.revision() + 1);
+        }
+        graphRuntime.compile(activeGraph);
+        saveControllerManifestNow();
+        setChanged();
+        sendData();
+    }
+
+    // Protect operator-authored nodes across editor, peripheral and import entry points
+    public boolean canEditGraph(AdvancedGraphDocument prev, AdvancedGraphDocument next){
+        return com.rieno.gadgetsandgizmos.lib.graph.GraphNodeAvailability.canReplace(
+                prev.toTag(), next.toTag(), AdvancedGraphCatalog::isNodeDisabled)
+                && com.rieno.gadgetsandgizmos.lib.graph.edit.PrivilegedGraphEdits.canReplace(
+                prev.toTag(), next.toTag(), "createthrusters:command"::equals);
+    }
+
+>>>>>>> Stashed changes
     // Save the draft
     public boolean saveDraft(AdvancedGraphDocument graph, int expectedRevision) {
         syncGraphAlias();
         if (graph == null || expectedRevision != draftGraph.revision()) {
             return false;
         }
-        if (!draftFitsStorage(graph)) return false;
+        if (!draftFitsStorage(graph) || !canEditGraph(draftGraph, graph)) return false;
         resetDeletedGraphOutputs(draftGraph, graph);
         resetDeletedGraphTargetWrites(draftGraph, graph);
         AdvancedGraphPortState.mergePersistentValues(draftGraph, graph);
@@ -1785,6 +2227,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
 
     // Apply the draft
     public boolean applyDraft() {
+        if(!canEditGraph(activeGraph, draftGraph)) return false;
         syncGraphAlias();
         AdvancedGraphValidator.Result res = validateDraft();
         if (!res.valid()) {
@@ -1845,10 +2288,13 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
             return new RollbackResult(false, false,
                     "Controller changed before the version could be restored", draftGraph.copy());
         }
-        AdvancedGraphDocument restored = graphVersions.rollback(index, draftGraph);
+        AdvancedGraphDocument restored = graphVersions.version(index);
         if (restored == null) {
             return new RollbackResult(false, false, "Graph version is no longer available", draftGraph.copy());
         }
+        if(!canEditGraph(draftGraph, restored)) return new RollbackResult(false, false,
+                "Operator permissions required for Command nodes", draftGraph.copy());
+        graphVersions.rollback(index, draftGraph);
         restored.setRevision(draftGraph.revision() + 1);
         draftGraph = restored;
         draftGraph.removeUnusedVariables();
@@ -2073,6 +2519,8 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         if (level == null || level.isClientSide || requestedAlias == null
                 || requestedAlias.strip().length() > 64) return false;
         syncGraphAlias();
+        if(!canEditGraph(draftGraph, new AdvancedGraphDocument())
+                || !canEditGraph(activeGraph, new AdvancedGraphDocument())) return false;
         suppressGraphAliasPublish = true;
         try {
             saveControllerManifestNow();
@@ -2708,6 +3156,11 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     }
 
     // Get the frequency stack
+    public ItemStack graphInputFrequency(AdvancedGraphDocument.Node node, String property){
+        return frequencyStack(node, property);
+    }
+
+    // Get the frequency stack
     private ItemStack frequencyStack(AdvancedGraphDocument.Node node, String property) {
         if (node != null && getLevel() != null && node.data().contains(property + "Stack", Tag.TAG_COMPOUND)) {
             ItemStack stored = ItemStack.parseOptional(getLevel().registryAccess(),
@@ -2731,6 +3184,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     public void selectTemplate(String templateId) {
         int nextRevision = Math.max(0, draftGraph.revision()) + 1;
         AdvancedGraphDocument template = AdvancedGraphTemplates.create(templateId);
+        if(!canEditGraph(draftGraph, template)) return;
         graphVersions.pushIfChanged(draftGraph, template);
         draftGraph = template;
         draftGraph.setRevision(nextRevision);
@@ -2744,13 +3198,13 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
 
     // Trigger the graph event
     public void triggerGraphEvent(String eventId, @Nullable UUID triggeringPlayerId) {
-        graphRuntime.enqueue(eventId, triggeringPlayerId);
+        graphRuntime.enqueueExternal(eventId, triggeringPlayerId);
     }
 
     // Try to trigger the graph event
     public boolean tryTriggerGraphEvent(
             String eventId, @Nullable UUID triggeringPlayerId) {
-        return graphRuntime.tryEnqueue(eventId, triggeringPlayerId);
+        return graphRuntime.enqueueExternal(eventId, triggeringPlayerId);
     }
 
     // Record controller use without counting the graph editor
@@ -3236,6 +3690,55 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         return dimension + "|" + (subLevelId == null ? "world" : subLevelId) + "|" + getBlockPos().asLong();
     }
 
+<<<<<<< Updated upstream
+=======
+    public Set<String> getCapturedMouseInputs(){ return mouseCapture.inputs(); }
+
+    // Keep capture updates attached to the player's current controller session
+    public void setMouseCaptureSession(ServerPlayer player, AdvancedControllerMouseCapturePayload target, boolean active){
+        if(active){
+            mouseCaptureSessions.put(player.getUUID(), target);
+            PacketDistributor.sendToPlayer(player, target.withRequests(mouseCapture.requests(), mouseAxisTimeouts));
+        }else mouseCaptureSessions.remove(player.getUUID());
+    }
+
+    // Publish changed capture requests without depending on editor or goggles diagnostics
+    public void updateMouseCaptureRequests(Map<String, String> requests){
+        updateMouseCaptureRequests(requests, Map.of());
+    }
+
+    // Publish evaluated axis timeouts with capture ownership
+    public void updateMouseCaptureRequests(Map<String, String> requests, Map<String, Integer> timeouts){
+        if(level == null || level.isClientSide) return;
+        boolean changed = mouseCapture.replace(requests);
+        if(!changed && mouseAxisTimeouts.equals(timeouts)) return;
+        mouseAxisTimeouts = Map.copyOf(timeouts);
+        var server = level.getServer();
+        if(server == null) return;
+        mouseCaptureSessions.entrySet().removeIf(entry -> {
+            var player = server.getPlayerList().getPlayer(entry.getKey());
+            if(player == null) return true;
+            var target = entry.getValue();
+            boolean valid = target.target() == AdvancedControllerMouseInputPayload.Target.BLOCK
+                    ? hasPhysicalInteractionParticipant(player.getUUID())
+                    : PortableContraptionControllerRuntime.matchesMouseCaptureSession(player, target, this);
+            if(valid) PacketDistributor.sendToPlayer(player, target.withRequests(mouseCapture.requests(), mouseAxisTimeouts));
+            return !valid;
+        });
+    }
+
+    public boolean applyClientMouseCaptureRequests(Map<String, String> requests){
+        return applyClientMouseCaptureRequests(requests, Map.of());
+    }
+
+    // Refresh client expiry independently of whether its block entity receives graph snapshots
+    public boolean applyClientMouseCaptureRequests(Map<String, String> requests, Map<String, Integer> timeouts){
+        boolean changed = !mouseAxisTimeouts.equals(timeouts);
+        mouseAxisTimeouts = Map.copyOf(timeouts);
+        return mouseCapture.replace(requests) || changed;
+    }
+
+>>>>>>> Stashed changes
     // Get the mouse input value
     public double getMouseInputValue(String input) {
         return mouseInputValues.getOrDefault(normalizeMouseInput(input), 0.0D);
@@ -3248,6 +3751,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
 
     // Handle the mouse input
     public void handleMouseInput(String input, double value, boolean active) {
+        if(!Double.isFinite(value)) return;
         String normalized = normalizeMouseInput(input);
         if (normalized.isBlank() || !getConfiguredMouseInputs().contains(normalized)) {
             return;
@@ -3257,25 +3761,28 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
             normalizedValue = active ? 1.0D : 0.0D;
         }
         mouseInputValues.put(normalized, normalizedValue);
-        if (normalized.startsWith("mouse_") && Math.abs(normalizedValue) > 1.0E-4D && getLevel() != null) {
-            mouseInputLastMovementTicks.put(normalized, getLevel().getGameTime());
+        if (normalized.startsWith("mouse_") && getLevel() != null) {
+            mouseAxes.computeIfAbsent(normalized, key -> new com.rieno.gadgetsandgizmos.lib.control.MouseAxisState())
+                    .sample(normalizedValue, getLevel().getGameTime());
         }
         boolean wasActive = activeMouseInputs.contains(normalized);
         if (active) activeMouseInputs.add(normalized);
         else activeMouseInputs.remove(normalized);
         if (wasActive != active) {
-            graphRuntime.enqueue("mouse:" + normalized + ":" + (active ? "active" : "inactive"));
+            graphRuntime.enqueueExternal("mouse:" + normalized + ":" + (active ? "active" : "inactive"));
         }
         if (normalized.startsWith("scroll_")) transientMouseInputs.add(normalized);
     }
 
     // Apply the client mouse input
     public void applyClientMouseInput(String input, double value, boolean active) {
+        if(!Double.isFinite(value)) return;
         String normalized = normalizeMouseInput(input);
         if (normalized.isBlank()) return;
         mouseInputValues.put(normalized, Mth.clamp(value, -1.0D, 1.0D));
-        if (normalized.startsWith("mouse_") && Math.abs(value) > 1.0E-4D && getLevel() != null) {
-            mouseInputLastMovementTicks.put(normalized, getLevel().getGameTime());
+        if (normalized.startsWith("mouse_") && getLevel() != null) {
+            mouseAxes.computeIfAbsent(normalized, key -> new com.rieno.gadgetsandgizmos.lib.control.MouseAxisState())
+                    .sample(value, getLevel().getGameTime());
         }
         if (active) activeMouseInputs.add(normalized);
         else activeMouseInputs.remove(normalized);
@@ -3286,35 +3793,20 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         mouseInputValues.clear();
         activeMouseInputs.clear();
         transientMouseInputs.clear();
-        mouseInputLastMovementTicks.clear();
+        mouseAxes.clear();
     }
 
-    // Reset the stale mouse axes
-    private void resetStaleMouseAxes() {
-        if (getLevel() == null || mouseInputLastMovementTicks.isEmpty()) {
-            return;
-        }
-        Map<String, Integer> resetTimeouts = new LinkedHashMap<>();
-        for (AdvancedGraphDocument.Node node : activeGraph.nodes()) {
-            if (!"mouse_input".equals(node.type()) || !mouseNodeDefaultBoolean(node, "reset_axis")) {
-                continue;
-            }
-            String input = normalizeMouseInput(node.data().getString("MouseInput"));
-            if (!"mouse_x".equals(input) && !"mouse_y".equals(input)) {
-                continue;
-            }
-            int timeout = Mth.clamp((int) Math.round(mouseNodeDefaultNumber(node, "timeout", 20.0D)), 1, 1200);
-            resetTimeouts.merge(input, timeout, Math::min);
-        }
-        long gameTime = getLevel().getGameTime();
-        resetTimeouts.forEach((input, timeout) -> {
-            long lastMovement = mouseInputLastMovementTicks.getOrDefault(input, gameTime);
-            if (gameTime - lastMovement < timeout) {
-                return;
-            }
-            double prev = mouseInputValues.getOrDefault(input, 0.0D);
-            boolean wasActive = activeMouseInputs.remove(input);
+    // Expire the same accumulator used by the next client movement sample
+    public boolean resetStaleMouseAxes(){
+        if(getLevel() == null || mouseAxes.isEmpty()) return false;
+        boolean changed = false;
+        for(var entry : mouseAxisTimeouts.entrySet()){
+            String input = entry.getKey();
+            var axis = mouseAxes.get(input);
+            if(axis == null || !axis.expire(getLevel().getGameTime(), entry.getValue())) continue;
+            activeMouseInputs.remove(input);
             mouseInputValues.put(input, 0.0D);
+<<<<<<< Updated upstream
             mouseInputLastMovementTicks.remove(input);
             if ((wasActive || Math.abs(prev) > 1.0E-4D) && !getLevel().isClientSide) {
                 graphRuntime.enqueue("mouse:" + input + ":inactive");
@@ -3333,8 +3825,12 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         CompoundTag defaults = node.data().getCompound("Defaults");
         if (!defaults.contains(port)) {
             return fallback;
+=======
+            changed = true;
+            if(!getLevel().isClientSide) graphRuntime.enqueueExternal("mouse:" + input + ":reset");
+>>>>>>> Stashed changes
         }
-        return defaults.getCompound(port).getCompound("Payload").getDouble("Value");
+        return changed;
     }
 
     // Deactivate the portable outputs
@@ -3359,7 +3855,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         restoreGraphOwnedBindingChannel(channelId);
         boolean changed = super.handleControllerKeyInput(channelId, pressed);
         graphRuntime.setBindingActive(channelId, pressed);
-        graphRuntime.enqueue("key:" + channelId + ":" + (pressed ? "pressed" : "released"));
+        graphRuntime.enqueueExternal("key:" + channelId + ":" + (pressed ? "pressed" : "released"));
         return changed;
     }
 
@@ -3429,19 +3925,56 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     // Preserve the player responsible for authenticated HUD input
     public boolean handleHudInteraction(ServerPlayer player, String nodeId, String interactionId, AdvancedGraphDocument.Value value){
         com.rieno.gadgetsandgizmos.lib.interaction.BlockInteractionTracker.record(getLevel(), getBlockPos(), player);
-        return graphRuntime.withInteractionPlayer(player.getUUID(), () -> handleHudInteraction(nodeId, interactionId, value));
+        return graphRuntime.withPlayerInteraction(player, () -> handleHudInteraction(nodeId, interactionId, value));
     }
     public boolean handleHudElementInteraction(ServerPlayer player, String nodeId, String interactionId, AdvancedGraphDocument.Value value){
         com.rieno.gadgetsandgizmos.lib.interaction.BlockInteractionTracker.record(getLevel(), getBlockPos(), player);
+<<<<<<< Updated upstream
         return graphRuntime.withInteractionPlayer(player.getUUID(), () -> handleHudElementInteraction(nodeId, interactionId, value));
+=======
+        return graphRuntime.withPlayerInteraction(player, () -> {
+            for(var node : activeGraph.nodes()){
+                if(!node.id().equals(nodeId) || !"advanced_hud_element".equals(node.type())) continue;
+                for(Tag raw : node.data().getList("WidgetElements", Tag.TAG_COMPOUND)){
+                    CompoundTag elm = (CompoundTag)raw;
+                    if(!interactionId.equals(elm.getString("InteractionId"))
+                            || !AdvancedHudCameraSource.TYPE.equals(elm.getString("Type"))) continue;
+                    return AdvancedHudCameraSource.handle(this, player, node, elm,
+                            port -> previewActiveGraphInput(node, port), value);
+                }
+            }
+            return handleHudElementInteraction(nodeId, interactionId, value);
+        });
+>>>>>>> Stashed changes
     }
     public boolean handleHudButtonInteraction(ServerPlayer player, String nodeId, String interactionId){
-        return graphRuntime.withInteractionPlayer(player.getUUID(), () -> handleHudButtonInteraction(nodeId, interactionId));
+        return graphRuntime.withPlayerInteraction(player, () -> handleHudButtonInteraction(nodeId, interactionId));
     }
     public boolean handleHudToggleInteraction(ServerPlayer player, String nodeId, String interactionId){
-        return graphRuntime.withInteractionPlayer(player.getUUID(), () -> handleHudToggleInteraction(nodeId, interactionId));
+        return graphRuntime.withPlayerInteraction(player, () -> handleHudToggleInteraction(nodeId, interactionId));
     }
 
+<<<<<<< Updated upstream
+=======
+    // Attribute input devices and portable controller actions before they queue graph work
+    public void runGraphInteraction(ServerPlayer player, Runnable action){
+        if(player == null) return;
+        if(getLevel() != null && getLevel().getBlockEntity(getBlockPos()) == this){
+            com.rieno.gadgetsandgizmos.lib.interaction.BlockInteractionTracker.record(getLevel(), getBlockPos(), player);
+        }
+        graphRuntime.withPlayerInteraction(player, () -> { action.run(); return null; });
+    }
+    public void handleMouseInput(ServerPlayer player, String input, double value, boolean active){
+        runGraphInteraction(player, () -> handleMouseInput(input, value, active));
+    }
+    public void applyHardwareControllerInput(ServerPlayer player, Map<String, Double> values){
+        runGraphInteraction(player, () -> applyHardwareControllerInput(values));
+    }
+    public void handleControllerKeyInput(ServerPlayer player, String channelId, boolean pressed){
+        runGraphInteraction(player, () -> handleControllerKeyInput(channelId, pressed));
+    }
+
+>>>>>>> Stashed changes
     // Handle the HUD interaction
     public boolean handleHudInteraction(String nodeId, String interactionId,
                                         AdvancedGraphDocument.Value value) {
@@ -3704,6 +4237,9 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     }
 
     // Get the graph live input
+    public boolean hasClientRuntimeStream(){ return clientRuntimeEvents.streamId() != null; }
+
+    // Get the graph live input
     public AdvancedGraphLiveValue getGraphLiveInput(String nodeId, String port) {
         return clientGraphLiveInputs.get(nodeId + ":" + port);
     }
@@ -3738,6 +4274,9 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
     public Map<String, AdvancedGraphDocument.Value> getGraphRuntimeOutputsSnapshot() {
         return graphRuntime.liveOutputs();
     }
+
+    // Let menu-owned drafts observe and inherit the authoritative engine without serialising its state
+    public GraphRuntime graphRuntimeForDraftSession(){ return graphRuntime; }
 
     // Get every public output for one active graph node
     public Map<String, AdvancedGraphDocument.Value> getGraphNodeOutputsSnapshot(
@@ -3976,6 +4515,14 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
 
     // Release the ACC displays
     private void releaseAccDisplays() {
+<<<<<<< Updated upstream
+=======
+        hudRuntimeSync.clear();
+        clientHudSequence.reset();
+        clientRuntimeEvents.clear();
+        clientRuntimePulses.clear();
+        clientRuntimeMetadata = new CompoundTag();
+>>>>>>> Stashed changes
         for (AccDisplayBlockEntity display : List.copyOf(publishedAccDisplays)) {
             if (display != null && !display.isRemoved()) {
                 display.releaseController(this);
@@ -4012,6 +4559,13 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         if (getLevel() == null || !getLevel().isClientSide) {
             return;
         }
+<<<<<<< Updated upstream
+=======
+        clientHudSequence.reset();
+        clientRuntimeEvents.clear();
+        clientRuntimePulses.clear();
+        clientRuntimeMetadata = new CompoundTag();
+>>>>>>> Stashed changes
         gogglesTrackerPairs.clear();
         if (trackerPairs != null) {
             gogglesTrackerPairs.putAll(trackerPairs);
@@ -4022,6 +4576,73 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         graphExecutionPulses = new LinkedHashMap<>(executionPulses == null ? Map.of() : executionPulses);
     }
 
+<<<<<<< Updated upstream
+=======
+    // Merge HUD changes only after their complete baseline has reached this controller
+    public boolean applyClientGraphRuntimeEvents(
+            com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeEventsPayload payload){
+        if(level == null || !level.isClientSide) return true;
+        var update = com.rieno.gadgetsandgizmos.lib.graph.GraphRuntimeNbt.read(payload.changes(), AdvancedGraphDocument.Value::fromTag);
+        if(update.streamId().equals(clientRuntimeEvents.streamId()) && update.sequence() <= clientRuntimeEvents.sequence()) return true;
+        if(!clientRuntimeEvents.accept(payload.base(), update, evt -> {})) return false;
+        if(update.reset()){
+            clientGraphLiveInputs.clear();
+            clientGraphLiveOutputs.clear();
+            graphExecutionPulses.clear();
+            clientRuntimePulses.clear();
+            clientRuntimeMetadata = payload.metadata().copy();
+        }else com.rieno.gadgetsandgizmos.lib.nbt.CompoundTagDelta.apply(clientRuntimeMetadata, payload.metadata());
+        for(var evt : update.events()){
+            switch(evt.channel()){
+                case INPUT, OUTPUT -> {
+                    var values = evt.channel() == com.rieno.gadgetsandgizmos.lib.graph.GraphRuntimeJournal.Channel.INPUT
+                            ? clientGraphLiveInputs : clientGraphLiveOutputs;
+                    if(evt.value() == null) values.remove(evt.key());
+                    else values.put(evt.key(), AdvancedGraphLiveValue.from(evt.value()));
+                }
+                case PULSE -> {
+                    graphExecutionPulses.put(evt.key(), evt.tick());
+                    clientRuntimePulses.addLast(evt);
+                    while(clientRuntimePulses.size() > 1024) clientRuntimePulses.removeFirst();
+                }
+                case VARIABLE, STATUS -> {}
+            }
+        }
+        clientGraphVariables = clientRuntimeEvents.values(com.rieno.gadgetsandgizmos.lib.graph.GraphRuntimeJournal.Channel.VARIABLE);
+        gogglesTrackerPairs.clear();
+        gogglesTrackerPairs.putAll(com.rieno.gadgetsandgizmos.lib.nbt.UuidStringTags.read(clientRuntimeMetadata.getCompound("Pairs")));
+        applyClientGogglesTrackerItems(com.rieno.gadgetsandgizmos.lib.nbt.UuidStringTags.read(clientRuntimeMetadata.getCompound("Items")));
+        return true;
+    }
+
+    // Retain individual pulses for diagnostic consumers even when one wire executes repeatedly in a tick
+    public List<com.rieno.gadgetsandgizmos.lib.graph.GraphRuntimeJournal.Event<AdvancedGraphDocument.Value>> clientGraphPulseEvents(){
+        return List.copyOf(clientRuntimePulses);
+    }
+
+    // Merge HUD changes only after their complete baseline has reached this controller
+    public void applyClientGraphRuntimeDelta(
+            com.rieno.gadgetsandgizmos.neoforge.network.AdvancedControllerRuntimeDeltaPayload delta){
+        if(level == null || !level.isClientSide || !clientHudSequence.accept(delta.streamId(),
+                delta.baseSequence(), delta.sequence(), delta.full())) return;
+        var update = delta.update();
+        if(delta.full()){
+            clientGraphLiveInputs.clear();
+            clientGraphLiveOutputs.clear();
+        }
+        new com.rieno.gadgetsandgizmos.lib.util.ValueDelta<>(false, update.liveInputs(), delta.removedInputs())
+                .applyTo(clientGraphLiveInputs);
+        new com.rieno.gadgetsandgizmos.lib.util.ValueDelta<>(false, update.liveOutputs(), delta.removedOutputs())
+                .applyTo(clientGraphLiveOutputs);
+        gogglesTrackerPairs.clear();
+        gogglesTrackerPairs.putAll(update.gogglesTrackerPairs());
+        clientGraphVariables = update.variables();
+        graphExecutionPulses.clear();
+        graphExecutionPulses.putAll(update.executionPulses());
+        applyClientGogglesTrackerItems(update.gogglesTrackerItems());
+    }
+
+>>>>>>> Stashed changes
     // Check if this has client graph snapshot
     public boolean hasClientGraphSnapshot(int draftRevision, int activeRevision) {
         return clientGraphSnapshotApplied
@@ -6154,6 +6775,7 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
         AdvancedGraphDocument imported = AdvancedGraphDocument.fromTag(storedGraph.graphTag());
         removeImplicitPresetBindings(imported);
         refreshDataPorts(imported);
+        if(!canEditGraph(draftGraph, imported) || !canEditGraph(activeGraph, imported)) return false;
         CompoundTag importedTag = imported.toTag();
         if (!forceReplace && Objects.equals(draftGraph.toTag(), importedTag) && Objects.equals(activeGraph.toTag(), importedTag)) {
             return false;
@@ -7506,7 +8128,6 @@ private final Map<String, Double> mouseInputValues = new LinkedHashMap<>();
                     shippingScheduleDraftGraph,
                     shippingScheduleActiveGraph);
             ItemStack linker = getStoredLinker();
-            ContraptionNetworkLinkerData.migrateLegacyStorage(linker);
             ContraptionNetworkLinkerSnapshotPayload.sendIfChanged(serverPlayer, linker);
         }
         return new AdvancedContraptionControllerMenu(containerId, playerInventory, this);

@@ -75,11 +75,13 @@ public final class AdvancedHudInteractions {
             CompoundTag elm = elements.getCompound(idx);
             addIfPresent(previousPorts, elm.getString("ExecPort"));
             addIfPresent(previousPorts, elm.getString("ValuePort"));
+            addIfPresent(previousPorts, elm.getString("PlayerPort"));
         }
 
         CompoundTag outputs = node.data().getCompound("DynamicOutputs");
         previousPorts.forEach(outputs::remove);
         Set<String> used = new LinkedHashSet<>(outputs.getAllKeys());
+        used.add("player");
         Set<String> currentPorts = new LinkedHashSet<>();
         for (int idx = 0; idx < elements.size(); idx++) {
             CompoundTag elm = elements.getCompound(idx);
@@ -87,11 +89,21 @@ public final class AdvancedHudInteractions {
             if (!isInteractiveType(type)) {
                 elm.remove("ExecPort");
                 elm.remove("ValuePort");
+                elm.remove("PlayerPort");
                 continue;
             }
             if (elm.getString("InteractionId").isBlank()) {
                 elm.putString("InteractionId", UUID.randomUUID().toString());
             }
+<<<<<<< Updated upstream
+=======
+            if(AdvancedHudCameraSource.TYPE.equals(type)){
+                elm.remove("ExecPort");
+                elm.remove("ValuePort");
+                elm.remove("PlayerPort");
+                continue;
+            }
+>>>>>>> Stashed changes
             String base = "hud_" + (idx + 1);
             String execPort = AdvancedGraphFunctions.uniquePort(
                     elm.getString("ExecPort").isBlank()
@@ -99,6 +111,11 @@ public final class AdvancedHudInteractions {
             String valuePort = AdvancedGraphFunctions.uniquePort(
                     elm.getString("ValuePort").isBlank()
                             ? base + "_value" : elm.getString("ValuePort"), used);
+            String playerPort = AdvancedGraphFunctions.uniquePort(
+                    elm.getString("PlayerPort").isBlank() ? base + "_player" : elm.getString("PlayerPort"), used);
+            elm.putString("PlayerPort", playerPort);
+            currentPorts.add(playerPort);
+            outputs.putString(playerPort, "player");
             elm.putString("ExecPort", execPort);
             elm.putString("ValuePort", valuePort);
             currentPorts.add(execPort);

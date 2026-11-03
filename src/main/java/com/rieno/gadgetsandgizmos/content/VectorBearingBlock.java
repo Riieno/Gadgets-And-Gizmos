@@ -12,6 +12,7 @@ import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
 import com.simibubi.create.content.equipment.wrench.IWrenchable;
 import com.simibubi.create.content.kinetics.base.IRotate;
 import com.simibubi.create.content.kinetics.base.DirectionalKineticBlock;
+import com.simibubi.create.content.kinetics.base.KineticBlockEntity;
 import com.simibubi.create.foundation.block.IBE;
 import dev.ryanhcode.sable.api.block.BlockSubLevelCollisionShape;
 import dev.ryanhcode.sable.api.block.BlockSubLevelAssemblyListener;
@@ -24,6 +25,7 @@ import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.context.BlockPlaceContext;
+import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelReader;
@@ -237,6 +239,22 @@ public class VectorBearingBlock extends DirectionalKineticBlock implements IBE<V
             player.openMenu(bearing, bearing::sendToMenu);
         }
         return ItemInteractionResult.sidedSuccess(level.isClientSide);
+    }
+
+    // Rotate the base and retain its assembled head in the same plot
+    @Override
+    public InteractionResult onWrenched(BlockState state, UseOnContext ctx){
+        Level level = ctx.getLevel();
+        BlockPos pos = ctx.getClickedPos();
+        BlockState rotated = updateAfterWrenched(getRotatedBlockState(state, ctx.getClickedFace()), ctx);
+        if(!rotated.canSurvive(level, pos)) return InteractionResult.PASS;
+        if(level.isClientSide || state == rotated) return InteractionResult.SUCCESS;
+        if(!(level.getBlockEntity(pos) instanceof VectorBearingBlockEntity bearing)
+                || !bearing.canReorientMountedAssembly()) return InteractionResult.SUCCESS;
+        KineticBlockEntity.switchToBlockState(level, pos, rotated);
+        bearing.reorientMountedAssembly();
+        IWrenchable.playRotateSound(level, pos);
+        return InteractionResult.SUCCESS;
     }
 
     // Handle the neighboring block change

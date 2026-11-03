@@ -81,7 +81,8 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
 
     // Handle the advanced contraption controller graph
     public static void handle(AdvancedContraptionControllerGraphPayload payload, IPayloadContext context) {
-        context.enqueueWork(() -> {
+        context.enqueueWork(() -> com.rieno.gadgetsandgizmos.lib.graph.edit.PrivilegedGraphEdits.run(
+                context.player() instanceof ServerPlayer player ? player : null, () -> {
             // ------------------------------------TARGET RESOLUTION------------------------------------
             boolean closingSave = "save_apply_close".equals(payload.action());
             AnalogueContraptionControllerBlockEntity resolved = closingSave
@@ -120,6 +121,9 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                 com.rieno.gadgetsandgizmos.compat.flightcontrol.FlightControlCompatibility.author(controller, player);
             }
             // ------------------------------------DRAFTS / VALIDATION------------------------------------
+            if(payload.action().startsWith("scm_") && payload.graph().getBoolean("ResetScmState")
+                    && context.player().containerMenu instanceof AdvancedContraptionControllerMenu menu
+                    && menu.getMenuConfigTargetBlockEntity() == controller) menu.resetScmPublication();
             switch (payload.action()) {
                 case "unbind_glasses" -> {
                     java.util.UUID pair = null;
@@ -317,6 +321,12 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                 case "trigger" -> controller.triggerGraphEvent(payload.argument(),
                         context.player() instanceof ServerPlayer player ? player.getUUID() : null);
                 // ------------------------------------SCM CONFIGURATION------------------------------------
+                case "scm_configuration_watch" -> {
+                    if(context.player().containerMenu instanceof AdvancedContraptionControllerMenu menu
+                            && menu.getMenuConfigTargetBlockEntity() == controller){
+                        menu.watchScmConfiguration(payload.graph().getBoolean("Configuration"), payload.graph().getBoolean("Permissions"));
+                    }
+                }
                 case "scm_permissions_open" -> sendScmConfiguration(context, payload.target(), controller, false);
                 case "scm_permissions_access" -> {
                     boolean changed = context.player() instanceof ServerPlayer player
@@ -506,7 +516,7 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
             if (persistPortable && context.player().containerMenu instanceof PortableAdvancedContraptionControllerMenu menu) {
                 menu.savePortableState();
             }
-        });
+        }));
     }
 
     // Send the shared graphs
@@ -554,6 +564,124 @@ public record AdvancedContraptionControllerGraphPayload(MenuConfigTarget target,
                 draft, plotterModel));
     }
 
+<<<<<<< Updated upstream
+=======
+    // Send the isolated, server-selected block list for the calibration modal.
+    private static void sendScmConfiguration(IPayloadContext ctx, MenuConfigTarget target,
+                                             AdvancedContraptionControllerBlockEntity controller,
+                                             boolean includePreview) {
+        if (!(ctx.player() instanceof ServerPlayer player) || target == null || controller == null) {
+            return;
+        }
+        sendScmConfiguration(player, target, controller, includePreview, true);
+    }
+
+    // Publish only changed fields for a currently authorized configuration observer
+    public static void sendScmConfiguration(ServerPlayer player, MenuConfigTarget target,
+            AdvancedContraptionControllerBlockEntity controller, boolean includePreview){
+        sendScmConfiguration(player, target, controller, includePreview, false);
+    }
+
+    private static void sendScmConfiguration(ServerPlayer player, MenuConfigTarget target,
+            AdvancedContraptionControllerBlockEntity controller, boolean includePreview, boolean acknowledge){
+        List<ScmConfigurationProfile.DockingConnectorReference> liveDockingConnectors =
+                controller.getScmConfigurationDockingConnectors();
+        CompoundTag profile = controller.getScmConfigurationProfile().toTag();
+        if (controller.getScmConfigurationMapId() != null) {
+            profile.putUUID("MapId", controller.getScmConfigurationMapId());
+        }
+        CompoundTag candidates = new CompoundTag();
+        candidates.putBoolean("ChunkLoading", controller.isScmChunkLoading());
+        candidates.put("DefaultOrientation", controller.getScmDefaultOrientation().toTag());
+        candidates.putString("DetectedVehicleType", controller.getScmDetectedVehicleType());
+        candidates.putString("DetectedSteeringType", controller.getScmDetectedSteeringType());
+        candidates.putBoolean("HasThrusters", controller.hasScmConfigurationThrusters());
+        ListTag entries = new ListTag();
+        controller.getScmConfigurationCandidates().stream().limit(com.rieno.gadgetsandgizmos.lib.scm.ScmCapacity.MAX_CONTROL_UNITS).forEach(unit -> {
+            entries.add(unit.toTag());
+        });
+        candidates.put("Units", entries);
+        ListTag dockingConnectors = new ListTag();
+        liveDockingConnectors.forEach(reference ->
+                dockingConnectors.add(reference.toTag(
+                        ScmConfigurationProfile.DockingConnectorGroup.ANY)));
+        candidates.put("DockingConnectors", dockingConnectors);
+        ListTag viewSubLevels = new ListTag();
+        controller.getScmConfigurationViewSubLevelIds().forEach(id -> {
+            CompoundTag body = new CompoundTag();
+            body.putUUID("Id", id);
+            viewSubLevels.add(body);
+        });
+        candidates.put("ViewSubLevels", viewSubLevels);
+        if (includePreview) {
+            // Keep SCM usable when a controller menu remains open outside the
+            // craft's normal client tracking range. This detached block scene
+            // is only a renderer/picker fallback; all selected targets are
+            // still checked against the server's current assembled bodies.
+            ListTag previewBlocks = new ListTag();
+            controller.getScmConfigurationPreviewBlocks(com.rieno.gadgetsandgizmos.lib.scm.ScmCapacity.MAX_PREVIEW_BLOCKS).forEach(block -> {
+                CompoundTag entry = new CompoundTag();
+                entry.putUUID("SubLevelId", block.subLevelId());
+                entry.putLong("Position", block.position().asLong());
+                entry.put("State", NbtUtils.writeBlockState(block.state()));
+                entry.putDouble("RootX", block.rootPosition().x);
+                entry.putDouble("RootY", block.rootPosition().y);
+                entry.putDouble("RootZ", block.rootPosition().z);
+                var turn = block.orientation();
+                entry.putFloat("Qx", turn.x); entry.putFloat("Qy", turn.y);
+                entry.putFloat("Qz", turn.z); entry.putFloat("Qw", turn.w);
+                previewBlocks.add(entry);
+            });
+            candidates.put("PreviewBlocks", previewBlocks);
+        }
+        candidates.put("Telemetry", scmTelemetrySnapshot(controller));
+        candidates.put("ShipPermissions", ShipPermissions.snapshot(player, controller));
+        var rootId = controller.getScmConfigurationRootSubLevelId();
+        boolean scanning = controller.isScmConfigurationScanning();
+        String status = controller.getScmConfigurationStatus();
+        if(player.containerMenu instanceof AdvancedContraptionControllerMenu menu
+                && menu.getMenuConfigTargetBlockEntity() == controller
+                && net.neoforged.neoforge.network.registration.NetworkRegistry.hasChannel(player.connection, ScmConfigurationDeltaPayload.TYPE.id())){
+            if(includePreview) menu.markScmPreview(rootId);
+            CompoundTag document = new CompoundTag();
+            if(rootId != null) document.putUUID("Root", rootId);
+            document.putBoolean("Scanning", scanning);
+            document.putString("Status", status);
+            document.put("Profile", profile);
+            document.put("Candidates", candidates);
+            menu.publishScmConfiguration(player, target, document, acknowledge);
+        }else PacketDistributor.sendToPlayer(player, new ScmConfigurationSnapshotPayload(
+                target.pos(), target.subLevelId(), rootId, scanning, status, profile, candidates));
+    }
+
+    // Send the live SCM telemetry which backs the SCM workspace's simulation
+    // sidebar. Keeping it in the existing configuration snapshot avoids a
+    // second client-only authority path and means the rendered values are the
+    // same values graph nodes receive from the server runtime.
+    private static CompoundTag scmTelemetrySnapshot(AdvancedContraptionControllerBlockEntity controller) {
+        CompoundTag telemetry = new CompoundTag();
+        for (String port : List.of(
+                "status", "ready", "attached", "initialized", "initializing", "progress", "map_id",
+                "unit_count", "bearing_count", "vector_thruster_count", "docking_connector_count",
+                "controllable_count", "mass", "weight", "facing", "inertia_tensor",
+                "center_of_mass_x", "center_of_mass_y", "center_of_mass_z",
+                "center_of_lift_x", "center_of_lift_y", "center_of_lift_z",
+                "x", "y", "z", "velocity_x", "velocity_y", "velocity_z", "speed",
+                "angular_velocity_x", "angular_velocity_y", "angular_velocity_z", "yaw", "pitch", "roll",
+                "nearest_collision_distance", "collision_distance_forward",
+                "collision_distance_backward", "collision_distance_left",
+                "collision_distance_right", "collision_distance_up", "collision_distance_down",
+                "collision_scan_range", "navigation_target_distance")) {
+            AdvancedGraphDocument.Value value = controller.getShipControlGraphValue(port);
+            CompoundTag encoded = new CompoundTag();
+            encoded.putString("Type", value.type());
+            encoded.put("Payload", value.payload().copy());
+            telemetry.put(port, encoded);
+        }
+        return telemetry;
+    }
+
+>>>>>>> Stashed changes
     // Send the public share
     private static void sendPublicShare(ServerPlayer player, MenuConfigTarget target,
                                         boolean available, boolean completed, boolean success,

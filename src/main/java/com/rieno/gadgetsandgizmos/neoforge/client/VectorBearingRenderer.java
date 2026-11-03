@@ -12,6 +12,8 @@ import com.rieno.gadgetsandgizmos.content.VectorBearingBlockEntity;
 import com.rieno.gadgetsandgizmos.content.VectorBearingPistonMath;
 import com.rieno.gadgetsandgizmos.compat.simulated.SimulatedHelper;
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.math.Axis;
+import com.rieno.gadgetsandgizmos.lib.geometry.CardinalRotation;
 import com.simibubi.create.AllPartialModels;
 import com.simibubi.create.content.kinetics.base.KineticBlockEntityRenderer;
 import dev.engine_room.flywheel.api.visualization.VisualizationManager;
@@ -65,9 +67,8 @@ public class VectorBearingRenderer extends KineticBlockEntityRenderer<VectorBear
                               MultiBufferSource buffer, int light, int overlay) {
         if (!VisualizationManager.supportsVisualization(be.getLevel())) {
             renderShaft(be, ms, buffer, light);
+            renderDetails(be, partialTicks, ms, buffer, light);
         }
-
-        renderDetails(be, partialTicks, ms, buffer, light);
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -78,6 +79,49 @@ public class VectorBearingRenderer extends KineticBlockEntityRenderer<VectorBear
 
     ------------------------------------------------------------##-----------------------------------------------------*/
 
+<<<<<<< Updated upstream
+=======
+    // Draw the SCM preview partials
+    static boolean renderPreview(BlockEntity entity, BlockState state, PoseStack ms,
+                                 MultiBufferSource buffer, int light) {
+        if (!(entity instanceof VectorBearingBlockEntity bearing)) {
+            return false;
+        }
+        renderShaft(bearing, ms, buffer, light);
+        renderDetails(bearing, AnimationTickHolder.getPartialTicks(), ms, buffer, light);
+        return true;
+    }
+
+    // Draw the bearing plate and pistons
+    private static void renderDetails(VectorBearingBlockEntity be, float partialTicks, PoseStack ms,
+                                      MultiBufferSource buffer, int light) {
+        Direction facing = be.getBearingFacing();
+        Vector3f baseNormal = directionVector(facing);
+        boolean mounted = be.isMountedAssemblyPresent();
+        Quaternionf tilt = headTilt(be, partialTicks);
+        if (mounted) {
+            renderPistons(be, facing, tilt, ms, buffer, light);
+            return;
+        }
+
+        Quaternionf baseRotation = new Quaternionf().rotationTo(new Vector3f(0.0F, 1.0F, 0.0F), baseNormal);
+
+        SuperByteBuffer plate = CachedBuffers.partial(CTPartialModels.VECTOR_BEARING_PLATE, be.getBlockState());
+        plate.rotateCentered(baseRotation);
+        plate.light(light);
+        plate.renderInto(ms, buffer.getBuffer(RenderType.solid()));
+        renderPistons(be, facing, new Quaternionf(), ms, buffer, light);
+    }
+
+    // Share the physical head orientation between the instanced and fallback renderers
+    static Quaternionf headTilt(VectorBearingBlockEntity be, float partialTicks){
+        if(!be.isMountedAssemblyPresent()) return new Quaternionf();
+        Quaternionf tilt = mountedTilt(be, partialTicks);
+        return tilt == null ? appliedTilt(be, partialTicks, be.getBearingFacing(),
+                directionVector(be.getBearingFacing())) : tilt;
+    }
+
+>>>>>>> Stashed changes
     // Get the mounted tilt
     private static Quaternionf mountedTilt(VectorBearingBlockEntity be, float partialTicks) {
         Level level = be.getLevel();
@@ -96,6 +140,8 @@ public class VectorBearingRenderer extends KineticBlockEntityRenderer<VectorBear
             Quaterniond parentOrientation = interpolatedOrientation(parent, partialTicks);
             childOrientation = parentOrientation.invert().mul(childOrientation).normalize();
         }
+        childOrientation.mul(CardinalRotation.between(be.getMountedHeadFacing(), be.getBearingFacing())
+                .quaternion().conjugate()).normalize();
 
         return new Quaternionf((float) childOrientation.x, (float) childOrientation.y,
                 (float) childOrientation.z, (float) childOrientation.w).normalize();
@@ -130,60 +176,45 @@ public class VectorBearingRenderer extends KineticBlockEntityRenderer<VectorBear
     // Draw the pistons
     private static void renderPistons(VectorBearingBlockEntity be, Direction facing, Quaternionf tilt, PoseStack ms,
                                       MultiBufferSource buffer, int light) {
-        BlockState state = be.getBlockState();
-        Vec3 normal = Vec3.atLowerCornerOf(facing.getNormal());
-        Vector3f transformedNormal = tilt.transform(new Vector3f(
-                (float) normal.x, (float) normal.y, (float) normal.z));
-        Vec3 tiltedNormal = new Vec3(transformedNormal.x(), transformedNormal.y(), transformedNormal.z());
-        double normalDot = normal.dot(tiltedNormal);
-        if (Math.abs(normalDot) < 1.0E-6D) {
-            return;
-        }
-
-        for (int i = 0; i < 4; i++) {
-            SuperByteBuffer head = CachedBuffers.partial(CTPartialModels.VECTOR_BEARING_PISTON_HEAD, state);
-            SuperByteBuffer pole = CachedBuffers.partial(CTPartialModels.VECTOR_BEARING_PISTON_POLE, state);
-            Vec3 translatedPos = VecHelper.rotate(new Vec3(0.36875D, 0.0D, 0.0D), -90.0D * i,
-                    Direction.Axis.Y);
-
-            if (facing.getAxis().isHorizontal()) {
-                translatedPos = VecHelper.rotate(translatedPos, AngleHelper.horizontalAngle(facing), Direction.Axis.Z);
-                translatedPos = VecHelper.rotate(translatedPos, -90.0D + AngleHelper.verticalAngle(facing),
-                        Direction.Axis.X);
-            }
-
-            double extension = VectorBearingPistonMath.extension(
-                    translatedPos.dot(tiltedNormal), normalDot);
-            translatedPos = translatedPos.add(normal.scale(extension));
-            head.translate(translatedPos);
-            head.translate(0.5F, 0.5F, 0.5F);
-            pole.translate(translatedPos);
-            pole.translate(0.5F, 0.5F, 0.5F);
-            int side = i;
-            if (facing == Direction.DOWN) {
-                if (i % 2 == 0) {
-                    head.rotate(AngleHelper.rad(180.0D), Direction.EAST);
-                    pole.rotate(AngleHelper.rad(180.0D), Direction.EAST);
-                } else {
-                    head.rotate(AngleHelper.rad(180.0D), Direction.SOUTH);
-                    pole.rotate(AngleHelper.rad(180.0D), Direction.SOUTH);
+        for(int idx = 0; idx < 4; idx++){
+            for(int part = 0; part < 2; part++){
+                ms.pushPose();
+                if(posePiston(ms, facing, tilt, idx, part == 1)){
+                    CachedBuffers.partial(part == 0 ? CTPartialModels.VECTOR_BEARING_PISTON_HEAD
+                            : CTPartialModels.VECTOR_BEARING_PISTON_POLE, be.getBlockState())
+                            .light(light).renderInto(ms, buffer.getBuffer(RenderType.solid()));
                 }
+                ms.popPose();
             }
-
-            if (facing.getAxis().isHorizontal()) {
-                head.rotate(AngleHelper.rad(AngleHelper.horizontalAngle(facing.getOpposite())), Direction.UP);
-                pole.rotate(AngleHelper.rad(AngleHelper.horizontalAngle(facing.getOpposite())), Direction.UP);
-                head.rotate(AngleHelper.rad(-90.0D + AngleHelper.verticalAngle(facing)), Direction.EAST);
-                pole.rotate(AngleHelper.rad(-90.0D + AngleHelper.verticalAngle(facing)), Direction.EAST);
-                side = 2 - side;
-            }
-
-            pole.translate(0.0D, 0.03125D, 0.0D);
-            head.rotate(AngleHelper.rad(-90.0D * side), Direction.UP);
-            pole.rotate(AngleHelper.rad(-90.0D * side), Direction.UP);
-            head.light(light).renderInto(ms, buffer.getBuffer(RenderType.solid()));
-            pole.light(light).renderInto(ms, buffer.getBuffer(RenderType.solid()));
         }
+    }
+
+    // Position one model part with the same transforms in both rendering paths
+    static boolean posePiston(PoseStack ms, Direction facing, Quaternionf tilt, int idx, boolean pole){
+        Vec3 normal = Vec3.atLowerCornerOf(facing.getNormal());
+        Vector3f transformed = tilt.transform(new Vector3f((float)normal.x, (float)normal.y, (float)normal.z));
+        Vec3 tilted = new Vec3(transformed.x, transformed.y, transformed.z);
+        double dot = normal.dot(tilted);
+        if(Math.abs(dot) < 1.0E-6D) return false;
+        Vec3 pos = VecHelper.rotate(new Vec3(0.36875D, 0, 0), -90.0D * idx, Direction.Axis.Y);
+        if(facing.getAxis().isHorizontal()){
+            pos = VecHelper.rotate(pos, AngleHelper.horizontalAngle(facing), Direction.Axis.Z);
+            pos = VecHelper.rotate(pos, -90.0D + AngleHelper.verticalAngle(facing), Direction.Axis.X);
+        }
+        pos = pos.add(normal.scale(VectorBearingPistonMath.extension(pos.dot(tilted), dot)));
+        ms.translate(pos.x + 0.5D, pos.y + 0.5D, pos.z + 0.5D);
+        int side = idx;
+        if(facing == Direction.DOWN){
+            ms.mulPose((idx % 2 == 0 ? Axis.XP : Axis.ZP).rotationDegrees(180));
+        }
+        if(facing.getAxis().isHorizontal()){
+            ms.mulPose(Axis.YP.rotationDegrees(AngleHelper.horizontalAngle(facing.getOpposite())));
+            ms.mulPose(Axis.XP.rotationDegrees(-90.0F + AngleHelper.verticalAngle(facing)));
+            side = 2 - side;
+        }
+        if(pole) ms.translate(0, 0.03125D, 0);
+        ms.mulPose(Axis.YP.rotationDegrees(-90.0F * side));
+        return true;
     }
 
     // Draw the shaft

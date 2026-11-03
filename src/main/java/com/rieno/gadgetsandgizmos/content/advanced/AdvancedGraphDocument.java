@@ -970,7 +970,7 @@ public static final int MAX_EDGES = 8192;
         public Value {
             type = normalize(type);
             payload = payload == null ? new CompoundTag() : payload.copy();
-            entryOrder = "map".equals(type) || "list".equals(type)
+            entryOrder = "map".equals(type) || "player".equals(type) || "list".equals(type)
                     ? com.rieno.gadgetsandgizmos.lib.graph.GraphPortOrder.keys(payload.getAllKeys(), entryOrder) : List.of();
         }
 

@@ -25,7 +25,6 @@ import net.minecraft.world.InteractionResultHolder;
 import net.minecraft.world.MenuProvider;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -105,16 +104,6 @@ public class PortableContraptionControllerItem extends Item {
         return pairId != null && (pairVerifiedFromStack
                 || expectedPairIds != null && expectedPairIds.contains(pairId)
                 || cachedPairAuthorized && sameCachedSource);
-    }
-
-    // Update the inventory
-    @Override
-    public void inventoryTick(ItemStack stack, Level level, Entity entity, int slotId, boolean isSelected) {
-        super.inventoryTick(stack, level, entity, slotId, isSelected);
-        migrateLegacyStorage(
-                stack,
-                level,
-                entity == null ? BlockPos.ZERO : entity.blockPosition());
     }
 
     /*--------------------------------------------------------##---------------------------------------------------------
@@ -368,42 +357,6 @@ public class PortableContraptionControllerItem extends Item {
         tag.remove(ControllerManifestStore.TAG_CONTROLLER_MANIFEST_REVISION);
         tag.remove(ControllerManifestStore.TAG_CONTROLLER_MANIFEST_HASH);
         tag.remove(ControllerManifestStore.TAG_CONTROLLER_MANIFEST_STORAGE_VERSION);
-    }
-
-    // Check if this has legacy ctrl payload
-    private static boolean hasLegacyCtrlPayload(ItemStack stack) {
-        CompoundTag tag =
-                stack.getOrDefault(DataComponents.BLOCK_ENTITY_DATA, CustomData.EMPTY).copyTag();
-        for (String key : tag.getAllKeys()) {
-            if (!"id".equals(key)
-                    && !ControllerManifestStore.TAG_CONTROLLER_MANIFEST_ID.equals(key)
-                    && !ControllerManifestStore.TAG_CONTROLLER_MANIFEST_REVISION.equals(key)
-                    && !ControllerManifestStore.TAG_CONTROLLER_MANIFEST_HASH.equals(key)
-                    && !ControllerManifestStore.TAG_CONTROLLER_MANIFEST_STORAGE_VERSION.equals(key)) {
-                return true;
-            }
-        }
-        return tag.contains(ControllerManifestStore.TAG_CONTROLLER_MANIFEST_REVISION)
-                || tag.contains(ControllerManifestStore.TAG_CONTROLLER_MANIFEST_HASH)
-                || tag.contains(ControllerManifestStore.TAG_CONTROLLER_MANIFEST_STORAGE_VERSION);
-    }
-
-    // Migrate the legacy storage
-    public static boolean migrateLegacyStorage(ItemStack stack, @Nullable Level level, BlockPos ownerPos) {
-        if (stack == null || stack.isEmpty() || level == null || level.isClientSide
-                || !hasLegacyCtrlPayload(stack)
-                || (!(stack.getItem() instanceof PortableContraptionControllerItem)
-                && !(stack.getItem() instanceof AnalogueContraptionControllerBlockItem))) {
-            return false;
-        }
-        CompoundTag legacyData = readControllerData(stack, level);
-        return saveControllerDataToStackIfChanged(
-                stack,
-                legacyData,
-                AnalogueContraptionControllerBlockItem.isAdvancedStack(stack),
-                level,
-                ownerPos == null ? BlockPos.ZERO : ownerPos,
-                SimulatedHelper.getSubLevelId(level));
     }
 
     // Check if this matches controller

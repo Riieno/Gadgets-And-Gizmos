@@ -18,13 +18,9 @@ import dev.ryanhcode.sable.sublevel.SubLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.Container;
-import net.minecraft.world.item.ItemStack;
 import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
-import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.level.ChunkEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
@@ -82,16 +78,6 @@ public final class ContraptionNetworkLinkerTrackerEvents {
         if (event.getLevel() instanceof ServerLevel level) {
             ShipCouplerService.clearLoadedCouplers(level);
         }
-    }
-
-    // Handle player login
-    @SubscribeEvent
-    public static void playerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer player)) {
-            return;
-        }
-        migratePlayerStorage(player, player.getInventory());
-        migratePlayerStorage(player, player.getEnderChestInventory());
     }
 
     // Handle block removal
@@ -156,19 +142,6 @@ public final class ContraptionNetworkLinkerTrackerEvents {
         ContraptionNetworkLinkerTracker.finishShutdown(event.getServer());
         ControllerSqliteStore.closeAll();
         AccDisplayControllerRegistry.finishShutdown(event.getServer());
-    }
-
-    // Migrate the player storage
-    private static void migratePlayerStorage(ServerPlayer player, Container container) {
-        for (int slot = 0; slot < container.getContainerSize(); slot++) {
-            ItemStack stack = container.getItem(slot);
-            if (stack.getItem() instanceof ContraptionNetworkLinkerItem) {
-                ContraptionNetworkLinkerData.migrateLegacyStorage(stack);
-            } else {
-                PortableContraptionControllerItem.migrateLegacyStorage(
-                        stack, player.level(), player.blockPosition());
-            }
-        }
     }
 
     // Request the reconciliation

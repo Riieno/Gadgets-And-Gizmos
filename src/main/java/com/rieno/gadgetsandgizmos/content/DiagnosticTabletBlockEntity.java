@@ -9,6 +9,9 @@ package com.rieno.gadgetsandgizmos.content;
 ------------------------------------------------------------##-----------------------------------------------------*/
 
 import com.rieno.gadgetsandgizmos.registry.CTBlockEntities;
+import com.rieno.gadgetsandgizmos.lib.media.MediaPlaybackState;
+import com.rieno.gadgetsandgizmos.lib.media.MediaSources;
+import com.rieno.gadgetsandgizmos.lib.physics.SableTransformApi;
 import com.simibubi.create.foundation.blockEntity.SmartBlockEntity;
 import com.simibubi.create.foundation.blockEntity.behaviour.BlockEntityBehaviour;
 import net.minecraft.core.BlockPos;
@@ -33,6 +36,7 @@ public class DiagnosticTabletBlockEntity extends SmartBlockEntity {
 
     // Current diagnostic tablet state
     private DiagnosticTabletData.State state = DiagnosticTabletData.State.DEFAULT;
+    private MediaPlaybackState playback = MediaPlaybackState.EMPTY;
 
     /*--------------------------------------------------------##---------------------------------------------------------
 
@@ -72,6 +76,15 @@ public class DiagnosticTabletBlockEntity extends SmartBlockEntity {
         sendData();
     }
 
+    public MediaPlaybackState playback(){ return playback; }
+
+    public void setPlayback(MediaPlaybackState val){
+        if(playback.equals(val)) return;
+        playback = val;
+        setChanged();
+        sendData();
+    }
+
     /*--------------------------------------------------------##---------------------------------------------------------
 
     =======================================================================================================================
@@ -84,6 +97,12 @@ public class DiagnosticTabletBlockEntity extends SmartBlockEntity {
     @Override
     public void tick() {
         super.tick();
+        if(level != null){
+            if(level.isClientSide && playback.discId() != null){
+                MediaSources.observe(state.tabletId(), playback,
+                        SableTransformApi.toWorldPosition(this, worldPosition.getCenter()), false);
+            }else if(!level.isClientSide) DiagnosticTabletMediaApp.tick(this);
+        }
         if (level != null && !level.isClientSide
                 && Math.floorMod(level.getGameTime() + worldPosition.asLong(), 20L) == 0L) {
             DiagnosticTabletRedstoneLinkRuntime.refreshPlaced(this);
@@ -95,6 +114,7 @@ public class DiagnosticTabletBlockEntity extends SmartBlockEntity {
     public CompoundTag getUpdateTag(HolderLookup.Provider provider) {
         CompoundTag tag = super.getUpdateTag(provider);
         tag.put("Tablet", DiagnosticTabletData.toTag(state));
+        tag.put("Media", playback.toTag());
         return tag;
     }
 
@@ -109,6 +129,7 @@ public class DiagnosticTabletBlockEntity extends SmartBlockEntity {
     public void writeSafe(CompoundTag tag, HolderLookup.Provider provider) {
         super.writeSafe(tag, provider);
         tag.put("Tablet", DiagnosticTabletData.toTag(state));
+        tag.put("Media", playback.toTag());
     }
 
     // Write the diagnostic tablet
@@ -116,6 +137,7 @@ public class DiagnosticTabletBlockEntity extends SmartBlockEntity {
     protected void write(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.write(tag, provider, clientPacket);
         tag.put("Tablet", DiagnosticTabletData.toTag(state));
+        tag.put("Media", playback.toTag());
     }
 
     // Read the diagnostic tablet
@@ -123,5 +145,6 @@ public class DiagnosticTabletBlockEntity extends SmartBlockEntity {
     protected void read(CompoundTag tag, HolderLookup.Provider provider, boolean clientPacket) {
         super.read(tag, provider, clientPacket);
         state = DiagnosticTabletData.fromTag(tag.getCompound("Tablet"));
+        playback = MediaPlaybackState.fromTag(tag.getCompound("Media"));
     }
 }

@@ -25,6 +25,48 @@ public class SmartBatteryBlockEntity extends ConnectedVaultBlockEntity implement
     private static final long FULL_CAPACITY = 5_000_000_000L;
     private static final int FULL_BLOCKS = 81;
 
+<<<<<<< Updated upstream
+=======
+    private final EnergyItemInventory chargingItems =
+            new EnergyItemInventory(this::setChanged,
+                    com.rieno.gadgetsandgizmos.lib.power.powergrid.PowerGridPortableBattery::storage);
+
+    public EnergyItemInventory chargingItems(){ return controller().chargingItems; }
+
+    public void dropChargingItems(){
+        if(level == null || level.isClientSide) return;
+        for(int slot = 0; slot < chargingItems.getSlots(); slot++){
+            var stack = chargingItems.extractItem(slot, Integer.MAX_VALUE, false);
+            if(!stack.isEmpty()) Containers.dropItemStack(level, worldPosition.getX() + .5,
+                    worldPosition.getY() + .5, worldPosition.getZ() + .5, stack);
+        }
+    }
+
+    @Override public void tick(){
+        super.tick();
+        if(level == null || level.isClientSide) return;
+        // Saved controller links can be resolved after the members have a world
+        synchronizePowerGrid();
+        SmartBatteryBlockEntity root = controller();
+        if(root != this){
+            // Preserve row direction and retain overflow locally until a controller slot becomes available
+            for(int slot = 0; slot < chargingItems.getSlots(); slot++){
+                var stack = chargingItems.getStackInSlot(slot);
+                if(stack.isEmpty()) continue;
+                for(int dest = slot < 9 ? 0 : 9; dest < (slot < 9 ? 9 : 18); dest++){
+                    var rest = root.chargingItems.insertItem(dest, stack, false);
+                    if(rest.getCount() == stack.getCount()) continue;
+                    chargingItems.setStackInSlot(slot, rest);
+                    stack = rest;
+                    if(stack.isEmpty()) break;
+                }
+            }
+        }
+        chargingItems.tick(getEnergyHandler());
+        com.rieno.gadgetsandgizmos.lib.power.EnergyTransfer.supplyAdjacent(level, worldPosition, getEnergyHandler());
+    }
+
+>>>>>>> Stashed changes
     private long energy;
     private final IEnergyStorage energyHandler = new CombinedEnergyStorage();
 

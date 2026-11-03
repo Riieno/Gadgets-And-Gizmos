@@ -40,7 +40,9 @@ public final class AdvancedGraphVersionHistory {
     ------------------------------------------------------------##-----------------------------------------------------*/
 
     // Versions
-    private final ArrayDeque<Snapshot> versions = new ArrayDeque<>();
+    private final ArrayDeque<Version> versions = new ArrayDeque<>();
+    private final com.rieno.gadgetsandgizmos.lib.nbt.CompoundTagHistory documents =
+            new com.rieno.gadgetsandgizmos.lib.nbt.CompoundTagHistory(MAX_VERSIONS);
 
     // Store the entry
     public record Entry(int index, int revision, long savedAt) {
@@ -67,14 +69,20 @@ public final class AdvancedGraphVersionHistory {
         if (graph == null) {
             return;
         }
-        Snapshot first = versions.peekFirst();
-        if (first != null && sameGraph(first.graph(), graph)) {
+        Version first = versions.peekFirst();
+        if (first != null && sameGraph(AdvancedGraphDocument.fromTag(documents.get(0)), graph)) {
             return;
         }
-        versions.addFirst(new Snapshot(graph.copy(), Math.max(0L, savedAt)));
+        documents.push(graph.toTag());
+        versions.addFirst(new Version(graph.revision(), Math.max(0L, savedAt)));
         while (versions.size() > MAX_VERSIONS) {
             versions.removeLast();
         }
+    }
+
+    // Read a retained version before committing a permission-checked rollback
+    public AdvancedGraphDocument version(int idx){
+        return idx < 0 || idx >= versions.size() ? null : AdvancedGraphDocument.fromTag(documents.get(idx));
     }
 
     // Roll back the advanced graph version history
@@ -82,13 +90,15 @@ public final class AdvancedGraphVersionHistory {
         if (idx < 0 || idx >= versions.size()) {
             return null;
         }
-        Iterator<Snapshot> iterator = versions.iterator();
-        Snapshot selected = null;
+        AdvancedGraphDocument restored = AdvancedGraphDocument.fromTag(documents.get(idx));
+        Iterator<Version> iterator = versions.iterator();
+        Version selected = null;
         for (int i = 0; iterator.hasNext(); i++) {
-            Snapshot snapshot = iterator.next();
+            Version snapshot = iterator.next();
             if (i == idx) {
                 selected = snapshot;
                 iterator.remove();
+                documents.remove(idx);
                 break;
             }
         }
@@ -96,15 +106,15 @@ public final class AdvancedGraphVersionHistory {
             return null;
         }
         push(current, System.currentTimeMillis());
-        return selected.graph().copy();
+        return restored;
     }
 
     // Get the entries
     public List<Entry> entries() {
         List<Entry> res = new ArrayList<>(versions.size());
         int idx = 0;
-        for (Snapshot snapshot : versions) {
-            res.add(new Entry(idx++, snapshot.graph().revision(), snapshot.savedAt()));
+        for (Version snapshot : versions) {
+            res.add(new Entry(idx++, snapshot.revision(), snapshot.savedAt()));
         }
         return List.copyOf(res);
     }
@@ -112,10 +122,11 @@ public final class AdvancedGraphVersionHistory {
     // Write the advanced graph version history data
     public ListTag toTag() {
         ListTag res = new ListTag();
-        for (Snapshot snapshot : versions) {
+        int idx = 0;
+        for (Version snapshot : versions) {
             CompoundTag tag = new CompoundTag();
             tag.putLong("SavedAt", snapshot.savedAt());
-            tag.put("Graph", snapshot.graph().toTag());
+            tag.put("Graph", documents.get(idx++));
             res.add(tag);
         }
         return res;
@@ -124,18 +135,21 @@ public final class AdvancedGraphVersionHistory {
     // Read the advanced graph version history data
     public void fromTag(ListTag tags) {
         versions.clear();
+        documents.clear();
         if (tags == null) {
             return;
         }
-        for (int i = 0; i < tags.size() && versions.size() < MAX_VERSIONS; i++) {
+        List<CompoundTag> retained = new ArrayList<>();
+        for (int i = 0; i < tags.size() && retained.size() < MAX_VERSIONS; i++) {
             CompoundTag tag = tags.getCompound(i);
             if (!tag.contains("Graph", Tag.TAG_COMPOUND)) {
                 continue;
             }
-            versions.addLast(new Snapshot(
-                    AdvancedGraphDocument.fromTag(tag.getCompound("Graph")),
-                    Math.max(0L, tag.getLong("SavedAt"))));
+            var graph = AdvancedGraphDocument.fromTag(tag.getCompound("Graph"));
+            retained.add(graph.toTag());
+            versions.addLast(new Version(graph.revision(), Math.max(0L, tag.getLong("SavedAt"))));
         }
+        for(int idx = retained.size() - 1; idx >= 0; idx--) documents.push(retained.get(idx));
     }
 
     // Check if this uses the same graph
@@ -147,7 +161,7 @@ public final class AdvancedGraphVersionHistory {
         return Objects.equals(firstTag, secondTag);
     }
 
-    // Store the snapshot
-    private record Snapshot(AdvancedGraphDocument graph, long savedAt) {
+    // Retain version metadata independently of the compact document history
+    private record Version(int revision, long savedAt) {
     }
 }
